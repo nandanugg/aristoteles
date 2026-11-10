@@ -1,0 +1,7 @@
+{
+  "name": "aristoteles",
+  "private": true,
+  "type": "module",
+  "bin": { "work": "bin/work.js" },
+  "scripts": { "test": "bun test" }
+}

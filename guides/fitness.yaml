@@ -1,0 +1,24 @@
+# The questions that work role fit prints. A role fits when every static check passes and
+# every answer is yes, with one real example of the role's work as the reason.
+questions:
+  - id: 1
+    short: one kind of work
+    ask: Can the role do its work with one act (do, review, approve, or change) on one kind of output?
+  - id: 2
+    short: a clear end
+    ask: Does a responsibility say when one unit is done, in a way that a review can check?
+  - id: 3
+    short: enough in the brief
+    ask: Can an agent of this tier do one unit from its brief alone, with no knowledge of other tasks?
+  - id: 4
+    short: judgment that fits the tier
+    ask: Does the role decide only what its tier decides (low executes, medium decides results, high keeps directions)?
+  - id: 5
+    short: a checking load that fits
+    ask: Can each rule that names the role be checked by looking at one place?
+  - id: 6
+    short: words that work
+    ask: Does each responsibility name the exact output and the exact command?
+  - id: 7
+    short: a way to stop
+    ask: Does the role know when to raise instead of guessing?
