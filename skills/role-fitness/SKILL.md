@@ -5,9 +5,9 @@ description: Check that a role in aristoteles.yaml fits the capability of its ti
 
 # Role fitness
 
-A role can be assigned only when it has a fit record for its current words. The person or
-a high-tier agent makes that record. A program role (`kind: program`) has no tier and needs no
-fit record.
+A role can be assigned only when it has a fit record for its current words. The person, a
+high-tier agent, or the host that drafted the roles (a model run outside any task) makes that
+record. A program role (`kind: program`) has no tier and needs no fit record.
 
 1. Run `work role fit <role>`. It prints the static checks and seven questions
    (`guides/fitness.yaml`).
@@ -16,11 +16,13 @@ fit record.
    - no vague verb in a responsibility ("handle", "ensure", "manage", "look at", …);
    - a role with a do act names its output form (for example `<file>#<section>`);
    - the rules that name the role fit the tier's limit (`limits.<tier>.Review.rules`).
-3. Write the answers in a file inside the dir, one line for each question:
+3. Write the answers in a file inside the dir (for example `.work/fit/<role>.yaml`), one line
+   for each question:
    `- { id: 1, yes: true, why: "<one real example of the role's work>" }`.
    A no means the role does not fit: split it, move it to another tier, or make its words
    exact. Then start again at step 1.
-4. Run `work role fit <role> --answers=<file>` (a high agent adds `--as=<its token>`).
+4. Run `work role fit <role> --answers=<file>`. A high agent adds `--as=<its token>`; a model
+   run outside any task adds `--by=<its name>` (for example `--by=assess`).
 
 How to answer well:
 

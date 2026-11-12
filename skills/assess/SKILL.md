@@ -54,13 +54,15 @@ The roles and the people must exist before any direction, so do this part first:
      open: the page and the agents stop when it stops. Do not start it for them.
    - Read the draft on the page, and accept the roles. The page writes `aristoteles.yaml`,
      runs `work init`, and links the skills. A refusal says what to fix in the draft.
-   - In that terminal, for each agent role (give the list): `work role fit <role>`, then
-     `work role fit <role> --answers=<file>`. A role with no fit record gets no work.
    - Commit what the agents need, also `aristoteles.yaml`. Keep `.work/` and the linked skills
      out of git (`work guide roles`).
 
-   Wait until the person tells you that the roles are accepted; then go on with the steps
-   below.
+   Wait until the person tells you that the roles are accepted.
+4. Record the fit of each agent role (the `role-fitness` skill): `work role fit <role>`, the
+   answers in `.work/fit/<role>.yaml`, then
+   `work role fit <role> --answers=.work/fit/<role>.yaml --by=assess`. A role with no fit
+   record gets no work. A role that does not fit needs new words in `aristoteles.yaml`; ask the
+   person to apply them with `work config apply`. Then go on with the steps below.
 
 ## An app with its own harness
 

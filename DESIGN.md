@@ -469,7 +469,7 @@ tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 | `work question show <q>` | a question and its answer in full |
 | `work result show <r>` | a result and each review of it: the evidence lines, the points, the escalations, then its blockers |
 | `work role list` / `work role show <role>` | roles (from the store), tiers, roles with no fit record |
-| `work role fit <role> [--answers=<file>] [--as=<you>]` | the static checks and the fitness questions; with answers, records them (person or high) |
+| `work role fit <role> [--answers=<file>] [--as=<you>] [--by=<model run>]` | the static checks and the fitness questions; with answers, records them (the person, a high role, or a model run outside any task) |
 
 **Acting (with a token)**
 

@@ -164,4 +164,17 @@ describe('the first start of a dir', () => {
     expect(existsSync(join(p.dir, 'aristoteles.draft.yaml'))).toBe(true)
     expect((await api(p, '/api/dir')).initialized).toBe(false)
   })
+
+  test('the host records the fit of each role as a model run; the person and a role do not use --by', async () => {
+    const p = project()
+    ok(await p.nanda('init'))
+    // The host runs in a shell with no terminal, so the person's command is refused there.
+    expect((await p.agent('role fit writer --answers=fit.yaml')).err).toContain('this is a person command')
+    expect(ok(await p.agent('role fit writer --answers=fit.yaml --by=assess')).out).toBe('writer fits; recorded by assess.')
+    expect(ok(await p.agent('role list')).out).not.toMatch(/^writer .*no fit record/m)
+    expect(ok(await p.agent('log')).out).toMatch(/^e2 .* assess run \S+ \(run\) role\.fit$/m)
+    expect((await p.nanda('role fit architect --answers=fit.yaml --by=assess')).err).toContain('the person records a fit as themselves: leave out --by')
+    expect((await p.agent('role fit architect --answers=fit.yaml --by=assess --as=a1.k0001')).err).toContain('a high role passes only --as=<its token>')
+    expect((await p.agent('role fit architect --answers=fit.yaml --by=Host')).err).toContain('--by=<its name in lower case>')
+  })
 })

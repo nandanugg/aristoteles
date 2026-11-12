@@ -783,8 +783,9 @@ export const WRITTEN_BY = {
   ],
   // A host run before it has an assignment: its task draft.
   Host: ['TaskDraft.Drafted'],
-  // A model run outside any task: its draft of a new direction.
-  ModelRun: ['Revision.Drafted'],
+  // A model run outside any task: its draft of a new direction, and the fit of a role (the host
+  // that drafted the roles records their fits, Nanda 2026-11-13).
+  ModelRun: ['Revision.Drafted', 'Role.Fitted'],
   // The CLI's own assign and finish of a program.
   System: ['Assignment.GivenReviewer', 'Assignment.Finished'],
   // The supervisor of the terminals: its sessions, what it sees, its sends and their fate, and

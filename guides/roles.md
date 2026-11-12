@@ -16,8 +16,9 @@ of work: a file that breaks one is refused, or the work stops later at that chec
 ## Fit
 
 - An agent role gets work (Open, or an assign) only when it has a fit record for its current
-  words: `work role fit <role>`, and the `role-fitness` skill. The person or a high agent
-  records it. A program role needs no record.
+  words: `work role fit <role>`, and the `role-fitness` skill. The person, a high agent
+  (`--as=<its token>`), or the host outside any task (`--by=<its name>`) records it. A program
+  role needs no record.
 - The static checks of fit: a low role has exactly one act; a role with a `do` act names its
   `output`; no responsibility contains a vague verb (handle, ensure, look at, deal with, manage,
   take care, make sure, support), in any form ("handles", "managed"). Another word, such as

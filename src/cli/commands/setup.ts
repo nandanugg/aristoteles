@@ -12,7 +12,7 @@ import { readConfig, restoreConfig, roleHash } from '../../config/config.ts'
 import { Dir, Now } from '../../services/io.ts'
 import { Store } from '../../services/store.ts'
 import { textOf } from '../args.ts'
-import { callerOf, personChannel, personOf, tierOf } from '../caller.ts'
+import { callerOf, isPerson, personChannel, personOf, tierOf } from '../caller.ts'
 import type { Command, Commands } from '../command.ts'
 import { actOf, readArgFile, readWork, writeAct } from '../run.ts'
 import { Files } from '../../services/outside.ts'
@@ -252,20 +252,36 @@ const role: Command = (call) =>
     const [first, ...more] = yield* Effect.forEach(fitness.questions, (q) => yesOf(q.id))
     if (first === undefined) return yield* Effect.die('guides/fitness.yaml has no question')
     const fit = [first, ...more] as const
+    // Who records it: the person, a high role (--as=<its token>), or a model run outside any
+    // task (--by=<its name>), such as the host that drafted the roles (Nanda, 2026-11-13).
+    const token = textOf(args.one('as')) ?? null
+    const runName = textOf(args.one('by'))
+    if (runName !== undefined) {
+      if (token !== null) {
+        return yield* refuse('--by names a model run outside any task; a high role passes only --as=<its token>')
+      }
+      if (yield* isPerson) return yield* refuse('the person records a fit as themselves: leave out --by')
+      if (!/^[a-z][a-z0-9-]*$/.test(runName)) {
+        return yield* refuse('a model run outside any task names itself: --by=<its name in lower case>')
+      }
+    }
+    // A run outside any task has no token; its id is the time of its act.
+    const run = runName === undefined ? undefined : { name: runName, at: yield* (yield* Now).read }
     yield* writeAct(call, (s) =>
       Effect.gen(function* () {
-        const token = textOf(args.one('as')) ?? null
+        const stored = roleIn(s.config.roles, key)
+        if (!stored) return yield* refuse(`${key} is not in the stored config; run work config apply first`)
+        const fitted = { _tag: 'Fitted' as const, hash: roleHash(stored), answers: fit }
+        const event = move('Role', RoleName.make(key), fitted)
+        if (run !== undefined) return { author: { _tag: 'ModelRun' as const, ...run }, event }
         const caller = yield* callerOf(s, token)
         if (caller._tag === 'Agent' && tierOf(s, caller.assignment) !== 'high') {
           return yield* refuse('a person or a high role records role fitness')
         }
-        const stored = roleIn(s.config.roles, key)
-        if (!stored) return yield* refuse(`${key} is not in the stored config; run work config apply first`)
-        const fitted = { _tag: 'Fitted' as const, hash: roleHash(stored), answers: fit }
-        return actOf(caller, move('Role', RoleName.make(key), fitted))
+        return actOf(caller, event)
       }),
     )
-    return [`${key} fits; recorded.`]
+    return [`${key} fits; recorded${runName === undefined ? '' : ` by ${runName}`}.`]
   })
 
 export const commands: Commands = { init, config, role }
