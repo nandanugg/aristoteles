@@ -20,7 +20,7 @@ export const runState = (work: Work, run: Run, when: Time): RunState => {
   const top = currentTask(work, opened)
   const end = work.tasks.get(top)?.end
   if (end !== undefined && end._tag !== 'NotEnded') return { _tag: 'Closed', at: end.when }
-  // The Sol reviewer accepted the top task: the end of the project waits for the person.
+  // The Sol of the top task accepted it: the end of the project waits for the person.
   return taskAccepted(work, top, when)
     ? { _tag: 'AwaitingEndAccept', top }
     : { _tag: 'Working', top }

@@ -81,7 +81,7 @@ const run: Command = (call) =>
       )
       return [`${done.created[0]} started: ${kind === 'assess' ? 'an assess' : 'a host'} session (${String(session)}).`]
     }
-    // The end of a project: its top task is accepted (the Sol reviewer decided it), and the
+    // The end of a project: its top task is accepted (the Sol of the top task decided it), and the
     // person accepts the end last (Nanda, 2026-11-11: "using sol reviewer and then me").
     if (sub === 'done' || sub === 'close') {
       const id = args.positional[1]

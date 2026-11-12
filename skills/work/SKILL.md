@@ -49,8 +49,8 @@ The UI of a dir (`work start`) started you in a terminal with "You are the host"
    problem, a direction problem, and the end of the project. Everything else, you handle:
    - a question of a model comes to you: answer it from the directions (`work answer <token>
      <q> --text=...`). When it shows that a direction can be read in two ways, draft the change
-     of the direction (`work direction revise`); a Sol reviewer polishes it, and the person
-     accepts it.
+     of the direction (`work direction revise`). Polish it first with each question of
+     `work guide direction-review`; the person accepts it.
    - a terminal of a child stops at a prompt, or fails its 3 retries: the UI types one line into
      your terminal. Answer a prompt with `work send <token> <child> --text=<input>`. When a
      system the work needs does not work (a cluster, a VPN, an account limit), record it:

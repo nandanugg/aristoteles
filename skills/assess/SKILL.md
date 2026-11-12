@@ -26,11 +26,12 @@ The roles and the people must exist before any direction, so do this part first:
    user of the dir is the person), the `limits`, the `roles`, and `decide` when a maker has
    more than one decider, in the form of `schema/aristoteles.schema.json`. Every dir has a
    role of each tier:
-   - a high (Sol) role that splits a top task and decides its parts (for example `architect`);
-   - a high (Sol) role that reviews the result of a top task: it approves the maker of that
-     result, and the person accepts the end of a project after it;
-   - a high (Sol) role that reviews each draft of a direction (`work guide direction-review`)
-     before the person reads it; name it first in the `approvedBy` of each direction;
+   - a high (Sol) role for each kind of top task (for example `architect`). The host drafts a
+     top task for it, and the person opens it on the page. This role splits the top task, gives
+     the parts to lower roles, decides their results, and decides the result of the top task
+     last; then the end of the project comes to the person. Give no other high role a part in
+     these decisions: a high role gets work only from the person, and the page gives it only
+     to the high role of a top task;
    - a medium (Terra) role that runs a part with a full review cycle (for example `lead`);
    - low (Luna) makers, each with its `output` form, and low checkers;
    - a program role for each check program that the work runs on a report (no tier).
@@ -123,9 +124,9 @@ directions into direction drafts, and the owner accepts or rejects each one.
 
 ## Polish each draft before you send it
 
-The Sol reviewer of directions reviews every new version. Before you send a new direction, read
-it as that reviewer would, with each question of `work guide direction-review`, and fix it: the
-person reads it only after that polish.
+Each new version of a direction comes to its owner on the page, so give no direction an
+`approvedBy`. Before you send a new direction, read it with each question of
+`work guide direction-review`, and fix it: the person reads it only after that polish.
 
 ## Inputs
 
@@ -166,7 +167,6 @@ person reads it only after that polish.
    owner: <the person who accepts it: a person of aristoteles.yaml>
    from: [<the principles that ground it, of the eleven: Logos, Pathos, Ethos, Mythos, Oikos,
           Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
-   approvedBy: <optional: the roles and the owner who accept the next versions>
    says: |
      <what the work is for, in any markdown; the whole idea in the first paragraph>
    standards:
