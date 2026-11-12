@@ -262,10 +262,10 @@ export const rowsOf = (work: Work, dir: string): ReadonlyArray<ReaderRow> => {
   }
 
   for (const run of work.runs.values()) {
-    const kind = run._tag === 'Host' ? 'host' : 'assess'
-    add('run', { id: run.id, kind, session: run.session, at: run.startedAt })
+    // Each run is a host now; the column stays, because the run table of an older store file has it.
+    add('run', { id: run.id, kind: 'host', session: run.session, at: run.startedAt })
     if (run.end._tag === 'Closed') add('run_closed', { run: run.id, at: run.end.at })
-    const top = run._tag === 'Host' ? topOfRun(work, run.id) : undefined
+    const top = topOfRun(work, run.id)
     if (top !== undefined) add('run_task', { run: run.id, task: top })
   }
 

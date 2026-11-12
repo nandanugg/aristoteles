@@ -39,29 +39,24 @@ type Text = string
 // --- 1. The records of the UI, folded from the store ------------------------------------------
 
 // A project of the UI is a talk with a host model (Nanda, 2026-11-11). A run is that session before
-// it has an assignment: a host that talks with the person and drafts the top task, or the assess
-// skill that reads the dir. Its top task is derived: the task opened from a draft of the run
-// (derived.ts topOfRun), and a remake keeps the run (the current task follows the remakes).
-export type Run = HostRun | AssessRun
+// it has an assignment: a host that talks with the person and drafts the top task. Its top task is
+// derived: the task opened from a draft of the run (derived.ts topOfRun), and a remake keeps the
+// run (the current task follows the remakes). The assess skill runs in the person's own AI CLI,
+// outside any run (Nanda, 2026-11-13).
+export type Run = HostRun
 interface RunBase {
   readonly id: RunId // h1
   readonly session: SessionId // the terminal of the host model
   readonly startedAt: Time // was run.at
 }
-// was run.type host (work run start --kind=host). Was two fields, done and closed, that could
-// both be set; a done project stays done.
+// was run.type host (work run start). Was two fields, done and closed, that could both be set; a
+// done project stays done.
 export type HostRun = RunBase & {
   readonly _tag: 'Host'
   readonly end:
     | { readonly _tag: 'NotEnded' } // the run goes on
     | { readonly _tag: 'Done'; readonly at: Time } // the person accepted the end (work run done)
     | { readonly _tag: 'Closed'; readonly at: Time } // the person closed it (work run close)
-}
-// was run.type assess: it reads the dir and drafts directions; it holds no task (a task draft on it
-// is refused), so it is never done, only closed.
-export type AssessRun = RunBase & {
-  readonly _tag: 'Assess'
-  readonly end: { readonly _tag: 'NotEnded' } | { readonly _tag: 'Closed'; readonly at: Time }
 }
 export type RunEnd = HostRun['end']
 
@@ -310,7 +305,7 @@ export interface DirView {
 // A project: a run, or a top task that no run holds (opened at a terminal).
 export interface ProjectSummary {
   readonly id: Text // h.. or t..
-  readonly kind: 'host' | 'assess' | 'task'
+  readonly kind: 'host' | 'task'
   readonly at: Time | ''
   readonly session: SessionId | null
   readonly state: 'talks' | 'works' | 'ends' | 'done' | 'closed' // RunState in the old words

@@ -207,11 +207,6 @@ export const STEPS: { readonly [K in Kind]: Step<K> } = {
     const run = startRun({ _tag: 'Host', id, session: e.create.session, startedAt: r.at })
     return { work: { ...next, runs: put(next.runs, id, run) }, created: [id] }
   },
-  'Run.AssessStarted': (work, e, r) => {
-    const { id, work: next } = named(work, 'run')
-    const run = startRun({ _tag: 'Assess', id, session: e.create.session, startedAt: r.at })
-    return { work: { ...next, runs: put(next.runs, id, run) }, created: [id] }
-  },
   'Run.Done': (work, e, r) => {
     const run = work.runs.get(e.id)
     if (run?._tag !== 'Host' || run.end._tag !== 'NotEnded') {
@@ -528,8 +523,7 @@ const checkUi = (work: Work, draft: Draft): void => {
   const e = recorded.event
   const kind = kindOf(e)
   switch (kind) {
-    case 'Run.HostStarted':
-    case 'Run.AssessStarted': {
+    case 'Run.HostStarted': {
       const session = (e as EventOf<'Run.HostStarted'>).create.session
       const used =
         [...work.runs.values()].some((r) => r.session === session) ||
@@ -559,7 +553,6 @@ const checkUi = (work: Work, draft: Draft): void => {
     case 'TaskDraft.Drafted': {
       const d = (e as EventOf<'TaskDraft.Drafted'>).create
       const run = runNamed(work, d.run)
-      if (run._tag !== 'Host') no(`${d.run} is an assess run; a host drafts the top task`)
       if (run.end._tag === 'Closed') no(`${d.run} is closed`)
       const top = topTaskOf(work, run.id)
       if (top !== undefined) no(`${d.run} has its top task ${top}; a part of it comes from a split`)

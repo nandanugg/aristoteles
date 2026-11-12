@@ -289,7 +289,7 @@ export const decisionsOf = (work: Work, ctx: ViewContext): ReadonlyArray<Decisio
   }
   for (const run of work.runs.values()) {
     if (runState(work, run, ctx.at)._tag !== 'AwaitingEndAccept') continue
-    const opened = run._tag === 'Host' ? topOfRun(work, run.id) : undefined
+    const opened = topOfRun(work, run.id)
     if (opened === undefined) continue
     const top = currentTask(work, opened)
     // Its time is the time of the accept that ended the project.
@@ -329,15 +329,15 @@ const shownOn = (items: ReadonlyArray<Decision>, task: Task) =>
 // holds (a task opened at a terminal). The newest first.
 export const projectsOf = (work: Work, ctx: ViewContext): ReadonlyArray<ProjectSummary> => {
   const runs = [...work.runs.values()].map((run): Omit<ProjectSummary, 'badge'> => {
-    const opened = run._tag === 'Host' ? topOfRun(work, run.id) : undefined
+    const opened = topOfRun(work, run.id)
     const top = opened === undefined ? null : currentTask(work, opened)
     return {
       id: run.id,
-      kind: run._tag === 'Host' ? 'host' : 'assess',
+      kind: 'host',
       at: run.startedAt,
       session: run.session,
       state: stateWord(runState(work, run, ctx.at)),
-      title: top ? taskAt(work, top).name : run._tag === 'Assess' ? 'assess' : 'a new project',
+      title: top ? taskAt(work, top).name : 'a new project',
       top,
     }
   })

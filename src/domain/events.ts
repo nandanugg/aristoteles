@@ -205,16 +205,10 @@ export const RunMove = Schema.Union([
   Schema.TaggedStruct('Done', {}),
   Schema.TaggedStruct('Closed', {}),
 ])
-// A run starts as a host (it talks with the person and drafts the top task) or as the assess
-// skill (it reads the dir and drafts directions); the CLI word: --kind=host|assess.
+// A run starts as a host: it talks with the person and drafts the top task. The assess skill
+// runs in the person's own AI CLI, outside any run (Nanda, 2026-11-13).
 const Run = Schema.Union([
-  created(
-    'Run',
-    Schema.Union([
-      Schema.TaggedStruct('HostStarted', { session: SessionId }),
-      Schema.TaggedStruct('AssessStarted', { session: SessionId }),
-    ]),
-  ),
+  created('Run', Schema.TaggedStruct('HostStarted', { session: SessionId })),
   moved('Run', RunId, RunMove),
 ])
 // A top task that a host drafts; the person opens it (a creation of the Task).
@@ -754,7 +748,6 @@ export const WRITTEN_BY = {
     'Workflow.RoleWordsChanged',
     'Role.Fitted',
     'Run.HostStarted',
-    'Run.AssessStarted',
     'Run.Done',
     'Run.Closed',
     'Problem.Recorded',

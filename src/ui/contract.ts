@@ -200,7 +200,7 @@ export const TerminalRef = Schema.Struct({ session: SessionId, a: Text, ...Live 
 
 const SummaryFields = {
   id: Text,
-  kind: Schema.Literals(['host', 'assess', 'task']),
+  kind: Schema.Literals(['host', 'task']),
   at: TimeOrNone,
   session: Schema.NullOr(SessionId),
   state: Schema.Literals(['talks', 'works', 'ends', 'done', 'closed']),

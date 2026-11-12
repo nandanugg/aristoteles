@@ -34,13 +34,10 @@ const RUN_WORD = {
   Closed: 'closed',
 } as const satisfies Record<RunState['_tag'], string>
 
-const RUN_KINDS = ['host', 'assess'] as const
-// The CLI word of each kind of run.
-const RUN_PURPOSE = { Host: 'host', Assess: 'assess' } as const
 const SESSION_WORDS = /^[A-Za-z0-9._-]+$/
 
-// The sessions of the UI (Nanda, 2026-11-11): a run is a session with no assignment yet (a
-// host that talks with the person, or the assess skill); the UI records them as the person.
+// The sessions of the UI (Nanda, 2026-11-11): a run is a session with no assignment yet, a host
+// that talks with the person; the UI records them as the person.
 const run: Command = (call) =>
   Effect.gen(function* () {
     const { args } = call
@@ -48,38 +45,30 @@ const run: Command = (call) =>
     if (sub === 'list') {
       const { work, at } = yield* readWork
       if (!work.runs.size) {
-        return ['no run yet; the UI starts one with New project, or work run start --kind=host --session=<id>']
+        return ['no run yet; the UI starts one with New project, or work run start --session=<id>']
       }
       return [...work.runs.values()].map((r) => {
-        const topId = r._tag === 'Host' ? topOfRun(work, r.id) : undefined
+        const topId = topOfRun(work, r.id)
         const top = topId === undefined ? undefined : work.tasks.get(topId)
         return (
-          `${r.id} ${RUN_PURPOSE[r._tag]} · ${RUN_WORD[runState(work, r, at)._tag]} · session ${r.session} · ${r.startedAt}` +
+          `${r.id} host · ${RUN_WORD[runState(work, r, at)._tag]} · session ${r.session} · ${r.startedAt}` +
           (top ? ` · ${top.id} ${top.name}` : '')
         )
       })
     }
     if (sub === 'start') {
-      const kind = args.one('kind')
       const session = args.one('session')
       const done = yield* writeAct(call, (work) =>
         Effect.gen(function* () {
           const by = yield* personAuthor(work)
-          const purpose = RUN_KINDS.find((k) => k === kind)
-          if (purpose === undefined) {
-            return yield* refuse(`a run is a host or an assess run, not "${String(kind)}"`)
-          }
           if (typeof session !== 'string' || !SESSION_WORDS.test(session)) {
             return yield* refuse('a run needs its session id (letters, digits, dot, dash)')
           }
-          const started = {
-            _tag: purpose === 'host' ? ('HostStarted' as const) : ('AssessStarted' as const),
-            session: SessionId.make(session),
-          }
+          const started = { _tag: 'HostStarted' as const, session: SessionId.make(session) }
           return { ...by, event: create('Run', started) }
         }),
       )
-      return [`${done.created[0]} started: ${kind === 'assess' ? 'an assess' : 'a host'} session (${String(session)}).`]
+      return [`${done.created[0]} started: a host session (${String(session)}).`]
     }
     // The end of a project: its top task is accepted (the Sol of the top task decided it), and the
     // person accepts the end last (Nanda, 2026-11-11: "using sol reviewer and then me").

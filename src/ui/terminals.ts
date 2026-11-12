@@ -49,7 +49,7 @@ export const realAgentOf = (work: Work, id: AssignmentId | undefined): Assignmen
 
 // The top task of a run now (after its remakes), or undefined while the host still talks.
 export const topNow = (work: Work, run: Run): TaskId | undefined => {
-  const opened = run._tag === 'Host' ? topOfRun(work, run.id) : undefined
+  const opened = topOfRun(work, run.id)
   return opened === undefined ? undefined : currentTask(work, opened)
 }
 const isOpen = (run: Run) => run.end._tag === 'NotEnded'
@@ -336,7 +336,7 @@ export const decisionSessions = (work: Work, target: string): ReadonlyArray<Sess
     const top = rootOf(work, target as TaskId)
     return open
       .filter((r) => {
-        const opened = r._tag === 'Host' ? topOfRun(work, r.id) : undefined
+        const opened = topOfRun(work, r.id)
         return opened !== undefined && (opened === top || currentTask(work, opened) === top)
       })
       .map((r) => r.session)

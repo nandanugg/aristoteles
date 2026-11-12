@@ -15,7 +15,7 @@ export { currentTask, hostOf, rootOf, runOf, topOf } from '../engine/runs.ts'
 export const runState = (work: Work, run: Run, when: Time): RunState => {
   if (run.end._tag === 'Closed') return { _tag: 'Closed', at: run.end.at }
   if (run.end._tag === 'Done') return { _tag: 'Done', at: run.end.at }
-  const opened = run._tag === 'Host' ? topOfRun(work, run.id) : undefined
+  const opened = topOfRun(work, run.id)
   if (opened === undefined) return { _tag: 'Talking' }
   const top = currentTask(work, opened)
   const end = work.tasks.get(top)?.end

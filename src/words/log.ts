@@ -136,7 +136,6 @@ const OLD_TYPE: Total<string> = {
   'Workflow.RoleWordsChanged': 'config.text',
   'Role.Fitted': 'role.fit',
   'Run.HostStarted': 'run.start',
-  'Run.AssessStarted': 'run.start',
   'Run.Done': 'run.done',
   'Run.Closed': 'run.close',
   'TaskDraft.Drafted': 'task.draft',

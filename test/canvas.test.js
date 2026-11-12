@@ -66,7 +66,7 @@ describe('the canvas shows only what runs now', () => {
     const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
     await init(p)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.ui('run start --kind=host --session=s-host'))
+    ok(await p.ui('run start --session=s-host'))
     ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
     const host = tokenIn(ok(await p.ui('task open td1')).out)
     ok(await p.agent(`brief ${host}`))

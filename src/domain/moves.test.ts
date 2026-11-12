@@ -36,7 +36,7 @@ import {
   tick,
 } from './moves.ts'
 import { answererOf, sourceStateOf } from './derived.ts'
-import type { AssessRun, HostRun, TerminalState } from './ui-model.ts'
+import type { HostRun, TerminalState } from './ui-model.ts'
 import type { Work } from './work.ts'
 import { STEPS, stepOf } from '../replay/replay.ts'
 
@@ -126,18 +126,6 @@ describe('a run', () => {
     expect(done.end).toEqual({ _tag: 'Done', at: at(9) })
     // @ts-expect-error a done project stays done
     runClosed(done, at(10))
-  })
-  test('an assess run is closed, never done', () => {
-    const assess: AssessRun & { readonly end: { readonly _tag: 'NotEnded' } } = {
-      _tag: 'Assess',
-      id: 'h2' as RunId,
-      session: 's-assess' as SessionId,
-      startedAt: at(0),
-      end: { _tag: 'NotEnded' },
-    }
-    expect(runClosed(assess, at(4)).end).toEqual({ _tag: 'Closed', at: at(4) })
-    // @ts-expect-error an assess run holds no task, so it is never done
-    runDone(assess, at(5))
   })
   test('a closed host run is not done', () => {
     const closed = runClosed(host, at(4))
@@ -297,15 +285,11 @@ describe('the steps of the fold', () => {
   })
 
   test('a move of a record in the wrong state is a damaged store', () => {
-    const runs = new Map([
-      ['h2', { _tag: 'Assess', id: 'h2', end: { _tag: 'NotEnded' } }],
-      ['h1', { _tag: 'Host', id: 'h1', end: { _tag: 'Done', at: at(1) } }],
-    ])
+    const runs = new Map([['h1', { _tag: 'Host', id: 'h1', end: { _tag: 'Done', at: at(1) } }]])
     const permissions = new Map([['x1', { id: 'x1', revoked: { _tag: 'Revoked', at: at(1) } }]])
     const sends = [{ id: 'e3', state: { _tag: 'Delivered', at: at(1) } }]
     const w = { ...work, runs, permissions, sends } as unknown as Work
     const run = (id: string) => ({ _tag: 'Run', id, move: { _tag: 'Done' } })
-    expect(() => stepOf(w, recorded(8, run('h2')))).toThrow(StoreDamaged)
     expect(() => stepOf(w, recorded(8, run('h1')))).toThrow(StoreDamaged)
     const revoke = { _tag: 'Permission', id: 'x1', move: { _tag: 'Revoked' } }
     expect(() => stepOf(w, recorded(8, revoke))).toThrow(StoreDamaged)

@@ -1005,7 +1005,7 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     newProject: () =>
       serial(async () => {
         const sid = randomUUID() as SessionId
-        const out = await must(['run', 'start', '--kind=host', `--session=${sid}`])
+        const out = await must(['run', 'start', `--session=${sid}`])
         const h = out.match(/^(h\d+)/)?.[1] ?? ''
         current()
         await launch(
@@ -1109,7 +1109,6 @@ export const WAKES: Total<ReadonlyArray<WakeRule>> = {
   'Workflow.RoleWordsChanged': NONE,
   'Role.Fitted': ACT_OF_AGENT,
   'Run.HostStarted': NONE,
-  'Run.AssessStarted': NONE,
   'Run.Done': NONE,
   'Run.Closed': NONE,
   'TaskDraft.Drafted': NONE,

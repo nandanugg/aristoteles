@@ -60,7 +60,7 @@ import {
   runClosed,
   runDone,
 } from './moves.ts'
-import type { Activity, AssessRun, HostRun, Problem, Send } from './ui-model.ts'
+import type { Activity, HostRun, Problem, Send } from './ui-model.ts'
 import type { Forward } from './work.ts'
 import type { Guard } from '../cli/guard.ts'
 
@@ -221,9 +221,6 @@ export const okA4: Reject = { ...base, by: a, _tag: 'Reject', id: rej, of: ofPoi
 // @ts-expect-error A4: a point that names its own id
 export const pA4: Reject = { ...base, by: a, _tag: 'Reject', id: rej, of: { ...ofPoints, points: [{ id: p1, text: 'x', breaks: { _tag: 'NoRule' } }] } }
 
-export const okA5: AssessRun = { _tag: 'Assess', id: h1, session: s1, startedAt: now, end: { _tag: 'Closed', at: now } }
-// @ts-expect-error A5: an assess run that is done
-export const pA5: AssessRun = { _tag: 'Assess', id: h1, session: s1, startedAt: now, end: { _tag: 'Done', at: now } }
 
 const config = { project: 'p', people: ['Nanda'], limits: { low: {}, medium: {}, high: {} }, roles: {} }
 export const okA7: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...config, decide: { [role]: 'a' } }, hashes: {}, texts: {} } }

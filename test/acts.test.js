@@ -19,7 +19,7 @@ const hosted = async () => {
   const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
   await init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  ok(await p.ui('run start --kind=host --session=s-host'))
+  ok(await p.ui('run start --session=s-host'))
   ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
   const opened = ok(await p.ui('task open td1')).out
   const host = tokenIn(opened)
@@ -32,7 +32,7 @@ describe('the acts of the UI', () => {
     const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n`, 'low.yaml': `${TASK_WHOLE}role: writer\n` })
     await init(p)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.ui('run start --kind=host --session=s-host'))
+    ok(await p.ui('run start --session=s-host'))
     expect((await p.ui('task draft --file=top.yaml --by=h1')).err).toContain('the person tells the host in words; the host drafts the top task, and you open it')
     expect((await p.run('task draft --file=low.yaml --by=h1', HOST)).err).toContain('the draft names writer, a low role; a top task goes to a high (Sol) role')
     expect((await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: 's-other' } })).err)

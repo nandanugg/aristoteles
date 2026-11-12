@@ -88,7 +88,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   checkpoint: ['next'],
   evaluate: ['improve', 'level', 'why', 'wrong'],
   evaluation: { show: [] },
-  run: { start: ['kind', 'session'], done: [], close: [], list: [] },
+  run: { start: ['session'], done: [], close: [], list: [] },
   session: ['id', 'token'],
   problem: ['says', 'fixed'],
   event: ['kind', 'text', 'tries'],

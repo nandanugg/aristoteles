@@ -48,7 +48,7 @@ describe('the server, read only', () => {
 
   test('the dir lists its projects; a top task opened at a terminal is a project too', async () => {
     const { p } = await rejected()
-    ok(await p.ui('run start --kind=host --session=s-h1'))
+    ok(await p.ui('run start --session=s-h1'))
     const { get } = serve(p)
     const dir = await get('/api/dir')
     expect(dir).toMatchObject({ name: 'report-export', path: p.dir, theme: 'light', sound: false, initialized: true })
