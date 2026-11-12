@@ -30,7 +30,7 @@ describe('G6 a remake that changes nothing reopens the task after its last try',
     // new task waits for a change too). Today: t1 is remade as t2 with the same text, and a new
     // lead gives t2 a writer.
     if (remake.code === 0) {
-      const lead2 = tokenIn(ok(await p.nanda('assign t2 --role=region-lead')).out)
+      const lead2 = tokenIn(ok(await p.nanda('assign t2 --role=section-lead')).out)
       ok(await p.agent(`brief ${lead2}`))
       const assign = await p.agent(`assign ${lead2} t2 --role=writer --max-attempts=1`)
       expect(assign.code).not.toBe(0)

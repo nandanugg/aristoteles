@@ -30,7 +30,7 @@ describe('the pieces of an entry', () => {
 
   test('an address names a standard, a rule, or a header; a wrong one lists the names', async () => {
     const { p } = await started({ 'directions/tsd-writing.yaml': withLongRule })
-    expect(ok(await p.agent('direction show tsd-writing#intro-story')).out).toContain('tsd-writing@1 · standard intro-story where {"region":"introduction"}\nTell the story first, in plain words.\n- rule repeatable (region-lead)')
+    expect(ok(await p.agent('direction show tsd-writing#intro-story')).out).toContain('tsd-writing@1 · standard intro-story where {"section":"introduction"}\nTell the story first, in plain words.\n- rule repeatable (section-lead)')
     expect(ok(await p.agent('direction show tsd-writing@1#why')).out).toContain('tsd-writing@1 · rule no-ticket-ids · Why\n## Why\nA reader outside the team cannot open a ticket.')
     expect((await p.agent('direction show tsd-writing#cost')).err).toContain('names no piece; after # comes one of: facts-not-proof, intro-story, no-code-proof, no-ticket-ids, repeatable, why, examples')
   })

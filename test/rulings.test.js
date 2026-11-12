@@ -11,14 +11,14 @@ const LINT = '--evidence="no-code-proof | the introduction | no paths or hashes 
 const READ = '--evidence="docs/tsd.md, the introduction | it tells the problem"'
 
 describe('who decides, as the workflow writes it', () => {
-  test('order: the architect decides a writer result only after the region lead accepts it', async () => {
-    const order = `${WORK_YAML}decide:\n  - { resultsOf: writer, by: { order: [region-lead, architect] } }\n`
-    const { p, lead, linter } = await reported({ 'work.yaml': order })
+  test('order: the architect decides a writer result only after the section lead accepts it', async () => {
+    const order = `${WORK_YAML}decide:\n  - { resultsOf: writer, by: { order: [section-lead, architect] } }\n`
+    const { p, lead, linter } = await reported({ 'aristoteles.yaml': order })
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
     ok(await p.agent(`review ${linter} r1 accept ${LINT}`))
-    expect((await p.agent(`review ${arch} r1 accept ${READ}`)).err).toContain('architect decides this result after the accept of region-lead')
-    expect(ok(await p.agent('blockers r1')).out).toContain('no accept yet by region-lead')
+    expect((await p.agent(`review ${arch} r1 accept ${READ}`)).err).toContain('architect decides this result after the accept of section-lead')
+    expect(ok(await p.agent('blockers r1')).out).toContain('no accept yet by section-lead')
     ok(await p.agent(`review ${lead} r1 accept ${REPEATABLE}`))
     expect(ok(await p.agent('blockers r1')).out).toContain('no accept yet by architect')
     expect(ok(await p.agent(`next ${lead}`)).out).not.toContain('decide r1')
@@ -28,8 +28,8 @@ describe('who decides, as the workflow writes it', () => {
   })
 
   test('a decide entry names only roles that approve the maker', async () => {
-    const wrong = `${WORK_YAML}decide:\n  - { resultsOf: writer, by: { and: [region-lead, linter] } }\n`
-    const p = project({ 'work.yaml': wrong })
+    const wrong = `${WORK_YAML}decide:\n  - { resultsOf: writer, by: { and: [section-lead, linter] } }\n`
+    const p = project({ 'aristoteles.yaml': wrong })
     expect((await p.nanda('init')).err).toContain('linter has no Approve act on writer')
   })
 
@@ -42,7 +42,7 @@ describe('who decides, as the workflow writes it', () => {
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
     p.write('edit.yaml', 'add:\n  - { id: units, says: Numbers have units. }\n')
-    ok(await p.agent(`direction revise ${reviser} tsd-writing --file=edit.yaml --why="name the units"`))
+    ok(await p.agent(`direction revise ${reviser} tsd-writing --file=edit.yaml --why="Correct the standard"`))
     const early = await p.nanda('review d2 accept --evidence="edit.yaml | name the units"', 'accept')
     expect(early.err).toContain('Nanda reviews d2 after the accept of architect')
     expect(ok(await p.agent(`next ${arch}`)).out).toContain('review d2: a draft of TSD writing waits for your accept')
@@ -103,7 +103,7 @@ describe('only a fault uses an attempt', () => {
     ok(await p.agent(`review ${lead} r2 reject --point="a reviewer cannot repeat it" --breaks=repeatable`))
     expect((await p.agent(`brief ${writer}`)).err).toContain('t1 waits for an evaluation of the last try of a2')
     await evaluated(p, 't1')
-    await changeDirection(p, 'add:\n  - { id: units, says: Numbers have units. }\n', { flags: '--why="name the units"' })
+    await changeDirection(p, 'add:\n  - { id: units, says: Numbers have units. }\n', { flags: '--why="Correct the standard"' })
     const brief = ok(await p.agent(`brief ${writer}`)).out
     expect(brief).toContain('attempt 1 of 1')
     expect(brief).not.toContain('has used its 1 attempts')

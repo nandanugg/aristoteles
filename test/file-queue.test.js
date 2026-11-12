@@ -4,8 +4,8 @@
 import { describe, expect, test } from 'bun:test'
 import { CODE_TASK, INTRO_V2, TASK_WHOLE, codeStarted, ok, started, tokenIn } from './harness.js'
 
-const PARTS = '- { name: Intro, text: Write the introduction., context: { region: introduction } }\n' +
-  '- { name: Design, text: Write the design., context: { region: design } }\n'
+const PARTS = '- { name: Intro, text: Write the introduction., context: { section: introduction } }\n' +
+  '- { name: Design, text: Write the design., context: { section: design } }\n'
 const LINT = '--evidence="no-code-proof | the introduction | no paths or hashes there" ' +
   '--evidence="no-ticket-ids | the introduction | no ticket ids there"'
 const REPEATABLE = '--evidence="repeatable | the introduction | a reviewer can repeat it"'
@@ -85,7 +85,7 @@ describe('one maker for each file at a time', () => {
     const { p, lead } = await twoWriters()
     p.write('docs.yaml', 'name: The docs\ntext: Tidy the docs.\ndirections: [tsd-writing]\nworkspace:\n  - { source: tsd, path: docs }\n')
     ok(await p.nanda('task open --file=docs.yaml'))
-    const lead2 = tokenIn(ok(await p.nanda('assign t4 --role=region-lead')).out)
+    const lead2 = tokenIn(ok(await p.nanda('assign t4 --role=section-lead')).out)
     ok(await p.agent(`brief ${lead2}`))
     const tidy = tokenIn(ok(await p.agent(`assign ${lead2} t4 --role=writer`)).out)
     expect((await p.agent(`brief ${tidy}`)).err).toContain('waits for docs: a2 (t2 Intro) writes it first')

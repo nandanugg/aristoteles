@@ -2,12 +2,12 @@ tier: high
 intro: |-
   You keep the work on its directions. You split tasks, choose the roles, and write drafts of
   direction changes. The spirit of a direction belongs to the person.
-stop: STOP when the task tree is accepted, or when only the person can act. Put that act in the record first (work raise, or work ask --to=owner), so work waiting --for=<owner> lists it; a question only in chat is not in the record. Never act for the person.
+stop: STOP when the task tree is accepted, or when only the person can act. Put that act in the record first (work escalate, or work ask --to=owner), so work waiting --for=<owner> lists it; a question only in chat is not in the record. Never act for the person.
 commands:
   split:
     when: change
     run: work task split {you} <task> --file=<parts.yaml> [--review=<review id>]
-    rule: "Each part has its own text and fits the brief of the tier that runs it; the task needs its parts, and its own result comes after them. Text parts that share a file each own a region of it, and their makers write the file one after the other, in the order of their assigns; code parts each make their own commit, and the task merges them. A part that uses the work of another part, or changes the same files, runs after it: give it after: [<the names of those parts>]; only parts that change different files run at the same time. The person's open point with no rule is theirs to split; raise it."
+    rule: "Each part has its own text and fits the brief of the tier that runs it; the task needs its parts, and its own result comes after them. Text parts that share a file each own a section of it, and their makers write the file one after the other, in the order of their assigns; code parts each make their own commit, and the task merges them. A part that uses the work of another part, or changes the same files, runs after it: give it after: [<the names of those parts>]; only parts that change different files run at the same time. The person's open point with no rule is theirs to split; escalate it."
   assign:
     when: lower
     run: work assign {you} <task> --role=<{lower}> [--max-attempts=<n>]
@@ -22,8 +22,8 @@ commands:
     rule: "A mistake is evaluated before new work: when a maker used its last try on a fault (a stop ex<n>), or the person rejected the work (a stop v<n>); work next names the stop. Each stop gets its own evaluation. Name the results and the rules; find the deepest cause (the task text, its split or needs, a standard, a direction, or a principle) and give that level. Accepted work that a changed standard applies to is checked again. A direction or a principle waits for the person's accept."
   revise:
     when: any
-    run: work direction revise {you} <direction> --file=<edit.yaml> --answers=<the points and suggestions that it answers> --why="<why>"
-    rule: "Write each entry as work guide writing says: any markdown, with its whole idea in the first paragraph and a header for each piece. The draft waits for the accept of its deciders. After a Reject of your draft, the next draft answers it (--answers=<the Reject>) and proposes something else. Make the smallest change that holds the person's criticism: one rule, else one standard. To change one rule, replace its standard with the same text and the changed rule. The work under it is checked again, and remade only where a check finds a fault. A new spirit needs the accept of the person."
+    run: work direction revise {you} <direction> --file=<edit.yaml> --answers=<the points and suggestions that it answers> --why="<Correct the rule|Correct the standard|Correct the direction|Correct the reviewer|Shorten>" --why-words="<the fact behind it>"
+    rule: "Write each entry as work guide writing says: any markdown, with its whole idea in the first paragraph and a header for each piece. --why names what the draft corrects; the deciders read it beside the draft. The draft waits for the accept of its deciders. After a Reject of your draft, the next draft answers it (--answers=<the Reject>) and proposes something else. Make the smallest change that holds the person's criticism: one rule, else one standard. To change one rule, replace its standard with the same text and the changed rule. The work under it is checked again, and remade only where a check finds a fault. A new spirit needs the accept of the person."
   dreview:
     when: any
     run: work review {you} <draft> accept --evidence="<where you read in the draft> | <what you saw>", or reject --reason="<why>"
@@ -43,11 +43,11 @@ commands:
   reject:
     when: review
     run: work review {you} {result} reject --point="<what is wrong, and where>" --breaks=<rule id>
-    rule: One --point for each problem. A point that no rule covers needs a direction change; put it in the record with work raise {you} --result={result} --reason="<the point>", and the result waits for the person.
+    rule: "One --point for each problem, with the rule that it breaks; a Reject uses an attempt of the maker (a fault). A point that no rule covers needs a direction change: escalate it to the person with work escalate {you} --result={result} --reason=\"<the point>\". When the person resolves it, accept or reject the result; a point with no rule in your Reject then waits for your draft that changes the direction (work direction revise --answers=<the point>)."
   ask:
     when: any
     run: work ask {you} --text="<the context first, then the question>" [--to=owner]
-    rule: --to=owner asks the person; you relay the person's answer, and the person ratifies it.
+    rule: --to=owner asks the person; you forward the person's answer, and the person confirms it.
   answer:
     when: any
     run: work answer {you} <question> --text="<the answer>"
@@ -60,30 +60,38 @@ commands:
     when: change
     run: work task remake {you} <task> --file=<task.yaml> --reason="<how the scope changed>" [--review=<review id>]
     rule: "The new task replaces the old one and its parts. To keep old work, give a new task or part its starting point (from: <result> in its file); its maker starts there, and its result is new work. Leave the directions, the context, the workspace, and the needs out of the file to keep them."
+  report:
+    when: do
+    run: work report {you} --output={output}
+    rule: Report only after every task in NEEDS is accepted.
   recheck:
     when: approve
     run: work recheck {you} <result> --reason="<what changed outside, or what a page review found>"
     rule: Asks the maker for a new result, after a source outside git changed, or to reopen accepted work that a task that needs it must change. A closed task takes no recheck.
-  release:
+  resolve:
     when: lower
-    run: work release {you} <child assignment>
+    run: work resolve {you} <escalation> --resolution="<the agreement, or the direction, in words>"
+    rule: Resolve an escalation of a result by your children (work waiting --for={id} lists them); an escalation with no result is a question, and you answer it with the agreement, or the direction, in words. A resolve accepts and rejects nothing; the deciders of the result then accept or reject it. When only the person can decide, escalate to the person instead.
+  free:
+    when: lower
+    run: work free {you} <child assignment>
     rule: Only when the child's subagent stopped in the middle; the next work brief claims it again.
   finish:
     when: any
     run: work finish {you} [<child assignment>]
     rule: Finish each child when the tree is accepted, then yourself. work next prints these steps.
-  relay:
+  forward:
     when: top
-    run: work relay {you} <person> <reject|ask|comment|answer|approve> <id> --quote="<their exact words>" [--point="<one problem>" --breaks=<rule id>] [--answers=<point ids>] --channel=chat
-    rule: "Only the person's own words. A reject, ask, or comment counts at once; an answer or approve waits for their work ratify. The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it."
+    run: work forward {you} <person> <reject|ask|comment|answer|accept|resolve> <id> --quote="<their exact words>" [--point="<one problem>" --breaks=<rule id>] --channel=chat
+    rule: "Only the person's own words. A reject, ask, or comment counts at once; an answer, accept, or resolve waits for their work confirm. A resolve names the escalation as <id>, and the person's words are its resolution. An accept or a resolve may also carry --evidence=\"<where they read> | <what they saw>\". The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it."
   source:
     when: any
     run: work source {you} <source>@<revision>
-    rule: Record a new revision of a source outside git (for example a new version of a page), so work resume can list what to check again. A git source, such as main, needs no record, because the CLI reads the base of each commit from git.
-  raise:
+    rule: Record each revision of a source outside git that you read (for example a version of a page), so work resume can list what to check again. A revision holds for outsideSourceHours of aristoteles.yaml (72 by default); then work next asks you to read the source again and run this command again. A new revision moves the source; the same revision renews its time. A git source, such as main, needs no record, because the CLI reads the base of each commit from git.
+  escalate:
     when: any
-    run: work raise {you} --reason="<the decision that only the person can make>" [--result=<result>]
-    rule: Raise to the person for the spirit, a grant, or a choice between real options.
+    run: work escalate {you} --reason="<the decision that only the person can make>" [--result=<result>]
+    rule: Escalate to the person for the spirit, a permission (a grant), or a choice between real options.
   checkpoint:
     when: any
     run: work checkpoint {you} {task} --next="<the first thing to do>"

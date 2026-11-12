@@ -1,0 +1,1145 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`readConfig a good file 1`] = `"ok"`;
+
+exports[`readConfig a good file with no settings 1`] = `"ok"`;
+
+exports[`readConfig an empty file 1`] = `
+{
+  "refused": "aristoteles.yaml: people must list at least one { name: ... }",
+}
+`;
+
+exports[`readConfig a file of one scalar 1`] = `
+{
+  "refused": "aristoteles.yaml: "0" is not a key of aristoteles.yaml (people, limits, roles, decide, tiers, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
+}
+`;
+
+exports[`readConfig no file 1`] = `
+{
+  "refused": "no aristoteles.yaml in <dir>; write one (see DESIGN.md section 3)",
+}
+`;
+
+exports[`readConfig a file that does not parse 1`] = `
+{
+  "refused": "YAML Parse error: Unexpected token",
+}
+`;
+
+exports[`readConfig the project key 1`] = `
+{
+  "refused": "aristoteles.yaml: the name of a dir is the name of its folder; remove the project key",
+}
+`;
+
+exports[`readConfig the directions key 1`] = `
+{
+  "refused": "aristoteles.yaml: directions are not files: each one lives in aristoteles. A model drafts it (work direction new --file=<direction.yaml>), and its owner accepts it; remove the directions key",
+}
+`;
+
+exports[`readConfig an unknown key 1`] = `
+{
+  "refused": "aristoteles.yaml: "colour" is not a key of aristoteles.yaml (people, limits, roles, decide, tiers, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
+}
+`;
+
+exports[`readConfig tiers: luna 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.luna: only sol and terra run in terminals (a luna is a subagent)",
+}
+`;
+
+exports[`readConfig tiers: a key that is not a setting 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.bogus is not a setting of a tier (launch, resume, start, skills, errors, prompts, silentMinutes, retryInput)",
+}
+`;
+
+exports[`readConfig tiers: launch is not a text 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.launch is a text",
+}
+`;
+
+exports[`readConfig tiers: start is blank 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.start is a text",
+}
+`;
+
+exports[`readConfig tiers: errors is not a list of words 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.errors is a list of words",
+}
+`;
+
+exports[`readConfig tiers: prompts is not a list 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.prompts is a list of words",
+}
+`;
+
+exports[`readConfig tiers: silentMinutes is 0 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.silentMinutes is a whole number of 1 or more",
+}
+`;
+
+exports[`readConfig tiers: silentMinutes is 1.5 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.silentMinutes is a whole number of 1 or more",
+}
+`;
+
+exports[`readConfig tiers: launch has no {session} 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.launch has no {session}: the UI gives each real agent its session id, so that a resume finds it",
+}
+`;
+
+exports[`readConfig tiers: resume has no {session} 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.resume has no {session}",
+}
+`;
+
+exports[`readConfig tiers: start has no {token} 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.start has no {token}",
+}
+`;
+
+exports[`readConfig tiers: resume and skills set 1`] = `"ok"`;
+
+exports[`readConfig retryMinutes is 0 1`] = `
+{
+  "refused": "aristoteles.yaml: retryMinutes is a whole number of 1 or more",
+}
+`;
+
+exports[`readConfig hostWaitMinutes is a text 1`] = `
+{
+  "refused": "aristoteles.yaml: hostWaitMinutes is a whole number of 1 or more",
+}
+`;
+
+exports[`readConfig both minutes set 1`] = `"ok"`;
+
+exports[`readConfig sound is a text 1`] = `
+{
+  "refused": "aristoteles.yaml: sound is true or false",
+}
+`;
+
+exports[`readConfig theme is blue 1`] = `
+{
+  "refused": "aristoteles.yaml: theme is light or dark",
+}
+`;
+
+exports[`readConfig no people 1`] = `
+{
+  "refused": "aristoteles.yaml: people must list at least one { name: ... }",
+}
+`;
+
+exports[`readConfig a person with no name 1`] = `
+{
+  "refused": "aristoteles.yaml: people must list at least one { name: ... }",
+}
+`;
+
+exports[`readConfig a person with a name of an id 1`] = `
+{
+  "refused": "aristoteles.yaml: the person "a1" has the name of an id (like a1 or t2); give the person another name",
+}
+`;
+
+exports[`readConfig limits: a part that has none 1`] = `
+{
+  "refused": "aristoteles.yaml: limits.low.Bogus is not a part with limits (Assignment, Review, Result)",
+}
+`;
+
+exports[`readConfig limits: a key that is not a limit 1`] = `
+{
+  "refused": "aristoteles.yaml: limits.low.Assignment.bogus is not a limit of Assignment (briefChars, attempts)",
+}
+`;
+
+exports[`readConfig limits: not a whole number 1`] = `
+{
+  "refused": "aristoteles.yaml: limits.low.Assignment.attempts is a whole number of 1 or more",
+}
+`;
+
+exports[`readConfig limits: an empty group 1`] = `"ok"`;
+
+exports[`readConfig limits: every part 1`] = `"ok"`;
+
+exports[`readConfig a program with no run 1`] = `
+{
+  "refused": "aristoteles.yaml roles.linter: a program needs run and on: report",
+}
+`;
+
+exports[`readConfig a program that is not on report 1`] = `
+{
+  "refused": "aristoteles.yaml roles.linter: a program needs run and on: report",
+}
+`;
+
+exports[`readConfig a role with a bad tier 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: tier is low, medium, or high (the person needs no role)",
+}
+`;
+
+exports[`readConfig a role with no tier 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: tier is low, medium, or high (the person needs no role)",
+}
+`;
+
+exports[`readConfig a role with no description 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: description is required",
+}
+`;
+
+exports[`readConfig a role with a blank intro 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: intro is required",
+}
+`;
+
+exports[`readConfig a role with no responsibilities 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: responsibilities must list at least one",
+}
+`;
+
+exports[`readConfig a role with no acts 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: acts must list at least one act",
+}
+`;
+
+exports[`readConfig an act with two keys 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, { change: [direction ids] }",
+}
+`;
+
+exports[`readConfig an act with an unknown key 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, { change: [direction ids] }",
+}
+`;
+
+exports[`readConfig an act that names no role 1`] = `
+{
+  "refused": "aristoteles.yaml roles.checker: review names "ghost", which does not exist",
+}
+`;
+
+exports[`readConfig an act that is a number do 1`] = `"ok"`;
+
+exports[`readConfig no high role 1`] = `
+{
+  "refused": "aristoteles.yaml: the workflow has no high role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake",
+}
+`;
+
+exports[`readConfig no medium role 1`] = `
+{
+  "refused": "aristoteles.yaml: the workflow has no medium role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake",
+}
+`;
+
+exports[`readConfig no low role 1`] = `
+{
+  "refused": "aristoteles.yaml: the workflow has no low role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake",
+}
+`;
+
+exports[`readConfig no roles 1`] = `
+{
+  "refused": "aristoteles.yaml: the workflow has no high role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake",
+}
+`;
+
+exports[`readConfig decide: resultsOf is not a role that does work 1`] = `
+{
+  "refused": "aristoteles.yaml decide 1: resultsOf names "boss", which is not a role that does work",
+}
+`;
+
+exports[`readConfig decide: a name that is no role 1`] = `
+{
+  "refused": "aristoteles.yaml decide 1: "ghost" is not one of writer, checker, boss, linter",
+}
+`;
+
+exports[`readConfig decide: a shape that is wrong 1`] = `
+{
+  "refused": "aristoteles.yaml decide 1: who decides is a name, or one of { or: [...] }, { and: [...] }, { order: [...] }",
+}
+`;
+
+exports[`readConfig decide: an empty list 1`] = `
+{
+  "refused": "aristoteles.yaml decide 1: who decides is a name, or one of { or: [...] }, { and: [...] }, { order: [...] }",
+}
+`;
+
+exports[`readConfig decide: two keys 1`] = `
+{
+  "refused": "aristoteles.yaml decide 1: who decides is a name, or one of { or: [...] }, { and: [...] }, { order: [...] }",
+}
+`;
+
+exports[`readConfig decide: a role with no approve 1`] = `
+{
+  "refused": "aristoteles.yaml decide 1: linter has no Approve act on writer; only a role that approves it decides it",
+}
+`;
+
+exports[`readConfig decide: a name two times 1`] = `
+{
+  "refused": "aristoteles.yaml decide 1: names checker two times; each item needs its own accept, so name it once",
+}
+`;
+
+exports[`readConfig decide: a second entry for one maker 1`] = `
+{
+  "refused": "aristoteles.yaml decide 2: decide 1 already says who decides writer; name all its deciders in one entry, with or, and, or order",
+}
+`;
+
+exports[`readConfig decide: nested order 1`] = `"ok"`;
+
+exports[`readConfig decide: a null entry 1`] = `
+{
+  "refused": "aristoteles.yaml decide 1: resultsOf names "undefined", which is not a role that does work",
+}
+`;
+
+exports[`fileHashes and the hash of the mechanism no file 1`] = `
+{
+  "ok": {},
+}
+`;
+
+exports[`fileHashes and the hash of the mechanism a good file 1`] = `
+{
+  "ok": {
+    "aristoteles.yaml": "d09d738d7f0d0a33a8a11731cdd91b7c5a951fc8b4c155277fda7eedfa8d7e7a",
+  },
+}
+`;
+
+exports[`fileHashes and the hash of the mechanism a file that does not parse 1`] = `
+{
+  "ok": {
+    "aristoteles.yaml": "35f4154eb8c7036bba506ece292385c3603264bd099fe2553ea5fdc6fb5d5d5b",
+  },
+}
+`;
+
+exports[`fileHashes and the hash of the mechanism an empty file 1`] = `
+{
+  "ok": {
+    "aristoteles.yaml": "de39ff103fca747278aa5371a4e94b02ce58175107fff1138e2c89e6e50a3376",
+  },
+}
+`;
+
+exports[`restoreConfig the stored text and a file with other settings 1`] = `
+"people: 
+  - name: Nanda
+  - name: Dewi
+limits: 
+  low: 
+    Assignment: 
+      attempts: 3
+  high: 
+    Review: 
+      rules: 4
+roles: 
+  writer: 
+    tier: low
+    description: writes
+    intro: you write
+    responsibilities: 
+      - one
+    acts: 
+      - do: write
+    timeout: 60
+  checker: 
+    tier: medium
+    description: checks
+    intro: you check
+    responsibilities: 
+      - one
+    output: a note
+    acts: 
+      - review: 
+          - writer
+      - approve: 
+          - writer
+  boss: 
+    tier: high
+    description: leads
+    intro: you lead
+    responsibilities: 
+      - one
+    acts: 
+      - approve: 
+          - writer
+      - change: 
+          - tsd
+  linter: 
+    kind: program
+    run: ./lint
+    "on": report
+    acts: 
+      - review: 
+          - writer
+    checks: 
+      - r1
+decide: 
+  - resultsOf: writer
+    by: 
+      or: 
+        - checker
+        - boss
+sound: false
+theme: light
+"
+`;
+
+exports[`restoreConfig a stored text with no settings, a file with some 1`] = `
+"theme: dark
+sound: true
+tiers:
+  sol:
+    launch: "claude --session {session}"
+    start: "go {token}"
+    silentMinutes: 5
+people: 
+  - name: Nanda
+  - name: Dewi
+limits: 
+  low: 
+    Assignment: 
+      attempts: 3
+  high: 
+    Review: 
+      rules: 4
+roles: 
+  writer: 
+    tier: low
+    description: writes
+    intro: you write
+    responsibilities: 
+      - one
+    acts: 
+      - do: write
+    timeout: 60
+  checker: 
+    tier: medium
+    description: checks
+    intro: you check
+    responsibilities: 
+      - one
+    output: a note
+    acts: 
+      - review: 
+          - writer
+      - approve: 
+          - writer
+  boss: 
+    tier: high
+    description: leads
+    intro: you lead
+    responsibilities: 
+      - one
+    acts: 
+      - approve: 
+          - writer
+      - change: 
+          - tsd
+  linter: 
+    kind: program
+    run: ./lint
+    "on": report
+    acts: 
+      - review: 
+          - writer
+    checks: 
+      - r1
+decide: 
+  - resultsOf: writer
+    by: 
+      or: 
+        - checker
+        - boss
+"
+`;
+
+exports[`restoreConfig no file now 1`] = `
+"people: 
+  - name: Nanda
+  - name: Dewi
+limits: 
+  low: 
+    Assignment: 
+      attempts: 3
+  high: 
+    Review: 
+      rules: 4
+roles: 
+  writer: 
+    tier: low
+    description: writes
+    intro: you write
+    responsibilities: 
+      - one
+    acts: 
+      - do: write
+    timeout: 60
+  checker: 
+    tier: medium
+    description: checks
+    intro: you check
+    responsibilities: 
+      - one
+    output: a note
+    acts: 
+      - review: 
+          - writer
+      - approve: 
+          - writer
+  boss: 
+    tier: high
+    description: leads
+    intro: you lead
+    responsibilities: 
+      - one
+    acts: 
+      - approve: 
+          - writer
+      - change: 
+          - tsd
+  linter: 
+    kind: program
+    run: ./lint
+    "on": report
+    acts: 
+      - review: 
+          - writer
+    checks: 
+      - r1
+decide: 
+  - resultsOf: writer
+    by: 
+      or: 
+        - checker
+        - boss
+"
+`;
+
+exports[`restoreConfig a file now that does not parse 1`] = `
+"people: 
+  - name: Nanda
+  - name: Dewi
+limits: 
+  low: 
+    Assignment: 
+      attempts: 3
+  high: 
+    Review: 
+      rules: 4
+roles: 
+  writer: 
+    tier: low
+    description: writes
+    intro: you write
+    responsibilities: 
+      - one
+    acts: 
+      - do: write
+    timeout: 60
+  checker: 
+    tier: medium
+    description: checks
+    intro: you check
+    responsibilities: 
+      - one
+    output: a note
+    acts: 
+      - review: 
+          - writer
+      - approve: 
+          - writer
+  boss: 
+    tier: high
+    description: leads
+    intro: you lead
+    responsibilities: 
+      - one
+    acts: 
+      - approve: 
+          - writer
+      - change: 
+          - tsd
+  linter: 
+    kind: program
+    run: ./lint
+    "on": report
+    acts: 
+      - review: 
+          - writer
+    checks: 
+      - r1
+decide: 
+  - resultsOf: writer
+    by: 
+      or: 
+        - checker
+        - boss
+"
+`;
+
+exports[`restoreConfig a stored text with comments 1`] = `
+"# schema line
+# second
+people: 
+  - name: Nanda
+  - name: Dewi
+limits: 
+  low: 
+    Assignment: 
+      attempts: 3
+  high: 
+    Review: 
+      rules: 4
+roles: 
+  writer: 
+    tier: low
+    description: writes
+    intro: you write
+    responsibilities: 
+      - one
+    acts: 
+      - do: write
+    timeout: 60
+  checker: 
+    tier: medium
+    description: checks
+    intro: you check
+    responsibilities: 
+      - one
+    output: a note
+    acts: 
+      - review: 
+          - writer
+      - approve: 
+          - writer
+  boss: 
+    tier: high
+    description: leads
+    intro: you lead
+    responsibilities: 
+      - one
+    acts: 
+      - approve: 
+          - writer
+      - change: 
+          - tsd
+  linter: 
+    kind: program
+    run: ./lint
+    "on": report
+    acts: 
+      - review: 
+          - writer
+    checks: 
+      - r1
+decide: 
+  - resultsOf: writer
+    by: 
+      or: 
+        - checker
+        - boss
+tiers:
+  sol:
+    launch: "claude --session {session}"
+    start: "go {token}"
+    silentMinutes: 5
+sound: true
+theme: light
+"
+`;
+
+exports[`readTask a minimal task 1`] = `
+{
+  "ok": {
+    "context": {},
+    "directions": [],
+    "name": "N",
+    "named": [],
+    "needs": [],
+    "references": [],
+    "text": "T",
+    "workspace": [],
+  },
+}
+`;
+
+exports[`readTask an empty file 1`] = `
+{
+  "refused": "task.yaml: name is required",
+}
+`;
+
+exports[`readTask a task that does not parse 1`] = `
+{
+  "refused": "YAML Parse error: Unexpected token",
+}
+`;
+
+exports[`readTask no name 1`] = `
+{
+  "refused": "task.yaml: name is required",
+}
+`;
+
+exports[`readTask a blank text 1`] = `
+{
+  "refused": "task.yaml: text is required",
+}
+`;
+
+exports[`readTask a direction that has no version 1`] = `
+{
+  "refused": "task.yaml: no direction "ghost" with a version; a model drafts it (work direction new), and its owner accepts it",
+}
+`;
+
+exports[`readTask a full task 1`] = `
+{
+  "ok": {
+    "context": {
+      "section": "a",
+      "system": "b",
+    },
+    "directions": [
+      "tsd",
+    ],
+    "from": "r3",
+    "name": "N",
+    "named": [
+      "directions",
+      "context",
+      "needs",
+      "workspace",
+    ],
+    "needs": [
+      "t1",
+      "t2",
+    ],
+    "references": [
+      "a.md#b",
+      "5",
+    ],
+    "text": "T",
+    "workspace": [
+      {
+        "base": "main",
+        "path": "docs/a.md",
+        "source": "s",
+        "verify": "true",
+      },
+    ],
+  },
+}
+`;
+
+exports[`readTask the section key is free 1`] = `
+{
+  "ok": {
+    "context": {
+      "section": "a",
+    },
+    "directions": [],
+    "name": "N",
+    "named": [
+      "context",
+    ],
+    "needs": [],
+    "references": [],
+    "text": "T",
+    "workspace": [],
+  },
+}
+`;
+
+exports[`readTask a context key that no where uses 1`] = `
+{
+  "refused": "task.yaml: context key "system" is used by no "where" of its directions",
+}
+`;
+
+exports[`readTask a context key of a direction that the task does not name 1`] = `
+{
+  "refused": "task.yaml: context key "system" is used by no "where" of its directions",
+}
+`;
+
+exports[`readTask a workspace entry with no path 1`] = `
+{
+  "refused": "task.yaml: each workspace entry needs a source and a path",
+}
+`;
+
+exports[`readTask a workspace path that is absolute 1`] = `
+{
+  "refused": "task.yaml: workspace /etc is outside the dir",
+}
+`;
+
+exports[`readTask a workspace path with .. 1`] = `
+{
+  "refused": "task.yaml: workspace a/../b is outside the dir",
+}
+`;
+
+exports[`readTask a workspace path that is not plain 1`] = `
+{
+  "refused": "task.yaml: workspace a//b/ names a/b; write it as a/b, so that one file has one name",
+}
+`;
+
+exports[`readTask a workspace path ./a 1`] = `
+{
+  "refused": "task.yaml: workspace ./a names a; write it as a, so that one file has one name",
+}
+`;
+
+exports[`readTask maxRounds 1`] = `
+{
+  "refused": "task.yaml: maxRounds is gone: when the tries of a maker end on a fault, the high role evaluates the mistake; leave maxRounds out",
+}
+`;
+
+exports[`readTask a need that is no task id 1`] = `
+{
+  "refused": "task.yaml: needs names "x1", which is not a task id (t..)",
+}
+`;
+
+exports[`readTask a numeric need 1`] = `
+{
+  "refused": "task.yaml: needs names "4", which is not a task id (t..)",
+}
+`;
+
+exports[`readTask a from that is no result id 1`] = `
+{
+  "refused": "task.yaml: from names "t1", which is not a result id (r..)",
+}
+`;
+
+exports[`readTask a from of a number 1`] = `
+{
+  "refused": "task.yaml: from names "5", which is not a result id (r..)",
+}
+`;
+
+exports[`readTask a task that names only some keys 1`] = `
+{
+  "ok": {
+    "context": {},
+    "directions": [],
+    "name": "N",
+    "named": [
+      "needs",
+    ],
+    "needs": [],
+    "references": [],
+    "text": "T",
+    "workspace": [],
+  },
+}
+`;
+
+exports[`checkWorkspace none 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`checkWorkspace a good list 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`checkWorkspace a null entry 1`] = `
+{
+  "refused": "w: each workspace entry needs a source and a path",
+}
+`;
+
+exports[`checkWorkspace a path of a number 1`] = `
+{
+  "refused": "w: each workspace entry needs a source and a path",
+}
+`;
+
+exports[`checkWorkspace an absolute path 1`] = `
+{
+  "refused": "w: workspace /x is outside the dir",
+}
+`;
+
+exports[`checkWorkspace a path with .. 1`] = `
+{
+  "refused": "w: workspace ../x is outside the dir",
+}
+`;
+
+exports[`checkWorkspace a trailing slash 1`] = `
+{
+  "refused": "w: workspace x/ names x; write it as x, so that one file has one name",
+}
+`;
+
+exports[`checkWorkspace a dot path with a slash 1`] = `
+{
+  "refused": "w: workspace ./ names .; write it as ., so that one file has one name",
+}
+`;
+
+exports[`readDirection a minimal direction 1`] = `
+{
+  "ok": {
+    "from": [],
+    "id": "tsd",
+    "name": "TSD",
+    "owner": "Nanda",
+    "says": "S",
+    "standards": [],
+  },
+}
+`;
+
+exports[`readDirection a full direction 1`] = `
+{
+  "ok": {
+    "approvedBy": "checker",
+    "from": [
+      "Logos",
+      "Mnēmē",
+    ],
+    "id": "tsd",
+    "maxStandards": 5,
+    "name": "TSD",
+    "owner": "Nanda",
+    "says": "S",
+    "standards": [
+      {
+        "id": "s1",
+        "rules": [
+          {
+            "checkedBy": "checker",
+            "id": "r1",
+            "says": "b",
+            "supersedes": [
+              "r0",
+            ],
+          },
+          {
+            "id": "r2",
+            "says": "c",
+            "supersedes": [],
+          },
+        ],
+        "says": "a",
+        "where": {
+          "section": "x",
+        },
+      },
+    ],
+  },
+}
+`;
+
+exports[`readDirection no id 1`] = `
+{
+  "refused": "d.yaml: id is required",
+}
+`;
+
+exports[`readDirection a blank name 1`] = `
+{
+  "refused": "d.yaml: name is required",
+}
+`;
+
+exports[`readDirection no says 1`] = `
+{
+  "refused": "d.yaml: says is required",
+}
+`;
+
+exports[`readDirection no owner 1`] = `
+{
+  "refused": "d.yaml: owner is required",
+}
+`;
+
+exports[`readDirection an owner who is not a person 1`] = `
+{
+  "refused": "d.yaml: owner Ghost is not in people",
+}
+`;
+
+exports[`readDirection a standard with no says 1`] = `
+{
+  "refused": "d.yaml: standard 1 needs an id and says",
+}
+`;
+
+exports[`readDirection a null standard 1`] = `
+{
+  "refused": "d.yaml: standard 1 needs an id and says",
+}
+`;
+
+exports[`readDirection a rule with no id 1`] = `
+{
+  "refused": "d.yaml: rule 1 of s needs an id and says",
+}
+`;
+
+exports[`readDirection a standard with "when" 1`] = `
+{
+  "refused": "d.yaml: standard s: "when" is now "where" (the context where the standard applies)",
+}
+`;
+
+exports[`readApprovedBy no approvedBy 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`readApprovedBy a role 1`] = `
+{
+  "ok": "checker",
+}
+`;
+
+exports[`readApprovedBy the owner 1`] = `
+{
+  "ok": "Nanda",
+}
+`;
+
+exports[`readApprovedBy a role then the owner 1`] = `
+{
+  "ok": {
+    "order": [
+      "checker",
+      "Nanda",
+    ],
+  },
+}
+`;
+
+exports[`readApprovedBy the owner before a role 1`] = `
+{
+  "refused": "d.yaml: names Nanda before another item of an order; the person approves last",
+}
+`;
+
+exports[`readApprovedBy the owner in an and 1`] = `
+{
+  "ok": {
+    "and": [
+      "Nanda",
+      "boss",
+    ],
+  },
+}
+`;
+
+exports[`readApprovedBy a person who is not the owner 1`] = `
+{
+  "refused": "d.yaml: approvedBy names Dewi, who is not the owner (Nanda); the owner approves",
+}
+`;
+
+exports[`readApprovedBy two persons 1`] = `
+{
+  "refused": "d.yaml: names more than one person; one approve is the last accept",
+}
+`;
+
+exports[`readApprovedBy a low role 1`] = `
+{
+  "refused": "d.yaml: approvedBy names writer, a role that reviews no direction (only a medium or high role does)",
+}
+`;
+
+exports[`readApprovedBy a program 1`] = `
+{
+  "refused": "d.yaml: approvedBy names linter, a role that reviews no direction (only a medium or high role does)",
+}
+`;
+
+exports[`readApprovedBy a name that is nobody 1`] = `
+{
+  "refused": "d.yaml: "ghost" is not one of writer, checker, boss, linter, Nanda, Dewi",
+}
+`;
+
+exports[`readApprovedBy a bad shape 1`] = `
+{
+  "refused": "d.yaml: who decides is a name, or one of { or: [...] }, { and: [...] }, { order: [...] }",
+}
+`;
+
+exports[`readApprovedBy a name two times 1`] = `
+{
+  "refused": "d.yaml: names boss two times; each item needs its own accept, so name it once",
+}
+`;
+
+exports[`readApprovedBy a number 1`] = `
+{
+  "refused": "d.yaml: who decides is a name, or one of { or: [...] }, { and: [...] }, { order: [...] }",
+}
+`;
+
+exports[`checkerProblem no checker 1`] = `null`;
+
+exports[`checkerProblem Human 1`] = `"rule r1 is checked by Human; the person approves directions and standards, not results: name the role that reviews it"`;
+
+exports[`checkerProblem a role that does not exist 1`] = `"rule r1 is checked by "ghost", which is not a role"`;
+
+exports[`checkerProblem a role that reviews a maker 1`] = `null`;
+
+exports[`checkerProblem a role that approves a maker 1`] = `null`;
+
+exports[`checkerProblem a role that reviews no maker 1`] = `"rule r1 is checked by writer, which reviews or approves no role that does the work, so its evidence never counts"`;
+
+exports[`checkerProblem a program that lists the rule 1`] = `null`;
+
+exports[`checkerProblem a program that does not list the rule 1`] = `"rule r2 is checked by the program linter, which does not list it in its checks"`;

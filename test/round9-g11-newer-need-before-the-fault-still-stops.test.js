@@ -10,8 +10,8 @@ import { TASK_WHOLE, ok, started, tokenIn } from
 
 const TSD = (handler, flags) => `# TSD\n\n## Introduction\n\n${handler}\n\n## Design\n\n${flags}\n`
 // t3 (Handler) runs after t2 (Flags and env): it needs t2's accepted work.
-const PARTS = '- { name: Flags and env, text: Write the feature flag and how the env vars are read., context: { region: design } }\n' +
-  '- { name: Handler, text: Write the use case and the request handler., context: { region: introduction }, after: [Flags and env] }\n'
+const PARTS = '- { name: Flags and env, text: Write the feature flag and how the env vars are read., context: { section: design } }\n' +
+  '- { name: Handler, text: Write the use case and the request handler., context: { section: introduction }, after: [Flags and env] }\n'
 const LINT = (where) => `--evidence="no-code-proof | ${where} | no paths or hashes there" --evidence="no-ticket-ids | ${where} | no ticket ids there"`
 const FLAGS = 'The flag export_v2 is read from the env var EXPORT_V2 where it is used.'
 const TYPED = 'The flag export_v2 is read once, through the typed function config.exportV2().'

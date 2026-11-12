@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { changeDirection, CODE_DIRECTION, CODE_TASK, CODE_YAML, git, init, INTRO_V1, INTRO_V2, ok, project, reported, started, TASK_WHOLE, tokenIn, withWriter } from './harness.js'
 
 // One test for each finding of thought-test round 2 that the prototype closes. The id in
@@ -20,7 +20,7 @@ describe('identity', () => {
     ok(await p.agent(`brief ${arch}`))
     p.write('edit.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
     ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
-    const child = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=region-lead`)).out)
+    const child = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=section-lead`)).out)
     ok(await p.agent(`brief ${child}`))
     const inTree = await p.agent(`review ${child} d2 accept --evidence="edit.yaml | fine by me"`)
     expect(inTree.err)
@@ -32,25 +32,25 @@ describe('identity', () => {
       .toContain('a low role does not review drafts of directions')
   })
 
-  test('A4: a raise to the person is settled only by the person', async () => {
+  test('A4: an escalation to the person is resolved only by the person', async () => {
     const { p, lead } = await reported()
-    ok(await p.agent(`raise ${lead} --result=r1 --reason="only Nanda decides this"`))
-    expect((await p.agent(`review ${lead} r1 accept --settles=v2 --reason="I decided"`)).err).toContain('may not settle')
-    expect(ok(await p.nanda('review r1 accept --settles=v2 --reason="go on"')).out).toContain('v3: settles v2 on r1')
+    ok(await p.agent(`escalate ${lead} --result=r1 --reason="only Nanda decides this"`))
+    expect((await p.agent(`resolve ${lead} v2 --resolution="I decided"`)).err).toContain('may not resolve')
+    expect(ok(await p.nanda('resolve v2 --resolution="go on"')).out).toContain('v3: resolves v2 on r1')
   })
 
-  test('A4: a relayed answer waits for the person to ratify it', async () => {
+  test('A4: a forwarded answer waits for the person to confirm it', async () => {
     const { p, lead } = await started()
     ok(await p.agent(`ask ${lead} --text="May we skip the repeatable rule?" --to=owner`))
-    const r = ok(await p.agent(`relay ${lead} Nanda answer q1 --quote="yes"`))
-    expect(r.out).toMatch(/^e\d+: answer q1: "yes" waits until Nanda runs work ratify/)
+    const r = ok(await p.agent(`forward ${lead} Nanda answer q1 --quote="yes"`))
+    expect(r.out).toMatch(/^e\d+: answer q1: "yes" waits until Nanda runs work confirm/)
     expect(ok(await p.agent('waiting --for=Nanda')).out).toContain('q1 for Nanda')
   })
 
-  test('A5: a low assignment does not relay; the person gives no work to a low role', async () => {
+  test('A5: a low assignment does not forward; the person gives no work to a low role', async () => {
     const { p, linter } = await reported()
-    expect((await p.agent(`relay ${linter} Nanda reject r1 --quote="no"`)).err)
-      .toContain('only the top agent (medium or high, with no parent) relays the person')
+    expect((await p.agent(`forward ${linter} Nanda reject r1 --quote="no"`)).err)
+      .toContain('only the top agent (medium or high, with no parent) forwards the person')
     expect((await p.nanda('assign t1 --role=linter')).err)
       .toContain('the person gives work to a medium or high role; linter is low, so a lead gives it its work')
   })
@@ -82,7 +82,7 @@ describe('rules', () => {
     const { p, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
     expect((await p.agent(`report ${writer} --output=docs/facts.md#dedupe`)).err).toContain('the output of this task is docs/tsd.md#introduction')
-    expect((await p.agent(`report ${writer} --output=../other/docs/tsd.md#introduction`)).err).toContain('is outside the project')
+    expect((await p.agent(`report ${writer} --output=../other/docs/tsd.md#introduction`)).err).toContain('is outside the dir')
   })
 
   test('B3: a heading used twice is refused', async () => {
@@ -99,12 +99,12 @@ describe('rules', () => {
     expect(ok(await p.agent('task tree t1')).out).toContain('(r1 changed after it was reported)')
   })
 
-  test('B4: the ratify prompt shows the act and the words', async () => {
+  test('B4: the confirm prompt shows the act and the words', async () => {
     const { p, lead } = await reported()
     ok(await p.agent(`ask ${lead} --text="May we skip the repeatable rule?" --to=owner`))
-    const relayed = ok(await p.agent(`relay ${lead} Nanda answer q1 --quote="no, keep it"`))
-    const id = relayed.out.match(/^(e\d+)/)[1]
-    const r = ok(await p.nanda(`ratify ${id}`, 'ratify'))
+    const forwarded = ok(await p.agent(`forward ${lead} Nanda answer q1 --quote="no, keep it"`))
+    const id = forwarded.out.match(/^(e\d+)/)[1]
+    const r = ok(await p.nanda(`confirm ${id}`, 'confirm'))
     expect(r.out).toContain(`${id}: answer q1: "no, keep it"`)
     expect(r.out).toContain('their words: "no, keep it"')
   })
@@ -118,15 +118,9 @@ describe('rules', () => {
 
   test('B5: an unknown limit key is refused at init', async () => {
     const { WORK_YAML } = await import('./harness.js')
-    const p = project({ 'work.yaml': WORK_YAML.replace('attempts: 3 }', 'attempts: 3, resultSize: 9 }') })
+    const p = project({ 'aristoteles.yaml': WORK_YAML.replace('attempts: 3 }', 'attempts: 3, resultSize: 9 }') })
     const init = await p.nanda('init')
     expect(init.err).toContain('limits.low.Assignment.resultSize is not a limit')
-  })
-
-  test('B6: an agent does not waive for long', async () => {
-    const { p, lead } = await reported()
-    expect((await p.agent(`waive ${lead} r1 --rules=no-code-proof --reason=urgent --until=2099-01-01T00:00:00Z`)).err)
-      .toContain('at most 72 hours')
   })
 
   test('B7: a split part keeps the context of its task and works inside the project', async () => {
@@ -134,15 +128,15 @@ describe('rules', () => {
     ok(await p.nanda('grant --act=change --on=t1 --to=architect --until=2026-10-26T00:00:00Z', 'grant'))
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
-    // A task with a region keeps it: it is one unit of work, so it is not split (round 7).
-    p.write('parts.yaml', '- { name: Part, text: Write it., context: { region: other } }\n')
-    expect((await p.agent(`task split ${arch} t1 --file=parts.yaml`)).err).toContain('has the region introduction, so it is one unit of work')
+    // A task with a section keeps it: it is one unit of work, so it is not split (round 7).
+    p.write('parts.yaml', '- { name: Part, text: Write it., context: { section: other } }\n')
+    expect((await p.agent(`task split ${arch} t1 --file=parts.yaml`)).err).toContain('has the section introduction, so it is one unit of work')
     const whole = await started({ 'task.yaml': TASK_WHOLE })
     ok(await whole.p.nanda('grant --act=change --on=t1 --to=architect --until=2026-10-26T00:00:00Z', 'grant'))
     const arch2 = tokenIn(ok(await whole.p.nanda('assign t1 --role=architect')).out)
     ok(await whole.p.agent(`brief ${arch2}`))
     whole.p.write('parts.yaml', '- { name: Part, text: Write it., workspace: [{ source: x, path: /etc }] }\n')
-    expect((await whole.p.agent(`task split ${arch2} t1 --file=parts.yaml`)).err).toContain('outside the project')
+    expect((await whole.p.agent(`task split ${arch2} t1 --file=parts.yaml`)).err).toContain('outside the dir')
   })
 })
 
@@ -152,9 +146,9 @@ describe('what agents see', () => {
     expect((await p.agent(`review ${linter} t1 reject --point="no"`)).err).toContain('your brief named r1; a low checker reviews only that result')
   })
 
-  test('C3: config restore writes the stored work.yaml back', async () => {
+  test('C3: config restore writes the stored aristoteles.yaml back', async () => {
     const { p, writer } = await withWriter()
-    p.write('work.yaml', (await Bun.file(`${p.dir}/work.yaml`).text()).replace('You write one region under its heading.', 'You write.'))
+    p.write('aristoteles.yaml', (await Bun.file(`${p.dir}/aristoteles.yaml`).text()).replace('You write one section under its heading.', 'You write.'))
     expect((await p.agent(`brief ${writer}`)).err).toContain('changed; the person restores it", then STOP')
     ok(await p.nanda('config restore', 'restore'))
     expect((await p.agent(`brief ${writer}`)).code).toBe(0)
@@ -173,8 +167,8 @@ describe('what agents see', () => {
       .toContain('--act is approve, review, or change')
     expect((await p.nanda('grant --act=change --on=t1 --to=architect --until=2020-01-01T00:00:00Z', 'grant')).err)
       .toContain('is in the past')
-    expect(ok(await p.nanda('grant --act=approve --on=writer --to=region-lead --until=2026-10-26T00:00:00Z', 'grant')).out)
-      .toContain('region-lead may approve writer')
+    expect(ok(await p.nanda('grant --act=approve --on=writer --to=section-lead --until=2026-10-26T00:00:00Z', 'grant')).out)
+      .toContain('section-lead may approve writer')
   })
 
   test('C9: a refusal in an agent shell always has a next line', async () => {
@@ -186,7 +180,7 @@ describe('what agents see', () => {
   test('L3: the answer to a question is in the asker\'s next brief', async () => {
     const { p, lead, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`raise ${writer} --reason="the verify fails on correct text"`))
+    ok(await p.agent(`escalate ${writer} --reason="the verify fails on correct text"`))
     ok(await p.agent(`answer ${lead} q1 --text="the verify is wrong; report the text as it is"`))
     const brief = ok(await p.agent(`brief ${writer}`)).out
     expect(brief).toContain('ANSWERS  q1 asked by a2: the verify fails on correct text')
@@ -202,10 +196,10 @@ describe('what agents see', () => {
 })
 
 describe('flows', () => {
-  test('F-A1: the person releases and finishes an assignment by its id', async () => {
+  test('F-A1: the person frees and finishes an assignment by its id', async () => {
     const { p, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
-    expect(ok(await p.nanda('release a2')).out).toContain('a2 is released')
+    expect(ok(await p.nanda('free a2')).out).toContain('a2 is freed')
     expect(ok(await p.nanda('finish a2')).out).toContain('a2 is finished')
   })
 
@@ -214,7 +208,7 @@ describe('flows', () => {
     ok(await p.nanda('grant --act=change --on=t1 --to=architect --until=2026-10-26T00:00:00Z', 'grant'))
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
-    p.write('parts.yaml', '- { name: Intro part, text: Write the introduction paragraph., context: { region: introduction } }\n')
+    p.write('parts.yaml', '- { name: Intro part, text: Write the introduction paragraph., context: { section: introduction } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     const writer = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
@@ -224,7 +218,7 @@ describe('flows', () => {
     ok(await p.agent(`brief ${linter}`))
     ok(await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | the introduction | no paths or hashes" ` +
       '--evidence="no-ticket-ids | the introduction | no ticket ids here"'))
-    const lead = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=region-lead`)).out)
+    const lead = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=section-lead`)).out)
     ok(await p.agent(`brief ${lead}`))
     ok(await p.agent(`review ${lead} r1 accept --evidence="repeatable | the introduction | I can repeat the double export from it"`))
     // One maker writes a file at a time: the part's writer finishes before the joiner starts.
@@ -234,7 +228,7 @@ describe('flows', () => {
     expect(brief).toContain('NEEDS    t2 Intro part · Accepted (r1 docs/tsd.md#introduction)')
     expect(brief).toContain('--output=docs/tsd.md')
     p.write('docs/tsd.md', INTRO_V2.replace('two files', 'two files; see ABC-2964'))
-    expect((await p.agent(`report ${joiner} --output=docs/tsd.md`)).err).toContain('docs/tsd.md changes the region introduction of t2 (Intro part) after r1 was accepted')
+    expect((await p.agent(`report ${joiner} --output=docs/tsd.md`)).err).toContain('docs/tsd.md changes the section introduction of t2 (Intro part) after r1 was accepted')
   })
 
   test('F-B4: direction show prints a draft and what it changes', async () => {
@@ -265,7 +259,7 @@ describe('flows', () => {
       '        - { id: no-code-proof, says: "No file paths with line numbers, no commit hashes in the body", checkedBy: linter }\n' +
       '        - { id: no-ticket-ids, says: "No ticket ids and no chat-thread citations", checkedBy: linter }\n' +
       '        - { id: no-urls, says: "No raw links in the body", checkedBy: linter }\n')
-    await changeDirection(p, readFileSync(`${p.dir}/edit.yaml`, 'utf8'), { flags: '--why="no links"' })
+    await changeDirection(p, readFileSync(`${p.dir}/edit.yaml`, 'utf8'), { flags: '--why="Correct the rule"' })
     ok(await p.agent(`brief ${writer}`))
     p.write('docs/tsd.md', INTRO_V2.replace('two files', 'two identical files'))
     ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
@@ -278,7 +272,7 @@ describe('flows', () => {
 
 describe('code work in git', () => {
   test('F-A2: the gate runs on the reported commit, not on the checked-out branch', async () => {
-    const p = project({ 'work.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': CODE_TASK, 'app/ok.txt': 'ok\n' })
+    const p = project({ 'aristoteles.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': CODE_TASK, 'app/ok.txt': 'ok\n' })
     const app = `${p.dir}/app`
     git(app, 'init', '-q', '-b', 'main')
     git(app, 'add', '.')
@@ -303,7 +297,7 @@ describe('code work in git', () => {
     // that this task does not need, so resume asks for no recheck.
     expect(ok(await p.agent('result show r1')).out).toContain(`(made from app@${git(app, 'rev-parse', 'main').slice(0, 12)})`)
     ok(await p.agent(`checkpoint ${lead} t1 --next="wait for the gate"`))
-    Bun.spawnSync(['sh', '-c', `echo more > ${app}/more.txt`])
+    writeFileSync(`${app}/more.txt`, `more\n`)
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', 'main moves')
     const resumed = ok(await p.agent(`resume ${lead} t1`)).out

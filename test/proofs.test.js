@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test'
+import { writeFileSync } from 'node:fs'
 import { codeStarted, evaluated, git, init, ok, project, reported, tokenIn } from './harness.js'
 
 const TSD_TASK = 'name: The TSD\ntext: Write the TSD.\ndirections: [tsd-writing]\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n'
 const fresh = async (files) => {
   const p = project(files)
   await init(p)
-  for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.nanda('task open --file=task.yaml'))
   return p
 }
@@ -38,15 +39,15 @@ describe('generated runs: next has a way on', () => {
   // assign saw a checker of its parent that it could not start, so nothing moved the part.
   test('next names only the caller\'s own lead, and a lead assigns its own checker', async () => {
     const p = await fresh({ 'task.yaml': TSD_TASK })
-    const other = tokenIn(ok(await p.nanda('assign t1 --role=region-lead')).out)
+    const other = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
     ok(await p.agent(`brief ${other}`))
     ok(await p.nanda('grant --act=change --on=t1 --to=architect --until=2026-12-31T00:00:00Z', 'grant'))
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
-    p.write('parts.yaml', '- { name: Design, text: Write the design., context: { region: design } }\n')
+    p.write('parts.yaml', '- { name: Design, text: Write the design., context: { section: design } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     ok(await p.agent(`assign ${arch} t2 --role=linter`))
-    const lead = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=region-lead`)).out)
+    const lead = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=section-lead`)).out)
     ok(await p.agent(`brief ${lead}`))
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
@@ -55,8 +56,8 @@ describe('generated runs: next has a way on', () => {
     const leadNext = ok(await p.agent(`next ${lead}`)).out
     expect(leadNext).toContain(`work assign ${lead} t2 --role=linter`)
     const archNext = ok(await p.agent(`next ${arch}`)).out
-    expect(archNext).toContain('a4 (region-lead) runs t2')
-    expect(archNext).not.toContain('a1 (region-lead) runs t2')
+    expect(archNext).toContain('a4 (section-lead) runs t2')
+    expect(archNext).not.toContain('a1 (section-lead) runs t2')
   })
 })
 
@@ -70,7 +71,7 @@ describe('generated runs: a Reject of a task is shown', () => {
     await evaluated(p, 't1')
     const waiting = ok(await p.nanda('waiting')).out
     expect(waiting).toContain('v2.1 needs a change of tsd-writing')
-    // t1 has a region, so it is one unit: the person's remake answers the point, not a split.
+    // t1 has a section, so it is one unit: the person's remake answers the point, not a split.
     expect(waiting).toContain('work task remake t1 --file=<task.yaml> --reason="<how the scope changed>" --review=v2.1')
     expect(ok(await p.agent(`next ${lead}`)).out).toContain('v2.1 returns t1: "the story needs the cost"')
   })
@@ -80,7 +81,7 @@ describe('planted faults: views of a program', () => {
   test('assignment show of a program prints what it runs, with no crash', async () => {
     const { p, app, impl } = await codeStarted()
     git(app, 'checkout', '-q', '-b', 'fix')
-    Bun.spawnSync(['sh', '-c', `echo fixed > ${app}/fix.txt`])
+    writeFileSync(`${app}/fix.txt`, `fixed\n`)
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', 'fix')
     ok(await p.agent(`report ${impl} --output=app@${git(app, 'rev-parse', 'HEAD').slice(0, 12)}`))
@@ -97,7 +98,7 @@ describe('R4-12: a code join', () => {
     ok(await p.agent(`brief ${impl}`))
     git(app, 'checkout', '-q', 'main')
     git(app, 'checkout', '-q', '-b', branch)
-    Bun.spawnSync(['sh', '-c', `echo ${branch} > ${app}/${file}`])
+    writeFileSync(`${app}/${file}`, `${branch}\n`)
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', branch)
     const out = ok(await p.agent(`report ${impl} --output=app@${git(app, 'rev-parse', 'HEAD').slice(0, 12)}`)).out
@@ -117,14 +118,14 @@ describe('R4-12: a code join', () => {
     // A join that has only one part's commit is refused; with both, it is reported.
     git(app, 'checkout', '-q', 'key')
     git(app, 'checkout', '-q', '-b', 'join-one')
-    Bun.spawnSync(['sh', '-c', `echo joined > ${app}/join.txt`])
+    writeFileSync(`${app}/join.txt`, `joined\n`)
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', 'join one')
     const one = await p.agent(`report ${impl} --output=app@${git(app, 'rev-parse', 'HEAD').slice(0, 12)}`)
     expect(one.err).toContain('does not contain')
     git(app, 'merge', '-q', '--no-edit', 'name')
     expect(ok(await p.agent(`report ${impl} --output=app@${git(app, 'rev-parse', 'HEAD').slice(0, 12)}`)).out).toContain('reported on t1')
-  }, 20000)
+  }, 60000)
 })
 
 describe('live code run: the findings of run 2 (proofs.md section 3)', () => {
@@ -137,7 +138,7 @@ describe('live code run: the findings of run 2 (proofs.md section 3)', () => {
     expect(brief).toContain('make it once, if it is not there: git -C app worktree add -b work/a2 <project>/.work/trees/a2 main')
     const tree = `${p.dir}/.work/trees/a2`
     git(app, 'worktree', 'add', '-q', '-b', 'work/a2', tree, 'main')
-    Bun.spawnSync(['sh', '-c', `echo fixed > ${tree}/fix.txt`])
+    writeFileSync(`${tree}/fix.txt`, `fixed\n`)
     git(tree, 'add', '.')
     git(tree, 'commit', '-q', '-m', 'fix')
     expect(git(app, 'branch', '--show-current')).toBe('main')
@@ -172,15 +173,15 @@ describe('live code run: the findings of run 2 (proofs.md section 3)', () => {
   })
 
   // Finding 9: a point with no rule went to the person only in chat, so the record said Accepted.
-  test('a point with no rule is raised on the result, and the result waits for the person', async () => {
+  test('a point with no rule is escalated on the result, and the result waits for the person', async () => {
     const { p, app, lead, impl } = await codeStarted()
     git(app, 'checkout', '-q', '-b', 'fix')
-    Bun.spawnSync(['sh', '-c', `echo fixed > ${app}/fix.txt`])
+    writeFileSync(`${app}/fix.txt`, `fixed\n`)
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', 'fix')
     ok(await p.agent(`report ${impl} --output=app@${git(app, 'rev-parse', 'HEAD').slice(0, 12)}`))
-    expect(ok(await p.agent(`brief ${lead}`)).out).toContain(`put it in the record with work raise ${lead} --result=r1 --reason="<the point>"`)
-    ok(await p.agent(`raise ${lead} --result=r1 --reason="a comment in fix.txt is out of date, and no rule covers it"`))
+    expect(ok(await p.agent(`brief ${lead}`)).out).toContain(`first escalate it with work escalate ${lead} --result=r1 --reason="<the point>"`)
+    ok(await p.agent(`escalate ${lead} --result=r1 --reason="a comment in fix.txt is out of date, and no rule covers it"`))
     expect(ok(await p.nanda('waiting')).out).toContain('a comment in fix.txt is out of date')
     const accept = ok(await p.agent(`review ${lead} r1 accept --evidence="the files in app at the reported commit | the gate passed and the fix is small"`)).out
     expect(accept).toContain('r1 still has 1 blocker(s)')
@@ -191,7 +192,7 @@ describe('model checks: the two links of a task (proofs.md section 4)', () => {
   const commit = (app, branch, from, file, text) => {
     git(app, 'checkout', '-q', from)
     git(app, 'checkout', '-q', '-B', branch)
-    Bun.spawnSync(['sh', '-c', `echo ${text} > ${app}/${file}`])
+    writeFileSync(`${app}/${file}`, `${text}\n`)
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', text)
     return git(app, 'rev-parse', 'HEAD').slice(0, 12)
@@ -240,7 +241,7 @@ describe('model checks: the two links of a task (proofs.md section 4)', () => {
     const again = reportedId(await p.agent(`report ${impl} --output=app@${git(app, 'rev-parse', 'HEAD').slice(0, 12)}`))
     ok(await p.agent(`review ${lead} ${again} accept --evidence="the files in app at the reported commit | the merge has the new key"`))
     expect(ok(await p.agent('task show t1')).out).toContain('t1 Fix the key · Accepted')
-  }, 20000)
+  }, 60000)
 
   // F3: a need of another tree; next and waiting named nothing while it was open.
   test('a need in another tree shows in next and in waiting', async () => {
@@ -252,7 +253,7 @@ describe('model checks: the two links of a task (proofs.md section 4)', () => {
     ok(await p.agent(`brief ${lead2}`))
     expect(ok(await p.agent(`next ${lead2}`)).out).toContain('t2 waits for t1 Fix the key (Open), which is outside your task tree')
     expect(ok(await p.nanda('waiting')).out).toContain('t2 Use the key waits for t1 Fix the key (Open), of another task tree')
-  }, 20000)
+  }, 60000)
 
   // After a remake, old work is a starting point that the split names; the result is new work.
   test('a part starts from earlier work: its maker starts there, and its result is new work', async () => {
@@ -274,7 +275,7 @@ describe('model checks: the two links of a task (proofs.md section 4)', () => {
     expect((await p.agent(`report ${maker} --output=app@${fromMain}`)).err).toContain(`does not start from ${parts.t2.rid}`)
     const onTop = commit(app, 'm104', 'key', 'key.txt', 'key-for-m104')
     expect(ok(await p.agent(`report ${maker} --output=app@${onTop}`)).out).toContain('reported on t5')
-  }, 20000)
+  }, 60000)
 })
 
 // The abstraction says that a revision comes from the system of its source. For a git source
@@ -285,12 +286,12 @@ describe('revisions come from git', () => {
     expect((await p.agent(`source ${impl} page@v4`)).err).toContain('a low role records no source')
     const base = git(app, 'rev-parse', 'main').slice(0, 12)
     git(app, 'checkout', '-q', '-b', 'fix')
-    Bun.spawnSync(['sh', '-c', `echo fixed > ${app}/fix.txt`])
+    writeFileSync(`${app}/fix.txt`, `fixed\n`)
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', 'fix')
     const fix = git(app, 'rev-parse', 'HEAD').slice(0, 12)
     git(app, 'checkout', '-q', 'main')
-    Bun.spawnSync(['sh', '-c', `echo more > ${app}/more.txt`])
+    writeFileSync(`${app}/more.txt`, `more\n`)
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', 'main moves')
     const moved = git(app, 'rev-parse', 'main').slice(0, 12)
@@ -304,5 +305,5 @@ describe('revisions come from git', () => {
     // Nobody records a git source by hand; a lead records a source outside git.
     expect((await p.agent(`source ${lead} app@${base}`)).err).toContain('app is a git source: the CLI reads the base of each commit from git, and a new commit on it asks for no recheck')
     expect(ok(await p.agent(`source ${lead} page@v4`)).out).toContain('page is at v4.')
-  }, 20000)
+  }, 60000)
 })

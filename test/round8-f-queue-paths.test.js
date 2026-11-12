@@ -10,7 +10,7 @@ import { INTRO_V2, TASK, WORK_YAML, ok, started, tokenIn } from
 const WITH_DESIGN = INTRO_V2.replace('## Design\n\nTODO', '## Design\n\nOne file per merchant per day.')
 const DESIGN_TASK = (path) => TASK.replace('The Introduction', 'The Design')
   .replace('Write the Introduction from the agreed facts.', 'Write the Design from the agreed facts.')
-  .replace('region: introduction', 'region: design').replace('path: docs/tsd.md', `path: ${path}`)
+  .replace('section: introduction', 'section: design').replace('path: docs/tsd.md', `path: ${path}`)
 
 describe('F-Q1 one maker for each file: a path that names docs/tsd.md in another way', () => {
   // The fix (2026-11-08): a workspace path is written in its one real form, so task open refuses
@@ -58,13 +58,13 @@ describe('F-Q2 one maker for each file: a task with no workspace', () => {
     const { p, lead } = await started()
     const first = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
     ok(await p.agent(`brief ${first}`))
-    p.write('design.yaml', 'name: The Design\ntext: Write the Design in docs/tsd.md.\ndirections: [tsd-writing]\ncontext: { region: design }\n')
+    p.write('design.yaml', 'name: The Design\ntext: Write the Design in docs/tsd.md.\ndirections: [tsd-writing]\ncontext: { section: design }\n')
     ok(await p.nanda('task open --file=design.yaml'))
-    const lead2 = tokenIn(ok(await p.nanda('assign t2 --role=region-lead')).out)
+    const lead2 = tokenIn(ok(await p.nanda('assign t2 --role=section-lead')).out)
     ok(await p.agent(`brief ${lead2}`))
     // The fix (2026-11-08): a maker that writes a file needs the workspace of its task.
     expect((await p.agent(`assign ${lead2} t2 --role=writer`)).err)
-      .toContain('t2 names no workspace, and writer writes <file>#<region>; the person opens the task with its workspace')
+      .toContain('t2 names no workspace, and writer writes <file>#<section>; the person opens the task with its workspace')
   })
 
   test('a maker whose output names no file reports a file of the project folder, with no workspace', async () => {
@@ -72,11 +72,11 @@ describe('F-Q2 one maker for each file: a task with no workspace', () => {
     const NOTER = '  noter:\n    tier: low\n    description: Writes a note.\n    intro: You write one note.\n' +
       '    responsibilities:\n      - Write the note.\n    output: "<link>"\n    acts: [{ do: write one note }]\n'
     const yaml = WORK_YAML.replace('acts: [{ approve: [writer] }]', 'acts: [{ approve: [writer, noter] }]').replace('  linter:\n', `${NOTER}  linter:\n`)
-    const { p, lead } = await started({ 'work.yaml': yaml })
+    const { p, lead } = await started({ 'aristoteles.yaml': yaml })
     ok(await p.nanda('role fit noter --answers=fit.yaml'))
     p.write('note.yaml', 'name: A note\ntext: Write a note.\ndirections: [tsd-writing]\n')
     ok(await p.nanda('task open --file=note.yaml'))
-    const lead2 = tokenIn(ok(await p.nanda('assign t2 --role=region-lead')).out)
+    const lead2 = tokenIn(ok(await p.nanda('assign t2 --role=section-lead')).out)
     ok(await p.agent(`brief ${lead2}`))
     const noter = tokenIn(ok(await p.agent(`assign ${lead2} t2 --role=noter`)).out)
     ok(await p.agent(`brief ${noter}`))

@@ -1,12 +1,12 @@
 // Round 9, attacker H: an evaluation at the level of a direction or a principle "counts only after
 // the person accepts it" (DESIGN section 8), and work next says it "waits for Nanda's accept" (the
-// owner of the task). With two people in work.yaml, the other person accepts it for the owner, or
+// owner of the task). With two people in aristoteles.yaml, the other person accepts it for the owner, or
 // writes an evaluation at the level of a principle that counts at once, on a task that is not
 // theirs. The same person may not make the owner's direction official or reject the owner's task. Each
 // test expects the CORRECT behaviour, so it fails while the fault is there.
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-import { main } from '../cli.js'
+import { main } from './code.js'
 import { INTRO_V1, WORK_YAML, ok, split, started, tokenIn } from
   './harness.js'
 
@@ -28,7 +28,7 @@ const budi = async (p, line, typed) => {
 // architect (a4) has read its brief.
 async function exhausted() {
   const yaml = WORK_YAML.replace('  - name: Nanda\n', '  - name: Nanda\n  - name: Budi\n')
-  const { p, lead } = await started({ 'work.yaml': yaml })
+  const { p, lead } = await started({ 'aristoteles.yaml': yaml })
   const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).out)
   ok(await p.agent(`brief ${writer}`))
   p.write('docs/tsd.md', INTRO_V1)

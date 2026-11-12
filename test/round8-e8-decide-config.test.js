@@ -11,20 +11,20 @@ const LINT = '--evidence="no-code-proof | the introduction | no paths or hashes 
 const REPEATABLE = '--evidence="repeatable | the introduction | a reviewer can repeat it"'
 const PROOFREADER = `  proofreader:
     tier: low
-    description: Reads one region and decides it after the lead.
-    intro: You read one region.
+    description: Reads one section and decides it after the lead.
+    intro: You read one section.
     responsibilities:
-      - Accept or reject the region with work review.
+      - Accept or reject the section with work review.
     acts: [{ approve: [writer] }]
 `
 
 // The lead runs t1; the writer reported r1; the linter and the lead accepted it.
 async function decidedByLead(yaml, roles) {
-  const p = project({ 'work.yaml': yaml })
+  const p = project({ 'aristoteles.yaml': yaml })
   await init(p)
   for (const role of roles) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.nanda('task open --file=task.yaml'))
-  const lead = tokenIn(ok(await p.nanda('assign t1 --role=region-lead')).out)
+  const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
   ok(await p.agent(`brief ${lead}`))
   const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
   ok(await p.agent(`brief ${writer}`))
@@ -37,10 +37,10 @@ async function decidedByLead(yaml, roles) {
   return { p, lead }
 }
 
-describe('E8 decide order [region-lead, proofreader] with a low decider: the printed assign is the person\'s, and it is refused', () => {
+describe('E8 decide order [section-lead, proofreader] with a low decider: the printed assign is the person\'s, and it is refused', () => {
   test('next tells the lead that the person assigns a proofreader; waiting gives the person an assign that is refused', async () => {
-    const yaml = `${WORK_YAML}${PROOFREADER}decide:\n  - { resultsOf: writer, by: { order: [region-lead, proofreader] } }\n`
-    const { p, lead } = await decidedByLead(yaml, ['architect', 'region-lead', 'writer', 'linter', 'proofreader'])
+    const yaml = `${WORK_YAML}${PROOFREADER}decide:\n  - { resultsOf: writer, by: { order: [section-lead, proofreader] } }\n`
+    const { p, lead } = await decidedByLead(yaml, ['architect', 'section-lead', 'writer', 'linter', 'proofreader'])
     expect(ok(await p.agent('blockers r1')).out).toContain('no accept yet by proofreader')
     const leadNext = ok(await p.agent(`next ${lead}`)).out
     const waiting = ok(await p.nanda('waiting')).out
@@ -57,16 +57,16 @@ describe('E8 decide order [region-lead, proofreader] with a low decider: the pri
 })
 
 describe('E9 two decide entries for the results of one role: init keeps the first and drops the second', () => {
-  test('decide writer by region-lead, then writer by architect: init passes, and r1 is Accepted with no architect', async () => {
-    const yaml = `${WORK_YAML}decide:\n  - { resultsOf: writer, by: region-lead }\n  - { resultsOf: writer, by: architect }\n`
-    const p = project({ 'work.yaml': yaml })
+  test('decide writer by section-lead, then writer by architect: init passes, and r1 is Accepted with no architect', async () => {
+    const yaml = `${WORK_YAML}decide:\n  - { resultsOf: writer, by: section-lead }\n  - { resultsOf: writer, by: architect }\n`
+    const p = project({ 'aristoteles.yaml': yaml })
     const init = await p.nanda('init')
     // Correct: init refuses an entry that it would not use (or both entries apply, and r1 also
     // waits for the architect). Today the second entry is read and never used.
     if (init.code === 0) {
-      for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+      for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
       ok(await p.nanda('task open --file=task.yaml'))
-      const lead = tokenIn(ok(await p.nanda('assign t1 --role=region-lead')).out)
+      const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
       ok(await p.agent(`brief ${lead}`))
       const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
       ok(await p.agent(`brief ${writer}`))

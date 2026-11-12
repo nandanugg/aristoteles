@@ -6,8 +6,8 @@ import { INTRO_V2, changeDirection, codeStarted, git, ok, reported, started, tok
   './harness.js'
 
 const UNTIL = '--until=2026-12-31T00:00:00Z'
-const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the region" ' +
-  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the region"'
+const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the section" ' +
+  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the section"'
 const REPEATABLE = '--evidence="repeatable | docs/tsd.md#introduction | a reader can repeat the double export"'
 const INTRO_V3 = '# TSD\n\n## Introduction\n\nThe export ran twice, and the merchant got two files on one day.\n\n## Design\n\nTODO\n'
 
@@ -30,7 +30,7 @@ describe('C-D1 a change that is undone still answers the person\'s Reject', () =
     ok(await p.agent(`evaluate ${arch} t1 --wrong="the introduction misses the impact on the merchant" ` +
       '--why="no standard of the introduction asks for the impact" --improve="a standard for the impact" --level=standard'))
     // v3 says something new to t1 (a standard for the introduction), so it answers the point.
-    p.write('add.yaml', 'add:\n  - id: impact-story\n    where: { region: introduction }\n' +
+    p.write('add.yaml', 'add:\n  - id: impact-story\n    where: { section: introduction }\n' +
       '    says: The introduction says what the merchant lost.\n' +
       '    rules:\n      - { id: says-impact, says: "The introduction names the impact on the merchant", checkedBy: linter }\n')
     ok(await p.agent(`direction revise ${arch} tsd-writing --file=add.yaml --answers=${vid}`))
@@ -60,7 +60,7 @@ describe('C-A1 an approved change resets the attempts of a maker that a new make
     expect((await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).err).toContain('t1 waits for an evaluation')
     ok(await p.nanda('evaluate t1 --wrong="r1 cannot be repeated" --why="no rule names the numbers that a reader needs" --improve="numbers have units" --level=standard'))
     expect((await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).err).toContain('has the inputs that failed')
-    await changeDirection(p, 'add:\n  - { id: units, says: Numbers have units. }\n', { flags: '--why="name the units"' })
+    await changeDirection(p, 'add:\n  - { id: units, says: Numbers have units. }\n', { flags: '--why="Correct the standard"' })
     // The change resets w1's attempts, so w1 is the open writer of t1.
     expect((await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).err).toContain('already has an open Do assignment')
     ok(await p.agent(`brief ${w1}`))
@@ -83,9 +83,9 @@ describe('C-D2 a replace with the same words says something new to every task', 
     ok(await p.agent(`evaluate ${arch} t1 --wrong="the introduction misses the impact" --why="no standard asks for it" ` +
       '--improve="a standard for the impact" --level=standard'))
     // The standard of the introduction, word for word as in tsd-writing@1.
-    p.write('same.yaml', 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      where: { region: introduction }\n' +
+    p.write('same.yaml', 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      where: { section: introduction }\n' +
       '      says: Tell the story first, in plain words.\n      rules:\n' +
-      '        - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: region-lead }\n')
+      '        - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }\n')
     const revise = await p.agent(`direction revise ${arch} tsd-writing --file=same.yaml --answers=${vid}`)
     // Correct: the draft says to t1 word for word what @1 said, so it does not answer the point.
     expect(revise.code).toBe(1)

@@ -10,19 +10,19 @@ const LINT = '--evidence="no-code-proof | the introduction | no paths or hashes 
 const REPEATABLE = '--evidence="repeatable | the introduction | a reviewer can repeat it"'
 const READ = '--evidence="docs/tsd.md, the introduction | it tells the problem in plain words"'
 const fitAll = async (p) => {
-  for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
 }
 
-// The architect is the parent of the region lead; the lead runs the writer and the linter, and
+// The architect is the parent of the section lead; the lead runs the writer and the linter, and
 // the linter accepted r1.
 async function underArchitect(decide) {
-  const p = project({ 'work.yaml': `${WORK_YAML}decide:\n  - { resultsOf: writer, by: ${decide} }\n` })
+  const p = project({ 'aristoteles.yaml': `${WORK_YAML}decide:\n  - { resultsOf: writer, by: ${decide} }\n` })
   await init(p)
   await fitAll(p)
   ok(await p.nanda('task open --file=task.yaml'))
   const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
   ok(await p.agent(`brief ${arch}`))
-  const lead = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=region-lead`)).out)
+  const lead = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=section-lead`)).out)
   ok(await p.agent(`brief ${lead}`))
   const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
   ok(await p.agent(`brief ${writer}`))
@@ -34,9 +34,9 @@ async function underArchitect(decide) {
   return { p, arch, lead }
 }
 
-describe('C-O1 decide order [architect, region-lead]: the lead checks its own rule out of turn', () => {
+describe('C-O1 decide order [architect, section-lead]: the lead checks its own rule out of turn', () => {
   test('the only printed step (the lead checks repeatable) is refused, and the architect gets no decide step', async () => {
-    const { p, arch, lead } = await underArchitect('{ order: [architect, region-lead] }')
+    const { p, arch, lead } = await underArchitect('{ order: [architect, section-lead] }')
     const leadNext = ok(await p.agent(`next ${lead}`)).out
     const archNext = ok(await p.agent(`next ${arch}`)).out
     expect(leadNext).toContain('check r1 yourself')
@@ -47,10 +47,10 @@ describe('C-O1 decide order [architect, region-lead]: the lead checks its own ru
   })
 })
 
-describe('C-O2 decide order [region-lead, architect] when no architect works on the task', () => {
+describe('C-O2 decide order [section-lead, architect] when no architect works on the task', () => {
   test('after the lead accepts, nothing says that r1 waits for an architect, nor how to get one', async () => {
-    const yaml = `${WORK_YAML}decide:\n  - { resultsOf: writer, by: { order: [region-lead, architect] } }\n`
-    const { p, lead } = await started({ 'work.yaml': yaml })
+    const yaml = `${WORK_YAML}decide:\n  - { resultsOf: writer, by: { order: [section-lead, architect] } }\n`
+    const { p, lead } = await started({ 'aristoteles.yaml': yaml })
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
     p.write('docs/tsd.md', INTRO_V2)
@@ -92,29 +92,30 @@ describe('C-V1 approvedBy order [architect, Nanda] when the architect suggests t
   })
 })
 
-describe('C-Q1 a relayed question to an assignment that finished', () => {
-  test('the top agent relays the person\'s question to a finished writer; nobody can answer it, and t1 waits for ever', async () => {
+describe('C-Q1 a forwarded question to an assignment that finished', () => {
+  test('the top agent forwards the person\'s question to a finished writer; nobody can answer it, and t1 waits for ever', async () => {
     const { p, lead, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
     ok(await p.agent(`finish ${lead} a2`))
-    // The lead is the top agent (medium, no parent, with a claim): it relays the person's question.
-    const relay = await p.agent(`relay ${lead} Nanda ask a2 --quote="Which merchant got the two files?" --channel=chat`)
+    // The lead is the top agent (medium, no parent, with a claim): it forwards the person's question.
+    const forwarded = await p.agent(`forward ${lead} Nanda ask a2 --quote="Which merchant got the two files?" --channel=chat`)
     // The fix (2026-11-07): a question to a finished assignment is refused.
-    expect(relay.err).toContain('is finished, so it answers no question')
+    expect(forwarded.err).toContain('is finished, so it answers no question')
   })
 })
 
-describe('C-S1 a decider settles a Raise to another assignment', () => {
-  // Section 6: a settle comes from "the assignment that a raise names, or a decider". The engine
-  // takes an assignment for a person (isHuman of an object), so only the named assignment settles.
-  test('the architect, which decides the writer\'s results, may not settle the linter\'s raise to the lead', async () => {
+describe('C-S1 a decider resolves an escalation to another assignment', () => {
+  // Section 6: a resolve comes from "the assignment that an escalation names, or a decider". The
+  // old engine took an assignment for a person (isHuman of an object), so only the named
+  // assignment resolved.
+  test('the architect, which decides the writer\'s results, may resolve the linter\'s escalation to the lead', async () => {
     const p = project()
     await init(p)
     await fitAll(p)
     ok(await p.nanda('task open --file=task.yaml'))
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
-    const lead = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=region-lead`)).out)
+    const lead = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=section-lead`)).out)
     ok(await p.agent(`brief ${lead}`))
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
@@ -122,8 +123,8 @@ describe('C-S1 a decider settles a Raise to another assignment', () => {
     ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
     const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
     ok(await p.agent(`brief ${linter}`))
-    ok(await p.agent(`raise ${linter} --result=r1 --reason="the facts have no date for the second run"`))
-    const settle = await p.agent(`review ${arch} r1 accept --settles=v2 --reason="the date is not needed"`)
-    expect(settle.err).toBe('')
+    ok(await p.agent(`escalate ${linter} --result=r1 --reason="the facts have no date for the second run"`))
+    const resolved = await p.agent(`resolve ${arch} v2 --resolution="the date is not needed"`)
+    expect(resolved.err).toBe('')
   })
 })

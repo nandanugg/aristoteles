@@ -7,12 +7,12 @@ import { describe, expect, test } from 'bun:test'
 import { TASK_WHOLE, ok, started, tokenIn } from './harness.js'
 
 const TSD = (handler, flags) => `# TSD\n\n## Introduction\n\n${handler}\n\n## Design\n\n${flags}\n`
-const PARTS = '- { name: Flags and env, text: Write the feature flag and how the env vars are read., context: { region: design } }\n' +
-  '- { name: Handler, text: Write the use case and the request handler., context: { region: introduction } }\n'
+const PARTS = '- { name: Flags and env, text: Write the feature flag and how the env vars are read., context: { section: design } }\n' +
+  '- { name: Handler, text: Write the use case and the request handler., context: { section: introduction } }\n'
 const LINT = (where) => `--evidence="no-code-proof | ${where} | no paths or hashes there" --evidence="no-ticket-ids | ${where} | no ticket ids there"`
 const TYPED = (where) => `--evidence="typed-env | ${where} | the env vars are read through one typed function"`
 const REPEATABLE = '--evidence="repeatable | the introduction | a reviewer can repeat the request"'
-// The standard that the evaluation asks for: it applies to every region of the TSD.
+// The standard that the evaluation asks for: it applies to every section of the TSD.
 const STANDARD = 'add:\n  - id: typed-config\n    says: Configuration is read in one typed place.\n    rules:\n' +
   '      - { id: typed-env, says: "Env vars are read through one typed function", checkedBy: linter }\n'
 
@@ -82,7 +82,7 @@ describe('a mistake is evaluated, not tried again', () => {
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
     p.write('edit.yaml', 'add:\n  - { id: defaults, says: Every flag has a default. }\n')
-    const revise = `direction revise ${arch} tsd-writing --file=edit.yaml --answers=${v}.1 --why="flags have defaults"`
+    const revise = `direction revise ${arch} tsd-writing --file=edit.yaml --answers=${v}.1 --why="Correct the standard"`
     expect((await p.agent(revise)).err).toContain('"the flag has no default" waits for an evaluation of t2 first')
     ok(await p.nanda('evaluate t2 --wrong="r1 names no default for the flag" --why="no standard asks for a default" ' +
       '--improve="every flag has a default" --level=standard'))
@@ -106,9 +106,9 @@ describe('a mistake is evaluated, not tried again', () => {
     ok(await p.nanda('grant --act=change --on=tsd-writing,t1 --to=architect --until=2026-12-31T00:00:00Z', 'grant'))
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
-    p.write('cost.yaml', 'add:\n  - id: cost\n    where: { region: introduction }\n    says: The introduction names the cost.\n    rules:\n' +
+    p.write('cost.yaml', 'add:\n  - id: cost\n    where: { section: introduction }\n    says: The introduction names the cost.\n    rules:\n' +
       '      - { id: says-cost, says: "The introduction names the cost to the merchant", checkedBy: linter }\n')
-    ok(await p.agent(`direction revise ${arch} tsd-writing --file=cost.yaml --answers=${v}.1 --why="name the cost"`))
+    ok(await p.agent(`direction revise ${arch} tsd-writing --file=cost.yaml --answers=${v}.1 --why="Correct the standard"`))
     ok(await p.nanda('review d2 accept --evidence="directions/tsd-writing.yaml | the cost rule"', 'accept'))
     expect(ok(await p.agent(`next ${lead}`)).out).toContain('check r1 again under the new version')
     // r1 already names the fees: the linter checks it under the new rule, the lead decides again, and t1 is accepted.
@@ -144,7 +144,7 @@ describe('a mistake is evaluated, not tried again', () => {
     expect((await p.nanda('task open --file=rounds.yaml')).err).toContain('maxRounds is gone')
     const flat = (await import('./harness.js')).WORK_YAML.replace(/ {2}architect:\n(?: {4}.*\n)+/, '')
       .replace('acts: [{ approve: [writer] }]', 'acts: [{ approve: [writer] }]')
-    const q = (await import('./harness.js')).project({ 'work.yaml': flat })
+    const q = (await import('./harness.js')).project({ 'aristoteles.yaml': flat })
     expect((await q.nanda('init')).err).toContain('the workflow has no high role; every workflow has the three tiers')
   })
 })

@@ -24,7 +24,7 @@ describe('needs: a maker starts only when the tasks that its task needs are acce
     const arch = await architectOn(p, 't2')
     p.write('parts.yaml', '- { name: Design body, text: Write the design body from the introduction. }\n')
     ok(await p.agent(`task split ${arch} t2 --file=parts.yaml`))
-    const lead = tokenIn(ok(await p.agent(`assign ${arch} t3 --role=region-lead`)).out)
+    const lead = tokenIn(ok(await p.agent(`assign ${arch} t3 --role=section-lead`)).out)
     ok(await p.agent(`brief ${lead}`))
     // t1 has no result yet: the work of t3 is t2's work, and t2 needs t1.
     const assign = await p.agent(`assign ${lead} t3 --role=writer`)
@@ -34,14 +34,14 @@ describe('needs: a maker starts only when the tasks that its task needs are acce
   test('a part of a part that runs after Facts does not start before Facts is accepted', async () => {
     const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
     const arch = await architectOn(p, 't1')
-    p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { region: facts } }\n' +
-      '- { name: Story, text: Write the story from the facts., after: [Facts], context: { region: story } }\n')
+    p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { section: facts } }\n' +
+      '- { name: Story, text: Write the story from the facts., after: [Facts], context: { section: story } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     // Story (t3) runs after Facts (t2); the architect splits Story further.
     p.write('story.yaml', '- { name: Story start, text: Write the first paragraph of the story from the facts. }\n')
-    // Story has its own region, so it is one unit (round 7): it is not split further, and its
+    // Story has its own section, so it is one unit (round 7): it is not split further, and its
     // maker starts only after Facts.
-    expect((await p.agent(`task split ${arch} t3 --file=story.yaml`)).err).toContain('has the region story, so it is one unit of work')
+    expect((await p.agent(`task split ${arch} t3 --file=story.yaml`)).err).toContain('has the section story, so it is one unit of work')
     expect((await p.agent(`assign ${lead} t3 --role=writer`)).code).not.toBe(0)
   })
 
@@ -58,8 +58,8 @@ describe('needs: a maker starts only when the tasks that its task needs are acce
   test('a remake keeps the wait of the part that it replaces', async () => {
     const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
     const arch = await architectOn(p, 't1')
-    p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { region: facts } }\n' +
-      '- { name: Story, text: Write the story from the facts., after: [Facts], context: { region: story } }\n')
+    p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { section: facts } }\n' +
+      '- { name: Story, text: Write the story from the facts., after: [Facts], context: { section: story } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     expect(ok(await p.agent('task show t3')).out).toContain('needs: t2')
     // The remake file is a task file, as the template of work task open prints it (no needs key).
@@ -91,7 +91,7 @@ describe('needs: nothing waits for ever', () => {
     const finished = [await p.agent(`finish ${lead} a2`), await p.agent(`finish ${lead} a3`), await p.agent(`finish ${lead}`)]
     if (finished.some((r) => r.code !== 0)) return // a finish with an open question to it is refused: held
     // q1 stops t1 (and so t2). Someone must still be able to answer it: the lead, the person, or a new lead.
-    const lead2 = tokenIn(ok(await p.nanda('assign t1 --role=region-lead')).out)
+    const lead2 = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
     ok(await p.agent(`brief ${lead2}`))
     const answers = [
       await p.agent(`answer ${lead} q1 --text="no, one merchant"`),

@@ -33,7 +33,7 @@ describe('flags and words', () => {
     const { p, lead } = await reported()
     expect((await p.agent(`next ${lead} --verbose`)).err).toContain('work next has no flag --verbose; it reads no flags')
     const review = await p.agent(`review ${lead} r1 accept --evidence="repeatable | the introduction | ok" --evidence-note=x`)
-    expect(review.err).toContain('work review accept has no flag --evidence-note; it reads --evidence, --reason, --settles')
+    expect(review.err).toContain('work review accept has no flag --evidence-note; it reads --evidence, --reason')
   })
 
   test('the checker step says that the same assignment checks each new result', async () => {
@@ -50,7 +50,7 @@ describe('the person\'s answer reaches the maker', () => {
   test('the person\'s answer to the lead is in the next brief of the low maker', async () => {
     const { p, lead, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`raise ${writer} --reason="which merchant is it?"`))
+    ok(await p.agent(`escalate ${writer} --reason="which merchant is it?"`))
     ok(await p.agent(`ask ${lead} --text="The writer asks which merchant it is." --to=owner`))
     ok(await p.nanda('answer q2 --text="M-104"'))
     expect(ok(await p.agent(`brief ${writer}`)).out).toContain('M-104')
@@ -62,27 +62,27 @@ describe('parts in one document file', () => {
   const start = async (files = {}) => {
     const p = project({ 'task.yaml': WHOLE, ...files })
     await init(p)
-    for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     ok(await p.nanda('task open --file=task.yaml'))
     return p
   }
 
-  test('parts that share a file each need their own region', async () => {
+  test('parts that share a file each need their own section', async () => {
     const p = await start()
     p.write('bare.yaml', '- { name: Story, text: Tell the story. }\n- { name: Cost, text: Say the cost. }\n')
     expect((await p.nanda('task split t1 --file=bare.yaml')).err)
-      .toContain('the parts Story, Cost share docs/tsd.md, and Story, Cost have no region')
-    p.write('parts.yaml', '- { name: Story, text: Tell the story., context: { region: story } }\n' +
-      '- { name: Cost, text: Say the cost., context: { region: cost } }\n')
+      .toContain('the parts Story, Cost share docs/tsd.md, and Story, Cost have no section')
+    p.write('parts.yaml', '- { name: Story, text: Tell the story., context: { section: story } }\n' +
+      '- { name: Cost, text: Say the cost., context: { section: cost } }\n')
     ok(await p.nanda('task split t1 --file=parts.yaml'))
   })
 
-  test('a part may name a region also when no standard of its directions has a region "when"', async () => {
+  test('a part may name a section also when no standard of its directions has a section "when"', async () => {
     const plain = 'id: plain\nname: Plain\nowner: Nanda\nsays: Plain words.\nstandards:\n' +
       '  - id: short\n    says: Short.\n    rules:\n      - { id: short-lines, says: "Lines are short", checkedBy: linter }\n'
     const p = await start({ 'directions/plain.yaml': plain, 'task.yaml': WHOLE.replace('[tsd-writing]', '[plain]') })
-    p.write('parts.yaml', '- { name: Story, text: Tell the story., context: { region: story } }\n' +
-      '- { name: Cost, text: Say the cost., context: { region: cost } }\n')
+    p.write('parts.yaml', '- { name: Story, text: Tell the story., context: { section: story } }\n' +
+      '- { name: Cost, text: Say the cost., context: { section: cost } }\n')
     ok(await p.nanda('task split t1 --file=parts.yaml'))
   })
 })
@@ -94,7 +94,7 @@ describe('work that changes the same files runs one after the other', () => {
     ok(await p.agent(`report ${impl} --output=app@${commitOn(p, app, 'one', 'export.js', 'one file a day\n')}`))
     const second = await p.agent(`report ${impl2} --output=app@${commitOn(p, app, 'two', 'export.js', 'a file named by the date\n')}`)
     expect(second.err).toContain('changes export.js, and so does r1 of t1 (Fix the key), which does not wait for t2')
-    expect(second.err).toContain(`work raise ${impl2}`)
+    expect(second.err).toContain(`work escalate ${impl2}`)
   }, 20000)
 
   test('two tasks that change different files run at the same time', async () => {

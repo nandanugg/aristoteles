@@ -1,8 +1,8 @@
 // Round 8, attacker E. Rule (round 7, C-V1): "a version is reviewed outside the tree of its
 // suggester, and waiting names that assign"; DESIGN: every line says what to do next. waiting names
-// any open assignment of the role as the reviewer (render.js: reviewer = any open architect outside
+// any open assignment of the role as the reviewer (the words: reviewer = any open architect outside
 // the suggester's tree), but next shows the review step only to an assignment whose task tree
-// follows the direction (render.js: own). An architect of another task tree is named as the
+// follows the direction (the words: own). An architect of another task tree is named as the
 // reviewer, and nothing ever tells it to review.
 import { describe, expect, test } from 'bun:test'
 import { DIRECTION, init, ok, project, tokenIn } from
@@ -27,7 +27,7 @@ describe('E10 approvedBy order [architect, Nanda]: waiting says the version wait
     const p = project({ 'directions/tsd-writing.yaml': direction, 'directions/page-style.yaml': STYLE, 't2.yaml': T2,
       'docs/style.md': '# Style\n\nok\n' })
     await init(p)
-    for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     ok(await p.nanda('task open --file=task.yaml'))
     ok(await p.nanda('task open --file=t2.yaml'))
     const a1 = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)

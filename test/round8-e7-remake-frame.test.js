@@ -1,5 +1,5 @@
 // Round 8, attacker E. Rule (round 7, C-N1/C-N2; DESIGN section 11): "an agent's remake keeps the
-// needs, the rounds left, and the workspace"; engine.js: "only the person drops a need or changes
+// needs, the rounds left, and the workspace"; the engine: "only the person drops a need or changes
 // the directions, the context, the workspace, or the rounds".
 import { describe, expect, test } from 'bun:test'
 import { TASK, TASK_WHOLE, ok, started, tokenIn } from
@@ -27,7 +27,7 @@ describe('E7a an agent\'s remake drops the verify command of the workspace', () 
     // refused (or the new task keeps the verify). Today t2 has no verify, so its maker's brief no
     // longer says to run the person's check.
     if (remake.code === 0) {
-      const lead = tokenIn(ok(await p.nanda('assign t2 --role=region-lead')).out)
+      const lead = tokenIn(ok(await p.nanda('assign t2 --role=section-lead')).out)
       const brief = ok(await p.agent(`brief ${lead}`)).out
       expect(brief).toContain('verify: work-lint docs/tsd.md')
     } else {
@@ -42,8 +42,8 @@ describe('E7b repeated remakes of a part give it a new round each time', () => {
   test('an agent\'s remake of a task that waits for an evaluation is refused; after it, the remake goes on', async () => {
     const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
     const arch = await architectOn(p, 't1')
-    p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { region: facts } }\n' +
-      '- { name: Story, text: Write the story., context: { region: story } }\n')
+    p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { section: facts } }\n' +
+      '- { name: Story, text: Write the story., context: { section: story } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     p.write('docs/tsd.md', '# TSD\n\n## Facts\n\nTODO\n\n## Story\n\nTODO\n')
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=writer --max-attempts=1`)).out)

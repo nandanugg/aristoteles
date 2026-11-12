@@ -13,7 +13,8 @@ describe('the person: no waiver from the person', () => {
     ok(await p.agent(`review ${linter} r1 accept ${LINT}`))
     ok(await p.agent(`review ${lead} r1 accept ${REPEATABLE}`))
     const waive = await p.nanda('waive r1 --rules=no-code-proof --reason="the incident needs it today" --until=2026-10-26T00:00:00Z')
-    expect(waive.err).toContain('Nanda accepts no result, so gives no waiver')
+    // The waiver is removed (the owner's ruling 10, 2026-11-12): there is no waive.
+    expect(waive.err).toContain('there is no command "waive"')
     expect(waive.err).not.toContain('never from the maker')
   })
 })

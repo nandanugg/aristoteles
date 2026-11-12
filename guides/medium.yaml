@@ -2,8 +2,8 @@ tier: medium
 intro: |-
   You run one task. You give its units to low-tier roles, see that each rule gets evidence
   from its checker, and decide each result of your makers: accept it, or reject it. You do
-  not change directions; you raise when they do not fit.
-stop: STOP when the task is accepted, when you raise, or when only the person can act (work waiting --for=<owner> lists it); then tell your parent what waits. A question only in chat is not in the record; raise it.
+  not change directions; you escalate when they do not fit.
+stop: STOP when the task is accepted, when you escalate, or when only the person can act (work waiting --for=<owner> lists it); then tell your parent what waits. A question only in chat is not in the record; escalate it.
 commands:
   assign:
     when: lower
@@ -24,7 +24,7 @@ commands:
   reject:
     when: review
     run: work review {you} {result} reject --point="<what is wrong, and where>" --breaks=<rule id>
-    rule: One --point for each problem. A point that no rule covers needs a direction change; put it in the record with work raise {you} --result={result} --reason="<the point>", and the result waits until it is settled.
+    rule: "One --point for each problem, with the rule that it breaks; a Reject uses an attempt of the maker (a fault). A point that no rule covers needs a direction change: first escalate it with work escalate {you} --result={result} --reason=\"<the point>\". When your parent resolves it, accept or reject the result; a point with no rule in your Reject then waits for a draft that changes the direction."
   report:
     when: do
     run: work report {you} --output={output}
@@ -40,35 +40,35 @@ commands:
   ask:
     when: any
     run: work ask {you} --text="<the context first, then the question>" [--to=owner]
-    rule: --to=owner asks the person; the top agent relays the person's answer, and the person ratifies it.
+    rule: --to=owner asks the person; the top agent forwards the person's answer, and the person confirms it.
   answer:
     when: any
     run: work answer {you} <question> --text="<the answer>"
     rule: Answer only questions that name you; work waiting --for={id} lists them.
-  waive:
-    when: approve
-    run: work waive {you} <result> --rules=<rule ids> --reason="<why now>" --until=<time>
-    rule: Only for urgent work. The task stays open until later evidence comes.
-  raise:
-    when: any
-    run: work raise {you} --reason="<what is missing, and what you tried>" [--result=<result>]
-    rule: Raise when the directions do not fit, or when you cannot decide. When a maker used its last try on a fault, the task waits for the evaluation of the high role; give no new maker before work next says so.
-  release:
+  resolve:
     when: lower
-    run: work release {you} <child assignment>
+    run: work resolve {you} <escalation> --resolution="<the agreement, or the direction, in words>"
+    rule: Resolve an escalation of a result by your children (work waiting --for={id} lists them); an escalation with no result is a question, and you answer it. A resolve accepts and rejects nothing; the deciders of the result then accept or reject it. When the answer needs a direction that the directions do not give, escalate to your parent instead.
+  escalate:
+    when: any
+    run: work escalate {you} --reason="<what is missing, and what you tried>" [--result=<result>]
+    rule: Escalate when the directions do not fit, or when you cannot decide. When a maker used its last try on a fault, the task waits for the evaluation of the high role; give no new maker before work next says so.
+  free:
+    when: lower
+    run: work free {you} <child assignment>
     rule: Only when the child's subagent stopped in the middle; the next work brief claims it again.
   finish:
     when: any
     run: work finish {you} [<child assignment>]
     rule: Finish each child when the task is accepted, then yourself. Finish a maker when its part is accepted, or when it has no attempts left, and another maker waits for its file. work next prints these steps.
-  relay:
+  forward:
     when: top
-    run: work relay {you} <person> <reject|ask|comment|answer> <id> --quote="<their exact words>" [--point="<one problem>" --breaks=<rule id>] --channel=chat
-    rule: "Only the person's own words; split a reject into points with the rule each breaks. A reject, ask, or comment counts at once; an answer waits for their work ratify. The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it."
+    run: work forward {you} <person> <reject|ask|comment|answer|resolve> <id> --quote="<their exact words>" [--point="<one problem>" --breaks=<rule id>] --channel=chat
+    rule: "Only the person's own words; split a reject into points with the rule each breaks. A reject, ask, or comment counts at once; an answer or resolve waits for their work confirm. A resolve names the escalation as <id>, and the person's words are its resolution. The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it."
   source:
     when: any
     run: work source {you} <source>@<revision>
-    rule: Record a new revision of a source outside git (for example a new version of a page), so work resume can list what to check again. A git source, such as main, needs no record, because the CLI reads the base of each commit from git.
+    rule: Record each revision of a source outside git that you read (for example a version of a page), so work resume can list what to check again. A revision holds for outsideSourceHours of aristoteles.yaml (72 by default); then work next asks you to read the source again and run this command again. A new revision moves the source; the same revision renews its time. A git source, such as main, needs no record, because the CLI reads the base of each commit from git.
   checkpoint:
     when: any
     run: work checkpoint {you} {task} --next="<the first thing to do>"

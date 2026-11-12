@@ -9,13 +9,13 @@ import { init, ok, project, tokenIn, WORK_YAML } from './harness.js'
 const TSD_TASK = 'name: The TSD\ntext: Write the TSD.\ndirections: [tsd-writing]\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n'
 const tsd = (intro, design, failure = 'TODO') => `# TSD\n\n## Introduction\n\n${intro}\n\n## Design\n\n${design}\n\n## Failure\n\n${failure}\n`
 const LINT = (where) => `--evidence="no-code-proof | ${where} | no paths or hashes there" --evidence="no-ticket-ids | ${where} | no ticket ids there"`
-const PARTS = '- { name: Design, text: Write the design., context: { region: design } }\n' +
-  '- { name: Failure, text: Write the failure cases., context: { region: failure } }\n'
+const PARTS = '- { name: Design, text: Write the design., context: { section: design } }\n' +
+  '- { name: Failure, text: Write the failure cases., context: { section: failure } }\n'
 
 const fresh = async (files = {}) => {
   const p = project({ 'task.yaml': TSD_TASK, 'docs/tsd.md': tsd('TODO', 'TODO'), ...files })
   await init(p)
-  for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.nanda('task open --file=task.yaml'))
   return p
 }
@@ -25,17 +25,17 @@ const architect = async (p) => {
   ok(await p.agent(`brief ${arch}`))
   return arch
 }
-// A writer reports the region of a part; a linter gives its evidence; the architect, who
+// A writer reports the section of a part; a linter gives its evidence; the architect, who
 // decides the writer's results, accepts it.
-const partDone = async (p, arch, part, region, text) => {
+const partDone = async (p, arch, part, section, text) => {
   const writer = tokenIn(ok(await p.agent(`assign ${arch} ${part} --role=writer`)).out)
   ok(await p.agent(`brief ${writer}`))
   p.write('docs/tsd.md', text)
-  const result = ok(await p.agent(`report ${writer} --output=docs/tsd.md#${region}`)).out.match(/^(r\d+) reported/)[1]
+  const result = ok(await p.agent(`report ${writer} --output=docs/tsd.md#${section}`)).out.match(/^(r\d+) reported/)[1]
   const linter = tokenIn(ok(await p.agent(`assign ${arch} ${part} --role=linter`)).out)
   ok(await p.agent(`brief ${linter}`))
-  ok(await p.agent(`review ${linter} ${result} accept ${LINT(`the ${region}`)}`))
-  ok(await p.agent(`review ${arch} ${result} accept --evidence="docs/tsd.md, the region | the region says what the part asks"`))
+  ok(await p.agent(`review ${linter} ${result} accept ${LINT(`the ${section}`)}`))
+  ok(await p.agent(`review ${arch} ${result} accept --evidence="docs/tsd.md, the section | the section says what the part asks"`))
   // One maker writes a file at a time: the part is accepted, so its writer finishes.
   ok(await p.agent(`finish ${arch} ${writer.split('.')[0]}`))
   return result
@@ -46,7 +46,7 @@ describe('needs', () => {
     const p = await fresh({ 'whole.yaml': 'name: The whole TSD\ntext: Put the TSD together.\ndirections: [tsd-writing]\nneeds: [t1]\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n' })
     ok(await p.nanda('task open --file=whole.yaml'))
     expect(ok(await p.agent('task show t2')).out).toContain('needs: t1')
-    const lead = tokenIn(ok(await p.nanda('assign t2 --role=region-lead')).out)
+    const lead = tokenIn(ok(await p.nanda('assign t2 --role=section-lead')).out)
     ok(await p.agent(`brief ${lead}`))
     expect((await p.agent(`assign ${lead} t2 --role=writer`)).err).toContain('t2 needs t1 (The TSD), which is not accepted; its maker starts after that')
   })
@@ -65,11 +65,11 @@ describe('needs', () => {
   test('a part that runs after another waits for it: next says so, and its maker starts after it', async () => {
     const p = await fresh()
     const arch = await architect(p)
-    p.write('bad.yaml', '- { name: Failure, text: Write the failure cases., after: [Design], context: { region: failure } }\n' +
-      '- { name: Design, text: Write the design., context: { region: design } }\n')
+    p.write('bad.yaml', '- { name: Failure, text: Write the failure cases., after: [Design], context: { section: failure } }\n' +
+      '- { name: Design, text: Write the design., context: { section: design } }\n')
     expect((await p.agent(`task split ${arch} t1 --file=bad.yaml`)).err).toContain('part Failure: after names "Design", which is not a part above it')
-    p.write('parts.yaml', '- { name: Design, text: Write the design., context: { region: design } }\n' +
-      '- { name: Failure, text: Write the failure cases of the design., after: [Design], context: { region: failure } }\n')
+    p.write('parts.yaml', '- { name: Design, text: Write the design., context: { section: design } }\n' +
+      '- { name: Failure, text: Write the failure cases of the design., after: [Design], context: { section: failure } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     expect(ok(await p.agent('task show t3')).out).toContain('needs: t2')
     expect(ok(await p.agent(`next ${arch}`)).out).toContain('t3 Failure runs after t2 Design (Open); its maker starts when t2 is accepted')
@@ -101,12 +101,12 @@ describe('the decider decides', () => {
     ok(await p.agent(`brief ${linter}`))
     ok(await p.agent(`review ${linter} r1 accept ${LINT('the design')}`))
     expect(ok(await p.agent('blockers r1')).out).toContain('no accept yet by a role that decides r1')
-    ok(await p.agent(`review ${arch} r1 accept --evidence="docs/tsd.md, the region | the design says what the part asks"`))
+    ok(await p.agent(`review ${arch} r1 accept --evidence="docs/tsd.md, the section | the design says what the part asks"`))
     expect(ok(await p.agent('task show t2')).out).toContain('Accepted')
   })
 
   test('a role assigns a maker only when it, or a role above it, decides that maker', async () => {
-    const p = await fresh({ 'work.yaml': WORK_YAML.replace('acts: [{ approve: [region-lead, writer] }]', 'acts: [{ approve: [region-lead] }]') })
+    const p = await fresh({ 'aristoteles.yaml': WORK_YAML.replace('acts: [{ approve: [section-lead, writer] }]', 'acts: [{ approve: [section-lead] }]') })
     const arch = await architect(p)
     expect((await p.agent(`assign ${arch} t1 --role=writer`)).err).toContain('decides no writer results')
   })
@@ -139,7 +139,7 @@ describe('close and remake', () => {
     expect(grant).toContain('t4')
     const arch2 = tokenIn(ok(await p.nanda('assign t4 --role=architect')).out)
     ok(await p.agent(`brief ${arch2}`))
-    p.write('design.yaml', '- { name: Design, text: Write the design of the export., context: { region: design }, from: r1 }\n')
+    p.write('design.yaml', '- { name: Design, text: Write the design of the export., context: { section: design }, from: r1 }\n')
     ok(await p.agent(`task split ${arch2} t4 --file=design.yaml`))
     const writer = tokenIn(ok(await p.agent(`assign ${arch2} t5 --role=writer`)).out)
     expect(ok(await p.agent(`brief ${writer}`)).out).toContain('FROM     r1 of t2 Design: docs/tsd.md#design')

@@ -14,7 +14,7 @@ const architect = async (p) => {
   return token
 }
 
-describe('a model gives an executive act', () => {
+describe('a model gives a permission', () => {
   test('a lead gives the architect its own Approve act; a linter has no act to give; only the giver revokes', async () => {
     const { p, lead, linter } = await reported()
     const until = '2026-10-26T09:00:00Z'
@@ -22,7 +22,7 @@ describe('a model gives an executive act', () => {
       .toContain(`x1: architect may approve writer until ${until}.`)
     expect((await p.agent(`grant ${linter} --act=approve --on=writer --to=architect --until=${until}`)).err)
       .toContain('may not give this act')
-    expect((await p.nanda('revoke x1', 'revoke')).err).toContain('only the giver revokes an executive act')
+    expect((await p.nanda('revoke x1', 'revoke')).err).toContain('only the giver revokes a permission')
     expect(ok(await p.agent(`revoke ${lead} x1`)).out).toContain('x1 revoked; the acts before it stay.')
     expect((await p.agent(`revoke ${lead} x1`)).err).toContain('already revoked')
   })
@@ -63,7 +63,7 @@ describe('drafts of a direction', () => {
   })
 
   test('after the Reject of a reviewer that is not a decider, only the accept of Nanda makes the draft official', async () => {
-    const direction = DIRECTION.replace('from: [Pathos, Logos]\n', 'from: [Pathos, Logos]\napprovedBy: { or: [region-lead, Nanda] }\n')
+    const direction = DIRECTION.replace('from: [Pathos, Logos]\n', 'from: [Pathos, Logos]\napprovedBy: { or: [section-lead, Nanda] }\n')
     const { p, lead } = await reported({ 'directions/tsd-writing.yaml': direction })
     const sol = await architect(p)
     p.write('cost.yaml', COST)

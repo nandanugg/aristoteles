@@ -1,4 +1,4 @@
-// The directions live in aristoteles (Nanda, 2026-11-10): work.yaml names none, a model drafts
+// The directions live in aristoteles (Nanda, 2026-11-10): aristoteles.yaml names none, a model drafts
 // each new direction (a high role, or a model run outside any task such as the skill that reads
 // an app), and its owner accepts it. A task names only a direction that has a version.
 import { describe, expect, test } from 'bun:test'
@@ -8,7 +8,7 @@ const SEEN = '--evidence="d1, the whole direction | each standard says what the 
 const fresh = async (files) => {
   const p = project(files)
   ok(await p.nanda('init'))
-  for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   return p
 }
 
@@ -78,15 +78,16 @@ describe('a new direction', () => {
     expect((await p.agent(`direction revise ${sol} hld-writing --file=edit.yaml`)).err).toContain('hld-writing has no version yet')
   })
 
-  test('work guide prints how to write a direction and how to review one', async () => {
+  test('work guide prints how to write a direction, how to review one, and the words of a decision', async () => {
     const p = await fresh()
     expect(ok(await p.agent('guide writing')).out).toContain('## Write for contextual retrieval')
     expect(ok(await p.agent('guide direction-review')).out).toContain('6. **Negative parallelism.**')
-    expect((await p.agent('guide other')).err).toContain('work guide <name>: the guides are direction-review, writing')
+    expect(ok(await p.agent('guide decision-words')).out).toContain('1. **No ids and no words of the tool.**')
+    expect((await p.agent('guide other')).err).toContain('work guide <name>: the guides are decision-words, direction-review, writing')
   })
 
-  test('work.yaml names no directions', async () => {
-    const p = project({ 'work.yaml': `${WORK_YAML}directions: directions/*.yaml\n` })
+  test('aristoteles.yaml names no directions', async () => {
+    const p = project({ 'aristoteles.yaml': `${WORK_YAML}directions: directions/*.yaml\n` })
     expect((await p.nanda('init')).err).toContain('directions are not files: each one lives in aristoteles')
   })
 })

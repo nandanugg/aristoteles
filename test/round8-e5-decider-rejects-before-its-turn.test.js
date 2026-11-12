@@ -10,15 +10,15 @@ import { init, INTRO_V2, ok, project, tokenIn, WORK_YAML } from
 const LINT = '--evidence="no-code-proof | the introduction | no paths or hashes there" ' +
   '--evidence="no-ticket-ids | the introduction | no ticket ids there"'
 
-describe('E5 decide order [architect, region-lead]: the lead rejects r1 before the architect decides', () => {
+describe('E5 decide order [architect, section-lead]: the lead rejects r1 before the architect decides', () => {
   test('the lead (which checks repeatable) rejects with a point that names no rule, and ends the writer\'s round', async () => {
-    const p = project({ 'work.yaml': `${WORK_YAML}decide:\n  - { resultsOf: writer, by: { order: [architect, region-lead] } }\n` })
+    const p = project({ 'aristoteles.yaml': `${WORK_YAML}decide:\n  - { resultsOf: writer, by: { order: [architect, section-lead] } }\n` })
     await init(p)
-    for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     ok(await p.nanda('task open --file=task.yaml'))
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
-    const lead = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=region-lead`)).out)
+    const lead = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=section-lead`)).out)
     ok(await p.agent(`brief ${lead}`))
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).out)
     ok(await p.agent(`brief ${writer}`))

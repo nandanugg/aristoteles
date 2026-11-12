@@ -13,8 +13,8 @@ is enough for the model that reads only that piece.
 - **Standard**: how the output looks. A standard follows from the words of its direction. A
   standard that its direction does not say needs a change of the direction first.
 - **Rule**: one check that a reviewer can do on one result of a maker (its output form in
-  `work.yaml`), and give evidence for. One rule is one check. The role that checks it is in the
-  draft (`checkedBy`), or, for a company direction, in `aristoteles.lock`.
+  `aristoteles.yaml`), and give evidence for. One rule is one check. The role that checks it is
+  in the draft (`checkedBy`), or, for a company direction, in `aristoteles.lock`.
 - `from` names the principles that ground the direction, of the eleven: Logos, Pathos, Ethos,
   Mythos, Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia.
 
@@ -47,8 +47,13 @@ is enough for the model that reads only that piece.
   The file holds the whole direction; `says: |` holds markdown. `work direction new` with no
   file prints its form.
 - A change of a direction: `work direction revise <token> <direction> --file=<edit.yaml>
-  --answers=<the Rejects and suggestions that it answers>`. The file adds, replaces, or removes
-  standards.
+  --answers=<the Rejects and suggestions that it answers> --why=<reason> --why-words="<fact>"`.
+  The file adds, replaces, or removes standards.
+- The reason (`--why`) names what a draft corrects. It is one of five: `Correct the rule`,
+  `Correct the standard`, `Correct the direction`, `Correct the reviewer` (the role that
+  checks a rule), `Shorten`. `--why-words` gives the fact behind it. Both show at the end of
+  `work direction show <draft>`, where the deciders read the draft. `work direction new` takes
+  them too.
 - A company direction: a folder in its repo, with one file for each entry:
   `direction.md`, `<standard id>/standard.md`, and `<standard id>/<rule id>.md`. It changes in
   its repo, with a pull request.

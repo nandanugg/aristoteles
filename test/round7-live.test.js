@@ -21,7 +21,7 @@ describe('what the live runs found', () => {
     const { p, lead } = await started()
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
-    await changeDirection(p, 'add:\n  - { id: short, says: Keep it short. }\n', { flags: '--why="short"' })
+    await changeDirection(p, 'add:\n  - { id: short, says: Keep it short. }\n', { flags: '--why="Correct the standard"' })
     p.write('docs/tsd.md', INTRO_V2)
     expect(ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`)).out)
       .toContain('it was made under an old version of a direction, so it uses no attempt')

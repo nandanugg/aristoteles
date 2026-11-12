@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test'
 import { DIRECTION, WORK_YAML, ok, project, started, tokenIn } from
   './harness.js'
-import { main } from '../cli.js'
+import { main } from './code.js'
 
 const withApprovedBy = (by) => DIRECTION.replace('from: [Pathos, Logos]\n', `from: [Pathos, Logos]\napprovedBy: ${by}\n`)
 
@@ -22,7 +22,7 @@ describe('C-C1 approvedBy names a low role, which never reviews a direction', ()
 describe('C-C2 approvedBy names a person who is not the owner', () => {
   test('approvedBy: { order: [architect, Bob] } passes init; neither Bob nor the owner can make a version official', async () => {
     const people = WORK_YAML.replace('  - name: Nanda\n', '  - name: Nanda\n  - name: Bob\n')
-    const p = project({ 'work.yaml': people, 'directions/tsd-writing.yaml': withApprovedBy('{ order: [architect, Bob] }') })
+    const p = project({ 'aristoteles.yaml': people, 'directions/tsd-writing.yaml': withApprovedBy('{ order: [architect, Bob] }') })
     ok(await p.nanda('init'))
     const init = await p.agent('direction new --file=directions/tsd-writing.yaml --by=assess')
     // The fix (2026-11-07): the draft of the direction is refused (init, before 2026-11-10).

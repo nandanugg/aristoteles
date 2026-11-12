@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { writeFileSync } from 'node:fs'
 import { changeDirection, codeStarted, evaluated, git, init, INTRO_V1, INTRO_V2, ok, project, reported, started, TASK_WHOLE, tokenIn, withWriter, WORK_YAML } from './harness.js'
 
 // One test for each finding of thought-test round 3 that the prototype closes. The id in
@@ -13,27 +14,27 @@ const architect = async (p, on = 'tsd-writing,t1') => {
 
 describe('the person, and only the person', () => {
   test('I-N1: no role is played by the person', async () => {
-    const p = project({ 'work.yaml': `${WORK_YAML}  nanda:\n    tier: person\n    description: x\n    intro: x\n    responsibilities: [x]\n    acts: [{ review: [writer] }]\n` })
+    const p = project({ 'aristoteles.yaml': `${WORK_YAML}  nanda:\n    tier: person\n    description: x\n    intro: x\n    responsibilities: [x]\n    acts: [{ review: [writer] }]\n` })
     expect((await p.nanda('init')).err).toContain('tier is low, medium, or high (the person needs no role)')
   })
 
   // Every path by which an agent could act for the person, tried in one table.
-  test('invariant: an agent cannot settle the person\'s raise, or accept for the person', async () => {
+  test('invariant: an agent cannot resolve the person\'s escalation, or accept for the person', async () => {
     const { p, lead } = await reported()
-    const raise = ok(await p.agent(`raise ${lead} --result=r1 --reason="only Nanda decides this"`)).out.match(/^(v\d+)/)[1]
-    expect((await p.agent(`review ${lead} r1 accept --settles=${raise} --reason="I decided it myself"`)).err).toContain('may not settle')
-    expect((await p.agent(`relay ${lead} Nanda accept r1 --evidence="repeatable | the introduction | a reviewer can repeat it" --quote="fine"`)).err)
+    const escalation = ok(await p.agent(`escalate ${lead} --result=r1 --reason="only Nanda decides this"`)).out.match(/^(v\d+)/)[1]
+    expect((await p.agent(`resolve ${lead} ${escalation} --resolution="I decided it myself"`)).err).toContain('may not resolve')
+    expect((await p.agent(`forward ${lead} Nanda accept r1 --evidence="repeatable | the introduction | a reviewer can repeat it" --quote="fine"`)).err)
       .toContain('Nanda approves directions and standards')
   })
 
-  test('I-N6: the ratify of a relayed accept shows the draft', async () => {
+  test('I-N6: the confirm of a forwarded accept shows the draft', async () => {
     const { p } = await started()
     const arch = await architect(p)
     p.write('edit.yaml', 'remove: [intro-story]\n')
     ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
-    const relayed = ok(await p.agent(`relay ${arch} Nanda accept d2 --evidence="edit.yaml | the cleanup" --quote="yes, go ahead with the cleanup"`)).out
-    const id = relayed.match(/^(e\d+)/)[1]
-    const r = ok(await p.nanda(`ratify ${id}`, 'ratify'))
+    const forwarded = ok(await p.agent(`forward ${arch} Nanda accept d2 --evidence="edit.yaml | the cleanup" --quote="yes, go ahead with the cleanup"`)).out
+    const id = forwarded.match(/^(e\d+)/)[1]
+    const r = ok(await p.nanda(`confirm ${id}`, 'confirm'))
     expect(r.out).toContain('- intro-story: Tell the story first, in plain words.')
   })
 
@@ -52,13 +53,13 @@ describe('directions', () => {
   test('I-N4: a revise refuses a second rule with an existing id', async () => {
     const { p } = await started()
     const arch = await architect(p)
-    p.write('edit.yaml', 'add:\n  - id: twin\n    says: A twin.\n    rules: [ { id: repeatable, says: "The region has a first sentence", checkedBy: linter } ]\n')
+    p.write('edit.yaml', 'add:\n  - id: twin\n    says: A twin.\n    rules: [ { id: repeatable, says: "The section has a first sentence", checkedBy: linter } ]\n')
     expect((await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`)).err).toContain('"repeatable" is already used')
   })
 
   test('I-N5: a medium does not accept a draft of a direction, even with a change grant', async () => {
     const { p, lead } = await started()
-    ok(await p.nanda('grant --act=change --on=tsd-writing --to=region-lead --until=2026-10-26T00:00:00Z', 'grant'))
+    ok(await p.nanda('grant --act=change --on=tsd-writing --to=section-lead --until=2026-10-26T00:00:00Z', 'grant'))
     p.write('edit.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
@@ -72,7 +73,7 @@ describe('directions', () => {
 
   test('I-N19: an official version lives in aristoteles, no file changes, and work goes on', async () => {
     const { p, writer } = await withWriter()
-    const { out } = await changeDirection(p, 'add:\n  - { id: short, says: Keep it short. }\n', { flags: '--why="short"' })
+    const { out } = await changeDirection(p, 'add:\n  - { id: short, says: Keep it short. }\n', { flags: '--why="Correct the standard"' })
     expect(out).toContain('is official: tsd-writing@2.')
     expect(ok(await p.nanda('direction show tsd-writing')).out).toContain('short: Keep it short.')
     expect(await Bun.file(`${p.dir}/directions/tsd-writing.yaml`).text()).not.toContain('Keep it short.')
@@ -83,7 +84,7 @@ describe('directions', () => {
     const { p, lead, linter } = await reported()
     ok(await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | the introduction | no paths or hashes" ` +
       '--evidence="no-ticket-ids | the introduction | no ticket ids here"'))
-    const { out } = await changeDirection(p, 'add:\n  - id: cost\n    says: Say the cost.\n    rules: [ { id: names-cost, says: "The introduction names the cost", checkedBy: linter } ]\n', { flags: '--why="cost"' })
+    const { out } = await changeDirection(p, 'add:\n  - id: cost\n    says: Say the cost.\n    rules: [ { id: names-cost, says: "The introduction names the cost", checkedBy: linter } ]\n', { flags: '--why="Correct the standard"' })
     expect(out).toContain('now under an old version: r1 (t1)')
     const next = ok(await p.agent(`next ${lead}`)).out
     expect(next).toContain('check r1 again under the new version')
@@ -110,22 +111,22 @@ describe('real work only', () => {
   test('I-N7: a commit of a repo inside the workspace is refused', async () => {
     const { p, app, impl } = await codeStarted()
     git(app, 'init', '-q', `${app}/fake`)
-    Bun.spawnSync(['sh', '-c', `echo hi > ${app}/fake/ok.txt`])
+    writeFileSync(`${app}/fake/ok.txt`, `hi\n`)
     git(`${app}/fake`, 'add', '.')
     git(`${app}/fake`, 'commit', '-q', '-m', 'fake')
     const sha = git(`${app}/fake`, 'rev-parse', 'HEAD').slice(0, 12)
     expect((await p.agent(`report ${impl} --output=app/fake@${sha}`)).err).toContain('is not in the workspace of t1')
   })
 
-  test('I-N11: a part may not report a region that a sibling part owns', async () => {
+  test('I-N11: a part may not report a section that a sibling part owns', async () => {
     const p = project({ 'task.yaml': 'name: The whole TSD\ntext: Write the TSD.\ndirections: [tsd-writing]\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n' })
     await init(p)
-    for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     ok(await p.nanda('task open --file=task.yaml'))
     const arch = await architect(p, 't1')
-    // Since round 5 (R5-5), the split itself is refused: in one file, every part has a region.
-    p.write('parts.yaml', '- { name: Intro, text: Write the intro., context: { region: introduction } }\n- { name: Design, text: Write the design. }\n')
-    expect((await p.agent(`task split ${arch} t1 --file=parts.yaml`)).err).toContain('and Design has no region; each part needs its own region of the file')
+    // Since round 5 (R5-5), the split itself is refused: in one file, every part has a section.
+    p.write('parts.yaml', '- { name: Intro, text: Write the intro., context: { section: introduction } }\n- { name: Design, text: Write the design. }\n')
+    expect((await p.agent(`task split ${arch} t1 --file=parts.yaml`)).err).toContain('and Design has no section; each part needs its own section of the file')
   })
 
   test('I-N12: punctuation is not evidence', async () => {
@@ -136,9 +137,9 @@ describe('real work only', () => {
 
   test('I-N15: a gate that cannot run records a reject, and the report stands', async () => {
     const { CODE_YAML } = await import('./harness.js')
-    const s = await codeStarted({ 'work.yaml': CODE_YAML.replace('run: "test -f ok.txt"', 'run: "no-such-gate-program"') })
+    const s = await codeStarted({ 'aristoteles.yaml': CODE_YAML.replace('run: "test -f ok.txt"', 'run: "no-such-gate-program"') })
     git(s.app, 'checkout', '-q', '-b', 'fix')
-    Bun.spawnSync(['sh', '-c', `echo fixed > ${s.app}/fix.txt`])
+    writeFileSync(`${s.app}/fix.txt`, `fixed\n`)
     git(s.app, 'add', '.')
     git(s.app, 'commit', '-q', '-m', 'fix')
     const report = ok(await s.p.agent(`report ${s.impl} --output=app@${git(s.app, 'rev-parse', 'HEAD').slice(0, 12)}`)).out
@@ -157,7 +158,7 @@ describe('claims and trees', () => {
     expect(ok(await p.agent(`resume ${lead} t1`)).out).toContain('resume t1 from k1 (saved by a1)')
   })
 
-  test('I-N13: a low checker reviews the result its brief named; a newer one means raise', async () => {
+  test('I-N13: a low checker reviews the result its brief named; a newer one means escalate', async () => {
     const { p, writer, linter } = await reported()
     ok(await p.agent(`brief ${writer}`))
     p.write('docs/tsd.md', INTRO_V2.replace('two files', 'two identical files'))
@@ -165,7 +166,7 @@ describe('claims and trees', () => {
     const r = await p.agent(`review ${linter} r2 accept --evidence="no-code-proof | the introduction | no paths or hashes" ` +
       '--evidence="no-ticket-ids | the introduction | no ticket ids here"')
     expect(r.err).toContain('your brief named r1')
-    expect(r.err).toContain(`work raise ${linter} --result=r1`)
+    expect(r.err).toContain(`work escalate ${linter} --result=r1`)
   })
 
   test('I-N14: a low agent whose unit is done is told to stop', async () => {
@@ -184,7 +185,7 @@ describe('claims and trees', () => {
 
   test('L4 and L1: a low checker sees only that its review is recorded; STOP names its act', async () => {
     const { p, linter } = await reported()
-    expect(ok(await p.agent('assignment show a3')).out).toContain('STOP after one review or one raise.')
+    expect(ok(await p.agent('assignment show a3')).out).toContain('STOP after one review or one escalation.')
     const r = ok(await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | the introduction | no paths or hashes" ` +
       '--evidence="no-ticket-ids | the introduction | no ticket ids here"')).out
     expect(r).toBe('v2: your review of r1 is recorded.\nSTOP: your parent continues.')
@@ -197,30 +198,30 @@ describe('claims and trees', () => {
   })
 })
 
-describe('relay', () => {
-  test('I-N16: a relay names a real channel and a target in the tree; an impossible answer is refused at once', async () => {
+describe('forward', () => {
+  test('I-N16: a forward names a real channel and a target in the tree; an impossible answer is refused at once', async () => {
     const { p, lead, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`raise ${writer} --reason="which merchant is it?"`))
-    expect((await p.agent(`relay ${lead} Nanda comment t1 --quote="use the merchant name" --channel=terminal`)).err).toContain('--channel is chat or github')
-    const r = await p.agent(`relay ${lead} Nanda answer q1 --quote="M-104"`)
+    ok(await p.agent(`escalate ${writer} --reason="which merchant is it?"`))
+    expect((await p.agent(`forward ${lead} Nanda comment t1 --quote="use the merchant name" --channel=terminal`)).err).toContain('--channel is chat or github')
+    const r = await p.agent(`forward ${lead} Nanda answer q1 --quote="M-104"`)
     expect(r.err).toContain('Nanda could not answer q1 now')
     expect(r.err).toContain('--to=owner')
-    expect((await p.agent(`relay ${lead} Nanda ask zzz --quote="why the ticket?"`)).err).toContain('"zzz" is not')
+    expect((await p.agent(`forward ${lead} Nanda ask zzz --quote="why the ticket?"`)).err).toContain('"zzz" is not')
   })
 
-  test('F-C6: a relayed point shows the person\'s words', async () => {
+  test('F-C6: a forwarded point shows the person\'s words', async () => {
     const { p, lead } = await reported()
     ok(await p.agent(`review ${lead} r1 accept --evidence="repeatable | the introduction | a reviewer can repeat it"`))
-    ok(await p.agent(`relay ${lead} Nanda reject r1 --point="no cost" --quote="the reader cannot see what it cost us"`))
-    expect(ok(await p.agent('blockers r1')).out).toContain('Nanda (relayed): "the reader cannot see what it cost us"')
+    ok(await p.agent(`forward ${lead} Nanda reject r1 --point="no cost" --quote="the reader cannot see what it cost us"`))
+    expect(ok(await p.agent('blockers r1')).out).toContain('Nanda (forwarded): "the reader cannot see what it cost us"')
   })
 })
 
 describe('advice', () => {
   test('I-N17: a point with no rule is a change step at once, not a redo', async () => {
     const { p, lead } = await reported()
-    ok(await p.agent(`review ${lead} r1 reject --point="the region never says who was hurt"`))
+    ok(await p.agent(`review ${lead} r1 reject --point="the section never says who was hurt"`))
     const next = ok(await p.agent(`next ${lead}`)).out
     expect(next).toContain('v2.1 needs a direction change')
     expect(next).not.toContain('redo t1')
@@ -230,7 +231,7 @@ describe('advice', () => {
   test('N3: long answers are cut in briefs, and question show prints them in full', async () => {
     const { p, lead, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`raise ${writer} --reason="which merchant?"`))
+    ok(await p.agent(`escalate ${writer} --reason="which merchant?"`))
     const long = 'M-104. '.repeat(60)
     ok(await p.agent(`answer ${lead} q1 --text="${long}"`))
     expect(ok(await p.agent(`brief ${writer}`)).out).toContain('(in full: work question show q1)')
@@ -242,21 +243,21 @@ describe('advice', () => {
     expect(ok(await p.agent('assignment show a2')).out).toContain('gate: test -f ok.txt (runs on each report')
   })
 
-  test('N15: waiting hides a raise on an old result', async () => {
+  test('N15: waiting hides an escalation on an old result', async () => {
     const { p, lead, writer, linter } = await reported()
-    ok(await p.agent(`raise ${linter} --result=r1 --reason="is two files a cost?"`))
-    expect(ok(await p.agent('waiting')).out).toContain('v2 raised on r1')
+    ok(await p.agent(`escalate ${linter} --result=r1 --reason="is two files a cost?"`))
+    expect(ok(await p.agent('waiting')).out).toContain('v2 escalated on r1')
     ok(await p.agent(`review ${lead} r1 reject --point="names no cost" --breaks=no-ticket-ids`))
     ok(await p.agent(`brief ${writer}`))
     p.write('docs/tsd.md', INTRO_V2.replace('two files', 'two files and a double export'))
     ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    expect(ok(await p.agent('waiting')).out).not.toContain('v2 raised on r1')
+    expect(ok(await p.agent('waiting')).out).not.toContain('v2 escalated on r1')
   })
 
   test('N17: a high agent splits first', async () => {
     const p = project({ 'task.yaml': TASK_WHOLE })
     await init(p)
-    for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     ok(await p.nanda('task open --file=task.yaml'))
     const arch = await architect(p, 't1')
     expect(ok(await p.agent(`next ${arch}`)).out).toContain(`split t1 first, then give each part to a medium role`)

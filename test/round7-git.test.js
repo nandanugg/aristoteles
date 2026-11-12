@@ -35,7 +35,7 @@ const twoTasks = async (task2) => {
 }
 // The code project of codeStarted with its own task file; undefined when the person's open is refused.
 const codeWith = async (taskFile) => {
-  const p = project({ 'work.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': taskFile, 'app/ok.txt': 'ok\n' })
+  const p = project({ 'aristoteles.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': taskFile, 'app/ok.txt': 'ok\n' })
   const app = `${p.dir}/app`
   git(app, 'init', '-q', '-b', 'main')
   git(app, 'add', '.')
@@ -140,7 +140,7 @@ describe('D3 a code workspace with no base: no commit check runs', () => {
 
   // The high role with a change grant on the task: its remake drops the base, and the checks go.
   test('an agent\'s remake drops the base; the base commit then passes as new work', async () => {
-    const p = project({ 'work.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': CODE_TASK, 'app/ok.txt': 'ok\n' })
+    const p = project({ 'aristoteles.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': CODE_TASK, 'app/ok.txt': 'ok\n' })
     const app = `${p.dir}/app`
     git(app, 'init', '-q', '-b', 'main')
     git(app, 'add', '.')

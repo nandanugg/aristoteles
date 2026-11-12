@@ -12,9 +12,9 @@ is not on the PATH, `work …` means:
 bun <the aristoteles folder>/bin/work.js …
 ```
 
-Go to the project folder that your prompt names (the folder with `work.yaml`) before the
-first command, and run every command there. The CLI also finds the nearest `work.yaml` above
-the current folder, and `WORK_DIR` overrides both.
+Go to the project folder that your prompt names (the folder with `aristoteles.yaml`) before the
+first command, and run every command there. The CLI also finds the nearest `aristoteles.yaml`
+above the current folder, and `WORK_DIR` overrides both.
 
 ## You got a command from your parent
 
@@ -25,8 +25,48 @@ brief, not this file, for anything about your task.
 - The token (`a7.k3f9q`) is your identity. Pass it first in every command. Do not show it
   to other agents, and do not use another token.
 - A refusal ends with a `next:` line. Do what it says. A low-tier agent never tries other
-  commands; it raises.
+  commands; it escalates.
+- The exit code says what failed: 1 a refusal (do the `next:` line); 2 a mistake in the
+  command line (write the command again as the message says); 3 a failure outside the work (a
+  file, git, or a damaged store: tell your parent, and the host records it with
+  `work problem`); 70 a bug of `work` (stop, and tell your parent; the host tells the person).
 - Stop where the brief says STOP.
+
+## You are the host of a project (the UI)
+
+The UI of a dir (`work start`) started you in a terminal with "You are the host" and your run
+(`h<n>`). A project is your session: you talk with the person, then you run its top task.
+
+1. **Talk.** Ask the person what they want, in their terminal (here). Read the directions
+   (`work direction show <id>`, `work search <words>`) and the dir. Do not start any work yet.
+2. **Draft the top task.** Write a task file with the role that does it, a high role of
+   `aristoteles.yaml` (`work task open` with no file prints the form; add `role: <role>`), then
+   `work task draft --file=<file> --by=<your run>`. A project is large: for example a whole
+   TSD.
+3. **Wait for the person to open it.** The UI then types `work brief <token>` here: from then on
+   you are the Sol of the top task, and that brief tells you what to do.
+4. **Everything else is yours.** Only three kinds of decision reach the person: a system
+   problem, a direction problem, and the end of the project. Everything else, you handle:
+   - a question of a model comes to you: answer it from the directions (`work answer <token>
+     <q> --text=...`). When it shows that a direction can be read in two ways, draft the change
+     of the direction (`work direction revise`); a Sol reviewer polishes it, and the person
+     accepts it.
+   - a terminal of a child stops at a prompt, or fails its 3 retries: the UI types one line into
+     your terminal. Answer a prompt with `work send <token> <child> --text=<input>`. When a
+     system the work needs does not work (a cluster, a VPN, an account limit), record it:
+     `work problem <token> <the task that it stops> --says="<what happened, and how to fix it>"`.
+   - before the person sees a decision, write its words, so that the person can decide from
+     them alone: read `work guide decision-words` first, then
+     `work note <token> words --on=<sp.., d.., h..> --text="..."` (a direction problem also
+     takes `--hope`).
+
+### Real agents and subagents
+
+- A medium (Terra) or high (Sol) role runs as a **real agent**, in its own terminal that the
+  person can inspect. Do not start it yourself: `work assign` records it, and the UI starts its
+  terminal with its brief.
+- A low (Luna) role runs as a **subagent** inside your own session: start it as below. It does
+  a short job, so it needs no terminal of its own.
 
 ## You give work to a subagent
 
@@ -41,12 +81,28 @@ brief, not this file, for anything about your task.
 2. Start that subagent (low = Haiku, medium = Sonnet, high = Opus) with exactly that prompt.
    Keep the token: a later attempt of the same assignment uses the same command.
 3. When it stops, run `work next <your token>`. It lists the steps that are ready, with
-   each command filled in (a redo, a checker to start, an answer, the finish steps).
-   `work waiting --for=<your id>` lists what waits for you.
+   each command filled in (a redo, a checker to start, an escalation to resolve, an answer,
+   the finish steps). `work waiting --for=<your id>` lists what waits for you.
 
 Read a child's brief with `work assignment show <id>` (it takes no snapshot). If a child
-stopped in the middle of an attempt, `work release <your token> <child id>` frees it for a
-new subagent.
+stopped in the middle of an attempt, `work free <your token> <child id>` frees it for a new
+subagent.
+
+## Escalations
+
+An agent escalates when it cannot go on (`work escalate <token> --reason="..."`), or when it
+cannot decide on a result (`--result=<r>`). The escalation goes to the nearest open assignment
+above it, or to the person when none is open. An escalation with no result is a question
+(`q<n>`): its answerer answers it with `work answer`. An escalation of a result (`v<n>`) is
+resolved in words:
+`work resolve [<token>] <escalation> --resolution="<the agreement, or the direction>"`.
+
+- A resolve accepts and rejects nothing. The deciders of the result then accept or reject it
+  with `work review`, as for any result.
+- A decider's Reject is a fault of the maker: it uses an attempt. A point of a Reject that no
+  rule covers shows that the direction needs a change: it waits for a draft that changes the
+  direction and answers that point.
+- There is no waiver. Each rule of a result gets its evidence, or its direction changes.
 
 ## Acts that belong to the person
 
@@ -54,26 +110,36 @@ The person runs commands with no token, at a terminal. An agent never runs a per
 
 - When the person says a decision in the conversation, the top agent (medium or high, with
   no parent) records it with their exact words:
-  `work relay <token> <person> reject|ask|comment|accept|answer <id> --quote="<words>"`.
-  An accept of a draft (`d<n>`) gives `--evidence` too: where the person read, and what they saw.
-- A relayed reject, question, or comment counts at once, because it only stops work or
-  informs. A relayed answer, accept, or settle (an accept with `--settles`) moves work
-  forward, so it waits until the person runs `work ratify <event>` at a terminal; the prompt
-  shows them the act. The person accepts no result: a lead decides it, and the person rejects
-  a result only after its deciders accept it.
+  `work forward <token> <person> reject|ask|comment|answer|accept|resolve <id> --quote="<words>"`.
+  An accept of a draft (`d<n>`) gives `--evidence` too: where the person read, and what they
+  saw.
+- A forwarded reject, question, or comment counts at once, because it only stops work or
+  informs. A forwarded answer, accept, or resolve moves work forward, so it waits until the
+  person runs `work confirm <event>` at a terminal; the prompt shows them the act. The person
+  accepts no result: a lead decides it, and the person rejects a result only after its
+  deciders accept it.
+- An escalation to the person waits for the person's resolve: `work resolve <escalation>
+  --resolution="..."` at a terminal, or their words in the conversation, forwarded as
+  `work forward <token> <person> resolve <escalation> --quote="<words>"` and confirmed.
 - To bring a fact from the person to the work, ask with `work ask <token> --to=owner
-  --text="..."`, then relay the person's answer to that question; they ratify it. The CLI
-  refuses a relay that the person could not do now, and says why.
-- Grants, ratifies, and config changes are the person's alone. Ask; do not do them.
+  --text="..."`, then forward the person's answer to that question; they confirm it. The CLI
+  refuses a forward that the person could not do now, and says why.
+- A permission (`work grant`, `work revoke`), a confirm, and a config change are the person's
+  alone. Ask; do not do them.
 
 ## The person sets up a project
 
-1. Write `work.yaml` (people, limits per tier, roles). `DESIGN.md` section 3 shows it. Every
-   role is low, medium, or high; the person plays no role. `work.yaml` names no directions.
+1. Write `aristoteles.yaml` (people, limits per tier, roles, and `decide` when a maker has more
+   than one decider). `schema/aristoteles.schema.json` gives its form. Every agent role is low,
+   medium, or high; a program role (`kind: program`) runs a command on each report and has no
+   tier; the person plays no role. `aristoteles.yaml` names no directions.
+   `outsideSourceHours` (72 by default) is how long a revision of a source outside git holds
+   after an agent reads it; then `work next` asks an agent to read it again.
 2. `work init` stores it in aristoteles, the one SQLite file of this machine
-   (`~/.aristoteles/aristoteles.db`). From then on a hand edit of `work.yaml` is refused until
-   `work config apply` (role words only).
-3. For each role: `work role fit <role>`, then `work role fit <role> --answers=<file>`.
+   (`~/.aristoteles/aristoteles.db`, or the file that `ARISTOTELES_DB` names). A dir starts
+   with no records: nothing of an earlier tool or store comes in. From then on a hand edit of
+   `aristoteles.yaml` is refused until `work config apply` (role words only).
+3. For each agent role: `work role fit <role>`, then `work role fit <role> --answers=<file>`.
    A role without a fit record for its current words cannot be assigned. The `role-fitness`
    skill explains the questions.
 4. The directions: a model drafts each one, and the person accepts or rejects it. The `assess`
@@ -81,4 +147,6 @@ The person runs commands with no token, at a terminal. An agent never runs a per
    person gives direction in words with `work suggest --says="..."`. A company direction comes
    from a git repo: name it in `aristoteles.lock`, and accept each new commit.
 5. `work task open --file=<task.yaml>` (`work task open` prints the template), then
-   `work assign <task> --role=<role>` and give the printed command to the top agent.
+   `work assign <task> --role=<role>` and give the printed command to the top agent. A high
+   role splits, closes, or remakes a task only with a Change act on it:
+   `work grant --act=change --on=<task> --to=<role> --until=<time>`.

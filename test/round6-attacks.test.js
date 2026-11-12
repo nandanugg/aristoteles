@@ -5,13 +5,13 @@ import { CODE_DIRECTION, CODE_TASK, CODE_YAML, codeStarted, git, init, ok, proje
 
 const TSD_TASK = 'name: The TSD\ntext: Write the TSD.\ndirections: [tsd-writing]\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n'
 const tsd = (intro, design, failure = 'TODO') => `# TSD\n\n## Introduction\n\n${intro}\n\n## Design\n\n${design}\n\n## Failure\n\n${failure}\n`
-const PARTS = '- { name: Design, text: Write the design., context: { region: design } }\n' +
-  '- { name: Failure, text: Write the failure cases., context: { region: failure } }\n'
+const PARTS = '- { name: Design, text: Write the design., context: { section: design } }\n' +
+  '- { name: Failure, text: Write the failure cases., context: { section: failure } }\n'
 const UNTIL = '--until=2026-12-31T00:00:00Z'
-const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the region" ' +
-  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the region"'
+const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the section" ' +
+  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the section"'
 
-const fit = async (p, roles = ['architect', 'region-lead', 'writer', 'linter']) => {
+const fit = async (p, roles = ['architect', 'section-lead', 'writer', 'linter']) => {
   for (const role of roles) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
 }
 // A high architect on a task, with a change grant on the given ids.
@@ -38,7 +38,7 @@ describe('B1 remake: an agent remakes a task with no rules', () => {
     const arch = await architectOn(p, 't1', 't1')
     p.write('parts.yaml', PARTS)
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
-    // The same part, with no directions (and no region): no rule applies to it.
+    // The same part, with no directions (and no section): no rule applies to it.
     p.write('bare.yaml', 'name: Design\ntext: Write the design.\ndirections: []\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n')
     const remake = await p.agent(`task remake ${arch} t2 --file=bare.yaml --reason="the design is narrower"`)
     // The fix (2026-11-07): an agent's remake keeps the directions and the context of the task.
@@ -47,7 +47,7 @@ describe('B1 remake: an agent remakes a task with no rules', () => {
 })
 
 describe('B2 directions: a change that says nothing new to the task answers the person\'s Reject', () => {
-  test('agents answer the person\'s Reject of t1 with a standard for another region; t1 is Accepted again', async () => {
+  test('agents answer the person\'s Reject of t1 with a standard for another section; t1 is Accepted again', async () => {
     const { p, lead, linter } = await reported()
     ok(await p.agent(`review ${linter} r1 accept ${LINT}`))
     ok(await p.agent(`review ${lead} r1 accept --evidence="repeatable | docs/tsd.md#introduction | a reader can repeat the double export"`))
@@ -59,11 +59,11 @@ describe('B2 directions: a change that says nothing new to the task answers the 
     // The criticism is evaluated first (2026-11-08), so the revise is judged on its words.
     ok(await p.agent(`evaluate ${arch} t1 --wrong="the introduction misses the impact" --why="no standard asks for it" ` +
       '--improve="a standard for the impact" --level=standard'))
-    p.write('edit.yaml', 'add:\n  - id: failure-story\n    where: { region: failure }\n' +
+    p.write('edit.yaml', 'add:\n  - id: failure-story\n    where: { section: failure }\n' +
       '    says: The failure cases say what the merchant sees.\n' +
       '    rules:\n      - { id: merchant-sees, says: "Each failure case says what the merchant sees", checkedBy: linter }\n')
     const revise = await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml --answers=${vid}`)
-    // Correct: the draft says the same to t1 (region introduction), so it does not answer the point.
+    // Correct: the draft says the same to t1 (section introduction), so it does not answer the point.
     expect(revise.code).toBe(1)
     expect(revise.err).toContain('says the same to t1 as before')
     expect(ok(await p.agent('task show t1')).out).not.toContain('Accepted')
@@ -124,11 +124,11 @@ describe('B5 questions: a question to a finished assignment', () => {
   test('after the person finishes the lead, nobody can answer the writer\'s question, and t1 never closes it', async () => {
     const { p, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`raise ${writer} --reason="the facts file has no merchant name; I looked in docs/facts.md"`))
+    ok(await p.agent(`escalate ${writer} --reason="the facts file has no merchant name; I looked in docs/facts.md"`))
     ok(await p.nanda('finish a2'))
     const finish = await p.nanda('finish a1')
     if (finish.code !== 0) return // refused while q1 waits for a1: no dead end
-    const lead2 = tokenIn(ok(await p.nanda('assign t1 --role=region-lead')).out)
+    const lead2 = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
     ok(await p.agent(`brief ${lead2}`))
     const byLead = await p.agent(`answer ${lead2} q1 --text="use the merchant id from the export log"`)
     const byPerson = await p.nanda('answer q1 --text="use the merchant id from the export log"')
@@ -137,23 +137,23 @@ describe('B5 questions: a question to a finished assignment', () => {
   })
 })
 
-describe('B6 split: the parts of a task with a region', () => {
-  test('a split of t1 (region introduction) makes parts that can never report', async () => {
+describe('B6 split: the parts of a task with a section', () => {
+  test('a split of t1 (section introduction) makes parts that can never report', async () => {
     const p = project()
     await init(p)
     await fit(p)
     ok(await p.nanda('task open --file=task.yaml'))
     const arch = await architectOn(p, 't1', 't1')
-    // The fix (2026-11-07): next offers a medium role for a task with a region, and a split
-    // whose parts share the region is refused with a next step that works.
+    // The fix (2026-11-07): next offers a medium role for a task with a section, and a split
+    // whose parts share the section is refused with a next step that works.
     const next = ok(await p.agent(`next ${arch}`)).out
     expect(next).not.toContain('split t1 first')
     expect(next).toContain('run t1 with a medium role')
     p.write('parts.yaml', '- { name: Problem, text: Write the problem. }\n- { name: Impact, text: Write the impact on the merchant. }\n')
     const split = await p.agent(`task split ${arch} t1 --file=parts.yaml`)
-    expect(split.err).toContain('t1 has the region introduction, so it is one unit of work; it is not split')
+    expect(split.err).toContain('t1 has the section introduction, so it is one unit of work; it is not split')
     expect(split.err).toContain('run t1 with a medium role')
-    ok(await p.agent(`assign ${arch} t1 --role=region-lead`))
+    ok(await p.agent(`assign ${arch} t1 --role=section-lead`))
   })
 })
 
@@ -184,8 +184,10 @@ describe('B8 waiver: the person waives', () => {
   // Decided 2026-11-07: the person accepts no result, so gives no waiver; the help lists no waive.
   test('the person\'s waive is refused with the true reason, and the person help lists no waive', async () => {
     const { p } = await reported()
-    const r = await p.nanda('waive r1 --rules=no-ticket-ids --reason="urgent release" --until=2026-10-26T09:00:00Z')
-    expect(r.err).toContain('Nanda accepts no result, so gives no waiver')
+    const r = await p.nanda('waive r1 --rules=no-ticket-ids --reason="urgent fix" --until=2026-10-26T09:00:00Z')
+    // The waiver is removed (the owner's ruling 10, 2026-11-12): there is no waive.
+    expect(r.err).toContain('there is no command "waive"')
+    expect(r.code).toBe(2)
     const help = (await p.nanda('help')).out + (await p.nanda('help')).err
     expect(help).not.toContain('waive <r>')
   })
@@ -194,7 +196,7 @@ describe('B8 waiver: the person waives', () => {
 describe('B9 merge base: the base check fails open', () => {
   test('when the base of the workspace does not resolve, the base commit itself passes as new work', async () => {
     // As codeStarted, but the person's task file names base: trunk; the repo has only main.
-    const p = project({ 'work.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION,
+    const p = project({ 'aristoteles.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION,
       'task.yaml': CODE_TASK.replace('base: main', 'base: trunk'), 'app/ok.txt': 'ok\n' })
     const app = `${p.dir}/app`
     git(app, 'init', '-q', '-b', 'main')

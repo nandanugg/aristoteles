@@ -21,4 +21,4 @@ questions:
     ask: Does each responsibility name the exact output and the exact command?
   - id: 7
     short: a way to stop
-    ask: Does the role know when to raise instead of guessing?
+    ask: Does the role know when to escalate instead of guessing?

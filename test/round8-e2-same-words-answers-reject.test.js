@@ -1,6 +1,6 @@
 // Round 8, attacker E. Rule (round 7, C-D2): "a replace with the same words says nothing new to a
 // task, so it answers no Reject"; "standards compare by what they say" (DESIGN section 8). The fix
-// (sameStandard in engine.js) compares the rules of two standards by position and by object, so a
+// (sameStandard in the engine) compares the rules of two standards by position and by object, so a
 // replace that says the same words in another way still says "something new" to t1, and an agent
 // answers the person's Reject with it.
 import { describe, expect, test } from 'bun:test'
@@ -8,8 +8,8 @@ import { DIRECTION, ok, reported, tokenIn } from
   './harness.js'
 
 const UNTIL = '--until=2026-12-31T00:00:00Z'
-const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the region" ' +
-  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the region"'
+const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the section" ' +
+  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the section"'
 const REPEATABLE = '--evidence="repeatable | docs/tsd.md#introduction | a reader can repeat the double export"'
 
 // t1 is Accepted, the person rejects it, and the architect (with a change grant) can revise.
@@ -47,13 +47,13 @@ describe('E2 a replace with the same words in another order answers the person\'
 
   test('a "where" with the same two keys, written in the other order', async () => {
     // A direction whose introduction standard applies by two keys of the context.
-    const direction = DIRECTION.replace('    where: { region: introduction }\n', '    where: { region: introduction, audience: merchant }\n')
+    const direction = DIRECTION.replace('    where: { section: introduction }\n', '    where: { section: introduction, audience: merchant }\n')
     const task = 'name: The Introduction\ntext: Write the Introduction from the agreed facts.\ndirections: [tsd-writing]\n' +
-      'context: { region: introduction, audience: merchant }\nworkspace:\n  - { source: tsd, path: docs/tsd.md }\n'
+      'context: { section: introduction, audience: merchant }\nworkspace:\n  - { source: tsd, path: docs/tsd.md }\n'
     const { p, arch, vid } = await criticised({ 'directions/tsd-writing.yaml': direction, 'task.yaml': task })
-    p.write('same.yaml', 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      where: { audience: merchant, region: introduction }\n' +
+    p.write('same.yaml', 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      where: { audience: merchant, section: introduction }\n' +
       '      says: Tell the story first, in plain words.\n      rules:\n' +
-      '        - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: region-lead }\n')
+      '        - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }\n')
     const revise = await p.agent(`direction revise ${arch} tsd-writing --file=same.yaml --answers=${vid}`)
     expect(revise.err).toContain('says the same to t1 as before')
     expect(ok(await p.agent('task show t1')).out).toContain('Returned')
@@ -75,9 +75,9 @@ describe('E3 a rule that supersedes itself is a "new" rule with the same words',
     expect((await p.agent(`task close ${arch} t1 --reason="done enough"`)).err).toContain("is the person's open Reject on t1")
     // intro-story word for word as in tsd-writing@1; the rule keeps its id, words, and checker,
     // and says that it supersedes the rule of the same id.
-    p.write('same.yaml', 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      where: { region: introduction }\n' +
+    p.write('same.yaml', 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      where: { section: introduction }\n' +
       '      says: Tell the story first, in plain words.\n      rules:\n' +
-      '        - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: region-lead, supersedes: [repeatable] }\n')
+      '        - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead, supersedes: [repeatable] }\n')
     // The fix (2026-11-08): a rule does not supersede itself, so the revise is refused.
     expect((await p.agent(`direction revise ${arch} tsd-writing --file=same.yaml`)).err)
       .toContain('rule repeatable supersedes itself; a changed rule keeps its id, and supersedes names other rules')

@@ -1,13 +1,13 @@
 tier: low
 intro: You execute one unit of work, report it, and stop.
 stop:
-  do: STOP after one report or one raise. Do not run other work commands.
-  review: STOP after one review or one raise. Do not run other work commands.
+  do: STOP after one report or one escalation. Do not run other work commands.
+  review: STOP after one review or one escalation. Do not run other work commands.
 commands:
   report:
     when: do
     run: work report {you} --output={output}
-    rule: If WORK IN names a verify command, run it first; exit 0 means ready. If it fails and you cannot fix it, raise with its output.
+    rule: If WORK IN names a verify command, run it first; exit 0 means ready. If it fails and you cannot fix it, escalate with its output.
   accept:
     when: review
     run: work review {you} {result} accept {evidence}
@@ -16,11 +16,11 @@ commands:
     when: review
     run: work review {you} {result} reject --point="<what is wrong, and where>" --breaks=<rule id>
     rule: One --point for each problem. Name the rule that it breaks; leave --breaks out if no rule covers it.
-  raise:
+  escalate:
     when: any
-    run: work raise {you} --reason="<the missing fact, and where you looked>"
-    rule: Raise when the brief is not enough to do the work. Do not guess.
+    run: work escalate {you} --reason="<the missing fact, and where you looked>" [--result={result}]
+    rule: Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest:
     when: any
     run: work suggest {you} <rule id> --says="<why it cannot be met, with the fact>"
-    rule: The rule stays until an official draft answers the suggestion; raise if you cannot continue.
+    rule: The rule stays until an official draft answers the suggestion; escalate if you cannot continue.

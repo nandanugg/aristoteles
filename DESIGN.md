@@ -11,9 +11,9 @@ line says what to do next, or why it cannot, with the exact command.
 ## 0. History of the thought tests
 
 **Round 1 (draft 1, 40 findings, thought only).** Every acting command takes the caller's
-token first. A claim per attempt. Parents and tiers. One raise command. Relayed person acts.
+token first. A claim per attempt. Parents and tiers. One escalate command. Forwarded person acts.
 A digest for each result. Reject points. Ids with kind prefixes. `waiting`, `status`, `next`,
-`direction review`, `source`, `relay`, `ratify`, programs. The store is the only truth.
+`direction review`, `source`, `forward`, `confirm`, programs. The store is the only truth.
 
 **Round 2 (draft 2 as a running prototype, about 60 findings).** Three tests drove the CLI:
 an Opus agent that tried to break identity and the rules, an Opus agent that walked real
@@ -24,46 +24,46 @@ What changed:
 - Programs run with no shell, in the workspace folder or in a clean checkout of the
   reported commit. An output has only safe characters and stays inside the project.
 - A direction review comes from a medium or high actor outside the suggester's tree. Only a
-  person removes a rule that a person checks. Nobody settles their own raise, and a raise
-  to a person is settled only by that person.
-- A relay comes only from the top agent (medium or high, no parent), inside its own tree.
-  A relayed answer now waits for ratify, like an accept.
+  person removes a rule that a person checks. Nobody resolves their own escalation, and an
+  escalation to a person is resolved only by that person.
+- A forward comes only from the top agent (medium or high, no parent), inside its own tree.
+  A forwarded answer now waits for confirm, like an accept.
 - Evidence names the place in the result and says what was seen. An unchanged result does
-  not answer a Reject. A report of unchanged work, of another file, or of another region is
+  not answer a Reject. A report of unchanged work, of another file, or of another section is
   refused. A join that changes an accepted part is refused.
 - The tier's `maxAttempts` is the default and the ceiling; `resultLines` works; an unknown
   limit is refused. A waiver by an agent lasts at most `waiverHours` (72) and never covers a
   person-checked rule.
-- A medium or high claim lasts until finish. The person releases or finishes any assignment.
+- A medium or high claim lasts until finish. The person frees or finishes any assignment.
 - Briefs: the project folder, ANSWERS to the questions, PARTS of a split task, RULES for
   medium and high, evidence lines only for the rules that the reader checks.
 - `waiting` shows what waits for the person (person-checked rules, change points, waivers,
-  relayed acts with their content). `next` prints the redo step, the checker to start again,
+  forwarded acts with their content). `next` prints the redo step, the checker to start again,
   and the finish steps.
 - New: `work recheck`, `work config restore`, `work direction show <id>@<n>`. The CLI records
   the merge base of a reported commit, so `resume` finds it when main moves.
 
-**Round 3 (draft 3, about 45 findings).** A live run first: a Sonnet region lead, a Haiku
+**Round 3 (draft 3, about 45 findings).** A live run first: a Sonnet section lead, a Haiku
 writer, a Haiku linter, and the person finished a task from one prompt each ("I never had to
 guess a token, a task id or a flag"). Then an Opus attacker and an Opus flows walker. The
-lesson: a rule checked in one command was passed through another (relay, ratify, settle,
+lesson: a rule checked in one command was passed through another (forward, confirm, resolve,
 checkpoint). What changed:
 
 - **One place for the checks of every act.** A table (`GUARD` in `cli.js`) says, for each
   event type, whether it needs a claim and which ids must be in the caller's task tree;
   every agent event passes it, before any check of the act itself. The digest check is in
-  the review handler, so a review, a relayed review, and a ratified review all pass it.
+  the review handler, so a review, a forwarded review, and a confirmed review all pass it.
 - **Removed:** person roles (the person acts only with no token at a terminal), an agent's
-  split that answers the person's Reject (only that person's own split does), free-text relay
+  split that answers the person's Reject (only that person's own split does), free-text forward
   channels.
-- **Engine:** a settle decides only a Raise and never counts as an accept; an approver below
+- **Engine:** a resolve ends only an escalation and never counts as an accept; an approver below
   the suggester counts as the suggester; a changed `when` cannot take a person-checked rule
   off an open task without the person; a new rule takes no existing id; a recheck, or a
   second open maker, makes no end-of-round question; a task takes its closed parts' rules;
-  a raise goes to the nearest open assignment above.
+  an escalation goes to the nearest open assignment above.
 - **Real work:** a report equal to the untouched output, a commit already on its base, a
-  commit of a repo inside or around the workspace, and a sibling part's region are refused.
-- **Relay:** a dry run of the person's act at relay time; a relayed approve's ratify shows
+  commit of a repo inside or around the workspace, and a sibling part's section are refused.
+- **Forward:** a dry run of the person's act at forward time; a forwarded approve's confirm shows
   the version and the person-checked rules it removes.
 - **Advice:** after a direction change, `next` checks the unchanged result again instead of
   a redo; a result built on an old base shows in `next` with no checkpoint; answers are cut
@@ -73,17 +73,17 @@ checkpoint). What changed:
 
 **Round 4 (draft 4, the last round by the stop rule, about 30 findings).** An Opus attacker
 tried seven invariants at every entry point, and an Opus walker finished three real flows
-(a code fix with a moved main, a two-region TSD with a whole-page join, a cold resume).
+(a code fix with a moved main, a two-section TSD with a whole-page join, a cold resume).
 Invariant 1 (only the person acts as the person) held at every entry point. The round was
 **not clean**: other paths let one act do another act's work. Fixed after the round, each
 with a test in `test/round4.test.js`:
 
-- a relay after a version became official failed (a replay wrote into the stored config);
+- a forward after a version became official failed (a replay wrote into the stored config);
 - after the parts were accepted, `next` said to split again; a task with parts cannot split;
 - `split --review` and `approve --answers` closed points with a rule, or points of another
   tree; a closed part dropped the person's open point (the close is now refused);
 - two directions could get one rule id; a revise could name a checker that is not a role;
-- a part could drop its workspace base, or take a region of another task in its tree;
+- a part could drop its workspace base, or take a section of another task in its tree;
 - a report equal to earlier rejected work, or a join, were judged wrong (refused / allowed);
 - a low checker briefed before any report could review a later result;
 - a program was printed as a checker to assign; the change step was hidden behind a redo;
@@ -102,11 +102,11 @@ does not close its cause. So each fix below closes a cause in one place. Each ha
 - **Closed parts.** A closed part owns nothing: the join may change its text, and its rules
   check the join. A closed task takes no part and no recheck. A task closes after its parts,
   and an agent's close never drops the person's open Reject anywhere under the task.
-- **Regions.** One check at every report: each region that another open task of the tree
+- **Sections.** One check at every report: each section that another open task of the tree
   owns, inside the output, stays as that task's latest result left it (whole-file joins,
-  nested headings, parts). New design rule: parts that share a file each own a region of it,
+  nested headings, parts). New design rule: parts that share a file each own a section of it,
   or none does.
-- **Untouched work.** The first brief records each workspace file and each of its regions; a
+- **Untouched work.** The first brief records each workspace file and each of its sections; a
   report equal to that is refused (this also closes R4-8). A join skips this only when a part
   has an accepted result. A part with an empty workspace is refused.
 - **Direction changes.** Each rule of a new or replaced standard needs evidence again, from
@@ -117,7 +117,7 @@ does not close its cause. So each fix below closes a cause in one place. Each ha
   and a point names a rule of the reviewed task. An agent does not split past the person's
   open point with no rule; `waiting` shows the person's own split as an answer.
 - **Record and next.** The log and the blockers name the split that answered a point; an
-  accepted result names its output; a ratified approve prints what a terminal approve prints
+  accepted result names its output; a confirmed approve prints what a terminal approve prints
   (old results, tasks that nobody works on, the person-checked rules that leave a task). A
   maker with no attempts left takes no claim. A parent that lost a child's token is told how
   to go on. `next` starts only its own children. `waiting` names a task that nobody works on.
@@ -126,7 +126,7 @@ does not close its cause. So each fix below closes a cause in one place. Each ha
   example; verify runs in the project folder; a reviewer sees the base of a commit; `resume`
   lists the answers that came after the checkpoint.
 - Three earlier tests changed with the design: a split that mixes parts with and without a
-  region is refused at the split (I-N11, R4-10), and the gate does not run again after a
+  section is refused at the split (I-N11, R4-10), and the gate does not run again after a
   change that has no rule for it (FW-6).
 
 **The needs model (Nanda's Part 5 answers, 2026-10-28).** No joining result and no `join` key:
@@ -135,7 +135,7 @@ result also needs its decider's accept. A closed task moves its rules nowhere; a
 not closed, and the task that needs it is remade (`work task remake`), with its accepted work
 carried and checked again. The engine brief holds short ANSWERS, NOTES, and NEEDS. Two of the
 three design rules of round 5 went with it ("a closed part owns nothing", "close after the
-parts"); "every part in one file has a region, or none" stays. Tests: `test/needs.test.js`, and
+parts"); "every part in one file has a section, or none" stays. Tests: `test/needs.test.js`, and
 the changed tests of rounds 2 to 5; the property test ran 400 seeds on it
 (`thought-tests/proofs.md`).
 
@@ -145,14 +145,14 @@ the rules of 2026-11-07 with real agents; two Opus attackers found 18 faults, al
 a test in `test/round6-*.test.js`.
 
 **Round 7 (2026-11-07).** A second attack round on those fixes found 21 faults, all fixed (tests
-in `test/round7-*.test.js`), and a live remake with two regions ran `decide: order` and
+in `test/round7-*.test.js`), and a live remake with two sections ran `decide: order` and
 `approvedBy` with real agents (`thought-tests/proofs.md` section 5, Tests 4 and 5).
 
 **Round 8 (2026-11-08).** Nanda chose one maker for each file at a time (section 8). A third
 attack round of two Opus attackers on the round-7 fixes and on that file queue found 26 faults,
 all fixed (tests in `test/round8-*.test.js`, about 580k tokens): the worst let a change with the
-same words answer the person's point, let a later decider reject before its turn, let a region
-report change an accepted region beside it, and let one file have two names, so two makers held
+same words answer the person's point, let a later decider reject before its turn, let a section
+report change an accepted section beside it, and let one file have two names, so two makers held
 it. Section 11 lists the rules derived while fixing them.
 
 **Evaluation (2026-11-08).** Nanda: "when mistake happen, the correct course would be to
@@ -176,7 +176,7 @@ the rules derived while fixing them.
 first. The page has 20 flows (8 happy, 12 negative); a test of the page (outside this repo) runs each one
 through the CLI. The runs found two replies that pointed to a wrong step, both fixed (tests in
 `test/replies.test.js`): an agent's remake of a top task said "split t2 or assign it", but t2 is
-outside the agent's tree, so the reply names the owner who assigns it; a ratify of a relayed
+outside the agent's tree, so the reply names the owner who assigns it; a confirm of a forwarded
 approve did not say that the version is official. `test/harness.js` has `wait(minutes)`, so that
 a waiver can end in a test. Two suggestions are on the page (Part 4): `next` offers the check of a
 waived rule while the waiver lasts; the brief of a remade task shows the evaluation of the task
@@ -196,7 +196,8 @@ the engine, the CLI, the tests, and the 20 page flows follow it.
   model's draft of the whole direction (`work direction new`) and the owner's accept (the roles of
   `approvedBy` decide from version 2, because no task follows a direction with no version). Only a model revises: the person gives
   direction in words (`work suggest`) and accepts or rejects the whole draft. The reviser and the
-  actors below it do not review the draft. An accept of a draft needs evidence. A Reject by a
+  actors below it do not review the draft. A model's accept of a draft needs evidence; the
+  person's accept needs none, and their comment is optional (Nanda, 2026-11-11). A Reject by a
   decider ends the draft, and the next draft answers it (`--answers=<the Reject>`; a draft that
   proposes the same is refused); when the reviser is finished, a new run of its role revises.
   After another reviewer's Reject only the
@@ -216,10 +217,10 @@ the engine, the CLI, the tests, and the 20 page flows follow it.
   ended on a fault) or a Reject of the person (its points are one stop). An evaluation answers
   one stop (`work evaluate <stop>`; a task id names its first waiting stop); two stops, two
   evaluations. The owner decides an evaluation that waits for the person with `work review ev1
-  accept --evidence=... | reject --reason=...`; a Raise on an evaluation is refused.
+  accept --evidence=... | reject --reason=...`; an escalation on an evaluation is refused.
 - The limits sit under the part that checks them: `Assignment: { briefChars, attempts }`,
-  `Review: { rules }`, `Result: { size }`, `Note: { waiverHours }`. The engine checks attempts
-  (the default and the ceiling of a maker) and the waiver hours.
+  `Review: { rules }`, `Result: { size }` (`Note: { waiverHours }` left with the waiver on
+  2026-11-12). The engine checks attempts (the default and the ceiling of a maker).
 - A standard's `when` is `where`: the context where it applies.
 
 **Open after round 8.** The ids in brackets are in `thought-tests/round-4.md` and `round-5.md`:
@@ -231,23 +232,23 @@ the engine, the CLI, the tests, and the 20 page flows follow it.
   rejected with a point that waits for a direction change. An approve of a version that says
   nothing new to a task passes; only the brief of the maker is refused after it. After a source
   changes, `next` offers the maker of the task that joins the parts while a part is stale. A
-  writer on a task with no region and no parts reports one region that it chooses.
+  writer on a task with no section and no parts reports one section that it chooses.
 - A medium or high maker has no limit of tries in the configs of the tests, so its mistakes start
   no evaluation until a person rejects the work.
 - Decided on 2026-11-08: two makers of parts of one document file no longer write it at the
   same time; one maker writes a file at a time, in the order of the assigns (section 8).
-- The live two-region run stopped before its last two fixes.
+- The live two-section run stopped before its last two fixes.
 - Closed on 2026-11-07 (Nanda: "do this open part"; tests in `test/open-items.test.js`): a
   command refuses a flag that it does not read; the checker step says that the same assignment
   checks each new result; a low maker's brief has the answers to the questions that an
   assignment above it asked about its task (FW-8); parts that share a document file each have
-  their own region (`region` needs no "when"); a commit that changes a file of another open task
+  their own section (`section` needs no "when"); a commit that changes a file of another open task
   that does not wait for it is refused (FW-7, R4-5: work that changes the same files runs one
   after the other); the top agent gets the step that puts an accepted commit on its base
   (R5-F10); a finish removes a code maker's worktree and keeps its branch.
 - R5-F7 is decided (2026-11-07): only a fault uses an attempt, and an approved change resets
   the attempts (section 8).
-- A relayed approve does not warn about the open change points that it does not list (FW-3,
+- A forwarded approve does not warn about the open change points that it does not list (FW-3,
   partly fixed).
 - Advice and wording from round 4: the redo line after a recheck does not name the old
   output to rebase (FW-10); `next` still prints some steps that the record closed (FW-11); a
@@ -270,7 +271,7 @@ findings of each round, with what was done, are in `thought-tests/round-2.md` to
 |---|---|---|
 | Engine | the model: Workflow, Direction, Task, Assignment, Result, Review, Checkpoint, Note | `engine.js` (copied from the page, then extended) |
 | Store | aristoteles (section 9.1): one SQLite file for every project of this machine; the act log that the engine replays, and a table for each record with its links | `~/.aristoteles/aristoteles.db`, or `ARISTOTELES_DB` |
-| Project config | roles with their tiers, people, limits, deciders; the company directions that the project follows | `work.yaml`, and `aristoteles.lock` |
+| Project config | roles with their tiers, people, limits, deciders; the company directions that the project follows | `aristoteles.yaml`, and `aristoteles.lock` |
 | Guides | how to write a direction, and the questions of the review of a draft (`work guide <name>`) | `guides/*.md` |
 | Tier guides | for each tier: its introduction, and the guide of each command it may run | `guides/<tier>.yaml` (shipped with the CLI) |
 | Fitness questions | the questions that `work role fit` prints | `guides/fitness.yaml` |
@@ -282,51 +283,55 @@ A tier is a model class. The person is above all tiers.
 
 | Tier | Model class | Does | Never does |
 |---|---|---|---|
-| person | a human, with no token, at a terminal (no role is played by a person) | owns tasks and directions; accepts drafts of directions and standards (not results); the spirit of a direction; executive acts; config; ratifies; criticises work; gives work only to medium and high roles | accepts each result; reviews a draft that they wrote |
-| high | Opus class | keeps the work on its directions: splits, closes, writes drafts of directions and (as a decider of approvedBy, or with a Change act) accepts the drafts of others, evaluates a mistake, assigns medium and low roles, raises to the person | changes the spirit; reviews its own draft; does medium or low work |
-| medium | Sonnet class | runs one task: assigns low roles, decides each result of its makers, raises to its parent | changes a direction; does a low unit itself |
-| low | Haiku class | executes one unit: one report, or one review of its checks; raises when the brief is not enough | anything its brief does not list |
+| person | a human, with no token, at a terminal (no role is played by a person) | owns tasks and directions; accepts drafts of directions and standards (not results); the spirit of a direction; permissions; config; confirms; criticises work; gives work only to medium and high roles | accepts each result; reviews a draft that they wrote |
+| high | Opus class | keeps the work on its directions: splits, closes, writes drafts of directions and (as a decider of approvedBy, or with a Change act) accepts the drafts of others, evaluates a mistake, assigns medium and low roles, escalates to the person | changes the spirit; reviews its own draft; does medium or low work |
+| medium | Sonnet class | runs one task: assigns low roles, decides each result of its makers, escalates to its parent | changes a direction; does a low unit itself |
+| low | Haiku class | executes one unit: one report, or one review of its checks; escalates when the brief is not enough | anything its brief does not list |
 
 The tier of an agent comes from the role of its assignment. A program (a gate, a test run)
 is a role of kind `program`: it has no tier; the CLI runs it.
 
 ## 3. Project config
 
-`work.yaml`:
+`aristoteles.yaml` (2026-11-11: it replaces `work.yaml`, and it is the one file of a dir). The
+name of a dir is its folder name, so the file has no `project:` key; the store keys a dir by the
+full path of its folder. The file also holds the settings of the UI (`tiers`, `retryMinutes`,
+`hostWaitMinutes`, `sound`, `theme`; see `plan/ui/PLAN.md`). Only the mechanism (people, limits,
+roles, decide) is stored at `work init`, so a change of a setting is not a change of the stored
+config. `schema/aristoteles.schema.json` is its schema.
 
 ```yaml
-project: report-export
 people:                                    # the person is the git user.name, if listed here
   - name: Nanda
 limits:                                    # per tier, under the part that checks each limit
   low:    { Assignment: { briefChars: 12000, attempts: 3 }, Review: { rules: 5 }, Result: { size: 400 } }
-  medium: { Assignment: { briefChars: 40000 }, Review: { rules: 12 }, Result: { size: 2000 }, Note: { waiverHours: 24 } }
-  high:   { Assignment: { briefChars: 80000 }, Review: { rules: 20 } }   # Note.waiverHours is 72 when missing
+  medium: { Assignment: { briefChars: 40000 }, Review: { rules: 12 }, Result: { size: 2000 } }
+  high:   { Assignment: { briefChars: 80000 }, Review: { rules: 20 } }
 roles:
   writer:
     tier: low
-    description: Writes one TSD region from its brief.
-    intro: You write one region under its heading. The brief gives the facts and the rules.
+    description: Writes one TSD section from its brief.
+    intro: You write one section under its heading. The brief gives the facts and the rules.
     responsibilities:
-      - Write the region under its heading in the file that WORK IN names.
-      - Report it with work report, as <file>#<region>.
-    output: "<file>#<region>"           # <file>, <repo>, <task id>, and context keys are filled in
-    acts: [{ do: write one TSD region }]
+      - Write the section under its heading in the file that WORK IN names.
+      - Report it with work report, as <file>#<section>.
+    output: "<file>#<section>"           # <file>, <repo>, <task id>, and context keys are filled in
+    acts: [{ do: write one TSD section }]
   linter:
     tier: low
-    description: Checks one region against the rules in its checks.
+    description: Checks one section against the rules in its checks.
     intro: For each rule in your checks, say where you looked and what you saw.
     responsibilities:
       - Give one --evidence line for each rule in your checks.
-      - Reject with one --point for each rule that the region breaks.
+      - Reject with one --point for each rule that the section breaks.
     acts: [{ review: [writer] }]
-  region-lead:
+  section-lead:
     tier: medium
-    description: Runs one region - assigns the writer and the linter, and decides the region.
-    intro: You run one region until its rules have evidence, or you raise.
+    description: Runs one section - assigns the writer and the linter, and decides the section.
+    intro: You run one section until its rules have evidence, or you escalate.
     responsibilities:
       - Assign the writer, then the linter on each result, with work assign.
-      - Raise with work raise when a round ends.
+      - Escalate with work escalate when a round ends.
     acts: [{ approve: [writer] }]
   spec-gate:
     kind: program
@@ -337,7 +342,7 @@ roles:
     acts: [{ review: [implementer] }]
 ```
 
-`work.yaml` names no directions: each one lives in aristoteles. A model drafts a new direction
+`aristoteles.yaml` names no directions: each one lives in aristoteles. A model drafts a new direction
 as a whole, with `work direction new [<token>] --file=<direction.yaml> [--by=<model run>]`: a
 high role with its token, or a model run outside any task (such as the `assess` skill). Its
 owner accepts the first version. The file of a new direction (each `says` is any markdown):
@@ -355,10 +360,10 @@ standards:
       - { id: no-code-proof, says: "No file paths with line numbers, no commit hashes in the body", checkedBy: linter }
       - { id: no-ticket-ids, says: "No ticket ids and no chat-thread citations", checkedBy: linter }
   - id: intro-story
-    where: { region: introduction }
+    where: { section: introduction }
     says: Tell the story first, in plain words.
     rules:
-      - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: region-lead }
+      - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }
 ```
 
 A task file (`work task open` with no `--file` prints this template):
@@ -367,7 +372,7 @@ A task file (`work task open` with no `--file` prints this template):
 name: The Introduction
 text: Write the Introduction from the agreed facts.
 directions: [tsd-writing]
-context: { region: introduction }        # every key must be used by some "when"
+context: { section: introduction }        # every key must be used by some "when"
 workspace:                               # relative paths inside the project
   - { source: tsd, path: docs/report-export.md, verify: "work-lint docs/report-export.md" }
   # code: { source: app, path: app, base: main } - a git source: the CLI reads the merge base of each commit from git
@@ -379,38 +384,39 @@ them is accepted (work that uses other work, or changes the same files, runs aft
 takes no result while one of them is not accepted, and its result is the whole workspace (a document file, or a commit that
 contains their accepted commits). A split sets the parent's needs to its parts; each part also waits for what its task waits for,
 and names the parts above it that it runs after (`after: [Schema]`); `work next` says which part
-waits. Parts that share a document file each have their own region of it (`context: { region:
-<heading id> }`; `region` is the CLI's own key, so it needs no "when"); a task with a region is
+waits. Parts that share a document file each have their own section of it (`context: { section:
+<heading id> }`; `section` is the CLI's own key, so it needs no "when"); a task with a section is
 one unit, and is not split into parts that share it.
 There is no reserved context key: the whole page is decided by the decider of its task.
 
 A `verify` command exits 0 when the work is ready. The live Haiku test showed why: a verify
-that fails on correct work makes a careful agent raise instead of report.
+that fails on correct work makes a careful agent escalate instead of report.
 
 ## 4. Identity
 
 - **The person** is the git user.name, if it is in `people`. A command with no token is a
   person command, and every person command needs a terminal (an agent's shell has none, so
   it is refused with "an agent passes its token first"). A person command refuses
-  `GIT_CONFIG_*` variables. `grant`, `revoke`, `ratify`, `config apply|restore`, and a
+  `GIT_CONFIG_*` variables. `grant`, `revoke`, `confirm`, `config apply|restore`, and a
   person's accept of a draft (`work review d1 accept`) also need a typed confirmation, and the
   prompt shows the act.
 - **An agent** acts only with its token. `work assign` prints the whole subagent prompt once:
   `Use the work skill. In <project folder>, run: work brief a7.<secret>`. The secret has 130
   bits, and the store keeps only its hash. Lists and logs show `a7` only.
 - **A claim.** `work brief <token>` claims the assignment. A low claim ends with its one
-  `report`, `review`, or `raise`; a second low claim while one is open is refused ("STOP").
+  `report`, `review`, or `escalate`; a second low claim while one is open is refused ("STOP").
   A medium or high claim lasts until `finish`, and the agent may read its brief again. A
   report or a review needs a claim, so it always follows a brief (the snapshot). A parent
-  frees a stopped child with `work release <you> <child>`; the person with `work release <a>`.
+  frees a stopped child with `work free <you> <child>`; the person with `work free <a>`.
 - **A parent** sees a child's brief with `work assignment show a7` (read-only, no snapshot).
-- **A relay**: the top agent (medium or high, no parent, with a claim) records the person's
-  act on something in its own tree: `work relay <you> <person> <act> <id> --quote="<their
+- **A forward**: the top agent (medium or high, no parent, with a claim) records the person's
+  act on something in its own tree: `work forward <you> <person> <act> <id> --quote="<their
   exact words>" --channel=chat|github`. The CLI first applies the act as the person in a dry
-  run, and refuses the relay when the person could not do it now. A reject, a question
-  (`ask`, to an assignment in the tree), or a comment counts at once, at the time of the relay.
-  An accept (of a result, a task, or a draft, with evidence) or an answer waits for the
-  person's `work ratify <event>`, and counts at the time of the ratify. A grant is never relayed.
+  run, and refuses the forward when the person could not do it now. A reject, a question
+  (`ask`, to an assignment in the tree), or a comment counts at once, at the time of the forward.
+  An accept (of a result, a task, or a draft, with evidence), an answer, or a resolve (of an
+  escalation, in the person's words) waits for the person's `work confirm <event>`, and counts
+  at the time of the confirm. A grant is never forwarded.
 - **The checks of every act** are in one table: the caller's assignment is open; it has a
   claim where the act needs one; each id that the act names is inside the caller's task
   tree. The table runs before any check of the act itself.
@@ -428,7 +434,7 @@ person's key). They are stated here so that nobody trusts the prototype past the
 
 Every id has a kind prefix: task `t3`, assignment `a7`, result `r12`, review `v4` with
 points `v4.1`, question `q5`, suggestion `s1`, draft `d1`, stop `ex1` (the last try of a maker
-that ended on a fault), evaluation `ev1`, executive act `x1`, checkpoint `k1`, note `n2`, event
+that ended on a fault), evaluation `ev1`, permission `x1`, checkpoint `k1`, note `n2`, event
 `e88`. An official version of a direction is `tsd-writing@3`; one piece of it is
 `tsd-writing@3#<standard, rule, or header>[#<header>]`. Standards and rules use the ids of the
 draft file (`no-ticket-ids`); a rule id is unique in the project. Every argument checks
@@ -437,7 +443,10 @@ its kind, and a wrong kind names the kind it expected.
 ## 6. Commands
 
 `<you>` is the caller's token. "person" means no token, at a terminal. Each command reads
-only its own flags, and refuses any other flag before it stores anything.
+only its own flags, and refuses any other flag before it stores anything. A failure prints
+`refused: <why>` and one `next:` line. The exit code: 0 success, 1 a refusal, 2 a mistake in
+the command line (an unknown command or flag, a flag with no value), 3 an outside failure (git,
+tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 
 **Reading (anyone)**
 
@@ -447,18 +456,18 @@ only its own flags, and refuses any other flag before it stores anything.
 | `work brief <you>` | your brief (section 7); claims the attempt; takes the snapshot |
 | `work assignment show <a>` | a child's brief, read-only |
 | `work next <you>` | the steps that are ready in your subtree, one command each |
-| `work waiting [--for=<person>\|<a>]` | what waits, with the command that settles it |
+| `work waiting [--for=<person>\|<a>]` | what waits, with the command that ends the wait |
 | `work status` | open assignments, claims, and their age |
 | `work task show <t>` / `work task tree <t>` | a task, its state, its parts, changed or rejected results |
 | `work direction show <id>[@<n>]\|<draft>[#<entry>[#<header>]]` | an official version (the draft that made it, and the open drafts), or a draft: its standards and rules, what it changes from its base, what it answers, its reviews, and whose accept it waits for ; with `#`, one standard, one rule, or the text under one header |
 | `work direction new [<token>] --file=<direction.yaml> [--by=<model run>] [--answers=]` | a model's draft of a new direction, as a whole; a high role, or a model run outside any task; the owner accepts version 1 |
 | `work search <words>` | the words of directions, standards, rules, suggestions, and reasons in aristoteles, with the versions that hold them and the tasks that read them |
-| `work guide writing\|direction-review` | how to write a direction, and the questions of the review of a draft |
+| `work guide writing\|direction-review\|decision-words` | how to write a direction, the questions of the review of a draft, and how a host writes the words of a decision for the person |
 | `work evaluation show <ev>` | an evaluation: the stop that it answers, its level, what is wrong, why, what to improve, and its review |
 | `work blockers <r>` | what still stops that result, with ids |
 | `work log [--last=<n>]` | the history: who, on which channel, what, and the ids it made |
 | `work question show <q>` | a question and its answer in full |
-| `work result show <r>` | a result and each review of it: the evidence lines, the points, the raises, then its blockers |
+| `work result show <r>` | a result and each review of it: the evidence lines, the points, the escalations, then its blockers |
 | `work role list` / `work role show <role>` | roles (from the store), tiers, roles with no fit record |
 | `work role fit <role> [--answers=<file>] [--as=<you>]` | the static checks and the fitness questions; with answers, records them (person or high) |
 
@@ -470,25 +479,24 @@ only its own flags, and refuses any other flag before it stores anything.
 | `work report <you> --output=<the form in your brief> [--made-from=<source>@<rev>\|<r>]` | a role with a Do act; the CLI computes digest and size and runs the programs; `--made-from` never names a git source |
 | `work review <you> <r\|t> accept --evidence="<rule id> \| <where> \| <what>" ...` | a role that reviews or approves the maker's role; a low checker only the result in its brief |
 | `work review <you> <r\|t> reject --point="<text>" [--breaks=<rule id>] ...` | the same; each `--breaks` belongs to the `--point` before it |
-| `work review <you> <r> accept --settles=<v> --reason=<text>` | the assignment that a raise names, or a decider; never the raiser |
+| `work resolve <you> <v> --resolution=<text> [--evidence=...]` | the assignment that an escalation names, or a decider; never the one that escalated. A resolve accepts and rejects nothing: the deciders then review the result as usual |
 | `work recheck <you> <r> --reason=<what changed outside>` | medium or high that decides; asks the maker for a new result |
-| `work raise <you> --reason=<text> [--result=<r>]` | anyone with an open assignment; goes to the parent (or the owner) |
+| `work escalate <you> --reason=<text> [--result=<r>]` | anyone with an open assignment; goes to the parent (or the owner); with `--result`, the result waits for the resolve |
 | `work ask <you> --text=<context first, then the question> [--to=parent\|owner]` | anyone; a low role asks only its parent |
 | `work answer <you> <q> --text=<text>` | the assignment that the question names |
 | `work note <you> finding\|message --text=<text>` | anyone |
 | `work suggest <you> [<rule\|standard\|direction>] --says=<the words>` | anyone, the person too; with nothing to be about, it asks for a new direction |
 | `work direction revise <you> <direction> --file=<edit.yaml> [--answers=<v, v.n, or s ids>] [--why=<why>]` | high only (the person suggests); makes a draft `d1`; after a Reject of a draft, the next draft answers it |
-| `work review <you> <d> accept --evidence="<where in the draft> \| <what>" ...` / `reject --reason=<text>` | medium or high, not the reviser or an actor below it; the accept that meets `approvedBy` (none: the owner, or a role with a Change act) makes the draft official, and the new version is written to its file |
+| `work review <you> <d> accept --evidence="<where in the draft> \| <what>" ...` / `reject --reason=<text>` | medium or high, not the reviser or an actor below it; the person accepts with an optional `--reason` and no evidence; the accept that meets `approvedBy` (none: the owner, or a role with a Change act) makes the draft official, and the new version is written to its file |
 | `work evaluate <you> <stop>\|<t> --wrong= --why= --improve= --level=` | the high role of the task's tree; it answers one stop (a task id names its first waiting stop) |
 | `work grant <you> --act= --on= --to= --until=` / `work revoke <you> <x>` | an agent gives only an act that its assignment has; only the giver revokes |
 | `work task split <you> <t> --file=<parts.yaml> [--review=<v>]` | high with a Change act on the task (it covers its parts); a part can name the parts above it that it runs after (`after:`) |
 | `work task close <you> <t> --reason=<text>` | the same |
-| `work waive <you> <r> --rules=<ids> --reason=<text> --until=<time>` | a role that approves the maker; at most `Note.waiverHours` (the engine checks it) |
 | `work finish <you> [<child a>]` | the agent, or its parent for a child; refused while the assignment has open children |
-| `work release <you> <child a>` | the parent of a child whose subagent stopped |
+| `work free <you> <child a>` | the parent of a child whose subagent stopped |
 | `work source <you> <source>@<revision>` | medium or high, for a source outside git; the CLI reads the base of each commit of a git source from git |
 | `work checkpoint <you> <t> --next=<text>` / `work resume <you> <t>` | medium, high |
-| `work relay <you> <person> <act> <id> ... --quote=<words> --channel=<chat\|github>` | the top agent only |
+| `work forward <you> <person> <act> <id> ... --quote=<words> --channel=<chat\|github>` | the top agent only; `<act>` is reject, ask, comment, answer, accept, or resolve (of an escalation, in the person's words) |
 
 **Person (no token)**
 
@@ -497,21 +505,21 @@ task; a high agent splits), `work assign <t> --role=`, `work suggest` (the perso
 a high role writes the draft), `work review <d> accept|reject`, `work review <ev> accept|reject`
 (an evaluation of the owner's task), `work evaluate <stop>`,
 `work grant --act=approve|review|change --on=<ids> --to=<role> --until=<time>`,
-`work revoke <x>`, `work ratify <event>`, `work answer <q> --text=`,
-`work review <r|t> reject ...` (a result only after its deciders accept it), `work review <r> accept --settles=<raise>`,
+`work revoke <x>`, `work confirm <event>`, `work answer <q> --text=`,
+`work review <r|t> reject ...` (a result only after its deciders accept it), `work resolve <v> --resolution=`,
 `work task split|close`,
-`work release|finish <a>`, `work role fit <role> --answers=<file>`.
+`work free|finish <a>`, `work role fit <role> --answers=<file>`.
 
 ## 7. `work brief <you>`
 
 ```
 work brief a2 · writer (low) · t1 The Introduction · attempt 2 of 3
 snapshot: tsd-writing@1
-project: /path/to/project (run every work command in this folder)
+dir: /path/to/the/dir (run every work command in this folder)
 
 YOU ARE  low tier. You execute one unit of work, report it, and stop.
-ROLE     Writes one TSD region from its brief.
-         - Write the region under its heading in the file that WORK IN names.
+ROLE     Writes one TSD section from its brief.
+         - Write the section under its heading in the file that WORK IN names.
          - Report it with work report as docs/tsd.md#introduction.
 TASK     Write the Introduction from the agreed facts.
 WORK IN  docs/tsd.md (source tsd); verify: work-lint docs/tsd.md (exit 0 = ready)
@@ -525,11 +533,11 @@ OPEN     v1.1 breaks no-ticket-ids: "the first line cites ABC-2964" (on r1, a3)
 
 YOUR TURN
   report     work report a2.<secret> --output=docs/tsd.md#introduction
-             If WORK IN names a verify command, run it first; exit 0 means ready. If it fails and you cannot fix it, raise with its output.
-  raise      work raise a2.<secret> --reason="<the missing fact, and where you looked>"
-             Raise when the brief is not enough to do the work. Do not guess.
+             If WORK IN names a verify command, run it first; exit 0 means ready. If it fails and you cannot fix it, escalate with its output.
+  escalate   work escalate a2.<secret> --reason="<the missing fact, and where you looked>"
+             Escalate when the brief is not enough to do the work. Do not guess.
   suggest    ...
-STOP after one report, one review, or one raise. Do not run other work commands.
+STOP after one report, one review, or one escalation. Do not run other work commands.
 ```
 
 - Only the commands whose act the role has appear in YOUR TURN (`guides/<tier>.yaml`, key
@@ -544,27 +552,27 @@ STOP after one report, one review, or one raise. Do not run other work commands.
   and high the answers of the task, a low checker none. Each answer is cut at 200 characters
   (`work question show <q>` prints it). NOTES shows the person's last two comments.
 - WORK IN also names each program that runs on the maker's reports.
-- STOP names the act: "after one report or one raise" for a maker, "after one review or one
-  raise" for a checker; medium and high also stop when only the person can act.
+- STOP names the act: "after one report or one escalation" for a maker, "after one review or one
+  escalation" for a checker; medium and high also stop when only the person can act.
 - A split task's brief shows PARTS with their accepted results, and the output is the whole
   workspace file.
 - A medium or high brief adds READY: the steps of `work next`, with commands filled in.
 - The CLI measures the printed brief at `assign` and at each `work brief`. Over the tier's
-  `briefChars`, `assign` is refused ("split the task"), and `brief` prints only the raise
+  `briefChars`, `assign` is refused ("split the task"), and `brief` prints only the escalation
   command, with the largest part named.
 
 ## 8. Results and reviews
 
 - **Outputs.** When the brief fills the output form fully, the report must be exactly that
   output. Otherwise it must match the role's form. Three outputs exist: a file (hashed),
-  `<file>#<region>` (the section under the heading whose lower-case, dashed text is the
-  region; a heading used twice is refused), and `<repo>@<commit>` (the commit sha). The file
+  `<file>#<section>` (the section under the heading whose lower-case, dashed text is the
+  section; a heading used twice is refused), and `<repo>@<commit>` (the commit sha). The file
   or repo must be in the task's workspace, inside the project, in safe characters.
 - **New work only.** A report whose digest is the same as the previous result is refused,
   unless a recheck asked for a new result. A report equal to the output at the task's first
   brief is refused (untouched work). A commit already on the workspace base is refused. A
   commit must be of the workspace repo itself (`git rev-parse --show-toplevel`). A part may
-  not report a region that a sibling part's context owns. A report keeps the regions of the
+  not report a section that a sibling part's context owns. A report keeps the sections of the
   other open tasks of its tree, and of the tasks that it needs, as their latest results left
   them; a commit of a task that needs others contains their accepted commits. A report may
   not be the starting point of its task (`from: <result>` in the task or part file; the brief
@@ -575,15 +583,15 @@ STOP after one report, one review, or one raise. Do not run other work commands.
   other work (engine blocker `made before the latest result of <task>`); `next` gives its
   decider `work recheck`, and the maker reports again with that work. A need of another task
   tree shows in `next` and in `waiting`.
-- **Changed work.** `work review`, a relayed accept, and a ratify refuse when the digest
-  changed after the report (a settle with no evidence is not refused). A low checker is told
-  to raise and stop. `blockers`, `task tree`, and briefs show "changed after it was reported".
+- **Changed work.** `work review`, a forwarded accept, and a confirm refuse when the digest
+  changed after the report (a resolve with no evidence is not refused). A low checker is told
+  to escalate and stop. `blockers`, `task tree`, and briefs show "changed after it was reported".
 - **Reject points.** A Reject has points (`--point`). A point with `--breaks` closes when a
   later, changed result has evidence for that rule; evidence on the same work shows "the same
   work was rejected". A point with no rule closes with a direction change that lists it
   (`--answers=v4.2`). A recheck is a Reject that any later result answers.
 - **Evidence** is one line per rule: `<rule id> | <where you looked> | <what you saw>`. From
-  an agent, `where` names the result's file, repo, or region, and `what` has at least three
+  an agent, `where` names the result's file, repo, or section, and `what` has at least three
   words. A low checker gives evidence for each of its checks and only those. Evidence counts
   only from the rule's checker (a role, a program, a person, or a decider when no checker is
   named). The CLI cannot judge whether the words are true; the decider and the person do.
@@ -592,13 +600,13 @@ STOP after one report, one review, or one raise. Do not run other work commands.
   says the same to its task as the current one; the decider may Reject instead. A role assigns
   a maker only when it, or an assignment above it, decides that maker.
 - **Who decides** (Nanda, 2026-11-07). The workflow names each decider: a role with an Approve
-  act on the maker. When a maker has more than one, `work.yaml` says how they combine:
-  `decide: [ { resultsOf: writer, by: { order: [region-lead, architect] } } ]`, with `or`
+  act on the maker. When a maker has more than one, `aristoteles.yaml` says how they combine:
+  `decide: [ { resultsOf: writer, by: { order: [section-lead, architect] } } ]`, with `or`
   (any one), `and` (each one), or `order` (each one, one after the other). With no entry, any
   one of them decides. A direction file can say who accepts its new versions:
   `approvedBy: { order: [architect, Nanda] }` (a version review, then the approve). Both are
   read at `work init`; a change of them needs a new store.
-- **Who reviews.** Anyone raises. An Accept or a Reject comes from a role that covers the
+- **Who reviews.** Anyone escalates. An Accept or a Reject comes from a role that covers the
   maker, a role that decides, or a role with a Change act. The person, as the owner, reads a
   result at any time, accepts none, and criticises it with a Reject only after its deciders
   accept it ("Terra must see it first"). No rule is checked by a person (`checkedBy: Human`
@@ -632,7 +640,7 @@ STOP after one report, one review, or one raise. Do not run other work commands.
   task shows its latest evaluation. A person's Reject keeps its answer rules (a change that says
   something new, the person's own split or remake, or changed work for a point that names a
   rule); the evaluation comes first. Tests: `test/evaluation.test.js`.
-- **Settles.** A settle decides a Raise only, and never counts as an accept of the work.
+- **Resolves.** A resolve ends an escalation only, and never counts as an accept of the work.
 - **Programs.** After a report, the CLI runs each program role with `on: report` whose acts
   review the maker's role: no shell, in the workspace folder, or in a clean checkout of the
   reported commit (`git worktree add --detach`, removed in every case). Exit 0 records an
@@ -656,7 +664,7 @@ STOP after one report, one review, or one raise. Do not run other work commands.
   names only medium or high roles and the owner. A question to a finished assignment is refused.
   For code: a commit needs a base that it shares history with; its work is its patch against its
   merge base (`git patch-id`); a commit that is another task's work is refused. A task with a
-  region is not split, and the regions of parts do not nest. Flags are checked for each act.
+  section is not split, and the sections of parts do not nest. Flags are checked for each act.
 - **Recheck after a change outside.** The revision of a source comes from the system of the
   source. A workspace with a `base` is a git source: for a `<repo>@<commit>` output the CLI
   reads the merge base from git and records it as the result's source, as evidence. A new
@@ -677,7 +685,7 @@ STOP after one report, one review, or one raise. Do not run other work commands.
   step that puts it there; the project does it its own way.
 - **One maker for each file at a time** (Nanda, 2026-11-08). A maker that reports a commit works
   in its own git worktree. Every other maker writes the files of its workspace in the project
-  folder, which all makers share, so two regions of one file could overwrite each other. Makers
+  folder, which all makers share, so two sections of one file could overwrite each other. Makers
   that write one file (or a folder and a file in it) take turns in the order of their assigns,
   and a turn ends when its maker finishes; a redo keeps the turn. The assign is not refused: it
   is stored, says which maker writes the file first, and its subagent starts later, so the lead
@@ -695,7 +703,7 @@ STOP after one report, one review, or one raise. Do not run other work commands.
 The store is **aristoteles** (Nanda, 2026-11-10; the name comes from the source of the eleven
 principles): one SQLite file for every project of this machine, `~/.aristoteles/aristoteles.db`,
 or the file that `ARISTOTELES_DB` names (each test uses its own). A project is the name in its
-`work.yaml`; a second folder with the same name gets no store.
+`aristoteles.yaml`; a second folder with the same name gets no store.
 
 - **Full SQL.** Everything that the work makes is in tables, with its links: `direction`,
   `draft`, `standard`, `rule`, `draft_standard`, `standard_rule`, `version`, `suggestion`,
@@ -711,9 +719,9 @@ or the file that `ARISTOTELES_DB` names (each test uses its own). A project is t
   it, and adds the rows of its records, in one transaction. The replay sets the clock to each
   act's time, so an act that was valid then stays valid; a read sets the clock to now. A test
   checks that a replay of the acts makes the stored rows.
-- **Files hold only the mechanism and the guides:** `work.yaml` (people, roles, limits,
+- **Files hold only the mechanism and the guides:** `aristoteles.yaml` (people, roles, limits,
   deciders), `aristoteles.lock` (company directions), `guides/`, `skills/`. `work init` and `work
-  config apply` store `work.yaml` as an act; each write compares its hash and refuses on a change;
+  config apply` store `aristoteles.yaml` as an act; each write compares its hash and refuses on a change;
   `work config restore` writes it back; `config apply` changes only the words of roles. Any
   other change (acts, tiers, new roles, limits) needs a new store in the prototype. `init`
   refuses an unknown limit key, and a `directions` key.
@@ -736,7 +744,7 @@ or the file that `ARISTOTELES_DB` names (each test uses its own). A project is t
   It changes in its repo, with a pull request; `work direction revise` refuses it, and a
   suggestion about it names its repo. A company standard has no `where` (my choice).
 - A project names each company direction that it follows in `aristoteles.lock`, beside
-  `work.yaml`, in the project's git:
+  `aristoteles.yaml`, in the project's git:
 
   ```yaml
   feature-flags:
@@ -752,7 +760,7 @@ or the file that `ARISTOTELES_DB` names (each test uses its own). A project is t
   ```
 
   The checkers are in the lock entry, beside the rest of the company direction (my choice; the
-  first plan named `work.yaml`).
+  first plan named `aristoteles.yaml`).
 - **The daily refresh.** The first `work` command of a day (`refreshed` is before the date of
   today on this machine) fetches each repo into `~/.aristoteles/sources/`. When the folder at
   the newest commit that changed it differs from the current version, it comes in as a draft
@@ -805,7 +813,7 @@ On 2026-11-07, Nanda answered the five questions of the page:
 - Only a fault uses an attempt; the person's revision uses none and resets the attempts. Sol
   checks again after the revision, because a direction that is not precise can cause the
   mistake of the lead: the workflow writes this with Order, on the results
-  (`order: [region-lead, architect]`) or on the direction (`approvedBy`).
+  (`order: [section-lead, architect]`) or on the direction (`approvedBy`).
 - The model must know which work runs at the same time. Work that uses other work (a method
   that calls another method), or work in the same repository that changes the same feature,
   runs after it; only work that changes different files runs at the same time. So a maker
@@ -823,9 +831,9 @@ change them):
 - An agent's remake keeps the directions and the context of the task; only the person changes
   them (only the direction owner changes directions). A remake file keeps the needs, directions,
   and context of the old task that it does not name.
-- A task with a region is one unit of work: it is not split into parts that share the region,
+- A task with a section is one unit of work: it is not split into parts that share the section,
   and `work next` offers a medium role for it.
-- A question or a Raise to an assignment that finishes goes up to the nearest open assignment
+- A question or an escalation to an assignment that finishes goes up to the nearest open assignment
   above, else to the owner (the rule for a new question, applied when the answerer stops).
 - For a commit, the digest is its git tree: a new commit with the same files is the same work.
 
@@ -833,16 +841,16 @@ Nanda, later the same day: "we can critique a task before or after it's done". T
 reject a task at any time; only a Reject of a result waits for its deciders.
 
 Nanda accepted all the changes listed above ("#2 yeah"), approved a second attack round and a
-two-region live remake ("#1 yes"), and set the roadmap (outside this repo). Derived the same day
+two-section live remake ("#1 yes"), and set the roadmap (outside this repo). Derived the same day
 while fixing round 7 (Nanda can change them): a criticism of a task makes its deciders look again
 (their earlier accepts stop counting); a result is an attempt until it is decided; an agent's
 remake keeps the needs, the rounds left, and the workspace; the work of a commit is its patch
-against its merge base; a task with a region is not split.
+against its merge base; a task with a section is not split.
 
 On 2026-11-08, Nanda accepted the rules derived while fixing round 7 ("#3 okay, that's good").
 Two makers of one document file: "one maker for each file", with a queue, so the lead is not
 blocked and the history of the file is good; this was chosen over a command that writes one
-region, because regions can conflict (section 8, "One maker for each file at a time"). The
+section, because sections can conflict (section 8, "One maker for each file at a time"). The
 library and the browser bridge of the roadmap wait: "we still need to enhance our abstraction
 first". A third attack round runs first, on the round-7 fixes and the file queue.
 
@@ -862,7 +870,7 @@ Derived while fixing round 9 (Nanda can change them):
 - The person's criticism of a result, once evaluated and answered by a direction version, is
   checked again under that version and made again only when a check finds a fault (the ruling of
   2026-10-29). Every workflow has the three tiers; init refuses one that misses a tier. A part
-  with a region that runs after another part reports its own region; only a task with no region
+  with a section that runs after another part reports its own section; only a task with no section
   that needs other tasks reports the whole file.
 - A task is not accepted while it waits for an evaluation, or while a Reject of it waits for a
   change. A last try that ends on a fault starts an evaluation also when a new maker was given
@@ -896,7 +904,7 @@ Derived the same day while fixing round 8 (Nanda can change them):
 - A draft that its approvedBy reviewer rejects ends; its reviser writes a new draft.
 - A workspace path names a file in one way: its real name on disk, with no `./`, `//`, end
   slash, link, or other case. A maker that writes a file needs the workspace of its task, and a
-  report keeps every region of the other open tasks in its file; regions do not nest, also when
+  report keeps every section of the other open tasks in its file; sections do not nest, also when
   a heading comes after the split.
 - The work of a commit is its patch with white space as it is (an indent can be the fix), read
   in one fixed diff form.
@@ -911,14 +919,14 @@ evaluation answers one stop (two stops, two evaluations); a standard's `when` is
 can grant, and nobody gives more than they may do.
 
 Derived the same day while building it (Nanda can change them):
-- A draft and an evaluation take only an Accept or a Reject; a Raise on either is refused.
+- A draft and an evaluation take only an Accept or a Reject; an escalation on either is refused.
 - An accept made under a grant keeps counting after the grant ends, because a review counts
   with the acts that its reviewer had at its own time.
 - A grant covers acts from its own time; a revoke is given once.
-- A relayed act that counts at once takes the time of the relay; a ratified act, the time of
-  the ratify.
+- A forwarded act that counts at once takes the time of the forward; a confirmed act, the time of
+  the confirm.
 - The draft of version 1 has its CLI id (`d1`), as every draft does. `work evaluate <task>` names the first stop of the task that waits.
-- A relayed accept of a draft needs evidence, as the person's own accept does.
+- A forwarded accept of a draft is the person's accept: it needs no evidence (Nanda, 2026-11-11).
 
 On 2026-11-09, after the retest: only a model writes a draft ("let ai write the draft, I can only
 give direction ... only the AI know which instruction is the best"), so `work direction revise`
@@ -976,8 +984,8 @@ Derived while building it (Nanda can change them):
 1. **A parent task after a split:** no "joining result". A task lists the tasks that it
    needs; a split sets the parent's needs to its parts; the parent's own result comes after
    they are accepted, and any assignment of the owner may make a better result.
-2. **Relayed acts that count at once:** as built. A reject, a question, and a comment count
-   at once; an accept (also of a draft), an answer, and a settle wait for `work ratify`.
+2. **Forwarded acts that count at once:** as built. A reject, a question, and a comment count
+   at once; an accept (also of a draft), an answer, and a resolve wait for `work confirm`.
 3. **The channel that confirms a person:** as built. A terminal and a typed confirmation
    now; the board with the person's key at the migration.
 4. **Does the decider decide:** yes. Every result also needs its decider's accept, and the
@@ -990,3 +998,22 @@ Derived while building it (Nanda can change them):
 
 Item 6 is built: the engine's `briefOf` makes the short lines, and the CLI prints them with its
 ids.
+
+## 12. The UI (2026-11-11)
+
+`work start` serves the UI of a dir on 127.0.0.1 (`ui/`): the requirements are in
+`plan/ui/PLAN.md`, the parts and what the build changed in `plan/ui/BUILD.md`.
+
+- `ui/view.js` builds what the page shows from the replay and the reads of the engine: the
+  projects (runs, and top tasks opened at a terminal), the canvas in layout A (task, work and
+  review cards; only the latest attempt), the panel of a task, the diff by file, and the decisions
+  that reach the person (`decisionsOf`).
+- `ui/server.js`: the key of `work start` (a SameSite=Strict cookie; a websocket and a POST also
+  need the page's own origin), the read API, `POST /api/act` for the person's acts, and the
+  websocket for "changed" and for the terminals.
+- `ui/pump.js`: the terminals in tmux on the socket `aristoteles`; `ui/watcher.js`: the life
+  cycle of the real agents (start, wake, retry, the host's decisions); `ui/act.js`: a person act in
+  the server's process, on the ui channel.
+- New in the CLI for the UI: `work run start|done|close|list`, `work session <a> --id [--token]`,
+  `work task draft --by=<run>` and `work task open <draft>`, `work problem`, `work event`,
+  `work send`, `work note <token> words --on=<decision> [--hope]`, and `work start`.

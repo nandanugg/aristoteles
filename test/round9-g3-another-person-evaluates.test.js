@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { main } from '../cli.js'
+import { main } from './code.js'
 import { DIRECTION, FIT, init, INTRO_V1, ok, split, TASK, tokenIn, WORK_YAML } from
   './harness.js'
 
@@ -17,7 +17,7 @@ import { DIRECTION, FIT, init, INTRO_V1, ok, split, TASK, tokenIn, WORK_YAML } f
 function twoPeople() {
   const dir = mkdtempSync(join(tmpdir(), 'work-g3-'))
   const files = {
-    'work.yaml': WORK_YAML.replace('  - name: Nanda\n', '  - name: Nanda\n  - name: Bob\n'),
+    'aristoteles.yaml': WORK_YAML.replace('  - name: Nanda\n', '  - name: Nanda\n  - name: Bob\n'),
     'directions/tsd-writing.yaml': DIRECTION, 'task.yaml': TASK, 'fit.yaml': FIT,
     'docs/tsd.md': '# TSD\n\n## Introduction\n\nTODO\n\n## Design\n\nTODO\n',
     'docs/facts.md': '# Facts\n\n## Dedupe\n\nThe export ran twice for one merchant.\n',
@@ -50,9 +50,9 @@ function twoPeople() {
 async function waitsForEvaluation() {
   const p = twoPeople()
   await init(p)
-  for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.nanda('task open --file=task.yaml'))
-  const lead = tokenIn(ok(await p.nanda('assign t1 --role=region-lead')).out)
+  const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
   ok(await p.agent(`brief ${lead}`))
   const w = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).out)
   ok(await p.agent(`brief ${w}`))

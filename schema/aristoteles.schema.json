@@ -1,0 +1,386 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/nandanugg/aristoteles/main/schema/aristoteles.schema.json",
+  "title": "aristoteles.yaml",
+  "description": "The one file of a dir: the people, the limits, the roles and the deciders (the mechanism), and the settings of the UI. The name of the dir is the name of its folder.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "people",
+    "roles"
+  ],
+  "properties": {
+    "people": {
+      "description": "The people who decide. The UI and the CLI act as the person whose name is the git user.name of the dir.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "limits": {
+      "description": "The limits of each tier, under the part that checks them.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "low": {
+          "$ref": "#/$defs/tierLimits"
+        },
+        "medium": {
+          "$ref": "#/$defs/tierLimits"
+        },
+        "high": {
+          "$ref": "#/$defs/tierLimits"
+        }
+      }
+    },
+    "roles": {
+      "description": "The roles of the dir. Every dir has a role of each tier: high (Sol), medium (Terra) and low (Luna).",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/role"
+      }
+    },
+    "decide": {
+      "description": "Who decides the results of a maker, when more than one role approves it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resultsOf",
+          "by"
+        ],
+        "properties": {
+          "resultsOf": {
+            "type": "string",
+            "description": "A role that does work."
+          },
+          "by": {
+            "$ref": "#/$defs/deciders"
+          }
+        }
+      }
+    },
+    "tiers": {
+      "description": "The commands of the real agents. Sol and Terra run in their own terminals; a Luna runs as a subagent inside the terminal of its parent.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sol": {
+          "$ref": "#/$defs/tier"
+        },
+        "terra": {
+          "$ref": "#/$defs/tier"
+        }
+      }
+    },
+    "retryMinutes": {
+      "description": "The minutes between the tries of the UI after a system problem. The default is 5.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "hostWaitMinutes": {
+      "description": "The minutes that the UI waits for the words of the host about an item, before it shows the item raw. The default is 10.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "outsideSourceHours": {
+      "description": "The hours that a revision of an outside source holds; after them, work next asks the agent to read the source again. The default is 72.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "sound": {
+      "description": "Play a sound when a badge shows. The default is false.",
+      "type": "boolean"
+    },
+    "theme": {
+      "description": "The theme of the UI. The default is light.",
+      "enum": [
+        "light",
+        "dark"
+      ]
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tierLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "Assignment": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "briefChars": {
+              "$ref": "#/$defs/count",
+              "description": "The longest brief that the CLI prints."
+            },
+            "attempts": {
+              "$ref": "#/$defs/count",
+              "description": "The tries of a maker."
+            }
+          }
+        },
+        "Review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rules": {
+              "$ref": "#/$defs/count",
+              "description": "How many rules one review checks."
+            }
+          }
+        },
+        "Result": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "$ref": "#/$defs/count",
+              "description": "The changed lines of one result."
+            }
+          }
+        }
+      }
+    },
+    "act": {
+      "description": "Exactly one of do, review, approve, change.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "do"
+          ],
+          "properties": {
+            "do": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "review"
+          ],
+          "properties": {
+            "review": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "approve"
+          ],
+          "properties": {
+            "approve": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "change"
+          ],
+          "properties": {
+            "change": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "agent",
+            "program"
+          ],
+          "description": "A program runs a command on each report."
+        },
+        "tier": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "intro": {
+          "type": "string"
+        },
+        "responsibilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "output": {
+          "type": "string",
+          "description": "The form of a result, for example \"<file>#<section>\" or \"<repo>@<commit>\"."
+        },
+        "acts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/act"
+          }
+        },
+        "run": {
+          "type": "string"
+        },
+        "on": {
+          "const": "report"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "deciders": {
+      "description": "A role, or one of { or: [...] }, { and: [...] }, { order: [...] }.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "or"
+          ],
+          "properties": {
+            "or": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/deciders"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "and"
+          ],
+          "properties": {
+            "and": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/deciders"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "order"
+          ],
+          "properties": {
+            "order": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/deciders"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "launch": {
+          "type": "string",
+          "pattern": "\\{session\\}",
+          "description": "The command that starts a real agent; {session} is the session id that the UI gives it, and {prompt} (optional) is its first input, given as an argument."
+        },
+        "resume": {
+          "type": "string",
+          "pattern": "\\{session\\}",
+          "description": "The command that continues a closed session; {session} is its id, and {prompt} (optional) is the retry input."
+        },
+        "start": {
+          "type": "string",
+          "pattern": "\\{token\\}",
+          "description": "The first input; it starts the skill. The default: Use the work skill. Your command: work brief {token}"
+        },
+        "skills": {
+          "type": "string",
+          "description": "The skills folder of the AI tool, relative to the dir; work start links the work and assess skills there."
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Words in the output that show a failed session."
+        },
+        "prompts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Words in the last output that show a prompt: the session waits for an answer."
+        },
+        "silentMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minutes with no output and no work command that count as a failed session. The default is 10."
+        },
+        "retryInput": {
+          "type": "string",
+          "description": "The input that a live session gets on a retry. The default is continue."
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 // Round 9, attacker G. Rule (DESIGN section 11, round 8): "A result that its deciders decided once
-// uses no attempt, also when a later criticism makes them look again." `used` in engine.js counts a
+// uses no attempt, also when a later criticism makes them look again." `used` in the engine counts a
 // result that has any fault review, decided or not. The person's criticism of t1 makes the lead
 // look again at r1 (its earlier accept stops counting); when the lead's look ends in a Reject, r1
 // uses the writer's attempt, and with one try that fault is recorded as the last try of a2: t1
@@ -8,8 +8,8 @@ import { describe, expect, test } from 'bun:test'
 import { INTRO_V2, ok, started, tokenIn } from
   './harness.js'
 
-const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the region" ' +
-  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the region"'
+const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the section" ' +
+  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the section"'
 const REPEATABLE = '--evidence="repeatable | docs/tsd.md#introduction | a reader can repeat the double export"'
 
 describe('G10 a decided result uses an attempt when its decider looks again after a criticism and rejects it', () => {

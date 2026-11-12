@@ -2,10 +2,9 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { main } from '../cli.js'
+import { main } from './code.js'
 
-export const WORK_YAML = `project: report-export
-people:
+export const WORK_YAML = `people:
   - name: Nanda
 limits:
   low:    { Assignment: { briefChars: 4000, attempts: 3 }, Review: { rules: 5 } }
@@ -17,33 +16,33 @@ roles:
     description: Keeps the TSD on its directions - splits it and suggests direction changes.
     intro: You keep the TSD on its directions.
     responsibilities:
-      - Split the TSD into regions with work task split.
+      - Split the TSD into sections with work task split.
       - Suggest a direction change with work direction revise when a Reject has no rule.
-    acts: [{ approve: [region-lead, writer] }]
-  region-lead:
+    acts: [{ approve: [section-lead, writer] }]
+  section-lead:
     tier: medium
-    description: Runs one region - assigns the writer and the linter, and decides the region.
-    intro: You run one region until its rules have evidence, or you raise.
+    description: Runs one section - assigns the writer and the linter, and decides the section.
+    intro: You run one section until its rules have evidence, or you escalate.
     responsibilities:
       - Assign the writer, then the linter on each result, with work assign.
-      - Raise with work raise when the directions do not fit.
+      - Escalate with work escalate when the directions do not fit.
     acts: [{ approve: [writer] }]
   writer:
     tier: low
-    description: Writes one TSD region from its brief.
-    intro: You write one region under its heading.
+    description: Writes one TSD section from its brief.
+    intro: You write one section under its heading.
     responsibilities:
-      - Write the region under its heading in the file that WORK IN names.
-      - Report it with work report as <file>#<region>.
-    output: "<file>#<region>"
-    acts: [{ do: write one TSD region }]
+      - Write the section under its heading in the file that WORK IN names.
+      - Report it with work report as <file>#<section>.
+    output: "<file>#<section>"
+    acts: [{ do: write one TSD section }]
   linter:
     tier: low
-    description: Checks one region against the rules in its checks.
+    description: Checks one section against the rules in its checks.
     intro: For each rule in your checks, say where you looked and what you saw.
     responsibilities:
       - Give one --evidence line for each rule in your checks.
-      - Reject with one --point for each rule that the region breaks.
+      - Reject with one --point for each rule that the section breaks.
     acts: [{ review: [writer] }]
 `
 
@@ -59,38 +58,42 @@ standards:
       - { id: no-code-proof, says: "No file paths with line numbers, no commit hashes in the body", checkedBy: linter }
       - { id: no-ticket-ids, says: "No ticket ids and no chat-thread citations", checkedBy: linter }
   - id: intro-story
-    where: { region: introduction }
+    where: { section: introduction }
     says: Tell the story first, in plain words.
     rules:
-      - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: region-lead }
+      - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }
 `
 
 export const TASK = `name: The Introduction
 text: Write the Introduction from the agreed facts.
 directions: [tsd-writing]
-context: { region: introduction }
+context: { section: introduction }
 workspace:
   - { source: tsd, path: docs/tsd.md, verify: "work-lint docs/tsd.md" }
 references: ["docs/facts.md#dedupe"]
 `
 
-// The same work with no region: a task with a region is one unit, so only this one splits.
-export const TASK_WHOLE = TASK.replace('context: { region: introduction }\n', '')
+// The same work with no section: a task with a section is one unit, so only this one splits.
+export const TASK_WHOLE = TASK.replace('context: { section: introduction }\n', '')
 
 export const FIT = [1, 2, 3, 4, 5, 6, 7].map((id) => `- { id: ${id}, yes: true, why: "seen in the Introduction run" }`).join('\n')
 
-export function project(files = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'work-'))
+// The folder of a dir has the name that people read (the name of a dir is its folder name).
+export function project(files = {}, name = 'report-export') {
+  const dir = join(mkdtempSync(join(tmpdir(), 'work-')), name)
+  mkdirSync(dir)
   const all = {
-    'work.yaml': WORK_YAML, 'directions/tsd-writing.yaml': DIRECTION, 'task.yaml': TASK, 'fit.yaml': FIT,
+    'aristoteles.yaml': WORK_YAML, 'directions/tsd-writing.yaml': DIRECTION, 'task.yaml': TASK, 'fit.yaml': FIT,
     'docs/tsd.md': '# TSD\n\n## Introduction\n\nTODO\n\n## Design\n\nTODO\n',
     'docs/facts.md': '# Facts\n\n## Dedupe\n\nThe export ran twice for one merchant.\n',
     ...files,
   }
   for (const [path, text] of Object.entries(all)) write(dir, path, text)
   let minute = 0
+  // A test with the server of the UI uses the real clock, because the server acts at the real time.
+  let real = false
   let tokens = 0
-  const run = (line, { tty = false, typed, env = {} } = {}) => {
+  const run = (line, { tty = false, typed, env = {}, channel } = {}) => {
     const out = []
     const err = []
     const io = {
@@ -98,8 +101,9 @@ export function project(files = {}) {
       out: (t) => out.push(t),
       err: (t) => err.push(t),
       isTTY: tty,
+      channel,
       readLine: () => typed,
-      now: () => new Date(Date.UTC(2026, 9, 25, 9, minute++)).toISOString(),
+      now: () => (real ? new Date().toISOString() : new Date(Date.UTC(2026, 9, 25, 9, minute++)).toISOString()),
       gitUser: () => 'Nanda',
       // Each test project has its own aristoteles file, never the one in the home folder.
       env: { ARISTOTELES_DB: join(dir, '.work', 'aristoteles.db'), ...env },
@@ -110,11 +114,17 @@ export function project(files = {}) {
     const clean = (lines) => lines.join('\n').replaceAll(dir, '<project>')
     return main(argv, io).then((code) => ({ code, out: clean(out), err: clean(err) }))
   }
-  // The person at a terminal, and an agent in a shell with no terminal.
+  // The person at a terminal, the person on the UI, and an agent in a shell with no terminal.
   const nanda = (line, typed) => run(line, { tty: true, typed })
+  const ui = (line, typed) => run(line, { channel: 'ui', typed })
   const agent = (line) => run(line)
-  // wait moves the fake clock, so that a time limit (a waiver, a grant) can pass in a test.
-  return { dir, run, nanda, agent, write: (path, text) => write(dir, path, text), wait: (minutes) => { minute += minutes } }
+  // wait moves the fake clock, so that a time limit (a grant) can pass in a test.
+  // now is the time of its last reading (about the last act); it does not move the clock.
+  const now = () => new Date(Date.UTC(2026, 9, 25, 9, Math.max(minute - 1, 0))).toISOString()
+  return {
+    dir, run, nanda, ui, agent, now, realTime: () => { real = true },
+    write: (path, text) => write(dir, path, text), wait: (minutes) => { minute += minutes },
+  }
 }
 
 function write(dir, path, text) {
@@ -147,17 +157,17 @@ export const ok = (r) => {
   return r
 }
 
-// init, fit every role, open t1, and give it to a region lead (a1).
+// init, fit every role, open t1, and give it to a section lead (a1).
 // The person evaluates a mistake of a task (Nanda, 2026-11-08), so that the work can go on.
 export const evaluated = async (p, task, level = 'standard') => ok(await p.nanda(`evaluate ${task} --wrong="the work misses what was asked" ` +
   `--why="the directions do not say it" --improve="say it in a standard" --level=${level}`))
 
 // work init, then each direction of the fixture: a model run outside any task (assess, as the
 // skill that reads an app) drafts it, and Nanda accepts it. The directions are files of the
-// fixture only: work reads none. A work.yaml names another folder with a comment line.
+// fixture only: work reads none. A aristoteles.yaml names another folder with a comment line.
 export async function init(p) {
   ok(await p.nanda('init'))
-  const yaml = Bun.file(join(p.dir, 'work.yaml'))
+  const yaml = Bun.file(join(p.dir, 'aristoteles.yaml'))
   const folder = (await yaml.text()).match(/# the harness drafts the directions in (\S+)/)?.[1] ?? 'directions/*.yaml'
   for (const file of [...new Bun.Glob(folder).scanSync({ cwd: p.dir })].sort()) {
     const drafted = ok(await p.agent(`direction new --file=${file} --by=assess`)).out
@@ -169,9 +179,9 @@ export async function init(p) {
 export async function started(files) {
   const p = project(files)
   await init(p)
-  for (const role of ['architect', 'region-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.nanda('task open --file=task.yaml'))
-  const lead = tokenIn(ok(await p.nanda('assign t1 --role=region-lead')).out)
+  const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
   ok(await p.agent(`brief ${lead}`))
   return { p, lead }
 }
@@ -193,8 +203,7 @@ export async function reported(files) {
 }
 
 // A small code project: a lead, an implementer that reports <repo>@<commit>, and a gate.
-export const CODE_YAML = `project: code
-people:
+export const CODE_YAML = `people:
   - name: Nanda
 limits:
   low: { Assignment: { attempts: 3 } }
@@ -245,15 +254,17 @@ directions: [fixes]
 workspace:
   - { source: app, path: app, base: main }
 `
+// env: process.env, so that git is found on the PATH of test/preload.js.
 export const git = (dir, ...args) => {
-  const run = Bun.spawnSync(['git', '-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+  const argv = ['git', '-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]
+  const run = Bun.spawnSync(argv, { env: process.env })
   return run.stdout.toString().trim()
 }
 
 // A code project with a git repo at app/: main has ok.txt; the lead (a1) and the implementer
 // (a2) have read their briefs.
 export async function codeStarted(files = {}) {
-  const p = project({ 'work.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': CODE_TASK, 'app/ok.txt': 'ok\n', ...files })
+  const p = project({ 'aristoteles.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': CODE_TASK, 'app/ok.txt': 'ok\n', ...files }, 'code')
   const app = `${p.dir}/app`
   git(app, 'init', '-q', '-b', 'main')
   git(app, 'add', '.')

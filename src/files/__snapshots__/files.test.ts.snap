@@ -1,0 +1,734 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`slug and sectionsOf slug of "Hello World" 1`] = `"hello-world"`;
+
+exports[`slug and sectionsOf slug of "  Padded  " 1`] = `"padded"`;
+
+exports[`slug and sectionsOf slug of "Dots. And, Commas!" 1`] = `"dots-and-commas"`;
+
+exports[`slug and sectionsOf slug of "Under_score & More" 1`] = `"underscore-more"`;
+
+exports[`slug and sectionsOf slug of "a  b" 1`] = `"a-b"`;
+
+exports[`slug and sectionsOf slug of "UPPER-case" 1`] = `"upper-case"`;
+
+exports[`slug and sectionsOf slug of "" 1`] = `""`;
+
+exports[`slug and sectionsOf sections of "" 1`] = `[]`;
+
+exports[`slug and sectionsOf sections of "no heads" 1`] = `[]`;
+
+exports[`slug and sectionsOf sections of "# Title\\n\\nintro\\n\\n## P" 1`] = `
+[
+  {
+    "end": 20,
+    "slug": "title",
+    "start": 0,
+    "text": 
+"# Title
+
+intro
+
+## Part One
+
+text one
+
+### Deep
+
+deep text
+
+## Part Two
+
+text two
+
+## Part One
+
+again
+"
+,
+  },
+  {
+    "end": 12,
+    "slug": "part-one",
+    "start": 4,
+    "text": 
+"## Part One
+
+text one
+
+### Deep
+
+deep text
+"
+,
+  },
+  {
+    "end": 12,
+    "slug": "deep",
+    "start": 8,
+    "text": 
+"### Deep
+
+deep text
+"
+,
+  },
+  {
+    "end": 16,
+    "slug": "part-two",
+    "start": 12,
+    "text": 
+"## Part Two
+
+text two
+"
+,
+  },
+  {
+    "end": 20,
+    "slug": "part-one",
+    "start": 16,
+    "text": 
+"## Part One
+
+again
+"
+,
+  },
+]
+`;
+
+exports[`slug and sectionsOf sections of "#nospace\\n# a\\n## b\\n# " 1`] = `
+[
+  {
+    "end": 3,
+    "slug": "a",
+    "start": 1,
+    "text": 
+"# a
+## b"
+,
+  },
+  {
+    "end": 3,
+    "slug": "b",
+    "start": 2,
+    "text": "## b",
+  },
+  {
+    "end": 4,
+    "slug": "c",
+    "start": 3,
+    "text": "# c",
+  },
+]
+`;
+
+exports[`slug and sectionsOf sections of "## first\\n# second\\n##" 1`] = `
+[
+  {
+    "end": 1,
+    "slug": "first",
+    "start": 0,
+    "text": "## first",
+  },
+  {
+    "end": 4,
+    "slug": "second",
+    "start": 1,
+    "text": 
+"# second
+### third
+## fourth"
+,
+  },
+  {
+    "end": 3,
+    "slug": "third",
+    "start": 2,
+    "text": "### third",
+  },
+  {
+    "end": 4,
+    "slug": "fourth",
+    "start": 3,
+    "text": "## fourth",
+  },
+]
+`;
+
+exports[`checkOutput output "a.md" 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`checkOutput output "a b.md" 1`] = `
+{
+  "refused": "the output "a b.md" has characters outside A-Z a-z 0-9 . _ / # @ -",
+}
+`;
+
+exports[`checkOutput output "sub/a.md#part-one" 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`checkOutput output "repo@abcdef1" 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`checkOutput output "/abs/a.md" 1`] = `
+{
+  "refused": "/abs/a.md is outside the dir; the output is a path inside it",
+}
+`;
+
+exports[`checkOutput output "../a.md" 1`] = `
+{
+  "refused": "../a.md is outside the dir; the output is a path inside it",
+}
+`;
+
+exports[`checkOutput output "a/../../b.md" 1`] = `
+{
+  "refused": "a/../../b.md is outside the dir; the output is a path inside it",
+}
+`;
+
+exports[`checkOutput output "a/../b.md" 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`checkOutput output "$(x)" 1`] = `
+{
+  "refused": "the output "$(x)" has characters outside A-Z a-z 0-9 . _ / # @ -",
+}
+`;
+
+exports[`checkOutput output "a;b" 1`] = `
+{
+  "refused": "the output "a;b" has characters outside A-Z a-z 0-9 . _ / # @ -",
+}
+`;
+
+exports[`checkOutput output "" 1`] = `
+{
+  "refused": "the output "" has characters outside A-Z a-z 0-9 . _ / # @ -",
+}
+`;
+
+exports[`checkOutput output "#x" 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`checkOutput output "@x" 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`checkOutput output "a\\nb" 1`] = `
+{
+  "refused": 
+"the output "a
+b" has characters outside A-Z a-z 0-9 . _ / # @ -"
+,
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf a.md 1`] = `
+{
+  "ok": {
+    "digest": "a3d3bb4e409ebae3bad4e3f24ac31b46b0408ea4ca6e0da2e83d24aedb47eba8",
+    "file": "a.md",
+    "size": 20,
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside a.md 1`] = `
+[
+  "title",
+  "part-one",
+  "deep",
+  "part-two",
+  "part-one",
+]
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf b.txt 1`] = `
+{
+  "ok": {
+    "digest": "c3f9c8c283a2b1f2f1896f27a01cbe3cddc0c9d93f752e4639035a0f5b36f6e8",
+    "file": "b.txt",
+    "size": 3,
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside b.txt 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf sub/c.md 1`] = `
+{
+  "ok": {
+    "digest": "7e53ca6fe1ea0b0710ed5fe163b6a7af5a4495a0963c6a711404e71032e21543",
+    "file": "sub/c.md",
+    "size": 2,
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside sub/c.md 1`] = `
+[
+  "c",
+]
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf empty.md 1`] = `
+{
+  "ok": {
+    "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "file": "empty.md",
+    "size": 1,
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside empty.md 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf a.md#title 1`] = `
+{
+  "ok": {
+    "digest": "a3d3bb4e409ebae3bad4e3f24ac31b46b0408ea4ca6e0da2e83d24aedb47eba8",
+    "file": "a.md",
+    "section": "title",
+    "size": 20,
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside a.md#title 1`] = `
+[
+  "part-one",
+  "deep",
+  "part-two",
+  "part-one",
+]
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf a.md#part-two 1`] = `
+{
+  "ok": {
+    "digest": "b2492d27de32ee6973dfce77a14479353f94fb965aecdc0dcbecd68b682b9cac",
+    "file": "a.md",
+    "section": "part-two",
+    "size": 4,
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside a.md#part-two 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf a.md#deep 1`] = `
+{
+  "ok": {
+    "digest": "e467aa321463f4608453dc883b5eca98288aed7f03f3e6276df900134f389dc7",
+    "file": "a.md",
+    "section": "deep",
+    "size": 4,
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside a.md#deep 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf a.md#part-one 1`] = `
+{
+  "refused": "a.md has the heading "part-one" 2 times; make each heading unique",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside a.md#part-one 1`] = `
+[
+  "deep",
+]
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf a.md#nothing 1`] = `
+{
+  "refused": "a.md has no heading "nothing"; the section is the heading in lower case, with dashes",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside a.md#nothing 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf missing.md 1`] = `
+{
+  "refused": "missing.md does not exist; the output is a file, <file>#<heading id>, or <repo>@<commit>",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside missing.md 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf folder 1`] = `
+{
+  "refused": "folder does not exist; the output is a file, <file>#<heading id>, or <repo>@<commit>",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside folder 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf sub/c.md#c 1`] = `
+{
+  "ok": {
+    "digest": "7e53ca6fe1ea0b0710ed5fe163b6a7af5a4495a0963c6a711404e71032e21543",
+    "file": "sub/c.md",
+    "section": "c",
+    "size": 2,
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside sub/c.md#c 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf repo@<full> 1`] = `
+{
+  "ok": {
+    "commit": "<full>",
+    "digest": "6d7572818a587501467139ad1ef01aebe98eeb6d",
+    "file": "repo",
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside repo@<full> 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf repo@<short> 1`] = `
+{
+  "ok": {
+    "commit": "<full>",
+    "digest": "6d7572818a587501467139ad1ef01aebe98eeb6d",
+    "file": "repo",
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside repo@<short> 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf repo@abcdef0 1`] = `
+{
+  "refused": "abcdef0 is not a commit in repo",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside repo@abcdef0 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf ghost@abcdef0 1`] = `
+{
+  "refused": "abcdef0 is not a commit in ghost",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside ghost@abcdef0 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf ../x.md 1`] = `
+{
+  "refused": "../x.md is outside the dir; the output is a path inside it",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside ../x.md 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf /etc/passwd 1`] = `
+{
+  "refused": "/etc/passwd is outside the dir; the output is a path inside it",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside /etc/passwd 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf digestOf bad;name 1`] = `
+{
+  "refused": "the output "bad;name" has characters outside A-Z a-z 0-9 . _ / # @ -",
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sectionsInside bad;name 1`] = `[]`;
+
+exports[`digestOf, sectionsInside, snapshotOf snapshotOf a.md 1`] = `
+{
+  "digest": "a3d3bb4e409ebae3bad4e3f24ac31b46b0408ea4ca6e0da2e83d24aedb47eba8",
+  "sections": {
+    "deep": "e467aa321463f4608453dc883b5eca98288aed7f03f3e6276df900134f389dc7",
+    "part-one": "f5f2e24fc4a5382ba09b9c192ae49cfbda4ad32fac4cfb4c317dabd083a8db65",
+    "part-two": "b2492d27de32ee6973dfce77a14479353f94fb965aecdc0dcbecd68b682b9cac",
+    "title": "a3d3bb4e409ebae3bad4e3f24ac31b46b0408ea4ca6e0da2e83d24aedb47eba8",
+  },
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf snapshotOf b.txt 1`] = `
+{
+  "digest": "c3f9c8c283a2b1f2f1896f27a01cbe3cddc0c9d93f752e4639035a0f5b36f6e8",
+  "sections": {},
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf snapshotOf folder 1`] = `null`;
+
+exports[`digestOf, sectionsInside, snapshotOf snapshotOf repo 1`] = `null`;
+
+exports[`digestOf, sectionsInside, snapshotOf snapshotOf missing.md 1`] = `null`;
+
+exports[`digestOf, sectionsInside, snapshotOf snapshotOf empty.md 1`] = `
+{
+  "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "sections": {},
+}
+`;
+
+exports[`digestOf, sectionsInside, snapshotOf sameRevision the same text 1`] = `true`;
+
+exports[`digestOf, sectionsInside, snapshotOf sameRevision a short and a full sha 1`] = `true`;
+
+exports[`digestOf, sectionsInside, snapshotOf sameRevision two commits 1`] = `false`;
+
+exports[`digestOf, sectionsInside, snapshotOf sameRevision a prefix with no repo 1`] = `true`;
+
+exports[`digestOf, sectionsInside, snapshotOf sameRevision two others with no repo 1`] = `false`;
+
+exports[`digestOf, sectionsInside, snapshotOf sameRevision a repo that is not there 1`] = `true`;
+
+exports[`digestOf, sectionsInside, snapshotOf sameRevision a ref that git cannot find 1`] = `true`;
+
+exports[`digestOf, sectionsInside, snapshotOf sameRevision HEAD and a sha 1`] = `true`;
+
+exports[`the lock readLock: no lock 1`] = `
+{
+  "ok": undefined,
+}
+`;
+
+exports[`the lock readLock: an empty lock 1`] = `
+{
+  "ok": {},
+}
+`;
+
+exports[`the lock readLock: a good lock 1`] = `
+{
+  "ok": {
+    "a": {
+      "checkedBy": "lint",
+      "owner": "N",
+      "path": "p",
+      "repo": "/x",
+      "rules": {
+        "r1": "lint",
+      },
+    },
+    "b": {
+      "commit": "abc",
+      "owner": "M",
+      "path": "q",
+      "repo": "y",
+    },
+  },
+}
+`;
+
+exports[`the lock readLock: no repo 1`] = `
+{
+  "refused": "aristoteles.lock a: repo is required",
+}
+`;
+
+exports[`the lock readLock: a blank path 1`] = `
+{
+  "refused": "aristoteles.lock a: path is required",
+}
+`;
+
+exports[`the lock readLock: no owner 1`] = `
+{
+  "refused": "aristoteles.lock a: owner is required",
+}
+`;
+
+exports[`the lock readLock: an entry that is null 1`] = `
+{
+  "refused": "aristoteles.lock a: repo is required",
+}
+`;
+
+exports[`the lock readLock: a lock that does not parse 1`] = `
+{
+  "refused": "YAML Parse error: Unexpected token",
+}
+`;
+
+exports[`the lock writeLock: an entry with the three written keys out of order 1`] = `
+"a: 
+  repo: x
+  path: p
+  owner: "N"
+  commit: c
+  newest: "n"
+  refreshed: 2026-11-10"
+`;
+
+exports[`the lock writeLock: two entries and some keys missing 1`] = `
+"a: 
+  repo: x
+  path: p
+  owner: "N"
+  commit: c
+b: 
+  repo: "y"
+  path: q
+  owner: M
+  tag: v1
+  rules: 
+    r1: lint
+  checkedBy: lint
+  refreshed: d"
+`;
+
+exports[`the lock writeLock: a written key that is undefined 1`] = `
+"a: 
+  repo: x
+  path: p
+  owner: "N"
+  newest: "n""
+`;
+
+exports[`the lock writeLock: an empty lock 1`] = `"{}"`;
+
+exports[`readFolder a full folder 1`] = `
+{
+  "ok": {
+    "name": "Feature flags",
+    "says": 
+"
+# Feature flags
+
+Says it."
+,
+    "standards": [
+      {
+        "id": "naming",
+        "rules": [
+          {
+            "id": "lower",
+            "says": "lower.",
+          },
+          {
+            "id": "upper",
+            "says": "UPPER.",
+          },
+        ],
+        "says": "The name tells.",
+      },
+      {
+        "id": "removable",
+        "rules": [],
+        "says": "One read.",
+      },
+    ],
+  },
+}
+`;
+
+exports[`readFolder a path with a trailing slash 1`] = `
+{
+  "ok": {
+    "name": "Feature flags",
+    "says": 
+"
+# Feature flags
+
+Says it."
+,
+    "standards": [
+      {
+        "id": "naming",
+        "rules": [
+          {
+            "id": "lower",
+            "says": "lower.",
+          },
+          {
+            "id": "upper",
+            "says": "UPPER.",
+          },
+        ],
+        "says": "The name tells.",
+      },
+      {
+        "id": "removable",
+        "rules": [],
+        "says": "One read.",
+      },
+    ],
+  },
+}
+`;
+
+exports[`readFolder a direction with no heading 1`] = `
+{
+  "ok": {
+    "name": "ff",
+    "says": "no head",
+    "standards": [
+      {
+        "id": "naming",
+        "rules": [
+          {
+            "id": "lower",
+            "says": "lower.",
+          },
+          {
+            "id": "upper",
+            "says": "UPPER.",
+          },
+        ],
+        "says": "The name tells.",
+      },
+      {
+        "id": "removable",
+        "rules": [],
+        "says": "One read.",
+      },
+    ],
+  },
+}
+`;
+
+exports[`readFolder no direction.md 1`] = `
+{
+  "refused": "dirs/ff has no direction.md",
+}
+`;
+
+exports[`readFolder a direction with no standards 1`] = `
+{
+  "ok": {
+    "name": "Feature flags",
+    "says": 
+"
+# Feature flags
+
+Says it."
+,
+    "standards": [],
+  },
+}
+`;

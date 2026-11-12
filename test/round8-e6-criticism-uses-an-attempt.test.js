@@ -2,15 +2,15 @@
 // attempt; "a recheck, the person's criticism, and a Reject of a result made under an older version
 // use none". Round 7 added two fixes that meet here: "a decider's accept counts only after the latest
 // Reject of its task" (lastTaskReject) and "a result is an attempt until its deciders decide it"
-// (settled). The person's Reject of the TASK moves lastTaskReject, the decided result is no longer
-// settled, and so it uses the maker's attempt again, with no fault.
+// (decided). The person's Reject of the TASK moves lastTaskReject, the decided result is no longer
+// decided, and so it uses the maker's attempt again, with no fault.
 import { describe, expect, test } from 'bun:test'
 import { INTRO_V2, ok, started, tokenIn } from
   './harness.js'
 
 const UNTIL = '--until=2026-12-31T00:00:00Z'
-const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the region" ' +
-  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the region"'
+const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the section" ' +
+  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the section"'
 const REPEATABLE = '--evidence="repeatable | docs/tsd.md#introduction | a reader can repeat the double export"'
 const INTRO_V3 = '# TSD\n\n## Introduction\n\nThe export ran twice, and the merchant got two files on one day.\n\n## Design\n\nTODO\n'
 
@@ -39,7 +39,7 @@ describe('E6 the person\'s criticism of a task uses the maker\'s attempt', () =>
     ok(await p.agent(`brief ${arch2}`))
     ok(await p.agent(`evaluate ${arch} t1 --wrong="the introduction misses the impact" --why="no standard asks for it" ` +
       '--improve="a standard for the impact" --level=standard'))
-    p.write('add.yaml', 'add:\n  - id: impact-story\n    where: { region: introduction }\n' +
+    p.write('add.yaml', 'add:\n  - id: impact-story\n    where: { section: introduction }\n' +
       '    says: The introduction says what the merchant lost.\n' +
       '    rules:\n      - { id: says-impact, says: "The introduction names the impact on the merchant", checkedBy: linter }\n')
     ok(await p.agent(`direction revise ${arch} tsd-writing --file=add.yaml --answers=${vid}`))

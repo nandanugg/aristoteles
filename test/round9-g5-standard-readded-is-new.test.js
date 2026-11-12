@@ -10,12 +10,12 @@ import { describe, expect, test } from 'bun:test'
 import { INTRO_V1, INTRO_V2, ok, started, tokenIn } from
   './harness.js'
 
-const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the region" ' +
-  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the region"'
+const LINT = '--evidence="no-code-proof | docs/tsd.md#introduction | no paths or hashes in the section" ' +
+  '--evidence="no-ticket-ids | docs/tsd.md#introduction | no ticket ids in the section"'
 const REPEATABLE = '--evidence="repeatable | docs/tsd.md#introduction | a reader can repeat the double export"'
 // intro-story of harness.js DIRECTION, word for word.
-const READD = 'add:\n  - id: intro-story\n    where: { region: introduction }\n    says: Tell the story first, in plain words.\n    rules:\n' +
-  '      - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: region-lead }\n'
+const READD = 'add:\n  - id: intro-story\n    where: { section: introduction }\n    says: Tell the story first, in plain words.\n    rules:\n' +
+  '      - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }\n'
 
 // The architect removes intro-story (tsd-writing@2), then adds it back as it was (tsd-writing@3);
 // the person accepts each draft (the reviser cannot review its own draft).
@@ -24,10 +24,10 @@ async function removeAndAddBack(p) {
   const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
   ok(await p.agent(`brief ${arch}`))
   p.write('remove.yaml', 'remove: [intro-story]\n')
-  ok(await p.agent(`direction revise ${arch} tsd-writing --file=remove.yaml --why="the story standard goes"`))
+  ok(await p.agent(`direction revise ${arch} tsd-writing --file=remove.yaml --why="Shorten"`))
   ok(await p.nanda('review d2 accept --evidence="remove.yaml | intro-story goes"', 'accept'))
   p.write('readd.yaml', READD)
-  ok(await p.agent(`direction revise ${arch} tsd-writing --file=readd.yaml --why="the story standard comes back as it was"`))
+  ok(await p.agent(`direction revise ${arch} tsd-writing --file=readd.yaml --why="Correct the standard"`))
   return ok(await p.nanda('review d3 accept --evidence="readd.yaml | the story standard is back as it was"', 'accept')).out
 }
 
@@ -44,7 +44,7 @@ describe('G5 a standard removed and added back with the same words is not the sa
     ok(await p.nanda('evaluate t1 --wrong="r1 cites the ticket" --why="the writer copied the facts" --improve="say that ids stay out" --level=standard'))
     await removeAndAddBack(p)
     // tsd-writing@3 says to t1 what @1 said: same spirit, same standards, same rules.
-    expect(ok(await p.agent('direction show tsd-writing@3')).out).toContain('intro-story where {"region":"introduction"}: Tell the story first, in plain words.')
+    expect(ok(await p.agent('direction show tsd-writing@3')).out).toContain('intro-story where {"section":"introduction"}: Tell the story first, in plain words.')
     // Correct: t1 still has the inputs that failed, so a2 takes no brief. Today: a2's attempts
     // are reset (status "attempts 0/1"), and its brief is printed under tsd-writing@3.
     const brief = await p.agent(`brief ${w}`)

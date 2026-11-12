@@ -1,9 +1,9 @@
 // Round 9, attacker H: "next, waiting, and the brief must always give a correct next step" after a
-// mistake is evaluated (DESIGN section 8, "Evaluation"). The step that render.js prints for an
+// mistake is evaluated (DESIGN section 8, "Evaluation"). The step that the words print for an
 // evaluated task (evaluationStep) does not look at what was already done for it, or at what its
 // reader may do: it repeats a revise while the version waits for its approval, repeats "remake
-// or split" after the split, offers a split that a task with a region refuses, and sends a high
-// role with no change act into a raise loop where work waiting shows the person nothing. Each test
+// or split" after the split, offers a split that a task with a section refuses, and sends a high
+// role with no change act into an escalation loop where work waiting shows the person nothing. Each test
 // expects the CORRECT behaviour, so it fails while the fault is there.
 import { describe, expect, test } from 'bun:test'
 import { INTRO_V1, TASK, TASK_WHOLE, ok, reported, started, tokenIn } from
@@ -47,10 +47,10 @@ describe('H6 work next after an evaluation', () => {
 
   test('level task: after the architect splits t1 as next said, next still says to remake or split t1 (a remake closes the new parts)', async () => {
     const { p, arch } = await exhausted(TASK_WHOLE)
-    ok(await p.agent(evaluate(arch, 'task', 'split the TSD into its regions')))
+    ok(await p.agent(evaluate(arch, 'task', 'split the TSD into its sections')))
     expect(ok(await p.agent(`next ${arch}`)).out).toContain(`work task split ${arch} t1 --file=<parts.yaml>`)
-    p.write('parts.yaml', '- { name: Intro, text: Write the introduction., context: { region: introduction } }\n' +
-      '- { name: Design, text: Write the design., context: { region: design } }\n')
+    p.write('parts.yaml', '- { name: Intro, text: Write the introduction., context: { section: introduction } }\n' +
+      '- { name: Design, text: Write the design., context: { section: design } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     // Correct: t1 now waits for its parts t2 and t3; the evaluation's change is made.
     const next = ok(await p.agent(`next ${arch}`)).out
@@ -58,21 +58,21 @@ describe('H6 work next after an evaluation', () => {
     expect(next).not.toContain(`work task remake ${arch} t1`)
   }, 20000)
 
-  test('level task on a task with a region: next offers work task split, which the split refuses', async () => {
+  test('level task on a task with a section: next offers work task split, which the split refuses', async () => {
     const { p, arch } = await exhausted(TASK)
     ok(await p.agent(evaluate(arch, 'task', 'the task text names no ticket')))
     const next = ok(await p.agent(`next ${arch}`)).out
     expect(next).toContain(`work task remake ${arch} t1`)
-    // Correct: a task with a region is one unit and is not split, so next offers only the remake.
+    // Correct: a task with a section is one unit and is not split, so next offers only the remake.
     expect(next).not.toContain(`work task split ${arch} t1`)
   }, 20000)
 
-  test('level task, and the architect has no change act: next says raise; the person answers; then nothing waits, and next says raise again', async () => {
+  test('level task, and the architect has no change act: next says escalate; the person answers; then nothing waits, and next says escalate again', async () => {
     const { p, arch } = await exhausted(TASK, false)
     ok(await p.agent(evaluate(arch, 'task', 'the task text names no ticket')))
-    const raise = ok(await p.agent(`next ${arch}`)).out.match(/work raise (\S+ --reason="[^"]*")/)
-    expect(raise).not.toBeNull()
-    ok(await p.agent(`raise ${raise[1]}`))
+    const step = ok(await p.agent(`next ${arch}`)).out.match(/work escalate (\S+ --reason="[^"]*")/)
+    expect(step).not.toBeNull()
+    ok(await p.agent(`escalate ${step[1]}`))
     // The person sees only the question; the remake that the evaluation asks for is not printed.
     expect(ok(await p.nanda('waiting')).out).toContain('q1 for Nanda: t1 needs the remake that ev1 asks for')
     ok(await p.nanda('answer q1 --text="yes, remake it"'))

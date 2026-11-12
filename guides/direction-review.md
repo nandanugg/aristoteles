@@ -1,8 +1,8 @@
 # Reviewing a draft of a direction
 
-Read the draft (`work direction show <draft>`) and what it answers: the suggestion, or the
-Reject. Ask each question below of each entry. Accept with evidence only when each answer is
-good. Else reject with one reason in this form:
+Read the draft (`work direction show <draft>`), its reason (the `why` at its end), and what it
+answers: the suggestion, or the Reject. Ask each question below of each entry. Accept with
+evidence only when each answer is good. Else reject with one reason in this form:
 `<entry id>[#<header>]: <the problem>; <what would fix it>`.
 
 ## The questions

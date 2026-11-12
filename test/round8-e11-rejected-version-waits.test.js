@@ -1,7 +1,7 @@
 // Round 8, attacker E. Rule (round 7, C-V1): "a version is reviewed outside the tree of its
 // suggester, and waiting names that assign"; every printed line says what to do next. After the
 // approvedBy reviewer rejects the version, waiting still says that the version waits for that
-// reviewer's review (render.js picks any open architect, also one that reviewed), the reviewer's
+// reviewer's review (the words pick any open architect, also one that reviewed), the reviewer's
 // next skips it (it reviewed), and the suggester's next does not say that its version was rejected.
 import { describe, expect, test } from 'bun:test'
 import { DIRECTION, ok, started, tokenIn } from

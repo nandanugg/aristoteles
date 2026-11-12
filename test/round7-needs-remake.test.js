@@ -17,8 +17,8 @@ describe('C-N1 an agent\'s remake that names needs: [] drops the wait', () => {
   test('a remade part runs after the part that its file no longer names', async () => {
     const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
     const arch = await architectOn(p, 't1')
-    p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { region: facts } }\n' +
-      '- { name: Story, text: Write the story from the facts., after: [Facts], context: { region: story } }\n')
+    p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { section: facts } }\n' +
+      '- { name: Story, text: Write the story from the facts., after: [Facts], context: { section: story } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     // The same remake as round6-needs, but the file names needs: [] (an empty list).
     p.write('story.yaml', 'name: Story\ntext: Write the story from the facts, in two paragraphs.\n' +

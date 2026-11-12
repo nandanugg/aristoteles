@@ -2,6 +2,26 @@
   "name": "aristoteles",
   "private": true,
   "type": "module",
-  "bin": { "work": "bin/work.js" },
-  "scripts": { "test": "bun test" }
+  "bin": {
+    "work": "bin/work.js"
+  },
+  "scripts": {
+    "test": "bun test --timeout 30000 --parallel=12 test",
+    "test:fast": "bun test --timeout 30000 --parallel=12 $(bun test/slow-files.js --skip) test",
+    "test:slow": "bun test --timeout 30000 --parallel=12 $(bun test/slow-files.js)",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/ui/app/tsconfig.json"
+  },
+  "devDependencies": {
+    "ajv": "8.17.1",
+    "bun-types": "1.4.4",
+    "playwright": "1.59.1",
+    "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.10.0",
+    "@xterm/xterm": "5.5.0",
+    "effect": "4.0.3",
+    "htm": "3.1.1",
+    "preact": "10.26.9"
+  }
 }
