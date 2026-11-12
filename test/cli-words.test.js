@@ -338,6 +338,23 @@ describe('the fixes of the skills round', () => {
     expect(fitted).toBe('writer fits; recorded.')
   })
 
+  test('a task opens while a new direction has only a draft; the task cannot name that one', async () => {
+    const { p } = await started()
+    p.write(
+      'hld.yaml',
+      'id: hld-writing\nname: HLD writing\nowner: Nanda\nfrom: [Logos]\n' +
+        'says: The reader sees the whole system on one page.\nstandards:\n  - id: one-page\n' +
+        '    says: Keep it to one page.\n    rules:\n' +
+        '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n',
+    )
+    ok(await p.agent('direction new --file=hld.yaml --by=assess'))
+    // Before the fix, task open and task draft exited 70: "the work has no official direction
+    // hld-writing" (a host on a real dir, 2026-11-13).
+    expect(ok(await p.nanda('task open --file=task.yaml')).out).toStartWith('t2 opened')
+    p.write('hld-task.yaml', 'name: The HLD\ntext: Write the HLD.\ndirections: [hld-writing]\n')
+    expect((await p.nanda('task open --file=hld-task.yaml')).code).toBe(1)
+  })
+
   test('role list keeps its columns with a long role name', async () => {
     const long = 'introduction-section-lead'
     const p = project({

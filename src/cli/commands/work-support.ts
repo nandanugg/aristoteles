@@ -81,14 +81,17 @@ export const inTree = (work: Work, found: Found, a: Assignment): boolean => {
 }
 
 // The directions that a task may name: each with a version, and its current standards in the
-// file's shape that readTask reads (a typed Where keeps its keys in a Map).
+// file's shape that readTask reads (a typed Where keeps its keys in a Map). A direction with only
+// a draft has no version yet, so no task names it.
 export const officialDirections = (work: Work) =>
-  [...work.directions.keys()].map((id) => ({
-    id,
-    standards: current(work, id)
-      .standards.flatMap((e) => work.standards.get(e) ?? [])
-      .map((s) => ({ where: whereRecord(s.where) })),
-  }))
+  [...work.directions]
+    .flatMap(([id, d]) => (d._tag === 'Official' ? [id] : []))
+    .map((id) => ({
+      id,
+      standards: current(work, id)
+        .standards.flatMap((e) => work.standards.get(e) ?? [])
+        .map((s) => ({ where: whereRecord(s.where) })),
+    }))
 
 // One evidence line: <rule id> | <where> | <what>, or <where> | <what> for what no rule names.
 export const evidenceOf = (
