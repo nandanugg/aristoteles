@@ -37,8 +37,9 @@ of work: a file that breaks one is refused, or the work stops later at that chec
 - `limits.<tier>.Review.rules`: an assign is refused when more rules of the task name the role
   than this limit. `work role fit` counts each rule of the accepted directions that names the
   role. A limit applies only when `aristoteles.yaml` sets it.
-- `limits.<tier>.Result.size` limits the size of each result of a maker. Leave it out for a
-  maker of a large file.
+- `limits.<tier>.Result.size` limits the lines of each result of a maker: all the lines of its
+  file, or of its section, also the lines that did not change, because one review checks all of
+  it. A commit has no size limit. Leave it out for a maker of a large file or section.
 
 ## Sections
 

@@ -151,7 +151,7 @@
           "properties": {
             "size": {
               "$ref": "#/$defs/count",
-              "description": "The changed lines of one result."
+              "description": "The lines of one result: all the lines of its file, or of its section, because one review checks all of it. A commit has no size limit."
             }
           }
         }
