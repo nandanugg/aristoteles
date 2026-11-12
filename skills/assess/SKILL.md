@@ -49,7 +49,9 @@ The roles and the people must exist before any direction, so do this part first:
        resume: claude --resume {session} {prompt}
        skills: .claude/skills
    ```
-3. Stop, and tell the person these steps, in this order:
+3. Run `work config check`. It reads the draft as the accept on the page does, and runs the
+   static fit checks of each role. Fix the draft until it passes. Then stop, and tell the
+   person these steps, in this order:
    - In a terminal of their own, not in this AI CLI, run `work start` in the dir, and keep it
      open: the page and the agents stop when it stops. Do not start it for them.
    - Read the draft on the page, and accept the roles. The page writes `aristoteles.yaml`,

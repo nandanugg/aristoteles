@@ -1,15 +1,16 @@
 // The commands init, config, role.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import type { Refused } from '../../domain/errors.ts'
-import { refuse } from '../../domain/errors.ts'
+import { Refused, refuse } from '../../domain/errors.ts'
 import { create, move } from '../../domain/events.ts'
 import type { ConfigFile, RoleFile, RoleWords } from '../../domain/files.ts'
 import { currentVersion, officialDirections } from '../../domain/derived.ts'
 import { isNonBlank, RoleName } from '../../domain/ids.ts'
 import type { Work } from '../../domain/work.ts'
-import { readConfig, restoreConfig, roleHash } from '../../config/config.ts'
-import { Dir, Now } from '../../services/io.ts'
+import { configOfText, readConfig, restoreConfig, roleHash } from '../../config/config.ts'
+import { CONFIG, DRAFT, refusing } from '../../config/core.ts'
+import { mergeDraft } from '../../config/settings.ts'
+import { Dir, GitUser, Now } from '../../services/io.ts'
 import { Store } from '../../services/store.ts'
 import { textOf } from '../args.ts'
 import { callerOf, isPerson, personChannel, personOf, tierOf } from '../caller.ts'
@@ -91,6 +92,7 @@ const config: Command = (call) =>
   Effect.gen(function* () {
     const sub = call.args.positional[0]
     const { cwd } = yield* Dir
+    if (sub === 'check') return yield* checkConfig
     if (sub === 'restore') {
       const { work } = yield* readWork
       const files = Object.keys(work.texts)
@@ -98,7 +100,7 @@ const config: Command = (call) =>
       for (const text of Object.values(work.texts)) yield* restoreConfig(cwd, text)
       return [`restored ${files.join(', ')}.`]
     }
-    if (sub !== 'apply') return yield* refuse('use work config apply|restore')
+    if (sub !== 'apply') return yield* refuse('use work config check|apply|restore')
     const { config, hashes, texts } = yield* readConfig(cwd)
     let changed: ReadonlyArray<string> = []
     yield* writeAct(call, (work) =>
@@ -152,6 +154,40 @@ const wordsFit = (role: RoleFile): ReadonlyArray<string> => {
   }
   return problems
 }
+
+// work config check (Nanda, 2026-11-13): what Accept the roles on the page would store, read the
+// same way (the draft merged into aristoteles.yaml, the git user in the people), and the checks
+// of the words of each agent role. Anyone may run it, the host too: it writes nothing.
+const checkConfig = Effect.gen(function* () {
+  const { cwd } = yield* Dir
+  const files = yield* Files
+  const file = yield* files.read(join(cwd, CONFIG))
+  const draft = yield* files.read(join(cwd, DRAFT))
+  if (draft === null && file === null) return yield* refuse(`no ${DRAFT} and no ${CONFIG} in ${cwd}`)
+  const name = draft === null ? CONFIG : DRAFT
+  const { config } = yield* refusing(() =>
+    draft === null ? (file ?? '') : mergeDraft(file ?? '', draft),
+  ).pipe(
+    Effect.flatMap((text) => configOfText(cwd, text)),
+    Effect.mapError((e) => new Refused({ message: `${name}: ${e.message}`, next: e.next })),
+  )
+  const problems: Array<string> = []
+  const user = yield* (yield* GitUser).name
+  if (!config.people.includes(user)) problems.push(`${user} (git user.name) is not in the people`)
+  const agents = Object.entries(config.roles).filter(([, r]) => r.kind !== 'program')
+  for (const [role, r] of agents) problems.push(...wordsFit(r).map((p) => `${role}: ${p}`))
+  if (problems.length) {
+    return yield* refuse(
+      `${name}: ${problems.join('; ')}`,
+      `change ${name}, then run work config check again`,
+    )
+  }
+  const merged = draft === null ? '' : `, merged into ${CONFIG} as Accept the roles does`
+  return [
+    `${name} reads${merged}; nothing was written.`,
+    `the static fit checks pass for ${agents.map(([role]) => role).join(', ')}.`,
+  ]
+})
 
 // The static checks of a role: its own words, and the rules that name it.
 const staticFit = (work: Work, roleName: string, role: RoleFile): ReadonlyArray<string> => {

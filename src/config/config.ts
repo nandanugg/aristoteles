@@ -262,12 +262,16 @@ export const readConfig = (dir: string): Effect.Effect<ConfigRead, Refused, File
     if (text === null) {
       return yield* refuse(`no ${CONFIG} in ${dir}; write one (see DESIGN.md section 3)`)
     }
-    return yield* refusing(() => ({
-      config: configOf(dir, parseYaml(text)),
-      hashes: { [CONFIG]: mechanismHash(text) },
-      texts: { [CONFIG]: text },
-    }))
+    return yield* configOfText(dir, text)
   })
+
+// The same read of a text that is not in the file yet (work config check reads the merged draft).
+export const configOfText = (dir: string, text: string): Effect.Effect<ConfigRead, Refused> =>
+  refusing(() => ({
+    config: configOf(dir, parseYaml(text)),
+    hashes: { [CONFIG]: mechanismHash(text) },
+    texts: { [CONFIG]: text },
+  }))
 
 // fileHashes(dir): the hash of the mechanism in the file now.
 export const fileHashes = (

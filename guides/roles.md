@@ -23,6 +23,8 @@ of work: a file that breaks one is refused, or the work stops later at that chec
   `output`; no responsibility contains a vague verb (handle, ensure, look at, deal with, manage,
   take care, make sure, support), in any form ("handles", "managed"). Another word, such as
   "handler" or "management", passes.
+- `work config check` runs these checks on `aristoteles.draft.yaml` before the accept, and reads
+  the draft as the accept on the page does. Anyone may run it; it writes nothing.
 
 ## Rules and their checkers
 

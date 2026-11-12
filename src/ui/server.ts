@@ -12,8 +12,8 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { Effect, Layer, Schema } from 'effect'
-import { CONFIG, parseYaml, SETTING_KEYS } from '../config/core.ts'
-import { readSettings, withSettings, writeSettings } from '../config/settings.ts'
+import { CONFIG, DRAFT } from '../config/core.ts'
+import { mergeDraft, readSettings, writeSettings } from '../config/settings.ts'
 import type { Time } from '../domain/ids.ts'
 import type { Work } from '../domain/work.ts'
 import { replay } from '../replay/replay.ts'
@@ -83,8 +83,6 @@ const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'obj
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
-
-const DRAFT = 'aristoteles.draft.yaml'
 
 // The first start of a dir: the person pastes these words into the AI CLI that they use, in the
 // dir. That CLI is the host, and it knows its own commands, so it writes the tiers of the draft.
@@ -253,18 +251,10 @@ export function startServer(options: ServerOptions): ServerHandle {
     if (!existsSync(draft)) return json({ error: `there is no ${DRAFT}` }, 400)
     const config = join(dir, CONFIG)
     const settings = existsSync(config) ? readFileSync(config, 'utf8') : ''
-    const text = readFileSync(draft, 'utf8')
-    // The settings in the draft (the host writes the tiers of its own AI CLI) replace their
-    // blocks in the file, so that each key has one block; the people and the roles go below.
-    // Two blocks of one key would parse as the last one, and a later edit on the page would
-    // change only the first.
+    // work config check reads the same merge, so the host checks its draft before this click.
     let merged: string
     try {
-      const raw = parseYaml(text)
-      const keys = SETTING_KEYS.filter((k) => k in raw)
-      const head = withSettings(settings, Object.fromEntries(keys.map((k) => [k, raw[k]])))
-      const rest = withSettings(text, Object.fromEntries(keys.map((k) => [k, undefined])))
-      merged = `${head.trimEnd()}${head.trim() ? '\n' : ''}${rest}`
+      merged = mergeDraft(settings, readFileSync(draft, 'utf8'))
     } catch (error) {
       return json({ error: `${DRAFT}: ${messageOf(error)}` }, 400)
     }

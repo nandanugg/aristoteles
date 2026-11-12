@@ -131,6 +131,18 @@ export const withSettings = (original: string, settings: Raw): string => {
   return text.endsWith('\n') ? text : `${text}\n`
 }
 
+// The text of aristoteles.yaml after Accept the roles, from the file and the host's draft. The
+// settings in the draft (the host writes the tiers of its own AI CLI) replace their blocks in the
+// file, so that each key has one block; the people and the roles go below. Two blocks of one key
+// would parse as the last one, and a later edit on the page would change only the first.
+export const mergeDraft = (file: string, draft: string): string => {
+  const raw = parseYaml(draft)
+  const keys = SETTING_KEYS.filter((k) => k in raw)
+  const head = withSettings(file, Object.fromEntries(keys.map((k) => [k, raw[k]])))
+  const rest = withSettings(draft, Object.fromEntries(keys.map((k) => [k, undefined])))
+  return `${head.trimEnd()}${head.trim() ? '\n' : ''}${rest}`
+}
+
 // Writes the settings into aristoteles.yaml and keeps the mechanism as it is. The new text is
 // checked before the write, so a refusal leaves the file alone.
 export const writeSettings = (

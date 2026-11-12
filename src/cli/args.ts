@@ -145,6 +145,7 @@ export const USAGE: ReadonlyArray<string> = [
   '         work direction show <id>[@<n>][#<standard|rule|header>]|<draft> | role list|show <role> | log [--last=<n>]',
   '         work assignment show <a>',
   '         work question show <q> | result show <r> | search <words> (aristoteles)',
+  '         work config check (the draft of the roles, as Accept the roles on the page would store it; it writes nothing)',
   '         work guide writing|direction-review|decision-words|roles (how to write a direction, how to review one, the words of a decision, and the checks of the roles)',
   'person:  work start (the UI of this dir, in the browser) | work init | config apply|restore | task open|split|close | assign <task> --role=<role>',
   '         grant --act=approve|review|change --on=<ids> --to=<role> --until=<time> | revoke <x>',

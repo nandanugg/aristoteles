@@ -4,6 +4,9 @@ import { Effect } from 'effect'
 import { Refused } from '../domain/errors.ts'
 
 export const CONFIG = 'aristoteles.yaml'
+// The host's draft of the people, the roles and the tiers; Accept the roles on the page merges it
+// into aristoteles.yaml (settings.ts mergeDraft).
+export const DRAFT = 'aristoteles.draft.yaml'
 export const MECHANISM_KEYS = ['people', 'limits', 'roles', 'decide'] as const
 // outsideSourceHours (the owner's ruling, 2026-11-12): how long the revision that an agent read
 // of an outside source holds; after it, work made from that source waits for a new read. It is

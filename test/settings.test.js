@@ -165,6 +165,22 @@ describe('the first start of a dir', () => {
     expect((await api(p, '/api/dir')).initialized).toBe(false)
   })
 
+  test('work config check reads the draft as Accept the roles does, for any caller, and writes nothing', async () => {
+    const p = fresh()
+    const before = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
+    p.write('aristoteles.draft.yaml', HOST_TIERS + WORK_YAML)
+    const checked = ok(await p.agent('config check')).out.split('\n')
+    expect(checked[0]).toBe('aristoteles.draft.yaml reads, merged into aristoteles.yaml as Accept the roles does; nothing was written.')
+    expect(checked[1]).toStartWith('the static fit checks pass for architect, section-lead, writer')
+    expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe(before)
+    expect(existsSync(join(p.dir, '.work', 'aristoteles.db'))).toBe(false)
+    p.write('aristoteles.draft.yaml', HOST_TIERS + WORK_YAML.replace('Give one --evidence line', 'Ensure one --evidence line'))
+    expect((await p.agent('config check')).err).toMatch(/^refused: aristoteles\.draft\.yaml: linter: ".*" uses the vague verb "ensure"/)
+    // The same words as the refusal of the page.
+    p.write('aristoteles.draft.yaml', `tiers:\n  sol: { launch: host-cli }\n${WORK_YAML}`)
+    expect((await p.agent('config check')).err).toContain('aristoteles.draft.yaml: aristoteles.yaml: tiers.sol.launch has no {session}')
+  })
+
   test('the host records the fit of each role as a model run; the person and a role do not use --by', async () => {
     const p = project()
     ok(await p.nanda('init'))

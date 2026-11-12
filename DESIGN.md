@@ -470,6 +470,7 @@ tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 | `work result show <r>` | a result and each review of it: the evidence lines, the points, the escalations, then its blockers |
 | `work role list` / `work role show <role>` | roles (from the store), tiers, roles with no fit record |
 | `work role fit <role> [--answers=<file>] [--as=<you>] [--by=<model run>]` | the static checks and the fitness questions; with answers, records them (the person, a high role, or a model run outside any task) |
+| `work config check` | `aristoteles.draft.yaml` as Accept the roles on the page would store it (merged into `aristoteles.yaml`), or else `aristoteles.yaml`: the read of the file, the git user in the people, and the static fit checks of each agent role; anyone may run it, and it writes nothing |
 
 **Acting (with a token)**
 
