@@ -20,8 +20,8 @@ of work: a file that breaks one is refused, or the work stops later at that chec
   records it. A program role needs no record.
 - The static checks of fit: a low role has exactly one act; a role with a `do` act names its
   `output`; no responsibility contains a vague verb (handle, ensure, look at, deal with, manage,
-  take care, make sure, support). The check also finds these letters inside a longer word, for
-  example "supports" or "handler".
+  take care, make sure, support), in any form ("handles", "managed"). Another word, such as
+  "handler" or "management", passes.
 
 ## Rules and their checkers
 

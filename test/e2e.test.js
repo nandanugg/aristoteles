@@ -301,4 +301,15 @@ describe('limits and config', () => {
     await init(p)
     expect((await p.nanda('role fit linter --answers=fit.yaml')).err).toContain('uses the vague verb "ensure"')
   })
+
+  test('role fit finds each form of a vague verb, and only as a whole word', async () => {
+    const { WORK_YAML } = await import('./harness.js')
+    const vague = project({ 'aristoteles.yaml': WORK_YAML.replace('Give one --evidence line', 'Looked at; give one --evidence line') })
+    await init(vague)
+    expect((await vague.nanda('role fit linter --answers=fit.yaml')).err).toContain('uses the vague verb "looked at"')
+    // "handler" and "management" are other words than the verbs handle and manage.
+    const exact = project({ 'aristoteles.yaml': WORK_YAML.replace('Give one --evidence line', 'Give the handler of the management report one --evidence line') })
+    await init(exact)
+    expect(ok(await exact.nanda('role fit linter --answers=fit.yaml')).out).toBe('linter fits; recorded.')
+  })
 })

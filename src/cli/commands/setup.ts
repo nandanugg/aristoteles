@@ -122,19 +122,40 @@ const config: Command = (call) =>
     ]
   })
 
-const VAGUE = ['handle', 'ensure', 'look at', 'deal with', 'manage', 'take care', 'make sure', 'support']
+// Each form of each vague verb, as whole words: "handles" is the verb, "handler" another word.
+const VAGUE = new RegExp(
+  `\\b(${[
+    ['handle', 'handles', 'handled', 'handling'],
+    ['ensure', 'ensures', 'ensured', 'ensuring'],
+    ['look at', 'looks at', 'looked at', 'looking at'],
+    ['deal with', 'deals with', 'dealt with', 'dealing with'],
+    ['manage', 'manages', 'managed', 'managing'],
+    ['take care', 'takes care', 'took care', 'taking care'],
+    ['make sure', 'makes sure', 'made sure', 'making sure'],
+    ['support', 'supports', 'supported', 'supporting'],
+  ]
+    .flat()
+    .join('|')})\\b`,
+  'i',
+)
 
-// The static checks of a role: its acts, its words, its output, and the rules that name it.
-const staticFit = (work: Work, roleName: string, role: RoleFile): ReadonlyArray<string> => {
+// The checks of a role's own words: its acts, its responsibilities, its output.
+const wordsFit = (role: RoleFile): ReadonlyArray<string> => {
   const problems: Array<string> = []
   if (role.tier === 'low' && role.acts.length !== 1) problems.push('a low role has exactly one act')
   for (const r of role.responsibilities) {
-    const verb = VAGUE.find((v) => r.toLowerCase().includes(v))
+    const verb = VAGUE.exec(r)?.[1]?.toLowerCase()
     if (verb) problems.push(`"${r}" uses the vague verb "${verb}"; name the exact output and command`)
   }
   if (role.acts.some((a) => 'do' in a) && !role.output) {
     problems.push('a role with a do act names its output form')
   }
+  return problems
+}
+
+// The static checks of a role: its own words, and the rules that name it.
+const staticFit = (work: Work, roleName: string, role: RoleFile): ReadonlyArray<string> => {
+  const problems = [...wordsFit(role)]
   // Only an official direction has rules now; a direction with only a draft has none yet.
   const rules = officialDirections(work)
     .flatMap((d) => currentVersion(d).standards)
