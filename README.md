@@ -43,8 +43,8 @@ When the draft is ready:
    agents stop when it stops. When it runs before the draft, the page shows the same prompt,
    with the paths of this machine.
 2. Read the draft on the page, and accept the roles.
-3. Commit `aristoteles.yaml`. Keep `.work/` and the linked skills out of git (`work guide
-   roles`).
+3. Commit `aristoteles.yaml`. `work start` keeps `.work/` and the linked skills out of git
+   (`.git/info/exclude`).
 4. Tell the CLI that the roles are accepted. It records the fit of each agent role, and drafts
    the directions. You accept each direction on the page.
 

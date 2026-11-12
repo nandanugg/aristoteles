@@ -56,8 +56,8 @@ The roles and the people must exist before any direction, so do this part first:
      open: the page and the agents stop when it stops. Do not start it for them.
    - Read the draft on the page, and accept the roles. The page writes `aristoteles.yaml`,
      runs `work init`, and links the skills. A refusal says what to fix in the draft.
-   - Commit what the agents need, also `aristoteles.yaml`. Keep `.work/` and the linked skills
-     out of git (`work guide roles`).
+   - Commit what the agents need, also `aristoteles.yaml`. `work start` keeps `.work/` and the
+     linked skills out of git.
 
    Wait until the person tells you that the roles are accepted.
 4. Record the fit of each agent role (the `role-fitness` skill): `work role fit <role>`, the

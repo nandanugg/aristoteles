@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { dbPath } from '../store/path.ts'
+import { excludeFromGit } from './git-exclude.ts'
 import { createPump, type Pump } from './pump.ts'
 import { type ServerHandle, startServer } from './server.ts'
 import { linkSkills } from './skills.ts'
@@ -72,6 +73,9 @@ export const workStart = async (
     }
   }
   for (const line of linkSkills(dir)) out(line)
+  // The worktrees and the logs of the agents belong to this machine (git-exclude.ts).
+  const excluded = excludeFromGit(dir, ['.work/'])
+  if (excluded.length) out(`git of the dir excludes ${excluded.join(', ')}`)
   // The terminals need tmux; without it the page still shows the record.
   let pump: Pump | undefined
   let watcher: Watcher | undefined

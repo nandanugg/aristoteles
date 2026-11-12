@@ -65,9 +65,12 @@ of work: a file that breaks one is refused, or the work stops later at that chec
 
 - `aristoteles.draft.yaml`: the draft of the roles. The accept on the page removes it.
 - `aristoteles.yaml`: the people, the limits, the roles, and the tiers. Commit it.
-- `.work/`: the worktrees of the agents and the logs of the programs. Do not commit it.
+- `.work/`: the worktrees of the agents and the logs of the programs.
 - The links to the aristoteles skills in the `skills` folder of each tier (for example
-  `.claude/skills/work`). Each one points into the aristoteles folder of this machine. Do not
-  commit them; keep the app's own skills in that folder as they are.
+  `.claude/skills/work`). Each one points into the aristoteles folder of this machine. The
+  app's own skills in that folder stay as they are.
+- `work start` adds `.work/` and each link to `.git/info/exclude`, so git does not commit them
+  and the app's `.gitignore` does not change. When you use work with no `work start`, keep
+  `.work/` out of git yourself.
 - An agent that makes commits works in a worktree of the base of its workspace (the last commit
   when no base is set). A change that is not committed is not there.

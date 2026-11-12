@@ -4,7 +4,7 @@
 // the dir is its folder name.
 import { describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import Ajv from 'ajv/dist/2020.js'
 import { CODE_YAML, WORK_YAML, ok, project, started } from './harness.js'
 import { act, api, settingsOf } from './outside.js'
@@ -125,6 +125,28 @@ describe('the skills of a launched AI tool', () => {
     expect(readlinkSync(join(p.dir, '.claude/skills/work'))).toBe(join(import.meta.dir, '..', 'skills', 'work'))
     expect(lstatSync(join(p.dir, '.claude/skills/assess')).isSymbolicLink()).toBe(false)
     expect(linkSkills(p.dir)).toEqual([])
+  })
+
+  test('git of the dir excludes the links and .work/, once, and keeps the app\'s own skill', async () => {
+    const { linkSkills } = await import('../src/ui/skills.ts')
+    const { excludeFromGit } = await import('../src/ui/git-exclude.ts')
+    const p = project({ 'aristoteles.yaml': `tiers:\n  sol: { skills: .claude/skills }\n${WORK_YAML}` })
+    // The dir is a sub folder of its repo, so each line starts at the top of the repo.
+    const top = dirname(p.dir)
+    Bun.spawnSync(['git', 'init', '-q', top])
+    p.write('.claude/skills/assess/SKILL.md', 'our own assess\n')
+    expect(linkSkills(p.dir)).toEqual([
+      `linked the skills work, role-fitness into ${join(p.dir, '.claude/skills')}`,
+      'git of the dir excludes /report-export/.claude/skills/work, /report-export/.claude/skills/role-fitness',
+    ])
+    expect(excludeFromGit(p.dir, ['.work/'])).toEqual(['/report-export/.work/'])
+    expect(linkSkills(p.dir)).toEqual([])
+    expect(excludeFromGit(p.dir, ['.work/'])).toEqual([])
+    p.write('.work/runs/r1.log', 'a log\n')
+    const status = Bun.spawnSync(['git', '-C', top, 'status', '--porcelain', '--untracked-files=all']).stdout.toString()
+    expect(status).toContain('report-export/.claude/skills/assess/SKILL.md')
+    expect(status).not.toContain('skills/work')
+    expect(status).not.toContain('.work/')
   })
 })
 
