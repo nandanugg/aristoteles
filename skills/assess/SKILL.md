@@ -21,7 +21,8 @@ The roles and the people must exist before any direction, so do this part first:
 
 1. Read the app (step 3 below) for its kinds of work: code, documents, or both. When the app
    has its own agent harness, map each piece of it as the next section says.
-2. Write `aristoteles.draft.yaml` beside where `aristoteles.yaml` goes: the `people` (the git
+2. Read `work guide roles`: the checks of work on the roles. Then write
+   `aristoteles.draft.yaml` beside where `aristoteles.yaml` goes: the `people` (the git
    user of the dir is the person), the `limits`, the `roles`, and `decide` when a maker has
    more than one decider, in the form of `schema/aristoteles.schema.json`. Every dir has a
    role of each tier:
@@ -48,10 +49,18 @@ The roles and the people must exist before any direction, so do this part first:
        resume: claude --resume {session} {prompt}
        skills: .claude/skills
    ```
-3. Stop, and tell the person what to do next: run `work start` in the dir, read the draft on
-   the page, and accept the roles there. The page then writes `aristoteles.yaml` and runs
-   `work init`. Wait until the person tells you that the roles are accepted; then go on with
-   the steps below.
+3. Stop, and tell the person these steps, in this order:
+   - In a terminal of their own, not in this AI CLI, run `work start` in the dir, and keep it
+     open: the page and the agents stop when it stops. Do not start it for them.
+   - Read the draft on the page, and accept the roles. The page writes `aristoteles.yaml`,
+     runs `work init`, and links the skills. A refusal says what to fix in the draft.
+   - In that terminal, for each agent role (give the list): `work role fit <role>`, then
+     `work role fit <role> --answers=<file>`. A role with no fit record gets no work.
+   - Commit what the agents need, also `aristoteles.yaml`. Keep `.work/` and the linked skills
+     out of git (`work guide roles`).
+
+   Wait until the person tells you that the roles are accepted; then go on with the steps
+   below.
 
 ## An app with its own harness
 

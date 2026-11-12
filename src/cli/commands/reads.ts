@@ -149,8 +149,9 @@ const search: Command = (call) =>
   })
 
 // A guide in words, for a model or a person: how to write a direction (writing), and the
-// questions of the review of a draft (direction-review), and the words of a decision for the
-// person (decision-words). Guides are files; everything else is in aristoteles.
+// questions of the review of a draft (direction-review), the words of a decision for the
+// person (decision-words), and the checks of work on the roles (roles). Guides are files;
+// everything else is in aristoteles.
 const guide: Command = (call) =>
   Effect.gen(function* () {
     const names = readdirSync(GUIDES)

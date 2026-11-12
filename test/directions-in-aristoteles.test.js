@@ -83,7 +83,7 @@ describe('a new direction', () => {
     expect(ok(await p.agent('guide writing')).out).toContain('## Write for contextual retrieval')
     expect(ok(await p.agent('guide direction-review')).out).toContain('6. **Negative parallelism.**')
     expect(ok(await p.agent('guide decision-words')).out).toContain('1. **No ids and no words of the tool.**')
-    expect((await p.agent('guide other')).err).toContain('work guide <name>: the guides are decision-words, direction-review, writing')
+    expect((await p.agent('guide other')).err).toContain('work guide <name>: the guides are decision-words, direction-review, roles, writing')
   })
 
   test('aristoteles.yaml names no directions', async () => {

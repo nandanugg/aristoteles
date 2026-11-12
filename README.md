@@ -37,10 +37,18 @@ Set up aristoteles for this folder, then assess it.
 3. You are the host: write the tiers of the draft with the commands of this AI CLI.
 ```
 
-When the draft is ready, run `work start` in the dir and accept the roles on the page. Then tell
-the CLI that the roles are accepted: it drafts the directions, and you accept each one on the
-page. When `work start` runs before the draft, the page shows the same prompt, with the paths of
-this machine.
+When the draft is ready:
+
+1. In a terminal of your own, run `work start` in the dir, and keep it open: the page and the
+   agents stop when it stops. When it runs before the draft, the page shows the same prompt,
+   with the paths of this machine.
+2. Read the draft on the page, and accept the roles.
+3. In that terminal, record the fit of each agent role (`work role fit <role>`, the
+   `role-fitness` skill). A role with no fit record gets no work.
+4. Commit `aristoteles.yaml`. Keep `.work/` and the linked skills out of git (`work guide
+   roles`).
+5. Tell the CLI that the roles are accepted. It drafts the directions, and you accept each one
+   on the page.
 
 ## Use it by hand
 
@@ -93,6 +101,8 @@ aristoteles folder, and tmux for the terminals.
 - `work guide direction-review`: the questions for the review of a direction.
 - `work guide decision-words`: how a host writes the words of a decision, so that the person can
   decide.
+- `work guide roles`: the checks of work on the roles of a dir, and the files that work adds to
+  it.
 - `skills/work`: the skill that a model reads to do work under review.
 - `skills/assess`: the skill that reads an app and drafts its directions.
 - `skills/role-fitness`: the skill that checks that a role in `aristoteles.yaml` fits its tier.
