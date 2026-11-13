@@ -22,6 +22,7 @@ import {
   type AnswerId,
   type AssignmentId,
   type EventRef,
+  isNonBlank,
   nextId,
   type PointId,
   type RejectId,
@@ -202,10 +203,29 @@ export const STEPS: { readonly [K in Kind]: Step<K> } = {
     const fit = { hash: e.move.hash, by: r.author, answers: e.move.answers }
     return none({ ...work, fits: put(work.fits, e.id, fit) })
   },
+  'Run.HostJoined': (work, e, r) => {
+    const { id, work: next } = named(work, 'run')
+    const { session, socket, pane } = e.create
+    const terminal = { _tag: 'Pane' as const, socket, pane }
+    const run = startRun({ _tag: 'Host', id, session, terminal, formerSessions: [], startedAt: r.at })
+    return { work: { ...next, runs: put(next.runs, id, run) }, created: [id] }
+  },
   'Run.HostStarted': (work, e, r) => {
     const { id, work: next } = named(work, 'run')
-    const run = startRun({ _tag: 'Host', id, session: e.create.session, startedAt: r.at })
+    const terminal = { _tag: 'Window' as const }
+    const session = e.create.session
+    const run = startRun({ _tag: 'Host', id, session, terminal, formerSessions: [], startedAt: r.at })
     return { work: { ...next, runs: put(next.runs, id, run) }, created: [id] }
+  },
+  'Run.HostMoved': (work, e, r) => {
+    const run = work.runs.get(e.id)
+    if (run === undefined || run.end._tag !== 'NotEnded') {
+      return damaged(r, `${e.id} is no open run`)
+    }
+    const { session, socket, pane } = e.move
+    const terminal = { _tag: 'Pane' as const, socket, pane }
+    const moved = MOVES['Run.HostMoved']({ ...run, end: run.end }, session, terminal)
+    return none({ ...work, runs: put(work.runs, e.id, moved) })
   },
   'Run.Done': (work, e, r) => {
     const run = work.runs.get(e.id)
@@ -517,18 +537,42 @@ const runNamed = (work: Work, id: string) => {
   return f?._tag === 'Run' ? f.run : no(`there is no run ${id}`)
 }
 const topTaskOf = (work: Work, run: string): TaskId | undefined => topOfRun(work, run as never)
+// A session id names one terminal for good: a run's, a former host's, or an agent's.
+const sessionUsed = (work: Work, session: string): boolean =>
+  [...work.runs.values()].some((r) => r.session === session || r.formerSessions.includes(session as never)) ||
+  [...work.sessions.values()].some((s) => s.session === session)
+// The open run whose host runs in this pane of the person's tmux server.
+const paneHost = (work: Work, socket: string, pane: string) =>
+  [...work.runs.values()].find(
+    (r) =>
+      r.end._tag === 'NotEnded' &&
+      r.terminal._tag === 'Pane' &&
+      r.terminal.socket === socket &&
+      r.terminal.pane === pane,
+  )
 
 const checkUi = (work: Work, draft: Draft): void => {
   const recorded = { ...draft, seq: 0 } as Recorded
   const e = recorded.event
   const kind = kindOf(e)
   switch (kind) {
-    case 'Run.HostStarted': {
-      const session = (e as EventOf<'Run.HostStarted'>).create.session
-      const used =
-        [...work.runs.values()].some((r) => r.session === session) ||
-        [...work.sessions.values()].some((s) => s.session === session)
-      if (used) no(`the session ${session} is in use`)
+    // One pane hosts one open run.
+    case 'Run.HostJoined': {
+      const { session, socket, pane } = (e as EventOf<'Run.HostJoined'>).create
+      if (sessionUsed(work, session)) no(`the session ${session} is in use`)
+      const other = paneHost(work, socket, pane)
+      if (other) no(`this pane is the host of ${other.id} already; continue it, or close it`)
+      return
+    }
+    case 'Run.HostMoved': {
+      const m = e as EventOf<'Run.HostMoved'>
+      const run = runNamed(work, m.id)
+      if (run.end._tag === 'Done') no(`${m.id} is done`)
+      if (run.end._tag === 'Closed') no(`${m.id} is closed`)
+      if (!isNonBlank(m.move.words)) no('a continue keeps the words of the person: --quote="..."')
+      if (sessionUsed(work, m.move.session)) no(`the session ${m.move.session} is in use`)
+      const other = paneHost(work, m.move.socket, m.move.pane)
+      if (other) no(`this pane is the host of ${other.id} already`)
       return
     }
     case 'Run.Done': {

@@ -21,32 +21,34 @@ SQLite file that links each task to the version of the direction that it used.
 
 ## Start from your AI CLI
 
-Open the AI CLI that you use (Claude Code, Codex, or another) in the dir, and paste this prompt
-into it. That CLI is the host: it gets aristoteles, reads the dir, and drafts its people, its
-roles, and the commands of its own CLI for the agents. No other step guesses which CLI you use.
+Open the AI CLI that you use (Claude Code, Codex, or another) in the dir, in a tmux pane, and
+paste this prompt into it. That session is the host: it gets aristoteles, sets up a new dir,
+starts the page, and starts or continues a project with you. The page shows that same terminal,
+so you talk with the host there or on the page. No step guesses which CLI you use.
 
 ```text
-Set up aristoteles for this folder, then assess it.
+Use aristoteles in this folder.
 1. Find aristoteles. If `work` is on the PATH, it links to <the aristoteles folder>/bin/work.js.
    If not, run: git clone https://github.com/nandanugg/aristoteles.git ~/.aristoteles/code
-   Then run `bun install --production` in that folder (Bun 1.3 or later and git are necessary;
-   the UI also needs tmux), and link the CLI:
+   Then run `bun install --production` in that folder (Bun 1.3 or later, git and tmux are
+   necessary), and link the CLI:
    mkdir -p ~/.local/bin && ln -s ~/.aristoteles/code/bin/work.js ~/.local/bin/work
    When `work` is still not on the PATH, use `bun <the aristoteles folder>/bin/work.js` in its place.
-2. Read <the aristoteles folder>/skills/assess/SKILL.md and do what it says for this folder.
-3. You are the host: write the tiers of the draft with the commands of this AI CLI.
+2. Read <the aristoteles folder>/skills/aristoteles/SKILL.md and do what it says: you are the host.
 ```
 
-When the draft is ready:
+In a new dir, the host drafts the people and the roles, and the commands of its own CLI for the
+agents, then starts the page (`work start --detach`):
 
-1. In a terminal of your own, run `work start` in the dir, and keep it open: the page and the
-   agents stop when it stops. When it runs before the draft, the page shows the same prompt,
-   with the paths of this machine.
-2. Read the draft on the page, and accept the roles.
-3. Commit `aristoteles.yaml`. `work start` keeps `.work/` and the linked skills out of git
+1. Read the draft on the page, and accept the roles.
+2. Commit `aristoteles.yaml`. `work start` keeps `.work/` and the linked skills out of git
    (`.git/info/exclude`).
-4. Tell the CLI that the roles are accepted. It records the fit of each agent role, and drafts
+3. Tell the host that the roles are accepted. It records the fit of each agent role, and drafts
    the directions. You accept each direction on the page.
+
+Then the host asks: a new project, or continue one? After the first start, the `aristoteles`
+skill is linked in the dir, so you trigger it by its name. When the host's AI CLI ends, trigger a
+host again and continue the project there: the page never starts or restarts a host.
 
 ## Use it by hand
 
@@ -80,8 +82,8 @@ The store is `~/.aristoteles/aristoteles.db`. `ARISTOTELES_DB` names another fil
 work and its reviews, and the real terminal of each AI agent. It needs `bun install` once in the
 aristoteles folder, and tmux for the terminals.
 
-- **A project is a talk.** New project starts a host (a Sol role) in its own terminal. Tell it
-  what you want; it drafts the top task, and you open it with one click.
+- **A project is a talk** with the host, the AI CLI that you triggered: the page shows its
+  terminal. Tell it what you want; it drafts the top task, and you open it with one click.
 - **Real agents and subagents.** A Sol or Terra role runs in a real terminal that you can open
   and type into; the UI starts it. A Luna role runs as a subagent inside its parent's terminal.
 - **Only three kinds of decision need you**, each with a badge: a system problem, a direction
@@ -102,6 +104,8 @@ aristoteles folder, and tmux for the terminals.
 - `work guide roles`: the checks of work on the roles of a dir, and the files that work adds to
   it.
 - `skills/work`: the skill that a model reads to do work under review.
+- `skills/aristoteles`: the skill that the person triggers in their AI CLI; that session is the
+  host.
 - `skills/assess`: the skill that reads an app and drafts its directions.
 - `skills/role-fitness`: the skill that checks that a role in `aristoteles.yaml` fits its tier.
 

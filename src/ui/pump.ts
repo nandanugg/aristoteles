@@ -46,6 +46,11 @@ export interface Pump {
   readonly snapshot: (session: string) => Uint8Array
   readonly status: () => Readonly<Record<string, TerminalStatus>>
   readonly tail: (session: string, lines?: number) => string
+  // The host's own pane on the person's tmux server (Nanda, 2026-11-13): the pump copies its
+  // screen and types into it; start, resume and stop refuse it, and a resize only fits the copy.
+  readonly adopt: (session: string, socket: string, pane: string) => void
+  readonly release: (session: string) => void
+  readonly paneOf: (session: string) => { readonly socket: string; readonly pane: string } | undefined
   readonly close: () => void
   readonly killServer: () => void
 }
@@ -231,6 +236,77 @@ export const createPump = (options: PumpOptions): Pump => {
   }, 1000)
   poll.unref()
 
+  // The host's own pane on the person's tmux server (Nanda, 2026-11-13). The pump attaches no
+  // client there and sets no option: about three times a second it copies the screen of that one
+  // pane (capture-pane), and it types with send-keys. The page sees the copy as a frame that
+  // redraws its screen: the rows that fit the page, up to the cursor or the last row with text
+  // (an AI CLI keeps its input box at the bottom), with no wrap, and the cursor.
+  interface Adopted {
+    readonly socket: string
+    readonly pane: string
+    frame: Uint8Array
+    last: number
+    ended: boolean
+    rows: number
+  }
+  const adopted = new Map<string, Adopted>()
+  const onPersonServer = (socket: string, args: ReadonlyArray<string>) =>
+    Bun.spawnSync(['tmux', '-f', '/dev/null', '-S', socket, ...args], { env: tmuxEnv })
+  const lookAsync = async (socket: string, args: ReadonlyArray<string>) => {
+    const p = Bun.spawn(['tmux', '-f', '/dev/null', '-S', socket, ...args], {
+      stdout: 'pipe',
+      stderr: 'ignore',
+      env: tmuxEnv,
+    })
+    const out = await new Response(p.stdout).text()
+    return { code: await p.exited, out }
+  }
+  const frameOf = (screen: string, cursorX: number, cursorY: number, rows: number) => {
+    const lines = screen.replace(/\n$/, '').split('\n')
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: the escapes of a colored row
+    const blank = (line: string) => line.replace(/\x1b\[[0-9;]*m/g, '').trim() === ''
+    let end = lines.length
+    while (end > 0 && blank(lines[end - 1] ?? '')) end--
+    end = Math.min(lines.length, Math.max(end, cursorY + 1))
+    const start = Math.max(0, end - rows)
+    const row = cursorY - start
+    const cursor = row >= 0 && row < rows ? `\x1b[${row + 1};${cursorX + 1}H` : ''
+    const shown = lines.slice(start, end).join('\r\n')
+    return new TextEncoder().encode(`\x1b[?7l\x1b[H\x1b[2J${shown}${cursor}`)
+  }
+  const sameBytes = (a: Uint8Array, b: Uint8Array) =>
+    a.length === b.length && a.every((x, i) => x === b[i])
+  let looking = false
+  const lookAtPanes = async () => {
+    if (looking) return
+    looking = true
+    try {
+      for (const [sid, a] of adopted) {
+        const where = ['-t', a.pane]
+        const info = await lookAsync(a.socket, ['display-message', '-p', ...where, '#{pane_dead} #{cursor_x} #{cursor_y}'])
+        const [dead = '1', x = '0', y = '0'] = info.out.trim().split(' ')
+        const ended = info.code !== 0 || dead === '1'
+        if (ended && !a.ended) onExit(sid, null)
+        a.ended = ended
+        if (ended) continue
+        const screen = await lookAsync(a.socket, ['capture-pane', '-p', '-e', ...where])
+        if (screen.code !== 0 || adopted.get(sid) !== a) continue
+        const frame = frameOf(screen.out, Number(x), Number(y), a.rows)
+        if (sameBytes(frame, a.frame)) continue
+        a.frame = frame
+        a.last = clock()
+        onOutput(sid, frame)
+        for (const fn of pump.onOutputs ?? []) fn(sid, frame)
+      }
+    } finally {
+      looking = false
+    }
+  }
+  const panePoll = setInterval(() => void lookAtPanes(), 300)
+  panePoll.unref()
+  const ownPane = (sid: string): string =>
+    refuse(`${sid} is the host's own terminal (pane ${adopted.get(sid)?.pane}); the UI does not start, restart, or stop it`)
+
   const target = (sid: string) => `${name}:=${sid}`
   const exists = (sid: string) => list().some((p) => p.sid === sid)
   const mouseModes = (sid: string) => {
@@ -272,6 +348,7 @@ export const createPump = (options: PumpOptions): Pump => {
     // Starts a real agent: its command runs in a new window, with ARISTOTELES_SESSION set, so
     // that the CLI refuses a person command from it.
     start(sid, command, { env = {}, cols = 160, rows = 48 } = {}) {
+      if (adopted.has(sid)) return ownPane(sid)
       if (!/^[A-Za-z0-9._-]+$/.test(sid)) return refuse(`"${sid}" is not a session id`)
       if (exists(sid)) return refuse(`the session ${sid} has a terminal already`)
       const envArgs = Object.entries({ ARISTOTELES_SESSION: sid, ...env }).flatMap(([k, v]) => [
@@ -291,6 +368,7 @@ export const createPump = (options: PumpOptions): Pump => {
     },
     // A resume: a dead pane runs the resume command; a closed window is made again.
     resume(sid, command, options = {}) {
+      if (adopted.has(sid)) return ownPane(sid)
       const p = list().find((x) => x.sid === sid)
       if (p && !p.dead) return refuse(`the session ${sid} runs`)
       if (p) {
@@ -305,20 +383,34 @@ export const createPump = (options: PumpOptions): Pump => {
     // that an escape sequence (an arrow key) reaches the tool in one read, not as an Escape and
     // then text; a ';' or a leading '-' is no tmux syntax this way.
     input(sid, text) {
-      if (!exists(sid)) return refuse(`the session ${sid} has no terminal`)
+      const a = adopted.get(sid)
+      if (!a && !exists(sid)) return refuse(`the session ${sid} has no terminal`)
       const bytes = new TextEncoder().encode(text)
       for (let i = 0; i < bytes.length; i += 1024) {
         const hex = [...bytes.subarray(i, i + 1024)].map((b) => b.toString(16).padStart(2, '0'))
+        if (a) {
+          const r = onPersonServer(a.socket, ['send-keys', '-t', a.pane, '-H', ...hex])
+          if (r.exitCode !== 0) refuse(`tmux could not type into ${sid}: ${r.stderr.toString().trim()}`)
+          continue
+        }
         runOrThrow(mustTmux(`type into ${sid}`, ['send-keys', '-t', target(sid), '-H', ...hex]))
       }
     },
+    // The host's own pane keeps the size of the person's terminal; the copy shows its bottom rows.
     resize(sid, cols, rows) {
+      const a = adopted.get(sid)
+      if (a) {
+        a.rows = rows
+        a.frame = new Uint8Array()
+        return
+      }
       if (exists(sid)) {
         tmuxNow('resize-window', '-t', target(sid), '-x', String(cols), '-y', String(rows))
       }
     },
     // A stop of the person: the window goes, and the watcher does not retry it.
     stop(sid) {
+      if (adopted.has(sid)) return ownPane(sid)
       tmuxNow('kill-window', '-t', target(sid))
       known.delete(sid)
     },
@@ -327,6 +419,8 @@ export const createPump = (options: PumpOptions): Pump => {
     // before the ring started (Claude scrolls its own view with the wheel) needs them in the
     // page too, else the wheel scrolls the page's own history, which is empty.
     snapshot(sid) {
+      const a = adopted.get(sid)
+      if (a) return a.frame
       const modes = new TextEncoder().encode(mouseModes(sid))
       const ring = rings.get(sid)
       if (ring?.size) {
@@ -344,16 +438,25 @@ export const createPump = (options: PumpOptions): Pump => {
     },
     // The state of each terminal: runs, or ended (with its exit status), and its last output.
     status() {
-      return Object.fromEntries(
-        list().map((p) => [
+      return Object.fromEntries([
+        ...list().map((p) => [
           p.sid,
           { live: !p.dead, ended: p.dead, exit: p.status, lastOutput: rings.get(p.sid)?.last ?? 0 },
         ]),
-      )
+        ...[...adopted].map(([sid, a]) => [
+          sid,
+          { live: !a.ended, ended: a.ended, exit: null, lastOutput: a.last },
+        ]),
+      ])
     },
     // The last lines of a terminal, for the words of an event.
     tail(sid, lines = 12) {
-      const r = tmuxNow('capture-pane', '-p', '-J', '-S', '-500', '-t', target(sid))
+      const a = adopted.get(sid)
+      const r = a
+        ? (({ exitCode, stdout }) => ({ code: exitCode, out: stdout.toString() }))(
+            onPersonServer(a.socket, ['capture-pane', '-p', '-J', '-S', '-500', '-t', a.pane]),
+          )
+        : tmuxNow('capture-pane', '-p', '-J', '-S', '-500', '-t', target(sid))
       if (r.code !== 0) return ''
       return r.out
         .split('\n')
@@ -361,9 +464,23 @@ export const createPump = (options: PumpOptions): Pump => {
         .slice(-lines)
         .join('\n')
     },
+    adopt(sid, socket, pane) {
+      const a = adopted.get(sid)
+      if (a?.socket === socket && a.pane === pane) return
+      adopted.set(sid, { socket, pane, frame: new Uint8Array(), last: clock(), ended: false, rows: 48 })
+      void lookAtPanes()
+    },
+    release(sid) {
+      adopted.delete(sid)
+    },
+    paneOf(sid) {
+      const a = adopted.get(sid)
+      return a ? { socket: a.socket, pane: a.pane } : undefined
+    },
     close() {
       closed = true
       clearInterval(poll)
+      clearInterval(panePoll)
       try {
         client?.stdin?.end()
         client?.kill()

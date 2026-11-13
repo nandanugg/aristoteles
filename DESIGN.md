@@ -1015,6 +1015,13 @@ ids.
 - `ui/pump.js`: the terminals in tmux on the socket `aristoteles`; `ui/watcher.js`: the life
   cycle of the real agents (start, wake, retry, the host's decisions); `ui/act.js`: a person act in
   the server's process, on the ui channel.
-- New in the CLI for the UI: `work run start|done|close|list`, `work session <a> --id [--token]`,
-  `work task draft --by=<run>` and `work task open <draft>`, `work problem`, `work event`,
-  `work send`, `work note <token> words --on=<decision> [--hope]`, and `work start`.
+- New in the CLI for the UI: `work run start|continue|done|close|list`, `work session <a> --id
+  [--token]`, `work task draft --by=<run>` and `work task open <draft>`, `work problem`,
+  `work event`, `work send`, `work note <token> words --on=<decision> [--hope]`, and
+  `work start [--detach]`.
+- The host (Nanda, 2026-11-13) is the AI CLI that the person triggers with the `aristoteles`
+  skill, in a tmux pane of the person's own server. It starts the page (`work start --detach`),
+  then starts a run in its pane (`work run start`), or continues one there on the person's quoted
+  words (`work run continue <run> --quote=`). The pump copies that one pane (`capture-pane`) and
+  types into it (`send-keys`); it never starts, resizes, stops, or restarts it, and the watcher
+  never restarts a host.

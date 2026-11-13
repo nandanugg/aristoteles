@@ -15,15 +15,20 @@ const project = (start: string): string => {
 
 const cwd = process.env.WORK_DIR ?? project(process.cwd())
 if (process.argv[2] === 'start') {
-  // The UI acts as the person: a real agent's terminal does not start it.
+  // The UI acts as the person: a real agent's terminal does not start it. The host that the
+  // person triggered starts it with --detach, so that it outlives the host's shell.
   if (process.env.ARISTOTELES_SESSION) {
     process.stderr.write(
-      `refused: a real agent runs in this terminal (session ${process.env.ARISTOTELES_SESSION}); the person starts the UI\n`,
+      `refused: a real agent runs in this terminal (session ${process.env.ARISTOTELES_SESSION}); the host starts the UI\n`,
     )
     process.exit(1)
   }
-  const { workStart } = await import('../ui/start.ts')
-  await workStart(cwd, { env: process.env })
+  const { workStart, workStartDetached } = await import('../ui/start.ts')
+  if (process.argv.includes('--detach')) {
+    process.exitCode = (await workStartDetached(cwd, { env: process.env })) ? 0 : 3
+  } else {
+    await workStart(cwd, { env: process.env })
+  }
 } else {
   process.exitCode = await main(process.argv.slice(2), {
     cwd,

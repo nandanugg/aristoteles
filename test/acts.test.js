@@ -3,10 +3,9 @@
 // decision reach the person: a system problem, a direction problem, and the end of a project; the
 // host handles the rest, and writes its words about each decision before the person sees it.
 import { describe, expect, test } from 'bun:test'
-import { INTRO_V2, TASK_WHOLE, init, ok, project, tokenIn } from './harness.js'
+import { HOST, INTRO_V2, TASK_WHOLE, init, ok, project, tokenIn } from './harness.js'
 import { canvas, panel, tables } from './outside.js'
 
-const HOST = { tty: true, env: { ARISTOTELES_SESSION: 's-host' } }
 // The decisions that the person sees on the panel of a task (the server's /api/task), at the time
 // of the last act. At LATE, hostWaitMinutes (10 by default) passed since every act of these
 // tests, so every decision shows: also one that still waits for the host's words.
@@ -19,7 +18,7 @@ const hosted = async () => {
   const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
   await init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  ok(await p.ui('run start --session=s-host'))
+  ok(await p.run('run start', HOST))
   ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
   const opened = ok(await p.ui('task open td1')).out
   const host = tokenIn(opened)
@@ -32,22 +31,22 @@ describe('the acts of the UI', () => {
     const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n`, 'low.yaml': `${TASK_WHOLE}role: writer\n` })
     await init(p)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.ui('run start --session=s-host'))
+    ok(await p.run('run start', HOST))
     expect((await p.ui('task draft --file=top.yaml --by=h1')).err).toContain('the person tells the host in words; the host drafts the top task, and you open it')
     expect((await p.run('task draft --file=low.yaml --by=h1', HOST)).err).toContain('the draft names writer, a low role; a top task goes to a high (Sol) role')
-    expect((await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: 's-other' } })).err)
+    expect((await p.run('task draft --file=top.yaml --by=h1', { env: { ...HOST.env, TMUX_PANE: '%8' } })).err)
       .toContain('a draft of h1 comes from the terminal of h1')
     expect(ok(await p.run('task draft --file=top.yaml --by=h1', HOST)).out)
       .toBe('td1 drafted by h1: The Introduction, for the role architect.\nit waits for the person to open it: work task open td1')
-    expect((await p.run('task open td1', HOST)).err).toContain('a real agent runs in this terminal')
+    expect((await p.run('task open td1', HOST)).err).toContain('this is a person command; a person runs it at a terminal')
     const opened = ok(await p.ui('task open td1')).out
     expect(opened).toStartWith('t1 opened from td1: The Introduction\na1 · architect (high) on t1 The Introduction')
     expect((await p.ui('task open td1')).err).toContain('td1 is opened as t1')
     expect((await p.run('task draft --file=top.yaml --by=h1', HOST)).err).toContain('h1 has its top task t1; a part of it comes from a split')
-    expect(ok(await p.ui('run list')).out).toContain('h1 host · works · session s-host')
+    expect(ok(await p.ui('run list')).out).toContain('h1 host · works · pane %9')
     const db = tables(p)
     const sessions = db.query("SELECT session FROM assignment_session WHERE assignment = 'a1'").all()
-    expect(sessions).toEqual([{ session: 's-host' }])
+    expect(sessions).toEqual([{ session: db.query("SELECT session FROM run WHERE id = 'h1'").get().session }])
     db.close()
     // The host may split its top task.
     expect(opened).toContain('architect may change t1 (its split) until 2026-11-24T')

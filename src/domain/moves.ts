@@ -6,7 +6,7 @@
 // (src/engine) call them, and no other code writes a state (architecture.test.ts). Pure: the
 // caller finds the record by its id, and puts the new copy in the Work.
 import type { Human } from './actor.ts'
-import type { EventRef, ResultId, TaskId, Time } from './ids.ts'
+import type { EventRef, ResultId, SessionId, TaskId, Time } from './ids.ts'
 import type {
   Answerer,
   Assignment,
@@ -29,6 +29,7 @@ import type {
   DropReason,
   Failure,
   HostRun,
+  HostTerminal,
   Problem,
   ProblemActor,
   Run,
@@ -225,7 +226,19 @@ export const runDone = (
   run: In<HostRun, 'end', 'NotEnded'>,
   at: Time,
 ): In<HostRun, 'end', 'Done'> => ({ ...run, end: { _tag: 'Done', at } })
-// Run.Closed: an open run of either kind is closed.
+// Run.HostMoved: the host of an open run continues in another pane. The old session becomes a
+// former one, so that the UI closes its window.
+export const moveHost = (
+  run: In<Run, 'end', 'NotEnded'>,
+  session: SessionId,
+  terminal: HostTerminal,
+): In<Run, 'end', 'NotEnded'> => ({
+  ...run,
+  session,
+  terminal,
+  formerSessions: [...run.formerSessions, run.session],
+})
+// Run.Closed: an open run is closed.
 export const runClosed = (
   run: In<Run, 'end', 'NotEnded'>,
   at: Time,
@@ -320,6 +333,7 @@ export const MOVES = {
   'Workflow.RoleWordsChanged': changeRoleWords,
   // The latest fit of a role replaces the one before (Work.fits); a fit has no state.
   'Role.Fitted': null,
+  'Run.HostMoved': moveHost,
   'Run.Done': runDone,
   'Run.Closed': runClosed,
   'Problem.Fixed': fixProblem,

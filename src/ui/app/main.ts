@@ -75,14 +75,12 @@ interface SidebarProps {
   dir: DirData
   project: string | null
   onSettings: () => void
-  onNewProject: (() => Promise<ActOut | undefined>) | undefined
 }
-function Sidebar({ dir, project, onSettings, onNewProject }: SidebarProps) {
+// A project starts in the AI CLI that the person triggers (Nanda, 2026-11-13): that session is the
+// host, so the sidebar starts none.
+function Sidebar({ dir, project, onSettings }: SidebarProps) {
   const current = dir.projects.find((p) => p.id === project)
   const crumbTail = current ? html`<span>/ ${current.title}</span>` : ''
-  const newProjectTitle = onNewProject
-    ? 'Start a host session that talks with you'
-    : 'The dir needs its roles and the launch command of Sol first'
   return html`<nav class="sidebar" aria-label="Projects of this dir">
     <div class="crumb">${icon(ICONS.folder)}<strong>${dir.name}</strong>${crumbTail}</div>
     ${dir.projects.map((p) => html`
@@ -93,8 +91,6 @@ function Sidebar({ dir, project, onSettings, onNewProject }: SidebarProps) {
           aria-label="Needs you">!</span>` : html`<span
           class="state">${STATE_WORDS[p.state] ?? p.state}</span>`}
       </a>`)}
-    <button class="new-project" onClick=${onNewProject} disabled=${!onNewProject}
-      title=${newProjectTitle}>${icon(ICONS.plus, 14)} New project</button>
     <div class="sidebar-foot">
       <button class="icon-button" aria-label="Settings"
         onClick=${onSettings}>${icon(ICONS.gear, 20)}</button>
@@ -646,7 +642,7 @@ function FirstStart({ dir }: { dir: DirData }) {
     }
   }, [dir.rolesDraft])
   const copy = () =>
-    navigator.clipboard.writeText(dir.assessPrompt).then(
+    navigator.clipboard.writeText(dir.startPrompt).then(
       () => toast('The prompt is copied.'),
       () => toast('The page cannot copy: select the prompt and copy it.'),
     )
@@ -660,10 +656,10 @@ function FirstStart({ dir }: { dir: DirData }) {
         <button class="btn primary"
           onClick=${attempt(() => post({ act: 'accept-roles' }))}>Accept the roles</button>`
       : html`<p>${
-          'A dir with no direction starts with assess. Open the AI CLI that you use in this ' +
-          'dir, and paste this prompt into it. It reads the dir and drafts its people and ' +
+          'Open the AI CLI that you use in this dir, in a tmux pane, and paste this prompt ' +
+          'into it. That session is the host: it reads the dir and drafts its people and ' +
           'roles; the draft shows here, and waits for you.'}</p>
-        <pre class="draft-text">${dir.assessPrompt}</pre>
+        <pre class="draft-text">${dir.startPrompt}</pre>
         <button class="btn primary" onClick=${copy}>Copy the prompt</button>`}
   </div>`
 }
@@ -715,11 +711,6 @@ function App() {
     if (badges.current !== null && dir.sound && now && now !== badges.current) chime()
     badges.current = now
   }, [dir])
-  const newProject = attempt(async () => {
-    const r = await post({ act: 'new-project' })
-    go(r.run ?? null)
-    return { out: `${r.run} started: the host talks with you.` }
-  })
   const stop = attempt(async (o: Owner) =>
     o.session ? post({ act: 'stop', session: o.session }) : undefined,
   )
@@ -746,12 +737,12 @@ function App() {
   }
   if (!dir) return html`<main class="canvas"></main>`
   return html`<div class="layout">
-    <${Sidebar} dir=${dir} project=${project} onSettings=${() => setSettings(true)}
-      onNewProject=${dir.initialized && dir.launchSet ? newProject : undefined} />
+    <${Sidebar} dir=${dir} project=${project} onSettings=${() => setSettings(true)} />
     <main class="canvas">
       ${!dir.initialized ? html`<${FirstStart} dir=${dir} />`
         : !view ? html`<div class="empty"><h2>No project yet</h2>
-          <p>A project starts with a talk: New project starts a host session.</p></div>`
+          <p>A project starts in your AI CLI: trigger the aristoteles skill there, and that
+            session is the host. Its terminal shows here.</p></div>`
         : html`<div class="canvas-head"><h1>${view.title}</h1>
           <span class="meta">${view.id} · ${view.state}${sessionWords}</span>
             ${canClose ? html`<button class="btn quiet small"

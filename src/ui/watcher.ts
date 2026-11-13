@@ -8,8 +8,10 @@
 //     then tells the host; a failure of the host itself becomes a system problem;
 //   - tells the host of a new decision for the person, so that the host writes its words;
 //   - closes a terminal once when its work ended.
-// The person's acts (New project, Open, Close, Stop, Resume, Fixed) are methods that the server
-// calls.
+// The person's acts (Open, Close, Stop, Resume, Fixed) are methods that the server calls. The
+// host is the AI CLI that the person triggered (Nanda, 2026-11-13): its run names its own pane on
+// the person's tmux server, and the pump copies that pane; the UI never starts, restarts, or
+// stops it.
 //
 // What a restart must keep is in the store, never in this closure: the terminal moves (a Stop
 // holds until the person's Resume; a failure goes up once; a close happens once) and every text
@@ -112,8 +114,6 @@ export interface WatcherOptions {
 export interface Watcher {
   readonly tick: () => Promise<void>
   readonly stop: () => void
-  // New project: a run and its host session.
-  readonly newProject: () => Promise<{ readonly run: string; readonly session: string }>
   // Open: the person opens a proposal; returns the CLI's words.
   readonly open: (proposal: string) => Promise<string>
   readonly stopSession: (session: string) => Promise<void>
@@ -637,6 +637,9 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
       if (!waits) kind = 'silent'
     }
     if (kind === undefined) return
+    // A host that ended (the person closed the AI CLI) is not restarted: the person triggers a
+    // host again and continues the run there (Nanda, 2026-11-13).
+    if (kind === 'ended' && x.host) return
     if (kind === 'prompt') {
       // A prompt is told once while it shows; the host of a failed terminal heard of it already.
       const line = clean(asked ?? '')
@@ -712,10 +715,9 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
   //              records the fix itself;
   //   'no host'  no host runs to try it;
   //   'stopped'  the person stopped the host: a try never undoes the person's Stop (bug 4);
-  //   'resumed'  the UI recorded it (the host failed), and the try started the host again;
-  //   'runs'     the UI recorded it, and the host runs again already.
-  // A try that tells or resumes is a ProblemRetry send, so its time keeps through a restart. A
-  // resume that fails throws, so a try never says 'resumed' when it did nothing.
+  //   'runs'     the UI recorded it, and the host runs again (the person triggered it again).
+  // A try that tells is a ProblemRetry send, so its time keeps through a restart. The UI never
+  // restarts a host itself (Nanda, 2026-11-13).
   const tryProblem = async (work: Work, sp: Problem) => {
     if (sp.recordedBy._tag === 'Host') {
       const sid = hostSessionOf(work, sp.stopped)
@@ -729,19 +731,8 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     const r = runOf(work, sp.stopped)
     if (r === undefined) return 'no host' as const
     if (stateOf(r.session)?._tag === 'Stopped') return 'stopped' as const
-    if (pump.status()[r.session]?.live) return 'runs' as const
-    const t = tierSettings('sol')
-    const input = t?.retryInput ?? 'continue'
-    const ref = await sendLine({ _tag: 'ProblemRetry', problem: sp.id }, input)
-    try {
-      const command = t?.resume ?? t?.launch ?? ''
-      pump.resume(r.session, fill(command, { session: r.session, prompt: input }))
-    } catch (error) {
-      await dropped(ref, { _tag: 'TypingFailed' })
-      throw error
-    }
-    await delivered(ref)
-    return 'resumed' as const
+    // The UI starts no host and restarts none: the person triggers a host again.
+    return pump.status()[r.session]?.live ? ('runs' as const) : ('no host' as const)
   }
 
   // --- the tick ------------------------------------------------------------------------------
@@ -923,9 +914,30 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     }
   }
 
+  // The host of each open run that runs in the person's own pane: the pump copies that pane, and
+  // stops copying a pane that no open run names. A window of an older host of a run (before a
+  // continue moved the run) closes, once.
+  const syncHosts = (work: Work) => {
+    const panes = new Set<string>()
+    for (const r of work.runs.values()) {
+      if (r.end._tag !== 'NotEnded' || r.terminal._tag !== 'Pane') continue
+      pump.adopt(r.session, r.terminal.socket, r.terminal.pane)
+      panes.add(r.session)
+    }
+    const status = pump.status()
+    for (const sid of Object.keys(status)) if (!panes.has(sid) && pump.paneOf(sid)) pump.release(sid)
+    for (const r of work.runs.values()) {
+      for (const old of r.formerSessions) {
+        if (status[old] === undefined || pump.paneOf(old)) continue
+        pump.stop(old)
+        log(`${r.id}: its host continues in another terminal, so the window of its old host closed`)
+      }
+    }
+  }
   const tickNow = async () => {
     const first = current()
     if (first === undefined) return
+    syncHosts(first)
     await startAgents(first)
     const sending = current()
     if (sending !== undefined) await sendWaiting(sending)
@@ -948,9 +960,9 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
       if (trying === undefined || sp.fixed._tag !== 'NotFixed') continue
       if (clock() - lastProblemTry(trying, sp.id) < retryMs) continue
       await step(sp.id, async () => {
-        // A try that brought the host back, or found it running, fixes a problem of the host.
+        // A try that finds the host running again fixes a problem of the host.
         const how = await tryProblem(trying, sp)
-        if (how === 'resumed' || how === 'runs') await must(['problem', sp.id, '--fixed'])
+        if (how === 'runs') await must(['problem', sp.id, '--fixed'])
       })
     }
 
@@ -1001,22 +1013,6 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
   return {
     tick,
     stop: () => clearInterval(timer),
-    // New project: a run and its host session, which talks with the person first.
-    newProject: () =>
-      serial(async () => {
-        const sid = randomUUID() as SessionId
-        const out = await must(['run', 'start', `--session=${sid}`])
-        const h = out.match(/^(h\d+)/)?.[1] ?? ''
-        current()
-        await launch(
-          'sol',
-          sid,
-          `You are the host of a new project in ${dir}; your run is ${h}. Use the work skill, ` +
-            'its part "You are the host of a project": first ask the person here what they ' +
-            `want, then draft the top task with work task draft --file=<file> --by=${h}.`,
-        )
-        return { run: h, session: sid }
-      }),
     // Open: the person opens the drafted top task; the host continues as its Sol: the start words
     // of a Sol with its new token, typed when its terminal is ready.
     open: (draft) =>
@@ -1059,7 +1055,9 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
           throw new Error(`${spId}: you stopped the host; Resume it, then click Fixed`)
         }
         if (how === 'no host') {
-          throw new Error(`${spId}: no host runs to try it; Resume the host, then click Fixed`)
+          throw new Error(
+            `${spId}: no host runs to try it; trigger the host in your AI CLI again, then click Fixed`,
+          )
         }
         if (how === 'told') {
           return (
@@ -1068,8 +1066,7 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
           )
         }
         await must(['problem', spId, '--fixed'])
-        const now = how === 'resumed' ? 'is resumed' : 'runs'
-        return `${spId}: the host ${now}, and the problem is fixed.`
+        return `${spId}: the host runs, and the problem is fixed.`
       }),
     // Close: every terminal of the project stops, and its tasks close.
     close: (runId, reason) =>
@@ -1078,12 +1075,16 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
         const r = work?.runs.get(runId as never)
         if (work === undefined || r === undefined) throw new Error(`there is no run ${runId}`)
         const top = topNow(work, r)
+        // The host's own pane is the person's (also as the Sol of the top task): the page stops
+        // showing it, and it keeps running.
+        const ownPane = (sid: SessionId) => pump.paneOf(sid) !== undefined
         for (const s of work.sessions.values()) {
           const a = work.assignments.get(s.assignment)
           if (top === undefined || a === undefined || !within(work, a.task, top)) continue
-          await stopNow(s.session)
+          if (!ownPane(s.session)) await stopNow(s.session)
         }
-        await stopNow(r.session)
+        if (ownPane(r.session)) pump.release(r.session)
+        else await stopNow(r.session)
         const task = top === undefined ? undefined : work.tasks.get(top)
         if (task !== undefined && task.end._tag === 'NotEnded') {
           await must(['task', 'close', task.id, `--reason=${reason}`], { typed: 'close' })
@@ -1108,7 +1109,9 @@ export const WAKES: Total<ReadonlyArray<WakeRule>> = {
   'Workflow.Defined': NONE,
   'Workflow.RoleWordsChanged': NONE,
   'Role.Fitted': ACT_OF_AGENT,
+  'Run.HostJoined': NONE,
   'Run.HostStarted': NONE,
+  'Run.HostMoved': NONE,
   'Run.Done': NONE,
   'Run.Closed': NONE,
   'TaskDraft.Drafted': NONE,

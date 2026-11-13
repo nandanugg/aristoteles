@@ -376,7 +376,8 @@ export const projectsOf = (work: Work, ctx: ViewContext): ReadonlyArray<ProjectS
 // The terminal that owns a task: its open Sol or Terra assignment. When every lead finished, the
 // host of an open run owns it, because the host acts on the person's end decision. A task that
 // only a Luna does runs inside the terminal of the real agent that assigned it (Nanda,
-// 2026-11-11). Only the terminal of live work can be resumed: finished work has nothing to resume.
+// 2026-11-11). Only the terminal of live work can be resumed: finished work has nothing to resume,
+// and the UI never restarts a host: the person triggers it again (Nanda, 2026-11-13).
 const ownerOf = (work: Work, task: TaskId): Owner | null => {
   const mine = assignmentsOn(work, task)
   const leads = mine.filter((a) => isReal(work, a))
@@ -392,7 +393,7 @@ const ownerOf = (work: Work, task: TaskId): Owner | null => {
       tier: tierOfAssignment(work, lead),
       session: sessionOf(work, lead.id),
       inside: null,
-      resumable: !finished(lead) || inOpenRun(lead),
+      resumable: !finished(lead) && !inOpenRun(lead),
     }
   }
   const maker = mine.at(-1)
@@ -853,7 +854,7 @@ export const dirView = (
     readonly settings: Settings
     readonly rolesDraft: boolean
     readonly hasConfig: boolean
-    readonly assessPrompt: string
+    readonly startPrompt: string
   },
   ctx: ViewContext,
 ): DirView => ({
@@ -864,8 +865,7 @@ export const dirView = (
   settings: dir.settings,
   hasConfig: dir.hasConfig,
   rolesDraft: dir.rolesDraft,
-  launchSet: Boolean(dir.settings.tiers.sol?.launch),
   initialized: work !== undefined,
-  assessPrompt: dir.assessPrompt,
+  startPrompt: dir.startPrompt,
   projects: work ? projectsOf(work, ctx) : [],
 })

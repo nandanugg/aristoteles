@@ -1,8 +1,9 @@
 // The edges of the supervisor of the terminals (package P9; plan/types/PLAN.md bugs 4, 5, 13,
 // 14, 15): a Stop holds through a problem retry and a restart; a restart keeps what went up
 // (stops, closes, retries, prompts, wakes and their times); a change of words alone wakes
-// nobody; a Fixed and a tick resume a host once; a Stop and a Resume never get the old first
-// input typed into the new process; the end of work closes a terminal once. The new CLI runs on
+// nobody; the UI never starts, restarts, or stops a host (the AI CLI that the person triggered, in
+// its own pane, Nanda 2026-11-13); a Stop and a Resume never get the old first input typed into
+// the new process; the end of work closes a terminal once. The new CLI runs on
 // a dir in a temp folder, and a fake pump stands for tmux, so no test needs tmux.
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -61,17 +62,24 @@ const fakePump = () => {
   const typed = new Map<string, string>()
   const calls: Array<string> = []
   let resumeFails = false
+  // The host's own pane: the fake shows it as a terminal, and refuses to start or stop it.
+  const panes = new Map<string, { readonly socket: string; readonly pane: string }>()
+  const ownPane = (sid: string) => {
+    throw new Error(`${sid} is the host's own terminal; the UI does not start, restart, or stop it`)
+  }
   const pump: Pump = {
     name: 'fake',
     socket: 'fake',
     dir: '',
     start(sid) {
+      if (panes.has(sid)) return ownPane(sid)
       if (terms.has(sid)) throw new Error(`the session ${sid} has a terminal already`)
       calls.push(`start ${sid}`)
       terms.set(sid, { live: true, screen: [], lastOutput: 0 })
       return sid
     },
     resume(sid) {
+      if (panes.has(sid)) return ownPane(sid)
       if (terms.get(sid)?.live) throw new Error(`the session ${sid} runs`)
       if (resumeFails) throw new Error('tmux: no server running')
       calls.push(`resume ${sid}`)
@@ -84,6 +92,7 @@ const fakePump = () => {
     },
     resize() {},
     stop(sid) {
+      if (panes.has(sid)) return ownPane(sid)
       calls.push(`stop ${sid}`)
       terms.delete(sid)
     },
@@ -96,6 +105,17 @@ const fakePump = () => {
         ]),
       ),
     tail: (sid) => terms.get(sid)?.screen.join('\n') ?? '',
+    adopt(sid, socket, pane) {
+      if (panes.has(sid)) return
+      panes.set(sid, { socket, pane })
+      calls.push(`adopt ${sid}`)
+      terms.set(sid, { live: true, screen: [], lastOutput: 0 })
+    },
+    release(sid) {
+      panes.delete(sid)
+      terms.delete(sid)
+    },
+    paneOf: (sid) => panes.get(sid),
     close() {},
     killServer() {},
   }
@@ -140,7 +160,7 @@ const project = async () => {
   let tokens = 0
   const run = async (
     argv: ReadonlyArray<string>,
-    o: { tty?: boolean; channel?: string; typed?: string; session?: string } = {},
+    o: { tty?: boolean; channel?: string; typed?: string; session?: string; pane?: string } = {},
   ) => {
     const out: Array<string> = []
     const err: Array<string> = []
@@ -153,7 +173,11 @@ const project = async () => {
       readLine: () => o.typed,
       now: () => new Date(clock.now).toISOString(),
       gitUser: () => 'Nanda',
-      env: o.session ? { ...env, ARISTOTELES_SESSION: o.session } : env,
+      env: o.session
+        ? { ...env, ARISTOTELES_SESSION: o.session }
+        : o.pane
+          ? { ...env, TMUX: '/tmp/ar-test-person.sock,1,0', TMUX_PANE: o.pane }
+          : env,
       random: () => `k${String(++tokens).padStart(4, '0')}`,
     })
     return { code, out: out.join('\n'), err: err.join('\n') }
@@ -167,6 +191,8 @@ const project = async () => {
   const ui = (line: string) => ok(run(words(line), { channel: 'ui' }))
   const agent = (line: string) => ok(run(words(line)))
   const inSession = (session: string, line: string) => ok(run(words(line), { tty: true, session }))
+  // The host: the AI CLI that the person triggered, in a pane of the person's tmux server.
+  const inPane = (line: string, pane = '%9') => ok(run(words(line), { pane }))
   const readState = (): Work | undefined =>
     Effect.runSync(
       Effect.gen(function* () {
@@ -185,7 +211,7 @@ const project = async () => {
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
     await nanda(`role fit ${role} --answers=fit.yaml`)
   }
-  return { dir, env, run, nanda, ui, agent, inSession, readState }
+  return { dir, env, run, nanda, ui, agent, inSession, inPane, readState }
 }
 
 const tokenIn = (text: string) => text.match(/work brief (a\d+\.[a-z0-9]+)/)?.[1] ?? ''
@@ -221,9 +247,11 @@ const hosted = async () => {
     return w
   }
   const w = watcher()
-  const { session: host } = await w.newProject()
+  await p.inPane('run start')
+  await w.tick()
+  const host = p.readState()?.runs.get('h1' as never)?.session ?? ''
   fake.show(host, 'fake agent start')
-  await p.inSession(host, 'task draft --file=top.yaml --by=h1')
+  await p.inPane('task draft --file=top.yaml --by=h1')
   const hostToken = tokenIn(await w.open('td1'))
   // The host's prompt is typed when its terminal is quiet.
   later(1000)
@@ -279,55 +307,32 @@ describe('the supervisor of the terminals', () => {
     expect(JSON.stringify(p.readState()?.sends)).not.toContain('a2.k')
   })
 
-  test('bug 14: a Fixed and a tick together resume the host once', async () => {
+  test('the UI never restarts a host: Fixed finds no host until the person triggers one again', async () => {
     const { p, fake, w, host } = await hosted()
     await p.ui('problem t1 --says="the host terminal failed 3 times"')
     fake.end(host)
     later(6 * 60_000)
-    const [fixed] = await Promise.all([w.fixed('sp1'), w.tick()])
-    expect(fixed).toBe('sp1: the host is resumed, and the problem is fixed.')
-    expect(fake.calls.filter((c) => c === `resume ${host}`)).toHaveLength(1)
-    // The other order: the tick resumes it first, and the person's Fixed finds nothing open.
-    await p.ui('problem t1 --says="the host terminal failed again"')
-    fake.end(host)
-    later(6 * 60_000)
-    const [, again] = await Promise.all([
-      w.tick(),
-      w.fixed('sp2').catch((e: Error) => e.message),
-    ])
-    expect(again).toBe('sp2 is no open system problem')
-    expect(fake.calls.filter((c) => c === `resume ${host}`)).toHaveLength(2)
-    expect(p.readState()?.problems.get('sp2' as never)?.fixed._tag).toBe('Fixed')
-  })
-
-  test('bug 4: a problem retry never undoes the Stop of the host, nor does a restart', async () => {
-    const { p, fake, w, watcher, host } = await hosted()
-    await w.stopSession(host)
-    await p.ui('problem t1 --says="the host terminal failed 3 times"')
+    const [fixed] = await Promise.all([w.fixed('sp1').catch((e: Error) => e.message), w.tick()])
+    expect(fixed).toBe(
+      'sp1: no host runs to try it; trigger the host in your AI CLI again, then click Fixed',
+    )
+    expect(fake.calls.filter((c) => c.startsWith('resume') || c.startsWith('start'))).toEqual([])
+    // The person triggers the host again in another pane: the run continues there.
+    await p.inPane('run continue h1 --quote="go on with the export"', '%5')
+    await w.tick()
+    const moved = p.readState()?.runs.get('h1' as never)?.session ?? ''
+    expect(moved).not.toBe(host)
+    expect(fake.calls).toContain(`adopt ${moved}`)
+    // The next try finds the host running, and fixes the problem itself.
     later(6 * 60_000)
     await w.tick()
-    expect(fake.calls).not.toContain(`resume ${host}`)
-    expect(w.fixed('sp1')).rejects.toThrow('sp1: you stopped the host; Resume it, then click Fixed')
-    const again = watcher()
-    later(6 * 60_000)
-    await again.tick()
-    expect(fake.calls).not.toContain(`resume ${host}`)
-    expect(p.readState()?.problems.get('sp1' as never)?.fixed._tag).toBe('NotFixed')
-    expect(sendsTo(p.readState(), 'ProblemRetry')).toEqual([])
+    expect(p.readState()?.problems.get('sp1' as never)?.fixed._tag).toBe('Fixed')
   })
 
-  test('bug 4: a try never says resumed when the resume failed', async () => {
-    const { p, fake, w, host } = await hosted()
-    await p.ui('problem t1 --says="the host terminal failed 3 times"')
-    fake.end(host)
-    fake.failResume(true)
-    expect(w.fixed('sp1')).rejects.toThrow('tmux: no server running')
-    await until(() => sendsTo(p.readState(), 'ProblemRetry').length === 1, 'the try')
-    await until(
-      () => sendsTo(p.readState(), 'ProblemRetry')[0]?.state._tag === 'Dropped',
-      'its drop',
-    )
-    expect(p.readState()?.problems.get('sp1' as never)?.fixed._tag).toBe('NotFixed')
+  test('the page cannot stop or resume the host: it is the person\'s own terminal', async () => {
+    const { w, host } = await hosted()
+    expect(w.stopSession(host)).rejects.toThrow('the UI does not start, restart, or stop it')
+    expect(w.resumeSession(host, 'sol')).rejects.toThrow('the UI does not start, restart, or stop it')
   })
 
   test('bug 5: a restart tells a prompt once, and keeps the count of the retries', async () => {
@@ -364,18 +369,15 @@ describe('the supervisor of the terminals', () => {
     expect(sendsTo(p.readState(), 'Retry')).toHaveLength(3)
   })
 
-  test('bug 5: a failure of the host goes up as one system problem through a restart', async () => {
+  test('an ended host raises nothing and is not restarted, also through a restart', async () => {
     const { p, fake, watcher, host } = await hosted()
-    for (const on of [watcher(), watcher(), watcher(), watcher(), watcher()]) {
-      fake.show(host, 'fake agent resumed')
+    for (const on of [watcher(), watcher(), watcher()]) {
       fake.end(host)
       later(31_000)
       await on.tick()
     }
-    const problems = [...(p.readState()?.problems.values() ?? [])]
-    expect(problems.map((x) => x.says)).toEqual([
-      'The host session failed 3 times (ended). Its last lines: «fake agent resumed»',
-    ])
+    expect([...(p.readState()?.problems.values() ?? [])]).toEqual([])
+    expect(fake.calls.filter((c) => c.startsWith('resume'))).toEqual([])
   })
 
   test('bug 13: a change of the words of work next wakes nobody; a new step wakes', async () => {

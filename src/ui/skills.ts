@@ -10,7 +10,7 @@ import { readSettings } from '../config/settings.ts'
 import { FilesLive } from '../services/outside.ts'
 import { excludeFromGit } from './git-exclude.ts'
 
-const SKILLS = ['work', 'assess', 'role-fitness']
+const SKILLS = ['aristoteles', 'work', 'assess', 'role-fitness']
 export const linkSkills = (dir: string): ReadonlyArray<string> => {
   const lines: string[] = []
   // A dir whose settings do not read has no skills folder to link into.

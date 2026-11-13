@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import { startServer } from './code.js'
-import { INTRO_V1, ok, project, tokenIn, withWriter } from './harness.js'
+import { HOST, INTRO_V1, ok, project, tokenIn, withWriter } from './harness.js'
 
 const servers = []
 afterEach(() => {
@@ -48,7 +48,7 @@ describe('the server, read only', () => {
 
   test('the dir lists its projects; a top task opened at a terminal is a project too', async () => {
     const { p } = await rejected()
-    ok(await p.ui('run start --session=s-h1'))
+    ok(await p.run('run start', HOST))
     const { get } = serve(p)
     const dir = await get('/api/dir')
     expect(dir).toMatchObject({ name: 'report-export', path: p.dir, theme: 'light', sound: false, initialized: true })

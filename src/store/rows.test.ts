@@ -340,6 +340,8 @@ const work: Work = {
         _tag: 'Host',
         id: h1,
         session: 's-host' as SessionId,
+        terminal: { _tag: 'Window' },
+        formerSessions: [],
         startedAt: at(0),
         end: { _tag: 'Closed', at: at(30) },
       },

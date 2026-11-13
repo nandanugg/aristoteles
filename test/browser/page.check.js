@@ -74,28 +74,34 @@ const open = async () => {
   }
 }
 {
-  // a live terminal: the page shows the terminal of the host, and the person types into it
+  // a live terminal: the page shows the terminal of the host, the AI CLI that the person triggered
+  // in a pane of the person's own tmux server, and the person types into it there
   const { createPump } = await import('../code.js')
-  const { TASK_WHOLE, init, project } = await import('../harness.js')
+  const { TASK_WHOLE, init, personPane, project } = await import('../harness.js')
+  const { Database } = await import('bun:sqlite')
   const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
   await init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  ok(await p.ui('run start --session=s-host'))
-  ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: 's-host' } }))
+  const person = personPane(`bun ${join(import.meta.dir, '..', 'fake-agent.js')} start person-host`)
+  ok(await p.run('run start', { env: person.env }))
+  ok(await p.run('task draft --file=top.yaml --by=h1', { env: person.env }))
   ok(await p.ui('task open td1'))
+  const db = new Database(join(p.dir, '.work', 'aristoteles.db'), { readonly: true })
+  const host = db.query("SELECT session FROM run WHERE id = 'h1'").get().session
+  db.close()
   const pump = createPump({ dir: p.dir, socket: `aristoteles-check-${process.pid}` })
-  pump.start('s-host', `bun ${join(import.meta.dir, '..', 'fake-agent.js')} start s-host`)
+  pump.adopt(host, person.socket, person.pane)
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }, pump })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   try {
     await page.goto(s.url)
     await page.waitForSelector('.card.task .dot.run')
     await page.click('.tag-button')
-    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent.includes('fake agent start s-host (env s-host)'))
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent.includes('fake agent start person-host (env none)'))
     await page.keyboard.type('hello from the browser')
     await page.keyboard.press('Enter')
     await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent.includes('you said: hello from the browser'), null, { timeout: 10000 })
-    expect(await page.textContent('.term-bar')).toContain('a1 · session s-host')
+    expect(await page.textContent('.term-bar')).toContain(`a1 · session ${host}`)
     // The rows of the terminal fit in its box: the last row is not cut off.
     expect(await page.evaluate(() => {
       const rows = document.querySelector('.xterm-screen').getBoundingClientRect()
@@ -109,28 +115,29 @@ const open = async () => {
     await page.keyboard.type('after the buttons')
     await page.keyboard.press('Enter')
     const end = Date.now() + 10000
-    while (!pump.tail('s-host').includes('^[[5~^[[6~after the buttons') && Date.now() < end) await Bun.sleep(100)
-    expect(pump.tail('s-host')).toContain('^[[5~^[[6~after the buttons')
+    while (!pump.tail(host).includes('^[[5~^[[6~after the buttons') && Date.now() < end) await Bun.sleep(100)
+    expect(pump.tail(host)).toContain('^[[5~^[[6~after the buttons')
   } finally {
     await page.close()
     s.stop()
     pump.killServer()
+    person.kill()
   }
 }
 {
   // a direction problem: a refused accept keeps the person's words and shows why in the item;
   // the accept ends the item
-  const { TASK_WHOLE, git, init, project } = await import('../harness.js')
+  const { HOST, TASK_WHOLE, git, init, project } = await import('../harness.js')
   const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
   // The page acts as the git user of the dir.
   git(p.dir, 'init', '-q')
   git(p.dir, 'config', 'user.name', 'Nanda')
   await init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  ok(await p.ui('run start --session=s-host'))
-  ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: 's-host' } }))
+  ok(await p.run('run start', HOST))
+  ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
   const host = tokenIn(ok(await p.ui('task open td1')).out)
-  ok(await p.run(`brief ${host}`, { tty: true, env: { ARISTOTELES_SESSION: 's-host' } }))
+  ok(await p.run(`brief ${host}`, HOST))
   p.write('cost.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs., rules: [ { id: names-cost, says: "The introduction names the cost", checkedBy: linter } ] }\n')
   const draft = ok(await p.agent(`direction revise ${host} tsd-writing --file=cost.yaml`)).out.match(/(d\d+) drafted/)[1]
   // The host writes the problem and the hope; the page puts the change from the store between them.

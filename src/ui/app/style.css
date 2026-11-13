@@ -103,11 +103,6 @@ button { font: inherit; color: inherit; }
 .project[aria-current="page"] { background: var(--terra-tint); font-weight: 500; }
 .project .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project .state { font-size: 12px; color: var(--faint); }
-.new-project {
-  display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; padding: 0 10px;
-  border: 1px dashed var(--line-strong); border-radius: 8px; background: var(--surface); cursor: pointer; color: var(--muted);
-}
-.new-project:disabled { cursor: default; opacity: 0.7; }
 .sidebar-foot { margin-top: auto; display: flex; }
 .icon-button {
   width: 44px; height: 44px; border: 0; border-radius: 8px; background: transparent; display: inline-flex;

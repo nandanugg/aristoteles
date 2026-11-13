@@ -84,13 +84,14 @@ const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'obj
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-// The first start of a dir: the person pastes these words into the AI CLI that they use, in the
-// dir. That CLI is the host, and it knows its own commands, so it writes the tiers of the draft.
-const assessPrompt = (dir: string) =>
-  `Use the assess skill of aristoteles on the folder ${dir}: read ` +
-  `${join(ROOT, 'skills', 'assess', 'SKILL.md')} and do what it says. You are the host: write ` +
-  'the tiers of the draft with the commands of this AI CLI. When work is not on the PATH, ' +
-  `use bun ${join(ROOT, 'bin', 'work.js')} in its place.`
+// The start of aristoteles in a dir: the person pastes these words into the AI CLI that they use,
+// in the dir. That session is the host (Nanda, 2026-11-13): it sets up a new dir (it knows its own
+// commands, so it writes the tiers of the draft), starts the page, and starts or continues a
+// project.
+const startPrompt = (dir: string) =>
+  `Use aristoteles in the folder ${dir}: read ` +
+  `${join(ROOT, 'skills', 'aristoteles', 'SKILL.md')} and do what it says; you are the host. ` +
+  `When work is not on the PATH, use bun ${join(ROOT, 'bin', 'work.js')} in its place.`
 
 export function startServer(options: ServerOptions): ServerHandle {
   const {
@@ -274,8 +275,6 @@ export function startServer(options: ServerOptions): ServerHandle {
     watcher ? use(watcher) : json({ error: 'the terminals need tmux' }, 400)
   const act = async (b: PageAct): Promise<Response> => {
     switch (b.act) {
-      case 'new-project':
-        return terminals(async (w) => json(await w.newProject()))
       case 'open':
         return terminals(async (w) => json({ out: await w.open(b.draft) }))
       case 'close':
@@ -360,7 +359,7 @@ export function startServer(options: ServerOptions): ServerHandle {
             settings: ctx.settings,
             rolesDraft: existsSync(join(dir, DRAFT)),
             hasConfig: existsSync(join(dir, CONFIG)),
-            assessPrompt: assessPrompt(dir),
+            startPrompt: startPrompt(dir),
           },
           ctx,
         ),

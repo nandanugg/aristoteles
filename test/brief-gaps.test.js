@@ -14,9 +14,9 @@ import {
   tokenIn,
   WORK_YAML,
   withWriter,
+  HOST,
 } from './harness.js'
 
-const HOST = { tty: true, env: { ARISTOTELES_SESSION: 's-host' } }
 
 describe('the brief of an agent that escalated', () => {
   test('a resolved escalation shows who resolved it and the words, in OPEN', async () => {
@@ -98,7 +98,7 @@ describe('send to an agent with no terminal', () => {
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
       ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     }
-    ok(await p.ui('run start --session=s-host'))
+    ok(await p.run('run start', HOST))
     ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
     const host = tokenIn(ok(await p.ui('task open td1')).out)
     ok(await p.agent(`brief ${host}`))

@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS run (
   PRIMARY KEY (project, id));
 CREATE TABLE IF NOT EXISTS run_closed (
   project TEXT NOT NULL, run TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (project, run));
+CREATE TABLE IF NOT EXISTS run_host (
+  project TEXT NOT NULL, run TEXT NOT NULL, session TEXT NOT NULL, PRIMARY KEY (project, run, session));
 CREATE TABLE IF NOT EXISTS run_task (
   project TEXT NOT NULL, run TEXT NOT NULL, task TEXT NOT NULL, PRIMARY KEY (project, run, task));
 CREATE TABLE IF NOT EXISTS assignment_session (

@@ -200,15 +200,27 @@ export const RoleMove = Schema.Union([
   Schema.TaggedStruct('Fitted', { hash: Text, answers: NonEmpty(FitAnswer) }),
 ])
 const Role = moved('Role', RoleName, RoleMove)
-// A run of the UI (work run start, done, close).
+// A pane of the person's own tmux server: its socket ($TMUX) and its pane id ($TMUX_PANE).
+export const PersonPane = { socket: Text, pane: Text }
+// A run of the UI (work run start, continue, done, close). HostMoved: the AI CLI that the person
+// triggered in another pane continues the run as its host, on the person's quoted words.
 export const RunMove = Schema.Union([
+  Schema.TaggedStruct('HostMoved', { session: SessionId, ...PersonPane, words: Text }),
   Schema.TaggedStruct('Done', {}),
   Schema.TaggedStruct('Closed', {}),
 ])
-// A run starts as a host: it talks with the person and drafts the top task. The assess skill
-// runs in the person's own AI CLI, outside any run (Nanda, 2026-11-13).
+// A run is a talk with a host, which drafts the top task (Nanda, 2026-11-13: the AI CLI that the
+// person triggers is the host). HostJoined: the host runs in a pane of the person's own tmux
+// server, and the page shows that pane. HostStarted: the host ran in a window that the UI made
+// (stores before 2026-11-13).
 const Run = Schema.Union([
-  created('Run', Schema.TaggedStruct('HostStarted', { session: SessionId })),
+  created(
+    'Run',
+    Schema.Union([
+      Schema.TaggedStruct('HostJoined', { session: SessionId, ...PersonPane }),
+      Schema.TaggedStruct('HostStarted', { session: SessionId }),
+    ]),
+  ),
   moved('Run', RunId, RunMove),
 ])
 // A top task that a host drafts; the person opens it (a creation of the Task).
@@ -777,8 +789,10 @@ export const WRITTEN_BY = {
   // A host run before it has an assignment: its task draft.
   Host: ['TaskDraft.Drafted'],
   // A model run outside any task: its draft of a new direction, and the fit of a role (the host
-  // that drafted the roles records their fits, Nanda 2026-11-13).
-  ModelRun: ['Revision.Drafted', 'Role.Fitted'],
+  // that drafted the roles records their fits, Nanda 2026-11-13). The AI CLI that the person
+  // triggers in a pane: it starts a run there, or continues a run there on the person's quoted
+  // words, and then takes the terminal of the run's Sol with a new token.
+  ModelRun: ['Revision.Drafted', 'Role.Fitted', 'Run.HostJoined', 'Run.HostMoved', 'Terminal.Started'],
   // The CLI's own assign and finish of a program.
   System: ['Assignment.GivenReviewer', 'Assignment.Finished'],
   // The supervisor of the terminals: its sessions, what it sees, its sends and their fate, and

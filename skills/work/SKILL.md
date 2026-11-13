@@ -34,8 +34,9 @@ brief, not this file, for anything about your task.
 
 ## You are the host of a project (the UI)
 
-The UI of a dir (`work start`) started you in a terminal with "You are the host" and your run
-(`h<n>`). A project is your session: you talk with the person, then you run its top task.
+The person triggered you in their AI CLI (the `aristoteles` skill), and you started or continued a
+run (`h<n>`) in your own tmux pane; the page shows this terminal. A project is your session: you
+talk with the person, then you run its top task.
 
 1. **Talk.** Ask the person what they want, in their terminal (here). Read the directions
    (`work direction show <id>`, `work search <words>`) and the dir. Do not start any work yet.
@@ -43,8 +44,8 @@ The UI of a dir (`work start`) started you in a terminal with "You are the host"
    `aristoteles.yaml` (`work task open` with no file prints the form; add `role: <role>`), then
    `work task draft --file=<file> --by=<your run>`. A project is large: for example a whole
    TSD.
-3. **Wait for the person to open it.** The UI then types `work brief <token>` here: from then on
-   you are the Sol of the top task, and that brief tells you what to do.
+3. **Wait for the person to open it** on the page. The UI then types `work brief <token>` here:
+   from then on you are the Sol of the top task, and that brief tells you what to do.
 4. **Everything else is yours.** Only three kinds of decision reach the person: a system
    problem, a direction problem, and the end of the project. Everything else, you handle:
    - a question of a model comes to you: answer it from the directions (`work answer <token>

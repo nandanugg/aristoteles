@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { TASK_WHOLE, init, ok, project, reported, tokenIn } from './harness.js'
+import { HOST, TASK_WHOLE, init, ok, project, reported, tokenIn } from './harness.js'
 import { canvas } from './outside.js'
 
 // The canvas shows only what runs now (Nanda, 2026-11-11): an accepted task goes away with its
@@ -62,11 +62,10 @@ describe('the canvas shows only what runs now', () => {
   })
 
   test('when every lead finished, the host of the open run owns the task: it acts on the end', async () => {
-    const HOST = { tty: true, env: { ARISTOTELES_SESSION: 's-host' } }
     const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
     await init(p)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.ui('run start --session=s-host'))
+    ok(await p.run('run start', HOST))
     ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
     const host = tokenIn(ok(await p.ui('task open td1')).out)
     ok(await p.agent(`brief ${host}`))
@@ -74,9 +73,10 @@ describe('the canvas shows only what runs now', () => {
     const owner = async () => (await canvas(p, 'h1')).rows[0].task.owner
     expect(await owner()).toMatchObject({ a: 'a2', tier: 'terra', resumable: true })
     ok(await p.agent(`finish ${host} a2`))
-    expect(await owner()).toMatchObject({ a: 'a1', tier: 'sol', session: 's-host', resumable: true })
+    // The host's own pane is the person's: the page has no Resume for it.
+    expect(await owner()).toMatchObject({ a: 'a1', tier: 'sol', session: expect.stringMatching(/^host-/), resumable: false })
     // The host's own assignment ends too; its run is still open, so its terminal stays live work.
     ok(await p.agent(`finish ${host}`))
-    expect(await owner()).toMatchObject({ a: 'a1', session: 's-host', resumable: true })
+    expect(await owner()).toMatchObject({ a: 'a1', session: expect.stringMatching(/^host-/), resumable: false })
   })
 })

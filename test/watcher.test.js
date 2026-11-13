@@ -1,5 +1,6 @@
 // The watcher and the acts of the UI (plan/ui/BUILD.md parts 6 and 7), with real tmux terminals
-// and the fake AI tool: New project starts a host session; Open gives it the top task; a new
+// and the fake AI tool: the host is the AI CLI that the person triggered, in a pane of the
+// person's own tmux server (Nanda, 2026-11-13); Open gives it the top task; a new
 // Terra starts in its own terminal with a new token; a failed terminal is retried, then the host
 // hears of it; a prompt goes to the host, and the host's send reaches the child; Stop is no failure.
 import { afterEach, describe, expect, test } from 'bun:test'
@@ -7,7 +8,7 @@ import { join } from 'node:path'
 import { createPump } from './code.js'
 import { startServer } from './code.js'
 import { createWatcher } from './code.js'
-import { INTRO_V2, TASK_WHOLE, git, init, ok, project, tokenIn } from './harness.js'
+import { INTRO_V2, TASK_WHOLE, git, init, ok, personPane, project, tokenIn } from './harness.js'
 
 const FAKE = join(import.meta.dir, 'fake-agent.js')
 const SETTINGS = `tiers:
@@ -71,33 +72,38 @@ const ui = async () => {
     return { status: res.status, body: await res.json() }
   }
   const screen = (sid) => new TextDecoder().decode(pump.snapshot(sid))
-  return { p, pump, watcher, server, post, screen, lines, env, later }
+  // The host: the AI CLI that the person triggered, in a pane of the person's own tmux server. It
+  // starts its run there, and the watcher copies that pane.
+  const joinHost = async () => {
+    const person = personPane(`bun ${FAKE} start person-host 'You are the host'`)
+    stops.push(() => person.kill())
+    ok(await p.run('run start', { env: person.env }))
+    await watcher.tick()
+    return { host: server.readState().runs.get('h1').session, hostEnv: person.env }
+  }
+  return { p, pump, watcher, server, post, screen, lines, env, later, joinHost }
 }
 
 describe('the watcher and the acts of the UI', () => {
-  test('New project, Open, a new Terra in its own terminal, a prompt and the host\'s answer, a retry, and Stop', async () => {
-    const { p, pump, watcher, server, post, screen } = await ui()
+  test('the host in its own pane, Open, a new Terra in its own terminal, a prompt and the host\'s answer, a retry, and Stop', async () => {
+    const { p, pump, watcher, server, post, screen, joinHost } = await ui()
     // An act needs the page's origin.
-    const bad = await fetch(`http://127.0.0.1:${server.port}/api/act`, { method: 'POST', headers: { cookie: `aristoteles-${server.port}=${server.key}` }, body: '{"act":"new-project"}' })
+    const bad = await fetch(`http://127.0.0.1:${server.port}/api/act`, { method: 'POST', headers: { cookie: `aristoteles-${server.port}=${server.key}` }, body: '{"act":"accept-roles"}' })
     expect(bad.status).toBe(403)
 
-    const started = await post('new-project')
-    expect(started.status).toBe(200)
-    const { run, session: host } = started.body
-    expect(run).toBe('h1')
-    await until(() => screen(host).includes('first input: You are the host of a new project'))
-    expect(screen(host)).toContain(`(env ${host})`)
+    const { host, hostEnv } = await joinHost()
+    await until(() => screen(host).includes('first input: You are the host'))
 
     // The host drafts the top task in its terminal; the person opens it in the UI.
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const opened = await post('open', { draft: 'td1' })
     expect(opened.body.out).toContain('a1 is the host of h1: the UI types into its session: work brief a1.')
     const hostToken = tokenIn(opened.body.out)
     await until(() => screen(host).includes(`you said: Use the work skill. Your command: work brief ${hostToken}`))
 
     // The host reads its brief and assigns a Terra: the watcher starts its terminal with a new token.
-    ok(await p.run(`brief ${hostToken}`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
-    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
+    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     await until(() => screen(lead).includes('first input: Use the work skill. Your command: work brief a2.'))
@@ -129,10 +135,10 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   test('the person\'s acts: settings, a system problem fixed, and Close', async () => {
-    const { p, post, pump, screen } = await ui()
-    const { session: host } = (await post('new-project')).body
+    const { p, post, pump, screen, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
     expect((await post('settings', { settings: { theme: 'dark', sound: true } })).status).toBe(200)
     expect(await Bun.file(join(p.dir, 'aristoteles.yaml')).text()).toContain('theme: dark')
@@ -148,13 +154,13 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   test('an accept of a direction draft by the person wakes the host and each live agent', async () => {
-    const { p, pump, post, screen, watcher, later } = await ui()
-    const { session: host } = (await post('new-project')).body
+    const { p, pump, post, screen, watcher, later, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
-    ok(await p.run(`brief ${hostToken}`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
-    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
+    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     p.write('cost.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs., rules: [ { id: names-cost, says: "The introduction names the cost", checkedBy: linter } ] }\n')
@@ -174,13 +180,13 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   test('the answer of the host wakes the Terra that asked', async () => {
-    const { p, pump, post, screen, watcher, later } = await ui()
-    const { session: host } = (await post('new-project')).body
+    const { p, pump, post, screen, watcher, later, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
-    ok(await p.run(`brief ${hostToken}`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
-    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
+    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     await until(() => screen(lead).includes('work brief a2.'))
@@ -198,13 +204,13 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   test('the host\'s resolve of an escalation wakes the Terra that escalated', async () => {
-    const { p, pump, post, screen, watcher, later } = await ui()
-    const { session: host } = (await post('new-project')).body
+    const { p, pump, post, screen, watcher, later, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
-    ok(await p.run(`brief ${hostToken}`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
-    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
+    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     await until(() => screen(lead).includes('work brief a2.'))
@@ -228,12 +234,12 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   test('the accept of a part wakes the Terra of the part that needs it', async () => {
-    const { p, pump, post, screen, watcher, later } = await ui()
-    const { session: host } = (await post('new-project')).body
+    const { p, pump, post, screen, watcher, later, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
-    ok(await p.run(`brief ${hostToken}`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     p.write('parts.yaml', '- { name: Part one, text: Write part one., context: { section: introduction } }\n' +
       '- { name: Part two, text: Write part two., context: { section: design }, after: [Part one] }\n')
     ok(await p.agent(`task split ${hostToken} t1 --file=parts.yaml`))
@@ -265,12 +271,12 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   test('a quiet Terra whose work next changes wakes, also when no act names it: a file is free', async () => {
-    const { p, pump, post, screen, watcher, later } = await ui()
-    const { session: host } = (await post('new-project')).body
+    const { p, pump, post, screen, watcher, later, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
-    ok(await p.run(`brief ${hostToken}`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     // Two parts write one file, with no order: one maker writes a file at a time.
     p.write('parts.yaml', '- { name: Part one, text: Write part one., context: { section: introduction } }\n' +
       '- { name: Part two, text: Write part two., context: { section: design } }\n')
@@ -303,14 +309,14 @@ describe('the watcher and the acts of the UI', () => {
     expect(screen(second)).toContain('Your next step changed while you waited. Run work next with your token, and do what it says.')
   }, 90000)
 
-  test('a Stop holds: a restart of the server and a try of a problem do not undo it', async () => {
-    const { p, pump, post, screen, watcher, server, env } = await ui()
-    const { session: host } = (await post('new-project')).body
+  test('a Stop holds through a restart; the host is the person\'s own terminal', async () => {
+    const { p, pump, post, screen, watcher, server, env, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
-    ok(await p.run(`brief ${hostToken}`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
-    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
+    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     // The person stops the Terra before its brief, and the server starts again: a new watcher.
@@ -319,25 +325,22 @@ describe('the watcher and the acts of the UI', () => {
     again.stop()
     await again.tick()
     expect(pump.status()[lead]).toBeUndefined()
-    // The person stops the host, and the UI recorded a problem of the host: Fixed does not resume it.
-    expect((await post('stop', { session: host })).status).toBe(200)
+    // The host is the person's own terminal: the page cannot stop it. A problem of the host that
+    // the UI recorded ends with Fixed while the host runs.
+    expect((await post('stop', { session: host })).body.error).toContain('the UI does not start, restart, or stop it')
+    expect(pump.status()[host].live).toBe(true)
     ok(await p.ui('problem t1 --says="the host terminal failed 3 times"'))
-    expect((await post('fixed', { problem: 'sp1' })).body.error).toContain('sp1: you stopped the host; Resume it, then click Fixed')
-    expect(pump.status()[host]).toBeUndefined()
-    // A Resume ends the Stop, and then Fixed ends the problem.
-    expect((await post('resume', { session: host, tier: 'sol' })).status).toBe(200)
-    await until(() => pump.status()[host]?.live)
     expect((await post('fixed', { problem: 'sp1' })).body.out).toBe('sp1: the host runs, and the problem is fixed.')
   }, 90000)
 
   test('the end of work closes its terminal: a Terra when it finishes, the host when the project is done', async () => {
-    const { p, pump, post, screen, watcher, later } = await ui()
-    const { session: host } = (await post('new-project')).body
+    const { p, pump, post, screen, watcher, later, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
-    ok(await p.run('task draft --file=top.yaml --by=h1', { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
     const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
-    ok(await p.run(`brief ${hostToken}`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
-    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { tty: true, env: { ARISTOTELES_SESSION: host } }))
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
+    ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     await until(() => screen(lead).includes('work brief a2.'))

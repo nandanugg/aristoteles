@@ -18,7 +18,8 @@ import { lookup, lookupAssignment } from '../../domain/lookup.ts'
 import type { RunState } from '../../domain/ui-model.ts'
 import { runState } from '../../replay/runs.ts'
 import { sha } from '../../config/config.ts'
-import { Tokens } from '../../services/io.ts'
+import { hostOf } from '../../engine/runs.ts'
+import { Env, Now, Tokens } from '../../services/io.ts'
 import { textOf } from '../args.ts'
 import { agentCallerOf, callerOf, needOpen, tierOf } from '../caller.ts'
 import type { Command, Commands } from '../command.ts'
@@ -36,8 +37,31 @@ const RUN_WORD = {
 
 const SESSION_WORDS = /^[A-Za-z0-9._-]+$/
 
-// The sessions of the UI (Nanda, 2026-11-11): a run is a session with no assignment yet, a host
-// that talks with the person; the UI records them as the person.
+// The pane of the host (Nanda, 2026-11-13): the AI CLI that the person triggers runs in tmux, so
+// its shell knows the socket (the first part of $TMUX) and the pane ($TMUX_PANE). The page shows
+// that pane and types into it. A real agent of the UI is no host.
+const hostPane = Effect.gen(function* () {
+  const { vars } = yield* Env
+  if (vars.ARISTOTELES_SESSION) {
+    return yield* refuse(
+      `a real agent of the UI runs in this terminal (session ${vars.ARISTOTELES_SESSION})`,
+      'only the host that the person triggered starts or continues a run',
+    )
+  }
+  const socket = (vars.TMUX ?? '').split(',')[0] ?? ''
+  const pane = vars.TMUX_PANE ?? ''
+  if (!socket || !/^%\d+$/.test(pane)) {
+    return yield* refuse(
+      'the host runs inside tmux, so that the page shows its terminal',
+      'ask the person to start this AI CLI in a tmux pane, then trigger it again',
+    )
+  }
+  return { socket, pane }
+})
+
+// The runs of the UI (Nanda, 2026-11-11): a run is a talk with a host, before it has an
+// assignment. The host is the AI CLI that the person triggers (Nanda, 2026-11-13): it starts a
+// run in its own pane, or continues one there, as a model run outside any task.
 const run: Command = (call) =>
   Effect.gen(function* () {
     const { args } = call
@@ -45,30 +69,79 @@ const run: Command = (call) =>
     if (sub === 'list') {
       const { work, at } = yield* readWork
       if (!work.runs.size) {
-        return ['no run yet; the UI starts one with New project, or work run start --session=<id>']
+        return ['no run yet; the host starts one in its own pane: work run start']
       }
       return [...work.runs.values()].map((r) => {
         const topId = topOfRun(work, r.id)
         const top = topId === undefined ? undefined : work.tasks.get(topId)
+        const where = r.terminal._tag === 'Pane' ? `pane ${r.terminal.pane}` : `session ${r.session}`
         return (
-          `${r.id} host · ${RUN_WORD[runState(work, r, at)._tag]} · session ${r.session} · ${r.startedAt}` +
+          `${r.id} host · ${RUN_WORD[runState(work, r, at)._tag]} · ${where} · ${r.startedAt}` +
           (top ? ` · ${top.id} ${top.name}` : '')
         )
       })
     }
     if (sub === 'start') {
-      const session = args.one('session')
-      const done = yield* writeAct(call, (work) =>
-        Effect.gen(function* () {
-          const by = yield* personAuthor(work)
-          if (typeof session !== 'string' || !SESSION_WORDS.test(session)) {
-            return yield* refuse('a run needs its session id (letters, digits, dot, dash)')
-          }
-          const started = { _tag: 'HostStarted' as const, session: SessionId.make(session) }
-          return { ...by, event: create('Run', started) }
+      const { socket, pane } = yield* hostPane
+      const session = SessionId.make(`host-${yield* (yield* Tokens).random}`)
+      const at = yield* (yield* Now).read
+      const done = yield* writeAct(call, () =>
+        Effect.succeed({
+          author: { _tag: 'ModelRun' as const, name: 'host', at },
+          event: create('Run', { _tag: 'HostJoined' as const, session, socket, pane }),
         }),
       )
-      return [`${done.created[0]} started: a host session (${String(session)}).`]
+      const h = String(done.created[0])
+      return [
+        `${h} started: you are its host, in this terminal (pane ${pane}); the page shows it.`,
+        `next: ask the person what they want, then draft the top task: work task draft --file=<file> --by=${h}`,
+      ]
+    }
+    // Continue (Nanda, 2026-11-13): the person says in this terminal which run to continue, and
+    // the host moves it here with those words. A run whose top task is open has its Sol in the
+    // host's terminal, so this terminal takes that assignment too, with a new token; the old one
+    // stops working, and the UI closes the window of the old host.
+    if (sub === 'continue') {
+      const id = args.positional[1]
+      const words = textOf(args.one('quote'))
+      if (!id || !words) {
+        return yield* refuse('work run continue <run> --quote="<the words of the person>"')
+      }
+      const { socket, pane } = yield* hostPane
+      const session = SessionId.make(`host-${yield* (yield* Tokens).random}`)
+      const secret = yield* (yield* Tokens).random
+      const at = yield* (yield* Now).read
+      const author = { _tag: 'ModelRun' as const, name: 'host', at }
+      let sol: AssignmentId | undefined
+      let top: string | undefined
+      yield* writeAct(call, (work) =>
+        Effect.gen(function* () {
+          const { run: found } = yield* lookupKind('Run', ['h'], work, id)
+          const opened = topOfRun(work, found.id)
+          top = opened
+          sol = opened === undefined ? undefined : hostOf(work, opened)
+          const moved = { _tag: 'HostMoved' as const, session, socket, pane, words }
+          return { author, event: move('Run', found.id, moved) }
+        }),
+      )
+      const h = String(id)
+      if (sol === undefined) {
+        return [
+          `${h} continues: you are its host, in this terminal (pane ${pane}); the page shows it.`,
+          `its top task is not open yet: talk with the person, then draft it: work task draft --file=<file> --by=${h}`,
+        ]
+      }
+      const given = sol
+      yield* writeAct(call, () =>
+        Effect.succeed({
+          author,
+          event: move('Terminal', session, { _tag: 'Started' as const, for: given, secret: sha(secret) }),
+        }),
+      )
+      return [
+        `${h} continues: you are its host, in this terminal (pane ${pane}); the page shows it.`,
+        `you are the Sol of its top task ${String(top)} (${given}); the old token stops working. Your command: work brief ${given}.${secret}`,
+      ]
     }
     // The end of a project: its top task is accepted (the Sol of the top task decided it), and the
     // person accepts the end last (Nanda, 2026-11-11: "using sol reviewer and then me").
@@ -85,7 +158,7 @@ const run: Command = (call) =>
       )
       return [sub === 'done' ? `${id} is done.` : `${id} closed.`]
     }
-    return yield* refuse('use work run start|done|close|list')
+    return yield* refuse('use work run start|continue|done|close|list')
   })
 
 // A system problem: the host records it (or the UI, when the host itself fails); a fix ends it.

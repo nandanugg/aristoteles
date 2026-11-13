@@ -263,7 +263,10 @@ export const rowsOf = (work: Work, dir: string): ReadonlyArray<ReaderRow> => {
 
   for (const run of work.runs.values()) {
     // Each run is a host now; the column stays, because the run table of an older store file has it.
+    // The run row keeps its first session; run_host has each session that hosted it, because a
+    // continue moves a run to another pane (Nanda, 2026-11-13).
     add('run', { id: run.id, kind: 'host', session: run.session, at: run.startedAt })
+    add('run_host', { run: run.id, session: run.session })
     if (run.end._tag === 'Closed') add('run_closed', { run: run.id, at: run.end.at })
     const top = topOfRun(work, run.id)
     if (top !== undefined) add('run_task', { run: run.id, task: top })

@@ -1,5 +1,5 @@
 // A project in a temporary folder, and main() with a fake terminal, clock, and tokens.
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { main } from './code.js'
@@ -149,6 +149,29 @@ export function split(line) {
 }
 
 export const tokenIn = (text) => text.match(/work brief (a\d+\.[a-z0-9]+)/)[1]
+
+// The host is the AI CLI that the person triggered, in a pane of the person's tmux server
+// (Nanda, 2026-11-13); tmux tells its shell the socket and the pane. A test of the CLI alone needs
+// no real pane: the shell of such a host has these two variables, and no terminal.
+export const HOST_PANE = { TMUX: '/tmp/ar-test-person.sock,1,0', TMUX_PANE: '%9' }
+export const HOST = { env: HOST_PANE }
+
+// A real pane of the person's tmux server, for a test of the terminals: a scratch server with no
+// config of the person (-f /dev/null) and no variable of the test's own tmux, so that a theme of
+// the person's tmux never sees it. kill() ends the scratch server and removes its socket file.
+export function personPane(command) {
+  const socket = join(tmpdir(), `ar-person-${process.pid}-${Math.random().toString(36).slice(2, 8)}.sock`)
+  const { TMUX: _t, TMUX_PANE: _p, TMUX_SOCKET: _s, ...env } = process.env
+  const tmux = (...args) => Bun.spawnSync(['tmux', '-f', '/dev/null', '-S', socket, ...args], { env })
+  const made = tmux('new-session', '-d', '-s', 'person', '-x', '160', '-y', '48', '--', 'sh', '-c', command)
+  if (made.exitCode !== 0) throw new Error(`no scratch tmux: ${made.stderr.toString()}`)
+  const pane = tmux('display-message', '-p', '-t', 'person', '#{pane_id}').stdout.toString().trim()
+  const kill = () => {
+    tmux('kill-server')
+    rmSync(socket, { force: true })
+  }
+  return { socket, pane, env: { TMUX: `${socket},1,0`, TMUX_PANE: pane }, kill }
+}
 
 export const INTRO_V1 = '# TSD\n\n## Introduction\n\nABC-2964: the export ran twice for one merchant.\n\n## Design\n\nTODO\n'
 export const INTRO_V2 = '# TSD\n\n## Introduction\n\nThe export ran twice for one merchant, so the merchant got two files.\n\n## Design\n\nTODO\n'

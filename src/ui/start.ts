@@ -2,8 +2,9 @@
 // server for each dir: a second start in the same dir opens the page of the server that runs. The
 // record of a running server (its port, process and key) lives beside the store, outside the dir,
 // because the agents work in the dir.
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { dbPath } from '../store/path.ts'
 import { excludeFromGit } from './git-exclude.ts'
@@ -36,6 +37,65 @@ const openBrowser = (url: string) =>
     stderr: 'ignore',
   })
 
+// The address of the server of the dir that runs now, from its record; undefined: none runs.
+const runningUrl = async (dir: string, record: string): Promise<string | undefined> => {
+  if (!existsSync(record)) return undefined
+  const running = JSON.parse(readFileSync(record, 'utf8')) as {
+    readonly port: number
+    readonly pid: number
+    readonly key: string
+  }
+  if (!alive(running.pid)) return undefined
+  try {
+    const health = (await (await fetch(`http://127.0.0.1:${running.port}/health`)).json()) as {
+      readonly dir?: string
+    }
+    return health.dir === dir ? `http://127.0.0.1:${running.port}/?key=${running.key}` : undefined
+  } catch {
+    // The process is not our server (or it does not answer): start a new one.
+    return undefined
+  }
+}
+
+// work start --detach (Nanda, 2026-11-13): the host starts the UI from its own shell, and the UI
+// must outlive that shell. The server runs as its own process group, and its words go to a log
+// beside its record; this waits until the server writes its record, and says its address.
+export const workStartDetached = async (
+  dir: string,
+  options: { readonly env?: Env; readonly out?: (line: string) => void } = {},
+): Promise<boolean> => {
+  const env = options.env ?? process.env
+  const out = options.out ?? console.log
+  const record = recordOf(dir, env)
+  const already = await runningUrl(dir, record)
+  if (already) {
+    out(`the UI of ${dir} runs already: ${already}`)
+    return true
+  }
+  const log = record.replace(/\.json$/, '.log')
+  mkdirSync(dirname(record), { recursive: true })
+  const words = openSync(log, 'a')
+  const child = spawn(process.execPath, [process.argv[1] ?? '', 'start'], {
+    cwd: dir,
+    env: { ...env, WORK_DIR: dir },
+    detached: true,
+    stdio: ['ignore', words, words],
+  })
+  child.unref()
+  for (let waited = 0; waited < 20000; waited += 100) {
+    await Bun.sleep(100)
+    const url = await runningUrl(dir, record)
+    if (url) {
+      out(`the UI of ${dir}: ${url}`)
+      out(`it runs on its own (process ${child.pid}); its words go to ${log}`)
+      return true
+    }
+    if (child.exitCode !== null) break
+  }
+  out(`the UI of ${dir} did not start; its words are in ${log}`)
+  return false
+}
+
 export const workStart = async (
   dir: string,
   options: {
@@ -50,27 +110,11 @@ export const workStart = async (
   const open = options.open ?? !env.WORK_NO_OPEN
   const port = options.port ?? Number(env.WORK_PORT ?? 0)
   const record = recordOf(dir, env)
-  if (existsSync(record)) {
-    const running = JSON.parse(readFileSync(record, 'utf8')) as {
-      readonly port: number
-      readonly pid: number
-      readonly key: string
-    }
-    if (alive(running.pid)) {
-      try {
-        const health = (await (await fetch(`http://127.0.0.1:${running.port}/health`)).json()) as {
-          readonly dir?: string
-        }
-        if (health.dir === dir) {
-          const url = `http://127.0.0.1:${running.port}/?key=${running.key}`
-          out(`the UI of ${dir} runs already: ${url}`)
-          if (open) openBrowser(url)
-          return undefined
-        }
-      } catch {
-        // The process is not our server (or it does not answer): start a new one.
-      }
-    }
+  const running = await runningUrl(dir, record)
+  if (running) {
+    out(`the UI of ${dir} runs already: ${running}`)
+    if (open) openBrowser(running)
+    return undefined
   }
   for (const line of linkSkills(dir)) out(line)
   // The worktrees and the logs of the agents belong to this machine (git-exclude.ts).

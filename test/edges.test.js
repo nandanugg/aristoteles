@@ -1,16 +1,15 @@
 // Edge cases from the evaluation (plan/types/PLAN.md section 4): each bug that the scouts found,
 // seen from the outside, so that the old code and the new code must both pass it.
 import { describe, expect, test } from 'bun:test'
-import { INTRO_V1, INTRO_V2, TASK, TASK_WHOLE, WORK_YAML, init, ok, project, reported, started, tokenIn } from './harness.js'
+import { HOST, INTRO_V1, INTRO_V2, TASK, TASK_WHOLE, WORK_YAML, init, ok, project, reported, started, tokenIn } from './harness.js'
 
-const HOST = { tty: true, env: { ARISTOTELES_SESSION: 's-host' } }
 
 // A dir with a host run h1 whose top task t1 is open, with the architect a1 as its host.
 const hosted = async (files = {}) => {
   const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n`, ...files })
   await init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  ok(await p.ui('run start --session=s-host'))
+  ok(await p.run('run start', HOST))
   ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
   const host = tokenIn(ok(await p.ui('task open td1')).out)
   return { p, host }
@@ -49,7 +48,7 @@ describe('a project ends once', () => {
     const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
     await init(p)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.ui('run start --session=s-host'))
+    ok(await p.run('run start', HOST))
     ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
     ok(await p.ui('run close h1'))
     expect((await p.ui('task open td1')).err).toContain('h1 is closed; its drafts stay closed')

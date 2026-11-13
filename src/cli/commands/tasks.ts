@@ -81,9 +81,16 @@ const taskDraft = (call: Call) =>
     const done = yield* writeAct(call, (work) =>
       Effect.gen(function* () {
         yield* checkHashes(work, null)
-        // The host drafts in the terminal of its run, which the UI marked with its session.
+        // The host drafts in the terminal of its run: its own pane on the person's tmux server
+        // (tmux tells the shell), or a window of the UI, which the UI marked with its session.
         const holder = work.runs.get(runId)
-        if (holder && env.vars.ARISTOTELES_SESSION !== holder.session) {
+        const { vars } = env
+        const inTerminal =
+          holder?.terminal._tag === 'Pane'
+            ? vars.TMUX_PANE === holder.terminal.pane &&
+              (vars.TMUX ?? '').split(',')[0] === holder.terminal.socket
+            : vars.ARISTOTELES_SESSION === holder?.session
+        if (holder && !inTerminal) {
           return yield* refuse(
             `a draft of ${runId} comes from the terminal of ${runId}`,
             'the host of the project drafts its top task',

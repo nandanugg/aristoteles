@@ -41,14 +41,24 @@ type Text = string
 // A project of the UI is a talk with a host model (Nanda, 2026-11-11). A run is that session before
 // it has an assignment: a host that talks with the person and drafts the top task. Its top task is
 // derived: the task opened from a draft of the run (derived.ts topOfRun), and a remake keeps the
-// run (the current task follows the remakes). The assess skill runs in the person's own AI CLI,
-// outside any run (Nanda, 2026-11-13).
+// run (the current task follows the remakes). The host is the AI CLI that the person triggers
+// (Nanda, 2026-11-13): the page shows its own terminal, a pane of the person's tmux server.
 export type Run = HostRun
 interface RunBase {
   readonly id: RunId // h1
   readonly session: SessionId // the terminal of the host model
+  readonly terminal: HostTerminal
+  // The sessions of the hosts before this one: a continue moves the run to a new pane, and the
+  // UI closes a window of an older host.
+  readonly formerSessions: ReadonlyArray<SessionId>
   readonly startedAt: Time // was run.at
 }
+// Where the host runs: a window that the UI made on its own tmux server (stores before
+// 2026-11-13), or a pane of the person's own tmux server, which the UI never starts, resizes,
+// stops, or restarts.
+export type HostTerminal =
+  | { readonly _tag: 'Window' }
+  | { readonly _tag: 'Pane'; readonly socket: Text; readonly pane: Text }
 // was run.type host (work run start). Was two fields, done and closed, that could both be set; a
 // done project stays done.
 export type HostRun = RunBase & {
@@ -296,9 +306,8 @@ export interface DirView {
   readonly settings: Settings
   readonly hasConfig: boolean // aristoteles.yaml exists
   readonly rolesDraft: boolean // aristoteles.draft.yaml waits for the person's accept
-  readonly launchSet: boolean // the sol tier has a launch command
   readonly initialized: boolean // the dir has a store
-  readonly assessPrompt: Text // the first start: the person pastes it into their AI CLI in the dir
+  readonly startPrompt: Text // the person pastes it into their AI CLI in the dir: that session is the host
   readonly projects: ReadonlyArray<ProjectSummary> // the newest first
 }
 
@@ -466,7 +475,7 @@ export type PageMessage =
 // The person's acts on the page (POST /api/act); the answer is { out } or { error } (an error
 // has no "refused: " prefix).
 export type PageAct =
-  | { readonly act: 'new-project' | 'accept-roles' }
+  | { readonly act: 'accept-roles' }
   | { readonly act: 'open'; readonly draft: TaskDraftId }
   | { readonly act: 'close'; readonly run: RunId; readonly reason?: Text }
   | { readonly act: 'stop'; readonly session: SessionId }

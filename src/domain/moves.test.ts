@@ -118,6 +118,8 @@ describe('a run', () => {
     _tag: 'Host',
     id: 'h1' as RunId,
     session: 's-host' as SessionId,
+    terminal: { _tag: 'Window' },
+    formerSessions: [],
     startedAt: at(0),
     end: { _tag: 'NotEnded' },
   }

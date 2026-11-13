@@ -223,9 +223,8 @@ export const DirView = Schema.Struct({
   settings: Settings,
   hasConfig: Schema.Boolean,
   rolesDraft: Schema.Boolean,
-  launchSet: Schema.Boolean,
   initialized: Schema.Boolean,
-  assessPrompt: Text,
+  startPrompt: Text,
   projects: Schema.Array(ProjectSummary),
 })
 
@@ -341,7 +340,7 @@ export const SettingsChange = Schema.Struct({
 export type SettingsChange = typeof SettingsChange.Type
 
 export const PageAct = Schema.Union([
-  Schema.Struct({ act: Schema.Literals(['new-project', 'accept-roles']) }),
+  Schema.Struct({ act: Schema.Literal('accept-roles') }),
   Schema.Struct({ act: Schema.Literal('open'), draft: TaskDraftId }),
   Schema.Struct({
     act: Schema.Literal('close'),
@@ -367,7 +366,6 @@ export const PageAct = Schema.Union([
 ])
 export type PageAct = typeof PageAct.Type
 export const ACTS = [
-  'new-project',
   'accept-roles',
   'open',
   'close',

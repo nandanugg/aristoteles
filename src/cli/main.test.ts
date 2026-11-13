@@ -152,6 +152,6 @@ describe('the commands that refuse before they read the store', () => {
 
   test('a person command in the words of its refusal', async () => {
     const r = await same('run frob', { tty: true })
-    expect(r.err).toStartWith('refused: use work run start|done|close|list')
+    expect(r.err).toStartWith('refused: use work run start|continue|done|close|list')
   })
 })

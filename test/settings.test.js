@@ -121,7 +121,7 @@ describe('the skills of a launched AI tool', () => {
     const { lstatSync, readlinkSync } = await import('node:fs')
     const p = project({ 'aristoteles.yaml': `tiers:\n  sol: { skills: .claude/skills }\n  terra: { skills: .claude/skills }\n${WORK_YAML}` })
     p.write('.claude/skills/assess/SKILL.md', 'our own assess\n')
-    expect(linkSkills(p.dir)).toEqual([`linked the skills work, role-fitness into ${join(p.dir, '.claude/skills')}`])
+    expect(linkSkills(p.dir)).toEqual([`linked the skills aristoteles, work, role-fitness into ${join(p.dir, '.claude/skills')}`])
     expect(readlinkSync(join(p.dir, '.claude/skills/work'))).toBe(join(import.meta.dir, '..', 'skills', 'work'))
     expect(lstatSync(join(p.dir, '.claude/skills/assess')).isSymbolicLink()).toBe(false)
     expect(linkSkills(p.dir)).toEqual([])
@@ -136,8 +136,8 @@ describe('the skills of a launched AI tool', () => {
     Bun.spawnSync(['git', 'init', '-q', top])
     p.write('.claude/skills/assess/SKILL.md', 'our own assess\n')
     expect(linkSkills(p.dir)).toEqual([
-      `linked the skills work, role-fitness into ${join(p.dir, '.claude/skills')}`,
-      'git of the dir excludes /report-export/.claude/skills/work, /report-export/.claude/skills/role-fitness',
+      `linked the skills aristoteles, work, role-fitness into ${join(p.dir, '.claude/skills')}`,
+      'git of the dir excludes /report-export/.claude/skills/aristoteles, /report-export/.claude/skills/work, /report-export/.claude/skills/role-fitness',
     ])
     expect(excludeFromGit(p.dir, ['.work/'])).toEqual(['/report-export/.work/'])
     expect(linkSkills(p.dir)).toEqual([])
@@ -167,7 +167,7 @@ describe('the first start of a dir', () => {
     const p = fresh()
     const dir = await api(p, '/api/dir')
     expect(dir.initialized).toBe(false)
-    expect(dir.assessPrompt).toStartWith(`Use the assess skill of aristoteles on the folder ${p.dir}: read ${join(import.meta.dir, '..', 'skills', 'assess', 'SKILL.md')}`)
+    expect(dir.startPrompt).toStartWith(`Use aristoteles in the folder ${p.dir}: read ${join(import.meta.dir, '..', 'skills', 'aristoteles', 'SKILL.md')}`)
     p.write('aristoteles.draft.yaml', HOST_TIERS + WORK_YAML)
     expect((await act(p, 'accept-roles')).out).toStartWith('store made for report-export in aristoteles')
     const text = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
