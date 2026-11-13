@@ -30,7 +30,7 @@ import {
   within,
   workStop,
 } from '../engine/queries.ts'
-import { taskState } from '../engine/status.ts'
+import { revisionState, taskState } from '../engine/status.ts'
 import {
   assignmentAt,
   isAssignment,
@@ -108,7 +108,7 @@ export const waitingForwards = (work: Work, at: Time): ReadonlyArray<WaitingForw
     } else {
       const d = inner.create
       if (d._tag === 'Accept' && d.of._tag === 'Revision') {
-        moot = madeBy(work, d.of.id) !== undefined || vetoOf(work, d.of.id) !== undefined
+        moot = revisionState(work, d.of.id)._tag !== 'Waiting'
       } else if (d._tag === 'Accept' && d.of._tag === 'Result') {
         moot = !isCurrent(work, work.results.get(d.of.id), at)
       } else if (d._tag === 'Resolve') {

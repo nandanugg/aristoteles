@@ -59,7 +59,7 @@ describe('drafts of a direction', () => {
     expect(ok(await p.agent(`direction revise ${sol} tsd-writing --file=impact.yaml`)).out).toContain('d3 drafted, built on tsd-writing@1')
     expect(ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept')).out).toContain('d2 is official: tsd-writing@2')
     expect((await p.nanda(`review d3 accept ${SEEN}`, 'accept')).err)
-      .toContain('is built on TSD writing v1, an old version; its reviser revises the current one')
+      .toContain('is built on TSD writing v1, an old version (tsd-writing@2 is current), so it stopped')
   })
 
   test('after the Reject of a reviewer that is not a decider, only the accept of Nanda makes the draft official', async () => {

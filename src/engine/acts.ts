@@ -167,6 +167,7 @@ import {
   tierOf,
   underNowOf,
 } from './view.ts'
+import { revisionState } from './status.ts'
 import { answererOf } from '../domain/derived.ts'
 
 // The records whose rules are the engine's. The UI's records (a run, a task draft, a problem, a
@@ -1165,13 +1166,29 @@ const checkDraftReview = (
   const { by, when } = act
   const draft = draftAt(w, id)
   const direction = directionAt(w, draft.of)
+  // Only a draft that waits for its deciders is reviewed. A draft on an old version stopped
+  // when another draft became the current version (Nanda, 2026-11-13).
+  const state = revisionState(w, id)
   const made = madeBy(w, id)
-  if (made) no(`${id} is official: it made ${direction.name} v${made.number}`)
+  if (state._tag === 'Official' && made) {
+    no(`${id} is official: it made ${direction.name} v${made.number}`)
+  }
   const vetoed = vetoItem(w, id)
-  if (vetoed) {
+  if (state._tag === 'Vetoed' && vetoed) {
     no(
       `${id} is ended by the Reject of ${labelOf(w, vetoed.by)}: ${vetoed.reason ?? ''}; its ` +
         `reviser revises the current version again`,
+    )
+  }
+  if (state._tag === 'Outdated') {
+    const base = draft._tag === 'Change' ? draft.base.slice(draft.base.lastIndexOf('@') + 1) : ''
+    const on =
+      draft._tag === 'Change'
+        ? `is built on ${direction.name} v${base}, an old version`
+        : `drafts ${direction.name} anew, and it has a version`
+    no(
+      `${id} ${on} (${state.current} is current), so it stopped; a new draft changes ` +
+        `${state.current}`,
     )
   }
   const reviser: By =
@@ -1217,20 +1234,9 @@ const officialProblem = (
   const direction = directionAt(w, draft.of)
   const now = officialAt(w, draft.of) ? currentOf(w, draft.of) : undefined
   const owner = direction.owner.name
-  if (draft._tag === 'New' && now) {
-    return (
-      `${id} drafts ${direction.name} anew, and ${direction.name} has v${now.number} now; ` +
-      `its reviser revises the current version`
-    )
-  }
+  // checkDraftReview refused a draft on an old version, so its base is the current version.
   const baseNumber =
     draft._tag === 'Change' ? Number(draft.base.slice(draft.base.lastIndexOf('@') + 1)) : undefined
-  if (baseNumber !== undefined && baseNumber !== now?.number) {
-    return (
-      `${id} is built on ${direction.name} v${baseNumber}, an old version; its reviser ` +
-      `revises the current one`
-    )
-  }
   const person = accepts.some((a) => isPerson(w, a.by) && actorOf(w, a.by).name === owner)
   if (draft._tag === 'New' && !person) return `${id} makes a new direction; ${owner} accepts it`
   const base =

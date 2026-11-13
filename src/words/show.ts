@@ -44,7 +44,7 @@ import {
   sameWords,
   vetoOf,
 } from '../engine/queries.ts'
-import { taskState } from '../engine/status.ts'
+import { revisionState, taskState } from '../engine/status.ts'
 import {
   assignmentAt,
   directionAt,
@@ -494,12 +494,14 @@ export const renderDirection = (work: Work, version: VersionId): string => {
     ...contentLines(work, v, base),
   ]
   for (const x of work.drafts.values()) {
-    if (x.of !== v.of || x._tag !== 'Change' || madeBy(work, x.id)) continue
-    const end = vetoOf(work, x.id)
-      ? ' (ended by a Reject)'
-      : versionOfId(work, x.base).number !== currentNumber(work, v.of)
-        ? ' (built on an old version)'
-        : ''
+    const state = revisionState(work, x.id)
+    if (x.of !== v.of || x._tag !== 'Change' || state._tag === 'Official') continue
+    const end =
+      state._tag === 'Vetoed'
+        ? ' (ended by a Reject)'
+        : state._tag === 'Outdated'
+          ? ' (built on an old version, so it stopped)'
+          : ''
     const reviews = itemsOf(work, x.id).map((r) => r.decision)
     lines.push(
       `draft: ${x.id}${end}; reviews: ${reviews.join(', ') || 'none'}; work direction show ${x.id}`,
@@ -632,17 +634,16 @@ const sinceLines = (work: Work, x: Words, earlier: Words): ReadonlyArray<string>
 export const renderDraft = (work: Work, id: RevisionId): string => {
   const x = draftAt(work, id)
   const d = directionAt(work, x.of)
-  const made = madeBy(work, id)
-  const vetoed = vetoOf(work, id)
-  const now = currentNumber(work, x.of)
   const base = x._tag === 'Change' ? versionOfId(work, x.base) : undefined
-  const end = made
-    ? `official: ${versionIdOf(made)}`
-    : vetoed
-      ? 'ended by a Reject'
-      : (base && base.number !== now) || (!base && now !== undefined)
-        ? 'built on an old version'
-        : `waits for the accept of ${draftWaitsText(work, id)}`
+  const state = revisionState(work, id)
+  const end =
+    state._tag === 'Official'
+      ? `official: ${state.version}`
+      : state._tag === 'Vetoed'
+        ? 'ended by a Reject'
+        : state._tag === 'Outdated'
+          ? `built on an old version, so it stopped (${state.current} is current)`
+          : `waits for the accept of ${draftWaitsText(work, id)}`
   // A draft that answers the Reject of an earlier draft also shows what changed since that draft.
   const since = x.answers.flatMap((a) => {
     const y = itemAt(work, a)
@@ -687,11 +688,11 @@ export const builtOnCurrent = (work: Work, x: Revision<Direction>): boolean => {
   const now = currentNumber(work, x.of)
   return x._tag === 'Change' ? versionOfId(work, x.base).number === now : now === undefined
 }
-// The open drafts of a direction: built on its current version, not official, and not ended by
-// the Reject of a decider.
+// The open drafts of a direction: each one that waits for its deciders (revisionState: built on
+// its current version, not official, and not ended by the Reject of a decider).
 export const openDrafts = (work: Work, d: DirectionId): ReadonlyArray<Revision<Direction>> =>
   [...work.drafts.values()].filter(
-    (x) => x.of === d && builtOnCurrent(work, x) && !madeBy(work, x.id) && !vetoOf(work, x.id),
+    (x) => x.of === d && revisionState(work, x.id)._tag === 'Waiting',
   )
 // A draft that a decider rejected waits for a new draft, until a later draft answers the Reject
 // or its reviser writes a later draft.

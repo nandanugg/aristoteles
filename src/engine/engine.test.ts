@@ -481,7 +481,7 @@ describe('a direction', () => {
     w.act(suggester, add('B'))
     w.act(nanda, acceptDraft('d2'))
     expect(() => w.act(nanda, acceptDraft('d3'))).toThrow(
-      'd3 is built on Craft v1, an old version; its reviser revises the current one',
+      'd3 is built on Craft v1, an old version (craft@2 is current), so it stopped',
     )
     expect(() => w.act(kai, acceptDraft('d2'))).toThrow('d2 is official: it made Craft v2')
   })
@@ -1678,7 +1678,7 @@ describe("the other refusals of the owner's page", () => {
     w.act(assess, drafted({ ...reels, says: 'Good reels' }))
     w.act(nanda, acceptDraft('d2'))
     expect(() => w.act(nanda, acceptDraft('d3'))).toThrow(
-      'd3 drafts Reels anew, and Reels has v1 now; its reviser revises the current version',
+      'd3 drafts Reels anew, and it has a version (reels@1 is current), so it stopped',
     )
     expect(() => w.act(assess, drafted(reels))).toThrow(
       'reels has a version; a high role revises it: work direction revise <token> reels ' +

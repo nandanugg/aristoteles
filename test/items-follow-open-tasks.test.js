@@ -57,6 +57,25 @@ describe('an item that waits for the person shows on an open task', () => {
     expect(await summary(p, 't2')).toEqual([['direction', 'd2', 't2']])
   }, 20000)
 
+  test('a draft on an old version stops: the page drops it, and no accept counts for it', async () => {
+    const { p, host } = await rejected()
+    p.write('costs.yaml', COSTS)
+    p.write('story.yaml', 'replace:\n  - { id: intro-story, with: { id: intro-story, where: { section: introduction }, ' +
+      'says: "Tell the story first, with one example.", rules: [ { id: repeatable, says: "A reviewer can repeat ' +
+      'the problem without the design", checkedBy: section-lead } ] } }\n')
+    ok(await p.agent(`direction revise ${host} tsd-writing --file=costs.yaml`))
+    ok(await p.agent(`direction revise ${host} tsd-writing --file=story.yaml`))
+    expect(await summary(p, 't1')).toEqual([['direction', 'd2', null], ['direction', 'd3', null]])
+    ok(await p.nanda('review d2 accept', 'accept'))
+    // d3 is built on tsd-writing@1; d2 became tsd-writing@2 first.
+    expect(await summary(p, 't1')).toEqual([])
+    expect((await p.nanda('review d3 accept', 'accept')).err).toContain(
+      'd3 is built on TSD writing v1, an old version (tsd-writing@2 is current), so it stopped',
+    )
+    expect(ok(await p.agent('direction show d3')).out)
+      .toContain('built on an old version, so it stopped (tsd-writing@2 is current)')
+  }, 20000)
+
   test('a relayed act shows with the words of the person, and the Confirm of the page counts it', async () => {
     const { p, host } = await rejected()
     p.write('costs.yaml', COSTS)

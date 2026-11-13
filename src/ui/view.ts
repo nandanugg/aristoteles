@@ -46,15 +46,14 @@ import {
   directionsOf as directionsOfTask,
   draftWaitsFor,
   isDo,
-  madeBy,
   openDo,
   partsOf,
   resultsOf,
   rulesOfStandard,
   taskAccepted,
-  vetoOf,
 } from '../engine/queries.ts'
 import { currentTask, hostOf, runOf } from '../engine/runs.ts'
+import { revisionState } from '../engine/status.ts'
 import {
   assignmentAt,
   currentOf,
@@ -287,7 +286,7 @@ export const decisionsOf = (work: Work, ctx: ViewContext): ReadonlyArray<Decisio
     )
   }
   for (const x of work.drafts.values()) {
-    if (madeBy(work, x.id) || vetoOf(work, x.id)) continue
+    if (revisionState(work, x.id)._tag !== 'Waiting') continue
     if (!draftWaitsFor(work, x.id).some((leaf) => leaf._tag !== 'Role')) continue
     const answered = x.answers.map((a) => taskOfAnswer(work, a)).find((t) => t !== undefined)
     const task = answered === undefined ? null : openTaskFor(work, answered)
@@ -630,7 +629,7 @@ export const projectView = (work: Work, id: string, ctx: ViewContext): ProjectVi
 // The directions of a top task: each one with its version now, its standards and rules, the
 // versions made during the project, and the drafts that wait.
 const directionsView = (work: Work, task: Task): ReadonlyArray<DirectionView> => {
-  const open = (x: Revision<Direction>) => !madeBy(work, x.id) && !vetoOf(work, x.id)
+  const open = (x: Revision<Direction>) => revisionState(work, x.id)._tag === 'Waiting'
   return directionsOfTask(work, task.id).map((d) => {
     const v = currentOf(work, d.id)
     return {
