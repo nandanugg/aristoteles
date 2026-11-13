@@ -3,8 +3,8 @@
 // The files are read with their keys checked (config.ts), so every key here is a ContextKey.
 // A Map keeps the order of the file and holds each key once. The key section is the one that
 // the CLI acts on; the others are facts.
-import type { ContextFile, ContextKey } from './files.ts'
-import type { ConditionKey, Context, FactKey, NonEmptyMap, Text, Where } from './model.ts'
+import type { ContextFile, ContextKey, WhereFile } from './files.ts'
+import type { ConditionKey, Context, FactKey, NonEmpty, NonEmptyMap, Text, Where } from './model.ts'
 
 const entriesOf = (record: ContextFile) => Object.entries(record) as Array<[ContextKey, string]>
 
@@ -17,19 +17,26 @@ export const contextOf = (record: ContextFile): Context => {
 }
 
 // A where with no key applies everywhere, as the old engine read it. The only maker of a
-// NonEmptyMap: it has a key here.
-export const whereOf = (record: ContextFile | undefined): Where => {
-  const conditions: ReadonlyMap<ConditionKey, Text> = new Map(entriesOf(record ?? {}))
+// NonEmptyMap: it has a key here. One value in the file is a list of one.
+export const whereOf = (record: WhereFile | undefined): Where => {
+  const conditions: ReadonlyMap<ConditionKey, NonEmpty<Text>> = new Map(
+    (Object.entries(record ?? {}) as Array<[ContextKey, string | NonEmpty<string>]>).map(
+      ([key, value]) => [key, typeof value === 'string' ? [value] : value],
+    ),
+  )
   return conditions.size === 0
     ? { _tag: 'Everywhere' }
-    : { _tag: 'Where', conditions: conditions as NonEmptyMap<ConditionKey, Text> }
+    : { _tag: 'Where', conditions: conditions as NonEmptyMap<ConditionKey, NonEmpty<Text>> }
 }
 
 // The where as its file wrote it (the words print it as JSON; the SQL keeps it); null: none.
-export const whereRecord = (where: Where): ContextFile | null =>
+// A list of one value is written as that value.
+export const whereRecord = (where: Where): WhereFile | null =>
   where._tag === 'Everywhere'
     ? null
-    : Object.fromEntries(where.conditions)
+    : Object.fromEntries(
+        [...where.conditions].map(([key, values]) => [key, values.length === 1 ? values[0] : values]),
+      )
 
 // The value of a key in a task's context; undefined: the task names none.
 export const valueAt = (context: Context, key: ConditionKey): string | undefined =>
@@ -42,7 +49,11 @@ export const valueAt = (context: Context, key: ConditionKey): string | undefined
 export const sectionOf = (context: Context): string | null =>
   context.section._tag === 'Section' ? context.section.id : null
 
-// A standard applies where each of its conditions matches the task's context.
+// A standard applies where each of its conditions matches the task's context: the task's value
+// is one of the values of the condition.
 export const applies = (where: Where, context: Context): boolean =>
   where._tag === 'Everywhere' ||
-  [...where.conditions].every(([key, equals]) => valueAt(context, key) === equals)
+  [...where.conditions].every(([key, values]) => {
+    const value = valueAt(context, key)
+    return value !== undefined && values.includes(value)
+  })

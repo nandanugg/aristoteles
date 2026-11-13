@@ -21,6 +21,13 @@ const ContextFileKey = Schema.String.pipe(
 )
 export const ContextFile = Schema.Record(ContextFileKey, Schema.String)
 export type ContextFile = typeof ContextFile.Type
+// A where as a file writes it: each key names one value, or a list of values, any one of which
+// matches (where: { section: [introduction, design] }).
+export const WhereFile = Schema.Record(
+  ContextFileKey,
+  Schema.Union([Schema.String, Schema.NonEmptyArray(Schema.String)]),
+)
+export type WhereFile = typeof WhereFile.Type
 
 export { Tier } from './closed.ts'
 
@@ -228,7 +235,7 @@ export type RuleFile = typeof RuleFile.Type
 export const StandardFile = Schema.Struct({
   id: Key,
   says: Schema.String,
-  where: Schema.optionalKey(ContextFile),
+  where: Schema.optionalKey(WhereFile),
   rules: Schema.Array(RuleFile),
 })
 export type StandardFile = typeof StandardFile.Type

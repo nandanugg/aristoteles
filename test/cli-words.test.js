@@ -274,6 +274,25 @@ describe('the context key section', () => {
     expect(await out(p.agent(`brief ${other}`))).not.toContain('repeatable')
   })
 
+  test('a where with a list of sections selects the standard of each of them', async () => {
+    const { p } = await started({
+      'directions/tsd-writing.yaml': DIRECTION.replace(
+        'where: { section: introduction }',
+        'where: { section: [introduction, design] }',
+      ),
+    })
+    const opened = (name, section) => {
+      p.write(`${section}.yaml`, TASK.replace('The Introduction', name).replace('section: introduction', `section: ${section}`))
+      return p.nanda(`task open --file=${section}.yaml`)
+    }
+    ok(await opened('The Design', 'design'))
+    expect(await out(p.agent(`brief ${tokenIn(await out(p.nanda('assign t2 --role=section-lead')))}`))).toContain('repeatable')
+    ok(await opened('The Risks', 'risks'))
+    expect(await out(p.agent(`brief ${tokenIn(await out(p.nanda('assign t3 --role=section-lead')))}`))).not.toContain('repeatable')
+    p.write('empty.yaml', DIRECTION.replace('id: tsd-writing', 'id: empty-where').replace('where: { section: introduction }', 'where: { section: [] }'))
+    expect((await p.agent('direction new --file=empty.yaml --by=assess')).err).toContain('where section lists no value')
+  })
+
   test('the old key region is refused in a task and in a where', async () => {
     const { p } = await started()
     p.write('old.yaml', TASK.replace('section: introduction', 'region: introduction'))

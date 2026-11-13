@@ -86,10 +86,12 @@ export type Section =
 export type ConditionKey = FactKey | 'section'
 
 // page: Standard.where. A filter, not a context: the standard applies where every condition
-// matches the task's context. The conditions keep the order of the file (the words print them).
+// matches the task's context. A condition holds the values that match: one, or several, when one
+// standard is for some sections (Nanda, 2026-11-13). The conditions keep the order of the file
+// (the words print them).
 export type Where =
   | { readonly _tag: 'Everywhere' }
-  | { readonly _tag: 'Where'; readonly conditions: NonEmptyMap<ConditionKey, Text> }
+  | { readonly _tag: 'Where'; readonly conditions: NonEmptyMap<ConditionKey, NonEmpty<Text>> }
 
 // page: Source: a git source at a commit, or an outside source at a revision (events.ts).
 export type Source = typeof SourceSchema.Type

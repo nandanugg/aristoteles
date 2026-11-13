@@ -464,8 +464,11 @@ export const readDirection = (
             `standard ${s.id}: where names no key; leave it out, and the standard applies everywhere`,
           )
         }
+        // One value, or a list of values: any one of them matches (Nanda, 2026-11-13).
         for (const [key, value] of Object.entries(where)) {
-          checkContextEntry(file, `standard ${s.id}: where`, key, value)
+          const values = Array.isArray(value) ? value : [value]
+          if (values.length === 0) fail(file, `standard ${s.id}: where ${key} lists no value`)
+          for (const v of values) checkContextEntry(file, `standard ${s.id}: where`, key, v)
         }
       }
       return { id: s.id, says: s.says, ...(s.where !== undefined ? { where: s.where } : {}), rules }

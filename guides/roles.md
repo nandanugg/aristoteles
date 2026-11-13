@@ -28,8 +28,10 @@ of work: a file that breaks one is refused, or the work stops later at that chec
 
 ## Rules and their checkers
 
-- A rule applies to each task that its `where` matches. A rule with no `where` applies to each
-  task, also to the top task.
+- A rule applies to each task that the `where` of its standard matches. A key of a `where`
+  names one value, or a list of values, any one of which matches:
+  `where: { section: [introduction, design] }`. A rule with no `where` applies to each task,
+  also to the top task.
 - A decider can accept a result only with evidence for each rule that applies, from the checker
   of that rule. That checker must review or approve the maker of the result. So the checker of
   a rule with no `where` reviews each maker, also the maker of the top task (for example the

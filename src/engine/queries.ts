@@ -176,12 +176,19 @@ export const sameChecker = (a: Rule['checkedBy'], b: Rule['checkedBy']): boolean
 export const sameRule = (a: Rule, b: Rule): boolean =>
   a.entry === b.entry ||
   (a.id === b.id && a.says === b.says && sameChecker(a.checkedBy, b.checkedBy))
-// The order of the keys of a where says nothing.
+// The order of the keys of a where says nothing, and nor does the order of the values of a key.
 export const sameWhere = (a: Where, b: Where): boolean => {
   if (a._tag === 'Everywhere' || b._tag === 'Everywhere') return a._tag === b._tag
   return (
     a.conditions.size === b.conditions.size &&
-    [...a.conditions].every(([k, v]) => b.conditions.get(k) === v)
+    [...a.conditions].every(([k, values]) => {
+      const others = b.conditions.get(k)
+      return (
+        others !== undefined &&
+        others.length === values.length &&
+        values.every((v) => others.includes(v))
+      )
+    })
   )
 }
 // Two standards are the same when they say the same: the same id, words, where, and rules (a

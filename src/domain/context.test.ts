@@ -47,4 +47,13 @@ describe('the where of a standard', () => {
     expect(applies(where, contextOf({ section: 'introduction' }))).toBe(false)
     expect(applies(where, contextOf({ audience: 'merchant', section: 'design' }))).toBe(false)
   })
+
+  test('a condition with a list matches any one of its values; the file form comes back', () => {
+    const where = whereOf({ section: ['introduction', 'design'], audience: 'merchant' })
+    const json = '{"section":["introduction","design"],"audience":"merchant"}'
+    expect(JSON.stringify(whereRecord(where))).toBe(json)
+    expect(applies(where, contextOf({ audience: 'merchant', section: 'design' }))).toBe(true)
+    expect(applies(where, contextOf({ audience: 'merchant', section: 'risks' }))).toBe(false)
+    expect(applies(where, contextOf({ audience: 'merchant' }))).toBe(false)
+  })
 })

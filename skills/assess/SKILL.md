@@ -101,7 +101,8 @@ directions into direction drafts, and the owner accepts or rejects each one.
 - **The loop** → tasks, reviewers, and deciders:
   - a write and a check for each section: the high role splits the top task into one part for
     each section (`context: { section: <heading id> }`); a standard for one section only has
-    `where: { section: <heading id> }`;
+    `where: { section: <heading id> }`, and a standard for some sections lists them:
+    `where: { section: [<heading id>, <heading id>] }`;
   - the tries of the loop: `limits.<tier>.Assignment.attempts`;
   - more than one decider of a maker: `decide: [{ resultsOf: <the writer>, by: { order:
     [<the lead>, <the high role>] } }]` (`or`: any one of them; `and`: each one; `order`: each
@@ -171,7 +172,8 @@ Each new version of a direction comes to its owner on the page, so give no direc
      <what the work is for, in any markdown; the whole idea in the first paragraph>
    standards:
      - id: <standard id>
-       where: <optional: { section: <heading id> } when it is for one section only>
+       where: <optional: { section: <heading id> } for one section, or
+               { section: [<heading id>, <heading id>] } for some sections>
        says: |
          <how the output looks; one idea; headers for its pieces>
        rules:

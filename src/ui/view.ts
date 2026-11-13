@@ -196,7 +196,7 @@ const draftChange = (work: Work, x: Revision<Direction>): DraftChange => {
       ...(s.where._tag === 'Where'
         ? [
             `(only where ${Object.entries(whereRecord(s.where) ?? {})
-              .map(([k, v]) => `${k} is ${v}`)
+              .map(([k, v]) => `${k} is ${[v].flat().join(' or ')}`)
               .join(' and ')})`,
           ]
         : []),
