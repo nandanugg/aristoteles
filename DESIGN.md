@@ -588,8 +588,9 @@ STOP after one report, one review, or one escalation. Do not run other work comm
   changed after the report (a resolve with no evidence is not refused). A low checker is told
   to escalate and stop. `blockers`, `task tree`, and briefs show "changed after it was reported".
 - **Reject points.** A Reject has points (`--point`). A point with `--breaks` closes when a
-  later, changed result has evidence for that rule; evidence on the same work shows "the same
-  work was rejected". A point with no rule closes with a direction change that lists it
+  later, changed result has evidence for that rule, or for the rule that stands for it now: the
+  rule with its id and new words, or a rule that supersedes it (Nanda, 2026-11-13). Evidence on
+  the same work shows "the same work was rejected". A point with no rule closes with a direction change that lists it
   (`--answers=v4.2`). A recheck is a Reject that any later result answers.
 - **Evidence** is one line per rule: `<rule id> | <where you looked> | <what you saw>`. From
   an agent, `where` names the result's file, repo, or section, and `what` has at least three

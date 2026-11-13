@@ -113,3 +113,28 @@ describe('C-A3 a result that its gate accepted uses no attempt, also when the ma
     expect(reports[3].code).not.toBe(0)
   }, 30000)
 })
+
+// A change of a rule's words keeps its id (Nanda, 2026-11-13): an open point under the old words
+// closes with evidence for the new words on a later, changed result; it needs no direction change
+// that names it. A host found the stuck points on a real dir.
+describe('a point under the old words of a rule', () => {
+  test('closes with evidence for the new words of the same rule', async () => {
+    const { p, lead } = await started()
+    const w1 = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
+    ok(await p.agent(`brief ${w1}`))
+    p.write('docs/tsd.md', INTRO_V2)
+    ok(await p.agent(`report ${w1} --output=docs/tsd.md#introduction`))
+    ok(await p.agent(`review ${lead} r1 reject --point="a reviewer cannot repeat it" --breaks=repeatable`))
+    await changeDirection(p, 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      where: { section: introduction }\n' +
+      '      says: Tell the story first, in plain words.\n      rules:\n' +
+      '        - { id: repeatable, says: "A reviewer can repeat the problem from the introduction alone", checkedBy: section-lead }\n',
+    { flags: '--why="Correct the standard"' })
+    ok(await p.agent(`brief ${w1}`))
+    p.write('docs/tsd.md', INTRO_V3)
+    ok(await p.agent(`report ${w1} --output=docs/tsd.md#introduction`))
+    ok(await p.agent(`review ${lead} r2 accept --evidence="repeatable | docs/tsd.md, the introduction | the steps of the problem are in the introduction"`))
+    const blockers = ok(await p.agent('blockers r2')).out
+    expect(blockers).not.toContain('a reviewer cannot repeat it')
+    expect(blockers).not.toContain('needs a direction change')
+  }, 20000)
+})

@@ -493,9 +493,22 @@ export const sameWork = (x: ReportedWork, y: ReportedWork): boolean =>
   x._tag === 'Commit' && y._tag === 'Commit' && x.patch !== '' && y.patch !== ''
     ? x.patch === y.patch
     : x.digest !== '' && x.digest === y.digest
+// The rule of a task now that stands for the rule entry of a point (Nanda, 2026-11-13): the
+// entry itself; else the rule with its id and new words (a changed rule keeps its id); else a
+// rule that supersedes it. undefined: no rule of the task stands for it.
+export const ruleNowFor = (w: Work, task: TaskId, entry: RuleEntry): Rule | undefined => {
+  const old = ruleAt(w, entry)
+  const now = rulesOf(w, task)
+  return (
+    now.find((x) => x.entry === entry) ??
+    now.find((x) => x.id === old.id) ??
+    now.find((x) => x.supersedes.includes(entry))
+  )
+}
+
 // An official draft, a split, or a remake answers a Reject. A Reject that names a rule is also
-// answered by a later, changed result of its task with evidence for that rule; a recheck by any
-// later result of its task.
+// answered by a later, changed result of its task with evidence for that rule, or for the rule
+// that stands for it now, after a change of its words; a recheck by any later result of its task.
 export const answeredItem = (w: Work, r: Item): boolean => {
   if (w.changes.some((c) => answersInclude(c.answers, r)) || answeredByVersion(w, r)) return true
   const task = taskOfTarget(w, r.of)
@@ -506,11 +519,12 @@ export const answeredItem = (w: Work, r: Item): boolean => {
   const changed = (x: Result) => !(rejected !== undefined && sameWork(x.work, rejected.work))
   const breaks = r.breaks
   if (breaks === undefined) return false
-  const rule = ruleAt(w, breaks)
-  return later.some(
-    (x) =>
-      changed(x) && evidenceFor(w, rule, x.id, itemsOf(w, x.id).filter(isAcceptItem)).length > 0,
-  )
+  // Evidence for the old words still counts: a point that it answered stays answered.
+  const rules = [ruleAt(w, breaks), ruleNowFor(w, task, breaks)].filter((x) => x !== undefined)
+  return later.some((x) => {
+    const accepts = itemsOf(w, x.id).filter(isAcceptItem)
+    return changed(x) && rules.some((rule) => evidenceFor(w, rule, x.id, accepts).length > 0)
+  })
 }
 export const answered = (w: Work, review: ReviewId | PointId): boolean => {
   const r = itemAt(w, review)
@@ -744,11 +758,16 @@ export const blockerItems = (w: Work, r: ResultId, _when: Time): ReadonlyArray<B
   const reviews = itemsOf(w, r)
   const accepts = reviews.filter(isAcceptItem)
   const rules = rulesOf(w, task.id)
-  const ruleEntries = rules.map((x) => x.entry)
   const unanswered = rejectsBefore(w, result).filter((x) => !answeredItem(w, x))
+  // The rule of the task now that a point's rule stands for; undefined: the point needs a
+  // direction change.
+  const standing = (x: Item): Rule | undefined =>
+    x.breaks === undefined ? undefined : ruleNowFor(w, task.id, x.breaks)
   const missing = (rule: Rule): ReadonlyArray<Blocker> => {
     const found = evidenceFor(w, rule, r, accepts)
-    const rejects = unanswered.filter((x) => x.breaks === rule.entry).map((x) => x.id as PointId)
+    const rejects = unanswered
+      .filter((x) => standing(x)?.entry === rule.entry)
+      .map((x) => x.id as PointId)
     if (found.length === 0) return [{ _tag: 'Evidence', ref: rule.entry, rejects }]
     if (found.every((e) => e.uses.some((u) => isOld(w, u)))) {
       return [{ _tag: 'OldEvidence', ref: rule.entry }]
@@ -805,18 +824,16 @@ export const blockerItems = (w: Work, r: ResultId, _when: Time): ReadonlyArray<B
             : { _tag: 'Reject', ref: rejectRef(x) },
       ),
     ...unanswered
-      .filter(
-        (x) =>
-          x.breaks !== undefined &&
-          ruleEntries.includes(x.breaks) &&
-          evidenceFor(w, ruleAt(w, x.breaks), r, accepts).length > 0,
-      )
+      .filter((x) => {
+        const rule = standing(x)
+        return rule !== undefined && evidenceFor(w, rule, r, accepts).length > 0
+      })
       .map((x): Blocker => ({ _tag: 'Unchanged', ref: x.id as PointId })),
     ...unanswered
       .filter((x) => x.redo)
       .map((x): Blocker => ({ _tag: 'Recheck', ref: x.id as ReviewId })),
     ...unanswered
-      .filter((x) => !x.redo && !(x.breaks !== undefined && ruleEntries.includes(x.breaks)))
+      .filter((x) => !x.redo && standing(x) === undefined)
       .map((x): Blocker => ({ _tag: 'Change', ref: rejectRef(x) })),
     ...openEscalationItems(w, r).map((x): Blocker => ({ _tag: 'Escalation', ref: x.id as EscalationId })),
     ...openQuestions(w, r).map((q): Blocker => ({ _tag: 'Question', ref: q.id })),
