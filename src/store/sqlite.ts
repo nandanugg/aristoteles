@@ -82,7 +82,20 @@ const prepare = (
       }),
     )
     if (format === 'other') return yield* notAStore(path)
-    if (format === 'current') return
+    if (format === 'current') {
+      // A reader table that came after this file was made (run_host, 2026-11-13) is made now:
+      // reader rows come from the events, so the next act fills it.
+      const names = [...READER_TABLES.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1])
+      const have = yield* sql(() =>
+        db
+          .query("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .all()
+          .map((t) => (t as { readonly name: string }).name),
+      )
+      if (names.every((n) => n !== undefined && have.includes(n))) return
+      yield* sql(() => db.transaction(() => db.exec(READER_TABLES)).immediate())
+      return
+    }
     if (!create) return yield* noStore(dir)
     yield* sql(() =>
       db

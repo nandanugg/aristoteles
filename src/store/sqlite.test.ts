@@ -208,6 +208,21 @@ describe('the files of a store', () => {
     expect(seq).toBe(2)
   })
 
+  test('a file of this format that lacks a newer reader table gets it at the next open', async () => {
+    const { dir, file } = newDir()
+    await run(withStore(file, dir, true, (s) => s.write(() => written(draftOf(1, SOURCE)))))
+    const db = new Database(file)
+    db.exec('DROP TABLE run_host')
+    db.close()
+    const seq = await run(
+      withStore(file, dir, false, (s) => s.write(() => written(draftOf(2, SOURCE)))),
+    )
+    expect(seq).toBe(2)
+    const after = new Database(file, { readonly: true })
+    expect(after.query("SELECT name FROM sqlite_master WHERE name = 'run_host'").all()).toEqual([{ name: 'run_host' }])
+    after.close()
+  })
+
   test.each([
     ['a text file', (f: string) => writeFileSync(f, 'this is not a database\n'.repeat(20))],
     ['a database of the old work (a table act)', sqlite('CREATE TABLE act (seq INTEGER)')],
