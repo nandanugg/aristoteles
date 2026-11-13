@@ -65,21 +65,20 @@ describe('the acts of the UI', () => {
       .toContain('you are the host of this project: answer it from the directions')
   })
 
-  test('a system problem goes on the parent of the task that it stops; it shows after the host\'s words', async () => {
+  test('a system problem goes on the parent of the task that it stops; the host\'s own text is its words', async () => {
     const { p, host } = await hosted()
     const lead = tokenIn(ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
     expect((await p.agent(`problem ${lead} t1 --says="the cluster is down"`)).err).toContain('the host (a Sol) records a system problem')
     expect(ok(await p.agent(`problem ${host} t1 --says="the cluster is down: run make up, then press Fixed"`)).out)
       .toBe('sp1 recorded on t1 The Introduction; it shows to the person until a fix.')
-    // The decision is there, but it waits for the host's words: the person does not see it yet.
-    expect(await decisions(p)).toEqual([])
-    expect(summary(await decisions(p, LATE))).toEqual([['system', 'sp1', 't1']])
+    // The host wrote the problem itself, so its text is its words: the person sees it at once.
+    expect(summary(await decisions(p))).toEqual([['system', 'sp1', 't1']])
+    expect((await decisions(p))[0]).toMatchObject({ shown: true, words: 'the cluster is down: run make up, then press Fixed' })
+    // Words of the host that it writes after replace them.
     ok(await p.agent(`note ${host} words --on=sp1 --text="The cluster of this machine is down, so no test of t1 can run. Start it with make up."`))
     expect((await decisions(p))[0]).toMatchObject({ shown: true, words: 'The cluster of this machine is down, so no test of t1 can run. Start it with make up.' })
-    // With no words, the decision shows after hostWaitMinutes (10 by default).
     ok(await p.agent(`problem ${host} t1 --says="the VPN is not connected"`))
-    expect((await decisions(p)).map((i) => i.id)).toEqual(['sp1'])
-    expect((await decisions(p, LATE)).find((i) => i.id === 'sp2').shown).toBe(true)
+    expect((await decisions(p)).map((i) => i.id)).toEqual(['sp1', 'sp2'])
     expect((await p.agent(`note ${lead} words --on=sp1 --text="x"`)).err).toContain('only the host of a project writes the words of a decision')
     ok(await p.ui('problem sp1 --fixed'))
     expect((await decisions(p, LATE)).map((i) => i.id)).toEqual(['sp2'])

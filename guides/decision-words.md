@@ -25,8 +25,8 @@ one read.
 
 A system problem: what does not work, what it stops, and the one step that fixes it (a command
 that the person can run). For example: "The test database does not start. It stops the checks
-of each code part. To fix it, run: <command>." When you recorded the problem yourself and its
-text keeps these rules, give the same text.
+of each code part. To fix it, run: <command>." When you record a problem yourself (`work problem
+--says=`), its text is its words: write it by these rules.
 
 The end of a project: what the project made, where to read it, and what the reviews found. For
 example: "The project made the design document. Read it in <file>. Each part passed its

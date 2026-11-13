@@ -93,6 +93,11 @@ export const officialDirections = (work: Work) =>
         .map((s) => ({ where: whereRecord(s.where) })),
     }))
 
+// The form of the evidence of an accept, in each refusal that asks for it: one text, so that a
+// checker does not meet two shapes (Nanda, 2026-11-13).
+export const EVIDENCE_FORM =
+  '--evidence="<rule id> | <where you read in the result> | <what you saw there>", one for each rule in your checks; with no rule: --evidence="<where you read> | <what you saw there>"'
+
 // One evidence line: <rule id> | <where> | <what>, or <where> | <what> for what no rule names.
 export const evidenceOf = (
   values: ReadonlyArray<string | true>,
@@ -105,7 +110,7 @@ export const evidenceOf = (
         .map((p) => p.trim())
       if (![2, 3].includes(parts.length) || parts.some((p) => !p)) {
         return yield* refuse(
-          `--evidence="${String(v)}" needs <rule id> | <where you looked> | <what you saw>, or, with no rule, <where you looked> | <what you saw>`,
+          `--evidence="${String(v)}" does not read: an accept needs ${EVIDENCE_FORM}`,
         )
       }
       const [rule, where, what] = parts.length === 3 ? parts : [null, ...parts]

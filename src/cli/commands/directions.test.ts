@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Effect } from 'effect'
+import { EVIDENCE_FORM } from './work-support.ts'
 import type { Found } from '../../domain/lookup.ts'
 import { FilesLive } from '../../services/outside.ts'
 import {
@@ -173,7 +174,7 @@ describe('evidence and points', () => {
   test.each(['one', 'a | b | c | d', 'a | | c'])('evidence "%s" is refused in the old words', async (line) => {
     const { exit } = { exit: await run(evidenceOf([line])) }
     expect(failureOf(exit).message).toBe(
-      `--evidence="${line}" needs <rule id> | <where you looked> | <what you saw>, or, with no rule, <where you looked> | <what you saw>`,
+      `--evidence="${line}" does not read: an accept needs ${EVIDENCE_FORM}`,
     )
   })
 
@@ -294,8 +295,7 @@ describe('the inner act of a forward', () => {
       review({ _tag: 'Accept', of: { _tag: 'Result', id: 'r1', evidence }, reason: 'the words' }),
     )
     expect(await inner('accept', 'result')).toEqual({
-      message:
-        'an accept needs --evidence: <the place in the result where you read it> | <what you saw there>',
+      message: `an accept needs ${EVIDENCE_FORM}`,
       next: null,
     })
   })

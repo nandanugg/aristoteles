@@ -122,7 +122,7 @@ describe('what was reviewed is what was reported', () => {
     expect((await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | x"`)).err)
       .toContain('no --evidence for: no-code-proof, no-ticket-ids')
     expect((await p.agent(`review ${linter} r1 accept --evidence="x"`)).err)
-      .toContain('with no rule, <where you looked> | <what you saw>')
+      .toContain('with no rule: --evidence="<where you read> | <what you saw there>"')
   })
 })
 

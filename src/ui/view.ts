@@ -236,14 +236,15 @@ type Bare = Decision extends infer D
 export const decisionsOf = (work: Work, ctx: ViewContext): ReadonlyArray<Decision> => {
   const waitMs = ctx.settings.hostWaitMinutes * 60000
   const items: Decision[] = []
-  // raw: the item shows at once, with no wait for the host (the person's UI recorded it).
-  const add = (item: Bare, at: Time, tree: TaskId | null, raw = false) => {
+  // raw: the item shows at once, with no wait for the host (the person's UI recorded it). own:
+  // the host wrote the item itself (its own system problem), so its text is its words.
+  const add = (item: Bare, at: Time, tree: TaskId | null, raw = false, own?: string) => {
     const words = work.hostWords.get(item.id as never)
     const host = tree === null ? undefined : hostOf(work, tree)
     const late = Date.parse(ctx.at) - Date.parse(at) >= waitMs
-    const shown = raw || words !== undefined || host === undefined || late
+    const shown = raw || words !== undefined || own !== undefined || host === undefined || late
     const common = {
-      words: words?.text ?? null,
+      words: words?.text ?? own ?? null,
       at,
       shown: shown
         ? ({ _tag: 'Shown' } as const)
@@ -266,6 +267,7 @@ export const decisionsOf = (work: Work, ctx: ViewContext): ReadonlyArray<Decisio
       sp.at,
       task,
       sp.recordedBy._tag !== 'Host',
+      sp.recordedBy._tag === 'Host' ? sp.says : undefined,
     )
   }
   for (const x of work.drafts.values()) {

@@ -1336,8 +1336,18 @@ const checkDecide = (
         (holder ? `; it is a rule of ${holder.id}: reject the result of ${holder.id}` : ''),
     )
   }
-  if (decision !== 'Escalate' && !mayDecide(w, by, of, task, when))
-    no(`${labelWithRole(w, by)} may not review this`)
+  if (decision !== 'Escalate' && !mayDecide(w, by, of, task, when)) {
+    // The reason, so that the agent does not try again: who reviews this, and where its own
+    // reviews are.
+    const maker = of._tag === 'Result' ? assignmentAt(w, resultAt(w, of.id as ResultId).by) : undefined
+    no(
+      `${labelWithRole(w, by)} may not review this: ` +
+        (maker !== undefined
+          ? `a result is reviewed by a role that reviews or approves its maker (${maker.role})`
+          : `only the owner of ${task}, or a role with a Change act on it, reviews it`) +
+        '; work next lists your own reviews',
+    )
+  }
   if (of._tag === 'Result' && decision !== 'Escalate' && options.resolves === undefined) {
     const result = of.id as ResultId
     const who = deciderOf(w, result)

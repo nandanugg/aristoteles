@@ -309,7 +309,11 @@ export const renderBrief = (
     ]),
   ]
   // A closed task takes no work: its assignment stops, and its parent assigns on the new task.
-  if (task.end._tag !== 'NotEnded') lines.splice(3, 0, closedLine(w, a, task), '')
+  // Its brief says only that, so that the agent runs none of its commands (Nanda, 2026-11-13).
+  if (task.end._tag !== 'NotEnded') {
+    const head = lines.slice(0, cwd ? 3 : 2)
+    return [...head, '', closedLine(w, a, task), 'Run no work command for this task.'].join('\n')
+  }
   // The tasks that this task needs, one line each: their accepted work goes into its result.
   const needs = needsLines(w, task, at)
   if (needs.length) {
@@ -405,9 +409,16 @@ export const renderBrief = (
     const rest = more > 0 ? [`(${more} more: work blockers ${latestResult(w, task.id)?.id})`] : []
     lines.push(...block('OPEN', [...open.slice(0, 6), ...rest]))
   }
-  const ready =
-    tier !== 'low' ? nextLines(w, nextSteps(w, id, { token, at, cwd }), { token, at }) : []
+  const steps = tier !== 'low' ? nextSteps(w, id, { token, at, cwd }) : []
+  const ready = nextLines(w, steps, { token, at })
   if (ready.length) lines.push('', 'READY', ...ready.map((s) => `  ${s}`))
+  // Each step only waits (no step has a command): the agent stops, and does not ask again until
+  // a wake (Nanda, 2026-11-13).
+  const waitsOnly = (step: (typeof steps)[number]) =>
+    !nextLines(w, [step], { token, at }).some((l) => l.startsWith('  '))
+  if (steps.length && steps.every(waitsOnly)) {
+    lines.push('  Nothing to run now: STOP. You are woken when a step changes.')
+  }
   lines.push('', 'YOUR TURN', ...turnLines(w, a, tier, token, at), stopLine(w, a, tier, at))
   return lines.join('\n')
 }

@@ -67,7 +67,7 @@ describe('a review in a brief', () => {
     expect(brief).toContain('your role may not review it')
     expect(brief).toContain('escalate')
     const refused = await p.agent(`review ${proof} r1 reject --point="no"`)
-    expect(refused.err).toContain('may not review this')
+    expect(refused.err).toContain('may not review this: a result is reviewed by a role that reviews or approves its maker')
   }, 30000)
 
   test('a role that covers the maker gets the accept line, and the engine takes it', async () => {

@@ -57,6 +57,7 @@ import type { Call, Command, Commands } from '../command.ts'
 import { lookupKind } from '../lookups.ts'
 import { followCommit } from '../refresh.ts'
 import { actOf, checkContext, personAuthor, readArgFile, readWork, writeAct } from '../run.ts'
+import { EVIDENCE_FORM } from './work-support.ts'
 
 // --- the checks and readers that several commands share ---------------------------------------
 
@@ -114,7 +115,7 @@ export const evidenceOf = (
       const parts = v.split('|').map((p) => p.trim())
       if (![2, 3].includes(parts.length) || parts.some((p) => !p)) {
         return yield* refuse(
-          `--evidence="${v}" needs <rule id> | <where you looked> | <what you saw>, or, with no rule, <where you looked> | <what you saw>`,
+          `--evidence="${v}" does not read: an accept needs ${EVIDENCE_FORM}`,
         )
       }
       const [rule, where = '', what = ''] = parts.length === 3 ? parts : ['', ...parts]
@@ -806,7 +807,7 @@ export const innerOf = (input: ForwardInput): Effect.Effect<ForwardedAct, Refuse
         const [first, ...more] = evidence
         if (!first) {
           return yield* refuse(
-            'an accept needs --evidence: <the place in the result where you read it> | <what you saw there>',
+            `an accept needs ${EVIDENCE_FORM}`,
           )
         }
         const of = { _tag: 'Result' as const, id: target, evidence: [first, ...more] as const }

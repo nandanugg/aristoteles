@@ -74,6 +74,7 @@ import { followCommit } from '../refresh.ts'
 import {
   checkDigest,
   checkEvidence,
+  EVIDENCE_FORM,
   evidenceFlag,
   evidenceOf,
   firstCreated,
@@ -1033,7 +1034,7 @@ const review: Command = (call) =>
           for (const e of evidence) if (e.rule) yield* ruleNamed(work, e.rule)
           if (!evidence.length) {
             return yield* refuse(
-              'an accept needs --evidence: <the place in the result where you read it> | <what you saw there>',
+              `an accept needs ${EVIDENCE_FORM}`,
             )
           }
           // The engine's own refusal of an accept of a task, which a typed accept cannot carry.

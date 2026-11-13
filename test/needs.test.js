@@ -134,7 +134,11 @@ describe('close and remake', () => {
     expect(remake).toContain('closed as replaced: t1, t2, t3')
     expect(ok(await p.agent('task show t4')).out).toContain('replaces t1')
     // The old writer's task is closed: its brief tells it to stop.
-    expect(ok(await p.agent('assignment show a2')).out).toContain('t2 was closed when t1 was remade as t4')
+    const closed = ok(await p.agent('assignment show a2')).out
+    expect(closed).toContain('t2 was closed when t1 was remade as t4')
+    // It says only that: no command of the closed task is offered.
+    expect(closed).toContain('Run no work command for this task.')
+    expect(closed).not.toContain('YOUR TURN')
     const grant = ok(await p.nanda('grant --act=change --on=t4 --to=architect --until=2026-12-31T00:00:00Z', 'grant')).out
     expect(grant).toContain('t4')
     const arch2 = tokenIn(ok(await p.nanda('assign t4 --role=architect')).out)

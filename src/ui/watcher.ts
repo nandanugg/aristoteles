@@ -364,9 +364,12 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
   const tell = async (reason: SupervisorReason, sid: SessionId | undefined, text: string) => {
     if (sid === undefined) return
     const ref = await sendLine(reason, text)
+    const st = pump.status()[sid]
     if (stateOf(sid)?._tag === 'Stopped') await dropped(ref, { _tag: 'StoppedByPerson' })
-    else if (!pump.status()[sid]?.live) await dropped(ref, { _tag: 'TerminalNotLive' })
-    else await deliver(ref, sid, text)
+    else if (!st?.live) await dropped(ref, { _tag: 'TerminalNotLive' })
+    // A busy terminal gets it when it is quiet (sendWaiting), so that the line does not cut into
+    // the work of the agent (Nanda, 2026-11-13).
+    else if (quietFor(st) >= time.outputWindow) await deliver(ref, sid, text)
   }
 
   // The first input of a terminal, typed when the terminal is ready: it has shown output, and
@@ -785,7 +788,19 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
       if (typing.has(send.id)) continue
       const old = Date.parse(send.at) < startedAt - RESTART_SKEW_MS
       if (send.from._tag !== 'Agent') {
-        if (old) await step('send', () => dropped(send.id, { _tag: 'BeforeRestart' }))
+        if (old) {
+          await step('send', () => dropped(send.id, { _tag: 'BeforeRestart' }))
+          continue
+        }
+        // A word of the supervisor (tell) that waits for its terminal to be quiet.
+        const to = destinationOf(work, send)
+        if (to === undefined || send.keys._tag !== 'Line') continue
+        await step('send', async () => {
+          const st = pump.status()[to]
+          if (stateOf(to)?._tag === 'Stopped') await dropped(send.id, { _tag: 'StoppedByPerson' })
+          else if (!st?.live) await dropped(send.id, { _tag: 'TerminalNotLive' })
+          else if (quietFor(st) >= time.outputWindow) await deliver(send.id, to, textOfKeys(send))
+        })
         continue
       }
       const sid = send.from.to.session
@@ -904,15 +919,20 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
           x.from.reason.decision === item.id,
       )
       if (item.words !== null || told) continue
-      const sid = item.task === null ? undefined : hostSessionOf(work, item.task)
+      // A decision of the whole dir (a direction draft with no task) goes to the host of the
+      // newest open run.
+      const sid =
+        item.task === null
+          ? [...work.runs.values()].filter((r) => r.end._tag === 'NotEnded').at(-1)?.session
+          : hostSessionOf(work, item.task)
       const form =
         item._tag === 'Direction'
           ? '--text="<the problem>" --hope="<what you hope by this change>"'
           : '--text="<the words>"'
       const text =
-        `The decision ${item.id} waits for the person: ${clean(item.text, 300)} ` +
-        'Read work guide decision-words, then write its words for the person: ' +
-        `work note <your token> words --on=${item.id} ${form}.`
+        `${SYSTEM} The decision ${item.id} waits for the person: ${clean(item.text, 300)} ` +
+        'When your current step ends, read work guide decision-words, then write its words ' +
+        `for the person: work note <your token> words --on=${item.id} ${form}.`
       const decision = item.id as ProblemId
       await step(item.id, () => tell({ _tag: 'DecisionNeedsWords', decision }, sid, text))
     }

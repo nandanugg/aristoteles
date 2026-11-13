@@ -377,6 +377,23 @@ describe('the supervisor of the terminals', () => {
     expect(fake.calls.filter((c) => c === 'stop s-old')).toHaveLength(1)
   })
 
+  test('a decision of the whole dir asks the host of the newest open run for its words', async () => {
+    const { p, fake, w, host } = await hosted()
+    // A new direction of the dir: its draft names no task, and only its owner accepts it.
+    const other = harness.DIRECTION.replaceAll('tsd-writing', 'hld-writing')
+      .replace('name: TSD writing', 'name: HLD writing')
+      .replaceAll('no-code-proof', 'hld-no-code')
+      .replaceAll('no-ticket-ids', 'hld-no-ids')
+      .replaceAll('repeatable', 'hld-repeatable')
+    writeFileSync(join(p.dir, 'hld.yaml'), other)
+    await p.agent('direction new --file=hld.yaml --by=assess')
+    later(10_000)
+    await w.tick()
+    expect(fake.typed(host)).toContain(
+      'System message, not from the person. The decision d2 waits for the person',
+    )
+  })
+
   test('the page cannot stop or resume the host: it is the person\'s own terminal', async () => {
     const { w, host } = await hosted()
     expect(w.stopSession(host)).rejects.toThrow('the UI does not start, restart, or stop it')
@@ -390,6 +407,10 @@ describe('the supervisor of the terminals', () => {
     const told = () => sendsTo(p.readState(), 'AgentAtPrompt')
     expect(terminalMoves(p.readState(), lead, 'Prompted')).toHaveLength(1)
     expect(told()).toHaveLength(1)
+    // The host was busy a moment ago: the line waits until the host is quiet, then goes once.
+    expect(fake.typed(host)).not.toContain('waits at a prompt')
+    later(10_000)
+    await w.tick()
     expect(fake.typed(host)).toContain('a2 waits at a prompt. Its screen shows «' + PROMPT + '»')
     // The server starts again: a new supervisor reads the same store.
     const second = watcher()

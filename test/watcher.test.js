@@ -86,7 +86,7 @@ const ui = async () => {
 
 describe('the watcher and the acts of the UI', () => {
   test('the host in its own pane, Open, a new Terra in its own terminal, a prompt and the host\'s answer, a retry, and Stop', async () => {
-    const { p, pump, watcher, server, post, screen, joinHost } = await ui()
+    const { p, pump, watcher, server, post, screen, later, joinHost } = await ui()
     // An act needs the page's origin.
     const bad = await fetch(`http://127.0.0.1:${server.port}/api/act`, { method: 'POST', headers: { cookie: `aristoteles-${server.port}=${server.key}` }, body: '{"act":"accept-roles"}' })
     expect(bad.status).toBe(403)
@@ -114,7 +114,12 @@ describe('the watcher and the acts of the UI', () => {
     pump.input(lead, 'ask\r')
     await until(() => screen(lead).includes('Do you want to proceed?'))
     await watcher.tick()
-    await until(() => screen(host).includes('a2 waits at a prompt. Its screen shows «Do you want to proceed? (1 yes / 2 no)»'))
+    // The line to the host waits until the host is quiet: the clock moves past that window.
+    later(9000)
+    await until(async () => {
+      await watcher.tick()
+      return screen(host).includes('a2 waits at a prompt. Its screen shows «Do you want to proceed? (1 yes / 2 no)»')
+    })
     ok(await p.agent(`send ${hostToken} a2 --text=1`))
     await watcher.tick()
     await until(() => screen(lead).includes('proceeding with 1'))
@@ -135,7 +140,7 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   test('the person\'s acts: settings, a system problem fixed, and Close', async () => {
-    const { p, post, pump, screen, joinHost } = await ui()
+    const { p, post, pump, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
@@ -145,7 +150,12 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.agent(`problem ${hostToken} t1 --says="the cluster is down"`))
     // Fixed makes the host try it again now; the decision goes when the host records the fix.
     expect((await post('fixed', { problem: 'sp1' })).body.out).toBe('sp1: the host tries it again now; the decision goes when the host records the fix.')
-    await until(() => screen(host).includes('sp1 is not fixed'))
+    // The line to the host waits until the host is quiet.
+    later(9000)
+    await until(async () => {
+      await watcher.tick()
+      return screen(host).includes('sp1 is not fixed')
+    })
     ok(await p.agent(`problem ${hostToken} sp1 --fixed`))
     expect((await post('fixed', { problem: 'sp1' })).body.error).toContain('sp1 is no open system problem')
     expect((await post('close', { run: 'h1', reason: 'not needed any more' })).status).toBe(200)
