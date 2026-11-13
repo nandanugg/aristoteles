@@ -118,7 +118,8 @@ describe('the agent, as agent() checks its token', () => {
     const before = refusalOf((await cli.p.agent(line)).err)
     const dir = makeDir()
     const { exit } = await runEffect(agentOf(work, token) as Effect.Effect<unknown, unknown, never>, dir)
-    expect(failureOf(exit)).toEqual({ message: before.message, next: null })
+    // The engine's refusal keeps the words of the CLI; a missing token also says what to do.
+    expect(failureOf(exit)).toMatchObject({ message: before.message })
   })
 
   test('the right token gives the assignment', async () => {

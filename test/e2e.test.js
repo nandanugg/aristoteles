@@ -140,7 +140,7 @@ describe('tiers and trees', () => {
     const { p, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
     const r = await p.agent(`assign ${writer} t1 --role=linter`)
-    expect(r.err).toContain(`next: do not try other commands; run work escalate ${writer}`)
+    expect(r.err).toContain(`else do not try other commands: run work escalate ${writer}`)
   })
 })
 

@@ -41,7 +41,8 @@ const verify = (
   Effect.gen(function* () {
     if (token === null) {
       return yield* refuse(
-        'this command needs the assignment token that assign printed (a7.<secret>); the person reads work waiting',
+        'this command needs your assignment token (a7.<secret>), from the command that your parent gave you',
+        'do not guess a token; when you have none, STOP and say so in your last words',
       )
     }
     const m = /^(a\d+)(?:\.([a-z0-9]+))?$/.exec(token)

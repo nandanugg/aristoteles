@@ -48,7 +48,7 @@ const SETTINGS = `tiers:
 `
 const PROMPT = 'Do you want to proceed? (1 yes / 2 no)'
 const RUN_NEXT = 'Run work next with your token, and do what it says.'
-const NEXT_CHANGED = `Your next step changed while you waited. ${RUN_NEXT}`
+const NEXT_CHANGED = `System message, not from the person. Your next step changed while you waited. ${RUN_NEXT}`
 
 // One clock for the CLI, the watcher and the fake pump; the test moves it.
 const clock = { now: Date.UTC(2026, 10, 12, 9, 0, 0) }

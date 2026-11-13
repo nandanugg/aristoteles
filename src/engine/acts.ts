@@ -1005,8 +1005,8 @@ const checkReport = (w: Work, act: Act): void => {
   const limit = maxOf(roleAt(w, a.role).limits.Result.size)
   if (limit !== undefined && d.work._tag === 'File' && d.work.size > limit) {
     no(
-      `the result has size ${d.work.size}; the limit is ${limit}: split the task ` +
-        `(work guide limits)`,
+      `the result has size ${d.work.size}; the limit is ${limit}: do not report it; escalate ` +
+        `it, and a high role splits the task (work guide limits)`,
     )
   }
   const max = a._tag === 'Maker' ? maxOf(a.maxAttempts) : undefined
@@ -1817,7 +1817,9 @@ const checkEvaluate = (w: Work, act: Act): void => {
     const label = labelOf(w, by)
     if (finished(a)) no(`${label} is finished`)
     const tier = tierOf(roleAt(w, a.role))
-    if (tier !== 'high') no(`${label} is ${tier}; a high role evaluates a mistake, or the person`)
+    if (tier !== 'high') {
+      no(`${label} is ${tier}; only a high role evaluates a stop: escalate it to your parent`)
+    }
     if (!within(w, task.id, a.task)) no(`${task.id} is outside the task tree of ${label}`)
   }
   if (stopRefAnswered(w, ref)) no(`${stopText(w, ref)} already has an evaluation that counts`)

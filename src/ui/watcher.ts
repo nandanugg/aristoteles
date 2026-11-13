@@ -22,7 +22,7 @@
 import { randomUUID } from 'node:crypto'
 import { Effect, Layer, Schema } from 'effect'
 import { checkContext } from '../cli/run.ts'
-import { readSettings } from '../config/settings.ts'
+import { DEFAULT_RETRY, readSettings } from '../config/settings.ts'
 import {
   CountedAct,
   create,
@@ -87,6 +87,7 @@ import {
   staleFor,
   type TerminalTier,
   tierOf,
+  SYSTEM,
   topNow,
   wakeLine,
 } from './terminals.ts'
@@ -651,8 +652,8 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
       if (x.host) {
         if (top === undefined) return
         const says =
-          `The host terminal waits at a prompt: ${line}. ` +
-          'Answer it in the terminal of the host.'
+          `Your AI CLI waits for your answer: ${line}. Answer it in the terminal of your AI ` +
+          'CLI. The project goes on after that.'
         await must(['problem', top, `--says=${says}`])
         return
       }
@@ -662,15 +663,17 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
       await tell(
         { _tag: 'AgentAtPrompt', prompt },
         hostSessionOf(after, x.a.task),
-        `${id} waits at a prompt. Its screen shows ${line} Answer it with ` +
-          `work send <your token> ${id} --text=<input>, or record a system problem.`,
+        `${SYSTEM} ${id} waits at a prompt. Its screen shows ${line}. Answer it with ` +
+          `work send <your token> ${id} --text="<input>". When the prompt shows a failure of a ` +
+          `system, run work problem <your token> ${x.a.task} --says="<what happened, and how ` +
+          'to fix it>".',
       )
       return
     }
     if (clock() - lastTry < time.retryGap) return
     if (tries < 3) {
       const attempt = (tries + 1) as 1 | 2 | 3
-      const input = t?.retryInput ?? 'continue'
+      const input = t?.retryInput ?? DEFAULT_RETRY
       const ended = kind === 'ended'
       const via = ended ? ({ _tag: 'ResumeArgument' } as const) : ({ _tag: 'Typed' } as const)
       log(`${id}: ${kind}, try ${attempt} of 3`)
@@ -702,9 +705,9 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     await tell(
       { _tag: 'AgentFailed', failure },
       hostSessionOf(after, x.a.task),
-      `${id} failed 3 times (${kind}). Its last lines: ${last} Resume it, or record a system ` +
-        `problem: work problem <your token> ${x.a.task} ` +
-        '--says="<what happened, and how to fix it>".',
+      `${SYSTEM} ${id} failed 3 times (${kind}). Its last lines: ${last} You cannot restart ` +
+        `it. Run work problem <your token> ${x.a.task} ` +
+        '--says="<what happened, and how to fix it>"; the person then resumes it.',
     )
   }
 
@@ -723,8 +726,9 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
       const sid = hostSessionOf(work, sp.stopped)
       if (sid === undefined || !pump.status()[sid]?.live) return 'no host' as const
       const text =
-        `Try ${sp.id} again now: ${clean(sp.says, 300)} ` +
-        `When it works, run work problem <your token> ${sp.id} --fixed.`
+        `${SYSTEM} ${sp.id} is not fixed: ${clean(sp.says, 300)} Test it once, when your ` +
+        `current step ends. When it works, run work problem <your token> ${sp.id} --fixed. ` +
+        'When it still fails, do nothing: the UI tells you again later.'
       await tell({ _tag: 'ProblemRetry', problem: sp.id }, sid, text)
       return 'told' as const
     }
@@ -1036,7 +1040,7 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     resumeSession: (sid, tier) =>
       serial(async () => {
         const t = tierSettings(tier)
-        const input = t?.retryInput ?? 'continue'
+        const input = t?.retryInput ?? DEFAULT_RETRY
         pump.resume(sid, fill(t?.resume ?? t?.launch ?? '', { session: sid, prompt: input }))
         await record(sid, 'resumed')
         current()

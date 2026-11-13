@@ -305,7 +305,7 @@ export const decisionsOf = (work: Work, ctx: ViewContext): ReadonlyArray<Decisio
         id: run.id,
         task: top,
         text:
-          `The Sol of the top task accepted the result of "${taskAt(work, top).name}". ` +
+          `The agent that leads "${taskAt(work, top).name}" accepted its result. ` +
           'Accept the end of the project, or reject the result with your reason.',
       },
       last ? (accept?.when ?? last.when) : ctx.at,

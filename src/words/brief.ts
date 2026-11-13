@@ -319,8 +319,8 @@ export const renderBrief = (
         ...needs,
         waiting
           ? kinds.do
-            ? 'Not all of them are accepted yet. Do not report until each one is; STOP and tell ' +
-              'your parent.'
+            ? `Not all of them are accepted yet. Do not report. Run work escalate ${token} ` +
+              '--reason="the needs are not accepted", then STOP.'
             : 'Not all of them are accepted yet. This task takes its result after each one is.'
           : config.output?.includes('@')
             ? 'Their work is done. Merge their accepted commits with git merge (a squash or a ' +
@@ -387,7 +387,12 @@ export const renderBrief = (
       ]),
     )
   } else if (checker) {
-    lines.push(...block('REVIEW', ['nothing is reported yet; STOP and tell your parent']))
+    lines.push(
+      ...block('REVIEW', [
+        `nothing is reported yet. Run work escalate ${token} --reason="no result to check", ` +
+          'then STOP.',
+      ]),
+    )
   }
   // ANSWERS and NOTES: what was said about the task (a low checker reads none).
   const answers = checker ? [] : answerLines(w, a)

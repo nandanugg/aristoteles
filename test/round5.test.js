@@ -311,7 +311,7 @@ describe('the record and the words', () => {
 
   test('R5-F11: a missing token and a missing file say what is missing', async () => {
     const { p } = await started()
-    expect((await p.nanda('next')).err).toContain('this command needs the assignment token')
+    expect((await p.nanda('next')).err).toContain('this command needs your assignment token')
     expect((await p.nanda('task open --file=nope.yaml')).err).toContain('there is no file nope.yaml')
   })
 })

@@ -80,7 +80,7 @@ describe('aristoteles.yaml', () => {
     const s = await settingsOf(p)
     expect(s.tiers.sol).toEqual({
       launch: 'agent-tool --model large --session-id {session}', resume: 'agent-tool --resume {session}',
-      start: 'Use the work skill. Your command: work brief {token}', errors: [], prompts: [], silentMinutes: 10, retryInput: 'continue',
+      start: 'Use the work skill. Your command: work brief {token}', errors: [], prompts: [], silentMinutes: 10, retryInput: 'System message, not from the person. Run work next with your token, and do what it says.',
     })
     expect(s.tiers.terra.prompts).toEqual(['Do you want to proceed?'])
     expect([s.retryMinutes, s.hostWaitMinutes, s.sound, s.theme]).toEqual([5, 10, false, 'light'])

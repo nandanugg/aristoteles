@@ -106,7 +106,7 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    await until(() => screen(lead).includes('first input: Use the work skill. Your command: work brief a2.'))
+    await until(() => /first input: Use the work skill\. Your command: work brief a2\.[a-z0-9]+\s/.test(screen(lead)))
     const leadToken = screen(lead).match(/work brief (a2\.[a-z0-9]+)/)[1]
     ok(await p.agent(`brief ${leadToken}`))
 
@@ -145,7 +145,7 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.agent(`problem ${hostToken} t1 --says="the cluster is down"`))
     // Fixed makes the host try it again now; the decision goes when the host records the fix.
     expect((await post('fixed', { problem: 'sp1' })).body.out).toBe('sp1: the host tries it again now; the decision goes when the host records the fix.')
-    await until(() => screen(host).includes('Try sp1 again now'))
+    await until(() => screen(host).includes('sp1 is not fixed'))
     ok(await p.agent(`problem ${hostToken} sp1 --fixed`))
     expect((await post('fixed', { problem: 'sp1' })).body.error).toContain('sp1 is no open system problem')
     expect((await post('close', { run: 'h1', reason: 'not needed any more' })).status).toBe(200)
@@ -189,7 +189,7 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    await until(() => screen(lead).includes('work brief a2.'))
+    await until(() => /work brief a2\.[a-z0-9]+\s/.test(screen(lead)))
     const leadToken = screen(lead).match(/work brief (a2\.[a-z0-9]+)/)[1]
     ok(await p.agent(`brief ${leadToken}`))
     ok(await p.agent(`ask ${leadToken} --text="Is the retry part of the export?" --to=owner`))
@@ -213,7 +213,7 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    await until(() => screen(lead).includes('work brief a2.'))
+    await until(() => /work brief a2\.[a-z0-9]+\s/.test(screen(lead)))
     const leadToken = screen(lead).match(/work brief (a2\.[a-z0-9]+)/)[1]
     ok(await p.agent(`brief ${leadToken}`))
     // The writer is a Luna: a subagent in the lead's terminal.
@@ -343,7 +343,7 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    await until(() => screen(lead).includes('work brief a2.'))
+    await until(() => /work brief a2\.[a-z0-9]+\s/.test(screen(lead)))
     // A terminal closes when it is quiet, so the loop waits for that.
     const closes = async (sid) => {
       const end = Date.now() + 30000

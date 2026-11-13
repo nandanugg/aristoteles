@@ -171,7 +171,7 @@ describe('advice', () => {
   test('R4-14: a low checker briefed before any report is told to stop', async () => {
     const { p, lead } = await withWriter()
     const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-    expect(ok(await p.agent(`brief ${linter}`)).out).toContain('nothing is reported yet; STOP and tell your parent')
+    expect(ok(await p.agent(`brief ${linter}`)).out).toContain('nothing is reported yet. Run work escalate')
   })
 
   test('FW-5: next prints the change step next to the redo', async () => {

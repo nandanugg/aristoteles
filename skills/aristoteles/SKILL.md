@@ -19,12 +19,19 @@ When `work` is not on the PATH, `work …` means `bun <the aristoteles folder>/b
    skill (its part "A dir with no `aristoteles.yaml` yet"), and come back to step 3 when the
    person accepted the roles and you recorded their fits.
 3. **Start the page:** `work start --detach`. It opens the page in the browser and prints its
-   address. It keeps running when this AI CLI ends.
+   address. It keeps running when this AI CLI ends. When it exits with 3, read the log file
+   that it names, tell the person the cause, and do not start it again until the person
+   answers.
 4. **Ask the person:** a new project, or continue one? Show them the projects of
-   `work run list` (each run, its state, and its top task).
+   `work run list` (each run, its state, and its top task). When it shows no run, start a new
+   project.
    - A new project: `work run start`. Then follow the `work` skill, part "You are the host of a
      project": talk with the person, and draft the top task.
    - Continue a project: `work run continue <run> --quote="<the words of the person>"`, with
-     the words that the person said to choose it. When the project has an open top task, the
-     output gives you the command of its Sol: run it. The window of the old host closes.
+     the words that the person said to choose it. When those words name no one run, show the
+     list again and ask which one. When the project has an open top task, the output gives you
+     the command of its Sol: run it. The window of the old host closes.
 5. From then on, follow the `work` skill, part "You are the host of a project".
+6. **When the person does not answer,** do not poll and do not ask again. Say what waits for
+   them, with the command that shows it (`work waiting`), and stop. The person triggers a host
+   again, and continues the project there.

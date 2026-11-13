@@ -18,12 +18,12 @@ RULES    no-code-proof  No file paths with line numbers, no commit hashes in the
 
 YOUR TURN
   report    work report a2.k0002 --output=docs/tsd.md#introduction
-            If WORK IN names a verify command, run it first; exit 0 means ready. If it fails and you cannot fix it, escalate with its output.
+            If WORK IN names a verify command, run it first; exit 0 means ready. If it fails, fix the work and run it again. When it still fails, escalate with its output. Never report work whose verify fails.
   escalate  work escalate a2.k0002 --reason="<the missing fact, and where you looked>" [--result=<result>]
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a2.k0002 <rule id> --says="<why it cannot be met, with the fact>"
-            The rule stays until an official draft answers the suggestion; escalate if you cannot continue.
-STOP after one report or one escalation. Do not run other work commands."
+            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
+STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept each tier reads its own brief, and the task ends Accepted: linter brief on r1 1`] = `
@@ -52,8 +52,8 @@ YOUR TURN
   escalate  work escalate a3.k0003 --reason="<the missing fact, and where you looked>" [--result=r1]
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a3.k0003 <rule id> --says="<why it cannot be met, with the fact>"
-            The rule stays until an official draft answers the suggestion; escalate if you cannot continue.
-STOP after one review or one escalation. Do not run other work commands."
+            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
+STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept each tier reads its own brief, and the task ends Accepted: writer brief, attempt 2 1`] = `
@@ -75,12 +75,12 @@ OPEN     v2.1 breaks no-ticket-ids: "the first line cites ABC-2964" (on r1, a3)
 
 YOUR TURN
   report    work report a2.k0002 --output=docs/tsd.md#introduction
-            If WORK IN names a verify command, run it first; exit 0 means ready. If it fails and you cannot fix it, escalate with its output.
+            If WORK IN names a verify command, run it first; exit 0 means ready. If it fails, fix the work and run it again. When it still fails, escalate with its output. Never report work whose verify fails.
   escalate  work escalate a2.k0002 --reason="<the missing fact, and where you looked>" [--result=r1]
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a2.k0002 <rule id> --says="<why it cannot be met, with the fact>"
-            The rule stays until an official draft answers the suggestion; escalate if you cannot continue.
-STOP after one report or one escalation. Do not run other work commands."
+            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
+STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept the medium brief lists the ready steps with the lead token filled in: section-lead brief 1`] = `
@@ -121,13 +121,13 @@ YOUR TURN
   dreview     work review a1.<token> <draft> accept --evidence="<where you read in the draft> | <what you saw>", or reject --reason="<why>"
               Read it first with work direction show <draft>, and ask each question of work guide direction-review. Never review a draft that you or an assignment above you wrote.
   ask         work ask a1.<token> --text="<the context first, then the question>" [--to=owner]
-              --to=owner asks the person; the top agent forwards the person's answer, and the person confirms it.
+              Ask your parent. Ask the person (--to=owner) only for a fact that no direction, rule, or guide gives, and that stops the work; never about a limit or a choice that a rule settles. The top agent forwards the person's answer, and the person confirms it.
   answer      work answer a1.<token> <question> --text="<the answer>"
               Answer only questions that name you; work waiting --for=a1 lists them.
   resolve     work resolve a1.<token> <escalation> --resolution="<the agreement, or the direction, in words>"
               Resolve an escalation of a result by your children (work waiting --for=a1 lists them); an escalation with no result is a question, and you answer it. A resolve accepts and rejects nothing; the deciders of the result then accept or reject it. When the answer needs a direction that the directions do not give, escalate to your parent instead.
   escalate    work escalate a1.<token> --reason="<what is missing, and what you tried>" [--result=<result>]
-              Escalate when the directions do not fit, or when you cannot decide. When a maker used its last try on a fault, the task waits for the evaluation of the high role; give no new maker before work next says so.
+              Escalate when the directions do not fit, when you cannot decide, or when work passes a limit whose action you cannot do (work guide limits); put the words of the refusal in the reason. When a maker used its last try on a fault, the task waits for the evaluation of the high role; give no new maker before work next says so.
   free        work free a1.<token> <child assignment>
               Only when the child's subagent stopped in the middle; the next work brief claims it again.
   finish      work finish a1.<token> [<child assignment>]
@@ -135,10 +135,10 @@ YOUR TURN
   forward     work forward a1.<token> <person> <reject|ask|comment|answer|resolve> <id> --quote="<their exact words>" [--point="<one problem>" --breaks=<rule id>] --channel=chat
               Only the person's own words; split a reject into points with the rule each breaks. A reject, ask, or comment counts at once; an answer or resolve waits for their work confirm. A resolve names the escalation as <id>, and the person's words are its resolution. The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it.
   source      work source a1.<token> <source>@<revision>
-              Record each revision of a source outside git that you read (for example a version of a page), so work resume can list what to check again. A revision holds for outsideSourceHours of aristoteles.yaml (72 by default); then work next asks you to read the source again and run this command again. A new revision moves the source; the same revision renews its time. A git source, such as main, needs no record, because the CLI reads the base of each commit from git.
+              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.
   checkpoint  work checkpoint a1.<token> t1 --next="<the first thing to do>"
               Save before a pause; work resume a1.<token> t1 shows what changed.
-STOP when the task is accepted, when you escalate, or when only the person can act (work waiting --for=<owner> lists it); then tell your parent what waits. A question only in chat is not in the record; escalate it.
+When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the page wakes you when a step changes, so do not run work next again to check. STOP also when you escalate. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person.
 
 (read-only: no snapshot, no claim)"
 `;
@@ -165,7 +165,7 @@ next: work escalate a3.k0003 --result=r1 --reason="the work changed after r1 was
 
 exports[`tiers and trees a tier assigns only lower tiers: medium assigns medium 1`] = `
 "refused: a medium role assigns only lower tiers; "section-lead" is medium
-next: work next a1.k0001 lists the steps that are ready"
+next: when the refusal names a command, run that; else run work next a1.k0001 and do its first step. Do not run the same command again unchanged"
 `;
 
 exports[`a split task joins its parts the joining result waits until every part is accepted: task tree after split 1`] = `

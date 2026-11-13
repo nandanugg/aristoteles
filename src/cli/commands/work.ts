@@ -1238,13 +1238,13 @@ const escalate: Command = (call) =>
           if (!inTree(work, found, a)) {
             return yield* refuse(`${result} is outside the task tree of ${a.id}`)
           }
-          if (!isNonBlank(reason)) return yield* refuse('an escalation needs a reason')
+          if (!isNonBlank(reason)) return yield* refuse('an escalation needs a reason', 'run it again with --reason="<the refusal or the fact, and what you tried>"')
           // escalate --result: the result waits for the answerer's resolve.
           const escalate = { _tag: 'Escalate' as const, of: found.result.id, reason }
           return actOf(caller, { _tag: 'Review', create: escalate })
         }
         // An escalation with no result: the maker sends its blocked task up as a question.
-        if (!isNonBlank(reason)) return yield* refuse('an escalation needs a reason')
+        if (!isNonBlank(reason)) return yield* refuse('an escalation needs a reason', 'run it again with --reason="<the refusal or the fact, and what you tried>"')
         return actOf(caller, create('Question', { _tag: 'Escalated', text: reason }))
       }),
     )
@@ -1332,6 +1332,7 @@ const note: Command = (call) =>
     if (!kind) {
       return yield* refuse(
         'a note is a finding, a message, or (the host) words --on=<decision>; a question is work ask',
+        'work note <token> finding --text="..." | message --text="..." | words --on=<decision> --text="..."',
       )
     }
     const on = textOf(args.one('on'))

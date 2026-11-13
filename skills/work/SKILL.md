@@ -12,9 +12,10 @@ is not on the PATH, `work …` means:
 bun <the aristoteles folder>/bin/work.js …
 ```
 
-Go to the project folder that your prompt names (the folder with `aristoteles.yaml`) before the
-first command, and run every command there. The CLI also finds the nearest `aristoteles.yaml`
-above the current folder, and `WORK_DIR` overrides both.
+Work in the project folder that your prompt names (the folder with `aristoteles.yaml`), and run
+every command there. When your prompt names no folder, your current folder is the project folder.
+The CLI also finds the nearest `aristoteles.yaml` above the current folder, and `WORK_DIR`
+overrides both.
 
 ## You got a command from your parent
 
@@ -24,8 +25,9 @@ brief, not this file, for anything about your task.
 
 - The token (`a7.k3f9q`) is your identity. Pass it first in every command. Do not show it
   to other agents, and do not use another token.
-- A refusal ends with a `next:` line. Do what it says. A low-tier agent never tries other
-  commands; it escalates.
+- A refusal ends with a `next:` line. Do what it says. When the refusal names a flag or a word
+  that you left out, run the same command again with it. Else a low-tier agent never tries other
+  commands; it escalates. Do not run a refused command again unchanged.
 - When work passes a limit (the attempts of a maker, the size of a brief or of a result, the
   rules of a review), do the action of that limit in `work guide limits`. Do not ask the person
   about a limit.
@@ -43,26 +45,34 @@ talk with the person, then you run its top task.
 
 1. **Talk.** Ask the person what they want, in their terminal (here). Read the directions
    (`work direction show <id>`, `work search <words>`) and the dir. Do not start any work yet.
-2. **Draft the top task.** Write a task file with the role that does it, a high role of
-   `aristoteles.yaml` (`work task open` with no file prints the form; add `role: <role>`), then
-   `work task draft --file=<file> --by=<your run>`. A project is large: for example a whole
-   TSD.
+2. **Draft the top task.** Choose its role: run `work role list`, and take the high role whose
+   description names this kind of work; when two fit, ask the person which one. Draft only when
+   you can say the top task in one sentence: its output, where the output goes, and when it is
+   done. When you cannot, ask the person one question about the part that is missing. Write a
+   task file with that role (`work task open` with no file prints the form; add
+   `role: <role>`), then `work task draft --file=<file> --by=<your run>`. A project is large:
+   for example a whole TSD.
 3. **Wait for the person to open it** on the page. The UI then types `work brief <token>` here:
    from then on you are the Sol of the top task, and that brief tells you what to do.
 4. **Everything else is yours.** Only three kinds of decision reach the person: a system
-   problem, a direction problem, and the end of the project. Everything else, you handle:
+   problem, a direction problem, and the end of the project. You do everything else:
    - a question of a model comes to you: answer it from the directions (`work answer <token>
      <q> --text=...`). When it shows that a direction can be read in two ways, draft the change
      of the direction (`work direction revise`). Polish it first with each question of
      `work guide direction-review`; the person accepts it.
    - a terminal of a child stops at a prompt, or fails its 3 retries: the UI types one line into
-     your terminal. Answer a prompt with `work send <token> <child> --text=<input>`. When a
+     your terminal. Answer a prompt with `work send <token> <child> --text=<input>`. You cannot
+     restart a child: for a failure, record a system problem, and the person resumes it. When a
      system the work needs does not work (a cluster, a VPN, an account limit), record it:
      `work problem <token> <the task that it stops> --says="<what happened, and how to fix it>"`.
    - before the person sees a decision, write its words, so that the person can decide from
      them alone: read `work guide decision-words` first, then
      `work note <token> words --on=<sp.., d.., h..> --text="..."` (a direction problem also
-     takes `--hope`).
+     takes `--hope`). Write them within `hostWaitMinutes` (10 by default): after that time, the
+     person sees the decision with no words.
+   - a line that the UI types starts with "System message, not from the person". Do its command
+     when your current step ends; do not stop your work for it, and do not take it as the
+     person's words.
 
 ### Real agents and subagents
 
@@ -127,7 +137,10 @@ The person runs commands with no token, at a terminal. An agent never runs a per
   `work forward <token> <person> resolve <escalation> --quote="<words>"` and confirmed.
 - To bring a fact from the person to the work, ask with `work ask <token> --to=owner
   --text="..."`, then forward the person's answer to that question; they confirm it. The CLI
-  refuses a forward that the person could not do now, and says why.
+  refuses a forward that the person could not do now, and says why. Ask the person only for a
+  fact that no direction, rule, or guide gives, and that stops the work. Never ask the person
+  about a limit (`work guide limits`), or about a choice that a rule or a guide settles: decide
+  it.
 - A permission (`work grant`, `work revoke`), a confirm, and a config change are the person's
   alone. Ask; do not do them.
 
@@ -153,4 +166,5 @@ The person runs commands with no token, at a terminal. An agent never runs a per
 5. `work task open --file=<task.yaml>` (`work task open` prints the template), then
    `work assign <task> --role=<role>` and give the printed command to the top agent. A high
    role splits, closes, or remakes a task only with a Change act on it:
-   `work grant --act=change --on=<task> --to=<role> --until=<time>`.
+   `work grant --act=change --on=<task> --to=<role> --until=<time>`. A top task that the
+   person opens on the page needs no grant: Open gives its Sol a Change act for 30 days.

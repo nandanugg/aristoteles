@@ -407,15 +407,25 @@ export const causeWords = (work: Work, cause: Cause): string => {
       return `${r?.act.who} (${r?.decision} of ${r?.target})`
     }
     case 'QuestionWaits':
-      return `${cause.question} (a question for you)`
+      return cause.question
   }
 }
 
+// Each line that the UI types says so, so that a busy agent does not take it for the person's
+// words (Nanda, 2026-11-13).
+export const SYSTEM = 'System message, not from the person.'
 const NEXT = 'Run work next with your token, and do what it says.'
-// The line of a wake: who acted, or that the next step changed while the agent waited.
-export const wakeLine = (work: Work, causes: ReadonlyArray<Cause>): string =>
-  causes.length
-    ? `${causes.map((c) => causeWords(work, c)).join(', ')} acted. ${NEXT}`
-    : `Your next step changed while you waited. ${NEXT}`
+// The line of a wake: who acted, which question waits, or that the next step changed while the
+// agent waited.
+export const wakeLine = (work: Work, causes: ReadonlyArray<Cause>): string => {
+  const acted = causes.filter((c) => c._tag !== 'QuestionWaits')
+  const asked = causes.flatMap((c) => (c._tag === 'QuestionWaits' ? [c.question] : []))
+  const words = [
+    ...(acted.length ? [`${acted.map((c) => causeWords(work, c)).join(', ')} acted.`] : []),
+    ...asked.map((q) => `Question ${q} waits for your answer.`),
+  ]
+  const what = words.length ? words.join(' ') : 'Your next step changed while you waited.'
+  return `${SYSTEM} ${what} ${NEXT}`
+}
 
 export const sameCause = (a: Cause, b: Cause): boolean => JSON.stringify(a) === JSON.stringify(b)

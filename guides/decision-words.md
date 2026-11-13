@@ -24,8 +24,16 @@ one read.
    three sentences.
 
 A system problem: what does not work, what it stops, and the one step that fixes it (a command
-that the person can run). The end of a project: what the project made, where to read it, and
-what the reviews found.
+that the person can run). For example: "The test database does not start. It stops the checks
+of each code part. To fix it, run: <command>." When you recorded the problem yourself and its
+text keeps these rules, give the same text.
+
+The end of a project: what the project made, where to read it, and what the reviews found. For
+example: "The project made the design document. Read it in <file>. Each part passed its
+reviews; the last review found no fault on the whole page."
+
+The request that the UI types names ids (a decision, a draft) for your command only. Do not
+copy them into the words.
 
 ## An example: a direction problem
 

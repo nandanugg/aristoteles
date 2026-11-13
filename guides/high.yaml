@@ -2,7 +2,7 @@ tier: high
 intro: |-
   You keep the work on its directions. You split tasks, choose the roles, and write drafts of
   direction changes. The spirit of a direction belongs to the person.
-stop: STOP when the task tree is accepted, or when only the person can act. Put that act in the record first (work escalate, or work ask --to=owner), so work waiting --for=<owner> lists it; a question only in chat is not in the record. Never act for the person.
+stop: "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the page wakes you when a step changes, so do not run work next again to check. STOP also when only the person can act: put that act in the record first (work escalate), so work waiting --for=<owner> lists it; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
 commands:
   split:
     when: change
@@ -19,15 +19,15 @@ commands:
   evaluate:
     when: evaluate
     run: work evaluate {you} <stop> --wrong="<what is wrong>" --why="<why it cannot be done as asked>" --improve="<one change>" --level=task|standard|direction|principle
-    rule: "A mistake is evaluated before new work: when a maker used its last try on a fault (a stop ex<n>), or the person rejected the work (a stop v<n>); work next names the stop. Each stop gets its own evaluation. Name the results and the rules; find the deepest cause (the task text, its split or needs, a standard, a direction, or a principle) and give that level. Accepted work that a changed standard applies to is checked again. A direction or a principle waits for the person's accept."
+    rule: "Run it when work next names a stop: the last try of a maker that ended on a fault (ex<n>), or the person's Reject (v<n>). Each stop gets its own evaluation. Name the results and the rules, and give the level of the deepest cause: the task (its text, split, or needs), a standard, a direction, or a principle. A direction or a principle waits for the person's accept."
   revise:
     when: any
     run: work direction revise {you} <direction> --file=<edit.yaml> --answers=<the points and suggestions that it answers> --why="<Correct the rule|Correct the standard|Correct the direction|Correct the reviewer|Shorten>" --why-words="<the fact behind it>"
-    rule: "Write each entry as work guide writing says: any markdown, with its whole idea in the first paragraph and a header for each piece. --why names what the draft corrects; the deciders read it beside the draft. The draft waits for the accept of its deciders. After a Reject of your draft, the next draft answers it (--answers=<the Reject>) and proposes something else. Make the smallest change that holds the person's criticism: one rule, else one standard. To change one rule, replace its standard with the same text and the changed rule. The work under it is checked again, and remade only where a check finds a fault. A new spirit needs the accept of the person."
+    rule: "Write each entry as work guide writing says: any markdown, with its whole idea in the first paragraph and a header for each piece. --why names what the draft corrects; the deciders read it beside the draft. The draft waits for the accept of its deciders. After a Reject of your draft, the next draft answers it (--answers=<the Reject>) and proposes something else. Make the smallest change that holds the person's criticism: change one rule; when one rule is not enough, change one standard. To change one rule, replace its standard with the same text and the changed rule. The work under it is checked again, and remade only where a check finds a fault. A new spirit needs the accept of the person."
   dreview:
     when: any
     run: work review {you} <draft> accept --evidence="<where you read in the draft> | <what you saw>", or reject --reason="<why>"
-    rule: Read it first with work direction show <draft>, and ask each question of work guide direction-review. Never review a draft that you or an assignment above you wrote. Your accept decides when approvedBy names your role, or when you have a Change act on the direction.
+    rule: Read it first with work direction show <draft>, and ask each question of work guide direction-review. Never review a draft that you or an assignment above you wrote. Review only a draft that work next lists for you.
   suggest:
     when: any
     run: work suggest {you} <direction, standard, or rule id> --says="<the change, with the fact>"
@@ -47,7 +47,7 @@ commands:
   ask:
     when: any
     run: work ask {you} --text="<the context first, then the question>" [--to=owner]
-    rule: --to=owner asks the person; you forward the person's answer, and the person confirms it.
+    rule: "Ask the person (--to=owner) only for a fact that no direction, rule, or guide gives, and that stops the work. Never ask the person about a limit, or about a choice that a rule or a guide settles: decide it. You forward the person's answer, and the person confirms it."
   answer:
     when: any
     run: work answer {you} <question> --text="<the answer>"
@@ -87,11 +87,11 @@ commands:
   source:
     when: any
     run: work source {you} <source>@<revision>
-    rule: Record each revision of a source outside git that you read (for example a version of a page), so work resume can list what to check again. A revision holds for outsideSourceHours of aristoteles.yaml (72 by default); then work next asks you to read the source again and run this command again. A new revision moves the source; the same revision renews its time. A git source, such as main, needs no record, because the CLI reads the base of each commit from git.
+    rule: Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.
   escalate:
     when: any
     run: work escalate {you} --reason="<the decision that only the person can make>" [--result=<result>]
-    rule: Escalate to the person for the spirit, a permission (a grant), or a choice between real options.
+    rule: "Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself."
   checkpoint:
     when: any
     run: work checkpoint {you} {task} --next="<the first thing to do>"

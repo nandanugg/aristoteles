@@ -556,8 +556,9 @@ export const planDrafted = (
   )
   if (isPerson(w, by)) {
     guard(
-      `the person gives direction in words, as a suggestion about ${existing?.name ?? d.name}; a ` +
-        `high role writes the draft`,
+      `the person gives direction in words, as a suggestion about ${existing?.name ?? d.name}: ` +
+        `work suggest <direction, standard, or rule> --says="<the change>"; a high role writes ` +
+        `the draft`,
     )
   }
   return fresh(
@@ -635,8 +636,9 @@ export const planRevised = (
   )
   if (isPerson(w, by)) {
     guard(
-      `the person gives direction in words, as a suggestion about ${official.name}; a high role ` +
-        `writes the draft`,
+      `the person gives direction in words, as a suggestion about ${official.name}: work ` +
+        `suggest <direction, standard, or rule> --says="<the change>"; a high role writes the ` +
+        `draft`,
     )
   }
   return revised(

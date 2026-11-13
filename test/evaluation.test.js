@@ -127,7 +127,7 @@ describe('a mistake is evaluated, not tried again', () => {
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
     // A medium role does not evaluate.
-    expect((await p.agent(`evaluate ${lead} t3 --wrong=x --why=y --improve=z --level=task`)).err).toContain('a high role evaluates a mistake')
+    expect((await p.agent(`evaluate ${lead} t3 --wrong=x --why=y --improve=z --level=task`)).err).toContain('only a high role evaluates a stop')
     ok(await p.agent(`evaluate ${arch} t3 --wrong="r2 cites the ticket" --why="the direction asks for the facts, and the ticket is a fact" ` +
       '--improve="the spirit says that ids are not facts" --level=principle'))
     expect(ok(await p.agent(`next ${lead}`)).out).toContain('ev1 evaluates t3 at the level principle, and waits for Nanda\'s accept')

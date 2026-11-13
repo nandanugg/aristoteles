@@ -1,13 +1,13 @@
 tier: low
 intro: You execute one unit of work, report it, and stop.
 stop:
-  do: STOP after one report or one escalation. Do not run other work commands.
-  review: STOP after one review or one escalation. Do not run other work commands.
+  do: STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands.
+  review: STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands.
 commands:
   report:
     when: do
     run: work report {you} --output={output}
-    rule: If WORK IN names a verify command, run it first; exit 0 means ready. If it fails and you cannot fix it, escalate with its output.
+    rule: If WORK IN names a verify command, run it first; exit 0 means ready. If it fails, fix the work and run it again. When it still fails, escalate with its output. Never report work whose verify fails.
   accept:
     when: review
     run: work review {you} {result} accept {evidence}
@@ -23,4 +23,4 @@ commands:
   suggest:
     when: any
     run: work suggest {you} <rule id> --says="<why it cannot be met, with the fact>"
-    rule: The rule stays until an official draft answers the suggestion; escalate if you cannot continue.
+    rule: Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.

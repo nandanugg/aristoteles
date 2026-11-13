@@ -983,7 +983,8 @@ const linesOf = (w: Work, s: NextStep, { token, at }: LineOptions): ReadonlyArra
       const of = w.drafts.get(s.draft)?.of
       const name = of === undefined ? '' : (w.directions.get(of)?.name ?? of)
       return step(
-        `review ${s.draft}: a draft of ${name} waits for your accept; say if it is precise enough`,
+        `review ${s.draft}: a draft of ${name} waits for your accept; read it, and ask each ` +
+          'question of work guide direction-review',
         `work direction show ${s.draft}, then work review ${token} ${s.draft} accept ` +
           `--evidence="<where you read in ${s.draft}> | <what you saw>", ` +
           'or reject --reason="<why>"',
@@ -1016,7 +1017,8 @@ const linesOf = (w: Work, s: NextStep, { token, at }: LineOptions): ReadonlyArra
       const output = `${s.repo}@${s.commit}`
       return step(
         `put ${output} on ${s.base}: ${s.task} is accepted, and its commit is not on ${s.base} ` +
-          'yet; do it as the project does (a pull request, or a merge)',
+          'yet. When the repo has a rule for merges (a pull request), follow it; else run the ' +
+          'example below. When the merge fails, or the base is protected, escalate with the error',
         `for example: git -C ${s.repo} checkout ${s.base} && git -C ${s.repo} merge ${s.commit}`,
       )
     }

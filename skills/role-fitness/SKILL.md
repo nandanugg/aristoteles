@@ -19,10 +19,13 @@ record. A program role (`kind: program`) has no tier and needs no fit record.
 3. Write the answers in a file inside the dir (for example `.work/fit/<role>.yaml`), one line
    for each question:
    `- { id: 1, yes: true, why: "<one real example of the role's work>" }`.
-   A no means the role does not fit: split it, move it to another tier, or make its words
-   exact. Then start again at step 1.
-4. Run `work role fit <role> --answers=<file>`. A high agent adds `--as=<its token>`; a model
-   run outside any task adds `--by=<its name>` (for example `--by=assess`).
+   A no means the role does not fit. While the roles are a draft, split the role, move it to
+   another tier, or make its words exact. After the accept, only its words can change
+   (`description`, `intro`, `responsibilities`, `output`, then `work config apply` by the
+   person). Then start again at step 1.
+4. Run `work role fit <role> --answers=<file>`, with the flag of who you are: the person at a
+   terminal adds none; an agent with a token adds `--as=<its token>`; the host with no token
+   adds `--by=<its name>` (for example `--by=assess`).
 
 How to answer well:
 

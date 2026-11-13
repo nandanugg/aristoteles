@@ -399,8 +399,8 @@ describe('a direction', () => {
   test('a model drafts a new direction; a person gives direction in words', () => {
     const w = new World()
     expect(() => w.act(kai, drafted(directionFile({})))).toThrow(
-      'the person gives direction in words, as a suggestion about Craft; a high role writes the ' +
-        'draft',
+      'the person gives direction in words, as a suggestion about Craft: work suggest <direction, ' +
+        'standard, or rule> --says="<the change>"; a high role writes the draft',
     )
     expect(() => w.act(assess, drafted(directionFile({})))).not.toThrow()
   })
@@ -959,7 +959,7 @@ describe('evaluations', () => {
       w.act(sol, reject(w.first(terra, report()), ['broken']))
       const checker = give('checker')
       expect(() => w.act(checker, evaluate({ _tag: 'Exhaustion', id: 'ex1' }))).toThrow(
-        `${checker} (checker) is low; a high role evaluates a mistake, or the person`,
+        `${checker} (checker) is low; only a high role evaluates a stop: escalate it to your parent`,
       )
       expect(() => w.act(kai, evaluate({ _tag: 'Exhaustion', id: 'ex1' }))).toThrow(
         'Kai is not the owner of t1; Nanda evaluates its mistakes',
@@ -1064,7 +1064,7 @@ describe('limits of the workflow (what one AI can hold)', () => {
     const { w, as: give } = world({ limits })
     const terra = give('maker')
     expect(() => w.act(terra, report(11))).toThrow(
-      'the result has size 11; the limit is 10: split the task',
+      'the result has size 11; the limit is 10: do not report it; escalate it',
     )
     expect(() => w.act(terra, report(10))).not.toThrow()
   })

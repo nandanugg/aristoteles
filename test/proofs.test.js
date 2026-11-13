@@ -155,7 +155,7 @@ describe('live code run: the findings of run 2 (proofs.md section 3)', () => {
     p.write('parts.yaml', '- { name: Key, text: Fix the key. }\n- { name: Name, text: Fix the name. }\n')
     ok(await p.nanda('task split t1 --file=parts.yaml'))
     const brief = ok(await p.agent(`assignment show ${impl.split('.')[0]}`)).out
-    expect(brief).toContain('Not all of them are accepted yet. Do not report until each one is; STOP and tell your parent.')
+    expect(brief).toContain('Not all of them are accepted yet. Do not report. Run work escalate')
     expect(brief).not.toContain('Their work is done')
   })
 

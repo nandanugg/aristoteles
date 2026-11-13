@@ -134,9 +134,10 @@ const nextFor = (argv: ReadonlyArray<string>) =>
       Effect.gen(function* () {
         const { work: now } = yield* readWork
         const a = yield* agentOf(now, token)
+        // A flag that the agent left out is its own fix, not a reason to escalate.
         return tierOf(now, a) === 'low'
-          ? `next: do not try other commands; run work escalate ${token} --reason="<the refusal, and what you tried>"`
-          : `next: work next ${token} lists the steps that are ready`
+          ? `next: when the refusal names a flag or a word that you left out, run the command again with it; else do not try other commands: run work escalate ${token} --reason="<the refusal, and what you tried>"`
+          : `next: when the refusal names a command, run that; else run work next ${token} and do its first step. Do not run the same command again unchanged`
       }),
     ).pipe(
       Effect.catch(() =>

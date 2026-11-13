@@ -139,7 +139,7 @@ const openDraft = (call: Call, draftId: string) =>
         if (work.fits.get(role.role)?.hash !== roleHash(roleFileOf(work, role.role))) {
           return yield* refuse(
             `${draft.role} has no fit record for its current words`,
-            `work role fit ${draft.role}, answer the questions, then work role fit ${draft.role} --answers=<file>; then open ${draftId}`,
+            `the host records it: work role fit ${draft.role} --by=assess, answer the questions, then work role fit ${draft.role} --answers=<file> --by=assess; then open ${draftId}`,
           )
         }
         // A creation of the task, from the draft (the fold makes its id).
@@ -443,7 +443,7 @@ const assignWith = (call: Call) =>
         if (work.fits.get(role.role)?.hash !== roleHash(c)) {
           return yield* refuse(
             `${roleName} has no fit record for its current words`,
-            `work role fit ${roleName}, answer the questions, then work role fit ${roleName} --answers=<file>`,
+            `the host records it: work role fit ${roleName} --by=assess, answer the questions, then work role fit ${roleName} --answers=<file> --by=assess (a person at a terminal leaves out --by)`,
           )
         }
         // A maker that writes a file or a commit writes it in its task's workspace; with none, it

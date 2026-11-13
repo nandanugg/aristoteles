@@ -22,8 +22,9 @@ The roles and the people must exist before any direction, so do this part first:
 1. Read the app (step 3 below) for its kinds of work: code, documents, or both. When the app
    has its own agent harness, map each piece of it as the next section says.
 2. Read `work guide roles`: the checks of work on the roles. Then write
-   `aristoteles.draft.yaml` beside where `aristoteles.yaml` goes: the `people` (the git
-   user of the dir is the person), the `limits`, the `roles`, and `decide` when a maker has
+   `aristoteles.draft.yaml` beside where `aristoteles.yaml` goes: the `people` (the exact name
+   that `git config user.name` gives in the dir is the person; when it gives none, ask the
+   person for the name to set there), the `limits`, the `roles`, and `decide` when a maker has
    more than one decider, in the form of `schema/aristoteles.schema.json`. Every dir has a
    role of each tier:
    - a high (Sol) role for each kind of top task (for example `architect`). The host drafts a
@@ -51,7 +52,10 @@ The roles and the people must exist before any direction, so do this part first:
        skills: .claude/skills
    ```
 3. Run `work config check`. It reads the draft as the accept on the page does, and runs the
-   static fit checks of each role. Fix the draft until it passes. Then start the page:
+   static fit checks of each role. Fix the draft until it passes. Then answer the seven
+   questions of `<the aristoteles folder>/guides/fitness.yaml` for each agent role, and fix a
+   role that does not fit now: after the accept, only the words of a role can change. Then
+   start the page:
    `work start --detach` (it keeps running when this AI CLI ends). Stop, and tell the person:
    - read the draft on the page, and accept the roles there. The page writes
      `aristoteles.yaml`, runs `work init`, and links the skills. A refusal says what to fix in
@@ -59,12 +63,17 @@ The roles and the people must exist before any direction, so do this part first:
    - commit what the agents need, also `aristoteles.yaml`. `work start` keeps `.work/` and the
      linked skills out of git.
 
-   Wait until the person tells you that the roles are accepted.
+   Wait until the person tells you that the roles are accepted; `aristoteles.yaml` then exists.
+   When the person asks for a change of the roles, change the draft, run `work config check`,
+   and ask the person to read the page again. When the person says that the accept was refused,
+   read the refusal that they give, and fix the draft.
 4. Record the fit of each agent role (the `role-fitness` skill): `work role fit <role>`, the
    answers in `.work/fit/<role>.yaml`, then
    `work role fit <role> --answers=.work/fit/<role>.yaml --by=assess`. A role with no fit
-   record gets no work. A role that does not fit needs new words in `aristoteles.yaml`; ask the
-   person to apply them with `work config apply`. Then go on with the steps below.
+   record gets no work. A role that does not fit needs new words in `aristoteles.yaml`
+   (`description`, `intro`, `responsibilities`, `output`); ask the person to apply them with
+   `work config apply`. A new role, a new act, or a new tier cannot go through apply. Then go
+   on with the steps below.
 
 ## An app with its own harness
 
@@ -95,8 +104,8 @@ directions into direction drafts, and the owner accepts or rejects each one.
   - an orchestrator that splits the work: the high role that splits the top task and decides
     the results of its parts (`approve: [<the writer>]`). Give it no `do` act on the file of the
     parts: a maker keeps its file until it finishes, so each maker of a part would wait for
-    it. It splits only with a Change act on the top task, which the person grants
-    (`work grant --act=change --on=<task> --to=<role> --until=<time>`).
+    it. It splits only with a Change act on the top task: the person's Open on the page gives
+    it for 30 days. Do not ask the person for a grant.
 - **The loop** → tasks, reviewers, and deciders:
   - a write and a check for each section: the high role splits the top task into one part for
     each section (`context: { section: <heading id> }`); a standard for one section only has
@@ -154,7 +163,7 @@ Each new version of a direction comes to its owner on the page, so give no direc
    - the recent history: `git log --oneline -50`, and the words "always", "never", "must" in
      the docs and the agent files.
 
-   Stop reading a topic when it has evidence in two places. Read about 40 files in all; name
+   Stop reading a topic when it has evidence in two places. Read at most 40 files in all; name
    what you did not read in the report.
 4. Group what you found into directions, one idea each. Draft a direction only when the app
    shows it in at least two places, or a document of the app states it. Leave out a topic with

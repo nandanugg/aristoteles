@@ -1,5 +1,9 @@
 # Reviewing a draft of a direction
 
+An agent that writes a draft asks these questions of its own draft, and fixes it, before it
+sends it. Only the owner (or a role that `work next` lists for the draft) accepts or rejects a
+draft; an agent never reviews its own.
+
 Read the draft (`work direction show <draft>`), its reason (the `why` at its end), and what it
 answers: the suggestion, or the Reject. Ask each question below of each entry. Accept with
 evidence only when each answer is good. Else reject with one reason in this form:

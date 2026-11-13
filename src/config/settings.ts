@@ -17,12 +17,16 @@ export const TIER_KEYS = [
   'retryInput',
 ] as const
 export const DEFAULT_START = 'Use the work skill. Your command: work brief {token}'
+// What the UI types into a terminal that ended, shows an error, or is silent: one command, and
+// the words that say it is the UI's, not the person's (Nanda, 2026-11-13).
+export const DEFAULT_RETRY =
+  'System message, not from the person. Run work next with your token, and do what it says.'
 const TIER_DEFAULTS = {
   start: DEFAULT_START,
   errors: [],
   prompts: [],
   silentMinutes: 10,
-  retryInput: 'continue',
+  retryInput: DEFAULT_RETRY,
 }
 
 const wholeNumber = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 1
