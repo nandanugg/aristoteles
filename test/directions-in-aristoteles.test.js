@@ -83,7 +83,11 @@ describe('a new direction', () => {
     expect(ok(await p.agent('guide writing')).out).toContain('## Write for contextual retrieval')
     expect(ok(await p.agent('guide direction-review')).out).toContain('6. **Negative parallelism.**')
     expect(ok(await p.agent('guide decision-words')).out).toContain('1. **No ids and no words of the tool.**')
-    expect((await p.agent('guide other')).err).toContain('work guide <name>: the guides are decision-words, direction-review, roles, writing')
+    // Each limit of a tier has its action, so that no agent asks the person about a limit.
+    const limits = ok(await p.agent('guide limits')).out
+    for (const limit of ['Assignment.attempts', 'Assignment.briefChars', 'Review.rules', 'Result.size', 'maxStandards']) expect(limits).toContain(`### \`${limit}\``)
+    expect(limits.replace(/\s+/g, ' ')).toContain('Do not ask the person about a limit')
+    expect((await p.agent('guide other')).err).toContain('work guide <name>: the guides are decision-words, direction-review, limits, roles, writing')
   })
 
   test('aristoteles.yaml names no directions', async () => {

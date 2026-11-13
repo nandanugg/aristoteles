@@ -341,7 +341,7 @@ const draftStandards = (
   if (d.maxStandards._tag === 'AtMost' && standards.length > d.maxStandards.max) {
     guard(
       `${d.name} would have ${standards.length} standards; the limit is ${d.maxStandards.max}: ` +
-        `remove or merge one`,
+        `remove or merge one, or move some to a new direction (work guide limits)`,
     )
   }
   // The new standards go in, with only the rules that they hold.

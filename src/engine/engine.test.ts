@@ -1053,7 +1053,7 @@ describe('limits of the workflow (what one AI can hold)', () => {
     const { w, as: give } = world({ limits })
     w.measure = 101
     expect(() => give('maker')).toThrow(
-      'the brief of Task has 101 characters; the limit is 100: split the task',
+      'the brief of Task has 101 characters; the limit is 100: shorten its directions, or split the task',
     )
     w.measure = 100
     expect(() => give('maker')).not.toThrow()

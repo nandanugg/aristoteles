@@ -255,7 +255,7 @@ describe('the guide decision-words', () => {
     )
     const old = await p.agent('guide item-words')
     expect(old.err).toContain(
-      'work guide <name>: the guides are decision-words, direction-review, roles, writing',
+      'work guide <name>: the guides are decision-words, direction-review, limits, roles, writing',
     )
     expect(old.code).toBe(1)
   })

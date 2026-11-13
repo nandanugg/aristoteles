@@ -167,7 +167,7 @@ const brief: Command = (call) =>
           refusedText = [
             `the brief of ${a.id} has ${text.length} characters; the ${tier} limit is ${limit}.`,
             `The largest part is ${largest[0]} (${largest[1]} characters).`,
-            `Run: work escalate ${caller.token} --reason="the brief is too big: ${largest[0]} has ${largest[1]} characters"`,
+            `Run: work escalate ${caller.token} --reason="the brief is too big: ${largest[0]} has ${largest[1]} characters; work guide limits says how to shorten it"`,
             'STOP after the escalation.',
           ]
           return null

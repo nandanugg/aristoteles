@@ -899,7 +899,8 @@ const checkGive = (w: Work, act: Act): void => {
     if (count > rulesLimit) {
       no(
         `${playedBy(role)} (${role.role}) would check ${count} rules; the limit is ` +
-          `${rulesLimit}: split the task, so that each part has fewer rules`,
+          `${rulesLimit}: split the task, so that each part has fewer rules, or shorten the ` +
+          `rules (work guide limits)`,
       )
     }
   }
@@ -1003,7 +1004,10 @@ const checkReport = (w: Work, act: Act): void => {
     no(`${task.id} needs ${need} (${taskAt(w, need).name}), which is not accepted`)
   const limit = maxOf(roleAt(w, a.role).limits.Result.size)
   if (limit !== undefined && d.work._tag === 'File' && d.work.size > limit) {
-    no(`the result has size ${d.work.size}; the limit is ${limit}: split the task`)
+    no(
+      `the result has size ${d.work.size}; the limit is ${limit}: split the task ` +
+        `(work guide limits)`,
+    )
   }
   const max = a._tag === 'Maker' ? maxOf(a.maxAttempts) : undefined
   if (max !== undefined && usedBy(w, id) >= max) no(`${name} has used its ${max} attempts`)
@@ -2107,7 +2111,7 @@ export const checkAct = (work: Work, act: Act, ctx: CheckContext): Effect.Effect
         return yield* Effect.fail(
           refuse(
             `the brief of ${taskAt(work, d.task).name} has ${size} characters; the limit is ` +
-              `${limit}: split the task`,
+              `${limit}: shorten its directions, or split the task (work guide limits)`,
           ),
         )
       }

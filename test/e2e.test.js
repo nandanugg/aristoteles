@@ -282,7 +282,7 @@ describe('limits and config', () => {
     const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
     ok(await p.agent(`brief ${lead}`))
     const r = await p.agent(`assign ${lead} t1 --role=writer`)
-    expect(r.err).toContain('the limit is 900: split the task')
+    expect(r.err).toContain('the limit is 900: shorten its directions, or split the task (work guide limits)')
   })
 
   test('a hand edit of aristoteles.yaml stops every write until the person applies it', async () => {

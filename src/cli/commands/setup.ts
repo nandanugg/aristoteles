@@ -200,7 +200,9 @@ const staticFit = (work: Work, roleName: string, role: RoleFile): ReadonlyArray<
     .filter((r) => r.checkedBy._tag === 'Role' && r.checkedBy.role === roleName)
   const limit = role.tier === undefined ? undefined : work.config.limits[role.tier].Review?.rules
   if (limit !== undefined && rules.length > limit) {
-    problems.push(`${rules.length} rules name this role; the ${role.tier} limit is ${limit}`)
+    problems.push(
+      `${rules.length} rules name this role; the ${role.tier} limit is ${limit} (work guide limits)`,
+    )
   }
   return problems
 }

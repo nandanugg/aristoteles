@@ -26,6 +26,9 @@ brief, not this file, for anything about your task.
   to other agents, and do not use another token.
 - A refusal ends with a `next:` line. Do what it says. A low-tier agent never tries other
   commands; it escalates.
+- When work passes a limit (the attempts of a maker, the size of a brief or of a result, the
+  rules of a review), do the action of that limit in `work guide limits`. Do not ask the person
+  about a limit.
 - The exit code says what failed: 1 a refusal (do the `next:` line); 2 a mistake in the
   command line (write the command again as the message says); 3 a failure outside the work (a
   file, git, or a damaged store: tell your parent, and the host records it with

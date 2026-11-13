@@ -103,6 +103,8 @@ aristoteles folder, and tmux for the terminals.
   decide.
 - `work guide roles`: the checks of work on the roles of a dir, and the files that work adds to
   it.
+- `work guide limits`: the action when work passes a limit, so that no agent asks the person
+  about a limit.
 - `skills/work`: the skill that a model reads to do work under review.
 - `skills/aristoteles`: the skill that the person triggers in their AI CLI; that session is the
   host.
