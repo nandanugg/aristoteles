@@ -571,8 +571,9 @@ const checkUi = (work: Work, draft: Draft): void => {
       if (run.end._tag === 'Closed') no(`${m.id} is closed`)
       if (!isNonBlank(m.move.words)) no('a continue keeps the words of the person: --quote="..."')
       if (sessionUsed(work, m.move.session)) no(`the session ${m.move.session} is in use`)
+      // The same pane may continue its own run: the person started the AI CLI again there.
       const other = paneHost(work, m.move.socket, m.move.pane)
-      if (other) no(`this pane is the host of ${other.id} already`)
+      if (other && other.id !== m.id) no(`this pane is the host of ${other.id} already`)
       return
     }
     case 'Run.Done': {

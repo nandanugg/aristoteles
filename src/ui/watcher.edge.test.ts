@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 import { Effect, Layer } from 'effect'
 import { main } from '../cli.ts'
+import { create } from '../domain/events.ts'
 import type { AssignmentId } from '../domain/ids.ts'
 import type { Send } from '../domain/ui-model.ts'
 import type { Work } from '../domain/work.ts'
@@ -211,7 +212,22 @@ const project = async () => {
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
     await nanda(`role fit ${role} --answers=fit.yaml`)
   }
-  return { dir, env, run, nanda, ui, agent, inSession, inPane, readState }
+  // A run of an older store: its host ran in a window that the UI made (Run.HostStarted).
+  const olderRun = (session: string) =>
+    Effect.runSync(
+      Effect.gen(function* () {
+        const store = yield* Store
+        const opened = yield* store.open(dir, { create: false })
+        const at = new Date(clock.now).toISOString() as never
+        const author = { _tag: 'Person' as const, name: 'Nanda', channel: 'ui' as const }
+        const event = create('Run', { _tag: 'HostStarted' as const, session: session as never })
+        yield* opened.write(() => Effect.succeed({ draft: { at, author, event }, rows: [] }))
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(StoreLive.pipe(Layer.provide(Layer.succeed(Env, { vars: env })))),
+      ),
+    )
+  return { dir, env, run, nanda, ui, agent, inSession, inPane, olderRun, readState }
 }
 
 const tokenIn = (text: string) => text.match(/work brief (a\d+\.[a-z0-9]+)/)?.[1] ?? ''
@@ -327,6 +343,38 @@ describe('the supervisor of the terminals', () => {
     later(6 * 60_000)
     await w.tick()
     expect(p.readState()?.problems.get('sp1' as never)?.fixed._tag).toBe('Fixed')
+  })
+
+  test('a continue of a run of an older store closes the window of its old host, once', async () => {
+    const p = await project()
+    later(60_000)
+    const fake = fakePump()
+    const w = createWatcher({
+      dir: p.dir,
+      env: p.env,
+      pump: fake.pump,
+      readState: p.readState,
+      clock: () => clock.now,
+      timing: { enterPause: 5, readyPause: 5 },
+      log: () => {},
+      doAct: (argv, o) => p.run(argv, { channel: 'ui', typed: o?.typed }),
+    })
+    w.stop()
+    p.olderRun('s-old')
+    fake.pump.start('s-old', 'the old host')
+    await w.tick()
+    expect(fake.calls).not.toContain('stop s-old')
+    await p.inPane('run continue h1 --quote="continue h1"', '%35')
+    await w.tick()
+    const moved = p.readState()?.runs.get('h1' as never)
+    expect(moved?.terminal).toEqual({ _tag: 'Pane', socket: '/tmp/ar-test-person.sock', pane: '%35' })
+    expect(moved?.formerSessions.map(String)).toEqual(['s-old'])
+    expect(fake.calls).toContain('stop s-old')
+    expect(fake.calls).toContain(`adopt ${moved?.session}`)
+    // The same pane continues its own run again: the person started the AI CLI again there.
+    await p.inPane('run continue h1 --quote="go on"', '%35')
+    await w.tick()
+    expect(fake.calls.filter((c) => c === 'stop s-old')).toHaveLength(1)
   })
 
   test('the page cannot stop or resume the host: it is the person\'s own terminal', async () => {

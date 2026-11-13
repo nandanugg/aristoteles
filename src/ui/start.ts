@@ -75,7 +75,9 @@ export const workStartDetached = async (
   const log = record.replace(/\.json$/, '.log')
   mkdirSync(dirname(record), { recursive: true })
   const words = openSync(log, 'a')
-  const child = spawn(process.execPath, [process.argv[1] ?? '', 'start'], {
+  // The CLI of this copy of aristoteles, whatever process calls this.
+  const cli = join(import.meta.dir, '..', '..', 'bin', 'work.js')
+  const child = spawn(process.execPath, [cli, 'start'], {
     cwd: dir,
     env: { ...env, WORK_DIR: dir },
     detached: true,
