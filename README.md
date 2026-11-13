@@ -86,9 +86,9 @@ aristoteles folder, and tmux for the terminals.
   terminal. Tell it what you want; it drafts the top task, and you open it with one click.
 - **Real agents and subagents.** A Sol or Terra role runs in a real terminal that you can open
   and type into; the UI starts it. A Luna role runs as a subagent inside its parent's terminal.
-- **Only three kinds of decision need you**, each with a badge: a system problem, a direction
-  problem, and the end of a project. The host handles the rest, and writes its words on each
-  decision first.
+- **Only four kinds of decision need you**, each with a badge: a system problem, a direction
+  problem, the end of a project, and your words that an agent relayed as an act (you confirm
+  it). The host handles the rest, and writes its words on each decision first.
 - **The settings** (the gear) are in `aristoteles.yaml`: the command of each tier, for example
   `claude --model opus --session-id {session} {prompt}`, its resume command, the words of an
   error and of a prompt, and the theme.

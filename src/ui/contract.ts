@@ -8,6 +8,7 @@ import { Why } from '../domain/events.ts'
 import { Settings } from '../domain/files.ts'
 import {
   AssignmentId,
+  EventRef,
   ProblemId,
   RevisionId,
   RunId,
@@ -53,6 +54,7 @@ const DecisionDomain = Schema.Union([
     why: Why,
   }),
   Schema.TaggedStruct('End', DecisionBase),
+  Schema.TaggedStruct('Confirm', { ...DecisionBase, quote: Text }),
 ])
 type DecisionEncoded = typeof DecisionDomain.Encoded
 
@@ -75,6 +77,7 @@ const DecisionWire = Schema.Union([
     why: Schema.toEncoded(Why),
   }),
   Schema.Struct({ kind: Schema.Literal('end'), ...WireBase }),
+  Schema.Struct({ kind: Schema.Literal('confirm'), ...WireBase, quote: Text }),
 ])
 type DecisionWireType = typeof DecisionWire.Type
 
@@ -101,6 +104,8 @@ const toWire = (d: DecisionEncoded): DecisionWireType => {
       }
     case 'End':
       return { kind: 'end', ...base, hope: null }
+    case 'Confirm':
+      return { kind: 'confirm', ...base, hope: null, quote: d.quote }
   }
 }
 
@@ -125,6 +130,8 @@ const fromWire = (w: DecisionWireType): DecisionEncoded => {
       }
     case 'end':
       return { _tag: 'End', ...base }
+    case 'confirm':
+      return { _tag: 'Confirm', ...base, quote: w.quote }
   }
 }
 
@@ -360,6 +367,7 @@ export const PageAct = Schema.Union([
     comment: Schema.optionalKey(Text),
   }),
   Schema.Struct({ act: Schema.Literal('reject-draft'), draft: RevisionId, reason: Text }),
+  Schema.Struct({ act: Schema.Literal('confirm'), forward: EventRef }),
   Schema.Struct({ act: Schema.Literal('end'), run: RunId }),
   Schema.Struct({ act: Schema.Literal('reject-task'), task: TaskId, reason: Text }),
   Schema.Struct({ act: Schema.Literal('settings'), settings: SettingsChange }),
@@ -374,6 +382,7 @@ export const ACTS = [
   'fixed',
   'accept-draft',
   'reject-draft',
+  'confirm',
   'end',
   'reject-task',
   'settings',

@@ -288,6 +288,7 @@ button { font: inherit; color: inherit; }
 .item.end { border-color: var(--accept); background: var(--accept-tint); }
 .item-head { display: flex; align-items: center; gap: 8px; }
 .item-raw { font-size: 12px; color: var(--faint); }
+.item blockquote { margin: 0; padding-left: 10px; border-left: 3px solid var(--line-strong); }
 .item-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .item textarea, .field textarea { font: 13px var(--sans); padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); resize: vertical; }
 .draft-text { white-space: pre-wrap; font: 12px/1.5 var(--mono); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-height: 320px; overflow: auto; margin: 0; }

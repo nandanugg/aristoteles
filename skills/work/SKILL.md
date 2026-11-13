@@ -54,8 +54,9 @@ talk with the person, then you run its top task.
    for example a whole TSD.
 3. **Wait for the person to open it** on the page. The UI then types `work brief <token>` here:
    from then on you are the Sol of the top task, and that brief tells you what to do.
-4. **Everything else is yours.** Only three kinds of decision reach the person: a system
-   problem, a direction problem, and the end of the project. You do everything else:
+4. **Everything else is yours.** Only four kinds of decision reach the person: a system
+   problem, a direction problem, the end of the project, and their words that you relayed as
+   an act. You do everything else:
    - a question of a model comes to you: answer it from the directions (`work answer <token>
      <q> --text=...`). When it shows that a direction can be read in two ways, draft the change
      of the direction (`work direction revise`). Polish it first with each question of
@@ -129,9 +130,9 @@ The person runs commands with no token, at a terminal. An agent never runs a per
   saw.
 - A forwarded reject, question, or comment counts at once, because it only stops work or
   informs. A forwarded answer, accept, or resolve moves work forward, so it waits until the
-  person runs `work confirm <event>` at a terminal; the prompt shows them the act. The person
-  accepts no result: a lead decides it, and the person rejects a result only after its
-  deciders accept it.
+  person confirms it: with the Confirm button on the page, or with `work confirm <event>` at a
+  terminal; both show them the act. The person accepts no result: a lead decides it, and the
+  person rejects a result only after its deciders accept it.
 - An escalation to the person waits for the person's resolve: `work resolve <escalation>
   --resolution="..."` at a terminal, or their words in the conversation, forwarded as
   `work forward <token> <person> resolve <escalation> --quote="<words>"` and confirmed.

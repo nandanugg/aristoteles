@@ -105,8 +105,8 @@ export const answersNamed = (
   w: Work,
   ids: ReadonlyArray<string>,
   guard: Guard,
-): ReadonlyArray<Answer> =>
-  ids.flatMap((id): ReadonlyArray<Answer> => {
+): ReadonlyArray<Answer> => {
+  const answers = ids.flatMap((id): ReadonlyArray<Answer> => {
     const points = reviewItems(w).filter((i) => i.group === id)
     if (points.length > 0) return points.map((item) => ({ _tag: 'Item', item }))
     const f = found(w, id, ['v', 's'], guard)
@@ -114,6 +114,19 @@ export const answersNamed = (
     const item = f === undefined ? undefined : itemAt(w, id)
     return item ? [{ _tag: 'Item', item }] : []
   })
+  // A point of a closed task blocks no work, so no draft answers it (Nanda, 2026-11-13).
+  for (const a of answers) {
+    const task = a._tag === 'Item' ? taskOfTarget(w, a.item.of) : undefined
+    const end = task === undefined ? undefined : taskAt(w, task).end
+    if (a._tag !== 'Item' || end === undefined || end._tag === 'NotEnded') continue
+    const by = end._tag === 'Replaced' ? ` (replaced by ${end.next})` : ''
+    guard(
+      `${a.item.id} is a point of ${task}, which is closed${by}; a point of a closed task ` +
+        `blocks no work. Leave it out of --answers, and give its fact in --why-words`,
+    )
+  }
+  return answers
+}
 // A Reject (one of its points, or a Reject of a draft) or a suggestion. A recheck or a resolve is
 // no Reject record, so a draft does not answer it (the replay names only Rejects).
 const isAnswer = (a: Answer): boolean =>

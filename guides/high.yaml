@@ -83,7 +83,7 @@ commands:
   forward:
     when: top
     run: work forward {you} <person> <reject|ask|comment|answer|accept|resolve> <id> --quote="<their exact words>" [--point="<one problem>" --breaks=<rule id>] --channel=chat
-    rule: "Only the person's own words. A reject, ask, or comment counts at once; an answer, accept, or resolve waits for their work confirm. A resolve names the escalation as <id>, and the person's words are its resolution. An accept or a resolve may also carry --evidence=\"<where they read> | <what they saw>\". The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it."
+    rule: "Only the person's own words. A reject, ask, or comment counts at once; an answer, accept, or resolve waits for their confirm (the page shows it, or work confirm at a terminal). A resolve names the escalation as <id>, and the person's words are its resolution. An accept or a resolve may also carry --evidence=\"<where they read> | <what they saw>\". The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it."
   source:
     when: any
     run: work source {you} <source>@<revision>

@@ -252,7 +252,7 @@ export interface Supervised {
 
 // --- 3. The decisions that reach the person ----------------------------------------------------
 
-// A decision: one of three that reach the person (README: "only three kinds of decision need
+// A decision: one of four that reach the person (README: "only four kinds of decision need
 // you"; the JSON names the kind in "kind"). Replaces view.js itemsOf's objects.
 export type Decision = DecisionBase &
   (
@@ -268,6 +268,9 @@ export type Decision = DecisionBase &
         readonly why: Why
       }
     | { readonly _tag: 'End' } // the end of a project: the Sol accepted its top task (id: h..)
+    // a relayed act: an agent relayed the person's words as an act that counts only when the
+    // person confirms it (id: e..; Nanda, 2026-11-13). quote: the person's words.
+    | { readonly _tag: 'Confirm'; readonly quote: Text }
   )
 interface DecisionBase {
   readonly id: Text
@@ -483,6 +486,7 @@ export type PageAct =
   | { readonly act: 'fixed'; readonly problem: ProblemId }
   | { readonly act: 'accept-draft'; readonly draft: RevisionId; readonly comment?: Text }
   | { readonly act: 'reject-draft'; readonly draft: RevisionId; readonly reason: Text }
+  | { readonly act: 'confirm'; readonly forward: EventRef }
   | { readonly act: 'end'; readonly run: RunId }
   | { readonly act: 'reject-task'; readonly task: TaskId; readonly reason: Text }
   | { readonly act: 'settings'; readonly settings: Settings }

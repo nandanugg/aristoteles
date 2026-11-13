@@ -313,6 +313,8 @@ export function startServer(options: ServerOptions): ServerHandle {
         )
       case 'reject-draft':
         return done(await run(['review', b.draft, 'reject', `--reason=${b.reason}`]))
+      case 'confirm':
+        return done(await run(['confirm', b.forward], { typed: 'confirm' }))
       case 'end':
         return done(await run(['run', 'done', b.run]))
       case 'reject-task':

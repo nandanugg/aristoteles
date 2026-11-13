@@ -1,10 +1,11 @@
 // What waits, for a person or an assignment, with the command that ends the wait.
 // Golden text.
-import { whoOf } from '../domain/actor.ts'
+import { type Author, whoOf } from '../domain/actor.ts'
 import { sectionOf } from '../domain/context.ts'
 import { answererOf } from '../domain/derived.ts'
-import type { Time } from '../domain/ids.ts'
-import type { Direction, Revision, Task } from '../domain/model.ts'
+import type { ConfirmableAct } from '../domain/events.ts'
+import type { EventRef, Time } from '../domain/ids.ts'
+import type { Direction, Result, Revision, Task } from '../domain/model.ts'
 import type { Work } from '../domain/work.ts'
 import { leafName } from '../engine/deciders.ts'
 import {
@@ -76,6 +77,54 @@ const builtOnCurrent = (work: Work, x: Revision<Direction>): boolean => {
   return Number(x.base.slice(x.base.lastIndexOf('@') + 1)) === now
 }
 
+// A result that still counts: the latest of its open task, which is not accepted.
+const isCurrent = (work: Work, result: Result | undefined, at: Time): boolean =>
+  result !== undefined &&
+  latestResult(work, result.task)?.id === result.id &&
+  work.tasks.get(result.task)?.end._tag === 'NotEnded' &&
+  !taskAccepted(work, result.task, at)
+
+// A forwarded act that waits for the confirm of its person. work waiting and the page show the
+// same ones. A moot act waits no more: its question is answered, its draft decided, its result old.
+export interface WaitingForward {
+  readonly ref: EventRef
+  readonly person: string
+  readonly quote: string
+  readonly author: Author
+  readonly inner: ConfirmableAct
+  readonly at: Time
+}
+export const waitingForwards = (work: Work, at: Time): ReadonlyArray<WaitingForward> =>
+  [...work.forwards.values()].flatMap((forward): ReadonlyArray<WaitingForward> => {
+    if (forward._tag !== 'Confirmable' || forward.state._tag !== 'Waiting') return []
+    const logged = work.events.find((l) => `e${l.recorded.seq}` === forward.event)
+    const e = logged?.recorded.event
+    if (logged === undefined || e === undefined || e._tag !== 'Forward' || !('create' in e))
+      return []
+    const inner = forward.inner
+    let moot = false
+    if (inner._tag === 'Question') {
+      moot = 'move' in inner && work.questions.get(inner.id)?.status._tag === 'Answered'
+    } else {
+      const d = inner.create
+      if (d._tag === 'Accept' && d.of._tag === 'Revision') {
+        moot = madeBy(work, d.of.id) !== undefined || vetoOf(work, d.of.id) !== undefined
+      } else if (d._tag === 'Accept' && d.of._tag === 'Result') {
+        moot = !isCurrent(work, work.results.get(d.of.id), at)
+      } else if (d._tag === 'Resolve') {
+        const escalated = work.reviews.get(d.escalation)
+        moot = !(
+          escalated?._tag === 'Escalate' && isCurrent(work, work.results.get(escalated.of), at)
+        )
+      }
+    }
+    if (moot) return []
+    const { author, at: when } = logged.recorded
+    return [
+      { ref: forward.event, person: e.create.person, quote: e.create.quote, author, inner, at: when },
+    ]
+  })
+
 export const renderWaiting = (
   work: Work,
   forWho: string | null,
@@ -87,11 +136,7 @@ export const renderWaiting = (
   const assignments = [...work.assignments.values()]
   const isOpen = (x: { readonly end: { readonly _tag: string } }) => x.end._tag === 'NotEnded'
   const serves = (p: Task, t: Task) => p.serves._tag === 'Serves' && p.serves.task === t.id
-  const current = (result: ReturnType<typeof resultAt> | undefined) =>
-    result !== undefined &&
-    latestResult(work, result.task)?.id === result.id &&
-    work.tasks.get(result.task)?.end._tag === 'NotEnded' &&
-    !taskAccepted(work, result.task, at)
+  const current = (result: Result | undefined) => isCurrent(work, result, at)
 
   for (const q of work.questions.values()) {
     if (q.status._tag !== 'Open') continue
@@ -116,36 +161,13 @@ export const renderWaiting = (
         `${r.id} --resolution="..."`,
     )
   }
-  for (const forward of work.forwards.values()) {
-    if (forward._tag !== 'Confirmable' || forward.state._tag !== 'Waiting') continue
-    const logged = work.events.find((l) => `e${l.recorded.seq}` === forward.event)
-    const e = logged?.recorded.event
-    if (logged === undefined || e === undefined || e._tag !== 'Forward' || !('create' in e))
-      continue
-    const person = e.create.person
-    const inner = forward.inner
-    // The act is moot: its question is answered, its draft decided, its result old.
-    let moot = false
-    if (inner._tag === 'Question') {
-      moot = 'move' in inner && work.questions.get(inner.id)?.status._tag === 'Answered'
-    } else {
-      const d = inner.create
-      if (d._tag === 'Accept' && d.of._tag === 'Revision') {
-        moot = madeBy(work, d.of.id) !== undefined || vetoOf(work, d.of.id) !== undefined
-      } else if (d._tag === 'Accept' && d.of._tag === 'Result') {
-        moot = !current(work.results.get(d.of.id))
-      } else if (d._tag === 'Resolve') {
-        const escalated = work.reviews.get(d.escalation)
-        moot = !(escalated?._tag === 'Escalate' && current(work.results.get(escalated.of)))
-      }
-    }
-    if (matches(person) && !moot) {
-      rows.push(
-        `${forward.event} forwarded by ${whoOf(logged.recorded.author).who} for ${person}: ` +
-          `${describeInner(inner, work)}\n` +
-          `    their words: "${e.create.quote}"\n    work confirm ${forward.event}`,
-      )
-    }
+  for (const f of waitingForwards(work, at)) {
+    if (!matches(f.person)) continue
+    rows.push(
+      `${f.ref} forwarded by ${whoOf(f.author).who} for ${f.person}: ` +
+        `${describeInner(f.inner, work)}\n` +
+        `    their words: "${f.quote}"\n    work confirm ${f.ref}`,
+    )
   }
 
   const openTasks = tasks.filter((t) => isOpen(t) && !taskAccepted(work, t.id, at))

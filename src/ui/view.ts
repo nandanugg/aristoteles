@@ -73,6 +73,8 @@ import {
 } from '../engine/view.ts'
 import { runState } from '../replay/runs.ts'
 import { taskWords, who } from '../words/common.ts'
+import { describeInner } from '../words/show.ts'
+import { waitingForwards } from '../words/waiting.ts'
 import { logLine, touchedIds } from '../words/log.ts'
 import type { TerminalStatus } from './pump.ts'
 
@@ -221,6 +223,19 @@ const taskOfAnswer = (work: Work, answer: string): TaskId | undefined => {
   return reject.of._tag === 'Task' ? reject.of.id : undefined
 }
 
+// The open task where an item of a task shows, when that task closed while the item waits
+// (Nanda, 2026-11-13: the item follows): the task that replaced it, else its nearest open parent.
+// null: no task of its tree is open, so it shows on every top task.
+const openTaskFor = (work: Work, task: TaskId): TaskId | null => {
+  for (let t: TaskId | undefined = task; t !== undefined; ) {
+    const now = work.tasks.get(currentTask(work, t))
+    if (now === undefined) return null
+    if (now.end._tag === 'NotEnded') return now.id
+    t = now.serves._tag === 'Serves' ? now.serves.task : undefined
+  }
+  return null
+}
+
 // A decision before the host's words and its time are known.
 type Bare = Decision extends infer D
   ? D extends Decision
@@ -229,10 +244,11 @@ type Bare = Decision extends infer D
   : never
 
 // The items that reach the person (Nanda, 2026-11-11): a system problem, a direction problem (a
-// draft of a direction whose next decider is the person), and the end of a project (the Sol
-// reviewer accepted its top task). The host reviews each one first: an item shows when the host
-// wrote its words, when no host holds its tree, or when the host wrote nothing for
-// hostWaitMinutes. An item with no task belongs to the dir: it shows on every top task.
+// draft of a direction whose next decider is the person), the end of a project (the Sol
+// reviewer accepted its top task), and a relayed act that waits for the person's confirm
+// (2026-11-13). The host reviews each one first: an item shows when the host wrote its words,
+// when no host holds its tree, or when the host wrote nothing for hostWaitMinutes. An item with
+// no task belongs to the dir: it shows on every top task.
 export const decisionsOf = (work: Work, ctx: ViewContext): ReadonlyArray<Decision> => {
   const waitMs = ctx.settings.hostWaitMinutes * 60000
   const items: Decision[] = []
@@ -273,7 +289,8 @@ export const decisionsOf = (work: Work, ctx: ViewContext): ReadonlyArray<Decisio
   for (const x of work.drafts.values()) {
     if (madeBy(work, x.id) || vetoOf(work, x.id)) continue
     if (!draftWaitsFor(work, x.id).some((leaf) => leaf._tag !== 'Role')) continue
-    const task = x.answers.map((a) => taskOfAnswer(work, a)).find((t) => t !== undefined) ?? null
+    const answered = x.answers.map((a) => taskOfAnswer(work, a)).find((t) => t !== undefined)
+    const task = answered === undefined ? null : openTaskFor(work, answered)
     add(
       {
         _tag: 'Direction',
@@ -287,6 +304,26 @@ export const decisionsOf = (work: Work, ctx: ViewContext): ReadonlyArray<Decisio
       },
       x.when,
       task,
+    )
+  }
+  // A relayed act shows at once, because its words are the person's own: on the task of the
+  // agent that relayed it.
+  for (const f of waitingForwards(work, ctx.at)) {
+    const of = f.author._tag === 'Agent' ? assignmentAt(work, f.author.assignment).task : undefined
+    const task = of === undefined ? null : openTaskFor(work, of)
+    add(
+      {
+        _tag: 'Confirm',
+        id: f.ref,
+        task,
+        text:
+          `${whoOf(f.author).who} relayed your words as this act: ` +
+          `${describeInner(f.inner, work)}. It counts when you confirm it.`,
+        quote: f.quote,
+      },
+      f.at,
+      task,
+      true,
     )
   }
   for (const run of work.runs.values()) {

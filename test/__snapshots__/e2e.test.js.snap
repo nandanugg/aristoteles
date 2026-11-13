@@ -133,7 +133,7 @@ YOUR TURN
   finish      work finish a1.<token> [<child assignment>]
               Finish each child when the task is accepted, then yourself. Finish a maker when its part is accepted, or when it has no attempts left, and another maker waits for its file. work next prints these steps.
   forward     work forward a1.<token> <person> <reject|ask|comment|answer|resolve> <id> --quote="<their exact words>" [--point="<one problem>" --breaks=<rule id>] --channel=chat
-              Only the person's own words; split a reject into points with the rule each breaks. A reject, ask, or comment counts at once; an answer or resolve waits for their work confirm. A resolve names the escalation as <id>, and the person's words are its resolution. The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it.
+              Only the person's own words; split a reject into points with the rule each breaks. A reject, ask, or comment counts at once; an answer or resolve waits for their confirm (the page shows it, or work confirm at a terminal). A resolve names the escalation as <id>, and the person's words are its resolution. The person does not accept results: a lead decides them, and the person rejects a result only after its deciders accept it.
   source      work source a1.<token> <source>@<revision>
               Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.
   checkpoint  work checkpoint a1.<token> t1 --next="<the first thing to do>"

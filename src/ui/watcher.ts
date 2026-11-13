@@ -908,10 +908,12 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     }
   }
 
-  // A new decision for the person: the host writes its words first (told once: its send).
+  // A new decision for the person: the host writes its words first (told once: its send). A
+  // relayed act needs none: its words are the person's own.
   const askForWords = async (work: Work) => {
     const ctx = { at: timeAt(clock()), dir, settings: settings(), terminals: pump.status() }
     for (const item of decisionsOf(work, ctx)) {
+      if (item._tag === 'Confirm') continue
       const told = work.sends.some(
         (x) =>
           x.from._tag === 'Supervisor' &&

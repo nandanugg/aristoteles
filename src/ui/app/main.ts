@@ -19,7 +19,14 @@ import {
   TaskPanel,
   WorkCard as WorkCardSchema,
 } from '../contract.ts'
-import { ProblemId, RevisionId, RunId, type TaskDraftId, TaskId } from '../../domain/ids.ts'
+import {
+  EventRef,
+  ProblemId,
+  RevisionId,
+  RunId,
+  type TaskDraftId,
+  TaskId,
+} from '../../domain/ids.ts'
 import type { ActOut } from './api.ts'
 import { api, attempt, chime, post, socket, toast } from './api.ts'
 import { Change } from './change.ts'
@@ -368,11 +375,13 @@ function Diff({ panel, version }: { panel: PanelData; version: number }) {
 }
 
 // A decision that needs the person: the host's words (or the raw text), and its buttons. A
-// direction problem reads in three parts: the problem, the change, the hope.
+// direction problem reads in three parts: the problem, the change, the hope. A relayed act shows
+// the person's own words under it.
 const KIND = {
   system: 'A system problem',
   direction: 'A direction problem',
   end: 'The end of the project',
+  confirm: 'Your words, relayed',
 }
 const kindOf = (item: Decision): keyof typeof KIND => {
   switch (item._tag) {
@@ -382,6 +391,8 @@ const kindOf = (item: Decision): keyof typeof KIND => {
       return 'direction'
     case 'End':
       return 'end'
+    case 'Confirm':
+      return 'confirm'
   }
 }
 function Item({ item }: { item: Decision }) {
@@ -415,6 +426,8 @@ function Item({ item }: { item: Decision }) {
       draft: Schema.decodeUnknownSync(RevisionId)(item.id),
       reason: comment,
     })
+  const confirm = () =>
+    post({ act: 'confirm', forward: Schema.decodeUnknownSync(EventRef)(item.id) })
   const acceptEnd = () => post({ act: 'end', run: Schema.decodeUnknownSync(RunId)(item.id) })
   const rejectTask = () =>
     post({ act: 'reject-task', task: Schema.decodeUnknownSync(TaskId)(item.task), reason: comment })
@@ -423,12 +436,14 @@ function Item({ item }: { item: Decision }) {
   const noComment = !comment.trim()
   const change = item._tag === 'Direction' ? item.change : null
   const hope = item._tag === 'Direction' ? item.hope : null
+  const quote = item._tag === 'Confirm' ? item.quote : null
   return html`<div class=${`item ${kind}`} role="region" aria-label=${KIND[kind]}>
     <div class="item-head"><span class="badge" aria-hidden="true">!</span>
       <strong>${KIND[kind]}</strong></div>
     <div class="prose">${item.words ?? item.text}</div>
     ${change ? html`<${Change} change=${change} />` : ''}
     ${hope ? html`<div class="prose">${hope}</div>` : ''}
+    ${quote ? html`<blockquote class="prose">${quote}</blockquote>` : ''}
     ${item.words ? html`<div class="item-raw">${item.text}</div>` : ''}
     ${decides ? html`<label class="field"><span>Your comment (a reject needs one)</span>
       <textarea rows="2" value=${comment}
@@ -442,6 +457,8 @@ function Item({ item }: { item: Decision }) {
         <button class="btn primary" onClick=${run(acceptDraft)}>Accept the change</button>
         <button class="btn" disabled=${noComment}
           onClick=${run(rejectDraft)}>Reject the change</button>` : ''}
+      ${kind === 'confirm' ? html`<button class="btn primary"
+        onClick=${run(confirm)}>Confirm</button>` : ''}
       ${kind === 'end' ? html`
         <button class="btn primary" onClick=${run(acceptEnd)}>Accept the end</button>
         <button class="btn" disabled=${noComment}

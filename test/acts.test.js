@@ -1,7 +1,8 @@
 // The CLI acts of the UI (plan/ui/BUILD.md part 4, Nanda 2026-11-11). A project starts with a talk:
-// the host (a Sol in a run) drafts the top task, and the person opens it. Only three kinds of
-// decision reach the person: a system problem, a direction problem, and the end of a project; the
-// host handles the rest, and writes its words about each decision before the person sees it.
+// the host (a Sol in a run) drafts the top task, and the person opens it. Only four kinds of
+// decision reach the person: a system problem, a direction problem, the end of a project, and a
+// relayed act that waits for a confirm; the host handles the rest, and writes its words about
+// each decision before the person sees it.
 import { describe, expect, test } from 'bun:test'
 import { HOST, INTRO_V2, TASK_WHOLE, init, ok, project, tokenIn } from './harness.js'
 import { canvas, panel, tables } from './outside.js'
