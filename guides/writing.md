@@ -15,8 +15,19 @@ is enough for the model that reads only that piece.
 - **Rule**: one check that a reviewer can do on one result of a maker (its output form in
   `aristoteles.yaml`), and give evidence for. One rule is one check. The role that checks it is
   in the draft (`checkedBy`), or, for a company direction, in `aristoteles.lock`.
-- `from` names the principles that ground the direction, of the eleven: Logos, Pathos, Ethos,
-  Mythos, Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia.
+- `from` names the one or two principles that ground the direction: the ones whose question it
+  answers.
+  - Logos: can we explain the requirement and its reasoning?
+  - Pathos: can the human understand the work, the result, and the trade-offs?
+  - Ethos: which tests and checks support this result?
+  - Mythos: do our code patterns still fit the company direction?
+  - Oikos: how does the team work, review, and argue together?
+  - Nomos: which policies and ways of working control the action?
+  - Telos: which purpose has the human accepted, and should it change?
+  - Kairos: can the work pause and continue in another session or model?
+  - Mnēmē: which past attempts and lessons must we keep, with their evidence?
+  - Topoi: how can a later task find past lessons, and see if they changed?
+  - Aporia: which questions are not answered, and which decisions need the answers?
 
 ## Write for contextual retrieval
 

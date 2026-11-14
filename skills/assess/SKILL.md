@@ -310,10 +310,9 @@ model and no AI vendor; the names of the project's own tools (for example Consul
 Kafka) are the words of the work. Do not copy a company direction into a direction of the
 project.
 
-**The principles** (`from`). `work guide writing` only lists the eleven names. Pick by the
-ordinary meaning of each Greek word: Logos reason, Pathos feeling, Ethos character, Mythos story,
-Oikos home, Nomos rule, Telos aim, Kairos right time, Mnēmē memory, Topoi place, Aporia doubt.
-Give one or two, and name a doubt in your report.
+**The principles** (`from`). Each principle asks one question, and `work guide writing` gives
+the question of each. A direction grounds in the one or two whose question it answers. Name a
+doubt in your report.
 
 **Cases.** Give at least 3 real cases for each direction. A case is a file, a line, a short
 excerpt, and a fit: `Follows` for code that follows the direction, `Breaks` for code that breaks
