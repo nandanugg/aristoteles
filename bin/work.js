@@ -65,6 +65,18 @@ const ownFolders = {
   },
 }
 
+// A CJS bundle has no import.meta, and Bun 1.4 no longer rewrites one that a package reads
+// (effect's ConfigProvider reads import.meta?.env): there it is undefined.
+const noImportMeta = {
+  name: 'no import.meta in packages',
+  setup(build) {
+    build.onLoad({ filter: /\/node_modules\/.*\.m?js$/ }, async ({ path }) => {
+      const text = await Bun.file(path).text()
+      return { contents: text.replaceAll('import.meta?.env', 'undefined'), loader: 'js' }
+    })
+  },
+}
+
 const build = async (bundle) => {
   const tmp = `${bundle}.${process.pid}.tmp`
   try {
@@ -75,9 +87,12 @@ const build = async (bundle) => {
       target: 'bun',
       format: 'cjs',
       bytecode: true,
-      plugins: [ownFolders],
+      plugins: [ownFolders, noImportMeta],
     })
     if (!built.success) throw new Error('the bundle did not build')
+    // A CJS bundle that still names import.meta does not load; the call runs the sources then.
+    const text = await Bun.file(join(tmp, 'main.js')).text()
+    if (text.includes('import.meta')) throw new Error('the bundle names import.meta')
     renameSync(tmp, bundle)
   } catch {
     // The build failed, or another call renamed its build into place first: no trace is left.
