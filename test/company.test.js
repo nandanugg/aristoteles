@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { appendIn } from '../core/actions/fixture.test.ts'
 import { git, ok, started, tokenIn } from './harness.js'
 
 // A company repo with the direction feature-flags in directions/feature-flags.
@@ -34,6 +35,12 @@ const FLAGS = {
 const lockOf = (repo) => `feature-flags:\n  repo: ${repo}\n  path: directions/feature-flags\n  owner: Nanda\n  checkedBy: linter\n`
 const readLock = (p) => Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.lock'), 'utf8'))
 const SEEN = '--evidence="the folder | each standard and rule reads as the company says"'
+// P10 rejected, onboarding 2026-11-14: a model gives the company draft of a new direction its cases
+// before the owner accepts it. The command comes in a later wave, so the test stores the event.
+const CASE = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', fit: 'Follows' }
+const HOST_RUN = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' }
+const addCases = (p, draft) =>
+  appendIn(p, HOST_RUN, { _tag: 'Revision', id: draft, move: { _tag: 'CasesAdded', cases: [CASE, CASE, CASE] } })
 
 async function following() {
   const company = companyRepo()
@@ -56,6 +63,7 @@ describe('a company direction', () => {
     expect(show).toContain('upper-snake: The flag is FF_<PROJECT>_<FEATURE>. (linter)')
     expect(show).toContain('\n    one-read (linter):\n        Each flag is read in one if.\n\n        ## Example')
     expect(ok(await p.nanda('direction show d2#one-read#example')).out).toContain('d2 · rule one-read · Example\n## Example')
+    addCases(p, 'd2')
     const accept = ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept')).out
     expect(accept).toContain('d2 is official: feature-flags@1.')
     expect(accept).toContain(`feature-flags follows ${first.slice(0, 7)} of ${company.dir} now (aristoteles.lock).`)
@@ -69,6 +77,7 @@ describe('a company direction', () => {
   test('the next day a new commit comes in; the same day nothing is fetched; other files make no draft', async () => {
     const { p, company, first } = await following()
     ok(await p.nanda('waiting'))
+    addCases(p, 'd2')
     ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept'))
     const second = await company.commit({ 'directions/feature-flags/naming/upper-snake.md': 'The flag is FF_<PROJECT>_<FEATURE>, in capitals.\n' })
     expect(ok(await p.nanda('waiting')).err).not.toContain('refresh:')
@@ -99,6 +108,7 @@ describe('a company direction', () => {
   test('a company direction changes in its repo: a revise is refused, and a suggestion names the repo', async () => {
     const { p, company } = await following()
     ok(await p.nanda('waiting'))
+    addCases(p, 'd2')
     ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept'))
     const sol = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${sol}`))

@@ -337,6 +337,13 @@ describe('exit codes (card 8)', () => {
   })
 })
 
+// P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
+const HLD_CASES =
+  'cases:\n' +
+  '  - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }\n' +
+  '  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }\n' +
+  '  - { file: docs/tsd.md, line: 7, excerpt: "## Design", fit: Follows }\n'
+
 describe('the fixes of the skills round', () => {
   test('role fit reads only official directions: a draft-only one has no rules yet', async () => {
     const { p } = await started()
@@ -345,7 +352,8 @@ describe('the fixes of the skills round', () => {
       'id: hld-writing\nname: HLD writing\nowner: Nanda\nfrom: [Logos]\n' +
         'says: The reader sees the whole system on one page.\nstandards:\n  - id: one-page\n' +
         '    says: Keep it to one page.\n    rules:\n' +
-        '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n',
+        '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n' +
+        HLD_CASES,
     )
     ok(await p.agent('direction new --file=hld.yaml --by=assess'))
     // Before the fix, role fit exited 70: "the work has no official direction hld-writing".
@@ -363,7 +371,8 @@ describe('the fixes of the skills round', () => {
       'id: hld-writing\nname: HLD writing\nowner: Nanda\nfrom: [Logos]\n' +
         'says: The reader sees the whole system on one page.\nstandards:\n  - id: one-page\n' +
         '    says: Keep it to one page.\n    rules:\n' +
-        '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n',
+        '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n' +
+        HLD_CASES,
     )
     ok(await p.agent('direction new --file=hld.yaml --by=assess'))
     // Before the fix, task open and task draft exited 70: "the work has no official direction

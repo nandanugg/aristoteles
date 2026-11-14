@@ -119,9 +119,16 @@ describe('points close only the right way', () => {
   })
 })
 
+// P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
+const CASES = 'cases:\n' +
+  '  - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }\n' +
+  '  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }\n' +
+  '  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }\n'
+
 describe('directions', () => {
   test('R4-6: two directions cannot gain the same rule id through two accepts', async () => {
-    const style = 'id: style\nname: Style\nowner: Nanda\nsays: Plain words.\nstandards:\n  - id: plain\n    says: Use plain words.\n    rules: []\n'
+    const style = 'id: style\nname: Style\nowner: Nanda\nsays: Plain words.\nstandards:\n  - id: plain\n    says: Use plain words.\n    rules: []\n' +
+      CASES
     const p = await fresh({ 'directions/style.yaml': style })
     p.write('a.yaml', 'add:\n  - { id: units-a, says: Units., rules: [ { id: units, says: "Units are named", checkedBy: linter } ] }\n')
     p.write('b.yaml', 'add:\n  - { id: units-b, says: Units., rules: [ { id: units, says: "Units are named", checkedBy: linter } ] }\n')

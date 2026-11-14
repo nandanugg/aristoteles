@@ -8,10 +8,15 @@ import { describe, expect, test } from 'bun:test'
 import { DIRECTION, init, ok, project, tokenIn } from
   './harness.js'
 
+// P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
 const STYLE = `id: page-style
 name: Page style
 owner: Nanda
 says: Pages read the same way.
+cases:
+  - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }
+  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
+  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
 standards:
   - id: short-lines
     says: Lines stay short.
