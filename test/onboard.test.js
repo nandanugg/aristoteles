@@ -222,6 +222,16 @@ describe('what onboarding refuses', () => {
     expect(exists(p, '.work/aristoteles.db')).toBe(false)
   })
 
+  // Ruling 1, onboarding 2026-11-14: the config draft reads as the store start would read it, so a
+  // draft whose tiers do not read is refused when the host sends it (was: at accept-roles).
+  test('a config draft whose tiers do not read is refused, and no file is written', async () => {
+    const p = onboardingProject()
+    p.write('draft.yaml', `tiers:\n  sol: { launch: host-cli }\n${ONBOARD_CONFIG}`)
+    const r = await p.agent('onboard config --file=draft.yaml')
+    expect(r.err).toContain('tiers.sol.launch has no {session}')
+    expect(exists(p, 'aristoteles.draft.yaml')).toBe(false)
+  })
+
   test('the role of the top task has no toggle (ruling 15)', async () => {
     const p = await drafted()
     for (const persistent of ['false', 'true']) {
