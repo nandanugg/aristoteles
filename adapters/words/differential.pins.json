@@ -1,5 +1,5 @@
 {
- "$comment": "Ruling 9, onboarding 2026-11-14: logLine e15 of uiRun and uiRunRemade names the agent p1 that the give of section-lead in h1 makes.",
+ "$comment": "Ruling 9, onboarding 2026-11-14: logLine e15 of uiRun and uiRunRemade names the agent p1 that the give of section-lead in h1 makes. Rulings 7 and 9, onboarding 2026-11-14: the brief lines that copy the tier guides follow the new guide text (a persistent agent runs work wait --by=<agent>; only a terminal starts subagents).",
  "started": {
   "logLine": [
    "e1 09:00 Nanda (terminal) config",
@@ -54,7 +54,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -85,7 +85,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderTaskTree t1": [
    "t1 The Introduction · Open"
@@ -193,7 +193,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -224,7 +224,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · writer (low) · t1 The Introduction · attempt 2 of 3",
@@ -249,7 +249,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderBrief a3": [
    "work brief a3 · linter (low) · t1 The Introduction",
@@ -278,7 +278,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a2 (writer): docs/tsd.md#introduction",
@@ -407,7 +407,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -438,7 +438,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · writer (low) · t1 The Introduction · attempt 3 of 3",
@@ -464,7 +464,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderBrief a3": [
    "work brief a3 · linter (low) · t1 The Introduction",
@@ -493,7 +493,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a2 (writer): docs/tsd.md#introduction",
@@ -633,7 +633,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -664,7 +664,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · writer (low) · t1 The Introduction · attempt 1 of 3",
@@ -689,7 +689,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderBrief a3": [
    "work brief a3 · linter (low) · t1 The Introduction",
@@ -716,7 +716,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a2 (writer): docs/tsd.md#introduction",
@@ -840,7 +840,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -871,7 +871,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · writer (low) · t1 The Introduction · attempt 2 of 3",
@@ -897,7 +897,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderBrief a3": [
    "work brief a3 · linter (low) · t1 The Introduction",
@@ -926,7 +926,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a2 (writer): docs/tsd.md#introduction",
@@ -1022,7 +1022,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<implementer> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -1053,7 +1053,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · implementer (low) · t1 Fix the key · attempt 1 of 3",
@@ -1077,7 +1077,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderTaskTree t1": [
    "t1 Fix the key · Open"
@@ -1164,7 +1164,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -1195,7 +1195,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · architect (high) · t1 The Introduction",
@@ -1223,7 +1223,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<section-lead|writer|linter> [--max-attempts=<n>]",
-   "              Medium roles run tasks; low roles run units. Give the subagent exactly the printed command.",
+   "              Medium roles run tasks; low roles run units. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask).",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  evaluate    work evaluate a0.TOKEN <stop> --wrong=\"<what is wrong>\" --why=\"<why it cannot be done as asked>\" --improve=\"<one change>\" --level=task|standard|direction|principle",
@@ -1260,7 +1260,7 @@
    "              Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
   ],
   "renderTaskTree t1": [
    "t1 The Introduction · Open"
@@ -1347,7 +1347,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -1378,7 +1378,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · architect (high) · t1 The Introduction",
@@ -1406,7 +1406,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<section-lead|writer|linter> [--max-attempts=<n>]",
-   "              Medium roles run tasks; low roles run units. Give the subagent exactly the printed command.",
+   "              Medium roles run tasks; low roles run units. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask).",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  evaluate    work evaluate a0.TOKEN <stop> --wrong=\"<what is wrong>\" --why=\"<why it cannot be done as asked>\" --improve=\"<one change>\" --level=task|standard|direction|principle",
@@ -1443,7 +1443,7 @@
    "              Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
   ],
   "renderTaskTree t1": [
    "t1 The Introduction · Open"
@@ -1548,7 +1548,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -1579,7 +1579,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · architect (high) · t1 The Introduction",
@@ -1608,7 +1608,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<section-lead|writer|linter> [--max-attempts=<n>]",
-   "              Medium roles run tasks; low roles run units. Give the subagent exactly the printed command.",
+   "              Medium roles run tasks; low roles run units. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask).",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  evaluate    work evaluate a0.TOKEN <stop> --wrong=\"<what is wrong>\" --why=\"<why it cannot be done as asked>\" --improve=\"<one change>\" --level=task|standard|direction|principle",
@@ -1645,7 +1645,7 @@
    "              Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
   ],
   "renderTaskTree t1": [
    "t1 The Introduction · Open"
@@ -1776,7 +1776,7 @@
    "  split       work task split a0.TOKEN <task> --file=<parts.yaml> [--review=<review id>]",
    "              Each part has its own text and fits the brief of the tier that runs it; the task needs its parts, and its own result comes after them. Text parts that share a file each own a section of it, and their makers write the file one after the other, in the order of their assigns; code parts each make their own commit, and the task merges them. A part that uses the work of another part, or changes the same files, runs after it: give it after: [<the names of those parts>]; only parts that change different files run at the same time. The person's open point with no rule is theirs to split; escalate it.",
    "  assign      work assign a0.TOKEN <task> --role=<section-lead|writer|linter> [--max-attempts=<n>]",
-   "              Medium roles run tasks; low roles run units. Give the subagent exactly the printed command.",
+   "              Medium roles run tasks; low roles run units. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask).",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  evaluate    work evaluate a0.TOKEN <stop> --wrong=\"<what is wrong>\" --why=\"<why it cannot be done as asked>\" --improve=\"<one change>\" --level=task|standard|direction|principle",
@@ -1817,7 +1817,7 @@
    "              Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
   ],
   "renderBrief a2": [
    "work brief a2 · section-lead (medium) · t1 The Introduction",
@@ -1851,7 +1851,7 @@
    "",
    "YOUR TURN",
    "  assign      work assign a0.TOKEN <task> --role=<writer|linter> [--max-attempts=<n>]",
-   "              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
+   "              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.",
    "  show        work assignment show <assignment>",
    "              Read a child's brief before you give its command; it takes no snapshot.",
    "  result      work result show <result>",
@@ -1880,7 +1880,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a3": [
    "work brief a3 · writer (low) · t1 The Introduction · attempt 2 of 3",
@@ -1906,7 +1906,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a3 (writer): docs/tsd.md#introduction",
