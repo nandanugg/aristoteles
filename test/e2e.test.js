@@ -253,8 +253,9 @@ describe('a split task joins its parts', () => {
 })
 
 describe('programs run on each report', () => {
+  // Ruling 7, onboarding 2026-11-14: a program has an icon (and no persistence).
   const GATE = '  gate:\n    kind: program\n    run: "grep -q merchant {workspace.path}"\n    on: report\n' +
-    '    checks: [no-code-proof]\n    acts: [{ review: [writer] }]\n'
+    '    checks: [no-code-proof]\n    acts: [{ review: [writer] }]\n    icon: terminal\n'
   test('a passing gate records its evidence; a failing gate rejects', async () => {
     const { WORK_YAML } = await import('./harness.js')
     const { DIRECTION } = await import('./harness.js')
