@@ -1,6 +1,7 @@
 # aristoteles
 
-`work` is a command line for AI work under review. A person sets the directions; AI makers do
+`work` is a command line for AI work under review (each result of an AI is checked by a reviewer
+before it counts). A person sets the directions; AI makers do
 the tasks; AI reviewers check each result against the rules of the directions. The person
 accepts only the directions and their changes. aristoteles is the store of this work: one
 SQLite file that links each task to the version of the direction that it used.
@@ -8,8 +9,11 @@ SQLite file that links each task to the version of the direction that it used.
 - **Direction**: what the work is for. **Standard**: how the output looks. **Rule**: one check
   that a reviewer does on one result. Each one is one entry in aristoteles, in free markdown.
 - **Roles** (`aristoteles.yaml`): the makers and the reviewers of a project, in three tiers (high,
-  medium, low). A model gets one command, `work brief <token>`, and the brief says what to do
-  next.
+  medium, low; the settings and the page call them `sol`, `terra`, and `luna`). A model gets one
+  command, `work brief <token>`, and the brief (the text that it prints: the role, the task, the
+  rules, and the commands to run next) says what to do.
+- **Top task**: the whole job of one project, for example one TSD. The host drafts it with you,
+  and you open it on the page; a high role then splits it into parts for lower roles.
 - **Company directions**: a git repo with one folder for each direction. A project names a
   folder in its `aristoteles.lock`. The first command of each day fetches the repo, and a new
   commit comes in as a draft that its owner accepts.
@@ -61,7 +65,9 @@ the store until the end:
    its own; a role that is not persistent runs as a subagent. Accept, revise, or remove each role.
 4. Approve all roles. That starts the store with only the accepted result (at a terminal:
    `work onboard approve-roles`; the page and the command ask for your confirmation). Commit
-   `aristoteles.yaml`. The host then records the fit of each agent role.
+   `aristoteles.yaml`. The host then records the fit of each agent role: a role fits when its words pass
+   the static checks of work and a yes answer to seven short questions about its kind of work
+   (`guides/fitness.yaml`); a role with no fit record gets no work.
 
 Each page act has a twin at a terminal: `work onboard status` shows each direction and role with
 its state, `work onboard accept <id>`, `revise <id> --words=<words>`, `remove <id>`,
@@ -89,11 +95,14 @@ ln -s "$PWD/aristoteles/bin/work.js" ~/.local/bin/work   # or run: bun aristotel
 In a dir (a folder of your work):
 
 1. Write `aristoteles.yaml`: the people and the roles, each agent role with its `persistence` and
-   its `icon` (DESIGN.md, sections 3 and 13; the name of the dir is its folder name). Its first line can name the schema, so an editor completes the keys:
+   its `icon` (DESIGN.md, section 3 holds the keys of the file, and section 13 holds onboarding;
+   the name of the dir is its folder name). Its first line can name the schema, so an editor
+   completes the keys:
    `# yaml-language-server: $schema=<the aristoteles folder>/schema/aristoteles.schema.json`.
 2. Run `work init`.
 3. A model drafts each direction with the `assess` skill (`skills/assess`), or with
-   `work direction new --file=<direction.yaml> --by=<model run>`.
+   `work direction new --file=<direction.yaml> --by=<name>` (a lower-case name that the model
+   gives itself).
 4. The owner reads each draft (`work waiting`, `work direction show <draft>`) and accepts or
    rejects it (`work review <draft> accept --evidence=...` or `reject --reason=...`).
 5. The person opens a task and assigns it to a role: `work task open --file=<task.yaml>`,
@@ -121,8 +130,9 @@ aristoteles folder, and tmux for the terminals.
   you can open and type into, from its first assignment to the end of the project; the UI starts
   it, and it takes its work with `work wait --by=<agent>`. A role that is not persistent runs as
   a subagent inside the terminal that gives it the work. Only a terminal starts subagents.
-- **Only five kinds of decision need you**, each with a badge: a system problem, a direction
-  problem, the end of a project, your words that an agent relayed as an act (you confirm it),
+- **Only five kinds of decision need you**, each with a badge: a system problem (something the
+  work needs does not work, such as a cluster or an account limit), a direction problem (a
+  result shows that a direction can be read in two ways, or is wrong), the end of a project, your words that an agent relayed as an act (you confirm it),
   and new words of a role. The host handles the rest, and writes its words on each decision
   first.
 - **The settings** (the gear) are in `aristoteles.yaml`: the command of each tier, for example

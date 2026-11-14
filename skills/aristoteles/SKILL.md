@@ -28,7 +28,9 @@ works for aristoteles; any other session of the dir still uses the old files of 
    person approves all roles (`work onboard approve-roles` is the same act at a terminal). Come
    back to step 4 when the store exists.
 4. **Record the fit of each agent role** (the `role-fitness` skill), as the last line of
-   `work onboard approve-roles` says. A role with no fit record gets no work.
+   `work onboard approve-roles` says. A role fits when its words pass the static checks and each
+   of seven questions (`guides/fitness.yaml`) gets a yes with a real example; the answers are its
+   fit record, and a role with no fit record gets no work.
 5. **Start the page:** `work start --detach`. It opens the page in the browser and prints its
    address. It keeps running when this AI CLI ends. When it exits with 3, read the log file
    that it names, tell the person the cause, and do not start it again until the person
@@ -37,14 +39,16 @@ works for aristoteles; any other session of the dir still uses the old files of 
    `work run list` (each run, its state, and its top task). When it shows no run, start a new
    project.
    - A new project: `work run start`. Then follow the `work` skill, part "You are the host of a
-     project": talk with the person, and draft the top task.
+     project": talk with the person, and draft the top task (the whole job of the project, for
+     example one TSD).
    - Continue a project: `work run continue <run> --quote="<the words of the person>"`, with
      the words that the person said to choose it. When those words name no one run, show the
      list again and ask which one. When the project has an open top task, the output gives you
      the command of its Sol: run it. The window of the old host closes.
 7. From then on, follow the `work` skill, part "You are the host of a project". The UI types
    nothing into this terminal: when you have nothing to do, run `work wait --by=<your run>`
-   (before the top task opens) or `work wait <token>` (after), in the background when your AI
+   (before the top task opens; your run is the project that `work run start` made, with an id
+   such as `h1`, and `work run list` shows it) or `work wait <token>` (after), in the background when your AI
    CLI allows it, so that the person can still talk to you here. When the work shows that an
    instruction must change, change it only in aristoteles, never in the project's own copy
    (the `work` skill, part "One source of instructions").
