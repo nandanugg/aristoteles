@@ -51,6 +51,7 @@ const lastActAt = (w: Work): Time | undefined =>
     return ![
       'Workflow',
       'Role',
+      'Agent',
       'Run',
       'TaskDraft',
       'Problem',

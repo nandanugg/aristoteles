@@ -9,17 +9,27 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Effect, Layer } from 'effect'
 import {
+  type AgentId,
+  type AssignmentId,
+  type Author,
+  type Case,
+  type DirectionId,
   type Draft,
+  type Event,
+  type EventRef,
   type Kind,
   kindOf,
+  type OnboardedDirection,
   type Recorded,
+  type RevisionId,
   type RoleName,
   type SessionId,
   type Time,
   type Work,
 } from '../schema/index.ts'
-import { Env, Store, StoreLive } from '../services/index.ts'
+import { Env, FilesLive, readConfig, Store, StoreLive } from '../services/index.ts'
 import { fold, foldStep } from './index.ts'
+import { tierOfAssignment } from './records.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harnessJs from '../../test/harness.js'
 
@@ -38,6 +48,7 @@ interface Project {
   readonly run: (line: string, options: { readonly env: Record<string, string> }) => Promise<Ran>
   readonly write: (path: string, text: string) => void
   readonly wait: (minutes: number) => void
+  readonly now: () => string
 }
 const harness = harnessJs as {
   readonly project: (files?: Record<string, string>, name?: string) => Project
@@ -116,7 +127,12 @@ const linesOf = (work: Work, dir: string): ReadonlyArray<string> => {
 }
 // The lines of the old replay's Work for a scenario: the block under `# <name>` in fold.pins.txt.
 // Ruling 2026-11-14 (brief limits leave room for the guide): the pins hold the new harness limits
-// (6000, 12000, 16000) and the hashes of the yaml that holds them.
+// (6000, 12000, 16000) and the hashes of the yaml that holds them. Ruling 7, onboarding
+// 2026-11-14: each role holds its persistence and its icon (the config, the workflow, the yaml
+// text, its hash and the fit hashes), each assignment where it runs (runs), and the page run has
+// the agent p1 (its line, its id in created, the agent counter). P10 rejected, onboarding
+// 2026-11-14: directions and drafts hold their cases, and the company scenario gives d2 its cases
+// in one more event. The last three scenarios are new.
 const PINS = `${import.meta.dir}/fold.pins.txt`
 const pinnedLines = (name: string): ReadonlyArray<string> => {
   const text = readFileSync(PINS, 'utf8')
@@ -128,6 +144,45 @@ const pinnedLines = (name: string): ReadonlyArray<string> => {
 }
 
 const seen = new Set<Kind>()
+// The store start of onboarding (Question 20, option A): the first event holds the config of the
+// file and the accepted directions. The CLI writes it in a later wave; this writes it as the
+// start would.
+const startStore = (dir: string, directions: ReadonlyArray<OnboardedDirection>, at: Time) =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const read = yield* readConfig(dir)
+        const opened = yield* (yield* Store).open(dir, { create: true })
+        const event: Event = { _tag: 'Workflow', create: { _tag: 'Defined', ...read, directions } }
+        const author: Author = { _tag: 'Person', name: 'Nanda', channel: 'ui' }
+        return yield* opened.write(() => Effect.succeed({ draft: { at, author, event }, rows: [] }))
+      }),
+    ).pipe(Effect.provide(Layer.merge(storeOf(dir), FilesLive))),
+  )
+// An event that a later wave's command writes (an adjustment, the cases of a draft, the start of
+// an agent's terminal), appended as the store appends any checked event.
+const NANDA_UI: Author = { _tag: 'Person', name: 'Nanda', channel: 'ui' }
+const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
+const SUPERVISOR: Author = { _tag: 'Supervisor', name: 'Nanda' }
+// At the time of the last act of the project, so that no later act of the CLI comes before it.
+const appendNow = (p: Project, author: Author, event: Event) =>
+  append(p.dir, { at: p.now(), author, event } as Draft)
+// The ref of the event that an append stored.
+const refOf = (seq: number | null) => `e${seq}` as EventRef
+
+// A direction file as readDirection keeps it: each rule has its supersedes.
+const withSupersedes = (standards: unknown) =>
+  (standards as ReadonlyArray<{ readonly rules: ReadonlyArray<object> }>).map((x) => ({
+    ...x,
+    rules: x.rules.map((r) => ({ ...r, supersedes: [] })),
+  }))
+// Three cases each (P10 rejected, onboarding 2026-11-14), of the files of the harness project.
+const CASES: ReadonlyArray<Case> = [
+  { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice for one merchant.', fit: 'Follows' },
+  { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', fit: 'Follows' },
+  { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', fit: 'Breaks' },
+] as unknown as ReadonlyArray<Case>
+
 // The fold of the store of the dir gives the Work of the old replay.
 const sameAsReplay = async (dir: string, name: string): Promise<Work> => {
   const events = await eventsOf(dir)
@@ -212,7 +267,10 @@ const hosted = async () => {
 describe('fold gives the Work of the old replay', () => {
   test('started: init, the directions, the fits, a task and its lead', async () => {
     const { p } = await harness.started()
-    await sameAsReplay(p.dir, 'started')
+    const work = await sameAsReplay(p.dir, 'started')
+    // No run holds t1, so the persistent lead attaches to no agent: it keeps its tier (P2).
+    const a1 = work.assignments.get('a1' as AssignmentId)
+    expect(a1?.runs).toEqual({ _tag: 'NoRun', tier: 'medium' })
   }, 30000)
 
   test('reported, then a review round: reject, report again, accept, escalate, ask', async () => {
@@ -305,7 +363,10 @@ describe('fold gives the Work of the old replay', () => {
     ok(await p.agent(`source ${lead} page@v4`))
     ok(await p.agent(`source ${lead} page@v5`))
     ok(await p.agent(`checkpoint ${lead} t1 --next="wait for the gate"`))
-    await sameAsReplay(p.dir, 'code')
+    const work = await sameAsReplay(p.dir, 'code')
+    // The CLI runs the gate: a program runs nowhere else.
+    const gate = [...work.assignments.values()].find((a) => a.role === 'gate')
+    expect(gate?.runs).toEqual({ _tag: 'Program' })
   }, 60000)
 
   test('a relay: forwarded acts that count at once, and confirmed ones', async () => {
@@ -340,6 +401,10 @@ describe('fold gives the Work of the old replay', () => {
       '  owner: Nanda\n  checkedBy: linter\n'
     p.write('aristoteles.lock', lock)
     ok(await p.nanda('waiting'))
+    // P10 rejected, onboarding 2026-11-14: the company draft of a new direction gets its cases
+    // from a model before the accept (the command comes in a later wave).
+    const cases = { _tag: 'Revision', id: 'd2', move: { _tag: 'CasesAdded', cases: CASES } }
+    await appendNow(p, HOST_RUN, cases as Event)
     const seen = '--evidence="the folder | each standard and rule reads as the company says"'
     ok(await p.nanda(`review d2 accept ${seen}`, 'accept'))
     company.commit({
@@ -424,11 +489,14 @@ describe('fold gives the Work of the old replay', () => {
   }, 60000)
 
   test('deciders: a vetoed draft, an approvedBy order, a decide order of two roles', async () => {
+    // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
     const proofreader =
       '  proofreader:\n    tier: low\n    description: Reads one section and decides it.\n' +
       '    intro: You read one section.\n    responsibilities:\n' +
       '      - Accept or reject the section with work review.\n' +
-      '    acts: [{ approve: [writer] }]\n'
+      '    acts: [{ approve: [writer] }]\n' +
+      '    persistence: { persistent: false, why: It decides one section once. }\n' +
+      '    icon: eye\n'
     const decide =
       'decide:\n  - { resultsOf: writer, by: { order: [section-lead, proofreader] } }\n'
     const p = harness.project({ 'aristoteles.yaml': `${harness.WORK_YAML}${proofreader}${decide}` })
@@ -481,6 +549,162 @@ describe('fold gives the Work of the old replay', () => {
     await sameAsReplay(p.dir, 'role words')
   }, 30000)
 
+  test('onboarded start: the first event holds two directions, each at version 1', async () => {
+    const p = harness.project()
+    const tsd = Bun.YAML.parse(harness.DIRECTION) as Record<string, unknown>
+    const { cases: _, ...file } = tsd
+    const flags = {
+      id: 'feature-flags',
+      name: 'Feature flags',
+      owner: 'Nanda',
+      from: ['Oikos'],
+      says: 'Each critical change is flagged.',
+      standards: [
+        {
+          id: 'naming',
+          says: 'The flag name tells the project.',
+          rules: [{ id: 'upper-snake', says: 'The flag is FF_<PROJECT>_<FEATURE>.', supersedes: [] }],
+        },
+      ],
+    }
+    const external = {
+      _tag: 'External',
+      repo: 'company-repo',
+      path: 'directions/feature-flags',
+      ref: { _tag: 'DefaultBranch' },
+      commit: 'c'.repeat(40),
+    }
+    const directions = [
+      { direction: { ...file, standards: withSupersedes(file.standards) }, cases: CASES, source: { _tag: 'Local' } },
+      { direction: flags, cases: CASES, source: external },
+    ] as unknown as ReadonlyArray<OnboardedDirection>
+    await startStore(p.dir, directions, p.now() as Time)
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
+      ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    }
+    ok(await p.nanda('task open --file=task.yaml'))
+    ok(await p.nanda('assign t1 --role=section-lead'))
+    const work = await sameAsReplay(p.dir, 'onboarded start')
+    expect<unknown>(work.events[0]?.created).toEqual(['d1', 'tsd-writing@1', 'd2', 'feature-flags@1'])
+    for (const [id, source] of [
+      ['tsd-writing', { _tag: 'Local' }],
+      ['feature-flags', { _tag: 'External', repo: external.repo, path: external.path }],
+    ] as const) {
+      const d = work.directions.get(id as DirectionId)
+      if (d?._tag !== 'Official') throw new Error(`${id} is not official`)
+      expect(d.versions.map((v) => v.number)).toEqual([1] as never)
+      expect(d.cases).toEqual(CASES)
+      expect(d.source).toEqual(source)
+      const draft = work.drafts.get(d.versions[0].revision as RevisionId)
+      expect<unknown>(draft?.origin).toEqual({ _tag: 'Onboarded', event: 'e1' })
+    }
+  }, 30000)
+
+  test('persistent agents: one agent of a role in a run, its session, its tier kept', async () => {
+    const { p, host } = await hosted()
+    p.write('parts.yaml', PARTS)
+    ok(await p.nanda('task split t1 --file=parts.yaml'))
+    ok(await p.agent(`assign ${host} t2 --role=section-lead`))
+    ok(await p.agent(`assign ${host} t3 --role=section-lead`))
+    // The supervisor starts p1's terminal (a later wave); both of its assignments take it.
+    const started = { _tag: 'Agent', id: 'p1', move: { _tag: 'Started', session: 's-lead' } }
+    await appendNow(p, SUPERVISOR, started as Event)
+    const startedAt = p.now()
+    const lead = tokenIn(ok(await p.ui('session a2 --id=s-lead --token')).out)
+    ok(await p.ui('session a3 --id=s-lead --token'))
+    ok(await p.agent(`brief ${lead}`))
+    ok(await p.agent(`assign ${lead} t2 --role=writer`))
+    // A new medium role, then a high tier for section-lead: its agent keeps the tier it started
+    // with (ruling 13).
+    const editor = {
+      kind: 'agent',
+      tier: 'medium',
+      description: 'Edits one section.',
+      intro: 'You edit one section.',
+      responsibilities: ['Edit the section under its heading.'],
+      acts: [{ approve: ['writer'] }],
+      checks: [],
+      persistence: { persistent: true, why: 'It edits the sections of the whole project.' },
+      icon: 'pen-tool',
+    }
+    const w0 = fold(await eventsOf(p.dir))
+    const kept = { hashes: w0.hashes, texts: w0.texts }
+    for (const adjustment of [
+      { _tag: 'AddRole', role: 'editor', file: editor },
+      { _tag: 'SetTier', role: 'section-lead', tier: 'high' },
+    ]) {
+      const drafted = { _tag: 'Adjustment', create: { _tag: 'Drafted', adjustment } }
+      const seq = await appendNow(p, HOST_RUN, drafted as Event)
+      const accepted = { _tag: 'Adjustment', id: refOf(seq), move: { _tag: 'Accepted', ...kept } }
+      await appendNow(p, NANDA_UI, accepted as Event)
+    }
+    const work = await sameAsReplay(p.dir, 'persistent agents')
+    const runs = (id: string): unknown => work.assignments.get(id as AssignmentId)?.runs
+    expect(runs('a1')).toEqual({ _tag: 'Host', run: 'h1' })
+    expect(runs('a2')).toEqual({ _tag: 'Agent', agent: 'p1' })
+    expect(runs('a3')).toEqual({ _tag: 'Agent', agent: 'p1' })
+    expect(runs('a4')).toEqual({ _tag: 'Subagent', tier: 'low' })
+    expect([...work.agents.keys()]).toEqual(['p1' as AgentId])
+    const p1 = work.agents.get('p1' as AgentId)
+    expect<unknown>(p1?.terminal).toEqual({ _tag: 'Started', session: 's-lead', at: startedAt })
+    expect(p1?.tier).toBe('medium')
+    const role = work.workflow.roles.get('section-lead' as RoleName)
+    expect(role?._tag === 'Model' ? role.tier : undefined).toBe('high')
+    const a2 = work.assignments.get('a2' as AssignmentId)
+    expect(a2 === undefined ? null : tierOfAssignment(work, a2)).toBe('medium')
+    expect(work.sessions.get('a3' as AssignmentId)?.session).toBe('s-lead' as SessionId)
+  }, 60000)
+
+  test('adjustments: each accepted one folds; a rejected and a replaced one change nothing', async () => {
+    const { p } = await harness.started()
+    const editor = {
+      kind: 'agent',
+      tier: 'medium',
+      description: 'Edits one section.',
+      intro: 'You edit one section.',
+      responsibilities: ['Edit the section under its heading.'],
+      acts: [{ approve: ['writer'] }],
+      checks: [],
+      persistence: { persistent: true, why: 'It edits the sections of the whole project.' },
+      icon: 'pen-tool',
+    }
+    const why = 'It writes every section of the project.'
+    const other = [...CASES].reverse()
+    const w0 = fold(await eventsOf(p.dir))
+    const kept = { hashes: w0.hashes, texts: w0.texts }
+    const steps: ReadonlyArray<readonly [unknown, 'Accepted' | 'Rejected' | 'None']> = [
+      [{ _tag: 'AddRole', role: 'editor', file: editor }, 'Accepted'],
+      [{ _tag: 'SetPersistence', role: 'writer', persistence: { persistent: true, why } }, 'Accepted'],
+      [{ _tag: 'SetTier', role: 'editor', tier: 'low' }, 'None'],
+      [{ _tag: 'SetTier', role: 'editor', tier: 'high' }, 'Accepted'],
+      [{ _tag: 'SetCases', direction: 'tsd-writing', cases: other }, 'Accepted'],
+      [{ _tag: 'RemoveRole', role: 'editor' }, 'Rejected'],
+      [{ _tag: 'RetireDirection', direction: 'tsd-writing' }, 'Accepted'],
+    ]
+    for (const [adjustment, decision] of steps) {
+      const drafted = { _tag: 'Adjustment', create: { _tag: 'Drafted', adjustment } }
+      const seq = await appendNow(p, HOST_RUN, drafted as Event)
+      if (decision === 'None') continue
+      const move =
+        decision === 'Accepted'
+          ? { _tag: 'Accepted', ...kept }
+          : { _tag: 'Rejected', reason: 'the editor stays for the next project' }
+      const decided = { _tag: 'Adjustment', id: refOf(seq), move }
+      await appendNow(p, NANDA_UI, decided as Event)
+    }
+    const work = await sameAsReplay(p.dir, 'adjustments')
+    const editorNow = work.config.roles.editor
+    expect(editorNow?.kind === 'agent' ? editorNow.tier : undefined).toBe('high')
+    expect(work.workflow.roles.get('editor' as RoleName)?._tag).toBe('Model')
+    const writer = work.workflow.roles.get('writer' as RoleName)
+    expect(writer?._tag === 'Model' ? writer.persistence : undefined).toEqual({
+      _tag: 'Persistent',
+      why,
+    })
+    const tsd = work.directions.get('tsd-writing' as DirectionId)
+    expect(tsd?.cases).toEqual(other)
+  }, 30000)
+
   // Every kind of event that a scenario above wrote; the kinds that none writes are listed, so a
   // gap of the differential test is visible here. It reads what the tests above saw, so it runs
   // last and only in a run of the whole file (a -t filter makes it fail).
@@ -489,6 +713,10 @@ describe('fold gives the Work of the old replay', () => {
       'Workflow.Defined',
       'Workflow.RoleWordsChanged',
       'Role.Fitted',
+      'Agent.Started',
+      'Adjustment.Drafted',
+      'Adjustment.Accepted',
+      'Adjustment.Rejected',
       'Run.HostJoined',
       'Run.HostStarted',
       'Run.HostMoved',
@@ -538,6 +766,7 @@ describe('fold gives the Work of the old replay', () => {
       'Revision.Drafted',
       'Revision.Revised',
       'Revision.Imported',
+      'Revision.CasesAdded',
       'Permission.Granted',
       'Permission.Revoked',
       'Source.Moved',
