@@ -40,9 +40,9 @@ import type { WorkCache } from '../state/index.ts'
 
 export type EffectName =
   | 'HostPanes' // S1: adopt the host's pane of each live run; release the others
-  | 'StartTerminals' // the terminals of new Sol and Terra agents, the first prompt an argument
+  | 'StartTerminals' // the terminal of each new persistent agent, the first prompt an argument
   | 'DeliverSends' // C5: type a host's work send into the terminal of its child
-  | 'CloseEnded' // C1, S1: close the terminal of an ended owner, once, when quiet
+  | 'CloseEnded' // C1, S1: close the terminal of an ended agent or run, once, when quiet
   | 'RetryFailures' // C1, S1: up to 3 restarts of a failed terminal; a prompt and a failure stored
 
 // The order of one round: the order of the old tick.
