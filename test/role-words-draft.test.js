@@ -89,12 +89,15 @@ describe('a draft of the words of a role', () => {
     p.realTime()
     expect((await act(p, 'accept-words', { draft })).out).toBe(
       `${draft} accepted: the new words are in aristoteles.yaml; record the fit again.`)
+    // Ruling 7, onboarding 2026-11-14: the block of the role ends with its persistence and icon,
+    // so the missing word goes after them, at the end of the block.
     expect(fileOf(p)).toBe(WORK_YAML.replace(
       '      - Give one --evidence line for each rule in your checks.\n' +
-        '      - Reject with one --point for each rule that the section breaks.\n' +
-        '    acts: [{ review: [writer] }]\n',
-      '      - Give one --evidence line for each rule.\n' +
-        '    acts: [{ review: [writer] }]\n    output: a list of rules with evidence\n'))
+        '      - Reject with one --point for each rule that the section breaks.\n',
+      '      - Give one --evidence line for each rule.\n',
+    ).replace(
+      '    icon: shield-check\n',
+      '    icon: shield-check\n    output: a list of rules with evidence\n'))
     expect((await panel(p, 't1')).decisions.some((x) => x.id === draft)).toBe(false)
   })
 
