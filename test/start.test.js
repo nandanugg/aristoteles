@@ -2,7 +2,7 @@
 // page must outlive that shell. The test runs it with no tmux on the PATH, so that it touches no
 // terminal and no tmux socket: the server says "no terminals", and serves the page.
 import { afterEach, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { recordOf, workStartDetached } from './code.js'
@@ -19,7 +19,10 @@ afterEach(() => {
 test('work start --detach runs the page as a process of its own, and a second start finds it', async () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'start-')), 'report-export')
   mkdirSync(dir)
-  const env = { ARISTOTELES_DB: join(dir, '..', 'aristoteles.db'), WORK_NO_OPEN: '1', HOME: process.env.HOME, PATH: '/usr/bin:/bin' }
+  // A PATH with git and no tmux: on Linux, tmux and git are both in /usr/bin.
+  const bin = mkdtempSync(join(tmpdir(), 'bin-'))
+  symlinkSync(Bun.which('git') ?? '/usr/bin/git', join(bin, 'git'))
+  const env = { ARISTOTELES_DB: join(dir, '..', 'aristoteles.db'), WORK_NO_OPEN: '1', HOME: process.env.HOME, PATH: bin }
   const lines = []
   expect(await workStartDetached(dir, { env, out: (l) => lines.push(l) })).toBe(true)
   const record = JSON.parse(readFileSync(recordOf(dir, env), 'utf8'))

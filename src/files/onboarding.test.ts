@@ -99,7 +99,9 @@ describe('the lock and the atomic writes', () => {
     const dir = await withConfig()
     await host(dir, { _tag: 'Found', direction: 'small-changes' })
     await host(dir, { _tag: 'Draft', direction: 'small-changes', draft: draftOf('small-changes') })
-    const long = 'x'.repeat(200000)
+    // Much more than one page of the disk, and less than the 128 KiB that Linux allows for one
+    // argument (the act goes to the writer process in its -e argument).
+    const long = 'x'.repeat(100000)
     const act = `{ act: 'revise', direction: 'small-changes', words: i % 2 ? 'short' : '${long}' }`
     const busy = writer(dir, 40, act)
     let reads = 0

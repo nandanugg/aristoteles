@@ -6,7 +6,8 @@
 // report changes the other task's reported section. The test expects the CORRECT behaviour, so it
 // fails while the fault is there.
 import { describe, expect, test } from 'bun:test'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { init, ok, project, TASK, tokenIn } from
   './harness.js'
@@ -14,8 +15,16 @@ import { init, ok, project, TASK, tokenIn } from
 const ON = (path, name, section) => TASK.replace('The Introduction', name).replace('path: docs/tsd.md', `path: ${path}`)
   .replace('section: introduction', `section: ${section}`).replace('verify: "work-lint docs/tsd.md"', 'verify: "true"')
 
+// A disk that keeps case (the default on Linux) holds two files for the two names: no fault to
+// show, so the test runs only where the disk ignores case.
+const ignoresCase = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'case-'))
+  writeFileSync(join(dir, 'a'), '')
+  return existsSync(join(dir, 'A'))
+})()
+
 describe('H4 one file, two names that differ in case', () => {
-  test('t1 on docs/export.md and t2 on docs/Export.md: both makers write the file at once, and r2 changes the section of r1', async () => {
+  test.skipIf(!ignoresCase)('t1 on docs/export.md and t2 on docs/Export.md: both makers write the file at once, and r2 changes the section of r1', async () => {
     const p = project({ 'a.yaml': ON('docs/export.md', 'Intro', 'introduction'), 'b.yaml': ON('docs/Export.md', 'Design', 'design') })
     // The disk of this test ignores case: the harness file docs/tsd.md is also DOCS/TSD.MD.
     expect(existsSync(join(p.dir, 'DOCS/TSD.MD'))).toBe(true)
