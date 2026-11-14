@@ -1,16 +1,21 @@
 // The words of the CLI after the rename step (plan/types/CLI-WORDS.md, the owner's rulings of
 // 2026-11-12): escalate, resolve, forward, confirm, free, the guide decision-words, the context key
-// section, the exit codes, and the fixes that the skills round found.
+// section, the exit codes, and the fixes that the skills round found. The words of work assign by
+// where the assignment runs (rulings 7 and 9, onboarding 2026-11-14).
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 import {
   DIRECTION,
+  HOST,
+  init,
   ok,
   project,
   reported,
+  solToken,
   started,
   TASK,
+  TASK_WHOLE,
   tokenIn,
   withWriter,
   WORK_YAML,
@@ -423,5 +428,68 @@ describe('the fixes of the skills round', () => {
     expect(none).toContain(`${next} new <token> --file=<direction.yaml> --answers=s1`)
     const about = await out(p.nanda('suggest tsd-writing --says="say the cost first"'))
     expect(about).toContain(`${next} revise <token> <direction> --file=<edit.yaml> --answers=s2`)
+  })
+})
+
+// A project of the UI: the host of h1 (a1) briefed on its top task t1. settings: the lines of the
+// tiers before the roles.
+const hostedRun = async (settings = '') => {
+  const top = `${TASK_WHOLE}role: architect\n`
+  const p = project({ 'aristoteles.yaml': settings + WORK_YAML, 'top.yaml': top })
+  await init(p)
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
+    ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  }
+  ok(await p.run('run start', HOST))
+  ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
+  const opened = await out(p.ui('task open td1'))
+  const host = await solToken(p, opened)
+  ok(await p.agent(`brief ${host}`))
+  return { p, opened, host }
+}
+const PROMPT = (a) => `  Use the work skill. In <project>, run: work brief ${a}.`
+
+describe('the work assign words, by where the assignment runs', () => {
+  test('Host: the host gets its token from work wait', async () => {
+    const { opened } = await hostedRun()
+    expect(opened).toContain('a1 is the host of h1; the host gets its token from work wait.')
+  })
+
+  test('Agent: a persistent role runs in its agent, whose terminal the UI starts', async () => {
+    const { p, host } = await hostedRun()
+    expect(await out(p.agent(`assign ${host} t1 --role=section-lead`))).toBe(
+      [
+        'a2 · section-lead (medium) on t1 The Introduction',
+        'a2 runs in p1, the persistent section-lead agent of h1 (medium, Sonnet). Its terminal ' +
+          'gets a2 through work wait --by=p1; the UI starts that terminal when it has none. ' +
+          'Do not start it yourself.',
+        `Then run work wait ${host}: it returns when you have work.`,
+      ].join('\n'),
+    )
+  })
+
+  test('Subagent: a disposable role starts as a subagent on the model of its tier', async () => {
+    const { p, host } = await hostedRun()
+    const words = await out(p.agent(`assign ${host} t1 --role=writer`))
+    expect(words).toContain(
+      'Start a subagent on Haiku (the low model) with this prompt, and nothing else:',
+    )
+    expect(words).toContain(PROMPT('a2'))
+    // P9: the model of the tier, when the settings name one.
+    const named = await hostedRun('tiers:\n  luna:\n    model: small-model\n')
+    const withModel = await out(named.p.agent(`assign ${named.host} t1 --role=writer`))
+    expect(withModel).toContain(
+      'Start a subagent on small-model (the low model) with this prompt, and nothing else:',
+    )
+  })
+
+  test('NoRun: a persistent role on a task with no run keeps the words of before', async () => {
+    const p = project()
+    await init(p)
+    ok(await p.nanda('role fit section-lead --answers=fit.yaml'))
+    ok(await p.nanda('task open --file=task.yaml'))
+    const words = await out(p.nanda('assign t1 --role=section-lead'))
+    expect(words).toContain('Start a Sonnet subagent with this prompt, and nothing else:')
+    expect(words).toContain(PROMPT('a1'))
   })
 })
