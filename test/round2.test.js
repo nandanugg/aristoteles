@@ -149,7 +149,8 @@ describe('what agents see', () => {
   test('C3: config restore writes the stored aristoteles.yaml back', async () => {
     const { p, writer } = await withWriter()
     p.write('aristoteles.yaml', (await Bun.file(`${p.dir}/aristoteles.yaml`).text()).replace('You write one section under its heading.', 'You write.'))
-    expect((await p.agent(`brief ${writer}`)).err).toContain('changed; the person restores it", then STOP')
+    // D10, I5: the next line is the real choice (escalate), in core's words (no token).
+    expect((await p.agent(`brief ${writer}`)).err).toContain('next: escalate it: the person restores or applies aristoteles.yaml')
     ok(await p.nanda('config restore', 'restore'))
     expect((await p.agent(`brief ${writer}`)).code).toBe(0)
   })

@@ -102,12 +102,47 @@ const open = async () => {
     await page.keyboard.press('Enter')
     await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent.includes('you said: hello from the browser'), null, { timeout: 10000 })
     expect(await page.textContent('.term-bar')).toContain(`a1 · session ${host}`)
-    // The rows of the terminal fit in its box: the last row is not cut off.
+    // Ruling 2026-11-14 (fixed-size terminals): the terminal has the size of the pane in tmux
+    // (160 x 48), not the size of its box (it fitted the box before), and the box scrolls.
+    const { TMUX: _t, TMUX_PANE: _p, TMUX_SOCKET: _s, ...clean } = process.env
+    const onPerson = (...args) => Bun.spawnSync(['tmux', '-f', '/dev/null', '-S', person.socket, ...args], { env: clean }).stdout.toString().trim()
+    const paneSize = () => onPerson('display-message', '-p', '-t', person.pane, '#{pane_width}x#{pane_height}')
+    const shownRows = () => page.evaluate(() => document.querySelectorAll('.xterm-rows > div').length)
+    expect(await shownRows()).toBe(48)
     expect(await page.evaluate(() => {
-      const rows = document.querySelector('.xterm-screen').getBoundingClientRect()
-      const box = document.querySelector('.term').getBoundingClientRect()
-      return rows.bottom <= box.bottom && rows.right <= box.right
+      const box = document.querySelector('.term')
+      return box.scrollWidth > box.clientWidth
     })).toBe(true)
+    // The person attaches from a small terminal (60 x 15, a pty): the pane and the page keep the
+    // size.
+    const small = Bun.spawn(['tmux', '-f', '/dev/null', '-S', person.socket, 'attach'], { env: { ...clean, TERM: 'xterm-256color' }, terminal: { cols: 60, rows: 15, data() {} } })
+    try {
+      const attached = Date.now() + 5000
+      while (onPerson('list-clients', '-F', '#{client_control_mode}').split('\n').length < 2 && Date.now() < attached) await Bun.sleep(50)
+      expect(onPerson('list-clients', '-F', '#{client_control_mode}').split('\n').sort()).toEqual(['0', '1'])
+      await page.waitForTimeout(500)
+      expect(paneSize()).toBe('160x48')
+      expect(await shownRows()).toBe(48)
+      // Ruling 2026-11-14 (fixed-size terminals): the rows fit in the box only after the resize
+      // button. It sets the window in tmux to the size that fills the box, but never less than
+      // 80 x 24, and the page then shows the size that tmux reports. The rows fit in the box (the
+      // last row is not cut off), and the width too, unless the box holds fewer than 80 columns
+      // (this panel holds about 70, so it scrolls sideways a little).
+      await page.click('text=Fit to box')
+      await page.waitForFunction(() => document.querySelectorAll('.xterm-rows > div').length !== 48)
+      const [cols, rows] = paneSize().split('x').map(Number)
+      expect(await shownRows()).toBe(rows)
+      expect(rows).toBeGreaterThanOrEqual(24)
+      const fits = await page.evaluate(() => {
+        const screen = document.querySelector('.xterm-screen').getBoundingClientRect()
+        const box = document.querySelector('.term').getBoundingClientRect()
+        return { down: screen.bottom <= box.bottom, across: screen.right <= box.right }
+      })
+      expect(fits.down).toBe(true)
+      expect(fits.across || cols === 80).toBe(true)
+    } finally {
+      small.kill()
+    }
     // Page Up and Page Down reach the tool, and the focus stays in the terminal. The terminal of
     // the fake tool echoes each Escape as "^[".
     await page.click('button[aria-label="Page up"]')
@@ -117,6 +152,11 @@ const open = async () => {
     const end = Date.now() + 10000
     while (!pump.tail(host).includes('^[[5~^[[6~after the buttons') && Date.now() < end) await Bun.sleep(100)
     expect(pump.tail(host)).toContain('^[[5~^[[6~after the buttons')
+    // No page shows the terminal: the page's control client leaves the person's server.
+    await page.close()
+    const left = Date.now() + 5000
+    while (onPerson('list-clients', '-F', '#{client_control_mode}') !== '' && Date.now() < left) await Bun.sleep(50)
+    expect(onPerson('list-clients', '-F', '#{client_control_mode}')).toBe('')
   } finally {
     await page.close()
     s.stop()
@@ -127,7 +167,7 @@ const open = async () => {
 {
   // a direction problem: a refused accept keeps the person's words and shows why in the item;
   // the accept ends the item
-  const { HOST, TASK_WHOLE, git, init, project } = await import('../harness.js')
+  const { HOST, TASK_WHOLE, git, init, project, solToken } = await import('../harness.js')
   const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
   // The page acts as the git user of the dir.
   git(p.dir, 'init', '-q')
@@ -136,7 +176,7 @@ const open = async () => {
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.run('run start', HOST))
   ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
-  const host = tokenIn(ok(await p.ui('task open td1')).out)
+  const host = await solToken(p, ok(await p.ui('task open td1')).out) // ruling 10.1
   ok(await p.run(`brief ${host}`, HOST))
   p.write('cost.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs., rules: [ { id: names-cost, says: "The introduction names the cost", checkedBy: linter } ] }\n')
   const draft = ok(await p.agent(`direction revise ${host} tsd-writing --file=cost.yaml`)).out.match(/(d\d+) drafted/)[1]
@@ -186,13 +226,18 @@ const open = async () => {
     expect(await page.isDisabled('text=Reject the change')).toBe(true)
     await page.fill('.item textarea', 'the cost is what the readers ask first')
     expect(await page.isDisabled('text=Reject the change')).toBe(false)
-    // A refused act keeps the comment, and its reason stays in the item.
+    // Ruling 10.8 (B7): the page knows the person only by git user.name, and shows only that
+    // person's items. A stranger's act is refused; the page then shows no item, and the line
+    // that names the person to set.
     git(p.dir, 'config', 'user.name', 'Stranger')
     await page.click('text=Accept the change')
-    await page.waitForSelector('.item [role=alert]')
-    expect(await page.textContent('.item [role=alert]')).toStartWith('Refused: Stranger (git user.name) is not in the people')
-    expect(await page.inputValue('.item textarea')).toBe('the cost is what the readers ask first')
+    await page.waitForSelector('.person-line')
+    expect(await page.textContent('.person-line')).toContain('git user.name is "Stranger", and that is no person of this dir')
+    expect(await page.locator('.item').count()).toBe(0)
     git(p.dir, 'config', 'user.name', 'Nanda')
+    await page.reload()
+    await page.click('.card.task')
+    await page.waitForSelector('.item.direction')
     await page.click('text=Accept the change')
     await page.waitForSelector('.item.direction', { state: 'detached' })
     expect(ok(await p.ui(`direction show ${draft}`)).out).not.toContain('waits for the accept')

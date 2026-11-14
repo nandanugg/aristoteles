@@ -37,6 +37,24 @@ brief, not this file, for anything about your task.
   `work problem`); 70 a bug of `work` (stop, and tell your parent; the host tells the person).
 - Stop where the brief says STOP.
 
+## When you have nothing to do: `work wait`
+
+The UI types nothing into your terminal. When you run in a terminal of your own (the UI started
+it, or you are the host of a project), you hear of new work only from `work wait`:
+
+```
+work wait <token>
+```
+
+- It returns at once when you have work that you did not see yet. Else it blocks until your next
+  steps change: a child reported, your question has its answer, a decision waits for your words.
+  Then it prints your next steps, and you do them.
+- After 9 minutes with no change it returns with `nothing changed; run work wait <token>
+  again.` Run it again. `--seconds=<n>` sets another time.
+- Run it with the longest time limit that your AI CLI allows, or in the background, so that the
+  person can still talk to you. When it returns, do its steps, then run `work wait` again.
+- A subagent does not wait: it stops where its brief says STOP, and its parent starts it again.
+
 ## You are the host of a project (the UI)
 
 The person triggered you in their AI CLI (the `aristoteles` skill), and you started or continued a
@@ -52,34 +70,40 @@ talk with the person, then you run its top task.
    task file with that role (`work task open` with no file prints the form; add
    `role: <role>`), then `work task draft --file=<file> --by=<your run>`. A project is large:
    for example a whole TSD.
-3. **Wait for the person to open it** on the page. The UI then types `work brief <token>` here:
-   from then on you are the Sol of the top task, and that brief tells you what to do.
-4. **Everything else is yours.** Only four kinds of decision reach the person: a system
-   problem, a direction problem, the end of the project, and their words that you relayed as
-   an act. You do everything else:
+3. **Wait for the person to open it** on the page: run `work wait --by=<your run>` here, in your
+   own pane. It returns when the person opens the top task, with the command of its Sol:
+   `work brief <token>`. From then on you are the Sol of the top task, that brief tells you what
+   to do, and you wait with `work wait <token>`. When the person remakes the top task, the
+   `work wait` of the old token gives you the command of the new Sol.
+4. **Everything else is yours.** Only five kinds of decision reach the person: a system
+   problem, a direction problem, the end of the project, their words that you relayed as an
+   act, and new words of a role. You do everything else:
    - a question of a model comes to you: answer it from the directions (`work answer <token>
      <q> --text=...`). When it shows that a direction can be read in two ways, draft the change
      of the direction (`work direction revise`). Polish it first with each question of
      `work guide direction-review`; the person accepts it.
-   - a terminal of a child stops at a prompt, or fails its 3 retries: the UI types one line into
-     your terminal. Answer a prompt with `work send <token> <child> --text=<input>`. You cannot
-     restart a child: for a failure, record a system problem, and the person resumes it. When a
-     system the work needs does not work (a cluster, a VPN, an account limit), record it:
-     `work problem <token> <the task that it stops> --says="<what happened, and how to fix it>"`.
+   - a terminal of a child stops at a prompt of its AI CLI (a permission dialog), or fails its 3
+     restarts: your `work wait` returns with that step. Answer a prompt with
+     `work send <token> <child> --text=<input>`: this is the only text that goes into a
+     terminal. You cannot restart a child: for a failure, record a system problem, and the person
+     resumes it. When a system the work needs does not work (a cluster, a VPN, an account limit),
+     record it: `work problem <token> <the task that it stops> --says="<what happened, and how to
+     fix it>"`. While it is open, your next steps show it: test it once when your current step
+     ends, and record the fix with `work problem <token> <sp..> --fixed`.
    - before the person sees a decision, write its words, so that the person can decide from
-     them alone: read `work guide decision-words` first, then
-     `work note <token> words --on=<sp.., d.., h..> --text="..."` (a direction problem also
+     them alone: your `work wait` returns with that step. Read `work guide decision-words` first,
+     then `work note <token> words --on=<sp.., d.., h..> --text="..."` (a direction problem also
      takes `--hope`). Write them within `hostWaitMinutes` (10 by default): after that time, the
      person sees the decision with no words.
-   - a line that the UI types starts with "System message, not from the person". Do its command
-     when your current step ends; do not stop your work for it, and do not take it as the
-     person's words.
+   - text in your terminal comes from the person. Only a restart of a terminal gives a first
+     prompt that starts with "System message, not from the person": do its command.
 
 ### Real agents and subagents
 
 - A medium (Terra) or high (Sol) role runs as a **real agent**, in its own terminal that the
   person can inspect. Do not start it yourself: `work assign` records it, and the UI starts its
-  terminal with its brief.
+  terminal with its brief as the first prompt. Then run `work wait <your token>`: it returns
+  when the work of the child changes your next steps.
 - A low (Luna) role runs as a **subagent** inside your own session: start it as below. It does
   a short job, so it needs no terminal of its own.
 
@@ -118,6 +142,25 @@ resolved in words:
   rule covers shows that the direction needs a change: it waits for a draft that changes the
   direction and answers that point.
 - There is no waiver. Each rule of a result gets its evidence, or its direction changes.
+
+## One source of instructions
+
+The instructions of the work are the directions in aristoteles and the roles in
+`aristoteles.yaml`. The project can still keep its own copy of one (a skill, a standard, a
+README, an agent prompt); nothing updates that copy. When the work shows that an instruction
+must change, change it only in aristoteles:
+
+- a direction, a standard, or a rule: the high role drafts the change
+  (`work direction revise`), and its owner accepts it. A lower role escalates it. The host,
+  outside any task, revises with `--by=<your run>`; it revises a direction that it did not
+  draft too.
+- the words of a role (`description`, `intro`, `responsibilities`, `output`): the high role
+  drafts the new words (`work role draft <token> <role> --file=<words.yaml>`), and the person
+  accepts them or rejects them with a reason (`work waiting` shows the reason; draft again). A lower role escalates it. Never edit `aristoteles.yaml`: an edit
+  stops every write until the person applies it.
+
+Never fix an instruction in the project's own copy. A task whose output is such a file (for
+example a task that writes the README) changes it as its task says.
 
 ## Acts that belong to the person
 

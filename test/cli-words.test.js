@@ -89,9 +89,8 @@ describe('resolve', () => {
     const chat = '--evidence="chat | the date is not there"'
     const vague = await p.agent(`resolve ${lead} v2 ${words} ${chat}`)
     expect(vague.err).toContain('name the place in docs/tsd.md#introduction')
-    expect(vague.err).toContain(
-      `next: correct the place and run the review again: work resolve ${lead} v2`,
-    )
+    // D10, I5: the choice is what the agent writes, not "run the review again" (BUILD.md 4.4).
+    expect(vague.err).toContain('next: write the place in docs/tsd.md#introduction where you looked')
     const seen = '--evidence="the introduction | it gives no date for the second run"'
     expect(await out(p.agent(`resolve ${lead} v2 ${words} ${seen}`))).toStartWith('v3: resolves v2')
     expect(await out(p.agent('result show r1'))).toContain(
@@ -400,9 +399,10 @@ describe('the fixes of the skills round', () => {
     const why = '--why="the cost was missing"'
     const r = await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml ${why}`)
     expect(r.err).toContain('refused: --why="the cost was missing" is not a reason of a draft')
+    // D10, I5: the choice names the five, not "run the command again" (BUILD.md 4.4).
     expect(r.err).toContain(
-      'next: run the command again with --why="<one of: Correct the rule, ' +
-        'Correct the standard, Correct the direction, Correct the reviewer, Shorten>"',
+      'next: pick one of: Correct the rule, ' +
+        'Correct the standard, Correct the direction, Correct the reviewer, Shorten',
     )
     expect(r.err).not.toContain('check the ids with work status')
   })

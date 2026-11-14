@@ -120,9 +120,10 @@ describe('the pump', () => {
     expect(screen).toEndWith('\r\n\x1b[?1003h\x1b[?1006h')
   }, 30000)
 
-  // The host is the AI CLI that the person triggered (Nanda, 2026-11-13): the pump copies its
-  // pane on the person's own tmux server and types into it, and never starts, stops, or resizes it.
-  test('the host\'s own pane: a copy of its screen, the keys typed into it, and no start, stop, or resize', async () => {
+  // The host is the AI CLI that the person triggered (Nanda, 2026-11-13): the pump streams its
+  // pane on the person's own tmux server to a page and types into it, and never starts, stops, or
+  // restarts it. Ruling 2026-11-14 (fixed-size terminals): the page's resize sets its window.
+  test('the host\'s own pane: its screen, its stream to a page, the keys typed into it, a resize, and no start or stop', async () => {
     const { pump, seen } = make()
     const person = personPane(`bun ${FAKE} start person-host`)
     try {
@@ -130,17 +131,20 @@ describe('the pump', () => {
       await until(() => text(pump.snapshot('host-1')).includes('fake agent start person-host (env none)'))
       expect(pump.status()['host-1']).toMatchObject({ live: true, ended: false })
       expect(pump.paneOf('host-1')).toEqual({ socket: person.socket, pane: person.pane })
+      // Ruling 2026-11-14 (fixed-size terminals): the pane streams only while a page shows it.
+      pump.show('host-1')
       pump.input('host-1', 'hello\r')
-      await until(() => text(pump.snapshot('host-1')).includes('you said: hello'))
-      expect(seen.get('host-1')).toContain('you said: hello')
+      await until(() => seen.get('host-1')?.includes('you said: hello'))
+      expect(text(pump.snapshot('host-1'))).toContain('you said: hello')
       expect(pump.tail('host-1')).toContain('you said: hello')
       expect(() => pump.stop('host-1')).toThrow('the UI does not start, restart, or stop it')
       expect(() => pump.resume('host-1', 'sh')).toThrow('the UI does not start, restart, or stop it')
-      // A resize fits the copy (its bottom rows), and the pane keeps the person's size.
-      pump.resize('host-1', 80, 5)
-      await until(() => text(pump.snapshot('host-1')).split('\r\n').length <= 5)
-      const size = Bun.spawnSync(['tmux', '-f', '/dev/null', '-S', person.socket, 'display-message', '-p', '-t', person.pane, '#{pane_width}x#{pane_height}'])
-      expect(size.stdout.toString().trim()).toBe('160x48')
+      // Ruling 2026-11-14 (fixed-size terminals): a resize sets the size of the host's window (it
+      // kept the person's size, and only the copy fitted the page, before).
+      pump.resize('host-1', 80, 30)
+      const size = () => Bun.spawnSync(['tmux', '-f', '/dev/null', '-S', person.socket, 'display-message', '-p', '-t', person.pane, '#{pane_width}x#{pane_height}'])
+      expect(size().stdout.toString().trim()).toBe('80x30')
+      expect(pump.size('host-1')).toEqual({ cols: 80, rows: 30 })
       // The person ends the AI CLI: the pane is gone, and nothing restarts it.
       pump.input('host-1', 'exit\r')
       await until(() => pump.status()['host-1']?.ended === true)

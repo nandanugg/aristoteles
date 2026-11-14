@@ -7,6 +7,14 @@ import { startServer } from './code.js'
 
 export const dbOf = (p) => join(p.dir, '.work', 'aristoteles.db')
 
+// The page acts as the person that git names in the dir, and shows only that person's items
+// (ruling 10.8, B7): a test of the page makes the dir a repo of Nanda, the person of the harness.
+export function gitPerson(p, name = 'Nanda') {
+  for (const args of [['init', '-q'], ['config', 'user.name', name]]) {
+    Bun.spawnSync(['git', '-C', p.dir, ...args], { env: process.env })
+  }
+}
+
 // One server for a block of reads. Its clock is the fake clock of the harness (the time of the
 // last act), or the time that a test names; stop() always runs, also when a read fails.
 export async function withServer(p, use, at) {

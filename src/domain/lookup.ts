@@ -105,8 +105,6 @@ export const lookup = (
 
 type Of<K extends Found['_tag']> = Extract<Found, { readonly _tag: K }>
 
-export const lookupTask = (work: Work, id: string): Effect.Effect<Task, Refused> =>
-  lookup(work, id, ['t']).pipe(Effect.map((f) => (f as Of<'Task'>).task))
 export const lookupAssignment = (work: Work, id: string): Effect.Effect<Assignment, Refused> =>
   lookup(work, id, ['a']).pipe(Effect.map((f) => (f as Of<'Assignment'>).assignment))
 export const lookupResult = (work: Work, id: string): Effect.Effect<Result, Refused> =>

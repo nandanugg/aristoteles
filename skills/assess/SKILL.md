@@ -70,10 +70,12 @@ The roles and the people must exist before any direction, so do this part first:
 4. Record the fit of each agent role (the `role-fitness` skill): `work role fit <role>`, the
    answers in `.work/fit/<role>.yaml`, then
    `work role fit <role> --answers=.work/fit/<role>.yaml --by=assess`. A role with no fit
-   record gets no work. A role that does not fit needs new words in `aristoteles.yaml`
-   (`description`, `intro`, `responsibilities`, `output`); ask the person to apply them with
-   `work config apply`. A new role, a new act, or a new tier cannot go through apply. Then go
-   on with the steps below.
+   record gets no work. A role that does not fit needs new words (`description`, `intro`,
+   `responsibilities`, `output`): write them in a file, run
+   `work role draft <role> --file=<words.yaml> --by=assess`, and ask the person to accept them
+   on the page; then record its fit again. A reject shows in `work waiting` with its reason. Do not edit `aristoteles.yaml`: an edit stops every
+   write until the person applies it. A new role, a new act, or a new tier cannot change after
+   the accept. Then go on with the steps below.
 
 ## An app with its own harness
 
@@ -200,7 +202,10 @@ Each new version of a direction comes to its owner on the page, so give no direc
    send it. After you send it, `work direction show d<n>#<entry>` prints one entry of it.
 7. Send it: `work direction new --file=<file> --by=assess`, with `--answers=<s ids>` for the
    suggestions that it answers. A first draft needs no `--why`. A refusal says what to fix;
-   fix it and send it again.
+   fix it and send it again. A standard that belongs under a direction with a version goes into
+   a revise of that direction, also one that you did not draft:
+   `work direction revise <direction id> --file=<edit.yaml> --by=assess` (with no file, it
+   prints the form of the edit). Its owner accepts it.
 8. When the owner rejects a draft, `work waiting` shows the Reject and the command. Write a new
    draft that answers it (`--answers=<the Reject>`), and that proposes something else. Name
    what it corrects with `--why=<reason> --why-words="<the fact>"` (`work guide writing` lists

@@ -113,11 +113,11 @@ describe('aristoteles.yaml', () => {
   })
 })
 
-// work start runs in src/bin/work.ts, which no entry point of test/code.js reaches: this check is
-// of the function that it calls.
+// work start runs in bin/main.ts, which no entry point of test/code.js reaches: this check is of
+// the function that it calls.
 describe('the skills of a launched AI tool', () => {
   test('work start links the missing skills into the skills folder of each tier, and says so', async () => {
-    const { linkSkills } = await import('../src/ui/skills.ts')
+    const { linkSkills } = await import('./code.js')
     const { lstatSync, readlinkSync } = await import('node:fs')
     const p = project({ 'aristoteles.yaml': `tiers:\n  sol: { skills: .claude/skills }\n  terra: { skills: .claude/skills }\n${WORK_YAML}` })
     p.write('.claude/skills/assess/SKILL.md', 'our own assess\n')
@@ -128,8 +128,8 @@ describe('the skills of a launched AI tool', () => {
   })
 
   test('git of the dir excludes the links and .work/, once, and keeps the app\'s own skill', async () => {
-    const { linkSkills } = await import('../src/ui/skills.ts')
-    const { excludeFromGit } = await import('../src/ui/git-exclude.ts')
+    const { linkSkills } = await import('./code.js')
+    const { excludeFromGit } = await import('./code.js')
     const p = project({ 'aristoteles.yaml': `tiers:\n  sol: { skills: .claude/skills }\n${WORK_YAML}` })
     // The dir is a sub folder of its repo, so each line starts at the top of the repo.
     const top = dirname(p.dir)
@@ -211,7 +211,8 @@ describe('the first start of a dir', () => {
     expect(ok(await p.agent('role fit writer --answers=fit.yaml --by=assess')).out).toBe('writer fits; recorded by assess.')
     expect(ok(await p.agent('role list')).out).not.toMatch(/^writer .*no fit record/m)
     expect(ok(await p.agent('log')).out).toMatch(/^e2 .* assess run \S+ \(run\) role\.fit$/m)
-    expect((await p.nanda('role fit architect --answers=fit.yaml --by=assess')).err).toContain('the person records a fit as themselves: leave out --by')
+    // I4 (N6): the person's --by is not used: the person records the fit, with no refusal.
+    expect(ok(await p.nanda('role fit architect --answers=fit.yaml --by=assess')).out).toBe('architect fits; recorded.')
     expect((await p.agent('role fit architect --answers=fit.yaml --by=assess --as=a1.k0001')).err).toContain('a high role passes only --as=<its token>')
     expect((await p.agent('role fit architect --answers=fit.yaml --by=Host')).err).toContain('--by=<its name in lower case>')
   })

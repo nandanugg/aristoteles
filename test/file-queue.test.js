@@ -33,7 +33,8 @@ describe('one maker for each file at a time', () => {
   test('the second maker of a file is stored and waits; its brief is refused before its turn, so it cannot report', async () => {
     const { p, lead, second, assign } = await twoWriters()
     expect(assign).toContain('a3 waits for docs/tsd.md: a2 (t2 Intro) writes it first, and one maker writes a file at a time.')
-    expect(assign).toContain('Start a Haiku subagent when a2 finishes (work next says when) with this prompt')
+    // Ruling 10.2: the turn passes when a2 is accepted or idle, not at its finish.
+    expect(assign).toContain('Start a Haiku subagent at its turn (work next says when) with this prompt')
     const brief = await p.agent(`brief ${second}`)
     expect(brief.code).toBe(1)
     expect(brief.err).toContain('a3 waits for docs/tsd.md: a2 (t2 Intro) writes it first')
@@ -45,15 +46,16 @@ describe('one maker for each file at a time', () => {
     expect(ok(await p.nanda('waiting')).out).toContain('a3 (writer on t3) waits for docs/tsd.md: a2 (t2 Intro) writes it first')
   })
 
-  test('the part of the first maker is accepted: next says to finish it, and the finish starts the second maker', async () => {
+  // Ruling 10.2 (D14, I2): the turn is derived; a settled maker reserves no turn, so the accept of
+  // t2 passes the file to a3 at once, with no finish step.
+  test('the part of the first maker is accepted: the turn passes to the second maker at once', async () => {
     const { p, lead, first, second } = await twoWriters()
     const linter = await introReported(p, lead, first)
     ok(await p.agent(`review ${linter} r1 accept ${LINT}`))
     ok(await p.agent(`review ${lead} r1 accept ${REPEATABLE}`))
-    expect(ok(await p.agent(`next ${lead}`)).out).toContain('finish a2: t2 is accepted, and a3 waits for docs/tsd.md')
-    const finish = ok(await p.agent(`finish ${lead} a2`)).out
-    expect(finish).toContain('a3 may write docs/tsd.md now: its parent a1 gives a new subagent the command that work assign printed for a3')
-    expect(ok(await p.agent(`next ${lead}`)).out).toContain('make t3: give a new subagent the command of a3')
+    const next = ok(await p.agent(`next ${lead}`)).out
+    expect(next).not.toContain('finish a2')
+    expect(next).toContain('make t3: give a new subagent the command of a3')
     expect(ok(await p.agent(`brief ${second}`)).out).not.toContain('writes docs/tsd.md first')
     p.write('docs/tsd.md', WITH_DESIGN)
     expect(ok(await p.agent(`report ${second} --output=docs/tsd.md#design`)).out).toContain('reported on t3')
@@ -72,12 +74,15 @@ describe('one maker for each file at a time', () => {
     expect(ok(await p.agent(`report ${first} --output=docs/tsd.md#introduction`)).out).toContain('r2 reported on t2')
   })
 
-  test('a maker with no attempts left holds the file until its parent finishes it', async () => {
+  // Ruling 10.2 (D14): a maker with no attempts left holds no turn (its task waits for an
+  // evaluation), so the file passes to a3 at once, with no finish step.
+  test('a maker with no attempts left holds no file: the second maker starts at once', async () => {
     const { p, lead, first, second } = await twoWriters({ attempts: ' --max-attempts=1' })
     const linter = await introReported(p, lead, first)
     ok(await p.agent(`review ${linter} r1 reject --point="it names a ticket" --breaks=no-ticket-ids`))
-    expect(ok(await p.agent(`next ${lead}`)).out).toContain('finish a2: it has no attempts left, and a3 waits for docs/tsd.md')
-    ok(await p.agent(`finish ${lead} a2`))
+    const next = ok(await p.agent(`next ${lead}`)).out
+    expect(next).not.toContain('finish a2')
+    expect(next).toContain('make t3: give a new subagent the command of a3')
     ok(await p.agent(`brief ${second}`))
   })
 

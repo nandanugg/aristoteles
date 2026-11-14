@@ -22,14 +22,14 @@ describe('planted faults: the checker brief', () => {
     expect(brief).toContain('<where you looked in docs/tsd.md#introduction>')
   })
 
-  test('an evidence refusal gives the command again, with the one field to correct', async () => {
+  // D10, I5 (BUILD.md 4.4): the next line is the one field to write, not "run the review again"
+  // with the whole command.
+  test('an evidence refusal names the one field to correct', async () => {
     const { p, linter } = await reported()
     const review = await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | my scratch copy | no paths or hashes there" ` +
       '--evidence="no-ticket-ids | the introduction | no ticket ids there"')
     expect(review.err).toContain('name the place in docs/tsd.md#introduction')
-    expect(review.err).toContain(`correct the place and run the review again: work review ${linter} r1 accept ` +
-      '--evidence="no-code-proof | <the place in docs/tsd.md#introduction where you looked> | no paths or hashes there" ' +
-      '--evidence="no-ticket-ids | the introduction | no ticket ids there"')
+    expect(review.err).toContain('next: write the place in docs/tsd.md#introduction where you looked')
     expect(review.err).not.toContain('do not try other commands')
   })
 })
@@ -295,15 +295,17 @@ describe('revisions come from git', () => {
     git(app, 'add', '.')
     git(app, 'commit', '-q', '-m', 'main moves')
     const moved = git(app, 'rev-parse', 'main').slice(0, 12)
-    // The maker says that its fix is built on the new main; git says that it is not.
-    const typed = await p.agent(`report ${impl} --output=app@${fix} --made-from=app@${moved}`)
-    expect(typed.err).toContain(`--made-from=app@${moved}: app is a git source, and the CLI reads its revision from git`)
-    ok(await p.agent(`report ${impl} --output=app@${fix}`))
+    // The maker says that its fix is built on the new main; git says that it is not. I4 (N4): the
+    // CLI reads the base from git and does not ask for it, so the typed one is no refusal.
+    ok(await p.agent(`report ${impl} --output=app@${fix} --made-from=app@${moved}`))
     expect(ok(await p.agent('result show r1')).out).toContain(`(made from app@${base})`)
     // Main moved after the base of the fix, by work that the fix does not need: no recheck.
     expect(ok(await p.agent(`next ${lead}`)).out).not.toContain('work recheck')
-    // Nobody records a git source by hand; a lead records a source outside git.
-    expect((await p.agent(`source ${lead} app@${base}`)).err).toContain('app is a git source: the CLI reads the base of each commit from git, and a new commit on it asks for no recheck')
+    // Nobody records a git source by hand; a lead records a source outside git. I4 (N4): the
+    // CLI says what git says and stores nothing, instead of a refusal with no choice.
+    const events = ok(await p.agent('log --last=100')).out.split('\n').length
+    expect(ok(await p.agent(`source ${lead} app@${base}`)).out).toContain('app is a git source: the CLI reads the base of each commit from git, and a new commit on it asks for no recheck')
+    expect(ok(await p.agent('log --last=100')).out.split('\n').length).toBe(events)
     expect(ok(await p.agent(`source ${lead} page@v4`)).out).toContain('page is at v4.')
   }, 60000)
 })

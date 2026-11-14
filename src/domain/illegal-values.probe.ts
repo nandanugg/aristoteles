@@ -62,7 +62,6 @@ import {
 } from './moves.ts'
 import type { Activity, HostRun, Problem, Send } from './ui-model.ts'
 import type { Forward } from './work.ts'
-import type { Guard } from '../cli/guard.ts'
 
 declare const t: TaskId, r: ResultId, v: ReviewId, rej: RejectId, esc: EscalationId
 declare const a: AssignmentId, a7: AssignmentId, now: Time, rule: RuleEntry, d: RevisionId
@@ -325,10 +324,6 @@ export const n11: Recorded = { seq: 1, at: now, author: a3, event: { _tag: 'Ques
 export const okN12: Under = new Map([[did, 2 as PositiveInt]])
 // @ts-expect-error N12: a version id (of any direction) under the key of a direction
 export const n12: Under = new Map([[did, vid]])
-
-export const okN13: Guard<'Review.Accept'> = { claim: true, targets: (e) => [e.create.of.id] }
-// @ts-expect-error N13: a path that names no field
-export const n13: Guard<'Review.Accept'> = { claim: true, targets: (e) => [e.create.of.idd] }
 
 const roleFile = { description: 'd', intro: 'i', responsibilities: [], acts: [], checks: [] }
 const defined = { project: 'p', people: ['Nanda'], limits: { low: {}, medium: {}, high: {} }, decide: {} }

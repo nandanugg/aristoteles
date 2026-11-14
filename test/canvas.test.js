@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { HOST, TASK_WHOLE, init, ok, project, reported, tokenIn } from './harness.js'
+import { HOST, TASK_WHOLE, init, ok, project, reported, solToken, tokenIn } from './harness.js'
 import { canvas } from './outside.js'
 
 // The canvas shows only what runs now (Nanda, 2026-11-11): an accepted task goes away with its
@@ -67,7 +67,7 @@ describe('the canvas shows only what runs now', () => {
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     ok(await p.run('run start', HOST))
     ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
-    const host = tokenIn(ok(await p.ui('task open td1')).out)
+    const host = await solToken(p, ok(await p.ui('task open td1')).out) // ruling 10.1
     ok(await p.agent(`brief ${host}`))
     ok(await p.agent(`assign ${host} t1 --role=section-lead`))
     const owner = async () => (await canvas(p, 'h1')).rows[0].task.owner

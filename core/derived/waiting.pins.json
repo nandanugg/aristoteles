@@ -1,0 +1,109 @@
+{
+ "started": {
+  "decisionsOf": [],
+  "renderWaiting": [
+   "nothing waits."
+  ]
+ },
+ "reported": {
+  "decisionsOf": [],
+  "renderWaiting": [
+   "nothing waits."
+  ]
+ },
+ "rejectedOnce": {
+  "decisionsOf": [],
+  "renderWaiting": [
+   "nothing waits."
+  ]
+ },
+ "accepted": {
+  "decisionsOf": [],
+  "renderWaiting": [
+   "nothing waits."
+  ]
+ },
+ "escalated": {
+  "decisionsOf": [],
+  "renderWaiting": [
+   "v2 escalated on r1 by a1 for Nanda: the rules do not say how long it is",
+   "    work resolve v2 --resolution=\"...\""
+  ]
+ },
+ "codeStarted": {
+  "decisionsOf": [],
+  "renderWaiting": [
+   "nothing waits."
+  ]
+ },
+ "relay": {
+  "decisionsOf": [
+   [
+    "Direction",
+    "d2",
+    null,
+    "Shown"
+   ],
+   [
+    "Confirm",
+    "e14",
+    "t1",
+    "Shown"
+   ]
+  ],
+  "renderWaiting": [
+   "e14 forwarded by a2 for Nanda: accept d2 with evidence chat | Nanda says yes",
+   "    their words: \"yes, approve it\"",
+   "    work confirm e14",
+   "d2 drafted for tsd-writing by a2; reviews: none",
+   "    work direction show d2; work review d2 accept [--reason=\"<a comment>\"], or reject --reason=\"<why>\""
+  ]
+ },
+ "relayDecided": {
+  "decisionsOf": [],
+  "renderWaiting": [
+   "nothing waits."
+  ]
+ },
+ "vetoed": {
+  "decisionsOf": [],
+  "renderWaiting": [
+   "d2 is rejected by Nanda: \"the cost is in the facts already\"; its reviser revises the current version again",
+   "    work direction show d2"
+  ]
+ },
+ "uiRun": {
+  "decisionsOf": [
+   [
+    "System",
+    "sp1",
+    "t1",
+    "Shown"
+   ]
+  ],
+  "renderWaiting": [
+   "q1 for a1: is the cost in the facts?",
+   "    work answer <a1 token> q1 --text=\"...\"",
+   "v2.1 needs a change of tsd-writing; a high role drafts it, or you suggest it",
+   "    work suggest tsd-writing --says=\"<the change>\"",
+   "v2.1 can also be answered by your split of t1",
+   "    work task split t1 --file=<parts.yaml> --review=v2.1"
+  ]
+ },
+ "uiRunRemade": {
+  "decisionsOf": [
+   [
+    "System",
+    "sp1",
+    "t1",
+    "Shown"
+   ]
+  ],
+  "renderWaiting": [
+   "q1 for a1: is the cost in the facts?",
+   "    work answer <a1 token> q1 --text=\"...\"",
+   "t2 The Introduction is Open, and no open assignment works on it",
+   "    work assign t2 --role=architect|section-lead"
+  ]
+ }
+}

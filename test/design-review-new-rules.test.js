@@ -71,8 +71,9 @@ describe('drafts of a direction', () => {
     const other = await architect(p)
     expect(ok(await p.agent(`review ${other} d2 reject --reason="the cost has no source in the facts"`)).out)
       .toContain('d2 stays open; after this Reject, only the accept of Nanda makes it official.')
-    expect((await p.agent(`review ${lead} d2 accept ${SEEN}`)).err)
-      .toContain('only the accept of Nanda makes it official')
+    // Ruling 10.5 (A1-1, S2): the owner's accept is And with approvedBy, in any order: the lead's
+    // accept counts, and the draft still waits for Nanda's.
+    expect(ok(await p.agent(`review ${lead} d2 accept ${SEEN}`)).out).not.toContain('is official')
     expect(ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept')).out).toContain('d2 is official: tsd-writing@2')
   })
 

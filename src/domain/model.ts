@@ -1,8 +1,8 @@
 // The records of the work: the owner's types of the design page (plan/intelligent-work, Part 2:
 // sharedTypes and the parts Workflow, Direction, Task, Assignment, Result, Review, Evaluation,
-// Checkpoint, Note), with their names, fields and structure. Types only: the engine
-// (src/engine) holds the operations of the page (Workflow.define, Task.start, Review.decide...)
-// and their refusals; src/domain/moves.ts holds the moves of each record with a lifecycle.
+// Checkpoint, Note), with their names, fields and structure. Types only: core/actions holds the
+// operations of the page (Workflow.define, Task.start, Review.decide...) and their refusals;
+// src/domain/moves.ts holds the moves of each record with a lifecycle.
 //
 // Rule 1 (the one change of representation): a record names another record by its id, where
 // the page draws the record itself (needs: TaskId[] for the page's needs: Task[]). The Work is
@@ -573,8 +573,8 @@ export type Recheck = ReviewBase & {
   readonly reason: NonBlank
 }
 // page: Escalate. A review that cannot decide: it tells the level above. answerBy is the first
-// one that it went to; who answers it now is derived (derived.ts answererOf: it moves up as
-// that one finishes), and so is whether a Resolve closed it.
+// one that it went to; who answers it now is derived (core/derived: it moves up as that one
+// finishes), and so is whether a Resolve closed it.
 export type Escalate = ReviewBase & {
   readonly _tag: 'Escalate'
   readonly by: AssignmentId // the reviewer that cannot decide
@@ -701,7 +701,7 @@ export interface Question {
   readonly id: QuestionId // not on the page
   readonly text: NonBlank
   readonly stops: TaskId // only this task waits for the answer (every writer sets its own)
-  // The first one that it went to; who answers it now is derived (derived.ts answererOf).
+  // The first one that it went to; who answers it now is derived (core/derived).
   readonly answerBy: Answerer
   readonly from: AssignmentId | Human // page: from?: Assignment; the person's forwarded question
   // page: answer?: the question stays after the answer, which keeps who answered and when.
@@ -758,31 +758,12 @@ export type Blocker =
   | { readonly _tag: 'Escalation'; readonly ref: EscalationId }
   | { readonly _tag: 'Question'; readonly ref: QuestionId }
 
-// Addition (PLAN.md 5.3). The state of a result: what the page's card shows.
-export type ResultState =
-  | { readonly _tag: 'Accepted' }
-  | { readonly _tag: 'Rejected' }
-  | { readonly _tag: 'InReview' }
-
 // Addition (PLAN.md 5.3, MakerStatus; bug 9). One attempt count for the brief, next and the
 // page: number <= max.
 export interface Attempt {
   readonly number: number
   readonly max: Limit
 }
-export type MakerState =
-  | { readonly _tag: 'Working'; readonly used: number; readonly max: Limit } // it may report
-  // A fault used its last try: the task waits for an evaluation.
-  | { readonly _tag: 'OutOfTries'; readonly used: number; readonly max: PositiveInt }
-  | { readonly _tag: 'Finished' } // finished, or ended by a new maker of the task
-
-// Addition (PLAN.md 5.3, DraftStatus). The state of a Revision.
-export type RevisionState =
-  | { readonly _tag: 'Waiting'; readonly waitsFor: NonEmpty<DeciderLeaf> } // not all accepted
-  | { readonly _tag: 'Vetoed'; readonly by: RejectId } // a decider rejected it; the reviser revises
-  | { readonly _tag: 'Outdated'; readonly current: VersionId } // its base is no longer current
-  | { readonly _tag: 'Official'; readonly version: VersionId } // a version has it as its revision
-
 // Addition (PLAN.md 5.3, GrantStatus). The state of a Permission at a time.
 export type PermissionState =
   | { readonly _tag: 'NotYet' }
@@ -792,7 +773,7 @@ export type PermissionState =
 
 // Addition (the owner's ruling, 2026-11-12). An outside source at a time: fresh within the limit
 // of aristoteles.yaml (outsideSourceHours, 72 by default) from when an agent last read it, then
-// expired, and work made from it waits for an agent to read it again (derived.ts sourceStateOf).
+// expired, and work made from it waits for an agent to read it again (core/derived).
 export type SourceState =
   | { readonly _tag: 'Fresh'; readonly seenAt: Time }
   | { readonly _tag: 'Expired'; readonly seenAt: Time }

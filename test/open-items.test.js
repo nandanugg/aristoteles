@@ -94,7 +94,8 @@ describe('work that changes the same files runs one after the other', () => {
     ok(await p.agent(`report ${impl} --output=app@${commitOn(p, app, 'one', 'export.js', 'one file a day\n')}`))
     const second = await p.agent(`report ${impl2} --output=app@${commitOn(p, app, 'two', 'export.js', 'a file named by the date\n')}`)
     expect(second.err).toContain('changes export.js, and so does r1 of t1 (Fix the key), which does not wait for t2')
-    expect(second.err).toContain(`work escalate ${impl2}`)
+    // D10, I5: the choice in core's words (no token).
+    expect(second.err).toContain('next: escalate it to your parent with what you found')
   }, 20000)
 
   test('two tasks that change different files run at the same time', async () => {

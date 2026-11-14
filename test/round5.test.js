@@ -41,7 +41,9 @@ describe('the record and the rule ids', () => {
   test('R5-1: a suggested version does not change what a rule id means', async () => {
     const { p, writer, linter } = await reported()
     const arch = await architect(p, 'tsd-writing,t1')
-    p.write('edit.yaml', 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      when: { section: introduction }\n' +
+    // S13: the context of a standard is "where"; a revise refuses "when", as a direction file does
+    // (the old revise dropped it without a word).
+    p.write('edit.yaml', 'replace:\n  - id: intro-story\n    with:\n      id: intro-story\n      where: { section: introduction }\n' +
       '      says: Tell the story first, in plain words.\n      rules:\n' +
       '        - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: linter }\n')
     ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
@@ -71,8 +73,9 @@ describe('work that must not stop', () => {
     ok(await p.agent(`brief ${joiner}`))
     p.write('docs/tsd.md', tsd('The export ran twice.', 'One file per merchant per day, named by the date.'))
     expect(ok(await p.agent(`report ${joiner} --output=docs/tsd.md`)).out).toContain('reported on t3')
-    // A closed task takes no new work: no recheck of its result, and no split of it.
-    expect((await p.agent(`recheck ${arch} r1 --reason="again"`)).err).toContain('t2 is closed')
+    // A closed task takes no new work: no recheck of its result, and no split of it. C1: the
+    // remake of t1 ended a1, so a1 acts no more ("t2 is closed" before).
+    expect((await p.agent(`recheck ${arch} r1 --reason="again"`)).err).toContain('a1 is finished: its task t1 ended')
     expect((await p.agent(`task split ${arch2} t2 --file=parts2.yaml`)).err).toContain('t2')
   })
 })
@@ -133,11 +136,14 @@ describe('a rule passes only with what it needs', () => {
     expect(ok(await p.agent('task show t1')).out).toContain('Accepted')
   })
 
-  test('R5-4: a part with an empty workspace is refused', async () => {
+  // I4 (N7): a part with an empty workspace takes the workspace of its task; no refusal.
+  test('R5-4: a part with an empty workspace works in the workspace of its task', async () => {
     const p = await fresh({ 'task.yaml': TSD_TASK })
     const arch = await architect(p)
     p.write('parts.yaml', '- { name: Design, text: Write the design., workspace: [] }\n')
-    expect((await p.agent(`task split ${arch} t1 --file=parts.yaml`)).err).toContain('empty workspace')
+    expect(ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`)).out).toContain('t1 split into t2')
+    const writer = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=writer`)).out)
+    expect(ok(await p.agent(`brief ${writer}`)).out).toContain('WORK IN  docs/tsd.md')
   })
 
   test('R5-5: parts that share a file all own a section, and no section lies inside another', async () => {

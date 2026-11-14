@@ -31,7 +31,12 @@ When `work` is not on the PATH, `work …` means `bun <the aristoteles folder>/b
      the words that the person said to choose it. When those words name no one run, show the
      list again and ask which one. When the project has an open top task, the output gives you
      the command of its Sol: run it. The window of the old host closes.
-5. From then on, follow the `work` skill, part "You are the host of a project".
+5. From then on, follow the `work` skill, part "You are the host of a project". The UI types
+   nothing into this terminal: when you have nothing to do, run `work wait --by=<your run>`
+   (before the top task opens) or `work wait <token>` (after), in the background when your AI
+   CLI allows it, so that the person can still talk to you here. When the work shows that an
+   instruction must change, change it only in aristoteles, never in the project's own copy
+   (the `work` skill, part "One source of instructions").
 6. **When the person does not answer,** do not poll and do not ask again. Say what waits for
-   them, with the command that shows it (`work waiting`), and stop. The person triggers a host
-   again, and continues the project there.
+   them, with the command that shows it (`work waiting`), and run `work wait`. When the AI CLI
+   ends, the person triggers a host again, and continues the project there.

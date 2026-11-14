@@ -16,7 +16,6 @@ import type {
   StartReason,
   SupervisorReason as SupervisorReasonSchema,
   TaskData,
-  WakeCause as WakeCauseSchema,
 } from './events.ts'
 import type { Settings } from './files.ts'
 import type { Why } from './model.ts'
@@ -190,12 +189,9 @@ export type SentPair =
       readonly from: { readonly _tag: 'Supervisor'; readonly reason: SupervisorReason }
       readonly keys: typeof Line.Type | typeof Enter.Type
     }
-export type Sender = SentPair['from']
-export type Keys = SentPair['keys']
 // Every reason of the supervisor but a start: a wake, a word to a host about a child, a decision
 // or a problem, the host's prompt after an open, a retry input.
 export type SupervisorReason = typeof SupervisorReasonSchema.Type
-export type WakeCause = typeof WakeCauseSchema.Type
 export type SendState =
   | { readonly _tag: 'Pending' }
   | { readonly _tag: 'Delivered'; readonly at: Time }
@@ -271,6 +267,9 @@ export type Decision = DecisionBase &
     // a relayed act: an agent relayed the person's words as an act that counts only when the
     // person confirms it (id: e..; Nanda, 2026-11-13). quote: the person's words.
     | { readonly _tag: 'Confirm'; readonly quote: Text }
+    // new words of a role that a high agent or a host drafted, for the person's accept or reject
+    // (id: e..; ruling 2026-11-14). lines: '-' a word of now, '+' its drafted word.
+    | { readonly _tag: 'RoleWords'; readonly role: Text; readonly lines: ReadonlyArray<Text> }
   )
 interface DecisionBase {
   readonly id: Text
@@ -465,6 +464,14 @@ export type ServerMessage =
       readonly reset?: boolean
     } // base64
   | { readonly type: 'term.error'; readonly session: SessionId; readonly error: Text }
+  // The size of a terminal as tmux has it, before its first bytes and after each resize: the page
+  // never sizes a terminal itself (ruling 2026-11-14).
+  | {
+      readonly type: 'term.size'
+      readonly session: SessionId
+      readonly cols: number
+      readonly rows: number
+    }
 export type PageMessage =
   | { readonly type: 'term.open' | 'term.close'; readonly session: SessionId }
   | { readonly type: 'term.input'; readonly session: SessionId; readonly data: Text }
@@ -490,3 +497,6 @@ export type PageAct =
   | { readonly act: 'end'; readonly run: RunId }
   | { readonly act: 'reject-task'; readonly task: TaskId; readonly reason: Text }
   | { readonly act: 'settings'; readonly settings: Settings }
+  // the person decides new words of a role (ruling 2026-11-14)
+  | { readonly act: 'accept-words'; readonly draft: EventRef }
+  | { readonly act: 'reject-words'; readonly draft: EventRef; readonly reason: Text }

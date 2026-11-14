@@ -90,7 +90,8 @@ dir: <project> (run every work command in this folder)
 
 YOU ARE  medium tier. You run one task. You give its units to low-tier roles, see that each rule gets evidence
          from its checker, and decide each result of your makers: accept it, or reject it. You do
-         not change directions; you escalate when they do not fit.
+         not change directions; you escalate when they do not fit. Never fix an instruction in the
+         project's own copy of it (a skill, a standard, a README): the change goes only to aristoteles.
 ROLE     Runs one section - assigns the writer and the linter, and decides the section.
          - Assign the writer, then the linter on each result, with work assign.
          - Escalate with work escalate when the directions do not fit.
@@ -138,7 +139,7 @@ YOUR TURN
               Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.
   checkpoint  work checkpoint a1.<token> t1 --next="<the first thing to do>"
               Save before a pause; work resume a1.<token> t1 shows what changed.
-When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the page wakes you when a step changes, so do not run work next again to check. STOP also when you escalate. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person.
+When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person.
 
 (read-only: no snapshot, no claim)"
 `;
@@ -150,22 +151,22 @@ next: an agent passes its token first: work <command> <token> ..."
 
 exports[`the claim of an attempt one claim at a time; the parent frees a stopped subagent: second claim 1`] = `
 "refused: a2 is claimed since 09:27 by another subagent
-next: STOP and tell your parent. If that subagent stopped, the parent runs work free <parent token> a2"
+next: STOP and tell your parent"
 `;
 
 exports[`the claim of an attempt a report needs a brief in this attempt: report without a brief 1`] = `
 "refused: you have no brief in this attempt
-next: work brief a2.k0002; it takes the snapshot that your work follows"
+next: read your brief first; your work follows it"
 `;
 
 exports[`what was reviewed is what was reported a review of work that changed after the report is refused: review of changed work 1`] = `
 "refused: the work changed after r1 was reported
-next: work escalate a3.k0003 --result=r1 --reason="the work changed after r1 was reported", then STOP"
+next: escalate that the work changed after r1 was reported"
 `;
 
 exports[`tiers and trees a tier assigns only lower tiers: medium assigns medium 1`] = `
 "refused: a medium role assigns only lower tiers; "section-lead" is medium
-next: when the refusal names a command, run that; else run work next a1.k0001 and do its first step. Do not run the same command again unchanged"
+next: give a role of a lower tier, or escalate for a higher one"
 `;
 
 exports[`a split task joins its parts the joining result waits until every part is accepted: task tree after split 1`] = `

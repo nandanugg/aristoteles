@@ -55,9 +55,12 @@ describe('F-Q4 a needs that crosses the queue: the person criticises a part that
     ok(await p.agent(`brief ${linter}`))
     ok(await p.agent(`review ${linter} r1 accept ${LINT}`))
     ok(await p.agent(`review ${lead} r1 accept ${REPEATABLE}`))
-    // t2 is accepted, so t3 starts; next says to finish a2 so that a4 may write the file.
+    // t2 is accepted, so t3 starts. Ruling 10.2 (D14, I2): a settled maker reserves no turn, so
+    // a4 may write the file at once; next names no finish of a2 (the lead may still finish it).
     const design = tokenIn(ok(await p.agent(`assign ${lead} t3 --role=writer`)).out)
-    expect(ok(await p.agent(`next ${lead}`)).out).toContain(`work finish ${lead} a2`)
+    const turn = ok(await p.agent(`next ${lead}`)).out
+    expect(turn).not.toContain(`work finish ${lead} a2`)
+    expect(turn).toContain('make t3: give a new subagent the command of a4')
     ok(await p.agent(`finish ${lead} a2`))
     ok(await p.agent(`brief ${design}`))
     p.write('docs/tsd.md', WITH_DESIGN)

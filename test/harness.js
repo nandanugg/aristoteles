@@ -2,7 +2,11 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { main } from './code.js'
+import { checkNextCanAct, main } from './code.js'
+
+// WORK_CHECK_NEXT=1: after each act that exits 0, every step that work next offers must pass
+// canAct (BUILD.md 4.2). Without it, nothing here changes.
+const CHECK_NEXT = process.env.WORK_CHECK_NEXT === '1'
 
 export const WORK_YAML = `people:
   - name: Nanda
@@ -78,6 +82,13 @@ export const TASK_WHOLE = TASK.replace('context: { section: introduction }\n', '
 
 export const FIT = [1, 2, 3, 4, 5, 6, 7].map((id) => `- { id: ${id}, yes: true, why: "seen in the Introduction run" }`).join('\n')
 
+// The check reads the time of the last act without moving the fake clock (io.now would move it).
+async function expectNextCanAct(dir, env, real, minute) {
+  const at = real ? new Date().toISOString() : new Date(Date.UTC(2026, 9, 25, 9, minute)).toISOString()
+  const violations = await checkNextCanAct(dir, env, at)
+  if (violations.length > 0) throw new Error(`next offers what canAct refuses:\n${violations.join('\n')}`)
+}
+
 // The folder of a dir has the name that people read (the name of a dir is its folder name).
 export function project(files = {}, name = 'report-export') {
   const dir = join(mkdtempSync(join(tmpdir(), 'work-')), name)
@@ -112,7 +123,10 @@ export function project(files = {}, name = 'report-export') {
     const argv = split(line)
     // The project folder is new for each test; the golden text names it <project>.
     const clean = (lines) => lines.join('\n').replaceAll(dir, '<project>')
-    return main(argv, io).then((code) => ({ code, out: clean(out), err: clean(err) }))
+    return main(argv, io).then(async (code) => {
+      if (CHECK_NEXT && code === 0) await expectNextCanAct(dir, io.env, real, Math.max(minute - 1, 0))
+      return { code, out: clean(out), err: clean(err) }
+    })
   }
   // The person at a terminal, the person on the UI, and an agent in a shell with no terminal.
   const nanda = (line, typed) => run(line, { tty: true, typed })
@@ -155,6 +169,22 @@ export const tokenIn = (text) => text.match(/work brief (a\d+\.[a-z0-9]+)/)[1]
 // no real pane: the shell of such a host has these two variables, and no terminal.
 export const HOST_PANE = { TMUX: '/tmp/ar-test-person.sock,1,0', TMUX_PANE: '%9' }
 export const HOST = { env: HOST_PANE }
+
+// The token of a host's Sol after the open of its top task: ruling 10.1, the host gets it from
+// `work wait --by=<run>` in its pane. The words of the open (_opened) do not hold it; the callers
+// pass them, so that each call shows the open that comes first.
+export async function solToken(p, _opened, run = 'h1', where = HOST) {
+  return tokenIn(ok(await p.run(`wait --by=${run} --seconds=1`, where)).out)
+}
+
+// The token of an agent after its assign: the assign of a low role prints it; a real agent (a
+// medium or high role in a project of the UI) gets a new token in the launch command of the
+// terminal that the UI starts for it (ruling 10.1), as this does.
+export async function agentToken(p, assigned) {
+  if (/work brief a\d+\./.test(assigned)) return tokenIn(assigned)
+  const id = assigned.match(/^(a\d+) · /m)[1]
+  return tokenIn(ok(await p.ui(`session ${id} --id=s-${id} --token`)).out)
+}
 
 // A real pane of the person's tmux server, for a test of the terminals: a scratch server with no
 // config of the person (-f /dev/null) and no variable of the test's own tmux, so that a theme of

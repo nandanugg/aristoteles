@@ -1,6 +1,6 @@
 {
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/ui/app/**"],
+  "include": ["src/**/*.ts", "core/**/*.ts", "adapters/**/*.ts", "bin/**/*.ts"],
+  "exclude": ["adapters/web/app/**"],
   "compilerOptions": {
     "target": "ES2023",
     "module": "ESNext",

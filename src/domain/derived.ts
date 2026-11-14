@@ -1,18 +1,15 @@
 // What follows from one fact of a record: each one was a second field that could disagree with
-// the first (plan/types REVIEW-1 section 3). Small and pure; the engine's reads that need the
-// rules of the work stay in src/engine.
+// the first (plan/types REVIEW-1 section 3). Small and pure; a state that the rules of the work
+// decide is core/derived's.
 import type {
   Answerer,
-  Assignment,
   Direction,
-  Escalate,
   OfficialDirection,
   Point,
   Reject,
   Review,
   Role,
   Source,
-  SourceState,
   Task,
   TaskPoint,
   Version,
@@ -20,13 +17,11 @@ import type {
 import type { RoleFile } from './files.ts'
 import type {
   DirectionId,
-  EscalationId,
   PointId,
   RejectId,
   RoleName,
   RunId,
   TaskId,
-  Time,
   VersionId,
 } from './ids.ts'
 import type { Problem } from './ui-model.ts'
@@ -140,36 +135,11 @@ export const pointsOf = (
       }))
     : []
 
-// An escalation that no Resolve closed yet: a resolved one has no move back to open, so a
-// second Resolve of it is refused (new: the old engine let it fold).
-export const openEscalationOf = (work: Work, id: EscalationId): Escalate | undefined => {
-  const escalation = work.reviews.get(id)
-  if (escalation?._tag !== 'Escalate') return undefined
-  for (const r of work.reviews.values()) {
-    if (r._tag === 'Resolve' && r.escalation === id) return undefined
-  }
-  return escalation
-}
-
 // The stored id of a Reject (all its points) or of one point: the record is a Reject.
 export const isRejectRef = (work: Work, id: RejectId | PointId): boolean =>
   id.includes('.')
     ? pointOf(work, id as PointId) !== undefined
     : work.reviews.get(id as RejectId)?._tag === 'Reject'
-
-// Who answers a question or an escalation now: the first one that it went to while it is open,
-// else the nearest open assignment above it, else the owner of its task. A finish never goes
-// back, and the tree of parents never changes.
-export const answererOf = (work: Work, first: Answerer): Answerer => {
-  if (typeof first !== 'string') return first
-  const start = work.assignments.get(first)
-  if (start === undefined) return first
-  for (let a: Assignment | undefined = start; a !== undefined; ) {
-    if (a.end._tag === 'NotEnded') return a.id
-    a = a.parent._tag === 'Parent' ? work.assignments.get(a.parent.id) : undefined
-  }
-  return work.tasks.get(start.task)?.owner ?? first
-}
 
 // The top task of a host run: the task opened from one of its drafts.
 export const topOfRun = (work: Work, run: RunId): TaskId | undefined => {
@@ -193,22 +163,3 @@ export const problemTaskOf = (work: Work, problem: Problem): TaskId => {
 // The revision of a source: a commit of a git source, the revision of an outside one.
 export const revisionOf = (source: Source): string =>
   source._tag === 'Git' ? source.commit : source.revision
-
-// When an outside source was last seen, and whether that is within the limit at a time: the time
-// of the last stored act that named it (Source.Moved) or checked it (Source.Checked). One fact,
-// in the log, so no source keeps a time. undefined: no agent has read it. A git source never
-// expires (the CLI reads git itself), so it has no state.
-export const sourceStateOf = (
-  work: Work,
-  name: string,
-  at: Time,
-  hours: number,
-): SourceState | undefined => {
-  const seen = work.events.findLast(({ recorded: { event: e } }) =>
-    e._tag !== 'Source' ? false : 'create' in e ? e.create.source.name === name : e.id === name,
-  )
-  if (seen === undefined) return undefined
-  const seenAt = seen.recorded.at
-  const expired = Date.parse(at) - Date.parse(seenAt) > hours * 60 * 60 * 1000
-  return expired ? { _tag: 'Expired', seenAt } : { _tag: 'Fresh', seenAt }
-}

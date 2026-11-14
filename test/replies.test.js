@@ -15,7 +15,8 @@ describe('the reply of an agent\'s remake of a top task', () => {
     expect(out).toContain('t1 is remade as t2')
     expect(out).toContain('next: t2 is outside your task tree, so Nanda assigns it (work waiting --for=Nanda)')
     // The assign that the old reply offered is refused; the person's assign is the next step.
-    expect((await p.agent(`assign ${arch} t2 --role=section-lead`)).err).toContain('t2 is outside the task tree')
+    // C1: the remake ended the agent's own assignment, so it acts no more ("outside the tree" before).
+    expect((await p.agent(`assign ${arch} t2 --role=section-lead`)).err).toContain('a2 is finished: its task t1 ended')
     expect(ok(await p.nanda('waiting')).out).toContain('work assign t2 --role=')
   }, 20000)
 })

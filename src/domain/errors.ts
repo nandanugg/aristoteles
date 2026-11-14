@@ -31,9 +31,6 @@ export class StoreDamaged extends Data.TaggedError('StoreDamaged')<{
   readonly issue: string
 }> {}
 
-// The module of the rewrite that this call reaches is not built yet (a stub of the foundation).
-export class NotBuilt extends Data.TaggedError('NotBuilt')<{ readonly message: string }> {}
-
 // A short way to refuse, as the old refuse(message, next) did.
 export const refuse = (message: string, next: string | null = null) =>
   new Refused({ message, next })

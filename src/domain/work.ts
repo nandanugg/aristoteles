@@ -1,7 +1,6 @@
-// The state of a dir: what the replay folds from its events. Its names are
-// those of the engine's reads. It is immutable: a step returns a new Work, and a refused act
-// leaves the old one as it was. Every derived state is a function of (Work, time) in src/engine.
-import type { Effect } from 'effect'
+// The state of a dir: what the fold (core/state) makes of its events. It is immutable: a step
+// returns a new Work, and a refused act leaves the old one as it was. Every derived state is a
+// function of (Work, time) in core/derived.
 import type { Author } from './actor.ts'
 import type { ConfirmableAct, CountedAct, FitAnswer, Recorded } from './events.ts'
 import type { ConfigFile } from './files.ts'
@@ -27,7 +26,6 @@ import type {
   SuggestionId,
   TaskDraftId,
   TaskId,
-  Time,
   VersionId,
 } from './ids.ts'
 import type {
@@ -172,15 +170,3 @@ export interface Stepped {
   readonly created: ReadonlyArray<CreatedId>
 }
 
-// What a check needs besides the state (the time, the cwd, what changed, the measure;
-// given to the check). A replay needs none of it: the store is trusted.
-export interface CheckContext {
-  // The time of the check (the clock of the command, read once).
-  readonly now: Time
-  readonly cwd: string
-  // The work of a result changed after its report (its digest now differs); it reads files.
-  readonly changed: (result: Result) => Effect.Effect<boolean>
-  // The length of an assignment's brief as the CLI prints it (Workflow.measure of the page; the
-  // engine does not import the words module).
-  readonly measure: (work: Work, assignment: Assignment) => number
-}

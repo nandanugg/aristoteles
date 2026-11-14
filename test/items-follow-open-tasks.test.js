@@ -3,8 +3,8 @@
 // replaced it; and a relayed act that waits for the person's confirm shows on the page, with a
 // Confirm act.
 import { describe, expect, test } from 'bun:test'
-import { HOST, INTRO_V2, TASK_WHOLE, init, ok, project, tokenIn } from './harness.js'
-import { act, panel } from './outside.js'
+import { HOST, INTRO_V2, TASK_WHOLE, agentToken, init, ok, project, solToken, tokenIn } from './harness.js'
+import { act, gitPerson, panel } from './outside.js'
 
 // hostWaitMinutes passed since every act of these tests: every decision shows.
 const LATE = '2026-10-25T11:00:00.000Z'
@@ -21,13 +21,14 @@ const COSTS =
 const rejected = async () => {
   const top = `${TASK_WHOLE}role: architect\n`
   const p = project({ 'top.yaml': top, 'again.yaml': top.replace('agreed facts.', 'agreed facts, with their cost.') })
+  gitPerson(p)
   await init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.run('run start', HOST))
   ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
-  const host = tokenIn(ok(await p.ui('task open td1')).out)
+  const host = await solToken(p, ok(await p.ui('task open td1')).out) // ruling 10.1
   ok(await p.agent(`brief ${host}`))
-  const lead = tokenIn(ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
+  const lead = await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out) // 10.1
   ok(await p.agent(`brief ${lead}`))
   const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=3`)).out)
   ok(await p.agent(`brief ${writer}`))
@@ -40,12 +41,18 @@ const remake = (p, host) =>
   p.agent(`task remake ${host} t1 --file=again.yaml --reason="the text asks for the cost"`)
 
 describe('an item that waits for the person shows on an open task', () => {
-  test('a draft answers no point of a closed task', async () => {
+  test('a draft answers no point of a closed task: the harness drops it, and says so', async () => {
     const { p, host, vid } = await rejected()
     ok(await remake(p, host))
+    // The remake ends the host's Sol a1 (C1): the person gives t2 to a new Sol of the run, which
+    // gets its token as the host (ruling 10.1).
+    const sol = await solToken(p, ok(await p.nanda('assign t2 --role=architect')).out)
+    ok(await p.agent(`brief ${sol}`))
     p.write('costs.yaml', COSTS)
-    expect((await p.agent(`direction revise ${host} tsd-writing --file=costs.yaml --answers=${vid}`)).err)
-      .toContain(`${vid}.1 is a point of t1, which is closed (replaced by t2); a point of a closed task blocks no work`)
+    const drafted = ok(await p.agent(`direction revise ${sol} tsd-writing --file=costs.yaml --answers=${vid}`)).out
+    expect(drafted).toStartWith('d2 drafted, built on tsd-writing@1; it waits')
+    expect(drafted).toContain(`${vid}: a point of a closed task blocks no work, so d2 does not answer it.`)
+    expect(ok(await p.agent('direction show d2')).out).not.toContain('answers:')
   }, 20000)
 
   test('a draft whose task closes follows it to the task that replaced it', async () => {
@@ -91,10 +98,6 @@ describe('an item that waits for the person shows on an open task', () => {
       quote: 'yes, add the cost',
       text: `a1 relayed your words as this act: accept d2 with evidence chat | Nanda says yes. It counts when you confirm it.`,
     })
-    // The page acts as the person that git names in the dir.
-    for (const args of [['init', '-q'], ['config', 'user.name', 'Nanda']]) {
-      Bun.spawnSync(['git', '-C', p.dir, ...args])
-    }
     expect((await act(p, 'confirm', { forward: id })).out).toContain(`${id} confirmed`)
     expect(await summary(p, 't1')).toEqual([])
   }, 20000)

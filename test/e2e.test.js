@@ -34,6 +34,8 @@ describe('the Introduction: write, reject with a point, fix, accept', () => {
     const brief = ok(await p.agent(`assignment show a1`)).out
     // The waiver is removed (the owner's ruling 10, 2026-11-12): the brief names no waive.
     expect(brief).not.toContain('waive')
+    // The snapshot changed for ruling 10.1 (the stop line: hold work wait, nothing is typed) and
+    // ruling 10.13 (one source of instructions: never fix the project's own copy).
     expect(brief).toMatchSnapshot('section-lead brief')
     expect(brief).toContain('work assign a1.<token> t1 --role=writer')
     expect(lead).toBe('a1.k0001')
@@ -73,6 +75,7 @@ describe('the claim of an attempt', () => {
     const { p, lead, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
     const again = await p.agent(`brief ${writer}`)
+    // D10, I5: the next line is the subagent's real choice; the parent's free is its own step.
     expect(again.err).toMatchSnapshot('second claim')
     ok(await p.agent(`free ${lead} a2`))
     expect(ok(await p.agent(`brief ${writer}`)).out).toContain('attempt 1 of 3')
@@ -81,6 +84,7 @@ describe('the claim of an attempt', () => {
   test('a report needs a brief in this attempt', async () => {
     const { p, writer } = await withWriter()
     const r = await p.agent(`report ${writer} --output=docs/tsd.md#introduction`)
+    // D10, I5: the next line is the real choice (read the brief), with no token in core's words.
     expect(r.err).toMatchSnapshot('report without a brief')
   })
 })
@@ -95,6 +99,7 @@ describe('what was reviewed is what was reported', () => {
     ok(await p.agent(`brief ${linter}`))
     p.write('docs/tsd.md', INTRO_V2)
     const r = await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | x | y" --evidence="no-ticket-ids | x | y"`)
+    // D10, I5: the next line is the real choice (escalate), with no token in core's words.
     expect(r.err).toMatchSnapshot('review of changed work')
   })
 
@@ -130,6 +135,7 @@ describe('tiers and trees', () => {
   test('a tier assigns only lower tiers', async () => {
     const { p, lead } = await started()
     const r = await p.agent(`assign ${lead} t1 --role=section-lead`)
+    // I5, D10: the old generic next line ("run work next ... do its first step") is a real choice.
     expect(r.err).toMatchSnapshot('medium assigns medium')
     const { p: q, writer } = await withWriter()
     ok(await q.agent(`brief ${writer}`))
@@ -140,7 +146,9 @@ describe('tiers and trees', () => {
     const { p, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
     const r = await p.agent(`assign ${writer} t1 --role=linter`)
-    expect(r.err).toContain(`else do not try other commands: run work escalate ${writer}`)
+    // I5, D10: the generic line is gone; a low agent's only choice is to escalate.
+    expect(r.err).toContain('next: escalate it: no tier is below low')
+    expect(r.err).not.toContain('give a role')
   })
 })
 
@@ -272,7 +280,9 @@ describe('programs run on each report', () => {
 })
 
 describe('limits and config', () => {
-  test('a brief over the tier limit prints only the escalation', async () => {
+  // Ruling 10.9: a brief over its limit is a state of the assignment, not a refusal of the assign;
+  // the low agent waits, and the level above (here the owner) shortens or splits.
+  test('a brief over the tier limit prints only that the agent waits', async () => {
     const { WORK_YAML } = await import('./harness.js')
     const small = WORK_YAML.replace('briefChars: 4000', 'briefChars: 900')
     const p = project({ 'aristoteles.yaml': small })
@@ -281,8 +291,11 @@ describe('limits and config', () => {
     ok(await p.nanda('task open --file=task.yaml'))
     const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
     ok(await p.agent(`brief ${lead}`))
-    const r = await p.agent(`assign ${lead} t1 --role=writer`)
-    expect(r.err).toContain('the limit is 900: shorten its directions, or split the task (work guide limits)')
+    const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
+    const brief = ok(await p.agent(`brief ${writer}`)).out
+    expect(brief).toContain('the limit of the low tier is 900. Nanda shortens the directions of t1, or splits t1.')
+    expect(brief).not.toContain('RULES')
+    expect(ok(await p.nanda('waiting')).out).toContain('shorten the directions of t1, or split t1')
   })
 
   test('a hand edit of aristoteles.yaml stops every write until the person applies it', async () => {

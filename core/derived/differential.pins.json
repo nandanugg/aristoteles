@@ -1,0 +1,536 @@
+{
+ "started": {
+  "taskState t1": {
+   "_tag": "Open"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "waitingForwards": []
+ },
+ "reported": {
+  "taskState t1": {
+   "_tag": "InReview"
+  },
+  "blockerItems r1": [
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-code-proof",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-ticket-ids",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/intro-story/repeatable",
+    "rejects": []
+   },
+   {
+    "_tag": "DeciderAnyApprover"
+   }
+  ],
+  "resultState r1": {
+   "_tag": "InReview"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 1,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "attemptOf a2": {
+   "number": 2,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "makerState a3": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "waitingForwards": []
+ },
+ "rejectedOnce": {
+  "taskState t1": {
+   "_tag": "InReview"
+  },
+  "blockerItems r1": [
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-code-proof",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-ticket-ids",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/intro-story/repeatable",
+    "rejects": []
+   },
+   {
+    "_tag": "DeciderAnyApprover"
+   },
+   {
+    "_tag": "Reject",
+    "ref": "v2.1"
+   }
+  ],
+  "blockerItems r2": [
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-code-proof",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-ticket-ids",
+    "rejects": [
+     "v2.1"
+    ]
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/intro-story/repeatable",
+    "rejects": []
+   },
+   {
+    "_tag": "DeciderAnyApprover"
+   }
+  ],
+  "resultState r2": {
+   "_tag": "InReview"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 2,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "attemptOf a2": {
+   "number": 3,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "makerState a3": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "waitingForwards": []
+ },
+ "accepted": {
+  "taskState t1": {
+   "_tag": "Accepted"
+  },
+  "blockerItems r1": [],
+  "resultState r1": {
+   "_tag": "Accepted"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "makerState a3": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "waitingForwards": []
+ },
+ "escalated": {
+  "taskState t1": {
+   "_tag": "InReview"
+  },
+  "blockerItems r1": [
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-code-proof",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-ticket-ids",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/intro-story/repeatable",
+    "rejects": []
+   },
+   {
+    "_tag": "DeciderAnyApprover"
+   },
+   {
+    "_tag": "Escalation",
+    "ref": "v2"
+   }
+  ],
+  "resultState r1": {
+   "_tag": "InReview"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 1,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "attemptOf a2": {
+   "number": 2,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "makerState a3": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "waitingForwards": []
+ },
+ "codeStarted": {
+  "taskState t1": {
+   "_tag": "Open"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "fixes@1"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "attemptOf a2": {
+   "number": 1,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "waitingForwards": []
+ },
+ "relay": {
+  "taskState t1": {
+   "_tag": "Open"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "revisionState d2": {
+   "_tag": "Waiting",
+   "waitsFor": [
+    {
+     "_tag": "Human",
+     "name": "Nanda"
+    }
+   ]
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "waitingForwards": [
+   "e14"
+  ]
+ },
+ "relayDecided": {
+  "taskState t1": {
+   "_tag": "Open"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "revisionState d2": {
+   "_tag": "Official",
+   "version": "tsd-writing@2"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "waitingForwards": []
+ },
+ "vetoed": {
+  "taskState t1": {
+   "_tag": "Open"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "revisionState d2": {
+   "_tag": "Vetoed",
+   "by": "v2"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "waitingForwards": []
+ },
+ "uiRun": {
+  "taskState t1": {
+   "_tag": "InReview"
+  },
+  "blockerItems r1": [
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-code-proof",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-ticket-ids",
+    "rejects": []
+   },
+   {
+    "_tag": "DeciderAnyApprover"
+   },
+   {
+    "_tag": "Reject",
+    "ref": "v2.1"
+   }
+  ],
+  "resultState r1": {
+   "_tag": "Rejected"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "permissionState x1": {
+   "_tag": "Covers"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a3": {
+   "_tag": "Working",
+   "used": 1,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "attemptOf a3": {
+   "number": 2,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "answererOf q1": "a1",
+  "runState h1": {
+   "_tag": "Working",
+   "top": "t1"
+  },
+  "taskDraftState td1": {
+   "_tag": "Opened",
+   "task": "t1"
+  },
+  "waitingForwards": []
+ },
+ "uiRunRemade": {
+  "taskState t1": {
+   "_tag": "Replaced",
+   "next": "t2"
+  },
+  "taskState t2": {
+   "_tag": "Open"
+  },
+  "blockerItems r1": [
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-code-proof",
+    "rejects": []
+   },
+   {
+    "_tag": "Evidence",
+    "ref": "d1/facts-not-proof/no-ticket-ids",
+    "rejects": []
+   },
+   {
+    "_tag": "DeciderAnyApprover"
+   },
+   {
+    "_tag": "Reject",
+    "ref": "v2.1"
+   }
+  ],
+  "resultState r1": {
+   "_tag": "Rejected"
+  },
+  "revisionState d1": {
+   "_tag": "Official",
+   "version": "tsd-writing@1"
+  },
+  "permissionState x1": {
+   "_tag": "Covers"
+  },
+  "makerState a1": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a2": {
+   "_tag": "Working",
+   "used": 0,
+   "max": {
+    "_tag": "Unlimited"
+   }
+  },
+  "makerState a3": {
+   "_tag": "Working",
+   "used": 1,
+   "max": {
+    "_tag": "AtMost",
+    "max": 3
+   }
+  },
+  "runState h1": {
+   "_tag": "Working",
+   "top": "t2"
+  },
+  "taskDraftState td1": {
+   "_tag": "Opened",
+   "task": "t1"
+  },
+  "waitingForwards": []
+ }
+}

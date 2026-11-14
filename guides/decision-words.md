@@ -32,8 +32,8 @@ The end of a project: what the project made, where to read it, and what the revi
 example: "The project made the design document. Read it in <file>. Each part passed its
 reviews; the last review found no fault on the whole page."
 
-The request that the UI types names ids (a decision, a draft) for your command only. Do not
-copy them into the words.
+The step of `work wait` that asks for the words names ids (a decision, a draft) for your command
+only. Do not copy them into the words.
 
 ## An example: a direction problem
 

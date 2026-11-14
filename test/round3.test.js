@@ -166,7 +166,8 @@ describe('claims and trees', () => {
     const r = await p.agent(`review ${linter} r2 accept --evidence="no-code-proof | the introduction | no paths or hashes" ` +
       '--evidence="no-ticket-ids | the introduction | no ticket ids here"')
     expect(r.err).toContain('your brief named r1')
-    expect(r.err).toContain(`work escalate ${linter} --result=r1`)
+    // D10, I5: the choice is the old next line's, in core's words (no token).
+    expect(r.err).toContain('next: escalate with --result=r1')
   })
 
   test('I-N14: a low agent whose unit is done is told to stop', async () => {
@@ -178,7 +179,8 @@ describe('claims and trees', () => {
 
   test('I-N18: a parent with open children does not finish', async () => {
     const { p, lead } = await withWriter()
-    expect((await p.agent(`finish ${lead}`)).err).toContain('a1 has open children: a2; finish them first')
+    // Ruling 10.3 (I2): the parent waits for a child that works; it is told no finish to run.
+    expect((await p.agent(`finish ${lead}`)).err).toContain('a1 has open children: a2 (on t1); they still work on open tasks')
     ok(await p.nanda('finish a2'))
     expect(ok(await p.agent(`finish ${lead}`)).out).toBe('a1 is finished.')
   })

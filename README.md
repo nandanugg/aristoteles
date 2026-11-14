@@ -46,6 +46,10 @@ agents, then starts the page (`work start --detach`):
 3. Tell the host that the roles are accepted. It records the fit of each agent role, and drafts
    the directions. You accept each direction on the page.
 
+Later, a high role or the host drafts new words of a role with `work role draft`, and the host
+revises a direction with `work direction revise --by=<its run>`. Each draft waits for you on
+the page: accept it, or reject it with your reason.
+
 Then the host asks: a new project, or continue one? After the first start, the `aristoteles`
 skill is linked in the dir, so you trigger it by its name. When the host's AI CLI ends, trigger a
 host again and continue the project there: the page never starts or restarts a host.
@@ -76,6 +80,10 @@ damaged store), and 70 on a bug.
 
 The store is `~/.aristoteles/aristoteles.db`. `ARISTOTELES_DB` names another file.
 
+The first `work` call after a `git pull`, an edit of the code or a `bun install` builds the CLI
+into one file in `.cache/cli/` of the aristoteles folder (git ignores it), and the calls after it
+start from that file. A build that fails changes nothing: that call runs the code as it is.
+
 ## The UI: `work start`
 
 `work start` in a dir opens its page in the browser: a canvas with a card for each task, its
@@ -86,9 +94,10 @@ aristoteles folder, and tmux for the terminals.
   terminal. Tell it what you want; it drafts the top task, and you open it with one click.
 - **Real agents and subagents.** A Sol or Terra role runs in a real terminal that you can open
   and type into; the UI starts it. A Luna role runs as a subagent inside its parent's terminal.
-- **Only four kinds of decision need you**, each with a badge: a system problem, a direction
-  problem, the end of a project, and your words that an agent relayed as an act (you confirm
-  it). The host handles the rest, and writes its words on each decision first.
+- **Only five kinds of decision need you**, each with a badge: a system problem, a direction
+  problem, the end of a project, your words that an agent relayed as an act (you confirm it),
+  and new words of a role. The host handles the rest, and writes its words on each decision
+  first.
 - **The settings** (the gear) are in `aristoteles.yaml`: the command of each tier, for example
   `claude --model opus --session-id {session} {prompt}`, its resume command, the words of an
   error and of a prompt, and the theme.

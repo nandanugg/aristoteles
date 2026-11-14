@@ -80,7 +80,7 @@ export type ReportedWork = typeof ReportedWork.Type
 // task's workspace at a commit (the CLI reads it from git, so it never expires), or an outside
 // source at the revision that an agent read (work source). name: the source of a workspace,
 // or the name of the outside source. When an outside source was seen is the time of the stored
-// act that named it or checked it (derived.ts sourceStateOf), so no source keeps a time.
+// act that named it or checked it (core/derived), so no source keeps a time.
 export const Git = Schema.TaggedStruct('Git', { name: Text, commit: Text })
 export const Outside = Schema.TaggedStruct('Outside', { name: Text, revision: Text })
 export const SourceSchema = Schema.Union([Git, Outside])
@@ -196,8 +196,13 @@ export const FitAnswer = Schema.Struct({
   yes: Schema.Literal(true),
   why: NonBlank,
 })
+// New words of a role after the first start (ruling 2026-11-14): a high agent or a model run
+// drafts them, and the person accepts them (Workflow.RoleWordsChanged stores them) or rejects
+// the draft, named by its event. A newer draft of the role replaces a waiting one.
 export const RoleMove = Schema.Union([
   Schema.TaggedStruct('Fitted', { hash: Text, answers: NonEmpty(FitAnswer) }),
+  Schema.TaggedStruct('WordsDrafted', { words: RoleWords }),
+  Schema.TaggedStruct('WordsRejected', { draft: EventRef, reason: NonBlank }),
 ])
 const Role = moved('Role', RoleName, RoleMove)
 // A pane of the person's own tmux server: its socket ($TMUX) and its pane id ($TMUX_PANE).
@@ -711,9 +716,10 @@ export const move = <G extends EventGroup>(
 // one table, so that a refresh accepts no result and a model run records no problem. The store
 // keeps no other pair.
 export const WRITTEN_BY = {
-  // An agent by its token; GUARD (src/cli/guard.ts) has one row for each.
+  // An agent by its token; canAct checks each of its acts.
   Agent: [
     'Role.Fitted',
+    'Role.WordsDrafted',
     'Problem.Recorded',
     'Problem.Fixed',
     'Send.Sent',
@@ -759,6 +765,7 @@ export const WRITTEN_BY = {
     'Workflow.Defined',
     'Workflow.RoleWordsChanged',
     'Role.Fitted',
+    'Role.WordsRejected',
     'Run.HostStarted',
     'Run.Done',
     'Run.Closed',
@@ -788,11 +795,20 @@ export const WRITTEN_BY = {
   ],
   // A host run before it has an assignment: its task draft.
   Host: ['TaskDraft.Drafted'],
-  // A model run outside any task: its draft of a new direction, and the fit of a role (the host
-  // that drafted the roles records their fits, Nanda 2026-11-13). The AI CLI that the person
-  // triggers in a pane: it starts a run there, or continues a run there on the person's quoted
-  // words, and then takes the terminal of the run's Sol with a new token.
-  ModelRun: ['Revision.Drafted', 'Role.Fitted', 'Run.HostJoined', 'Run.HostMoved', 'Terminal.Started'],
+  // A model run outside any task: its draft of a new direction, its revise of a direction that
+  // has a version (a host revises a direction, ruling 2026-11-14), the fit of a role (the host
+  // that drafted the roles records their fits, Nanda 2026-11-13), and new words of a role. The AI
+  // CLI that the person triggers in a pane: it starts a run there, or continues a run there on
+  // the person's quoted words, and then takes the terminal of the run's Sol with a new token.
+  ModelRun: [
+    'Revision.Drafted',
+    'Revision.Revised',
+    'Role.Fitted',
+    'Role.WordsDrafted',
+    'Run.HostJoined',
+    'Run.HostMoved',
+    'Terminal.Started',
+  ],
   // The CLI's own assign and finish of a program.
   System: ['Assignment.GivenReviewer', 'Assignment.Finished'],
   // The supervisor of the terminals: its sessions, what it sees, its sends and their fate, and
@@ -813,7 +829,6 @@ export const WRITTEN_BY = {
 } as const satisfies { readonly [A in Author['_tag']]: ReadonlyArray<Kind> }
 export type AuthorTag = Author['_tag']
 export type WrittenBy = { readonly [A in AuthorTag]: (typeof WRITTEN_BY)[A][number] }
-export type AgentKind = WrittenBy['Agent']
 
 // The events of an author: the kinds of its row, and a send only from itself as the sender.
 type EventBy<A extends AuthorTag> =

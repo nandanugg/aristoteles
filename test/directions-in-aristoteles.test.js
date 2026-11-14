@@ -5,6 +5,9 @@ import { describe, expect, test } from 'bun:test'
 import { DIRECTION, ok, project, tokenIn, WORK_YAML } from './harness.js'
 
 const SEEN = '--evidence="d1, the whole direction | each standard says what the reader needs"'
+// A new standard, as a list item of a direction file or of the add of a revise.
+const COST = '  - id: cost-first\n    says: Say what the problem costs.\n    rules:\n' +
+  '      - { id: names-cost, says: "The introduction names the cost", checkedBy: linter }\n'
 const fresh = async (files) => {
   const p = project(files)
   ok(await p.nanda('init'))
@@ -55,7 +58,35 @@ describe('a new direction', () => {
     expect(ok(await p.agent('direction new --file=again.yaml --by=assess --answers=v1')).out).toContain('d2 drafted: the new direction tsd-writing')
     expect(ok(await p.nanda('direction show d2')).out).toContain('since d1, which v1 rejected:')
     ok(await p.nanda('review d2 accept --evidence="d2 | the intro standard now says the order"', 'accept'))
-    expect((await p.agent('direction new --file=again.yaml --by=assess')).err).toContain('tsd-writing has a version; a high role revises it')
+    // ruling 2026-11-14 (a host revises a direction): the run's file of a direction with a version
+    // is its revise, built on that version.
+    p.write('more.yaml', `${DIRECTION.replace('Tell the story first, in plain words.', 'Tell the story first, then the cause, in plain words.')}${COST}`)
+    expect(ok(await p.agent('direction new --file=more.yaml --by=assess')).out)
+      .toContain('d3 drafted, built on tsd-writing@1, by assess (a model run outside any task); it waits for the accept of Nanda.')
+  })
+
+  test('a host outside any task revises a direction; the owner accepts it, and the version holds the change', async () => {
+    // ruling 2026-11-14 (a host revises a direction)
+    const p = await fresh()
+    ok(await p.agent('direction new --file=directions/tsd-writing.yaml --by=assess'))
+    ok(await p.nanda(`review d1 accept ${SEEN}`, 'accept'))
+    p.write('edit.yaml', `add:\n${COST}`)
+    expect((await p.agent('direction revise tsd-writing --file=edit.yaml')).err)
+      .toContain('a model run outside any task names itself: --by=<its name in lower case>')
+    expect(ok(await p.agent('direction revise tsd-writing --file=edit.yaml --by=host')).out)
+      .toContain('d2 drafted, built on tsd-writing@1, by host (a model run outside any task); it waits for the accept of Nanda.')
+    expect(ok(await p.nanda('waiting')).out).toContain('d2 drafted for tsd-writing by host')
+    expect(ok(await p.nanda('review d2 accept --evidence="d2 | the new standard of the cost"', 'accept')).out)
+      .toContain('d2 is official: tsd-writing@2.')
+    const now = ok(await p.nanda('direction show tsd-writing')).out
+    expect(now).toContain('tsd-writing@2 TSD writing (owner Nanda) · current\nmade from d2, drafted by host')
+    expect(now).toContain('+ cost-first: Say what the problem costs.')
+    // A Reject of the host's revise asks the host for another revise, not for a new direction.
+    p.write('short.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
+    ok(await p.agent('direction revise tsd-writing --file=short.yaml --by=host'))
+    ok(await p.nanda('review d3 reject --reason="keep it short is no check of a reviewer"'))
+    expect(ok(await p.nanda('waiting')).out).toContain('its writer host, a model run outside any task, writes a new draft that answers it\n' +
+      '    work direction revise tsd-writing --file=<edit.yaml> --by=host --answers=v3')
   })
 
   test('only the owner accepts the first version, also when approvedBy names a role', async () => {

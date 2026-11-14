@@ -1,7 +1,8 @@
 // Edge cases from the evaluation (plan/types/PLAN.md section 4): each bug that the scouts found,
 // seen from the outside, so that the old code and the new code must both pass it.
 import { describe, expect, test } from 'bun:test'
-import { HOST, INTRO_V1, INTRO_V2, TASK, TASK_WHOLE, WORK_YAML, init, ok, project, reported, started, tokenIn } from './harness.js'
+import { HOST, INTRO_V1, INTRO_V2, TASK, TASK_WHOLE, WORK_YAML, init, ok, project, reported, solToken, started, tokenIn } from './harness.js'
+import { tables } from './outside.js'
 
 
 // A dir with a host run h1 whose top task t1 is open, with the architect a1 as its host.
@@ -11,7 +12,7 @@ const hosted = async (files = {}) => {
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.run('run start', HOST))
   ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
-  const host = tokenIn(ok(await p.ui('task open td1')).out)
+  const host = await solToken(p, ok(await p.ui('task open td1')).out) // ruling 10.1
   return { p, host }
 }
 
@@ -79,11 +80,21 @@ describe('a system problem stays in its project', () => {
 })
 
 describe('a remade top task stays in its run', () => {
+  // Ruling 10.1: the UI types nothing; the host's work wait in the run's pane gives the new Sol its
+  // token (the remake ended a1, C1, so the session of the run is free for a2).
   test('the Sol on the remake is the host of the run, in the session of the run', async () => {
     const { p } = await hosted({ 'top2.yaml': TASK_WHOLE.replace(/text: .*/, 'text: A wider introduction.') })
     ok(await p.nanda('task remake t1 --file=top2.yaml --reason="the scope grew"'))
     const out = ok(await p.nanda('assign t2 --role=architect')).out
-    expect(out).toContain('a2 is the host of h1: the UI types into its session: work brief a2.')
+    expect(out).toContain('a2 is the host of h1; the host gets its token from work wait.')
+    const waited = ok(await p.run('wait --by=h1 --seconds=1', HOST)).out
+    expect(waited).toContain('h1: its top task t2 The Introduction is open, and you are its Sol (a2)')
+    ok(await p.agent(`brief ${tokenIn(waited)}`))
+    const db = tables(p)
+    const run = db.query("SELECT session FROM run WHERE id = 'h1'").get().session
+    const a2 = db.query("SELECT session FROM assignment_session WHERE assignment = 'a2'").all()
+    db.close()
+    expect(a2.map((r) => r.session)).toContain(run)
   })
 })
 
@@ -145,12 +156,15 @@ describe('a person is not an agent', () => {
 })
 
 describe('one place for the token', () => {
-  test('a token after the other words is refused: the checks and the command would disagree on who acts', async () => {
+  // I4 (N3): the harness takes the token where it stands, so the checks and the command agree on
+  // who acts; the old refusal "a token goes right after work review" is gone.
+  test('a token after the other words is taken where it stands: the agent of the token acts', async () => {
     const { p, linter } = await reported()
-    const r = await p.nanda(`review r1 reject --point="the first line cites ABC-2964" ${linter}`, 'reject')
-    expect(r.err).toContain('a token goes right after work review, before the other words')
-    // The token is a secret: the refusal does not repeat it.
-    expect(r.err).not.toContain(linter)
+    const r = ok(await p.nanda(`review r1 reject --point="the first line cites ABC-2964" ${linter}`, 'reject'))
+    expect(r.out).toStartWith('v2: your review of r1 is recorded.')
+    // The token is a secret: the words do not repeat it.
+    expect(r.out).not.toContain(linter)
+    expect(ok(await p.agent('log --last=1')).out).toContain('a3 (agent) review r1 reject')
   })
 
   test('a token right after the command and its act word works', async () => {

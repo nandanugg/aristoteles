@@ -176,7 +176,7 @@ export const Settings = Schema.Struct({
   }),
   retryMinutes: Schema.Number,
   hostWaitMinutes: Schema.Number,
-  // How long an outside source that an agent read stays fresh (derived.ts sourceStateOf).
+  // How long an outside source that an agent read stays fresh (core/derived).
   outsideSourceHours: Schema.Number,
   sound: Schema.Boolean,
   theme: Schema.Literals(['light', 'dark']),

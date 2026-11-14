@@ -56,7 +56,7 @@ describe('checkOutput', () => {
   }
 })
 
-describe('digestOf, sectionsInside, snapshotOf', () => {
+describe('sectionsInside, snapshotOf', () => {
   const dir = tmp('dg-')
   put(dir, { 'a.md': MD, 'b.txt': 'one\ntwo\n', 'sub/c.md': '# C\nx', 'empty.md': '' })
   mkdirSync(join(dir, 'folder'))
@@ -77,9 +77,6 @@ describe('digestOf, sectionsInside, snapshotOf', () => {
     'repo@abcdef0', 'ghost@abcdef0', '../x.md', '/etc/passwd', 'bad;name',
   ]
   for (const o of outputs) {
-    test(`digestOf ${label(o)}`, async () => {
-      expect(hiding(await runNew(digest.digestOf(dir, o)))).toMatchSnapshot()
-    })
     test(`sectionsInside ${label(o)}`, async () => {
       expect(hiding(await provide(digest.sectionsInside(dir, o)))).toMatchSnapshot()
     })
@@ -89,63 +86,6 @@ describe('digestOf, sectionsInside, snapshotOf', () => {
       expect(hiding(await provide(digest.snapshotOf(dir, f)))).toMatchSnapshot()
     })
   }
-  test('the good outputs of the list digest', async () => {
-    expect(await runNew(digest.digestOf(dir, 'a.md#title'))).toHaveProperty('ok')
-    expect(await runNew(digest.digestOf(dir, `repo@${full}`))).toHaveProperty('ok')
-  })
-
-  describe('changedSince', () => {
-    // Every result has its digest, in the work of the result.
-    const resultOf = (r: Obj): Obj => ({ output: r.output, work: { _tag: 'File', digest: r.digest, size: 1 } })
-    const digestOf = async (output: string): Promise<string> =>
-      ((await runNew(digest.digestOf(dir, output))) as Obj).ok.digest
-    const section = async () => ({ output: 'a.md#title', digest: await digestOf('a.md#title') })
-    const results: Array<[string, () => Promise<Obj>, boolean]> = [
-      ['the same digest', async () => ({ output: 'a.md', digest: await digestOf('a.md') }), false],
-      ['another digest', async () => ({ output: 'a.md', digest: 'x' }), true],
-      ['an output that is gone', async () => ({ output: 'missing.md', digest: 'x' }), true],
-      ['a section', section, false],
-      ['a bad output', async () => ({ output: '../x', digest: 'x' }), true],
-    ]
-    for (const [name, make, changed] of results) {
-      test(name, async () => {
-        const now = await provide(digest.changedSince(dir, resultOf(await make()) as never))
-        expect(now).toBe(changed)
-      })
-    }
-    test('a file that changes after the report', async () => {
-      const d = tmp('dg-')
-      put(d, { 'x.md': 'one' })
-      const first = (await runNew(digest.digestOf(d, 'x.md'))) as Obj
-      const was: Obj = { output: 'x.md', digest: first.ok.digest }
-      const r = resultOf(was) as never
-      expect(await provide(digest.changedSince(d, r))).toBe(false)
-      put(d, { 'x.md': 'two' })
-      expect(await provide(digest.changedSince(d, r))).toBe(true)
-    })
-  })
-
-  describe('sameRevision', () => {
-    put(repo, { 'g.txt': 'more' })
-    git(repo, 'add', '-A')
-    git(repo, 'commit', '-q', '-m', 'two')
-    const second = git(repo, 'rev-parse', 'HEAD')
-    const cases: Array<[string, string, string, string]> = [
-      ['the same text', 'repo', 'abc', 'abc'],
-      ['a short and a full sha', 'repo', full.slice(0, 7), full],
-      ['two commits', 'repo', full, second],
-      ['a prefix with no repo', '', 'abcdef1', 'abcdef123'],
-      ['two others with no repo', '', 'abc', 'xyz'],
-      ['a repo that is not there', 'ghost', 'abcdef1', 'abcdef123'],
-      ['a ref that git cannot find', 'repo', 'abcdef1', 'abcdef123'],
-      ['HEAD and a sha', 'repo', 'HEAD', second],
-    ]
-    for (const [name, path, a, b] of cases) {
-      test(name, async () => {
-        expect(await provide(digest.sameRevision(dir, path, a, b))).toMatchSnapshot()
-      })
-    }
-  })
 })
 
 describe('the lock', () => {

@@ -4,8 +4,8 @@
 // relayed act that waits for a confirm; the host handles the rest, and writes its words about
 // each decision before the person sees it.
 import { describe, expect, test } from 'bun:test'
-import { HOST, INTRO_V2, TASK_WHOLE, init, ok, project, tokenIn } from './harness.js'
-import { canvas, panel, tables } from './outside.js'
+import { HOST, INTRO_V2, TASK_WHOLE, agentToken, init, ok, project, solToken, tokenIn } from './harness.js'
+import { canvas, gitPerson, panel, tables } from './outside.js'
 
 // The decisions that the person sees on the panel of a task (the server's /api/task), at the time
 // of the last act. At LATE, hostWaitMinutes (10 by default) passed since every act of these
@@ -17,12 +17,13 @@ const summary = (list) => list.map((i) => [i.kind, i.id, i.task])
 // A dir with a host run h1 whose top task t1 is open, with the architect a1 as its host.
 const hosted = async () => {
   const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
+  gitPerson(p)
   await init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
   ok(await p.run('run start', HOST))
   ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
   const opened = ok(await p.ui('task open td1')).out
-  const host = tokenIn(opened)
+  const host = await solToken(p, opened) // ruling 10.1
   ok(await p.agent(`brief ${host}`))
   return { p, host, opened }
 }
@@ -52,13 +53,14 @@ describe('the acts of the UI', () => {
     // The host may split its top task.
     expect(opened).toContain('architect may change t1 (its split) until 2026-11-24T')
     p.write('parts.yaml', '- { name: Part one, text: Write part one., context: { section: introduction } }\n- { name: Part two, text: Write part two., context: { section: design } }\n')
-    ok(await p.agent(`brief ${tokenIn(opened)}`))
-    ok(await p.agent(`task split ${tokenIn(opened)} t1 --file=parts.yaml`))
+    const sol = await solToken(p, opened) // ruling 10.1
+    ok(await p.agent(`brief ${sol}`))
+    ok(await p.agent(`task split ${sol} t1 --file=parts.yaml`))
   })
 
   test('a question of a model goes to the host; the host itself does not ask the person', async () => {
     const { p, host } = await hosted()
-    const lead = tokenIn(ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
+    const lead = await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out) // 10.1
     ok(await p.agent(`brief ${lead}`))
     ok(await p.agent(`ask ${lead} --text="Is the retry part of the export?" --to=owner`))
     expect(ok(await p.agent('question show q1')).out).toStartWith('q1 asked by a2, for a1:')
@@ -68,7 +70,7 @@ describe('the acts of the UI', () => {
 
   test('a system problem goes on the parent of the task that it stops; the host\'s own text is its words', async () => {
     const { p, host } = await hosted()
-    const lead = tokenIn(ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
+    const lead = await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out) // 10.1
     expect((await p.agent(`problem ${lead} t1 --says="the cluster is down"`)).err).toContain('the host (a Sol) records a system problem')
     expect(ok(await p.agent(`problem ${host} t1 --says="the cluster is down: run make up, then press Fixed"`)).out)
       .toBe('sp1 recorded on t1 The Introduction; it shows to the person until a fix.')
@@ -87,9 +89,10 @@ describe('the acts of the UI', () => {
 
   test('the UI records a terminal event; the host sends input only to its own children', async () => {
     const { p, host } = await hosted()
-    const lead = tokenIn(ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
+    ok(await p.agent(`assign ${host} t1 --role=section-lead`))
     expect((await p.agent(`send ${host} a2 --text="yes"`)).err).toContain('a2 has no terminal')
-    ok(await p.ui('session a2 --id=s-lead'))
+    // The UI starts the lead with a new token (ruling 10.1: in its launch command).
+    const lead = tokenIn(ok(await p.ui('session a2 --id=s-lead --token')).out)
     // A prompt has no tries (the owner's Prompted move holds none; the watcher writes none).
     ok(await p.ui('event a2 --kind=prompt --text="Do you want to proceed?"'))
     expect(ok(await p.agent(`send ${host} a2 --text="1"`)).out).toBe('sent to a2; the UI types it into its terminal.')
@@ -150,7 +153,7 @@ describe('the acts of the UI', () => {
     const { p, host } = await hosted()
     p.write('costs.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs., rules: [ { id: names-cost, says: "The introduction names the cost", checkedBy: linter } ] }\n')
     ok(await p.agent(`direction revise ${host} tsd-writing --file=costs.yaml`))
-    const lead = tokenIn(ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
+    const lead = await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out) // 10.1
     ok(await p.agent(`brief ${lead}`))
     expect((await p.agent(`review ${lead} d2 accept`)).err).toContain('an accept of d2 needs --evidence')
     expect(ok(await p.ui('review d2 accept --reason="the cost comes first"', 'accept')).out).toContain('d2 is official: tsd-writing@2')

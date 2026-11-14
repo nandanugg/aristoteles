@@ -120,7 +120,8 @@ describe('close and remake', () => {
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
     const close = await p.agent(`task close ${arch} t3 --reason="the failure cases are in another TSD"`)
     expect(close.err).toContain('t1 needs t3; without it the scope of t1 changes: remake t1')
-    expect(close.err).toContain(`work task remake ${arch} t1 --file=<task.yaml>`)
+    // D10, I5: the choice in core's words (no token): remake the needing task.
+    expect(close.err).toContain('next: remake t1 first')
   })
 
   test('a remake keeps accepted work as the starting point of a new part, and its result is new work', async () => {

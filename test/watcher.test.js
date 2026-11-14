@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { createPump } from './code.js'
 import { startServer } from './code.js'
 import { createWatcher } from './code.js'
-import { INTRO_V2, TASK_WHOLE, git, init, ok, personPane, project, tokenIn } from './harness.js'
+import { INTRO_V2, TASK_WHOLE, git, init, ok, personPane, project, solToken, tokenIn } from './harness.js'
 
 const FAKE = join(import.meta.dir, 'fake-agent.js')
 const SETTINGS = `tiers:
@@ -35,6 +35,16 @@ const until = async (fn, ms = 15000) => {
   }
   throw new Error('timed out')
 }
+// Ruling 10.1: nothing wakes an agent by typing into its terminal; it holds work wait, which
+// returns when its next steps change. The agent first takes in the steps of now; then its wait
+// blocks while `act` runs, and returns the words of the change.
+const wokenBy = async (p, token, act) => {
+  ok(await p.agent(`wait ${token} --seconds=1`))
+  const waiting = p.agent(`wait ${token} --seconds=30`)
+  await Bun.sleep(1200)
+  await act()
+  return ok(await waiting).out
+}
 
 // A dir with its roles fitted and the UI running: the server, the pump and the watcher.
 const ui = async () => {
@@ -53,15 +63,13 @@ const ui = async () => {
   const later = (ms) => { skew += ms }
   const socket = `aristoteles-watch-${process.pid}-${Math.random().toString(36).slice(2, 7)}`
   const pump = createPump({ dir: p.dir, socket, clock })
-  let readState = () => undefined
   const lines = []
   const watcher = createWatcher({
-    dir: p.dir, env, pump, readState: () => readState(), log: (l) => lines.push(l),
-    clock, timing: { enterPause: 20, readyPause: 20 },
+    dir: p.dir, env, pump, log: (l) => lines.push(l), clock,
+    timing: { enterPause: 20, readyPause: 20 },
   })
   watcher.stop()
   const server = startServer({ dir: p.dir, env, pump, watcher })
-  readState = server.readState
   stops.push(() => { server.stop(); pump.killServer() })
   const cookie = `aristoteles-${server.port}=${server.key}`
   const origin = `http://127.0.0.1:${server.port}`
@@ -96,10 +104,12 @@ describe('the watcher and the acts of the UI', () => {
 
     // The host drafts the top task in its terminal; the person opens it in the UI.
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
+    // Ruling 10.1: the UI types nothing into the host's pane; the host's work wait in its pane
+    // gives it the token of its Sol.
     const opened = await post('open', { draft: 'td1' })
-    expect(opened.body.out).toContain('a1 is the host of h1: the UI types into its session: work brief a1.')
-    const hostToken = tokenIn(opened.body.out)
-    await until(() => screen(host).includes(`you said: Use the work skill. Your command: work brief ${hostToken}`))
+    expect(opened.body.out).toContain('a1 is the host of h1; the host gets its token from work wait.')
+    const hostToken = await solToken(p, opened.body.out, 'h1', { env: hostEnv })
+    expect(screen(host)).not.toContain('you said:')
 
     // The host reads its brief and assigns a Terra: the watcher starts its terminal with a new token.
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
@@ -110,16 +120,19 @@ describe('the watcher and the acts of the UI', () => {
     const leadToken = screen(lead).match(/work brief (a2\.[a-z0-9]+)/)[1]
     ok(await p.agent(`brief ${leadToken}`))
 
-    // A prompt in the child goes to the host; the host's send reaches the child.
-    pump.input(lead, 'ask\r')
-    await until(() => screen(lead).includes('Do you want to proceed?'))
-    await watcher.tick()
-    // The line to the host waits until the host is quiet: the clock moves past that window.
-    later(9000)
-    await until(async () => {
+    // A prompt in the child goes to the host; the host's send reaches the child. Ruling 10.1:
+    // the prompt is a step of the host, so its work wait returns; nothing is typed into its pane.
+    const prompt = await wokenBy(p, hostToken, async () => {
+      pump.input(lead, 'ask\r')
+      await until(() => screen(lead).includes('Do you want to proceed?'))
       await watcher.tick()
-      return screen(host).includes('a2 waits at a prompt. Its screen shows «Do you want to proceed? (1 yes / 2 no)»')
     })
+    expect(prompt).toContain('a2 waits at a prompt of its AI CLI')
+    expect(prompt).toContain('Do you want to proceed? (1 yes / 2 no)')
+    expect(prompt).toContain(`work send ${hostToken} a2 --text="<input>"`)
+    later(9000)
+    await watcher.tick()
+    expect(screen(host)).not.toContain('a2 waits at a prompt')
     ok(await p.agent(`send ${hostToken} a2 --text=1`))
     await watcher.tick()
     await until(() => screen(lead).includes('proceeding with 1'))
@@ -144,18 +157,21 @@ describe('the watcher and the acts of the UI', () => {
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
-    const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
+    // Ruling 10.1: the host gets the token of its Sol from work wait in its pane.
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
     expect((await post('settings', { settings: { theme: 'dark', sound: true } })).status).toBe(200)
     expect(await Bun.file(join(p.dir, 'aristoteles.yaml')).text()).toContain('theme: dark')
     ok(await p.agent(`problem ${hostToken} t1 --says="the cluster is down"`))
     // Fixed makes the host try it again now; the decision goes when the host records the fix.
-    expect((await post('fixed', { problem: 'sp1' })).body.out).toBe('sp1: the host tries it again now; the decision goes when the host records the fix.')
-    // The line to the host waits until the host is quiet.
-    later(9000)
-    await until(async () => {
-      await watcher.tick()
-      return screen(host).includes('sp1 is not fixed')
+    // Ruling 10.1: the ask is a step of the host (its work wait returns), never typed.
+    const asked = await wokenBy(p, hostToken, async () => {
+      const fixed = await post('fixed', { problem: 'sp1' })
+      expect(fixed.body.out).toBe('sp1: the host tries it again now; the decision goes when the host records the fix.')
     })
+    expect(asked).toContain('sp1 is not fixed: «the cluster is down». The person says that it is fixed now.')
+    later(9000)
+    await watcher.tick()
+    expect(screen(host)).not.toContain('sp1 is not fixed')
     ok(await p.agent(`problem ${hostToken} sp1 --fixed`))
     expect((await post('fixed', { problem: 'sp1' })).body.error).toContain('sp1 is no open system problem')
     expect((await post('close', { run: 'h1', reason: 'not needed any more' })).status).toBe(200)
@@ -163,38 +179,41 @@ describe('the watcher and the acts of the UI', () => {
     expect(ok(await p.ui('run list')).out).toContain('h1 host · closed')
   }, 90000)
 
-  test('an accept of a direction draft by the person wakes the host and each live agent', async () => {
+  // Ruling 10.1: no wake is typed. The accept ends the host's step to explain the draft, so the
+  // host's work wait returns; the lead's steps stay the same, so its wait goes on.
+  test('an accept of a direction draft by the person reaches the host through its work wait', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
-    const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
+    // Ruling 10.1: the host gets the token of its Sol from work wait in its pane.
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     p.write('cost.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs., rules: [ { id: names-cost, says: "The introduction names the cost", checkedBy: linter } ] }\n')
     const draft = ok(await p.agent(`direction revise ${hostToken} tsd-writing --file=cost.yaml`)).out.match(/(d\d+) drafted/)[1]
+    expect(ok(await p.agent(`next ${hostToken}`)).out).toContain(`explain ${draft}`)
     // The person's accept needs no evidence and no comment.
-    expect((await post('accept-draft', { draft })).status).toBe(200)
-    // A wake waits until its terminal is quiet for a moment.
-    const woken = (sid) => screen(sid).includes(`Nanda (accept of ${draft}) acted. Run work next`)
-    const end = Date.now() + 30000
-    while (!(woken(host) && woken(lead)) && Date.now() < end) {
-      await watcher.tick()
-      later(2000)
-      await Bun.sleep(50)
-    }
-    expect(screen(host)).toContain(`Nanda (accept of ${draft}) acted. Run work next with your token, and do what it says.`)
-    expect(screen(lead)).toContain(`Nanda (accept of ${draft}) acted. Run work next with your token, and do what it says.`)
+    const changed = await wokenBy(p, hostToken, async () => {
+      expect((await post('accept-draft', { draft })).status).toBe(200)
+    })
+    expect(changed.split('\n')[0]).toBe('your next steps changed.')
+    expect(changed).not.toContain(`explain ${draft}`)
+    later(9000)
+    await watcher.tick()
+    for (const sid of [host, lead]) expect(screen(sid)).not.toContain('acted. Run work next')
   }, 90000)
 
-  test('the answer of the host wakes the Terra that asked', async () => {
+  // Ruling 10.1: the answer is a step of the asker (Answered), so its work wait returns.
+  test('the answer of the host wakes the Terra that asked, through its work wait', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
-    const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
+    // Ruling 10.1: the host gets the token of its Sol from work wait in its pane.
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
@@ -203,22 +222,23 @@ describe('the watcher and the acts of the UI', () => {
     const leadToken = screen(lead).match(/work brief (a2\.[a-z0-9]+)/)[1]
     ok(await p.agent(`brief ${leadToken}`))
     ok(await p.agent(`ask ${leadToken} --text="Is the retry part of the export?" --to=owner`))
-    ok(await p.agent(`answer ${hostToken} q1 --text="No: the retry is a task of its own."`))
-    const end = Date.now() + 30000
-    while (!screen(lead).includes('a1 (the answer to q1) acted.') && Date.now() < end) {
-      await watcher.tick()
-      later(2000)
-      await Bun.sleep(50)
-    }
-    expect(screen(lead)).toContain('a1 (the answer to q1) acted. Run work next with your token, and do what it says.')
+    const woke = await wokenBy(p, leadToken, async () => {
+      ok(await p.agent(`answer ${hostToken} q1 --text="No: the retry is a task of its own."`))
+    })
+    expect(woke).toContain('your question q1 has its answer.\n  work question show q1')
+    later(9000)
+    await watcher.tick()
+    expect(screen(lead)).not.toContain('acted. Run work next')
   }, 90000)
 
-  test('the host\'s resolve of an escalation wakes the Terra that escalated', async () => {
+  // Ruling 10.1: the resolve changes the steps of the Terra that escalated; its work wait returns.
+  test('the host\'s resolve of an escalation wakes the Terra that escalated, through its work wait', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
-    const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
+    // Ruling 10.1: the host gets the token of its Sol from work wait in its pane.
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
@@ -232,23 +252,24 @@ describe('the watcher and the acts of the UI', () => {
     p.write('docs/tsd.md', INTRO_V2)
     ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
     const escalation = ok(await p.agent(`escalate ${leadToken} --result=r1 --reason="no rule covers the length of the section"`)).out.match(/^(v\d+)/)[1]
-    ok(await p.agent(`resolve ${hostToken} ${escalation} --resolution="the length is fine"`))
-    const woke = `a1 (resolve of r1, on the escalation ${escalation})`
-    const end = Date.now() + 30000
-    while (!screen(lead).includes(woke) && Date.now() < end) {
-      await watcher.tick()
-      later(2000)
-      await Bun.sleep(50)
-    }
-    expect(screen(lead)).toContain(woke)
+    const woke = await wokenBy(p, leadToken, async () => {
+      ok(await p.agent(`resolve ${hostToken} ${escalation} --resolution="the length is fine"`))
+    })
+    expect(woke.split('\n')[0]).toBe('your next steps changed.')
+    expect(woke).toContain(`your escalation ${escalation} of r1 is resolved; read the resolution.`)
+    later(9000)
+    await watcher.tick()
+    expect(screen(lead)).not.toContain('acted. Run work next')
   }, 90000)
 
-  test('the accept of a part wakes the Terra of the part that needs it', async () => {
+  // Ruling 10.1: the accept of t2 changes the steps of the lead of t3; its work wait returns.
+  test('the accept of a part wakes the Terra of the part that needs it, through its work wait', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
-    const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
+    // Ruling 10.1: the host gets the token of its Sol from work wait in its pane.
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     p.write('parts.yaml', '- { name: Part one, text: Write part one., context: { section: introduction } }\n' +
       '- { name: Part two, text: Write part two., context: { section: design }, after: [Part one] }\n')
@@ -260,7 +281,9 @@ describe('the watcher and the acts of the UI', () => {
     const first = await sessionOf('a2')
     const second = await sessionOf('a3')
     const lead = screen(first).match(/work brief (a2\.[a-z0-9]+)/)[1]
+    const lead2 = screen(second).match(/work brief (a3\.[a-z0-9]+)/)[1]
     ok(await p.agent(`brief ${lead}`))
+    ok(await p.agent(`brief ${lead2}`))
     // Part one is written and accepted; part two waited for it.
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
@@ -269,23 +292,24 @@ describe('the watcher and the acts of the UI', () => {
     const linter = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=linter`)).out)
     ok(await p.agent(`brief ${linter}`))
     ok(await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | the introduction | no paths or hashes there" --evidence="no-ticket-ids | the introduction | no ticket ids there"`))
-    ok(await p.agent(`review ${lead} r1 accept --evidence="repeatable | the introduction | a reader can repeat the double export"`))
+    const woke = await wokenBy(p, lead2, async () => {
+      ok(await p.agent(`review ${lead} r1 accept --evidence="repeatable | the introduction | a reader can repeat the double export"`))
+    })
     expect(ok(await p.agent(`next ${lead}`)).out).not.toContain('t2 is open')
-    const end = Date.now() + 30000
-    while (!screen(second).includes('(the accept of t2, which t3 needs) acted.') && Date.now() < end) {
-      await watcher.tick()
-      later(2000)
-      await Bun.sleep(50)
-    }
-    expect(screen(second)).toContain('a2 (the accept of t2, which t3 needs) acted. Run work next with your token, and do what it says.')
+    expect(woke.split('\n')[0]).toBe('your next steps changed.')
+    later(9000)
+    await watcher.tick()
+    expect(screen(second)).not.toContain('acted. Run work next')
   }, 90000)
 
-  test('a quiet Terra whose work next changes wakes, also when no act names it: a file is free', async () => {
+  // Ruling 10.1: the free file changes the steps of the second lead; its work wait returns.
+  test('a Terra whose work next changes wakes, also when no act names it: a file is free', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
-    const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
+    // Ruling 10.1: the host gets the token of its Sol from work wait in its pane.
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     // Two parts write one file, with no order: one maker writes a file at a time.
     p.write('parts.yaml', '- { name: Part one, text: Write part one., context: { section: introduction } }\n' +
@@ -304,19 +328,18 @@ describe('the watcher and the acts of the UI', () => {
     const writer = tokenIn(ok(await p.agent(`assign ${lead1} t2 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
     ok(await p.agent(`assign ${lead2} t3 --role=writer`))
-    // The second lead goes quiet while its writer waits for the file: the watcher notes its work next.
-    later(8500)
-    await watcher.tick()
+    // The second lead waits while its writer waits for the file.
+    expect(ok(await p.agent(`next ${lead2}`)).out).toContain('a5 waits for docs/tsd.md')
     p.write('docs/tsd.md', INTRO_V2)
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    ok(await p.agent(`finish ${lead1} a4`))
-    const end = Date.now() + 30000
-    while (!screen(second).includes('Your next step changed while you waited.') && Date.now() < end) {
-      await watcher.tick()
-      later(2000)
-      await Bun.sleep(50)
-    }
-    expect(screen(second)).toContain('Your next step changed while you waited. Run work next with your token, and do what it says.')
+    const woke = await wokenBy(p, lead2, async () => {
+      ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
+      ok(await p.agent(`finish ${lead1} a4`))
+    })
+    expect(woke.split('\n')[0]).toBe('your next steps changed.')
+    expect(woke).not.toContain('a5 waits for docs/tsd.md')
+    later(9000)
+    await watcher.tick()
+    expect(screen(second)).not.toContain('Your next step changed while you waited')
   }, 90000)
 
   test('a Stop holds through a restart; the host is the person\'s own terminal', async () => {
@@ -324,14 +347,15 @@ describe('the watcher and the acts of the UI', () => {
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
-    const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
+    // Ruling 10.1: the host gets the token of its Sol from work wait in its pane.
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     // The person stops the Terra before its brief, and the server starts again: a new watcher.
     expect((await post('stop', { session: lead })).status).toBe(200)
-    const again = createWatcher({ dir: p.dir, env, pump, readState: server.readState })
+    const again = createWatcher({ dir: p.dir, env, pump })
     again.stop()
     await again.tick()
     expect(pump.status()[lead]).toBeUndefined()
@@ -348,7 +372,8 @@ describe('the watcher and the acts of the UI', () => {
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
     ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
-    const hostToken = tokenIn((await post('open', { draft: 'td1' })).body.out)
+    // Ruling 10.1: the host gets the token of its Sol from work wait in its pane.
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()

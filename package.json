@@ -6,10 +6,10 @@
     "work": "bin/work.js"
   },
   "scripts": {
-    "test": "bun test --timeout 30000 --parallel=12 test",
-    "test:fast": "bun test --timeout 30000 --parallel=12 $(bun test/slow-files.js --skip) test",
+    "test": "bun test --timeout 30000 --parallel=12 test/ core/ adapters/ src/",
+    "test:fast": "bun test --timeout 30000 --parallel=12 $(bun test/slow-files.js --skip) test/ core/ adapters/ src/",
     "test:slow": "bun test --timeout 30000 --parallel=12 $(bun test/slow-files.js)",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/ui/app/tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p adapters/web/app/tsconfig.json"
   },
   "devDependencies": {
     "ajv": "8.17.1",

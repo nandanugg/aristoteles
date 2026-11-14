@@ -7,7 +7,7 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-import { DIRECTION, HOST_PANE, TASK_WHOLE, ok, project, started, init, tokenIn } from './harness.js'
+import { DIRECTION, HOST_PANE, TASK_WHOLE, ok, project, solToken, started, init, tokenIn } from './harness.js'
 
 const dbOf = (p) => new Database(join(p.dir, '.work', 'aristoteles.db'), { readonly: true })
 
@@ -50,7 +50,7 @@ describe('runs and sessions', () => {
     const second = { env: { ...HOST_PANE, TMUX_PANE: '%2' } }
     ok(await p.run('run start', first))
     ok(await p.run('task draft --file=top.yaml --by=h1', first))
-    const old = tokenIn(ok(await p.ui('task open td1')).out)
+    const old = await solToken(p, ok(await p.ui('task open td1')).out, 'h1', first) // ruling 10.1
     ok(await p.agent(`brief ${old}`))
     const moved = ok(await p.run('run continue h1 --quote="go on with the introduction"', second)).out
     expect(moved).toContain('you are the Sol of its top task t1 (a1); the old token stops working. Your command: work brief a1.')

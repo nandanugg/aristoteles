@@ -269,7 +269,7 @@ findings of each round, with what was done, are in `thought-tests/round-2.md` to
 
 | Part | What it is | Where |
 |---|---|---|
-| Engine | the model: Workflow, Direction, Task, Assignment, Result, Review, Checkpoint, Note | `engine.js` (copied from the page, then extended) |
+| Engine | the model: Workflow, Direction, Task, Assignment, Result, Review, Checkpoint, Note | the types in `src/domain/` (copied from the page, then extended); the fold, the states, the acts and the supervisor in `core/` |
 | Store | aristoteles (section 9.1): one SQLite file for every project of this machine; the act log that the engine replays, and a table for each record with its links | `~/.aristoteles/aristoteles.db`, or `ARISTOTELES_DB` |
 | Project config | roles with their tiers, people, limits, deciders; the company directions that the project follows | `aristoteles.yaml`, and `aristoteles.lock` |
 | Guides | how to write a direction, and the questions of the review of a draft (`work guide <name>`) | `guides/*.md` |
@@ -777,18 +777,20 @@ or the file that `ARISTOTELES_DB` names (each test uses its own). A project is t
 
 ## 10. Tests and files
 
-- `engine.test.js`: property tests of the engine (the 51 from the page, adapted where the
-  rules changed, plus the extensions and the round-2 rules).
+- `core/` and `adapters/` tests (`*.test.ts`): the fold, the derived states, the actions, the
+  supervisor, the CLI, the page and the words; `src/` tests: the domain, the store, the config
+  and the files.
 - `test/e2e.test.js`: command sequences as the person and the agents run them, with golden
   snapshots (`test/__snapshots__`) of the briefs and the refusals.
 - `test/round2.test.js`, `test/round3.test.js`, `test/round4.test.js`: one test for each
   finding of rounds 2 to 4 that the prototype closes, including git repos for the gate and the
   bases, and one table-driven test that tries every agent path to a person-only act.
-- 177 tests in all (`bun test`).
+- `bun run test` runs them all (`test/ core/ adapters/ src/`).
 - Thought tests: agents drive the running CLI and look for edge cases.
-- Files: `engine.js`, `config.js`, `store.js`, `state.js` (replay), `digest.js`, `render.js`
-  (briefs and lists), `cli.js` (commands), `bin/work.js`, `guides/`, `skills/`,
-  `thought-tests/` (the findings of rounds 2 to 4).
+- Files: `core/` (the engine: schema, services, state, derived, actions, effects), `adapters/`
+  (`cli`, `web`, `words`, `live`), `src/` (the domain types, the store, the config, the files),
+  `bin/work.js` (runs `bin/main.ts`, bundled), `guides/`, `skills/`, `thought-tests/` (the
+  findings of rounds 2 to 4).
 - There is no sample project outside the test fixture (`test/harness.js`); DESIGN section 3
   shows the files to write.
 
@@ -1003,19 +1005,20 @@ ids.
 
 ## 12. The UI (2026-11-11)
 
-`work start` serves the UI of a dir on 127.0.0.1 (`ui/`): the requirements are in
+`work start` serves the UI of a dir on 127.0.0.1 (`adapters/web/`): the requirements are in
 `plan/ui/PLAN.md`, the parts and what the build changed in `plan/ui/BUILD.md`.
 
-- `ui/view.js` builds what the page shows from the replay and the reads of the engine: the
+- `adapters/web/view.ts` builds what the page shows from the fold and the derived states: the
   projects (runs, and top tasks opened at a terminal), the canvas in layout A (task, work and
   review cards; only the latest attempt), the panel of a task, the diff by file, and the decisions
-  that reach the person (`decisionsOf`).
-- `ui/server.js`: the key of `work start` (a SameSite=Strict cookie; a websocket and a POST also
-  need the page's own origin), the read API, `POST /api/act` for the person's acts, and the
-  websocket for "changed" and for the terminals.
-- `ui/pump.js`: the terminals in tmux on the socket `aristoteles`; `ui/watcher.js`: the life
-  cycle of the real agents (start, wake, retry, the host's decisions); `ui/act.js`: a person act in
-  the server's process, on the ui channel.
+  that reach the person (`waitingFor`).
+- `adapters/web/server.ts`: the key of `work start` (a SameSite=Strict cookie; a websocket and a
+  POST also need the page's own origin), the read API, `POST /api/act` for the person's acts, and
+  the websocket for "changed" and for the terminals.
+- `adapters/web/pump.ts` (on `adapters/live/pump.ts`): the terminals in tmux on the socket
+  `aristoteles`; `adapters/web/watcher.ts` (on `core/effects`): the life cycle of the real agents
+  (start, retry, the host's decisions); `adapters/web/acts.ts`: a person act in the server's
+  process, on the ui channel.
 - New in the CLI for the UI: `work run start|continue|done|close|list`, `work session <a> --id
   [--token]`, `work task draft --by=<run>` and `work task open <draft>`, `work problem`,
   `work event`, `work send`, `work note <token> words --on=<decision> [--hope]`, and

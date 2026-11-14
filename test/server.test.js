@@ -119,7 +119,10 @@ describe('the server, read only', () => {
   test('a terminal of an agent never gets smaller than 40 x 10 from the page', async () => {
     const p = project()
     const sizes = []
-    const pump = { status: () => ({}), snapshot: () => new Uint8Array(), input: () => {}, resize: (sid, cols, rows) => sizes.push([sid, cols, rows]) }
+    const pump = {
+      onOutputs: [], onSizes: [], status: () => ({}), snapshot: () => new Uint8Array(), input: () => {},
+      resize: (sid, cols, rows) => sizes.push([sid, cols, rows]),
+    }
     const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }, pump })
     servers.push(s)
     const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { cookie: `aristoteles-${s.port}=${s.key}`, origin: `http://127.0.0.1:${s.port}` } })

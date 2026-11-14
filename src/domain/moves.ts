@@ -2,9 +2,9 @@
 // move, from the state that it may leave to the state that it makes, so that a move back (an
 // answered question opened again, a revoked permission revoked twice, a stopped terminal woken
 // by the supervisor) does not compile. MOVES ties each stored move kind to its function, so a
-// new kind fails the compile there until it has one; the replay (src/replay) and the engine
-// (src/engine) call them, and no other code writes a state (architecture.test.ts). Pure: the
-// caller finds the record by its id, and puts the new copy in the Work.
+// new kind fails the compile there until it has one; the fold (core/state) calls them, and no
+// other code writes a state (architecture.test.ts). Pure: the caller finds the record by its id,
+// and puts the new copy in the Work.
 import type { Human } from './actor.ts'
 import type { EventRef, ResultId, SessionId, TaskId, Time } from './ids.ts'
 import type {
@@ -333,6 +333,10 @@ export const MOVES = {
   'Workflow.RoleWordsChanged': changeRoleWords,
   // The latest fit of a role replaces the one before (Work.fits); a fit has no state.
   'Role.Fitted': null,
+  // A draft of new words and its reject change no record: their state follows from the log
+  // (core/derived, ruling 2026-11-14).
+  'Role.WordsDrafted': null,
+  'Role.WordsRejected': null,
   'Run.HostMoved': moveHost,
   'Run.Done': runDone,
   'Run.Closed': runClosed,

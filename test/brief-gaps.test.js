@@ -10,6 +10,7 @@ import {
   project,
   reported,
   started,
+  solToken,
   TASK_WHOLE,
   tokenIn,
   WORK_YAML,
@@ -100,7 +101,7 @@ describe('send to an agent with no terminal', () => {
     }
     ok(await p.run('run start', HOST))
     ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
-    const host = tokenIn(ok(await p.ui('task open td1')).out)
+    const host = await solToken(p, ok(await p.ui('task open td1')).out) // ruling 10.1
     ok(await p.agent(`brief ${host}`))
     ok(await p.agent(`assign ${host} t1 --role=section-lead`))
     ok(await p.agent(`assign ${host} t1 --role=writer --max-attempts=3`))

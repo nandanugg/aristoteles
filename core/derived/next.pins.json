@@ -1,0 +1,205 @@
+{
+ "started": {
+  "next a1": {
+   "tags": [
+    "AssignMaker"
+   ],
+   "key": "AssignMaker t1 writer"
+  }
+ },
+ "reported": {
+  "next a1": {
+   "tags": [
+    "CheckerWorking",
+    "CheckYourself"
+   ],
+   "key": "CheckerWorking a3 r1\nCheckYourself r1"
+  },
+  "next a2": {
+   "tags": [
+    "CheckerOfHigherTier",
+    "CheckerOfHigherTier"
+   ],
+   "key": "CheckerOfHigherTier r1 linter\nCheckerOfHigherTier r1 section-lead"
+  },
+  "next a3": {
+   "tags": [
+    "CheckYourself",
+    "CheckerOfHigherTier"
+   ],
+   "key": "CheckYourself r1\nCheckerOfHigherTier r1 section-lead"
+  }
+ },
+ "rejectedOnce": {
+  "next a1": {
+   "tags": [
+    "GiveCheckerCommand",
+    "CheckYourself"
+   ],
+   "key": "GiveCheckerCommand a3 r2 t1\nCheckYourself r2"
+  },
+  "next a2": {
+   "tags": [
+    "CheckerOfHigherTier",
+    "CheckerOfHigherTier"
+   ],
+   "key": "CheckerOfHigherTier r2 linter\nCheckerOfHigherTier r2 section-lead"
+  },
+  "next a3": {
+   "tags": [
+    "CheckYourself",
+    "CheckerOfHigherTier"
+   ],
+   "key": "CheckYourself r2\nCheckerOfHigherTier r2 section-lead"
+  }
+ },
+ "accepted": {
+  "next a1": {
+   "tags": [
+    "FinishChild",
+    "FinishChild",
+    "FinishAcceptedTask"
+   ],
+   "key": "FinishAcceptedTask t1"
+  },
+  "next a2": {
+   "tags": [
+    "FinishAcceptedTask"
+   ],
+   "key": "FinishAcceptedTask t1"
+  },
+  "next a3": {
+   "tags": [
+    "FinishAcceptedTask"
+   ],
+   "key": "FinishAcceptedTask t1"
+  }
+ },
+ "escalated": {
+  "next a1": {
+   "tags": [
+    "CheckerWorking",
+    "CheckYourself"
+   ],
+   "key": "CheckerWorking a3 r1\nCheckYourself r1"
+  },
+  "next a2": {
+   "tags": [
+    "CheckerOfHigherTier",
+    "CheckerOfHigherTier"
+   ],
+   "key": "CheckerOfHigherTier r1 linter\nCheckerOfHigherTier r1 section-lead"
+  },
+  "next a3": {
+   "tags": [
+    "CheckYourself",
+    "CheckerOfHigherTier"
+   ],
+   "key": "CheckYourself r1\nCheckerOfHigherTier r1 section-lead"
+  }
+ },
+ "codeStarted": {
+  "next a1": {
+   "tags": [
+    "MakerWorking"
+   ],
+   "key": "MakerWorking a2 t1"
+  },
+  "next a2": {
+   "tags": [
+    "MakerWorking"
+   ],
+   "key": "MakerWorking a2 t1"
+  }
+ },
+ "relay": {
+  "next a1": {
+   "tags": [
+    "AssignMaker"
+   ],
+   "key": "AssignMaker t1 writer"
+  },
+  "next a2": {
+   "tags": [
+    "MediumRuns"
+   ],
+   "key": "MediumRuns a1 t1"
+  }
+ },
+ "relayDecided": {
+  "next a1": {
+   "tags": [
+    "AssignMaker"
+   ],
+   "key": "AssignMaker t1 writer"
+  },
+  "next a2": {
+   "tags": [
+    "MediumRuns"
+   ],
+   "key": "MediumRuns a1 t1"
+  }
+ },
+ "vetoed": {
+  "next a1": {
+   "tags": [
+    "AssignMaker"
+   ],
+   "key": "AssignMaker t1 writer"
+  },
+  "next a2": {
+   "tags": [
+    "ReviseRejectedDraft",
+    "MediumRuns"
+   ],
+   "key": "ReviseRejectedDraft d2 v2\nMediumRuns a1 t1"
+  }
+ },
+ "uiRun": {
+  "next a1": {
+   "tags": [
+    "Answer",
+    "MediumRuns",
+    "ReviseForPoint"
+   ],
+   "key": "Answer q1\nMediumRuns a2 t1\nReviseForPoint v2.1 tsd-writing"
+  },
+  "next a2": {
+   "tags": [
+    "AssignChecker",
+    "EscalateForPoint"
+   ],
+   "key": "AssignChecker r1 linter t1\nEscalateForPoint v2.1 r1"
+  },
+  "next a3": {
+   "tags": [
+    "CheckerOfHigherTier",
+    "EscalateForPoint"
+   ],
+   "key": "CheckerOfHigherTier r1 linter\nEscalateForPoint v2.1 r1"
+  }
+ },
+ "uiRunRemade": {
+  "next a1": {
+   "tags": [
+    "Answer",
+    "FinishChildOfClosedTask",
+    "FinishInClosedTask"
+   ],
+   "key": "Answer q1"
+  },
+  "next a2": {
+   "tags": [
+    "FinishChildOfClosedTask",
+    "FinishInClosedTask"
+   ],
+   "key": ""
+  },
+  "next a3": {
+   "tags": [
+    "FinishInClosedTask"
+   ],
+   "key": ""
+  }
+ }
+}
