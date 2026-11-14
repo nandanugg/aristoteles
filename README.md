@@ -22,8 +22,8 @@ SQLite file that links each task to the version of the direction that it used.
 ## Start from your AI CLI
 
 Open the AI CLI that you use (Claude Code, Codex, or another) in the dir, in a tmux pane, and
-paste this prompt into it. That session is the host: it gets aristoteles, sets up a new dir,
-starts the page, and starts or continues a project with you. The page shows that same terminal,
+paste this prompt into it. That session is the host: it gets aristoteles, installs its skill in
+the dir, onboards a new dir with you, starts the page, and starts or continues a project with you. The page shows that same terminal,
 so you talk with the host there or on the page. No step guesses which CLI you use.
 
 ```text
@@ -34,21 +34,46 @@ Use aristoteles in this folder.
    necessary), and link the CLI:
    mkdir -p ~/.local/bin && ln -s ~/.aristoteles/code/bin/work.js ~/.local/bin/work
    When `work` is still not on the PATH, use `bun <the aristoteles folder>/bin/work.js` in its place.
+   Then run `work skill install` in this folder: it links the /aristoteles skill here, out of git.
 2. Read <the aristoteles folder>/skills/aristoteles/SKILL.md and do what it says: you are the host.
 ```
 
-In a new dir, the host drafts the people and the roles, and the commands of its own CLI for the
-agents, then starts the page (`work start --detach`):
+`work skill install` links the skill in `.claude/skills/aristoteles` and
+`.agents/skills/aristoteles`, and lists both links in `.git/info/exclude`. aristoteles never edits
+your `CLAUDE.md` or `AGENTS.md`: a session that starts with `/aristoteles` works for aristoteles,
+and any other session of the dir still uses your old files.
 
-1. Read the draft on the page, and accept the roles.
-2. Commit `aristoteles.yaml`. `work start` keeps `.work/` and the linked skills out of git
-   (`.git/info/exclude`).
-3. Tell the host that the roles are accepted. It records the fit of each agent role, and drafts
-   the directions. You accept each direction on the page.
+In a new dir, the host onboards the dir with you. Onboarding works on files, and nothing goes to
+the store until the end:
 
-Later, a high role or the host drafts new words of a role with `work role draft`, and the host
-revises a direction with `work direction revise --by=<its run>`. Each draft waits for you on
-the page: accept it, or reject it with your reason.
+1. The host reads the dir and drafts the people, the roles (each with a one-line summary, and the
+   place where the project has it already), and the commands of its own CLI for each tier. It
+   opens the page (`work start --detach`).
+2. The host drafts each direction with its standards, its rules, and at least 3 real cases: code
+   that follows the direction, and code that breaks it. You open any ready direction on the page.
+   Accept it; or write what to change and press Revise; or remove it. When the host needs an
+   answer, it asks a question with a case and two options, A and B. You can add a direction (the
+   principle, and an example if you have one) or a company direction. A company direction is a
+   folder of a git repo that other projects follow; for an example, see
+   https://github.com/nandanugg/aristoteles-example-direction.
+3. When every direction is accepted or removed, the agents page opens: a card for each role, with
+   its icon, its model, and whether it is persistent. Only a persistent role gets a terminal of
+   its own; a role that is not persistent runs as a subagent. Accept, revise, or remove each role.
+4. Approve all roles. That starts the store with only the accepted result (at a terminal:
+   `work onboard approve-roles`; the page and the command ask for your confirmation). Commit
+   `aristoteles.yaml`. The host then records the fit of each agent role.
+
+Each page act has a twin at a terminal: `work onboard status` shows each direction and role with
+its state, `work onboard accept <id>`, `revise <id> --words=<words>`, `remove <id>`,
+`approve-directions`, and the role commands (`accept-role`, `revise-role`, `remove-role`,
+`persistence`).
+
+After the store starts, a change is an event that you accept. Say what to change in words
+(`work suggest roles --says=<words>`, or about a direction `work suggest <direction>
+--says=<words>`); the host or a high role drafts it with `work adjust` (add or remove a role,
+change a tier or a persistence, retire a direction, change cases), or with `work role draft` and
+`work direction revise` for words. Each draft waits for you on the page: accept it, or reject it
+with your reason.
 
 Then the host asks: a new project, or continue one? After the first start, the `aristoteles`
 skill is linked in the dir, so you trigger it by its name. When the host's AI CLI ends, trigger a
@@ -63,8 +88,8 @@ ln -s "$PWD/aristoteles/bin/work.js" ~/.local/bin/work   # or run: bun aristotel
 
 In a dir (a folder of your work):
 
-1. Write `aristoteles.yaml`: the people and the roles (DESIGN.md, section 3; the name of the dir
-   is its folder name). Its first line can name the schema, so an editor completes the keys:
+1. Write `aristoteles.yaml`: the people and the roles, each agent role with its `persistence` and
+   its `icon` (DESIGN.md, sections 3 and 13; the name of the dir is its folder name). Its first line can name the schema, so an editor completes the keys:
    `# yaml-language-server: $schema=<the aristoteles folder>/schema/aristoteles.schema.json`.
 2. Run `work init`.
 3. A model drafts each direction with the `assess` skill (`skills/assess`), or with
@@ -92,8 +117,10 @@ aristoteles folder, and tmux for the terminals.
 
 - **A project is a talk** with the host, the AI CLI that you triggered: the page shows its
   terminal. Tell it what you want; it drafts the top task, and you open it with one click.
-- **Real agents and subagents.** A Sol or Terra role runs in a real terminal that you can open
-  and type into; the UI starts it. A Luna role runs as a subagent inside its parent's terminal.
+- **Persistent agents and subagents.** A persistent role (any tier) runs in a real terminal that
+  you can open and type into, from its first assignment to the end of the project; the UI starts
+  it, and it takes its work with `work wait --by=<agent>`. A role that is not persistent runs as
+  a subagent inside the terminal that gives it the work. Only a terminal starts subagents.
 - **Only five kinds of decision need you**, each with a badge: a system problem, a direction
   problem, the end of a project, your words that an agent relayed as an act (you confirm it),
   and new words of a role. The host handles the rest, and writes its words on each decision
@@ -114,10 +141,13 @@ aristoteles folder, and tmux for the terminals.
   it.
 - `work guide limits`: the action when work passes a limit, so that no agent asks the person
   about a limit.
+- `guides/high.yaml`, `medium.yaml`, `low.yaml`: the words of each tier in its brief. They count
+  in the size of the brief, so the limits of `aristoteles.yaml` leave room above them.
 - `skills/work`: the skill that a model reads to do work under review.
 - `skills/aristoteles`: the skill that the person triggers in their AI CLI; that session is the
-  host.
-- `skills/assess`: the skill that reads an app and drafts its directions.
+  host. `work skill install` links it into a dir.
+- `skills/assess`: the skill that reads an app and onboards it: its roles and its directions,
+  with cases, as files (`work onboard`).
 - `skills/role-fitness`: the skill that checks that a role in `aristoteles.yaml` fits its tier.
 
 ## Tests

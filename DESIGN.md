@@ -275,7 +275,7 @@ findings of each round, with what was done, are in `thought-tests/round-2.md` to
 | Guides | how to write a direction, and the questions of the review of a draft (`work guide <name>`) | `guides/*.md` |
 | Tier guides | for each tier: its introduction, and the guide of each command it may run | `guides/<tier>.yaml` (shipped with the CLI) |
 | Fitness questions | the questions that `work role fit` prints | `guides/fitness.yaml` |
-| Skills | `work` (the front door), `role-fitness`, and `assess` (reads an app and drafts its directions) | `skills/` |
+| Skills | `aristoteles` (the host; `work skill install` links it into a dir), `work` (the front door), `role-fitness`, and `assess` (reads an app and onboards it: roles and directions as files) | `skills/` |
 
 ## 2. Tiers
 
@@ -1029,3 +1029,51 @@ ids.
   words (`work run continue <run> --quote=`). The pump copies that one pane (`capture-pane`) and
   types into it (`send-keys`); it never starts, resizes, stops, or restarts it, and the watcher
   never restarts a host.
+
+## 13. Onboarding (2026-11-14)
+
+The person pastes a prompt into an AI CLI session in a project folder. That session is the host.
+It reads the project's own instructions and code, and turns the repeatable parts into directions
+(with standards and rules) and roles. The person checks each one. The rulings are Nanda's, of
+2026-11-14.
+
+**Files first** (ruling 1). Onboarding works on files in the dir, before any store. The host never
+writes into `.work/assess/`: that folder belongs to `work onboard`, which keeps one file for each
+direction and one for the roles. The host keeps its own drafts in `.work/drafts/` and sends each
+one with `work onboard ... --file=`. The store starts at the end with only the accepted result
+(`work onboard approve-roles`, or approve all on the agents page). Accepts, revisions, questions,
+and removes before that are not events. Inside the loop every act is recorded (Mnēmē holds there);
+onboarding is outside it, because it needs quick feedback.
+
+**The pages and the commands** (rulings 2, 3, 5, 6, 11). The directions page lists each direction
+with a state (Loading, Question, Ready, Accepted); the person opens any ready one, and accepts,
+revises, or removes it. The agents page opens when every direction is accepted or removed. Each
+page act has a `work onboard` twin at a terminal. The host's commands: `config`, `role`, `found`,
+`draft`, `ask`, `company`, `status`, `show`, `wait`.
+
+**Cases** (rulings 4, 17). A direction has at least 3 real cases: a file, a line, a short excerpt,
+and a fit of `Follows` or `Breaks`. A case is stale when its excerpt is no longer in its file. A
+change of cases makes no new version. A break is information for the person; it makes no task.
+A question has a case and two options, A and B.
+
+**Roles** (rulings 7, 8, 9, 15, 16). Tier and persistence are apart. A role says
+`persistence: { persistent, why }` and an `icon`. Only a persistent role gets a terminal of its own,
+from its first assignment to the end of the project; a role that is not persistent runs as a
+subagent of a terminal. The lead is persistent: the host plays the high role of each top task, and
+the host is a terminal. Only a terminal starts subagents; a subagent that needs more agents tells
+the terminal above it, and the launch command of a persistent agent limits nested subagents
+(`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` for Claude Code). The four acts (do, review, approve,
+change) are the standard workflow, and the words of each role give principles that work as
+criteria for them. The Rumsfeld matrix is guidance in the skill and in `guides/roles.md` for
+choosing persistence: known knowns and known unknowns persistent, unknown knowns and unknown
+unknowns disposable unless needed again and again. No type holds it, and no page shows it.
+
+**The skill** (ruling 12). `work skill install` links `skills/aristoteles/SKILL.md` into
+`.claude/skills/aristoteles` and `.agents/skills/aristoteles` and lists both links in
+`.git/info/exclude`. The project's `CLAUDE.md` and `AGENTS.md` are never edited. The README prompt
+stays for the first contact, because nothing has installed the skill yet.
+
+**After the store** (rulings 13, 14). A change of a role or a direction is an adjustment: a draft
+(`work adjust`: add or remove a role, change a tier or a persistence, retire a direction, change
+cases) that the person accepts on the page or with `work adjust accept <event>`. Work in progress
+keeps what it started with. The person says what to change in words with `work suggest roles`.
