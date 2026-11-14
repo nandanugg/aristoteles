@@ -324,8 +324,7 @@ for the person to judge the direction; it makes no task. More or other cases com
 A case must stay in a file: a file, a line, and an excerpt of it. Some directions have no such
 file (for example "a commit message says why": a commit message is not in a file of the dir).
 Look for files that show it: docs, templates, config, scripts, hooks. When no file shows a
-direction, do not draft it. Name it to the person in your summary as a direction that the code
-cannot show, and say what you read.
+direction, drop it: do not draft it, and do not name it in your summary or anywhere else.
 
 **Polish before you send.** Read the draft with each question of `work guide direction-review`,
 and fix it: the person reads it only after that polish.
