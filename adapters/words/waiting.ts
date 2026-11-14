@@ -36,6 +36,7 @@ import {
 } from '../../core/derived/reads.ts'
 import { openDrafts } from '../../core/derived/drafts.ts'
 import {
+  adjustmentDraftAt,
   SURFACES,
   type Derived,
   roleWordsDraftAt,
@@ -44,6 +45,7 @@ import {
 import { sectionOf } from '../../core/schema/index.ts'
 import { an, clock, describeInner, short, stateWord, who } from './common.ts'
 import { drafterWords } from './role-words.ts'
+import { adjustmentWords } from './show.ts'
 import { aboutId, answerText, drafterOf, reviseAgainOf, stopIdOf, tierOfRole } from './shared.ts'
 
 type Of<K extends WaitingItem['_tag']> = Extract<WaitingItem, { readonly _tag: K }>
@@ -158,11 +160,38 @@ const roleWordsRejectedRow = (d: Derived, item: Of<'RoleWordsRejected'>): string
   return `${item.draft} (new words of ${item.role}) is rejected: "${short(reason, 120)}"; ${again}`
 }
 
-// A drafted adjustment (ruling 14), one plain row each; W2 writes their full rows.
-const adjustmentRow = (item: Of<'Adjustment'>): string =>
-  `${item.draft} an adjustment waits for the person\n    work adjust show ${item.draft}`
-const adjustmentRejectedRow = (item: Of<'AdjustmentRejected'>): string =>
-  `${item.draft} (an adjustment) is rejected; its drafter drafts a new one`
+// A drafted adjustment (ruling 14), as new words of a role: a draft for the person, and a rejected
+// draft that waits for a newer one of its drafter.
+const adjustmentDraftOf = (d: Derived, item: Of<'Adjustment'> | Of<'AdjustmentRejected'>) => {
+  const x = adjustmentDraftAt(d.moment.work, item.draft)
+  if (x === undefined) throw new Error(`${item.draft} is no drafted adjustment`)
+  return x
+}
+const adjustmentRow = (d: Derived, item: Of<'Adjustment'>): string => {
+  const x = adjustmentDraftOf(d, item)
+  return (
+    `${item.draft} an adjustment: ${adjustmentWords(x.adjustment)}, drafted by ${drafterWords(x.by)}\n` +
+    `    work adjust show ${item.draft}; work adjust accept ${item.draft}, ` +
+    `or reject ${item.draft} --reason="<why>"`
+  )
+}
+const adjustmentRejectedRow = (d: Derived, item: Of<'AdjustmentRejected'>): string => {
+  const x = adjustmentDraftOf(d, item)
+  const state = d.states.adjustments.get(item.draft)
+  const reason = state?._tag === 'Rejected' ? state.reason : ''
+  const again =
+    item.for._tag === 'Assignment'
+      ? `its drafter ${item.for.assignment} drafts a new one that answers it\n` +
+        '    work adjust <token> <change>'
+      : x.by._tag === 'ModelRun'
+        ? `its drafter ${drafterWords(x.by)}, drafts a new one that answers it\n` +
+          `    work adjust <change> --by=${x.by.name}`
+        : 'a high role drafts a new one that answers it'
+  return (
+    `${item.draft} (an adjustment: ${adjustmentWords(x.adjustment)}) is rejected: ` +
+    `"${short(reason, 120)}"; ${again}`
+  )
+}
 
 // A draft that waits for a role's accept first names that role, and the assign when no open
 // assignment of that role, outside the reviser's tree, can review it.
@@ -461,8 +490,8 @@ export const waitingRows = (d: Derived, all: ReadonlyArray<WaitingItem>): Readon
 
   rows.push(...of('RoleWords').map((i) => roleWordsRow(d, i)))
   rows.push(...of('RoleWordsRejected').map((i) => roleWordsRejectedRow(d, i)))
-  rows.push(...of('Adjustment').map(adjustmentRow))
-  rows.push(...of('AdjustmentRejected').map(adjustmentRejectedRow))
+  rows.push(...of('Adjustment').map((i) => adjustmentRow(d, i)))
+  rows.push(...of('AdjustmentRejected').map((i) => adjustmentRejectedRow(d, i)))
 
   // The stops of one task are together in the items: the evaluations that wait for the owner, then
   // one row for the stops that no one evaluated.

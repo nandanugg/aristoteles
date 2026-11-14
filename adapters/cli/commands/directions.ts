@@ -1,11 +1,13 @@
 // The commands direction, suggest, grant, revoke, forward, confirm. The files are read by the
 // actions; the adapter reads the flags, builds the typed act of a forward, and prints the words.
+import { join } from 'node:path'
 import { Effect } from 'effect'
 import { currentOf, draftAt } from '../../../core/derived/reads.ts'
 import type { PointInput, SuggestAbout } from '../../../core/schema/actions.ts'
 import {
   type AnswerId,
   type Author,
+  type Case,
   DirectionId,
   type EvidenceData,
   type EventRef,
@@ -25,8 +27,9 @@ import {
   type RejectId,
   type PermissionId,
 } from '../../../core/schema/index.ts'
-import { Now } from '../../../core/services/index.ts'
+import { Dir, Files, Now } from '../../../core/services/index.ts'
 import {
+  caseLines,
   describeInner,
   draftWaitsText,
   pieceNames,
@@ -60,11 +63,29 @@ const DIRECTION_TEMPLATE = `write a file like this, then run the command again:
       rules:
         - { id: <rule id>, says: <one check>, checkedBy: <role> }`
 
+const CASES_TEMPLATE = `write a file like this, then run the command again:
+  cases:   # 3 or more: real code that follows the direction or breaks it
+    - { file: <path>, line: <n>, excerpt: <a short part of the file as it is now>, fit: Follows }`
+
 const REVISE_TEMPLATE =
   'write a file like this (any of the keys), then run the revise again:\n' +
   '  add:\n    - { id: <new standard id>, says: <the standard>, rules: [ { id: <new rule id>, says: <the rule>, checkedBy: <role> } ] }\n' +
   '  replace:\n    - { id: <standard id>, with: { id: <standard id>, says: <...>, rules: [ ... ] } }\n' +
   '  remove: [<standard id>]\n  says: <a new spirit needs the accept of the owner>'
+
+// The cases of a direction or of a new draft, each with its state (ruling 4): the adapter reads the
+// text of each file now, so a case whose excerpt left its file shows stale.
+const casesOf = (cases: ReadonlyArray<Case>) =>
+  Effect.gen(function* () {
+    if (cases.length === 0) return []
+    const { cwd } = yield* Dir
+    const files = yield* Files
+    const texts = new Map<string, string | null>()
+    for (const c of cases) {
+      if (!texts.has(c.file)) texts.set(c.file, yield* files.read(join(cwd, c.file)))
+    }
+    return ['cases:', ...caseLines(cases, (file) => texts.get(file) ?? null)]
+  })
 
 // <id>[@<n>] or <draft>, then [#<standard, rule, or header>[#<header>]]: one piece.
 const showDirection = (rest: ReadonlyArray<string>) =>
@@ -74,7 +95,10 @@ const showDirection = (rest: ReadonlyArray<string>) =>
     let v: VersionId | RevisionId
     if (/^d\d+$/.test(address)) {
       const { revision } = yield* lookupKind('Revision', ['d'], work, address)
-      if (!keys.length) return [renderDraft(d, revision.id), ...whyLines(revision.why)]
+      if (!keys.length) {
+        const cases = revision._tag === 'New' ? yield* casesOf(revision.cases) : []
+        return [renderDraft(d, revision.id), ...whyLines(revision.why), ...cases]
+      }
       v = revision.id
     } else {
       const [id = '', number] = address.split('@')
@@ -93,7 +117,9 @@ const showDirection = (rest: ReadonlyArray<string>) =>
       const numbered = number ? dir.versions[Number(number) - 1] : undefined
       if (number && !numbered) return yield* refuse(`${id} has no version ${number}`)
       const version = numbered ?? currentOf(work, directionId)
-      if (!keys.length) return [renderDirection(d, versionIdOf(version))]
+      if (!keys.length) {
+        return [renderDirection(d, versionIdOf(version)), ...(yield* casesOf(dir.cases))]
+      }
       v = versionIdOf(version)
     }
     const piece = renderPiece(work, v, keys)
@@ -242,14 +268,54 @@ const reviseDirection = (call: Call, rest: ReadonlyArray<string>) =>
     ]
   })
 
+// A model gives a company draft of a new direction its cases before the accept (P10 rejected,
+// onboarding 2026-11-14): a high agent with its token, or a model run outside any task (--by).
+const draftCases = (call: Call, rest: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const { args, token } = call
+    const runName = textOf(args.one('by'))
+    const id = String(rest[0])
+    const file = textOf(args.one('file'))
+    if (!file) return yield* refuse('the cases of a draft need --file=<cases.yaml>', CASES_TEMPLATE)
+    const { work } = yield* peekWork
+    if (token !== null && runName !== undefined) {
+      return yield* refuse(
+        '--by names a model run outside any task; an assignment is named by its token',
+      )
+    }
+    let by: Author
+    if (token !== null) by = authorOf(yield* agentCallerOf(work, token))
+    // The person is refused by canAct: a model drafts, the person says it in words.
+    else if (yield* isPerson) by = yield* personAuthor(work)
+    else if (!/^[a-z][a-z0-9-]*$/.test(runName ?? '')) {
+      return yield* refuse(
+        'a model run outside any task names itself: --by=<its name in lower case>',
+        `run it again with --by, for example: work direction cases ${id} --file=${file} --by=host`,
+      )
+    } else by = { _tag: 'ModelRun', name: String(runName), at: yield* (yield* Now).read }
+    const { revision: draft } = yield* lookupKind('Revision', ['d'], work, id)
+    const done = yield* act(by, {
+      _tag: 'AddCases',
+      target: { draft: draft.id },
+      content: { file },
+    })
+    const after = yield* derivedAfter(done.work)
+    const owner = done.work.directions.get(draft.of)?.owner.name
+    return [
+      `${draft.id} has its cases; it waits for the accept of ${draftWaitsText(after, draft.id)}.`,
+      `next: work direction show ${draft.id}; ${owner} runs work review ${draft.id} accept, or reject --reason="<why>"`,
+    ]
+  })
+
 const direction: Command = (call) =>
   Effect.gen(function* () {
     const [sub, ...rest] = call.args.positional
     if (sub === 'show') return yield* showDirection(rest)
     if (sub === 'new') return yield* newDirection(call)
+    if (sub === 'cases') return yield* draftCases(call, rest)
     if (sub !== 'revise') {
       return yield* refuse(
-        'use work direction show|new|revise; a draft is accepted or rejected with work review <draft> accept|reject',
+        'use work direction show|new|revise|cases; a draft is accepted or rejected with work review <draft> accept|reject',
       )
     }
     return yield* reviseDirection(call, rest)
@@ -262,14 +328,26 @@ const suggest: Command = (call) =>
     const about = call.args.positional[0]
     const { work } = yield* peekWork
     const caller = yield* callerOf(work, call.token)
-    // The action finds what the key names: a direction, a standard, or a rule.
-    const target: SuggestAbout = about ? { _tag: 'Standard', key: about } : { _tag: 'NewDirection' }
+    // The action finds what the key names: a direction, a standard, or a rule; the word roles is
+    // about the roles of the workflow (P7).
+    const target: SuggestAbout =
+      about === 'roles'
+        ? { _tag: 'Roles' }
+        : about
+          ? { _tag: 'Standard', key: about }
+          : { _tag: 'NewDirection' }
     const done = yield* act(authorOf(caller), {
       _tag: 'Suggest',
       target: { about: target },
       content: { says: wordsOf(call.args.one('says')) },
     })
     const sid = done.created[0]
+    if (target._tag === 'Roles') {
+      return [
+        `${sid}: a suggestion about the roles; it stays open until an adjustment of a role answers it.`,
+        'next: a high role answers it with an adjustment: work adjust <token> <change>',
+      ]
+    }
     const draft = about
       ? `work direction revise <token> <direction> --file=<edit.yaml> --answers=${sid}`
       : `work direction new <token> --file=<direction.yaml> --answers=${sid}`
