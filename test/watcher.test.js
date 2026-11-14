@@ -1,8 +1,9 @@
 // The watcher and the acts of the UI (plan/ui/BUILD.md parts 6 and 7), with real tmux terminals
 // and the fake AI tool: the host is the AI CLI that the person triggered, in a pane of the
-// person's own tmux server (Nanda, 2026-11-13); Open gives it the top task; a new
-// Terra starts in its own terminal with a new token; a failed terminal is retried, then the host
-// hears of it; a prompt goes to the host, and the host's send reaches the child; Stop is no failure.
+// person's own tmux server (Nanda, 2026-11-13); Open gives it the top task; a persistent Terra
+// agent starts in its own terminal, and its own work wait gives it each assignment with a token
+// (rulings 7 and 9, onboarding 2026-11-14); a failed terminal is retried, then the host hears of
+// it; a prompt goes to the host, and the host's send reaches the child; Stop is no failure.
 import { afterEach, describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import { createPump } from './code.js'
@@ -17,8 +18,8 @@ const SETTINGS = `tiers:
     resume: bun ${FAKE} resumed {session} {prompt}
     prompts: ["Do you want to proceed?"]
   terra:
-    launch: bun ${FAKE} start {session} {prompt}
-    resume: bun ${FAKE} resumed {session} {prompt}
+    launch: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 bun ${FAKE} start {session} {prompt}
+    resume: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 bun ${FAKE} resumed {session} {prompt}
     errors: ["connection error"]
     prompts: ["Do you want to proceed?"]
 `
@@ -45,6 +46,15 @@ const wokenBy = async (p, token, act) => {
   await act()
   return ok(await waiting).out
 }
+
+// Ruling 9, onboarding 2026-11-14: a persistent agent gets each assignment from its own work wait
+// in its terminal (the pump sets ARISTOTELES_SESSION there), as solToken does for the host.
+const agentTokens = async (p, session, agent = 'p1') => {
+  const out = ok(await p.run(`wait --by=${agent} --seconds=1`, { env: { ARISTOTELES_SESSION: session } })).out
+  return [...out.matchAll(/work brief (a\d+\.[a-z0-9]+)/g)].map((m) => m[1])
+}
+// The first prompt of the agent p1 (P9): it names the agent and its wait, and no token.
+const P1_START = 'first input: Use the work skill. You are p1: run work wait --by=p1, and do what it prints.'
 
 // A dir with its roles fitted and the UI running: the server, the pump and the watcher.
 const ui = async () => {
@@ -111,13 +121,16 @@ describe('the watcher and the acts of the UI', () => {
     const hostToken = await solToken(p, opened.body.out, 'h1', { env: hostEnv })
     expect(screen(host)).not.toContain('you said:')
 
-    // The host reads its brief and assigns a Terra: the watcher starts its terminal with a new token.
+    // The host reads its brief and assigns a Terra of a persistent role: the watcher starts the
+    // terminal of its agent p1. The launch command sets the env of the AI CLI as a shell prefix.
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    await until(() => /first input: Use the work skill\. Your command: work brief a2\.[a-z0-9]+\s/.test(screen(lead)))
-    const leadToken = screen(lead).match(/work brief (a2\.[a-z0-9]+)/)[1]
+    // Ruling 9, onboarding 2026-11-14: the first prompt names p1 and its wait (was: a token), and
+    // the agent's wait in its terminal gives it a2 with a token.
+    await until(() => screen(lead).includes(P1_START))
+    const [leadToken] = await agentTokens(p, lead)
     ok(await p.agent(`brief ${leadToken}`))
 
     // A prompt in the child goes to the host; the host's send reaches the child. Ruling 10.1:
@@ -218,8 +231,10 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    await until(() => /work brief a2\.[a-z0-9]+\s/.test(screen(lead)))
-    const leadToken = screen(lead).match(/work brief (a2\.[a-z0-9]+)/)[1]
+    // Ruling 9, onboarding 2026-11-14: the lead's own wait gives it a2 with a token (was: the
+    // token in its first prompt).
+    await until(() => screen(lead).includes(P1_START))
+    const [leadToken] = await agentTokens(p, lead)
     ok(await p.agent(`brief ${leadToken}`))
     ok(await p.agent(`ask ${leadToken} --text="Is the retry part of the export?" --to=owner`))
     const woke = await wokenBy(p, leadToken, async () => {
@@ -243,8 +258,10 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    await until(() => /work brief a2\.[a-z0-9]+\s/.test(screen(lead)))
-    const leadToken = screen(lead).match(/work brief (a2\.[a-z0-9]+)/)[1]
+    // Ruling 9, onboarding 2026-11-14: the lead's own wait gives it a2 with a token (was: the
+    // token in its first prompt).
+    await until(() => screen(lead).includes(P1_START))
+    const [leadToken] = await agentTokens(p, lead)
     ok(await p.agent(`brief ${leadToken}`))
     // The writer is a Luna: a subagent in the lead's terminal.
     const writer = tokenIn(ok(await p.agent(`assign ${leadToken} t1 --role=writer`)).out)
@@ -277,11 +294,12 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.agent(`assign ${hostToken} t2 --role=section-lead`))
     ok(await p.agent(`assign ${hostToken} t3 --role=section-lead`))
     await watcher.tick()
-    const sessionOf = (a) => until(() => Object.keys(pump.status()).find((sid) => screen(sid).includes(`work brief ${a}.`)))
-    const first = await sessionOf('a2')
-    const second = await sessionOf('a3')
-    const lead = screen(first).match(/work brief (a2\.[a-z0-9]+)/)[1]
-    const lead2 = screen(second).match(/work brief (a3\.[a-z0-9]+)/)[1]
+    // Ruling 9, onboarding 2026-11-14: both parts go to the one agent of section-lead, p1, in one
+    // terminal (was: a terminal for each part); its wait gives it a2 and a3, each with a token.
+    const second = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
+    await until(() => screen(second).includes(P1_START))
+    expect(Object.keys(pump.status()).length).toBe(2)
+    const [lead, lead2] = await agentTokens(p, second)
     ok(await p.agent(`brief ${lead}`))
     ok(await p.agent(`brief ${lead2}`))
     // Part one is written and accepted; part two waited for it.
@@ -318,11 +336,12 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.agent(`assign ${hostToken} t2 --role=section-lead`))
     ok(await p.agent(`assign ${hostToken} t3 --role=section-lead`))
     await watcher.tick()
-    const sessionOf = (a) => until(() => Object.keys(pump.status()).find((sid) => screen(sid).includes(`work brief ${a}.`)))
-    const first = await sessionOf('a2')
-    const second = await sessionOf('a3')
-    const lead1 = screen(first).match(/work brief (a2\.[a-z0-9]+)/)[1]
-    const lead2 = screen(second).match(/work brief (a3\.[a-z0-9]+)/)[1]
+    // Ruling 9, onboarding 2026-11-14: both parts go to the one agent of section-lead, p1, in one
+    // terminal (was: a terminal for each part); its wait gives it a2 and a3, each with a token.
+    const second = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
+    await until(() => screen(second).includes(P1_START))
+    expect(Object.keys(pump.status()).length).toBe(2)
+    const [lead1, lead2] = await agentTokens(p, second)
     ok(await p.agent(`brief ${lead1}`))
     ok(await p.agent(`brief ${lead2}`))
     const writer = tokenIn(ok(await p.agent(`assign ${lead1} t2 --role=writer`)).out)
@@ -367,7 +386,9 @@ describe('the watcher and the acts of the UI', () => {
     expect((await post('fixed', { problem: 'sp1' })).body.out).toBe('sp1: the host runs, and the problem is fixed.')
   }, 90000)
 
-  test('the end of work closes its terminal: a Terra when it finishes, the host when the project is done', async () => {
+  // Ruling 9, onboarding 2026-11-14: the finish of an assignment closes nothing (was: the Terra's
+  // terminal closed at its finish); the terminal of the agent closes when the project is done.
+  test('the end of the project closes its terminals: the host\'s, and the persistent Terra\'s', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
@@ -378,7 +399,7 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    await until(() => /work brief a2\.[a-z0-9]+\s/.test(screen(lead)))
+    await until(() => screen(lead).includes(P1_START))
     // A terminal closes when it is quiet, so the loop waits for that.
     const closes = async (sid) => {
       const end = Date.now() + 30000
@@ -390,10 +411,14 @@ describe('the watcher and the acts of the UI', () => {
       return !pump.status()[sid]
     }
     ok(await p.agent(`finish ${hostToken} a2`))
-    expect(await closes(lead)).toBe(true)
+    for (const _ of [1, 2, 3]) {
+      later(9000)
+      await watcher.tick()
+    }
+    expect(pump.status()[lead].live).toBe(true)
     expect(pump.status()[host].live).toBe(true)
-    // The host's writer and linter are Lunas, with no terminals. The top task is accepted, and
-    // the host stays while the end waits for the person.
+    // The host's writer and linter are disposable: subagents, with no terminals (ruling 7). The
+    // top task is accepted, and the host stays while the end waits for the person.
     const writer = tokenIn(ok(await p.agent(`assign ${hostToken} t1 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
     p.write('docs/tsd.md', INTRO_V2)
@@ -407,7 +432,50 @@ describe('the watcher and the acts of the UI', () => {
     later(8500)
     await watcher.tick()
     expect(pump.status()[host].live).toBe(true)
+    expect(pump.status()[lead].live).toBe(true)
     expect((await post('end', { run: 'h1' })).status).toBe(200)
     expect(await closes(host)).toBe(true)
+    expect(await closes(lead)).toBe(true)
+  }, 90000)
+
+  // Rulings 7 and 9, onboarding 2026-11-14: one agent holds the assignments of its role in its
+  // project, one after another, in one terminal.
+  test('a persistent agent keeps its terminal between two assignments, and closes at the end', async () => {
+    const { p, pump, post, screen, watcher, later, joinHost } = await ui()
+    const { host, hostEnv } = await joinHost()
+    await until(() => screen(host).includes('first input'))
+    ok(await p.run('task draft --file=top.yaml --by=h1', { env: hostEnv }))
+    const hostToken = await solToken(p, (await post('open', { draft: 'td1' })).body.out, 'h1', { env: hostEnv })
+    ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
+    p.write('parts.yaml', '- { name: Part one, text: Write part one., context: { section: introduction } }\n' +
+      '- { name: Part two, text: Write part two., context: { section: design } }\n')
+    ok(await p.agent(`task split ${hostToken} t1 --file=parts.yaml`))
+    ok(await p.agent(`assign ${hostToken} t2 --role=section-lead`))
+    await watcher.tick()
+    const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
+    await until(() => screen(lead).includes(P1_START))
+    const [first] = await agentTokens(p, lead)
+    ok(await p.agent(`brief ${first}`))
+    // Its first assignment ends: the agent is Between, quiet and not in work wait, and its
+    // terminal stays with no retry.
+    ok(await p.agent(`finish ${hostToken} a2`))
+    for (const _ of [1, 2, 3]) {
+      later(9000)
+      await watcher.tick()
+    }
+    expect(pump.status()[lead].live).toBe(true)
+    expect(screen(lead)).not.toContain('fake agent resumed')
+    // The next assignment of its role goes to the same terminal, through its wait.
+    ok(await p.agent(`assign ${hostToken} t3 --role=section-lead`))
+    await watcher.tick()
+    expect(Object.keys(pump.status()).sort()).toEqual([host, lead].sort())
+    const [second] = await agentTokens(p, lead)
+    expect(second).toStartWith('a3.')
+    ok(await p.agent(`brief ${second}`))
+    // The person closes the project: the agent's terminal stops with it.
+    expect((await post('close', { run: 'h1', reason: 'not needed any more' })).status).toBe(200)
+    expect(pump.status()[lead]).toBeUndefined()
+    await watcher.tick()
+    expect(pump.status()[lead]).toBeUndefined()
   }, 90000)
 })
