@@ -69,12 +69,66 @@ describe('dispatch', () => {
 
   test('work init makes the store; a second init is refused with a Pick', async () => {
     const p = h.project()
-    const input = { _tag: 'DefineWorkflow', target: {}, content: {} } as const
+    // Question 20, option A (onboarding 2026-11-14): work init starts a store with no direction.
+    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [] } } as const
     const made = dispatchIn(p.dir, NANDA, input as never, later(p))
     if (!Exit.isSuccess(made)) throw new Error(String(made.cause))
     expect(eventsOf(p.dir).map((r) => r.event._tag)).toEqual(['Workflow'])
     const again = failure(dispatchIn(p.dir, NANDA, input as never, later(p, 2)))
     expect(again?.message).toBe('the store has a config; use work config apply')
+  }, 60000)
+})
+
+describe('the store start of onboarding (Question 20, option A)', () => {
+  test('the start with two directions is one event in one store write', async () => {
+    const p = h.project()
+    const tsd = Bun.YAML.parse(h.DIRECTION) as Record<string, unknown>
+    const { cases, ...file } = tsd
+    const standards = (file.standards as ReadonlyArray<{ rules: ReadonlyArray<object> }>).map(
+      (x) => ({ ...x, rules: x.rules.map((r) => ({ ...r, supersedes: [] })) }),
+    )
+    const local = { direction: { ...file, standards }, cases, source: { _tag: 'Local' } }
+    const flags = {
+      direction: {
+        id: 'feature-flags',
+        name: 'Feature flags',
+        owner: 'Nanda',
+        from: [],
+        says: 'Each critical change is flagged.',
+        standards: [],
+      },
+      cases,
+      source: {
+        _tag: 'External',
+        repo: 'company-repo',
+        path: 'directions/feature-flags',
+        ref: { _tag: 'DefaultBranch' },
+        commit: 'c'.repeat(40),
+      },
+    }
+    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [local, flags] } }
+    const made = dispatchIn(p.dir, NANDA, input as never, later(p))
+    if (!Exit.isSuccess(made)) throw new Error(String(made.cause))
+    expect(eventsOf(p.dir).map((r) => r.event._tag)).toEqual(['Workflow'])
+    expect(made.value.seq).toBe(1)
+    expect<unknown>(made.value.created).toEqual(['d1', 'tsd-writing@1', 'd2', 'feature-flags@1'])
+    expect(made.value.work).toStrictEqual(workOf(p.dir))
+    // The rows of the reader tables come with the one write: work search finds the directions.
+    const found = ok(await p.nanda('search reader decides')).out
+    expect(found).toContain('tsd-writing')
+    expect(ok(await p.nanda('search critical change')).out).toContain('feature-flags')
+  }, 60000)
+
+  test('a refused start writes nothing', async () => {
+    const p = h.project()
+    const tsd = Bun.YAML.parse(h.DIRECTION) as Record<string, unknown>
+    const { cases: _, ...file } = tsd
+    const few = { direction: file, cases: [], source: { _tag: 'Local' } }
+    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [few] } }
+    const error = failure(dispatchIn(p.dir, NANDA, input as never, later(p)))
+    expect(error?.message).toBe('tsd-writing has 0 cases; a direction starts with at least 3 cases')
+    // No event: the dir has no store to open.
+    expect(() => eventsOf(p.dir)).toThrow()
   }, 60000)
 })
 

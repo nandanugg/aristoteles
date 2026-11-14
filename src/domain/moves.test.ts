@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test'
 import { human } from './actor.ts'
 import type { ConfigFile } from './files.ts'
 import type {
+  AgentId,
   AssignmentId,
   PermissionId,
   QuestionId,
@@ -17,6 +18,7 @@ import type {
 import type { Permission, Question } from './model.ts'
 import {
   answerQuestion,
+  bornAgent,
   closeTerminal,
   finishAssignment,
   MOVES,
@@ -28,6 +30,7 @@ import {
   revokePermission,
   runClosed,
   runDone,
+  startAgent,
   stopTerminal,
   tick,
 } from './moves.ts'
@@ -167,6 +170,26 @@ describe('a terminal', () => {
       _tag: 'Live',
       activity: { _tag: 'Starting', since: at(8) },
     })
+  })
+})
+
+// Onboarding: a persistent agent is born with no terminal, and the supervisor starts it once (P3).
+describe('a persistent agent', () => {
+  const born = bornAgent({
+    id: 'p1' as AgentId,
+    role: 'section-lead' as RoleName,
+    run: 'h1' as RunId,
+    tier: 'medium',
+    at: at(1),
+  })
+  test('Agent.Started moves NotStarted to Started, only', () => {
+    expect(born.terminal).toEqual({ _tag: 'NotStarted' })
+    const started = startAgent(born, 's-lead' as SessionId, at(2))
+    expect<unknown>(started.terminal).toEqual({ _tag: 'Started', session: 's-lead', at: at(2) })
+    expect({ ...started, terminal: born.terminal }).toEqual(born)
+    expect(MOVES['Agent.Started']).toBe(startAgent)
+    // @ts-expect-error a started agent is not started again: it has its one terminal
+    startAgent(started, 's-other' as SessionId, at(3))
   })
 })
 

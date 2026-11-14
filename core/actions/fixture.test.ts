@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { Effect, Exit, Layer } from 'effect'
 import { derive, type Derived } from '../derived/index.ts'
 import type { Outside } from '../schema/outside.ts'
-import type { Author, Event, Recorded, Time, Work } from '../schema/index.ts'
+import type { Author, Event, EventRef, Recorded, Time, Work } from '../schema/index.ts'
 import {
   Dir,
   Env,
@@ -82,6 +82,7 @@ export interface Harness {
   readonly INTRO_V2: string
   readonly DIRECTION: string
   readonly TASK_WHOLE: string
+  readonly WORK_YAML: string
 }
 export const h = harnessJs as unknown as Harness
 export const { ok, tokenIn, solToken } = h
@@ -104,6 +105,20 @@ export const eventsOf = (dir: string): ReadonlyArray<Recorded> =>
     ).pipe(Effect.provide(storeLayer(dir))),
   )
 export const workOf = (dir: string): Work => fold(eventsOf(dir))
+// An event that a later wave's command writes (an adjustment, the cases of a draft, the start of
+// an agent's terminal), appended at the time of the last act, as the store appends any checked
+// event. The ref of the stored event.
+export const appendIn = (p: Project, author: Author, event: Event): EventRef =>
+  Effect.runSync(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const opened = yield* (yield* Store).open(p.dir, { create: false })
+        const draft = { at: p.now() as Time, author, event }
+        const seq = yield* opened.write(() => Effect.succeed({ draft, rows: [] }))
+        return `e${seq}` as EventRef
+      }),
+    ).pipe(Effect.provide(storeLayer(p.dir))),
+  )
 
 // The outside of a test: nothing changed, nothing stale, the brief measures 0 (no limit bites).
 export const quietOutside = (dir: string, more: Partial<Outside> = {}): Outside => ({
