@@ -84,19 +84,28 @@ const hostAssignmentOf = (d: Derived, task: TaskId): AssignmentId | undefined =>
   return host._tag === 'Host' ? host.assignment : undefined
 }
 
-// The prompts and failures of the children of a host.
+// Whether an assignment that runs in a terminal acted after a seq: the terminal went on.
+const actedAfter = (w: Work, f: Facts, sid: SessionId, seq: number): boolean =>
+  [...w.sessions.values()].some(
+    (s) => s.session === sid && (f.lastAct.get(s.assignment)?.seq ?? 0) > seq,
+  )
+
+// The prompts and failures of the children of a host: one notice for each terminal, also when it
+// holds several assignments of one persistent agent (ruling 9).
 const childNotices = (d: Derived, host: AssignmentId, f: Facts): ReadonlyArray<NoticeWhat> => {
   const w = d.moment.work
   const out: Array<NoticeWhat> = []
+  const noticed = new Set<SessionId>()
   for (const s of w.sessions.values()) {
     const a = w.assignments.get(s.assignment)
-    if (a === undefined || isRunSession(w, s.session)) continue
+    if (a === undefined || isRunSession(w, s.session) || noticed.has(s.session)) continue
     if (d.states.assignments.get(a.id)?._tag === 'Ended') continue
     const move = f.lastMove.get(s.session)
     if (move === undefined || move._tag === 'Other') continue
-    // A later act of the child shows that it went on.
-    if ((f.lastAct.get(a.id)?.seq ?? 0) > move.seq) continue
+    // A later act of the child, or of another assignment in its terminal, shows that it went on.
+    if (actedAfter(w, f, s.session, move.seq)) continue
     if (hostAssignmentOf(d, a.task) !== host) continue
+    noticed.add(s.session)
     if (move._tag === 'Prompted') {
       if ((f.lastSend.get(s.session) ?? 0) > move.seq) continue
       out.push({

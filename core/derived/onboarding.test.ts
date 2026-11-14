@@ -260,6 +260,16 @@ describe('what reaches the host from no project', () => {
     expect(steps.map((s) => (s._tag === 'Do' ? s.intents.map((i) => i._tag) : []))).toEqual([
       ['DraftAdjustment'],
     ])
+    // The words of the step: the person's words, and the changes that an adjustment can make.
+    expect(ok(await p.agent(`next ${host}`)).out).toContain(
+      [
+        's1 suggests about the roles: "a role reads the facts first" (Nanda); answer it with the ' +
+          'adjustment that it asks for, one change at a time',
+        `  work adjust ${host} add-role <role> --file=<role.yaml>, or remove-role <role>, or ` +
+          'tier <role> --tier=<low|medium|high>, or persistence <role> ' +
+          '--persistent=<true|false> --why="<one line>"',
+      ].join('\n'),
+    )
     // Once a model drafts a role adjustment after the words, they wait no more.
     await append(p, HOST_RUN, drafted({ _tag: 'SetTier', role: 'writer', tier: 'medium' }))
     const later = derivedOf(p)
@@ -291,6 +301,15 @@ describe('what reaches the host from no project', () => {
     expect(adds.map((s) => (s._tag === 'Do' ? s.intents : []))).toEqual([
       [{ _tag: 'AddCases', target: { draft: draft.id as RevisionId } }],
     ] as never)
+    // The words of the step: how many cases the draft has, and what a real case is (ruling 4).
+    expect(ok(await p.agent(`next ${host}`)).out).toContain(
+      [
+        `${draft.id} drafts the new direction "Flags" with 0 cases, and its accept needs 3; add ` +
+          'real cases from the code: a file, a line, a short excerpt that is in the file, and ' +
+          'whether the code follows or breaks the direction',
+        `  work direction cases ${host} ${draft.id} --file=<cases.yaml>`,
+      ].join('\n'),
+    )
     // With its cases, the accept is the person's again, and the host has no step.
     const cases = [CASE, CASE, CASE]
     const added = { _tag: 'Revision', id: draft.id, move: { _tag: 'CasesAdded', cases } } as Event

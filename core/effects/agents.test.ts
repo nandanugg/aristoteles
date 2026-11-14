@@ -6,13 +6,14 @@
 // real dispatch; a refusal fails the test (afterEach).
 import { afterEach, describe, expect, test } from 'bun:test'
 import type { Time } from '../../src/domain/ids.ts'
-import { derive, terminalsToStart } from '../derived/index.ts'
+import { derive, nextFor, terminalsToStart } from '../derived/index.ts'
 import { momentOf } from '../derived/support.test.ts'
 import {
   cleanUp,
   clock,
   hosted,
   later,
+  PROMPT,
   sendsInto,
   terminalMoves,
   tokenIn,
@@ -21,9 +22,9 @@ import {
 
 afterEach(cleanUp)
 
+const derivedNow = (dir: string) => derive(momentOf(dir, new Date(clock.now).toISOString() as Time))
 // The AgentState of p1, as plain values to compare with literals.
-const agentState = (dir: string): unknown =>
-  derive(momentOf(dir, new Date(clock.now).toISOString() as Time)).states.agents.get('p1' as never)
+const agentState = (dir: string): unknown => derivedNow(dir).states.agents.get('p1' as never)
 const PARTS =
   '- { name: Part one, text: Write part one., context: { section: introduction } }\n' +
   '- { name: Part two, text: Write part two., context: { section: design } }\n'
@@ -66,6 +67,13 @@ describe('the persistent agents', () => {
     for (const token of tokens) await p.agent(`brief ${token}`)
     await w.tick()
     expect(startsOf(fake.commands, host)).toHaveLength(1)
+    // A prompt in that terminal is one step of the host, not one for each assignment.
+    fake.show(lead, PROMPT)
+    await w.tick()
+    const prompts = nextFor(derivedNow(p.dir), { _tag: 'Agent', assignment: 'a1' as never })
+      .map((n) => n.what)
+      .filter((n) => n._tag === 'AnswerPrompt')
+    expect(prompts).toEqual([expect.objectContaining({ agent: 'a2', session: lead })])
   })
 
   test('a disposable role runs as a subagent: no terminal starts or retries', async () => {

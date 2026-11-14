@@ -432,10 +432,10 @@ describe('the fixes of the skills round', () => {
 })
 
 // A project of the UI: the host of h1 (a1) briefed on its top task t1. settings: the lines of the
-// tiers before the roles.
-const hostedRun = async (settings = '') => {
+// tiers before the roles; roles: the rest of aristoteles.yaml.
+const hostedRun = async ({ settings = '', roles = WORK_YAML } = {}) => {
   const top = `${TASK_WHOLE}role: architect\n`
-  const p = project({ 'aristoteles.yaml': settings + WORK_YAML, 'top.yaml': top })
+  const p = project({ 'aristoteles.yaml': settings + roles, 'top.yaml': top })
   await init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
     ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
@@ -476,10 +476,31 @@ describe('the work assign words, by where the assignment runs', () => {
     )
     expect(words).toContain(PROMPT('a2'))
     // P9: the model of the tier, when the settings name one.
-    const named = await hostedRun('tiers:\n  luna:\n    model: small-model\n')
+    const named = await hostedRun({ settings: 'tiers:\n  luna:\n    model: small-model\n' })
     const withModel = await out(named.p.agent(`assign ${named.host} t1 --role=writer`))
     expect(withModel).toContain(
       'Start a subagent on small-model (the low model) with this prompt, and nothing else:',
+    )
+  })
+
+  // Ruling 10: any tier can be persistent. A persistent writer runs in its agent, so its parent
+  // gives it no command: the agent's wait gives it its token.
+  test('Agent of a low role: the parent waits for the terminal of the agent', async () => {
+    const lasting = WORK_YAML.replace(
+      'persistent: false\n      why: It writes one section once, from its brief.',
+      'persistent: true\n      why: It writes every section, so it keeps what it read.',
+    )
+    const { p, host } = await hostedRun({ roles: lasting })
+    ok(await p.agent(`assign ${host} t1 --role=section-lead`))
+    // The UI records the lead's terminal, as the supervisor does for the agent p1.
+    const lead = tokenIn(await out(p.ui('session a2 --id=s-lead --token')))
+    ok(await p.agent(`brief ${lead}`))
+    expect(await out(p.agent(`assign ${lead} t1 --role=writer`))).toContain(
+      'a3 runs in p2, the persistent writer agent of h1 (low, Haiku).',
+    )
+    expect(await out(p.agent(`next ${lead}`))).toBe(
+      'make t1: a3 runs in p2, a persistent agent: its terminal gets a3 through work wait ' +
+        '--by=p2, and the UI starts that terminal when it has none (attempt 1 of 3)',
     )
   })
 

@@ -7,15 +7,17 @@ import { claimOf, currentOf, exhaustionResult, itemAt, taskAt } from '../../core
 import { isDo } from '../../core/derived/reads.ts'
 import { leafName } from '../../core/derived/deciders.ts'
 import type { Derived, NextStep, StepWhat } from '../../core/derived/index.ts'
-import type {
-  AssignmentId,
-  DirectionId,
-  EvaluationId,
-  Standard,
-  Stop,
-  Suggestion,
-  TaskId,
-  Work,
+import {
+  type AgentId,
+  type AssignmentId,
+  type DirectionId,
+  type EvaluationId,
+  MIN_CASES,
+  type Standard,
+  type Stop,
+  type Suggestion,
+  type TaskId,
+  type Work,
 } from '../../core/schema/index.ts'
 import { clean } from '../../core/effects/lines.ts'
 import { an, clock, short, stateWord, who } from './common.ts'
@@ -66,6 +68,16 @@ const holderStandard = (
           ? s.entry === about.standard
           : about._tag === 'Rule' && s.rules.includes(about.rule)),
     )
+
+// The persistent agent that a child runs in: its terminal gets the child through the agent's own
+// wait, so its parent gives it no command (ruling 9).
+const agentOf = (w: Work, a: AssignmentId): AgentId | undefined => {
+  const runs = w.assignments.get(a)?.runs
+  return runs?._tag === 'Agent' ? runs.agent : undefined
+}
+const inAgentWords = (child: AssignmentId, agent: AgentId): string =>
+  `${child} runs in ${agent}, a persistent agent: its terminal gets ${child} through work wait ` +
+  `--by=${agent}, and the UI starts that terminal when it has none`
 
 // The token is shown only at assign; a parent that lost it ends the child and assigns again.
 const lostToken = (w: Work, child: AssignmentId, task: TaskId, token: string): string => {
@@ -162,17 +174,32 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
           `--answers=${s.suggestion}`,
       )
     }
-    // Onboarding: one plain step each; W3 writes their full words.
-    case 'AnswerRolesSuggestion':
+    // The person says in words what to change in the roles (P7); a high model drafts it as an
+    // adjustment, and the person accepts it (ruling 14).
+    case 'AnswerRolesSuggestion': {
+      const y = w.suggestions.get(s.suggestion)
+      if (y === undefined) throw new Error(`the work has no suggestion ${s.suggestion}`)
       return step(
-        `${s.suggestion} says about the roles; draft the adjustment that it asks for`,
-        `work adjust ${token} <change>`,
+        `${s.suggestion} suggests about the roles: "${short(y.says, 120)}" (${who(w, y.by)}); ` +
+          'answer it with the adjustment that it asks for, one change at a time',
+        `work adjust ${token} add-role <role> --file=<role.yaml>, or remove-role <role>, or ` +
+          'tier <role> --tier=<low|medium|high>, or persistence <role> ' +
+          '--persistent=<true|false> --why="<one line>"',
       )
-    case 'AddCases':
+    }
+    // P10 rejected: the person sees how a new direction shows in the code before the accept, so
+    // its draft holds at least MIN_CASES real cases (ruling 4).
+    case 'AddCases': {
+      const x = w.drafts.get(s.draft)
+      const has = x?._tag === 'New' ? x.cases.length : 0
+      const name = w.directions.get(s.direction)?.name ?? s.direction
       return step(
-        `${s.draft} drafts the new direction ${s.direction} with too few cases; add its cases`,
+        `${s.draft} drafts the new direction "${name}" with ${has} cases, and its accept ` +
+          `needs ${MIN_CASES}; add real cases from the code: a file, a line, a short excerpt ` +
+          'that is in the file, and whether the code follows or breaks the direction',
         `work direction cases ${token} ${s.draft} --file=<cases.yaml>`,
       )
+    }
     case 'PutOnBase': {
       const output = `${s.repo}@${s.commit}`
       return step(
@@ -307,7 +334,14 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
           'if its subagent stopped:',
         `work free ${token} ${s.maker}`,
       )
-    case 'GiveMakerCommand':
+    case 'GiveMakerCommand': {
+      const agent = agentOf(w, s.maker)
+      if (agent !== undefined) {
+        return step(
+          `${s.redo ? 'redo' : 'make'} ${s.task}: ${inAgentWords(s.maker, agent)} ` +
+            `(${attemptWords(d, s.maker)})`,
+        )
+      }
       return [
         ...step(
           `${s.redo ? 'redo' : 'make'} ${s.task}: give a new subagent the command of ${s.maker} ` +
@@ -316,6 +350,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
         ),
         ...(s.ownChild ? [lostToken(w, s.maker, s.task, token)] : []),
       ]
+    }
     case 'AssignMaker':
       return step(
         `make ${s.task} ${nameOf(w, s.task)}`,
@@ -344,7 +379,9 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
           `${clock(claimedSince(w, s.checker))}); if its subagent stopped:`,
         `work free ${token} ${s.checker}`,
       )
-    case 'GiveCheckerCommand':
+    case 'GiveCheckerCommand': {
+      const agent = agentOf(w, s.checker)
+      if (agent !== undefined) return step(`check ${s.result}: ${inAgentWords(s.checker, agent)}`)
       return [
         ...step(
           `check ${s.result}: give a new subagent the command of ${s.checker}; the same ` +
@@ -353,6 +390,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
         ),
         lostToken(w, s.checker, s.task, token),
       ]
+    }
     case 'CheckerOfHigherTier':
       return step(
         `${s.result} needs ${s.role}, which only a higher tier assigns`,
