@@ -20,7 +20,8 @@ SQLite file that links each task to the version of the direction that it used.
 
 ## Requirements
 
-- [Bun](https://bun.sh) 1.3 or later (tested with 1.3.14).
+- [Bun](https://bun.sh) 1.4.3 or later (tested with 1.4.4). On macOS, an older Bun can wait for
+  ever in a sync spawn (oven-sh/bun issue 34069), and the page's terminals then stop.
 - git.
 
 ## Start from your AI CLI
@@ -34,7 +35,7 @@ so you talk with the host there or on the page. No step guesses which CLI you us
 Use aristoteles in this folder.
 1. Find aristoteles. If `work` is on the PATH, it links to <the aristoteles folder>/bin/work.js.
    If not, run: git clone https://github.com/nandanugg/aristoteles.git ~/.aristoteles/code
-   Then run `bun install --production` in that folder (Bun 1.3 or later, git and tmux are
+   Then run `bun install --production` in that folder (Bun 1.4.3 or later, git and tmux are
    necessary), and link the CLI:
    mkdir -p ~/.local/bin && ln -s ~/.aristoteles/code/bin/work.js ~/.local/bin/work
    When `work` is still not on the PATH, use `bun <the aristoteles folder>/bin/work.js` in its place.
