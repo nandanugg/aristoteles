@@ -73,7 +73,7 @@
       }
     },
     "tiers": {
-      "description": "The commands of the real agents. Sol and Terra run in their own terminals; a Luna runs as a subagent inside the terminal of its parent.",
+      "description": "The commands of the agents of each tier. A persistent role of any tier runs in a terminal of its own; a disposable role runs as a subagent inside the terminal above it.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -81,6 +81,9 @@
           "$ref": "#/$defs/tier"
         },
         "terra": {
+          "$ref": "#/$defs/tier"
+        },
+        "luna": {
           "$ref": "#/$defs/tier"
         }
       }
@@ -275,7 +278,83 @@
         "timeout": {
           "type": "integer",
           "minimum": 1
+        },
+        "persistence": {
+          "description": "How an agent role runs, apart from its tier: a persistent role gets a terminal of its own for the whole project; a disposable role runs as a subagent of a terminal. why: the reason, which the card of the role shows. A program has none.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "persistent",
+            "why"
+          ],
+          "properties": {
+            "persistent": {
+              "type": "boolean"
+            },
+            "why": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "icon": {
+          "description": "The icon of the role on its card.",
+          "enum": [
+            "bot",
+            "book-open",
+            "brain",
+            "clipboard-check",
+            "compass",
+            "crown",
+            "eye",
+            "feather",
+            "file-text",
+            "flask-conical",
+            "gavel",
+            "git-branch",
+            "hammer",
+            "layers",
+            "lightbulb",
+            "list-checks",
+            "map",
+            "microscope",
+            "pen-tool",
+            "puzzle",
+            "scale",
+            "search",
+            "shield-check",
+            "sparkles",
+            "telescope",
+            "terminal",
+            "user-cog",
+            "wrench"
+          ]
         }
+      },
+      "required": [
+        "icon"
+      ],
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "program"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "persistence"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "persistence"
+        ]
       }
     },
     "deciders": {
@@ -338,15 +417,20 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The model of the tier; launch and resume name it as {model}."
+        },
         "launch": {
           "type": "string",
           "pattern": "\\{session\\}",
-          "description": "The command that starts a real agent; {session} is the session id that the UI gives it, and {prompt} (optional) is its first input, given as an argument."
+          "description": "The command that starts an agent; {session} is the session id that the UI gives it, {model} (optional) is the model of the tier, and {prompt} (optional) is its first input, given as an argument."
         },
         "resume": {
           "type": "string",
           "pattern": "\\{session\\}",
-          "description": "The command that continues a closed session; {session} is its id, and {prompt} (optional) is the retry input."
+          "description": "The command that continues a closed session; {session} is its id, {model} (optional) is the model of the tier, and {prompt} (optional) is the retry input."
         },
         "start": {
           "type": "string",
