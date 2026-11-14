@@ -34,6 +34,24 @@ export { mergeDraft, readSettings, readSettingsOf, writeSettings } from '../../s
 export { CONFIG, DRAFT, parseYaml, sha } from '../../src/config/core.ts'
 export { checkOutput, sectionsInside, sectionsOf, snapshotOf } from '../../src/files/digest.ts'
 export { LOCK, readLock, writeLock, fetchFolder, readFolder, localDate } from '../../src/files/company.ts'
+// The one writer of the onboarding files, before any store (BUILD.md 1b).
+export {
+  ASSESS,
+  hostAct,
+  onboardingExists,
+  personAct,
+  prepareStart,
+  readOnboarding,
+} from '../../src/files/onboarding.ts'
+export type {
+  DirectionDraft,
+  HostAct,
+  OnboardingFiles,
+  PersonAct,
+  QuestionDraft,
+  RoleNotes,
+  Start,
+} from '../../src/files/onboarding.ts'
 
 export { commitOnBase, digestNow, outputChanged, outputsOf } from './outputs.ts'
 export { pathOf } from './paths.ts'
