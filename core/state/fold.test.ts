@@ -115,6 +115,8 @@ const linesOf = (work: Work, dir: string): ReadonlyArray<string> => {
   )
 }
 // The lines of the old replay's Work for a scenario: the block under `# <name>` in fold.pins.txt.
+// Ruling 2026-11-14 (brief limits leave room for the guide): the pins hold the new harness limits
+// (6000, 12000, 16000) and the hashes of the yaml that holds them.
 const PINS = `${import.meta.dir}/fold.pins.txt`
 const pinnedLines = (name: string): ReadonlyArray<string> => {
   const text = readFileSync(PINS, 'utf8')

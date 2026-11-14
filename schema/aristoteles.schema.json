@@ -127,7 +127,7 @@
           "properties": {
             "briefChars": {
               "$ref": "#/$defs/count",
-              "description": "The longest brief that the CLI prints."
+              "description": "The longest brief that the CLI prints. The brief counts the guide text of the tier, so the limit needs room above it (6000 low, 12000 medium, 16000 high)."
             },
             "attempts": {
               "$ref": "#/$defs/count",

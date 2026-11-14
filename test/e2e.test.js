@@ -284,7 +284,8 @@ describe('limits and config', () => {
   // the low agent waits, and the level above (here the owner) shortens or splits.
   test('a brief over the tier limit prints only that the agent waits', async () => {
     const { WORK_YAML } = await import('./harness.js')
-    const small = WORK_YAML.replace('briefChars: 4000', 'briefChars: 900')
+    // Ruling 2026-11-14 (brief limits leave room for the guide): its own small limit.
+    const small = WORK_YAML.replace('briefChars: 6000', 'briefChars: 900')
     const p = project({ 'aristoteles.yaml': small })
     await init(p)
     for (const role of ['section-lead', 'writer']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))

@@ -170,13 +170,14 @@ describe('ruling 10.3: a parent ends after its working children', () => {
 })
 
 describe('ruling 10.9: a brief over its limit is a derived state', () => {
-  // The writer's brief measures 5000 characters; the low limit of the harness is 4000.
-  const over = (who: string) => (_w: Work, a: AssignmentId) => (a === who ? 5000 : 0)
+  // The writer's brief measures 7000 characters; the low limit of the harness is 6000.
+  // Ruling 2026-11-14 (brief limits leave room for the guide): the size rose with the limit.
+  const over = (who: string) => (_w: Work, a: AssignmentId) => (a === who ? 7000 : 0)
 
   test('no high role above: the writer and its lead wait; the owner splits', async () => {
     const s = await h.withWriter()
     const d = derivedOf(workOf(s.p.dir), s.p.now() as Time, s.p.dir, { measure: over('a2') })
-    const state = { _tag: 'BriefOver', size: 5000, limit: 4000 } as const
+    const state = { _tag: 'BriefOver', size: 7000, limit: 6000 } as const
     expect(d.states.assignments.get(id('a2'))).toEqual(state)
     expect(tagsOf(d, agentOf('a2'))).toEqual(['Wait BriefOverWaits'])
     const lead = tagsOf(d, agentOf('a1'))
@@ -228,8 +229,9 @@ describe('ruling 10.9: a brief over its limit is a derived state', () => {
     const s = await h.withWriter()
     ok(await s.p.agent(`brief ${s.writer}`))
     ok(await s.p.agent(`escalate ${s.writer} --reason="the facts file names no merchant"`))
-    // The lead's brief measures 9000 characters; the medium limit of the harness is 8000.
-    const measure = (_w: Work, a: AssignmentId) => (a === 'a1' ? 9000 : 0)
+    // The lead's brief measures 13000 characters; the medium limit of the harness is 12000.
+    // Ruling 2026-11-14 (brief limits leave room for the guide): the size rose with the limit.
+    const measure = (_w: Work, a: AssignmentId) => (a === 'a1' ? 13000 : 0)
     const d = derivedOf(workOf(s.p.dir), s.p.now() as Time, s.p.dir, { measure })
     expect(d.states.assignments.get(id('a1'))?._tag).toBe('BriefOver')
     expect(tagsOf(d, agentOf('a1'))).toEqual(['Wait BriefOverWaits', 'Do Answer'])

@@ -42,6 +42,11 @@ role does it.
   - the task (its text or its references): split the task, or remake it with fewer
     references.
 
+  The brief counts the tier's own guide text too, and a shorter direction cannot change it.
+  So a limit needs room above that text. Start with 6000 for low, 12000 for medium, and
+  16000 for high: they leave about 4000 to 6000 characters for the directions, the task, and
+  its references.
+
   Measure before and after: `work assign <task> --role=<role> --dry-run` prints the size.
 
 ### `Review.rules`: the rules of one review

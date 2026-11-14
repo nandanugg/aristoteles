@@ -24,7 +24,9 @@ The roles and the people must exist before any direction, so do this part first:
 2. Read `work guide roles`: the checks of work on the roles. Then write
    `aristoteles.draft.yaml` beside where `aristoteles.yaml` goes: the `people` (the exact name
    that `git config user.name` gives in the dir is the person; when it gives none, ask the
-   person for the name to set there), the `limits`, the `roles`, and `decide` when a maker has
+   person for the name to set there), the `limits` (start with `briefChars`
+   of 6000 for low, 12000 for medium, and 16000 for high: the brief counts the tier's guide text,
+   so a limit needs room above it), the `roles`, and `decide` when a maker has
    more than one decider, in the form of `schema/aristoteles.schema.json`. Every dir has a
    role of each tier:
    - a high (Sol) role for each kind of top task (for example `architect`). The host drafts a

@@ -8,12 +8,14 @@ import { checkNextCanAct, main } from './code.js'
 // canAct (BUILD.md 4.2). Without it, nothing here changes.
 const CHECK_NEXT = process.env.WORK_CHECK_NEXT === '1'
 
+// Ruling 2026-11-14 (brief limits leave room for the guide): the limits sit above the tier's
+// guide text, which counts in the brief.
 export const WORK_YAML = `people:
   - name: Nanda
 limits:
-  low:    { Assignment: { briefChars: 4000, attempts: 3 }, Review: { rules: 5 } }
-  medium: { Assignment: { briefChars: 8000 }, Review: { rules: 12 } }
-  high:   { Assignment: { briefChars: 12000 }, Review: { rules: 20 } }
+  low:    { Assignment: { briefChars: 6000, attempts: 3 }, Review: { rules: 5 } }
+  medium: { Assignment: { briefChars: 12000 }, Review: { rules: 12 } }
+  high:   { Assignment: { briefChars: 16000 }, Review: { rules: 20 } }
 roles:
   architect:
     tier: high
