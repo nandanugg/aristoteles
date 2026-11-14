@@ -109,7 +109,7 @@ export type ActionInput =
   // work init (no directions), or the store start of onboarding with the accepted directions
   // (Question 20, option A): reads aristoteles.yaml of the dir
   | In<'DefineWorkflow', None, { readonly directions: ReadonlyArray<OnboardedDirection> }>
-  | In<'ApplyConfig', None, None> // work config apply, page accept-roles
+  | In<'ApplyConfig', None, None> // work config apply
   | In<'RestoreConfig', None, None> // work config restore: files only, no event
   | In<'FitRole', { readonly role: RoleName }, { readonly answers: FilePath }>
   // work role draft: the file holds new words of the role, which wait for the person

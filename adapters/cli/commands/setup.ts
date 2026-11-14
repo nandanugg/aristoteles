@@ -1,11 +1,10 @@
 // The commands init, config, role, skill.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { staticFit, wordsFit } from '../../../core/actions/config.ts'
+import { staticFit } from '../../../core/actions/config.ts'
 import { roleWordsDraftAt } from '../../../core/derived/index.ts'
 import {
   type Author,
-  type ConfigFile,
   type EventRef,
   OutsideFailed,
   Refused,
@@ -20,7 +19,6 @@ import {
   DRAFT,
   Dir,
   Files,
-  GitUser,
   mergeDraft,
   Now,
   onboardingExists,
@@ -28,6 +26,7 @@ import {
   refusing,
   roleHash,
 } from '../../../core/services/index.ts'
+import { configProblems } from '../../live/config-problems.ts'
 import { installSkill, SKILL_FILE } from '../../live/skill-install.ts'
 import { renderRoleWords } from '../../words/index.ts'
 import { textOf, wordsOf } from '../args.ts'
@@ -62,21 +61,7 @@ const init: Command = () =>
     ]
   })
 
-// What work config check refuses in a config that reads: the git user is not one of its people,
-// or the words of an agent role fail their static fit. work onboard checks a draft with it too.
-export const configProblems = (config: ConfigFile) =>
-  Effect.gen(function* () {
-    const problems: Array<string> = []
-    const user = yield* (yield* GitUser).name
-    if (!config.people.includes(user)) problems.push(`${user} (git user.name) is not in the people`)
-    for (const [role, r] of Object.entries(config.roles)) {
-      // The static fit of a role with no work behind it: its own words only.
-      if (r.kind !== 'program') problems.push(...wordsFit(r).map((p) => `${role}: ${p}`))
-    }
-    return problems
-  })
-
-// work config check (Nanda, 2026-11-13): what Accept the roles on the page would store, read the
+// work config check (Nanda, 2026-11-13): what the store start of onboarding would write, read the
 // same way (the draft merged into aristoteles.yaml, the git user in the people), and the checks
 // of the words of each agent role. Anyone may run it, the host too: it writes nothing.
 const checkConfig = Effect.gen(function* () {
@@ -100,7 +85,10 @@ const checkConfig = Effect.gen(function* () {
       `change ${name}, then run work config check again`,
     )
   }
-  const merged = draft === null ? '' : `, merged into ${CONFIG} as Accept the roles does`
+  const merged =
+    draft === null
+      ? ''
+      : `, merged into ${CONFIG} as the store start (work onboard approve-roles) merges it`
   return [
     `${name} reads${merged}; nothing was written.`,
     `the static fit checks pass for ${agents.map(([role]) => role).join(', ')}.`,

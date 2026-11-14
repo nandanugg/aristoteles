@@ -192,12 +192,14 @@ describe('the first start of a dir', () => {
     expect((await api(p, '/api/dir')).initialized).toBe(false)
   })
 
-  test('work config check reads the draft as Accept the roles does, for any caller, and writes nothing', async () => {
+  test('work config check reads the draft as the store start does, for any caller, and writes nothing', async () => {
     const p = fresh()
     const before = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
     p.write('aristoteles.draft.yaml', HOST_TIERS + WORK_YAML)
     const checked = ok(await p.agent('config check')).out.split('\n')
-    expect(checked[0]).toBe('aristoteles.draft.yaml reads, merged into aristoteles.yaml as Accept the roles does; nothing was written.')
+    // Ruling 1, onboarding 2026-11-14: files first, the store starts at the end (was: as Accept the
+    // roles does).
+    expect(checked[0]).toBe('aristoteles.draft.yaml reads, merged into aristoteles.yaml as the store start (work onboard approve-roles) merges it; nothing was written.')
     expect(checked[1]).toStartWith('the static fit checks pass for architect, section-lead, writer')
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe(before)
     expect(existsSync(join(p.dir, '.work', 'aristoteles.db'))).toBe(false)

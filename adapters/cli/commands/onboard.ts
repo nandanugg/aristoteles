@@ -53,7 +53,7 @@ import { textOf } from '../args.ts'
 import { type Confirm, personChannel, personOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { act } from '../runtime.ts'
-import { configProblems } from './setup.ts'
+import { configProblems } from '../../live/config-problems.ts'
 import { WAIT_SECONDS } from './wait.ts'
 
 const POLL_MS = 1000
