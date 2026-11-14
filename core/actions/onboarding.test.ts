@@ -57,7 +57,7 @@ describe('the cases of a new direction (P10 rejected, onboarding 2026-11-14)', (
   test('direction new stores the cases of its file, and refuses fewer than 3', async () => {
     const p = h.project()
     ok(await p.nanda('init'))
-    const few = h.DIRECTION.replace(/cases:\n[\s\S]*$/, CASES_YAML(2))
+    const few = h.DIRECTION.replace(/cases:\n( {2}- .*\n)+/, CASES_YAML(2))
     p.write('few.yaml', few)
     const refusedNew = await p.agent('direction new --file=few.yaml --by=assess')
     expect(refusedNew.err).toContain('few.yaml: cases lists 2')

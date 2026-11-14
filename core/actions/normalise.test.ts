@@ -199,9 +199,7 @@ describe('N8 (I8): direction new on a direction with a version is a revise of it
     const more =
       '  - id: cost-first\n    says: Say what the problem costs.\n    rules:\n' +
       '      - { id: names-cost, says: "The introduction names the cost", checkedBy: linter }\n'
-    // P10 rejected, onboarding 2026-11-14: the cases end the direction of the fixture, so the new
-    // standard goes before them.
-    p.write('again.yaml', h.DIRECTION.replace('cases:\n', `${more}cases:\n`))
+    p.write('again.yaml', `${h.DIRECTION}${more}`)
     const input = {
       _tag: 'DraftDirection',
       target: {},

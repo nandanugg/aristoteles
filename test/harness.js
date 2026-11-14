@@ -71,12 +71,17 @@ roles:
 `
 
 // P10 rejected, onboarding 2026-11-14: a direction starts with at least 3 cases, real code of the
-// fixture's files that follows it or breaks it.
+// fixture's files that follows it or breaks it. The cases come before the standards, so that a
+// test that appends a standard to the fixture stays inside the standards.
 export const DIRECTION = `id: tsd-writing
 name: TSD writing
 owner: Nanda
 from: [Pathos, Logos]
 says: The reader understands and decides from the page alone.
+cases:
+  - { file: docs/facts.md, line: 5, excerpt: The export ran twice for one merchant., fit: Follows }
+  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
+  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
 standards:
   - id: facts-not-proof
     says: The body states facts; the proof stays in the agreed facts.
@@ -88,10 +93,6 @@ standards:
     says: Tell the story first, in plain words.
     rules:
       - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }
-cases:
-  - { file: docs/facts.md, line: 5, excerpt: The export ran twice for one merchant., fit: Follows }
-  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
-  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
 `
 
 export const TASK = `name: The Introduction
@@ -335,15 +336,15 @@ export const CODE_DIRECTION = `id: fixes
 name: Fixes
 owner: Nanda
 says: A fix is proven by a test that ran on it.
+cases:
+  - { file: app/ok.txt, line: 1, excerpt: ok, fit: Follows }
+  - { file: aristoteles.yaml, line: 43, excerpt: 'run: "test -f ok.txt"', fit: Follows }
+  - { file: task.yaml, line: 2, excerpt: Fix the key so that the test passes., fit: Follows }
 standards:
   - id: proven
     says: The suite passes on the fix.
     rules:
       - { id: suite-passes, says: "The suite passes on the reported commit", checkedBy: gate }
-cases:
-  - { file: app/ok.txt, line: 1, excerpt: ok, fit: Follows }
-  - { file: aristoteles.yaml, line: 43, excerpt: 'run: "test -f ok.txt"', fit: Follows }
-  - { file: task.yaml, line: 2, excerpt: Fix the key so that the test passes., fit: Follows }
 `
 export const CODE_TASK = `name: Fix the key
 text: Fix the key so that the test passes.
