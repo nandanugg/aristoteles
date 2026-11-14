@@ -124,9 +124,10 @@ exports[`readConfig tiers: resume has no {session} 1`] = `
 }
 `;
 
-exports[`readConfig tiers: start has no {token} 1`] = `
+// Ruling 9, onboarding 2026-11-14 (P9): a start names the agent (was: {token}).
+exports[`readConfig tiers: start has no {agent} 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.start has no {token}",
+  "refused": "aristoteles.yaml: tiers.sol.start has no {agent}",
 }
 `;
 
@@ -510,7 +511,7 @@ sound: true
 tiers:
   sol:
     launch: "claude --session {session}"
-    start: "go {token}"
+    start: "go {agent}"
     silentMinutes: 5
 people: 
   - name: Nanda
@@ -816,7 +817,7 @@ decide:
 tiers:
   sol:
     launch: "claude --session {session}"
-    start: "go {token}"
+    start: "go {agent}"
     silentMinutes: 5
 sound: true
 theme: light

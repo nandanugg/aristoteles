@@ -25,7 +25,8 @@ const good = (): Obj => ({
     linter: { kind: 'program', run: './lint', on: 'report', acts: [{ review: ['writer'] }], checks: ['r1'], icon: 'terminal' },
   },
   decide: [{ resultsOf: 'writer', by: { or: ['checker', 'boss'] } }],
-  tiers: { sol: { launch: 'claude --session {session}', start: 'go {token}', silentMinutes: 5 } },
+  // Ruling 9, onboarding 2026-11-14 (P9): the start words name the agent (was: {token}).
+  tiers: { sol: { launch: 'claude --session {session}', start: 'go {agent}', silentMinutes: 5 } },
   sound: true,
   theme: 'dark',
 })
@@ -69,7 +70,8 @@ const configCases: Array<[string, string | null]> = [
   ['tiers: silentMinutes is 1.5', edit((o) => { o.tiers.sol.silentMinutes = 1.5 })],
   ['tiers: launch has no {session}', edit((o) => { o.tiers.sol.launch = 'claude' })],
   ['tiers: resume has no {session}', edit((o) => { o.tiers.sol.resume = 'claude --resume' })],
-  ['tiers: start has no {token}', edit((o) => { o.tiers.sol.start = 'go' })],
+  // Ruling 9, onboarding 2026-11-14 (P9): a start names the agent (was: {token}).
+  ['tiers: start has no {agent}', edit((o) => { o.tiers.sol.start = 'go' })],
   ['tiers: resume and skills set', edit((o) => { o.tiers.terra = { resume: 'c --resume {session}', skills: 'a', retryInput: 'again', errors: ['x'], prompts: ['y'] } })],
   ['retryMinutes is 0', edit((o) => { o.retryMinutes = 0 })],
   ['hostWaitMinutes is a text', edit((o) => { o.hostWaitMinutes = 'a' })],
