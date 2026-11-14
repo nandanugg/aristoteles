@@ -641,19 +641,19 @@ export function startServer(options: ServerOptions): ServerHandle {
     armAssess()
     onboardingChanged()
   })
-  const stamp = (path: string) => {
+  dirWatch.on('error', () => dirWatch.close())
+  // The names, times and sizes of the files; the store start may delete the folder meanwhile.
+  const onboardingStamp = (): string => {
     try {
-      const s = statSync(path)
-      return `${path} ${s.mtimeMs} ${s.size}`
+      const names = existsSync(assess) ? readdirSync(assess).map((n) => join(assess, n)) : []
+      return [join(dir, DRAFT), ...names]
+        .filter((path) => existsSync(path))
+        .map((path) => `${path} ${statSync(path).mtimeMs} ${statSync(path).size}`)
+        .join('\n')
     } catch {
       return ''
     }
   }
-  const onboardingStamp = () =>
-    [
-      stamp(join(dir, DRAFT)),
-      ...(existsSync(assess) ? readdirSync(assess).map((n) => stamp(join(assess, n))) : []),
-    ].join('\n')
   let seen = onboardingStamp()
   armAssess()
   const poll = setInterval(() => {
