@@ -123,7 +123,8 @@ describe('the skills of a launched AI tool', () => {
     const { lstatSync, readlinkSync } = await import('node:fs')
     const p = project({ 'aristoteles.yaml': `tiers:\n  sol: { skills: .claude/skills }\n  terra: { skills: .claude/skills }\n${WORK_YAML}` })
     p.write('.claude/skills/assess/SKILL.md', 'our own assess\n')
-    expect(linkSkills(p.dir)).toEqual([`linked the skills aristoteles, work, role-fitness into ${join(p.dir, '.claude/skills')}`])
+    // Ruling 12, onboarding 2026-11-14: work skill install owns the aristoteles skill.
+    expect(linkSkills(p.dir)).toEqual([`linked the skills work, role-fitness into ${join(p.dir, '.claude/skills')}`])
     expect(readlinkSync(join(p.dir, '.claude/skills/work'))).toBe(join(import.meta.dir, '..', 'skills', 'work'))
     expect(lstatSync(join(p.dir, '.claude/skills/assess')).isSymbolicLink()).toBe(false)
     expect(linkSkills(p.dir)).toEqual([])
@@ -137,9 +138,10 @@ describe('the skills of a launched AI tool', () => {
     const top = dirname(p.dir)
     Bun.spawnSync(['git', 'init', '-q', top])
     p.write('.claude/skills/assess/SKILL.md', 'our own assess\n')
+    // Ruling 12, onboarding 2026-11-14: work skill install owns the aristoteles skill.
     expect(linkSkills(p.dir)).toEqual([
-      `linked the skills aristoteles, work, role-fitness into ${join(p.dir, '.claude/skills')}`,
-      'git of the dir excludes /report-export/.claude/skills/aristoteles, /report-export/.claude/skills/work, /report-export/.claude/skills/role-fitness',
+      `linked the skills work, role-fitness into ${join(p.dir, '.claude/skills')}`,
+      'git of the dir excludes /report-export/.claude/skills/work, /report-export/.claude/skills/role-fitness',
     ])
     expect(excludeFromGit(p.dir, ['.work/'])).toEqual(['/report-export/.work/'])
     expect(linkSkills(p.dir)).toEqual([])
