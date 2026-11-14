@@ -1,4 +1,5 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+// Bun 1.4: Bun.YAML.stringify writes no space after a key whose value is on the next lines.
 
 exports[`readConfig a good file 1`] = `"ok"`;
 
@@ -428,75 +429,75 @@ exports[`fileHashes and the hash of the mechanism an empty file 1`] = `
 
 // Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig the stored text and a file with other settings 1`] = `
-"people: 
+"people:
   - name: Nanda
   - name: Dewi
-limits: 
-  low: 
-    Assignment: 
+limits:
+  low:
+    Assignment:
       attempts: 3
-  high: 
-    Review: 
+  high:
+    Review:
       rules: 4
-roles: 
-  writer: 
+roles:
+  writer:
     tier: low
     description: writes
     intro: you write
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
+    acts:
       - do: write
     timeout: 60
-    persistence: 
+    persistence:
       persistent: false
       why: it does one piece of work once
     icon: feather
-  checker: 
+  checker:
     tier: medium
     description: checks
     intro: you check
-    responsibilities: 
+    responsibilities:
       - one
     output: a note
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-      - approve: 
+      - approve:
           - writer
-    persistence: 
+    persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
-  boss: 
+  boss:
     tier: high
     description: leads
     intro: you lead
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
-      - approve: 
+    acts:
+      - approve:
           - writer
-      - change: 
+      - change:
           - tsd
-    persistence: 
+    persistence:
       *persistence
     icon: crown
-  linter: 
+  linter:
     kind: program
     run: ./lint
     "on": report
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-    checks: 
+    checks:
       - r1
     icon: terminal
-decide: 
+decide:
   - resultsOf: writer
-    by: 
-      or: 
+    by:
+      or:
         - checker
         - boss
 sound: false
@@ -513,75 +514,75 @@ tiers:
     launch: "claude --session {session}"
     start: "go {agent}"
     silentMinutes: 5
-people: 
+people:
   - name: Nanda
   - name: Dewi
-limits: 
-  low: 
-    Assignment: 
+limits:
+  low:
+    Assignment:
       attempts: 3
-  high: 
-    Review: 
+  high:
+    Review:
       rules: 4
-roles: 
-  writer: 
+roles:
+  writer:
     tier: low
     description: writes
     intro: you write
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
+    acts:
       - do: write
     timeout: 60
-    persistence: 
+    persistence:
       persistent: false
       why: it does one piece of work once
     icon: feather
-  checker: 
+  checker:
     tier: medium
     description: checks
     intro: you check
-    responsibilities: 
+    responsibilities:
       - one
     output: a note
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-      - approve: 
+      - approve:
           - writer
-    persistence: 
+    persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
-  boss: 
+  boss:
     tier: high
     description: leads
     intro: you lead
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
-      - approve: 
+    acts:
+      - approve:
           - writer
-      - change: 
+      - change:
           - tsd
-    persistence: 
+    persistence:
       *persistence
     icon: crown
-  linter: 
+  linter:
     kind: program
     run: ./lint
     "on": report
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-    checks: 
+    checks:
       - r1
     icon: terminal
-decide: 
+decide:
   - resultsOf: writer
-    by: 
-      or: 
+    by:
+      or:
         - checker
         - boss
 "
@@ -589,75 +590,75 @@ decide:
 
 // Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig no file now 1`] = `
-"people: 
+"people:
   - name: Nanda
   - name: Dewi
-limits: 
-  low: 
-    Assignment: 
+limits:
+  low:
+    Assignment:
       attempts: 3
-  high: 
-    Review: 
+  high:
+    Review:
       rules: 4
-roles: 
-  writer: 
+roles:
+  writer:
     tier: low
     description: writes
     intro: you write
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
+    acts:
       - do: write
     timeout: 60
-    persistence: 
+    persistence:
       persistent: false
       why: it does one piece of work once
     icon: feather
-  checker: 
+  checker:
     tier: medium
     description: checks
     intro: you check
-    responsibilities: 
+    responsibilities:
       - one
     output: a note
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-      - approve: 
+      - approve:
           - writer
-    persistence: 
+    persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
-  boss: 
+  boss:
     tier: high
     description: leads
     intro: you lead
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
-      - approve: 
+    acts:
+      - approve:
           - writer
-      - change: 
+      - change:
           - tsd
-    persistence: 
+    persistence:
       *persistence
     icon: crown
-  linter: 
+  linter:
     kind: program
     run: ./lint
     "on": report
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-    checks: 
+    checks:
       - r1
     icon: terminal
-decide: 
+decide:
   - resultsOf: writer
-    by: 
-      or: 
+    by:
+      or:
         - checker
         - boss
 "
@@ -665,75 +666,75 @@ decide:
 
 // Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig a file now that does not parse 1`] = `
-"people: 
+"people:
   - name: Nanda
   - name: Dewi
-limits: 
-  low: 
-    Assignment: 
+limits:
+  low:
+    Assignment:
       attempts: 3
-  high: 
-    Review: 
+  high:
+    Review:
       rules: 4
-roles: 
-  writer: 
+roles:
+  writer:
     tier: low
     description: writes
     intro: you write
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
+    acts:
       - do: write
     timeout: 60
-    persistence: 
+    persistence:
       persistent: false
       why: it does one piece of work once
     icon: feather
-  checker: 
+  checker:
     tier: medium
     description: checks
     intro: you check
-    responsibilities: 
+    responsibilities:
       - one
     output: a note
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-      - approve: 
+      - approve:
           - writer
-    persistence: 
+    persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
-  boss: 
+  boss:
     tier: high
     description: leads
     intro: you lead
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
-      - approve: 
+    acts:
+      - approve:
           - writer
-      - change: 
+      - change:
           - tsd
-    persistence: 
+    persistence:
       *persistence
     icon: crown
-  linter: 
+  linter:
     kind: program
     run: ./lint
     "on": report
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-    checks: 
+    checks:
       - r1
     icon: terminal
-decide: 
+decide:
   - resultsOf: writer
-    by: 
-      or: 
+    by:
+      or:
         - checker
         - boss
 "
@@ -743,75 +744,75 @@ decide:
 exports[`restoreConfig a stored text with comments 1`] = `
 "# schema line
 # second
-people: 
+people:
   - name: Nanda
   - name: Dewi
-limits: 
-  low: 
-    Assignment: 
+limits:
+  low:
+    Assignment:
       attempts: 3
-  high: 
-    Review: 
+  high:
+    Review:
       rules: 4
-roles: 
-  writer: 
+roles:
+  writer:
     tier: low
     description: writes
     intro: you write
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
+    acts:
       - do: write
     timeout: 60
-    persistence: 
+    persistence:
       persistent: false
       why: it does one piece of work once
     icon: feather
-  checker: 
+  checker:
     tier: medium
     description: checks
     intro: you check
-    responsibilities: 
+    responsibilities:
       - one
     output: a note
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-      - approve: 
+      - approve:
           - writer
-    persistence: 
+    persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
-  boss: 
+  boss:
     tier: high
     description: leads
     intro: you lead
-    responsibilities: 
+    responsibilities:
       - one
-    acts: 
-      - approve: 
+    acts:
+      - approve:
           - writer
-      - change: 
+      - change:
           - tsd
-    persistence: 
+    persistence:
       *persistence
     icon: crown
-  linter: 
+  linter:
     kind: program
     run: ./lint
     "on": report
-    acts: 
-      - review: 
+    acts:
+      - review:
           - writer
-    checks: 
+    checks:
       - r1
     icon: terminal
-decide: 
+decide:
   - resultsOf: writer
-    by: 
-      or: 
+    by:
+      or:
         - checker
         - boss
 tiers:

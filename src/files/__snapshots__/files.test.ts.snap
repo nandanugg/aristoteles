@@ -1,4 +1,5 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+// Bun 1.4: Bun.YAML.stringify writes no space after a key whose value is on the next lines.
 
 exports[`slug and sectionsOf slug of "Hello World" 1`] = `"hello-world"`;
 
@@ -402,7 +403,7 @@ exports[`the lock readLock: a lock that does not parse 1`] = `
 `;
 
 exports[`the lock writeLock: an entry with the three written keys out of order 1`] = `
-"a: 
+"a:
   repo: x
   path: p
   owner: "N"
@@ -412,24 +413,24 @@ exports[`the lock writeLock: an entry with the three written keys out of order 1
 `;
 
 exports[`the lock writeLock: two entries and some keys missing 1`] = `
-"a: 
+"a:
   repo: x
   path: p
   owner: "N"
   commit: c
-b: 
+b:
   repo: "y"
   path: q
   owner: M
   tag: v1
-  rules: 
+  rules:
     r1: lint
   checkedBy: lint
   refreshed: d"
 `;
 
 exports[`the lock writeLock: a written key that is undefined 1`] = `
-"a: 
+"a:
   repo: x
   path: p
   owner: "N"

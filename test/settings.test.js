@@ -82,9 +82,9 @@ describe('aristoteles.yaml', () => {
       .toContain('the name of a dir is the name of its folder; remove the project key')
     expect(await refusal(`colour: blue\n${WORK_YAML}`)).toContain('"colour" is not a key of aristoteles.yaml')
     // Ruling 10, onboarding 2026-11-14: luna is a tier with commands now (was refused); what is
-    // wrong in this line is the { } with no quotes.
+    // wrong in this line is the { } with no quotes, which the YAML parser of Bun 1.4.3 refuses.
     expect(await refusal(`tiers:\n  luna: { launch: x {session} }\n${WORK_YAML}`))
-      .toContain('tiers.luna has a { } that is not in quotes; quote the text, like launch: "c --session {session}"')
+      .toContain('YAML Parse error: Unexpected token')
     expect(await refusal(`tiers:\n  sol: { launch: agent-tool }\n${WORK_YAML}`))
       .toContain('tiers.sol.launch has no {session}')
   })

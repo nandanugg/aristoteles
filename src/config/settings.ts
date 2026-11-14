@@ -44,14 +44,6 @@ export const readSettingsOf = (raw: Raw): Settings => {
       fail(CONFIG, `tiers.${tier} is not a tier (${TerminalTier.literals.join(', ')})`)
     }
     const key = Object.keys(t ?? {}).find((k) => !(TIER_KEYS as readonly string[]).includes(k))
-    // The parser makes a key of an unquoted { } in a flow map, and names it [object Object].
-    if (key === '[object Object]') {
-      fail(
-        CONFIG,
-        `tiers.${tier} has a { } that is not in quotes; quote the text, like ` +
-          'launch: "c --session {session}"',
-      )
-    }
     if (key) {
       fail(CONFIG, `tiers.${tier}.${key} is not a setting of a tier (${TIER_KEYS.join(', ')})`)
     }
