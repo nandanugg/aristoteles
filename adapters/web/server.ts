@@ -9,23 +9,32 @@
 // the Work and renders the views of view.ts; a person's act dispatches its action as the person
 // of git user.name (acts.ts) or goes to the watcher (the terminals).
 import { randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, type FSWatcher, readdirSync, statSync, watch } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, SubscriptionRef } from 'effect'
 import { dispatch } from '../../core/actions/index.ts'
 import { type Derived, derive } from '../../core/derived/index.ts'
-import { type Author, StoreDamaged, type Time, type Work } from '../../core/schema/index.ts'
 import {
+  type Author,
+  OnboardingAct,
+  StoreDamaged,
+  type Time,
+  type Work,
+} from '../../core/schema/index.ts'
+import {
+  ASSESS,
   CONFIG,
   DRAFT,
   dbPath,
   Dir,
   Env,
   FilesLive,
-  mergeDraft,
   Now,
+  onboardingExists,
   pathOf,
+  personAct,
   Readings,
+  readOnboarding,
   readSettings,
   SpawnLive,
   StoreLive,
@@ -42,17 +51,20 @@ import {
   ACTS,
   DiffView,
   DirView,
+  OnboardingView,
   PageAct,
   PageMessage,
   ProjectView,
   PersonView,
-  RolesDraft,
   TaskPanel,
 } from './contract.ts'
 import type { ServerHandle, ServerOptions, Watcher } from './frozen.ts'
+import { onboardingWords, startStore } from './onboard.ts'
 import {
   dirView,
   fileDiff,
+  onboardingFilesView,
+  onboardingStoreView,
   personView,
   projectView,
   taskPanel,
@@ -83,9 +95,9 @@ const messageOf = (error: unknown): string =>
 
 // The words that the person pastes into the AI CLI that they use, in the dir. That session is
 // the host (Nanda, 2026-11-13): it sets up a new dir, starts the page, and starts or continues
-// a project.
+// a project. The steps of the README prompt (ruling 12): the skill install first, then the skill.
 const startPrompt = (dir: string) =>
-  `Use aristoteles in the folder ${dir}: read ` +
+  `Use aristoteles in the folder ${dir}: run work skill install there, then read ` +
   `${join(ROOT, 'skills', 'aristoteles', 'SKILL.md')} and do what it says; you are the host. ` +
   `When work is not on the PATH, use bun ${join(ROOT, 'bin', 'work.js')} in its place.`
 
@@ -293,39 +305,40 @@ export function startServer(options: ServerOptions): ServerHandle {
     }
   }
 
-  // The first start of a dir: the person accepts the people and the roles that assess drafted.
-  const acceptRoles = async (): Promise<Response> => {
-    const by = await asPerson()
-    if (!by) return json({ error: NO_PERSON }, 400)
-    const draft = join(dir, DRAFT)
-    if (!existsSync(draft)) return json({ error: `there is no ${DRAFT}` }, 400)
-    const config = join(dir, CONFIG)
-    const settings = existsSync(config) ? readFileSync(config, 'utf8') : ''
-    // work config check reads the same merge, so the host checks its draft before this click.
-    let merged: string
-    try {
-      merged = mergeDraft(settings, readFileSync(draft, 'utf8'))
-    } catch (error) {
-      return json({ error: `${DRAFT}: ${messageOf(error)}` }, 400)
+  // --- onboarding (POST /api/onboarding): each act writes the files and stores nothing -------
+
+  // The acts of the two pages, as the person of git user.name. After the store starts, a change is
+  // an adjustment (ruling 14), as work onboard says.
+  const onboardingAct = async (act: OnboardingAct): Promise<Response> => {
+    const name = await gitName(dir)
+    if (name === '') return json({ error: NO_PERSON }, 400)
+    if (readState()) {
+      const over =
+        'the store of this dir has started, so onboarding is over; a change now is an adjustment'
+      return json({ error: over }, 400)
     }
-    writeFileSync(config, merged)
-    try {
-      const done = await dispatched({
-        by,
-        input: { _tag: 'DefineWorkflow', target: {}, content: { directions: [] } },
-      })
-      rmSync(draft)
-      const { project, roles } = done.work.config
-      return json({
-        out:
-          `store made for ${project} in aristoteles: ${Object.keys(roles).length} roles, ` +
-          'and no direction yet.',
-      })
-    } catch (error) {
-      // A refused define leaves the file as it was: a second click does not add the roles twice.
-      writeFileSync(config, settings)
-      return failed(error)
+    const exit =
+      act.act === 'approve-all-roles'
+        ? await runtime.runPromiseExit(startStore(dir, name, env))
+        : await runtime.runPromiseExit(
+            Effect.map(personAct(dir, name, act), (made) => onboardingWords(act, made)),
+          )
+    runSync(refresh)
+    return Exit.isSuccess(exit) ? json({ out: exit.value }) : failed(Cause.squash(exit.cause))
+  }
+  const postOnboarding = async (req: Request, srv: Bun.Server<undefined>) => {
+    if (!sameOrigin(req, srv)) {
+      return json({ error: 'an act comes only from the page of this server' }, 403)
     }
+    let decoded: OnboardingAct
+    try {
+      decoded = Schema.decodeUnknownSync(OnboardingAct)(await req.json())
+    } catch (error) {
+      return json({ error: messageOf(error) }, 400)
+    }
+    const res = await onboardingAct(decoded).catch(failed)
+    send({ type: 'changed' })
+    return res
   }
 
   // The watcher runs the acts of the terminals; without tmux there is none.
@@ -363,13 +376,12 @@ export function startServer(options: ServerOptions): ServerHandle {
       case 'reject-words':
       case 'accept-adjustment':
       case 'reject-adjustment':
+      case 'suggest':
         return actAs(b)
       case 'settings':
         runSync(writeSettings(dir, b.settings))
         send({ type: 'changed' })
         return json({ out: 'the settings are saved.' })
-      case 'accept-roles':
-        return acceptRoles()
     }
   }
   const postAct = async (req: Request, srv: Bun.Server<undefined>) => {
@@ -394,13 +406,8 @@ export function startServer(options: ServerOptions): ServerHandle {
   // --- the reads (GET /api/...) ----------------------------------------------------------------
 
   const api = async (path: string, url: URL): Promise<Response | undefined> => {
-    // The person and the draft of the roles read no derived state, so they derive nothing (a
-    // derive with its readings costs about 35 ms on a store of 2,000 events).
-    if (path === '/api/roles-draft') {
-      if (!readState()) return json({ error: `no work store in ${dir}` }, 404)
-      const draft = join(dir, DRAFT)
-      return answer(RolesDraft, { text: existsSync(draft) ? readFileSync(draft, 'utf8') : null })
-    }
+    // The person reads no derived state, so it derives nothing (a derive with its readings costs
+    // about 35 ms on a store of 2,000 events).
     if (path === '/api/person') {
       const work = readState()
       if (!work) return json({ error: `no work store in ${dir}` }, 404)
@@ -416,13 +423,24 @@ export function startServer(options: ServerOptions): ServerHandle {
           name: basename(dir),
           path: dir,
           settings: ctx.settings,
-          rolesDraft: existsSync(join(dir, DRAFT)),
+          onboarding: runSync(onboardingExists(dir)),
           hasConfig: existsSync(join(dir, CONFIG)),
           startPrompt: startPrompt(dir),
         },
         ctx,
       )
       return answer(DirView, view)
+    }
+    // One view before and after the store: the onboarding files, then the store (the gear). A
+    // file that does not read is the page's error, with its words.
+    if (path === '/api/onboarding') {
+      if (d) return answer(OnboardingView, onboardingStoreView(d, ctx))
+      try {
+        const files = runSync(readOnboarding(dir))
+        return answer(OnboardingView, onboardingFilesView(files, ctx.settings, dir))
+      } catch (error) {
+        return json({ error: messageOf(error) }, 400)
+      }
     }
     if (!d) return json({ error: `no work store in ${dir}` }, 404)
     let m = path.match(/^\/api\/project\/([a-z]+\d+)$/)
@@ -507,6 +525,13 @@ export function startServer(options: ServerOptions): ServerHandle {
           return json({ error: messageOf(error) }, 500)
         }
       }
+      if (url.pathname === '/api/onboarding' && req.method === 'POST') {
+        try {
+          return await postOnboarding(req, srv)
+        } catch (error) {
+          return json({ error: messageOf(error) }, 500)
+        }
+      }
       if (url.pathname.startsWith('/api/')) {
         try {
           const own = await extend.api?.(req, url, { readState, send })
@@ -571,7 +596,59 @@ export function startServer(options: ServerOptions): ServerHandle {
         if (name?.startsWith(basename(db))) check()
       })
     : undefined
-  const poll = setInterval(check, 3000)
+  // The onboarding files change in other processes too (the host's work onboard): a watch of the
+  // dir sees aristoteles.draft.yaml, and a watch of .work/assess/ its files while the folder is
+  // there (the host makes it; the store start deletes it). The check every 3 seconds arms the
+  // watch of a new folder and compares the names and times of the files, for a missed change.
+  let assessWatch: FSWatcher | undefined
+  let onboardTimer: ReturnType<typeof setTimeout> | undefined
+  const onboardingChanged = () => {
+    if (onboardTimer !== undefined) return
+    onboardTimer = setTimeout(() => {
+      onboardTimer = undefined
+      send({ type: 'changed' })
+    }, 25)
+  }
+  const assess = join(dir, ASSESS)
+  const armAssess = () => {
+    if (assessWatch !== undefined || !existsSync(assess)) return
+    try {
+      assessWatch = watch(assess, onboardingChanged)
+      assessWatch.on('error', () => {
+        assessWatch?.close()
+        assessWatch = undefined
+      })
+    } catch {
+      assessWatch = undefined
+    }
+  }
+  const dirWatch = watch(dir, (_event, name) => {
+    if (name !== DRAFT && name !== '.work') return
+    armAssess()
+    onboardingChanged()
+  })
+  const stamp = (path: string) => {
+    try {
+      const s = statSync(path)
+      return `${path} ${s.mtimeMs} ${s.size}`
+    } catch {
+      return ''
+    }
+  }
+  const onboardingStamp = () =>
+    [
+      stamp(join(dir, DRAFT)),
+      ...(existsSync(assess) ? readdirSync(assess).map((n) => stamp(join(assess, n))) : []),
+    ].join('\n')
+  let seen = onboardingStamp()
+  armAssess()
+  const poll = setInterval(() => {
+    check()
+    armAssess()
+    const now = onboardingStamp()
+    if (now !== seen) onboardingChanged()
+    seen = now
+  }, 3000)
 
   return {
     port: server.port ?? 0,
@@ -583,7 +660,10 @@ export function startServer(options: ServerOptions): ServerHandle {
       watcher?.stop()
       clearInterval(poll)
       clearTimeout(timer)
+      clearTimeout(onboardTimer)
       fileWatch?.close()
+      dirWatch.close()
+      assessWatch?.close()
       void server.stop(true)
       void runtime.dispose()
     },

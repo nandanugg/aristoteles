@@ -24,6 +24,7 @@ import type { Human } from './actor.ts'
 import type {
   AgentId,
   AssignmentId,
+  DirectionId,
   EventRef,
   NonBlank,
   ProblemId,
@@ -336,7 +337,9 @@ export interface DirView {
   readonly sound: boolean
   readonly settings: Settings
   readonly hasConfig: boolean // aristoteles.yaml exists
-  readonly rolesDraft: boolean // aristoteles.draft.yaml waits for the person's accept
+  // Onboarding files are in the dir (.work/assess/ or aristoteles.draft.yaml): with no store, the
+  // page shows the directions page and the agents page (rulings 2, 3, 11).
+  readonly onboarding: boolean
   readonly initialized: boolean // the dir has a store
   readonly startPrompt: Text // the person pastes it into their AI CLI in the dir: that session is the host
   readonly projects: ReadonlyArray<ProjectSummary> // the newest first
@@ -374,11 +377,14 @@ export interface TaskCard {
   readonly badge: boolean
   readonly parent: TaskId | null
 }
-// The terminal that owns a task: its open Sol or Terra; a Luna runs inside its parent's.
+// The terminal that owns a task (ruling 7): its open assignment of the host or of a persistent
+// agent; a subagent runs inside the terminal above it. Two tasks of one persistent agent show its
+// one terminal (ruling 9).
 export interface Owner extends Live {
   readonly a: AssignmentId
   readonly role: Text
   readonly tier: 'sol' | 'terra' | 'luna' | 'program'
+  readonly agent: AgentId | null // the persistent agent whose terminal it is
   readonly session: SessionId | null
   readonly inside: AssignmentId | null
   // Only the terminal of live work can be resumed; the JSON has the key only then (outside).
@@ -415,7 +421,7 @@ export interface TaskDraftView {
 }
 export interface TerminalRef extends Live {
   readonly session: SessionId
-  readonly a: Text // the run or the assignment
+  readonly a: Text // the run, the persistent agent, or the assignment
 }
 
 // GET /api/task/<t>: the panel of a task.
@@ -514,7 +520,6 @@ export type PageMessage =
 // The person's acts on the page (POST /api/act); the answer is { out } or { error } (an error
 // has no "refused: " prefix).
 export type PageAct =
-  | { readonly act: 'accept-roles' }
   | { readonly act: 'open'; readonly draft: TaskDraftId }
   | { readonly act: 'close'; readonly run: RunId; readonly reason?: Text }
   | { readonly act: 'stop'; readonly session: SessionId }
@@ -536,3 +541,71 @@ export type PageAct =
   // the person decides a drafted adjustment (ruling 14)
   | { readonly act: 'accept-adjustment'; readonly draft: EventRef }
   | { readonly act: 'reject-adjustment'; readonly draft: EventRef; readonly reason: Text }
+  // the text box of the gear stores a suggestion: about a direction, a new one, or the roles (P7)
+  | { readonly act: 'suggest'; readonly about: SuggestionTarget; readonly says: Text }
+export type SuggestionTarget =
+  | { readonly _tag: 'NewDirection' }
+  | { readonly _tag: 'Direction'; readonly direction: DirectionId }
+  | { readonly _tag: 'Roles' }
+
+// GET /api/onboarding: the directions page and the agents page (rulings 2, 3, 11), and the two
+// entries of the gear after the store (ruling 13). One view serves both times (PLAN.md section 5):
+// before the store it reads the onboarding files; after it, the store and the adjustments that
+// wait for the person.
+export interface OnboardingView {
+  readonly stage: 'files' | 'store'
+  readonly directions: ReadonlyArray<DirectionCard>
+  readonly roles: ReadonlyArray<RoleCard> // the roles that the project has come first
+  readonly adjustments: ReadonlyArray<Decision> // after the store; none before it
+}
+// One direction of the list, and the right column when it is open.
+export interface DirectionCard {
+  readonly id: Text
+  readonly name: Text // before its first draft: the person's principle, or the company folder
+  // loading, question, ready, accepted: a file of onboarding; current: official in the store
+  readonly state: 'loading' | 'question' | 'ready' | 'accepted' | 'current'
+  readonly origin: Text // where it comes from, in one line
+  readonly principle: Text | null // the words of the person who added it (ruling 5)
+  readonly example: Text | null
+  readonly says: Text | null // null: no draft yet
+  readonly standards: DirectionView['standards'] // each rule names the role that checks it
+  readonly cases: ReadonlyArray<CaseView>
+  readonly questions: ReadonlyArray<QuestionView>
+  readonly request: Text | null // the words of a Revise that wait for the host
+}
+// A case (ruling 4): real code that follows or breaks the direction. current: its excerpt is in
+// its file now; a stale case asks for other cases.
+export interface CaseView {
+  readonly file: Text
+  readonly line: number
+  readonly excerpt: Text
+  readonly fit: 'Follows' | 'Breaks'
+  readonly current: boolean
+}
+// A question of the AI about a draft (ruling 5): a case, and the options A and B.
+export interface QuestionView {
+  readonly says: Text
+  readonly case: CaseView
+  readonly options: readonly [Text, Text]
+  readonly answer: 'A' | 'B' | null // null: open
+}
+// One card of the agents page (ruling 11); its window shows the rest.
+export interface RoleCard {
+  readonly role: Text
+  readonly icon: Text // a name of ROLE_ICONS (adapters/web/vendor/role-icons.js draws it)
+  readonly tier: 'sol' | 'terra' | 'luna' | 'program'
+  // tiers.<t>.model of the settings, or the class of the tier (Opus, Sonnet, Haiku); null: a
+  // program
+  readonly model: Text | null
+  readonly launch: Text | null // tiers.<t>.launch of the settings, read only
+  readonly summary: Text // the line of the card; after the store, its description
+  readonly description: Text
+  // null: a program
+  readonly persistence: { readonly persistent: boolean; readonly why: Text } | null
+  // false: a program, the role of the top task (the only persistent high role, ruling 15), or a
+  // role of the store (the gear changes it by an adjustment)
+  readonly toggle: boolean
+  readonly found: Text | null // where the project has the role
+  readonly state: 'waiting' | 'accepted' | 'current' // current: a role of the store
+  readonly request: Text | null // the words of a Revise that wait for the host
+}

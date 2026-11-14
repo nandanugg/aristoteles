@@ -306,3 +306,52 @@ button { font: inherit; color: inherit; }
 .tier-set { border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px 4px; margin: 10px 0; }
 .tier-set legend { font-weight: 600; padding: 0 6px; }
 @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } .draft-card { width: 100%; } }
+
+/* The onboarding pages (rulings 2, 3, 11): two columns of directions, then a grid of agents. */
+.onboarding { display: flex; flex-direction: column; gap: 14px; max-width: 1180px; }
+.onboarding .canvas-head { margin: 0; }
+.steps { padding: 0; }
+.tab:disabled { opacity: 0.5; cursor: default; }
+.onboarding-cols { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; }
+.direction-list { display: flex; flex-direction: column; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.direction-item { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
+.direction-item:hover { background: var(--surface-2); }
+.direction-item[aria-current="true"] { background: var(--terra-tint); }
+.direction-item .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); white-space: nowrap; }
+.chip.ready { border-color: var(--terra-line); background: var(--terra-tint); color: var(--terra); }
+.chip.question { border-color: var(--sol-line); background: var(--sol-tint); color: var(--sol); }
+.chip.accepted, .chip.current { border-color: var(--accept); background: var(--accept-tint); color: var(--accept); }
+.direction-open { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.direction-head { display: flex; align-items: center; gap: 10px; }
+.direction-head h2, .add-form h2 { margin: 0; font-size: 17px; }
+.says { margin: 12px 0 4px; }
+.cases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.case { font-size: 13px; border-left: 3px solid var(--accept); padding: 4px 8px; background: var(--surface-2); border-radius: 0 6px 6px 0; overflow-wrap: anywhere; }
+.case.breaks { border-left-color: var(--reject); }
+.case .fit { font-weight: 600; }
+.case .excerpt { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.case .stale { color: var(--reject); font-size: 12px; margin-left: 6px; }
+.question { border: 1px solid var(--sol-line); background: var(--sol-tint); border-radius: 10px; padding: 8px 12px 10px; margin: 0 0 10px; }
+.question legend { font-weight: 600; padding: 0 4px; }
+.option { display: flex; align-items: flex-start; gap: 8px; min-height: 32px; padding-top: 6px; cursor: pointer; }
+.direction-open .field { margin-top: 14px; }
+.add-form { display: flex; flex-direction: column; gap: 4px; }
+.next-step { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--accept-tint); }
+.waits { color: var(--sol); font-size: 13px; }
+.muted { color: var(--muted); font-size: 13px; }
+.role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.role-card { width: auto; }
+.role-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role-card .accepted { color: var(--accept); display: inline-flex; }
+.switch { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); min-height: 32px; cursor: pointer; }
+.switch input { width: 16px; height: 16px; }
+.role-window h2 { display: flex; align-items: center; gap: 10px; }
+.role-window .kv .k { width: 70px; }
+.role-window .kv .v { white-space: normal; overflow-wrap: anywhere; }
+.agents-page { display: flex; flex-direction: column; gap: 14px; }
+.gear .tabs { padding: 0; margin-bottom: 14px; }
+.gear .tab { display: inline-flex; align-items: center; gap: 6px; }
+.suggest { margin: 14px 0 0; }
+.gear-body .item { margin: 0 0 12px; }
+@media (max-width: 860px) { .onboarding-cols { grid-template-columns: 1fr; } }

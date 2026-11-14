@@ -1,6 +1,7 @@
 // The page's links to the server: the JSON routes (fetch, in Effect), the one websocket, the
 // acts of the person, and the toast at the bottom of the page.
 import { Data, Effect, Schema } from 'effect'
+import type { OnboardingAct } from '../../../src/domain/onboarding.ts'
 import {
   ActAnswer,
   ApiError as ApiErrorBody,
@@ -58,6 +59,18 @@ export const api = <S extends Schema.Top & { readonly DecodingServices: never }>
 export const post = (act: PageAct): Promise<ActOut> =>
   run(
     request('/api/act', ActAnswer, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(act),
+    }),
+  )
+
+// An act of the onboarding pages (POST /api/onboarding): it writes the files, or approve all roles
+// starts the store. The page sends the plain JSON; the server decodes it.
+export type OnboardingActJson = (typeof OnboardingAct)['Encoded']
+export const postOnboarding = (act: OnboardingActJson): Promise<ActOut> =>
+  run(
+    request('/api/onboarding', ActAnswer, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(act),

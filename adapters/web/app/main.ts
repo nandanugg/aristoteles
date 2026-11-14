@@ -7,31 +7,22 @@ import { Schema } from 'effect'
 import { html, render } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import {
-  type Decision,
   DiffView,
   DirView,
   Owner as OwnerSchema,
   PersonView,
   ProjectView,
   ReviewCard as ReviewCardSchema,
-  RolesDraft,
-  type SettingsChange,
-  TierChange as TierChangeSchema,
   TaskPanel,
   WorkCard as WorkCardSchema,
 } from '../contract.ts'
-import {
-  EventRef,
-  ProblemId,
-  RevisionId,
-  RunId,
-  type TaskDraftId,
-  TaskId,
-} from '../../../src/domain/ids.ts'
+import { RunId, type TaskDraftId } from '../../../src/domain/ids.ts'
 import type { ActOut } from './api.ts'
 import { api, attempt, chime, post, socket, toast } from './api.ts'
-import { Change } from './change.ts'
+import { Gear } from './gear.ts'
 import { ICONS, icon } from './icons.ts'
+import { Item } from './item.ts'
+import { Onboarding } from './onboarding.ts'
 import { Terminal } from './terminal.ts'
 
 type DirData = typeof DirView.Type
@@ -40,7 +31,6 @@ type PanelData = typeof TaskPanel.Type
 type Owner = typeof OwnerSchema.Type
 type WorkCardData = typeof WorkCardSchema.Type
 type ReviewCardData = typeof ReviewCardSchema.Type
-type TierChange = typeof TierChangeSchema.Type
 type Row = ProjectData['rows'][number]
 type TaskCardData = Row['task']
 type Tier = 'sol' | 'terra' | 'luna' | 'program'
@@ -128,10 +118,11 @@ const stopThen = (fn: () => unknown) => (e: Event) => {
 function TaskCard({ task, selected, onOpen, onStop, onResume }: TaskCardProps) {
   const o = task.owner
   const tier: Tier = o?.tier ?? 'luna'
+  // The terminal of a persistent agent is its own, across its assignments (ruling 9).
   const tags = o
     ? o.inside
       ? `${TIER_NAME[tier]} · in ${o.inside}`
-      : `${TIER_NAME[tier]} · ${o.a}`
+      : `${TIER_NAME[tier]} · ${o.agent ? `${o.agent} · ${o.a}` : o.a}`
     : 'no terminal'
   const live = o && !o.inside && o.live
   return html`<section class=${`card task ${tier}${selected ? ' selected' : ''}`}
@@ -375,126 +366,6 @@ function Diff({ panel, version }: { panel: PanelData; version: number }) {
     file=${f} version=${version} />`)}</div>`
 }
 
-// A decision that needs the person: the host's words (or the raw text), and its buttons. A
-// direction problem reads in three parts: the problem, the change, the hope. A relayed act shows
-// the person's own words under it.
-const KIND = {
-  system: 'A system problem',
-  direction: 'A direction problem',
-  end: 'The end of the project',
-  confirm: 'Your words, relayed',
-  roleWords: 'New words of a role',
-  adjustment: 'An adjustment',
-}
-const kindOf = (item: Decision): keyof typeof KIND => {
-  switch (item._tag) {
-    case 'System':
-      return 'system'
-    case 'Direction':
-      return 'direction'
-    case 'End':
-      return 'end'
-    case 'Confirm':
-      return 'confirm'
-    case 'RoleWords':
-      return 'roleWords'
-    case 'Adjustment':
-      return 'adjustment'
-  }
-}
-function Item({ item }: { item: Decision }) {
-  const [comment, setComment] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const busy = useRef(false)
-  // A refused act keeps the person's comment, and its reason stays in the decision (a toast goes
-  // after 5 seconds, and the decision looked as if nothing happened).
-  const run = (fn: () => Promise<ActOut>) => async () => {
-    if (busy.current) return
-    busy.current = true
-    setError(null)
-    try {
-      const out = await fn()
-      if (out.out) toast(out.out.split('\n')[0] ?? '')
-      setComment('')
-    } catch (e) {
-      setError(errorText(e))
-    } finally {
-      busy.current = false
-    }
-  }
-  const kind = kindOf(item)
-  // Each act decodes the id of the decision into its branded type; a bad id is shown as a refusal.
-  const fixed = () => post({ act: 'fixed', problem: Schema.decodeUnknownSync(ProblemId)(item.id) })
-  const acceptDraft = () =>
-    post({ act: 'accept-draft', draft: Schema.decodeUnknownSync(RevisionId)(item.id), comment })
-  const rejectDraft = () =>
-    post({
-      act: 'reject-draft',
-      draft: Schema.decodeUnknownSync(RevisionId)(item.id),
-      reason: comment,
-    })
-  const confirm = () =>
-    post({ act: 'confirm', forward: Schema.decodeUnknownSync(EventRef)(item.id) })
-  const acceptEnd = () => post({ act: 'end', run: Schema.decodeUnknownSync(RunId)(item.id) })
-  const rejectTask = () =>
-    post({ act: 'reject-task', task: Schema.decodeUnknownSync(TaskId)(item.task), reason: comment })
-  const words = Schema.decodeUnknownSync(EventRef)
-  const acceptWords = () => post({ act: 'accept-words', draft: words(item.id) })
-  const rejectWords = () => post({ act: 'reject-words', draft: words(item.id), reason: comment })
-  const acceptAdjustment = () => post({ act: 'accept-adjustment', draft: words(item.id) })
-  const rejectAdjustment = () =>
-    post({ act: 'reject-adjustment', draft: words(item.id), reason: comment })
-  // A decision takes one comment: a reject needs it, an accept does not.
-  const decides =
-    kind === 'direction' || kind === 'end' || kind === 'roleWords' || kind === 'adjustment'
-  const noComment = !comment.trim()
-  // New words of a role read as a change too: each word of now, then its drafted word.
-  const change =
-    item._tag === 'Direction'
-      ? item.change
-      : item._tag === 'RoleWords'
-        ? { direction: item.role, lines: item.lines }
-        : null
-  const hope = item._tag === 'Direction' ? item.hope : null
-  const quote = item._tag === 'Confirm' ? item.quote : null
-  return html`<div class=${`item ${kind}`} role="region" aria-label=${KIND[kind]}>
-    <div class="item-head"><span class="badge" aria-hidden="true">!</span>
-      <strong>${KIND[kind]}</strong></div>
-    <div class="prose">${item.words ?? item.text}</div>
-    ${change ? html`<${Change} change=${change} />` : ''}
-    ${hope ? html`<div class="prose">${hope}</div>` : ''}
-    ${quote ? html`<blockquote class="prose">${quote}</blockquote>` : ''}
-    ${item.words ? html`<div class="item-raw">${item.text}</div>` : ''}
-    ${decides ? html`<label class="field"><span>Your comment (a reject needs one)</span>
-      <textarea rows="2" value=${comment}
-        onInput=${(e: Event) => setComment((e.currentTarget as HTMLTextAreaElement).value)}
-      ></textarea></label>` : ''}
-    ${error ? html`<div class="error" role="alert">Refused: ${error}</div>` : ''}
-    <div class="item-actions">
-      ${kind === 'system' ? html`<button class="btn primary"
-        onClick=${run(fixed)}>Fixed</button>` : ''}
-      ${kind === 'direction' ? html`
-        <button class="btn primary" onClick=${run(acceptDraft)}>Accept the change</button>
-        <button class="btn" disabled=${noComment}
-          onClick=${run(rejectDraft)}>Reject the change</button>` : ''}
-      ${kind === 'confirm' ? html`<button class="btn primary"
-        onClick=${run(confirm)}>Confirm</button>` : ''}
-      ${kind === 'end' ? html`
-        <button class="btn primary" onClick=${run(acceptEnd)}>Accept the end</button>
-        <button class="btn" disabled=${noComment}
-          onClick=${run(rejectTask)}>Reject the result</button>` : ''}
-      ${kind === 'roleWords' ? html`
-        <button class="btn primary" onClick=${run(acceptWords)}>Accept the words</button>
-        <button class="btn" disabled=${noComment}
-          onClick=${run(rejectWords)}>Reject the words</button>` : ''}
-      ${kind === 'adjustment' ? html`
-        <button class="btn primary" onClick=${run(acceptAdjustment)}>Accept</button>
-        <button class="btn" disabled=${noComment}
-          onClick=${run(rejectAdjustment)}>Reject</button>` : ''}
-    </div>
-  </div>`
-}
-
 interface PanelProps {
   id: string
   tab: string | null
@@ -544,148 +415,10 @@ function Panel({ id, tab, version, onClose, onTab }: PanelProps) {
   </aside>`
 }
 
-// --- the settings modal --------------------------------------------------------------------
-
-type TierName = 'sol' | 'terra'
-const TIER_NAMES: ReadonlyArray<TierName> = ['sol', 'terra']
-const TIER_FIELDS = [
-  ['launch', 'Launch command ({session} is required, {prompt} is the first input)'],
-  ['resume', 'Resume command ({session}, {prompt} is the retry input)'],
-  ['start', 'First input ({token})'],
-  ['skills', 'Skills folder of the AI tool (relative to the dir)'],
-  ['errors', 'Error words (one per line)'],
-  ['prompts', 'Prompt words (one per line)'],
-  ['silentMinutes', 'Minutes of silence that count as a failure'],
-  ['retryInput', 'Retry input'],
-] as const
-type TierField = (typeof TIER_FIELDS)[number][0]
-
-// The form keeps every value as text, the way the inputs do.
-interface SettingsForm {
-  theme: 'light' | 'dark'
-  sound: boolean
-  retryMinutes: string
-  hostWaitMinutes: string
-  tiers: Record<TierName, Record<TierField, string>>
-}
-const formOf = (s: DirData['settings']): SettingsForm => {
-  const tier = (name: TierName) => {
-    const t: Record<string, string | number | ReadonlyArray<string> | undefined> = {
-      ...s.tiers[name],
-    }
-    const field = {} as Record<TierField, string>
-    for (const [k] of TIER_FIELDS) {
-      const v = t[k]
-      field[k] = Array.isArray(v) ? v.join('\n') : v === undefined ? '' : String(v)
-    }
-    return field
-  }
-  return {
-    theme: s.theme,
-    sound: s.sound,
-    retryMinutes: String(s.retryMinutes),
-    hostWaitMinutes: String(s.hostWaitMinutes),
-    tiers: { sol: tier('sol'), terra: tier('terra') },
-  }
-}
-
-// The words the server reads as settings: only the fields that the person filled in.
-const settingsOf = (form: SettingsForm): SettingsChange => {
-  const tiers: { sol?: TierChange; terra?: TierChange } = {}
-  for (const tier of TIER_NAMES) {
-    const t: Record<string, string | number | string[]> = {}
-    for (const [k] of TIER_FIELDS) {
-      const v = form.tiers[tier][k]
-      if (v === '') continue
-      t[k] =
-        k === 'errors' || k === 'prompts'
-          ? v
-              .split('\n')
-              .map((x) => x.trim())
-              .filter(Boolean)
-          : k === 'silentMinutes'
-            ? Number(v)
-            : v
-    }
-    if (Object.keys(t).length) tiers[tier] = t as TierChange
-  }
-  return {
-    theme: form.theme,
-    sound: form.sound,
-    retryMinutes: Number(form.retryMinutes),
-    hostWaitMinutes: Number(form.hostWaitMinutes),
-    tiers,
-  }
-}
-
-function SettingsModal({ dir, onClose }: { dir: DirData; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [form, setForm] = useState<SettingsForm>(() => formOf(dir.settings))
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', key)
-    ref.current?.focus()
-    return () => window.removeEventListener('keydown', key)
-  }, [])
-  const setTop = (change: Partial<SettingsForm>) => setForm((f) => ({ ...f, ...change }))
-  const setTier = (tier: TierName, k: TierField, value: string) =>
-    setForm((f) => ({ ...f, tiers: { ...f.tiers, [tier]: { ...f.tiers[tier], [k]: value } } }))
-  const save = attempt(async () => {
-    const out = await post({ act: 'settings', settings: settingsOf(form) })
-    onClose()
-    return out
-  })
-  const value = (e: Event) =>
-    (e.currentTarget as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value
-  return html`<div class="modal-back"
-    onClick=${(e: Event) => e.target === e.currentTarget && onClose()}>
-    <div class="modal" role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1"
-      ref=${ref}>
-      <h2>Settings</h2>
-      <p class="modal-note">${'They are saved in '}<code>aristoteles.yaml</code>
-        ${' of '}${dir.name}${'. The people and the roles are in the file too; ' +
-        'edit them there, with its schema.'}</p>
-      <div class="grid2">
-        <label class="field"><span>Theme</span><select value=${form.theme}
-          onChange=${(e: Event) => setTop({ theme: value(e) === 'dark' ? 'dark' : 'light' })}>
-          <option value="light">Light</option><option value="dark">Dark</option></select></label>
-        <label class="field check"><input type="checkbox" checked=${form.sound}
-          onChange=${(e: Event) => setTop({ sound: (e.currentTarget as HTMLInputElement).checked })}
-        /><span>Play a sound when a badge shows</span></label>
-        <label class="field"><span>Minutes between the tries after a system problem</span>
-          <input type="number" min="1" value=${form.retryMinutes}
-          onInput=${(e: Event) => setTop({ retryMinutes: value(e) })} /></label>
-        <label class="field"><span>Minutes to wait for the host's words</span><input type="number"
-          min="1" value=${form.hostWaitMinutes}
-          onInput=${(e: Event) => setTop({ hostWaitMinutes: value(e) })} /></label>
-      </div>
-      ${TIER_NAMES.map((tier) => html`<fieldset class="tier-set">
-        <legend>${tier === 'sol' ? 'Sol (high)' : 'Terra (medium)'}</legend>
-        ${TIER_FIELDS.map(([k, label]) => html`<label class="field">
-          <span>${label}</span>${k === 'errors' || k === 'prompts'
-          ? html`<textarea rows="2" value=${form.tiers[tier][k]}
-            onInput=${(e: Event) => setTier(tier, k, value(e))}></textarea>`
-          : html`<input value=${form.tiers[tier][k]}
-            onInput=${(e: Event) => setTier(tier, k, value(e))} />`}</label>`)}
-      </fieldset>`)}
-      <div class="modal-foot"><button class="btn" onClick=${onClose}>Cancel</button>
-        <button class="btn primary" onClick=${save}>Save</button></div>
-    </div>
-  </div>`
-}
-
-// The first start of a dir: the person pastes the assess prompt into the AI CLI that they use,
-// in the dir (it is the host, so it writes the commands of the tiers); then the person accepts
-// the roles that it drafted.
+// The first start of a dir: the person pastes the prompt into the AI CLI that they use, in the
+// dir. That session is the host: it installs the /aristoteles skill (ruling 12), then drafts the
+// directions and the roles into the onboarding files, which the onboarding pages show.
 function FirstStart({ dir }: { dir: DirData }) {
-  const [draft, setDraft] = useState<string | null>(null)
-  useEffect(() => {
-    if (dir.rolesDraft) {
-      api('/api/roles-draft', RolesDraft)
-        .then((d) => setDraft(d.text))
-        .catch(() => {})
-    }
-  }, [dir.rolesDraft])
   const copy = () =>
     navigator.clipboard.writeText(dir.startPrompt).then(
       () => toast('The prompt is copied.'),
@@ -693,19 +426,13 @@ function FirstStart({ dir }: { dir: DirData }) {
     )
   return html`<div class="empty first">
     <h2>${dir.name} has no store yet</h2>
-    ${dir.rolesDraft ? html`<p>${
-          'The assess skill drafted the people, the limits and the roles of ' +
-          'this dir. Read them, then accept them: the UI writes '}<code>aristoteles.yaml</code>
-          ${' and runs '}<code>work init</code>.</p>
-        <pre class="draft-text">${draft ?? ''}</pre>
-        <button class="btn primary"
-          onClick=${attempt(() => post({ act: 'accept-roles' }))}>Accept the roles</button>`
-      : html`<p>${
-          'Open the AI CLI that you use in this dir, in a tmux pane, and paste this prompt ' +
-          'into it. That session is the host: it reads the dir and drafts its people and ' +
-          'roles; the draft shows here, and waits for you.'}</p>
-        <pre class="draft-text">${dir.startPrompt}</pre>
-        <button class="btn primary" onClick=${copy}>Copy the prompt</button>`}
+    <p>${'Open the AI CLI that you use in this dir, in a tmux pane, and paste this prompt into ' +
+      'it. That session is the host. It installs the /aristoteles skill here (work skill ' +
+      'install), then drafts the directions and the roles of this dir (work onboard). Each ' +
+      'draft shows here: you check each direction, then each role, and approve all roles to ' +
+      'start the store.'}</p>
+    <pre class="draft-text">${dir.startPrompt}</pre>
+    <button class="btn primary" onClick=${copy}>Copy the prompt</button>
   </div>`
 }
 
@@ -767,8 +494,9 @@ function App() {
   const stop = attempt(async (o: Owner) =>
     o.session ? post({ act: 'stop', session: o.session }) : undefined,
   )
+  // Every tier has its commands (ruling 10), so a persistent agent of any tier resumes.
   const resume = attempt(async (o: Owner) =>
-    o.session && (o.tier === 'sol' || o.tier === 'terra')
+    o.session && o.tier !== 'program'
       ? post({ act: 'resume', session: o.session, tier: o.tier })
       : undefined,
   )
@@ -793,7 +521,10 @@ function App() {
     <${Sidebar} dir=${dir} project=${project} onSettings=${() => setSettings(true)} />
     <main class="canvas">
       ${personLine ? html`<p class="person-line">${personLine}</p>` : ''}
-      ${!dir.initialized ? html`<${FirstStart} dir=${dir} />`
+      ${!dir.initialized
+        ? dir.onboarding
+          ? html`<${Onboarding} dir=${dir} version=${version} />`
+          : html`<${FirstStart} dir=${dir} />`
         : !view ? html`<div class="empty"><h2>No project yet</h2>
           <p>A project starts in your AI CLI: trigger the aristoteles skill there, and that
             session is the host. Its terminal shows here.</p></div>`
@@ -807,7 +538,8 @@ function App() {
     </main>
     ${hash.task ? html`<${Panel} id=${hash.task} tab=${hash.tab} version=${version}
       onClose=${() => go(project)} onTab=${(t: string) => go(project, hash.task, t)} />` : ''}
-    ${settings ? html`<${SettingsModal} dir=${dir} onClose=${() => setSettings(false)} />` : ''}
+    ${settings ? html`<${Gear} dir=${dir} version=${version}
+      onClose=${() => setSettings(false)} />` : ''}
   </div>`
 }
 

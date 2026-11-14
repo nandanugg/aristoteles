@@ -6,7 +6,9 @@
 import { Schema, SchemaGetter } from 'effect'
 import {
   AdjustmentSchema,
+  AgentId,
   AssignmentId,
+  DirectionId,
   EventRef,
   ProblemId,
   RevisionId,
@@ -17,17 +19,22 @@ import {
   TaskId,
   Time,
   type CanvasRow as UiCanvasRow,
+  type CaseView as UiCaseView,
   type Decision as UiDecision,
   type DiffView as UiDiffView,
+  type DirectionCard as UiDirectionCard,
   type DirectionView as UiDirectionView,
   type DirView as UiDirView,
+  type OnboardingView as UiOnboardingView,
   type Owner as UiOwner,
   type PageAct as UiPageAct,
   type PageMessage as UiPageMessage,
   type ProjectSummary as UiProjectSummary,
   type ProjectView as UiProjectView,
+  type QuestionView as UiQuestionView,
   type ResultView as UiResultView,
   type ReviewCard as UiReviewCard,
+  type RoleCard as UiRoleCard,
   type ServerMessage as UiServerMessage,
   type TaskCard as UiTaskCard,
   type TaskDraftView as UiTaskDraftView,
@@ -190,6 +197,7 @@ export const Owner = Schema.Struct({
   a: AssignmentId,
   role: Text,
   tier: Tier,
+  agent: Schema.NullOr(AgentId),
   session: Schema.NullOr(SessionId),
   inside: Schema.NullOr(AssignmentId),
   resumable: Schema.optionalKey(Schema.Boolean),
@@ -270,7 +278,7 @@ export const DirView = Schema.Struct({
   sound: Schema.Boolean,
   settings: Settings,
   hasConfig: Schema.Boolean,
-  rolesDraft: Schema.Boolean,
+  onboarding: Schema.Boolean,
   initialized: Schema.Boolean,
   startPrompt: Text,
   projects: Schema.Array(ProjectSummary),
@@ -298,21 +306,20 @@ export const ResultView = Schema.Struct({
   at: Time,
   reviews: Schema.Array(ReviewOfResult),
 })
+const StandardsView = Schema.Array(
+  Schema.Struct({
+    id: Text,
+    says: Text,
+    rules: Schema.Array(Schema.Struct({ id: Text, says: Text, checkedBy: Schema.NullOr(Text) })),
+  }),
+)
 export const DirectionView = Schema.Struct({
   id: Text,
   name: Text,
   owner: Text,
   version: Text,
   says: Text,
-  standards: Schema.Array(
-    Schema.Struct({
-      id: Text,
-      says: Text,
-      rules: Schema.Array(
-        Schema.Struct({ id: Text, says: Text, checkedBy: Schema.NullOr(Text) }),
-      ),
-    }),
-  ),
+  standards: StandardsView,
   changed: Schema.Array(Schema.Struct({ id: Text, at: Time })),
   drafts: Schema.Array(Schema.Struct({ id: Text, by: Text, at: Time })),
 })
@@ -331,8 +338,53 @@ export const TaskPanel = Schema.Struct({
 })
 export const DiffView = Schema.Struct({ file: Schema.NullOr(Text), diff: Text })
 
-// GET /api/roles-draft.
-export const RolesDraft = Schema.Struct({ text: Schema.NullOr(Text) })
+// GET /api/onboarding: the directions page, the agents page, and the gear's two entries.
+export const CaseView = Schema.Struct({
+  file: Text,
+  line: Schema.Number,
+  excerpt: Text,
+  fit: Schema.Literals(['Follows', 'Breaks']),
+  current: Schema.Boolean,
+})
+export const QuestionView = Schema.Struct({
+  says: Text,
+  case: CaseView,
+  options: Schema.Tuple([Text, Text]),
+  answer: Schema.NullOr(Schema.Literals(['A', 'B'])),
+})
+export const DirectionCard = Schema.Struct({
+  id: Text,
+  name: Text,
+  state: Schema.Literals(['loading', 'question', 'ready', 'accepted', 'current']),
+  origin: Text,
+  principle: Schema.NullOr(Text),
+  example: Schema.NullOr(Text),
+  says: Schema.NullOr(Text),
+  standards: StandardsView,
+  cases: Schema.Array(CaseView),
+  questions: Schema.Array(QuestionView),
+  request: Schema.NullOr(Text),
+})
+export const RoleCard = Schema.Struct({
+  role: Text,
+  icon: Text,
+  tier: Tier,
+  model: Schema.NullOr(Text),
+  launch: Schema.NullOr(Text),
+  summary: Text,
+  description: Text,
+  persistence: Schema.NullOr(Schema.Struct({ persistent: Schema.Boolean, why: Text })),
+  toggle: Schema.Boolean,
+  found: Schema.NullOr(Text),
+  state: Schema.Literals(['waiting', 'accepted', 'current']),
+  request: Schema.NullOr(Text),
+})
+export const OnboardingView = Schema.Struct({
+  stage: Schema.Literals(['files', 'store']),
+  directions: Schema.Array(DirectionCard),
+  roles: Schema.Array(RoleCard),
+  adjustments: Schema.Array(Decision),
+})
 // GET /api/person (ruling 10.8): the page knows the person only by git user.name. A name that is
 // no person of the dir sees no items, and the line says which name to set.
 export const PersonView = Schema.Struct({
@@ -378,6 +430,7 @@ export const PageMessage = Schema.Union([
 // from the file (a tier keeps the words that it did not send, and outsideSourceHours is not on
 // the form).
 export const TierChange = Schema.Struct({
+  model: Schema.optionalKey(Text),
   launch: Schema.optionalKey(Text),
   resume: Schema.optionalKey(Text),
   start: Schema.optionalKey(Text),
@@ -397,13 +450,19 @@ export const SettingsChange = Schema.Struct({
     Schema.Struct({
       sol: Schema.optionalKey(TierChange),
       terra: Schema.optionalKey(TierChange),
+      luna: Schema.optionalKey(TierChange),
     }),
   ),
 })
 export type SettingsChange = typeof SettingsChange.Type
 
+// What a suggestion of the gear is about.
+export const SuggestionTarget = Schema.Union([
+  Schema.TaggedStruct('NewDirection', {}),
+  Schema.TaggedStruct('Direction', { direction: DirectionId }),
+  Schema.TaggedStruct('Roles', {}),
+])
 export const PageAct = Schema.Union([
-  Schema.Struct({ act: Schema.Literal('accept-roles') }),
   Schema.Struct({ act: Schema.Literal('open'), draft: TaskDraftId }),
   Schema.Struct({
     act: Schema.Literal('close'),
@@ -432,10 +491,11 @@ export const PageAct = Schema.Union([
   // The person decides a drafted adjustment (ruling 14).
   Schema.Struct({ act: Schema.Literal('accept-adjustment'), draft: EventRef }),
   Schema.Struct({ act: Schema.Literal('reject-adjustment'), draft: EventRef, reason: Text }),
+  // The text box of the gear (P7).
+  Schema.Struct({ act: Schema.Literal('suggest'), about: SuggestionTarget, says: Text }),
 ])
 export type PageAct = typeof PageAct.Type
 export const ACTS = [
-  'accept-roles',
   'open',
   'close',
   'stop',
@@ -451,6 +511,7 @@ export const ACTS = [
   'reject-words',
   'accept-adjustment',
   'reject-adjustment',
+  'suggest',
 ] as const
 
 // The answer of an act: { out } (and { run, session } for a new project), or { error }.
@@ -493,6 +554,11 @@ export type Agreements = [
   Must<Agree<typeof DirectionView.Type, UiDirectionView>>,
   Must<Agree<typeof DiffView.Type, UiDiffView>>,
   Must<Agree<typeof Decision.Type, UiDecision>>,
+  Must<Agree<typeof OnboardingView.Type, UiOnboardingView>>,
+  Must<Agree<typeof DirectionCard.Type, UiDirectionCard>>,
+  Must<Agree<typeof RoleCard.Type, UiRoleCard>>,
+  Must<Agree<typeof CaseView.Type, UiCaseView>>,
+  Must<Agree<typeof QuestionView.Type, UiQuestionView>>,
   Must<Agree<typeof ServerMessage.Type, UiServerMessage>>,
   Must<Agree<typeof PageMessage.Type, UiPageMessage>>,
   // The act of the page is the type of ui-model but for the settings, which carry a change.

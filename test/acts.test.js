@@ -4,8 +4,10 @@
 // relayed act that waits for a confirm; the host handles the rest, and writes its words about
 // each decision before the person sees it.
 import { describe, expect, test } from 'bun:test'
-import { HOST, INTRO_V2, TASK_WHOLE, agentToken, init, ok, project, solToken, tokenIn } from './harness.js'
-import { canvas, gitPerson, panel, tables } from './outside.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { HOST, INTRO_V2, TASK_WHOLE, agentToken, init, ok, project, solToken, started, tokenIn } from './harness.js'
+import { act, canvas, gitPerson, panel, tables } from './outside.js'
 
 // The decisions that the person sees on the panel of a task (the server's /api/task), at the time
 // of the last act. At LATE, hostWaitMinutes (10 by default) passed since every act of these
@@ -188,3 +190,30 @@ describe('the acts of the UI', () => {
     expect(await canvas(p, 'h1')).toMatchObject({ state: 'done', rows: [] })
   })
 })
+
+// The sixth decision (rulings 13 and 14, onboarding 2026-11-14): a model drafts an adjustment of a
+// role or a direction, and the person accepts it on the page, or rejects it with a reason.
+describe('an adjustment on the page', () => {
+  const drafted = (out) => out.match(/^(e\d+): an adjustment: /)[1]
+
+  test('the person accepts an adjustment, or rejects it with a reason', async () => {
+    const { p } = await started()
+    gitPerson(p)
+    const tier = drafted(ok(await p.agent('adjust tier writer --tier=medium --by=host')).out)
+    const [item] = await decisions(p)
+    expect(item).toMatchObject({ kind: 'adjustment', id: tier, task: null, shown: true })
+    expect(item.text).toBe(
+      'An adjustment, drafted by host, a model run outside any task, waits for your decision: writer becomes a medium role.',
+    )
+    expect(item.adjustment).toEqual({ _tag: 'SetTier', role: 'writer', tier: 'medium' })
+    expect(await act(p, 'accept-adjustment', { draft: tier })).toEqual({ out: `${tier} accepted.` })
+    expect(Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).roles.writer.tier).toBe('medium')
+    expect(await decisions(p)).toEqual([])
+    const back = drafted(ok(await p.agent('adjust tier writer --tier=low --by=host')).out)
+    expect((await act(p, 'reject-adjustment', { draft: back, reason: '' })).error).toBeDefined()
+    expect(await act(p, 'reject-adjustment', { draft: back, reason: 'keep the writer medium' })).toEqual({ out: `${back} rejected.` })
+    expect(await decisions(p)).toEqual([])
+    expect(ok(await p.nanda(`adjust show ${back}`)).out).toContain('rejected (')
+  })
+})
+

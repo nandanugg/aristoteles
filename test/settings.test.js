@@ -6,8 +6,21 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import Ajv from 'ajv/dist/2020.js'
-import { CODE_YAML, WORK_YAML, ok, project, started } from './harness.js'
-import { act, api, settingsOf } from './outside.js'
+import { startServer } from './code.js'
+import { CODE_YAML, ONBOARD_CONFIG, WORK_YAML, ok, onboardingProject, project, started } from './harness.js'
+import { act, api, dbOf, gitPerson, settingsOf } from './outside.js'
+
+// An act of the onboarding pages (POST /api/onboarding), with the key and the page's own origin.
+const onboardingAct = async (p, body) => {
+  const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) } })
+  try {
+    const origin = `http://127.0.0.1:${s.port}`
+    const headers = { cookie: `aristoteles-${s.port}=${s.key}`, origin, 'content-type': 'application/json' }
+    return await (await fetch(`${origin}/api/onboarding`, { method: 'POST', headers, body: JSON.stringify(body) })).json()
+  } finally {
+    s.stop()
+  }
+}
 
 const schema = JSON.parse(readFileSync(join(import.meta.dir, '..', 'schema', 'aristoteles.schema.json'), 'utf8'))
 const validate = new Ajv({ allErrors: true, strict: false }).compile(schema)
@@ -89,6 +102,19 @@ describe('aristoteles.yaml', () => {
     expect([s.retryMinutes, s.hostWaitMinutes, s.sound, s.theme]).toEqual([5, 10, false, 'light'])
   })
 
+  // Ruling 10, onboarding 2026-11-14: each of the three tiers has a model and its commands.
+  test('the three tiers with their model, read and written by the page', async () => {
+    const tiers = 'tiers:\n  luna:\n    model: small-model\n    launch: agent-tool --model {model} --session-id {session}\n    resume: agent-tool --resume {session}\n'
+    const p = project({ 'aristoteles.yaml': tiers + WORK_YAML })
+    const s = await settingsOf(p)
+    expect(s.tiers.luna).toMatchObject({ model: 'small-model', launch: 'agent-tool --model {model} --session-id {session}' })
+    const settings = { tiers: { sol: { model: 'large-model', launch: 'agent-tool --model {model} --session-id {session}' }, luna: { model: 'small-model', launch: 'agent-tool --session-id {session}' } } }
+    expect(await act(p, 'settings', { settings })).toEqual({ out: 'the settings are saved.' })
+    const now = await settingsOf(p)
+    expect(now.tiers.sol).toMatchObject({ model: 'large-model', launch: 'agent-tool --model {model} --session-id {session}' })
+    expect(now.tiers.luna).toMatchObject({ model: 'small-model', launch: 'agent-tool --session-id {session}' })
+  })
+
   test('a write of the settings keeps every other line, and the stored config does not change', async () => {
     const { p, lead } = await started({ 'aristoteles.yaml': `${SETTINGS}# the roles below are ours\n${WORK_YAML}` })
     const settings = { sound: true, theme: 'dark', tiers: { sol: { launch: 'other-tool --session-id {session}' } } }
@@ -155,9 +181,10 @@ describe('the skills of a launched AI tool', () => {
   })
 })
 
-// The first start of a dir (Nanda, 2026-11-12): the person pastes the assess prompt into the AI CLI
-// that they use, in the dir. That CLI is the host and knows its own commands, so its draft brings
-// the tiers; Accept the roles writes them into aristoteles.yaml and runs work init.
+// The first start of a dir (Nanda, 2026-11-12; ruling 12, onboarding 2026-11-14): the person
+// pastes the prompt into the AI CLI that they use, in the dir. That CLI is the host: it installs
+// the /aristoteles skill, then drafts the onboarding files, and its draft brings the tiers of its
+// own commands; the store start writes them into aristoteles.yaml.
 describe('the first start of a dir', () => {
   // A dir with only the settings that the person saved on the page, and its git user.
   const fresh = () => {
@@ -167,29 +194,36 @@ describe('the first start of a dir', () => {
     return p
   }
   const HOST_TIERS = 'tiers:\n  sol:\n    launch: host-cli --session-id {session} {prompt}\n    skills: .host/skills\n'
+  const ROOT = join(import.meta.dir, '..')
 
-  test('the page shows the prompt; the tiers of the draft replace the saved ones, in one block', async () => {
+  test('the page shows the prompt: the skill install first, then the skill', async () => {
     const p = fresh()
     const dir = await api(p, '/api/dir')
-    expect(dir.initialized).toBe(false)
-    expect(dir.startPrompt).toStartWith(`Use aristoteles in the folder ${p.dir}: read ${join(import.meta.dir, '..', 'skills', 'aristoteles', 'SKILL.md')}`)
-    p.write('aristoteles.draft.yaml', HOST_TIERS + WORK_YAML)
-    expect((await act(p, 'accept-roles')).out).toStartWith('store made for report-export in aristoteles')
-    const text = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
-    expect(text.match(/^tiers:/gm)).toHaveLength(1)
-    expect(text).toContain(WORK_YAML)
-    expect((await settingsOf(p)).tiers.sol).toMatchObject({ launch: 'host-cli --session-id {session} {prompt}', skills: '.host/skills' })
-    expect(existsSync(join(p.dir, 'aristoteles.draft.yaml'))).toBe(false)
+    expect(dir).toMatchObject({ initialized: false, onboarding: false })
+    // Ruling 12, onboarding 2026-11-14: the prompt names work skill install as its first step (it
+    // named the skill only).
+    expect(dir.startPrompt).toBe(
+      `Use aristoteles in the folder ${p.dir}: run work skill install there, then read ` +
+        `${join(ROOT, 'skills', 'aristoteles', 'SKILL.md')} and do what it says; you are the host. ` +
+        `When work is not on the PATH, use bun ${join(ROOT, 'bin', 'work.js')} in its place.`,
+    )
   })
 
-  test('a draft whose tiers do not read is refused, and the files stay as they were', async () => {
-    const p = fresh()
-    const before = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
-    p.write('aristoteles.draft.yaml', `tiers:\n  sol: { launch: host-cli }\n${WORK_YAML}`)
-    expect((await act(p, 'accept-roles')).error).toBe('aristoteles.draft.yaml: aristoteles.yaml: tiers.sol.launch has no {session}: the UI gives each real agent its session id, so that a resume finds it')
-    expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe(before)
-    expect(existsSync(join(p.dir, 'aristoteles.draft.yaml'))).toBe(true)
-    expect((await api(p, '/api/dir')).initialized).toBe(false)
+  // Ruling 1, onboarding 2026-11-14: the store start of the page writes the tiers of the draft
+  // (Accept the roles did, with no onboarding files).
+  test('the store start: the tiers of the draft replace the saved ones, in one block', async () => {
+    const p = onboardingProject({ 'aristoteles.yaml': 'tiers:\n  sol:\n    launch: page-tool --session-id {session}\n' })
+    gitPerson(p)
+    p.write('draft.yaml', HOST_TIERS + ONBOARD_CONFIG)
+    ok(await p.agent('onboard config --file=draft.yaml'))
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`onboard accept-role ${role}`))
+    expect((await onboardingAct(p, { act: 'approve-all-roles' })).out).toBe(
+      'store made for report-export in aristoteles: 4 roles and 0 directions; the onboarding files are gone.',
+    )
+    const text = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
+    expect(text.match(/^tiers:/gm)).toHaveLength(1)
+    expect((await settingsOf(p)).tiers.sol).toMatchObject({ launch: 'host-cli --session-id {session} {prompt}', skills: '.host/skills' })
+    expect(existsSync(join(p.dir, 'aristoteles.draft.yaml'))).toBe(false)
   })
 
   test('work config check reads the draft as the store start does, for any caller, and writes nothing', async () => {

@@ -87,6 +87,15 @@ export const ICONS = {
     <polyline points="17 11 12 6 7 11"></polyline>
     <polyline points="17 18 12 13 7 18"></polyline>
   `,
+  // The robot of the gear's agents entry (Lucide bot, ISC: vendor/LICENSE-lucide.txt).
+  bot: html`
+    <path d="M12 8V4H8"></path>
+    <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+    <path d="M2 14h2"></path>
+    <path d="M20 14h2"></path>
+    <path d="M15 13v2"></path>
+    <path d="M9 13v2"></path>
+  `,
   pageDown: html`
     <polyline points="7 13 12 18 17 13"></polyline>
     <polyline points="7 6 12 11 17 6"></polyline>

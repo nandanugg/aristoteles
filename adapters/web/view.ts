@@ -8,11 +8,14 @@ import { join } from 'node:path'
 import {
   attemptOf,
   blockersOf,
+  caseStateOf,
+  onboardingStateOf,
   type Derived,
   isEndedTask,
   adjustmentDraftAt,
   roleWordsDraftAt,
   SURFACES,
+  tierOfAssignment,
   waitingFor,
   type WaitingItem,
   type WaitingWho,
@@ -34,7 +37,6 @@ import {
   parentOf,
   partsOf,
   resultsOf,
-  roleAt,
   ruleAt,
   rulesOfStandard,
   runOfTree,
@@ -49,11 +51,16 @@ import {
   type AssignmentId,
   type By,
   type CanvasRow,
+  type Case,
+  type CaseView,
   type Decision,
   type Direction,
+  type DirectionCard,
   type DirectionView,
   type DirView,
   type DraftChange,
+  type OnboardingDirection,
+  type OnboardingView,
   type Owner,
   type ProjectSummary,
   type ProjectView,
@@ -61,6 +68,8 @@ import {
   type Result,
   type Revision,
   type ReviewCard,
+  type RoleCard,
+  type RoleFile,
   type RunId,
   type RunState,
   type Settings,
@@ -78,8 +87,9 @@ import {
   whereRecord,
   whoOf,
 } from '../../core/schema/index.ts'
-import { pathOf } from '../../core/services/index.ts'
+import { type OnboardingFiles, pathOf } from '../../core/services/index.ts'
 import {
+  adjustmentWords,
   describeInner,
   drafterWords,
   logLine,
@@ -125,19 +135,34 @@ const textDiff = (file: string, before: string, after: string): string => {
 
 const byName = (by: By): string => (isAssignment(by) ? by : by.name)
 const workOf = (d: Derived): Work => d.moment.work
-const tierOfAssignment = (w: Work, a: Assignment): TierName => {
-  const role = roleAt(w, a.role)
-  if (role._tag === 'Program') return 'program'
-  return role.tier === 'high' ? 'sol' : role.tier === 'medium' ? 'terra' : 'luna'
-}
-// Only a Sol or a Terra runs as a real agent in a terminal; a Luna runs inside its parent's.
-const isReal = (w: Work, a: Assignment): boolean => {
+const TIER_WORD = { high: 'sol', medium: 'terra', low: 'luna' } as const
+// The tier that the assignment kept at its give (core/derived tierOfAssignment); none: a program.
+const tierWord = (w: Work, a: Assignment): TierName => {
   const tier = tierOfAssignment(w, a)
-  return tier === 'sol' || tier === 'terra'
+  return tier === null ? 'program' : TIER_WORD[tier]
+}
+// Where an assignment runs (ruling 7): the host and a persistent agent run in a terminal of their
+// own; a persistent role on a task that no run holds (NoRun) has none, as no terminal starts
+// there. A subagent runs inside the terminal above it, a program in the CLI.
+const isPersistent = (a: Assignment): boolean =>
+  a.runs._tag === 'Host' || a.runs._tag === 'Agent' || a.runs._tag === 'NoRun'
+// Its terminal: the host's pane, or the one terminal of its persistent agent (ruling 9), which
+// the supervisor starts after the give.
+const terminalOf = (w: Work, a: Assignment) => {
+  switch (a.runs._tag) {
+    case 'Host':
+      return { agent: null, session: w.runs.get(a.runs.run)?.session ?? null }
+    case 'Agent': {
+      const terminal = w.agents.get(a.runs.agent)?.terminal
+      const session = terminal?._tag === 'Started' ? terminal.session : null
+      return { agent: a.runs.agent, session }
+    }
+    default:
+      return { agent: null, session: null }
+  }
 }
 const assignmentsOn = (w: Work, task: TaskId): ReadonlyArray<Assignment> =>
   [...w.assignments.values()].filter((a) => a.task === task)
-const sessionOf = (w: Work, a: AssignmentId) => w.sessions.get(a)?.session ?? null
 const ended = (d: Derived, a: AssignmentId): boolean =>
   d.states.assignments.get(a)?._tag === 'Ended'
 // A maker that may still make a result of its own: it has tries left, and its task is open.
@@ -393,7 +418,9 @@ const decisionOf = (d: Derived, item: WaitingItem): Decision | undefined => {
       return {
         _tag: 'Adjustment',
         id: item.draft,
-        text: `An adjustment, drafted by ${drafterWords(x.by)}, waits for your decision.`,
+        text:
+          `An adjustment, drafted by ${drafterWords(x.by)}, waits for your decision: ` +
+          `${adjustmentWords(x.adjustment)}.`,
         adjustment: x.adjustment,
         words: null,
         shown: item.hold,
@@ -476,39 +503,48 @@ export const projectsOf = (d: Derived, ctx: ViewContext): ReadonlyArray<ProjectS
 
 // --- the canvas -----------------------------------------------------------------------------
 
-// The terminal that owns a task: its open Sol or Terra assignment. When every lead finished, the
-// host of an open run owns it, because the host acts on the person's end decision. A task that
-// only a Luna does runs inside the terminal of the real agent that assigned it (Nanda,
-// 2026-11-11). Only the terminal of live work can be resumed: finished work has nothing to resume,
-// and the UI never restarts a host: the person triggers it again (Nanda, 2026-11-13).
+// The nearest assignment above that runs in a terminal of its own.
+const persistentParentOf = (w: Work, a: AssignmentId): Assignment | undefined => {
+  let parent = parentOf(w, a)
+  while (parent && !isPersistent(assignmentAt(w, parent))) parent = parentOf(w, parent)
+  return parent ? assignmentAt(w, parent) : undefined
+}
+
+// The terminal that owns a task: its open assignment of the host or of a persistent agent. When
+// every lead finished, a terminal that still lives owns it: the host of an open run (it acts on
+// the person's end decision), or an agent that waits for its next assignment. A task that only a
+// subagent does runs inside the terminal that assigned it (Nanda, 2026-11-11). Only an agent's
+// terminal can be resumed, while its project goes on; the UI never restarts a host: the person
+// triggers it again (Nanda, 2026-11-13).
 const ownerOf = (d: Derived, task: TaskId): Owner | null => {
   const w = workOf(d)
   const mine = assignmentsOn(w, task)
-  const leads = mine.filter((a) => isReal(w, a))
-  const inOpenRun = (a: Assignment) =>
-    [...w.runs.values()].some((r) => runIsOpen(d, r.id) && r.session === sessionOf(w, a.id))
-  const lead =
-    leads.findLast((a) => !ended(d, a.id)) ?? leads.findLast(inOpenRun) ?? leads.at(-1)
+  const leads = mine.filter(isPersistent)
+  const lives = (a: Assignment) =>
+    a.runs._tag === 'Host'
+      ? runIsOpen(d, a.runs.run)
+      : a.runs._tag === 'Agent' && d.states.agents.get(a.runs.agent)?._tag !== 'Ended'
+  const lead = leads.findLast((a) => !ended(d, a.id)) ?? leads.findLast(lives) ?? leads.at(-1)
   if (lead) {
     return {
       a: lead.id,
       role: lead.role,
-      tier: tierOfAssignment(w, lead),
-      session: sessionOf(w, lead.id),
+      tier: tierWord(w, lead),
+      ...terminalOf(w, lead),
       inside: null,
-      resumable: !ended(d, lead.id) && !inOpenRun(lead),
+      resumable: lead.runs._tag === 'Agent' && lives(lead),
     }
   }
   const maker = mine.at(-1)
   if (!maker) return null
-  let parent = parentOf(w, maker.id)
-  while (parent && !isReal(w, assignmentAt(w, parent))) parent = parentOf(w, parent)
+  const parent = persistentParentOf(w, maker.id)
   return {
     a: maker.id,
     role: maker.role,
-    tier: tierOfAssignment(w, maker),
-    session: parent ? sessionOf(w, parent) : null,
-    inside: parent ?? null,
+    tier: tierWord(w, maker),
+    agent: null,
+    session: parent ? terminalOf(w, parent).session : null,
+    inside: parent?.id ?? null,
   }
 }
 
@@ -540,7 +576,7 @@ const reviewCards = (d: Derived, result: Result): ReadonlyArray<ReviewCard> => {
         id: v.id,
         by: byName(v.by),
         role: agent ? agent.role : 'person',
-        tier: agent ? tierOfAssignment(w, agent) : 'person',
+        tier: agent ? tierWord(w, agent) : 'person',
         decides: agent ? decidesResults(w, v.by, result.id, v.when) : true,
         decision:
           v.decision === 'Accept' ? 'accept' : v.decision === 'Reject' ? 'reject' : 'escalate',
@@ -551,7 +587,7 @@ const reviewCards = (d: Derived, result: Result): ReadonlyArray<ReviewCard> => {
   const since = items.findLastIndex((v) => v.redo)
   const reviewed = (a: Assignment) => items.some((v, i) => i > since && v.by === a.id)
   for (const a of assignmentsOn(w, result.task)) {
-    if (ended(d, a.id) || isDo(w, a.role) || tierOfAssignment(w, a) !== 'luna') continue
+    if (ended(d, a.id) || isDo(w, a.role) || tierWord(w, a) !== 'luna') continue
     if (reviewed(a)) continue
     cards.push({
       id: null,
@@ -603,16 +639,15 @@ const workCards = (d: Derived, task: TaskId, ctx: ViewContext): ReadonlyArray<Wo
       const next =
         last !== undefined && tryingMaker(d, m.id) && resultWord(d, last.id) === 'rejected'
       const result = next ? undefined : last
-      let parent = parentOf(w, m.id)
-      while (parent && !isReal(w, assignmentAt(w, parent))) parent = parentOf(w, parent)
-      const real = isReal(w, m)
+      const parent = persistentParentOf(w, m.id)
+      const own = isPersistent(m)
       return withLive(ctx, {
         a: m.id,
         role: m.role,
-        tier: tierOfAssignment(w, m),
+        tier: tierWord(w, m),
         attempt: attemptCard(d, m),
-        session: real ? sessionOf(w, m.id) : parent ? sessionOf(w, parent) : null,
-        inside: real || !parent ? null : parent,
+        session: own ? terminalOf(w, m).session : parent ? terminalOf(w, parent).session : null,
+        inside: own || !parent ? null : parent.id,
         result: result ? result.id : null,
         output: result?.output ?? null,
         state: result ? resultWord(d, result.id) : ended(d, m.id) ? 'finished' : 'works',
@@ -679,6 +714,21 @@ export const projectView = (d: Derived, id: string, ctx: ViewContext): ProjectVi
 
 // The directions of a top task: each one with its version now, its standards and rules, the
 // versions made during the project, and the drafts that wait.
+// The standards of a version, each rule with the role that checks it.
+const standardsOf = (w: Work, v: Version<Direction>): DirectionView['standards'] =>
+  v.standards.map((entry) => {
+    const s = standardAt(w, entry)
+    return {
+      id: s.id,
+      says: s.says,
+      rules: rulesOfStandard(w, s).map((r) => ({
+        id: r.id,
+        says: r.says,
+        checkedBy: r.checkedBy._tag === 'Role' ? r.checkedBy.role : null,
+      })),
+    }
+  })
+
 const directionsView = (d: Derived, task: Task): ReadonlyArray<DirectionView> => {
   const w = workOf(d)
   const waiting = [...d.states.revisions]
@@ -694,18 +744,7 @@ const directionsView = (d: Derived, task: Task): ReadonlyArray<DirectionView> =>
         owner: dir.owner.name,
         version: versionIdOf(v),
         says: v.says,
-        standards: v.standards.map((entry) => {
-          const s = standardAt(w, entry)
-          return {
-            id: s.id,
-            says: s.says,
-            rules: rulesOfStandard(w, s).map((r) => ({
-              id: r.id,
-              says: r.says,
-              checkedBy: r.checkedBy._tag === 'Role' ? r.checkedBy.role : null,
-            })),
-          }
-        }),
+        standards: standardsOf(w, v),
         changed:
           dir._tag === 'Official'
             ? dir.versions
@@ -756,10 +795,10 @@ export const taskPanel = (d: Derived, id: string, ctx: ViewContext): TaskPanel |
       })),
     })),
   }))
-  // The terminal of the task: its owner's (a Luna task shows the terminal of its parent).
+  // The terminal of the task: its owner's (a subagent's task shows the terminal above it).
   const owner = ownerOf(d, task.id)
   const terminal = owner?.session
-    ? withLive(ctx, { session: owner.session, a: owner.inside ?? owner.a })
+    ? withLive(ctx, { session: owner.session, a: owner.inside ?? owner.agent ?? owner.a })
     : null
   return {
     id: task.id,
@@ -938,6 +977,168 @@ const filesOf = (d: Derived, task: TaskId, ctx: ViewContext) => {
   }))
 }
 
+// --- the onboarding pages and the gear (GET /api/onboarding) --------------------------------
+
+// A case is current while its excerpt is in its file (ruling 4): each file is read once a view.
+const caseReader = (dir: string) => {
+  const texts = new Map<string, string | null>()
+  const textOf = (file: string): string | null => {
+    if (!texts.has(file)) {
+      try {
+        texts.set(file, readFileSync(join(dir, file), 'utf8'))
+      } catch {
+        texts.set(file, null)
+      }
+    }
+    return texts.get(file) ?? null
+  }
+  return (c: Case): CaseView => ({
+    file: c.file,
+    line: c.line,
+    excerpt: c.excerpt,
+    fit: c.fit,
+    current: caseStateOf(textOf(c.file), c)._tag === 'Current',
+  })
+}
+
+const STATE_WORD = {
+  Loading: 'loading',
+  Question: 'question',
+  Ready: 'ready',
+  Accepted: 'accepted',
+} as const
+const originOf = (asked: OnboardingDirection['asked']): string => {
+  switch (asked._tag) {
+    case 'Found':
+      return 'found in the project by the host'
+    case 'New':
+      return 'asked for by the person'
+    case 'Company':
+      return `a company direction: ${asked.path} of ${asked.repo}`
+  }
+}
+// One file of .work/assess, for the directions page.
+const onboardingDirectionCard = (
+  f: OnboardingDirection,
+  caseOf: (c: Case) => CaseView,
+): DirectionCard => {
+  const drafted = f.draft._tag === 'Drafted' ? f.draft : undefined
+  const asked = f.asked
+  return {
+    id: f.id,
+    name:
+      drafted?.name ??
+      (asked._tag === 'New' ? asked.principle : asked._tag === 'Company' ? asked.path : f.id),
+    state: STATE_WORD[onboardingStateOf(f)._tag],
+    origin: originOf(asked),
+    principle: asked._tag === 'New' ? asked.principle : null,
+    example: asked._tag === 'New' ? asked.example : null,
+    says: drafted?.content.says ?? null,
+    standards: (drafted?.content.standards ?? []).map((st) => ({
+      id: st.id,
+      says: st.says,
+      rules: st.rules.map((r) => ({ id: r.id, says: r.says, checkedBy: r.checkedBy ?? null })),
+    })),
+    cases: (drafted?.cases ?? []).map(caseOf),
+    questions: f.questions.map((q) => ({
+      says: q.says,
+      case: caseOf(q.case),
+      options: q.options,
+      answer: q.answer._tag === 'Chosen' ? q.answer.option : null,
+    })),
+    request: f.request._tag === 'Revise' ? f.request.words : null,
+  }
+}
+
+// The model of a tier: its setting, or the class of the tier (P9, as work assign words it).
+const MODEL_CLASS = { sol: 'Opus', terra: 'Sonnet', luna: 'Haiku' } as const
+// What every card of a role shows, from its file and the settings of its tier (ruling 10).
+const roleCardOf = (settings: Settings, role: string, file: RoleFile) => {
+  if (file.kind === 'program') {
+    const tier = 'program' as const
+    return { role, icon: file.icon, tier, model: null, launch: null, persistence: null }
+  }
+  const tier = TIER_WORD[file.tier]
+  const commands = settings.tiers[tier]
+  return {
+    role,
+    icon: file.icon,
+    tier,
+    model: commands?.model ?? MODEL_CLASS[tier],
+    launch: commands?.launch ?? null,
+    persistence: file.persistence,
+  }
+}
+
+// Before the store: the onboarding files (ruling 1). The role of the top task has no toggle while
+// it is the only persistent high role (ruling 15); the roles that the project has come first.
+export const onboardingFilesView = (
+  files: OnboardingFiles,
+  settings: Settings,
+  dir: string,
+): OnboardingView => {
+  const caseOf = caseReader(dir)
+  const leads = files.roles.filter(
+    (r) => r.file.kind === 'agent' && r.file.tier === 'high' && r.file.persistence.persistent,
+  )
+  const roles = files.roles.map(
+    (r): RoleCard => ({
+      ...roleCardOf(settings, r.role, r.file),
+      summary: r.summary,
+      description: r.file.description,
+      toggle: r.file.kind === 'agent' && !(leads.length === 1 && leads[0]?.role === r.role),
+      found: r.found._tag === 'InProject' ? r.found.path : null,
+      state: r.accepted._tag === 'Accepted' ? 'accepted' : 'waiting',
+      request: r.request._tag === 'Revise' ? r.request.words : null,
+    }),
+  )
+  return {
+    stage: 'files',
+    directions: files.directions.map((f) => onboardingDirectionCard(f, caseOf)),
+    roles: [...roles.filter((r) => r.found !== null), ...roles.filter((r) => r.found === null)],
+    adjustments: [],
+  }
+}
+
+// After the store (the gear, ruling 13): the official directions with their cases, the roles of
+// the stored config, and the adjustments that wait for the person.
+export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingView => {
+  const w = workOf(d)
+  const caseOf = caseReader(ctx.dir)
+  const directions = [...w.directions.values()]
+    .filter((x) => d.states.directions.get(x.id)?._tag === 'Official')
+    .map((x): DirectionCard => {
+      const v = currentOf(w, x.id)
+      const from = x.source._tag === 'External' ? `, from ${x.source.path} of ${x.source.repo}` : ''
+      return {
+        id: x.id,
+        name: x.name,
+        state: 'current',
+        origin: `${versionIdOf(v)}, owner ${x.owner.name}${from}`,
+        principle: null,
+        example: null,
+        says: v.says,
+        standards: standardsOf(w, v),
+        cases: x.cases.map(caseOf),
+        questions: [],
+        request: null,
+      }
+    })
+  const roles = Object.entries(w.config.roles).map(
+    ([role, file]): RoleCard => ({
+      ...roleCardOf(ctx.settings, role, file),
+      summary: file.description,
+      description: file.description,
+      toggle: false,
+      found: null,
+      state: 'current',
+      request: null,
+    }),
+  )
+  const adjustments = decisionsOf(d, ctx.person).filter((x) => x._tag === 'Adjustment')
+  return { stage: 'store', directions, roles, adjustments }
+}
+
 // --- the dir --------------------------------------------------------------------------------
 
 // The dir, for the sidebar. With no Derived the dir has no store, so it has no projects.
@@ -968,7 +1169,7 @@ export const dirView = (
     readonly name: string
     readonly path: string
     readonly settings: Settings
-    readonly rolesDraft: boolean
+    readonly onboarding: boolean
     readonly hasConfig: boolean
     readonly startPrompt: string
   },
@@ -980,7 +1181,7 @@ export const dirView = (
   sound: dir.settings.sound,
   settings: dir.settings,
   hasConfig: dir.hasConfig,
-  rolesDraft: dir.rolesDraft,
+  onboarding: dir.onboarding,
   initialized: d !== undefined,
   startPrompt: dir.startPrompt,
   projects: d ? projectsOf(d, ctx) : [],

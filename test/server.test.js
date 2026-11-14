@@ -2,9 +2,23 @@
 // `work start`; the API reads the store with the replay and the reads of the engine; a websocket
 // tells the page when the store changes.
 import { afterEach, describe, expect, test } from 'bun:test'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { startServer } from './code.js'
-import { HOST, INTRO_V1, ok, project, tokenIn, withWriter } from './harness.js'
+import {
+  HOST,
+  INTRO_V1,
+  ok,
+  ONBOARD_CONFIG,
+  ONBOARD_DIRECTION,
+  ONBOARD_NEW,
+  ONBOARD_QUESTIONS,
+  onboardingProject,
+  project,
+  tokenIn,
+  withWriter,
+} from './harness.js'
+import { gitPerson } from './outside.js'
 
 const servers = []
 afterEach(() => {
@@ -18,7 +32,18 @@ const serve = (p) => {
     const res = await fetch(`http://127.0.0.1:${s.port}${path}`, { headers: { cookie } })
     return res.headers.get('content-type')?.includes('json') ? res.json() : res.text()
   }
-  return { s, cookie, get }
+  // An act of the onboarding pages: it needs the key and the page's own origin.
+  const onboard = async (body) => {
+    const headers = { cookie, origin: `http://127.0.0.1:${s.port}`, 'content-type': 'application/json' }
+    const res = await fetch(`http://127.0.0.1:${s.port}/api/onboarding`, { method: 'POST', headers, body: JSON.stringify(body) })
+    return res.json()
+  }
+  const act = async (body) => {
+    const headers = { cookie, origin: `http://127.0.0.1:${s.port}`, 'content-type': 'application/json' }
+    const res = await fetch(`http://127.0.0.1:${s.port}/api/act`, { method: 'POST', headers, body: JSON.stringify(body) })
+    return res.json()
+  }
+  return { s, cookie, get, onboard, act }
 }
 // The writer reported r1, and the linter rejected it on the rule no-ticket-ids.
 const rejected = async () => {
@@ -141,3 +166,151 @@ describe('the server, read only', () => {
     expect(await get('/api/dir')).toMatchObject({ name: 'report-export', initialized: false, projects: [] })
   })
 })
+
+// The onboarding pages (BUILD.md 1g; rulings 1 to 6, 11, 15, onboarding 2026-11-14): before any
+// store, the page reads the onboarding files and writes the person's acts into them through the
+// module of the files; approve all roles starts the store with the accepted result only.
+const ROLES = ['architect', 'section-lead', 'writer', 'linter']
+const has = (p, path) => existsSync(join(p.dir, path))
+// The host's config draft and its draft of the direction that it found; the page acts as Nanda.
+async function onboarding() {
+  const p = onboardingProject()
+  gitPerson(p)
+  p.write('draft.yaml', ONBOARD_CONFIG)
+  ok(await p.agent('onboard config --file=draft.yaml'))
+  ok(await p.agent('onboard found tsd-writing'))
+  p.write('tsd.yaml', ONBOARD_DIRECTION)
+  ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+  return p
+}
+
+describe('the onboarding pages', () => {
+  test('GET /api/onboarding gives the directions page and the agents page from the files', async () => {
+    const p = await onboarding()
+    ok(await p.agent('onboard found code-proof'))
+    const { get } = serve(p)
+    expect((await get('/api/dir')).onboarding).toBe(true)
+    const view = await get('/api/onboarding')
+    expect(view.stage).toBe('files')
+    expect(view.directions.map((d) => [d.id, d.name, d.state, d.origin])).toEqual([
+      ['code-proof', 'code-proof', 'loading', 'found in the project by the host'],
+      ['tsd-writing', 'TSD writing', 'ready', 'found in the project by the host'],
+    ])
+    const tsd = view.directions[1]
+    expect(tsd.standards[0].rules[0]).toEqual({ id: 'no-code-proof', says: 'No file paths with line numbers, no commit hashes in the body', checkedBy: 'linter' })
+    // Ruling 4: each case with its place, and whether its excerpt is in its file now.
+    expect(tsd.cases).toEqual([
+      { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice for one merchant.', fit: 'Follows', current: true },
+      { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', fit: 'Follows', current: true },
+      { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', fit: 'Breaks', current: true },
+    ])
+    p.write('docs/tsd.md', readFileSync(join(p.dir, 'docs/tsd.md'), 'utf8').replaceAll('TODO', 'Done'))
+    expect((await get('/api/onboarding')).directions[1].cases[2].current).toBe(false)
+    // Ruling 11: the roles that the project has come first; the model is the class of the tier
+    // with no model in the settings; the role of the top task has no toggle (ruling 15).
+    expect(view.roles.map((r) => [r.role, r.tier, r.model, r.found, r.toggle, r.state])).toEqual([
+      ['linter', 'luna', 'Haiku', '.claude/agents/linter.md', true, 'waiting'],
+      ['architect', 'sol', 'Opus', null, false, 'waiting'],
+      ['section-lead', 'terra', 'Sonnet', null, true, 'waiting'],
+      ['writer', 'luna', 'Haiku', null, true, 'waiting'],
+    ])
+    expect(view.roles[1]).toMatchObject({
+      icon: 'compass', summary: 'Keeps the TSD on its directions.', launch: null,
+      persistence: { persistent: true, why: 'It holds the TSD for the whole project and starts the lower roles.' },
+    })
+    expect(view.adjustments).toEqual([])
+  })
+
+  test('each act of the page writes the files through the module, and stores nothing', async () => {
+    const p = await onboarding()
+    const { get, onboard } = serve(p)
+    // Ruling 5: a new direction has the id new-1 until its first draft names it.
+    expect(await onboard({ act: 'add-direction', principle: 'A section says one thing' })).toEqual({ out: 'new-1: a new direction; it shows Loading until the host drafts it.' })
+    expect(Bun.YAML.parse(readFileSync(join(p.dir, '.work/assess/new-1.yaml'), 'utf8')).asked).toEqual({ _tag: 'New', principle: 'A section says one thing', example: null })
+    p.write('one.yaml', ONBOARD_NEW)
+    ok(await p.agent('onboard draft new-1 --file=one.yaml'))
+    p.write('q.yaml', ONBOARD_QUESTIONS)
+    ok(await p.agent('onboard ask one-thing --file=q.yaml'))
+    const asked = (await get('/api/onboarding')).directions.find((d) => d.id === 'one-thing')
+    expect(asked).toMatchObject({ state: 'question', principle: 'A section says one thing' })
+    expect(asked.questions).toEqual([{
+      says: 'Does a section of facts count as one thing?',
+      case: { file: 'docs/facts.md', line: 3, excerpt: '## Dedupe', fit: 'Follows', current: true },
+      options: ['each fact is one thing', 'the facts together are one thing'], answer: null,
+    }])
+    expect((await onboard({ act: 'answer', direction: 'one-thing', options: ['B'] })).out).toBe('one-thing: the answers are submitted; the host drafts it again.')
+    expect((await get('/api/onboarding')).directions.find((d) => d.id === 'one-thing').state).toBe('loading')
+    // Ruling 2: Revise sends the words to the host; Remove keeps nothing.
+    expect((await onboard({ act: 'revise', direction: 'tsd-writing', words: 'name the reader' })).out).toBe('tsd-writing: the host drafts it again from your words.')
+    expect((await get('/api/onboarding')).directions.find((d) => d.id === 'tsd-writing')).toMatchObject({ state: 'loading', request: 'name the reader' })
+    expect((await onboard({ act: 'accept', direction: 'tsd-writing' })).error).toBe('a Revise of tsd-writing waits for the host')
+    expect((await onboard({ act: 'remove', direction: 'one-thing' })).out).toBe('one-thing is removed; nothing keeps it.')
+    expect(has(p, '.work/assess/one-thing.yaml')).toBe(false)
+    ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+    expect((await onboard({ act: 'approve-all-directions' })).out).toBe('accepted: tsd-writing.')
+    // Ruling 7, P11: the toggle writes the persistence with a true reason; the role of the top
+    // task has none (ruling 15).
+    expect((await onboard({ act: 'persistence', role: 'writer', persistent: true })).out).toBe('writer is persistent: it gets a terminal of its own.')
+    expect(Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.draft.yaml'), 'utf8')).roles.writer.persistence).toEqual({ persistent: true, why: 'Nanda chose it on the agents page.' })
+    expect((await onboard({ act: 'persistence', role: 'architect', persistent: false })).error).toContain('architect is the role of the top task (the only persistent high role), so it has no toggle')
+    expect((await onboard({ act: 'revise-role', role: 'linter', words: 'check the headings too' })).out).toBe('linter: the host writes it again from your words.')
+    expect((await get('/api/onboarding')).roles[0]).toMatchObject({ role: 'linter', request: 'check the headings too' })
+    expect((await onboard({ act: 'accept-role', role: 'writer' })).out).toBe('writer is accepted.')
+    expect((await get('/api/onboarding')).roles.find((r) => r.role === 'writer').state).toBe('accepted')
+    expect(has(p, '.work/aristoteles.db')).toBe(false)
+  })
+
+  test('approve all roles starts the store and deletes the files; a refusal writes aristoteles.yaml back', async () => {
+    const p = await onboarding()
+    p.write('aristoteles.yaml', 'theme: dark\n')
+    const { get, onboard, act } = serve(p)
+    ok(await p.nanda('onboard approve-directions', 'approve'))
+    for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
+    // The person removes the linter, which checks two rules of tsd-writing: the store refuses.
+    ok(await p.nanda('onboard remove-role linter'))
+    expect((await onboard({ act: 'approve-all-roles' })).error).toBe('rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role')
+    expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe('theme: dark\n')
+    for (const path of ['.work/assess/tsd-writing.yaml', 'aristoteles.draft.yaml']) expect(has(p, path)).toBe(true)
+    expect(has(p, '.work/onboarding.lock')).toBe(false)
+    expect((await get('/api/dir')).initialized).toBe(false)
+    // The host writes the linter again; the person accepts it, and the start stores the result.
+    p.write('linter.yaml', 'tier: low\ndescription: Checks one section against the rules in its checks.\nintro: For each rule in your checks, say where you looked and what you saw.\n' +
+      'responsibilities:\n  - Give one --evidence line for each rule in your checks.\n  - Reject with one --point for each rule that the section breaks.\n' +
+      'acts: [{ review: [writer] }]\npersistence: { persistent: false, why: It checks one section once. }\nicon: shield-check\nsummary: Checks one section.\n')
+    ok(await p.agent('onboard role linter --file=linter.yaml'))
+    ok(await p.nanda('onboard accept-role linter'))
+    expect((await onboard({ act: 'approve-all-roles' })).out).toBe('store made for report-export in aristoteles: 4 roles and 1 directions; the onboarding files are gone.')
+    for (const path of ['.work/assess', 'aristoteles.draft.yaml', '.work/onboarding.lock']) expect(has(p, path)).toBe(false)
+    expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toStartWith('theme: dark\n')
+    expect(await get('/api/dir')).toMatchObject({ initialized: true, onboarding: false })
+    // After the start, the same view reads the store (the gear), and onboarding is over.
+    const view = await get('/api/onboarding')
+    expect(view.stage).toBe('store')
+    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.cases.length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 3]])
+    expect(view.roles.map((r) => [r.role, r.state, r.toggle])).toEqual(ROLES.map((r) => [r, 'current', false]))
+    expect((await onboard({ act: 'add-direction', principle: 'one more' })).error).toBe('the store of this dir has started, so onboarding is over; a change now is an adjustment')
+    // P7: the text box of the gear stores a suggestion about the roles.
+    expect((await act({ act: 'suggest', about: { _tag: 'Roles' }, says: 'add an editor' })).out).toBe('s1: a suggestion about the roles; an adjustment of a role answers it.')
+    // BUILD.md 1c: the store start replaced the page act accept-roles.
+    expect((await act({ act: 'accept-roles' })).error).toBe('there is no act "accept-roles"')
+  })
+
+  test('the server sends changed when the host writes an onboarding file', async () => {
+    const p = onboardingProject()
+    const { s, cookie } = serve(p)
+    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { cookie, origin: `http://127.0.0.1:${s.port}` } })
+    await new Promise((done) => { ws.onopen = done })
+    const next = () => new Promise((done) => { ws.onmessage = (m) => done(JSON.parse(m.data)) })
+    // The first draft makes .work/assess/; a later file in it is seen too.
+    let message = next()
+    p.write('draft.yaml', ONBOARD_CONFIG)
+    ok(await p.agent('onboard config --file=draft.yaml'))
+    expect(await message).toEqual({ type: 'changed' })
+    await Bun.sleep(100)
+    message = next()
+    ok(await p.agent('onboard found tsd-writing'))
+    expect(await message).toEqual({ type: 'changed' })
+    ws.close()
+  })
+})
+

@@ -5,8 +5,8 @@ import type { ActionCall } from '../../core/actions/types.ts'
 import type { Author, CreatedId } from '../../core/schema/index.ts'
 import type { PageAct } from './contract.ts'
 
-// The acts that dispatch makes: a PageAct that is not here is a terminal act, the settings, or
-// the roles (the server runs those).
+// The acts that dispatch makes: a PageAct that is not here is a terminal act or the settings (the
+// server runs those).
 export type ActionAct = Extract<
   PageAct,
   {
@@ -20,6 +20,7 @@ export type ActionAct = Extract<
       | 'reject-words'
       | 'accept-adjustment'
       | 'reject-adjustment'
+      | 'suggest'
   }
 >
 
@@ -78,6 +79,11 @@ export const callOf = (act: ActionAct, by: Author): ActionCall => {
           content: { reason: act.reason },
         },
       }
+    case 'suggest':
+      return {
+        by,
+        input: { _tag: 'Suggest', target: { about: act.about }, content: { says: act.says } },
+      }
   }
 }
 
@@ -106,5 +112,10 @@ export const wordsOf = (act: ActionAct, created: ReadonlyArray<CreatedId>): stri
       return `${act.draft} accepted.`
     case 'reject-adjustment':
       return `${act.draft} rejected.`
+    // As work suggest says it: what answers the suggestion.
+    case 'suggest':
+      return act.about._tag === 'Roles'
+        ? `${created.join(', ')}: a suggestion about the roles; an adjustment of a role answers it.`
+        : `${created.join(', ')}: a suggestion; a draft of a direction answers it.`
   }
 }
