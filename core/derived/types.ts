@@ -813,32 +813,35 @@ export interface HostPane {
 }
 export type HostPanesOf = (d: Derived) => ReadonlyArray<HostPane>
 
-// Each Sol or Terra assignment in a live run that is Working, with no terminal yet, or with a
-// session that never briefed and is not Stopped (C1: never an Ended one).
+// Each persistent agent on an assignment with no terminal yet, or with a session that took no
+// assignment and is not Stopped (ruling 7: only a persistent agent gets a terminal; C1: never an
+// Ended one).
 export interface ToStart {
-  readonly assignment: AssignmentId
+  readonly agent: AgentId
   readonly session:
     | { readonly _tag: 'New' }
     | { readonly _tag: 'Again'; readonly session: SessionId }
 }
 export type TerminalsToStart = (d: Derived) => ReadonlyArray<ToStart>
 
-// Each session whose owner is Ended, or whose run is Done or Closed, not closed once (C1, S1).
+// The owner of a terminal: a persistent agent, or a run (its host).
+export type TerminalOwner =
+  | { readonly _tag: 'Agent'; readonly agent: AgentId }
+  | { readonly _tag: 'Run'; readonly run: RunId }
+
+// Each terminal of an agent that is Ended, or of a run that is Done or Closed, not closed once
+// (ruling 9: an agent lives to the end of its project; S1).
 export interface ToClose {
   readonly session: SessionId
-  readonly owner:
-    | { readonly _tag: 'Agent'; readonly assignment: AssignmentId }
-    | { readonly _tag: 'Run'; readonly run: RunId }
+  readonly owner: TerminalOwner
 }
 export type TerminalsToClose = (d: Derived) => ReadonlyArray<ToClose>
 
-// The live terminals whose failures the supervisor retries: owners that are Working, Settled or
-// OutOfTries, in runs that are not Done or Closed (C1, S1).
+// The live terminals whose failures the supervisor retries: live runs, and agents that are not
+// Ended (also Between: an ended process restarts; ruling 9; C1, S1).
 export interface ToWatch {
   readonly session: SessionId
-  readonly owner:
-    | { readonly _tag: 'Agent'; readonly assignment: AssignmentId }
-    | { readonly _tag: 'Run'; readonly run: RunId }
+  readonly owner: TerminalOwner
 }
 export type TerminalsToWatch = (d: Derived) => ReadonlyArray<ToWatch>
 

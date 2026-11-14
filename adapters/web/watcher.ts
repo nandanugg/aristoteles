@@ -175,10 +175,13 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     open: (draft) =>
       serial(() => run(openDraft(draft as TaskDraftId)).then((opened) => openWords(opened))),
     stopSession: (sid) => serial(() => run(stopSession(SessionId.make(sid)))),
+    // Every tier has its commands (ruling 10): a persistent agent of any tier has a terminal.
     resumeSession: (sid, tier) =>
       serial(() => {
-        if (tier !== 'sol' && tier !== 'terra') {
-          return Promise.reject(new Error(`"${tier}" is not a tier of a terminal (sol, terra)`))
+        if (tier !== 'sol' && tier !== 'terra' && tier !== 'luna') {
+          return Promise.reject(
+            new Error(`"${tier}" is not a tier of a terminal (sol, terra, luna)`),
+          )
         }
         return run(resumeSession(SessionId.make(sid), tier))
       }),

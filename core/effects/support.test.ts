@@ -223,9 +223,11 @@ export const project = async () => {
   for (const [path, text] of Object.entries(files)) write(path, text)
   const env = { ARISTOTELES_DB: join(dir, '.work', 'aristoteles.db') }
   let tokens = 0
+  // pane: the host's shell in a pane of the person; session: the shell of a terminal that the
+  // pump started (the pump sets ARISTOTELES_SESSION there).
   const run = async (
     argv: ReadonlyArray<string>,
-    o: { tty?: boolean; channel?: string; typed?: string; pane?: string } = {},
+    o: { tty?: boolean; channel?: string; typed?: string; pane?: string; session?: string } = {},
   ): Promise<Ran> => {
     const out: Array<string> = []
     const err: Array<string> = []
@@ -238,7 +240,11 @@ export const project = async () => {
       readLine: () => o.typed,
       now: timeNow,
       gitUser: () => 'Nanda',
-      env: o.pane ? { ...env, TMUX: '/tmp/ar-test-person.sock,1,0', TMUX_PANE: o.pane } : env,
+      env: o.pane
+        ? { ...env, TMUX: '/tmp/ar-test-person.sock,1,0', TMUX_PANE: o.pane }
+        : o.session
+          ? { ...env, ARISTOTELES_SESSION: o.session }
+          : env,
       random: () => `k${String(++tokens).padStart(4, '0')}`,
     })
     return { code, out: out.join('\n'), err: err.join('\n') }
@@ -254,6 +260,8 @@ export const project = async () => {
   const agent = (line: string) => ok(run(words(line)))
   // The host: the AI CLI that the person triggered, in a pane of the person's tmux server.
   const inPane = (line: string, pane = '%9') => ok(run(words(line), { pane }))
+  // A persistent agent: the AI CLI in the terminal that the supervisor started for it.
+  const inSession = (line: string, session: string) => ok(run(words(line), { session }))
   const work = (): Work => workOf(dir)
   // An event written as an older store has it, with no check (a run of an older UI).
   const writeRaw = (author: Author, event: Event) =>
@@ -271,7 +279,7 @@ export const project = async () => {
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
     await nanda(`role fit ${role} --answers=fit.yaml`)
   }
-  return { dir, env, run, nanda, ui, agent, inPane, work, write, writeRaw }
+  return { dir, env, run, nanda, ui, agent, inPane, inSession, work, write, writeRaw }
 }
 export type Project = Awaited<ReturnType<typeof project>>
 
@@ -411,8 +419,10 @@ export const hosted = async () => {
   await p.agent(`brief ${hostToken}`)
   return { p, fake, w, watcher, host, hostToken, rec }
 }
-// ... and the host gives t1 to a section lead (a Terra), whose terminal the supervisor starts with
-// its first prompt as the last argument of its launch command.
+// ... and the host gives t1 to a section lead (a Terra of a persistent role: the agent p1), whose
+// terminal the supervisor starts with its first prompt as the last argument of its launch
+// command. Ruling 9: the first prompt holds no token; the lead's own work wait --by=p1 in that
+// terminal gives it a2 with a new token.
 export const withLead = async () => {
   const h = await hosted()
   await h.p.agent(`assign ${h.hostToken} t1 --role=section-lead`)
@@ -420,7 +430,7 @@ export const withLead = async () => {
   const started = h.fake.commands.find((c) => c.startsWith('start ') && !c.includes(h.host))
   const lead = started?.slice(6, started.indexOf(':'))
   if (lead === undefined) throw new Error(`no terminal for the lead: ${h.w.lines.join('\n')}`)
-  const leadToken = tokenIn(started ?? '')
+  const leadToken = tokenIn(await h.p.inSession('wait --by=p1 --seconds=1', lead))
   return { ...h, lead, leadToken }
 }
 

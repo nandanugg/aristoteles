@@ -19,7 +19,7 @@ import type {
   Suggestion,
   Task,
 } from './model.ts'
-import type { Problem, Run, TaskDraft } from './ui-model.ts'
+import type { PersistentAgent, Problem, Run, TaskDraft } from './ui-model.ts'
 import type { Work } from './work.ts'
 
 // What an id names. v4 is a Review (a Reject holds its points); v4.1 is one point of it.
@@ -40,6 +40,7 @@ export type Found =
   | { readonly _tag: 'Run'; readonly run: Run }
   | { readonly _tag: 'TaskDraft'; readonly taskDraft: TaskDraft }
   | { readonly _tag: 'Problem'; readonly problem: Problem }
+  | { readonly _tag: 'Agent'; readonly agent: PersistentAgent }
 
 const get = <K, V>(map: ReadonlyMap<K, V>, id: string): V | undefined => map.get(id as K)
 const wrap = <V, F>(v: V | undefined, f: (v: V) => F): F | undefined =>
@@ -80,6 +81,8 @@ export const find = (work: Work, id: string): Found | undefined => {
       return wrap(get(work.taskDrafts, id), (taskDraft) => ({ _tag: 'TaskDraft', taskDraft }))
     case 'sp':
       return wrap(get(work.problems, id), (problem) => ({ _tag: 'Problem', problem }))
+    case 'p':
+      return wrap(get(work.agents, id), (agent) => ({ _tag: 'Agent', agent }))
     default:
       return undefined
   }

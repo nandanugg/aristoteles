@@ -17,11 +17,14 @@ export const TIER_KEYS = [
   'silentMinutes',
   'retryInput',
 ] as const
-export const DEFAULT_START = 'Use the work skill. Your command: work brief {token}'
+// The first prompt of a persistent agent names no token (P9): each of its assignments comes to it
+// through its own work wait, as the steps of a host come to the host (ruling 9).
+export const DEFAULT_START =
+  'Use the work skill. You are {agent}: run work wait --by={agent}, and do what it prints.'
 // What the UI types into a terminal that ended, shows an error, or is silent: one command, and
 // the words that say it is the UI's, not the person's (Nanda, 2026-11-13).
 export const DEFAULT_RETRY =
-  'System message, not from the person. Run work next with your token, and do what it says.'
+  'System message, not from the person. Run work wait --by={agent}, and do what it prints.'
 const TIER_DEFAULTS = {
   start: DEFAULT_START,
   errors: [],
@@ -84,8 +87,8 @@ export const readSettingsOf = (raw: Raw): Settings => {
         fail(CONFIG, `tiers.${tier}.${k} names {model}, and tiers.${tier}.model is not set`)
       }
     }
-    if (t.start !== undefined && !t.start.includes('{token}')) {
-      fail(CONFIG, `tiers.${tier}.start has no {token}`)
+    if (t.start !== undefined && !t.start.includes('{agent}')) {
+      fail(CONFIG, `tiers.${tier}.start has no {agent}`)
     }
     tiers[tier] = { ...TIER_DEFAULTS, ...t }
   }

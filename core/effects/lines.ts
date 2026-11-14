@@ -6,20 +6,18 @@
 import type { ProblemId } from '../schema/index.ts'
 
 export const SYSTEM = 'System message, not from the person.'
-// The prompt of a resumed terminal (the settings' default retryInput, src/config/settings.ts).
-export const DEFAULT_RETRY = `${SYSTEM} Run work next with your token, and do what it says.`
+// The prompt of a resumed terminal (the settings' default retryInput, src/config/settings.ts):
+// the agent's own wait (ruling 9), or the host's wait by its run.
+export const DEFAULT_RETRY = `${SYSTEM} Run work wait --by={agent}, and do what it prints.`
 
 const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
-// The values of a command: {session} and {token} as they are, {prompt} quoted for the shell. A
-// command with no {prompt} gets it as its last argument: a first prompt is never typed (10.1).
-export const fill = (
-  template: string,
-  values: { readonly session?: string; readonly token?: string; readonly prompt?: string },
-): string => {
-  const filled = template.replace(
-    /\{(session|token|prompt)\}/g,
-    (m, k: 'session' | 'token' | 'prompt') =>
-      k === 'prompt' ? quote(values.prompt ?? '') : (values[k] ?? m),
+type Key = 'session' | 'agent' | 'model' | 'prompt'
+// The values of a command: {session}, {agent} and {model} as they are, {prompt} quoted for the
+// shell. A command with no {prompt} gets it as its last argument: a first prompt is never typed
+// (10.1).
+export const fill = (template: string, values: { readonly [K in Key]?: string }): string => {
+  const filled = template.replace(/\{(session|agent|model|prompt)\}/g, (m, k: Key) =>
+    k === 'prompt' ? quote(values.prompt ?? '') : (values[k] ?? m),
   )
   const appended = values.prompt !== undefined && !template.includes('{prompt}')
   return appended ? `${filled} ${quote(values.prompt ?? '')}` : filled

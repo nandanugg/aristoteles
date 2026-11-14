@@ -1410,6 +1410,16 @@ const resumeTerminal: Check<'ResumeTerminal'> = (c, { target: { session } }) => 
       )
     }
   }
+  // A persistent agent's terminal holds several assignments: it lives until its project ends
+  // (ruling 9), also when the assignment that it took first is finished.
+  const agent = [...c.w.agents.values()].find(
+    (x) => x.terminal._tag === 'Started' && x.terminal.session === session,
+  )
+  if (agent !== undefined) {
+    return c.d.states.agents.get(agent.id)?._tag === 'Ended'
+      ? no(`${agent.id} is ended: its project ${agent.run} ended`, 'Pick', 'start a new run')
+      : MAY
+  }
   const a = [...c.w.sessions.values()].find((s) => s.session === session)?.assignment
   if (a !== undefined && c.d.states.assignments.get(a)?._tag === 'Ended') {
     return no(`${a} is finished`, 'Pick', 'resume the terminal of open work')

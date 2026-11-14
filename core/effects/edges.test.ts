@@ -38,7 +38,8 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
   test('a first prompt is an argument of the launch command; no token is stored', async () => {
     const { p, fake, lead, leadToken } = await withLead()
     // The terra tier has no {prompt} in its launch command: the prompt is its last argument.
-    const prompt = `'Use the work skill. Your command: work brief ${leadToken}'`
+    // Ruling 9, onboarding 2026-11-14 (P9): it names the agent and its wait (was: a token).
+    const prompt = "'Use the work skill. You are p1: run work wait --by=p1, and do what it prints.'"
     expect(fake.commands).toContain(`start ${lead}: fake start ${lead} ${prompt}`)
     expect(fake.typed(lead)).toBe('')
     const [start] = sendsInto(p.work(), 'Start', lead)
@@ -227,10 +228,18 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
     expect(sendsInto(p.work(), 'Retry', lead)).toEqual([])
   })
 
-  test('the end of work closes a terminal once, also through a restart', async () => {
+  // Ruling 9, onboarding 2026-11-14: the finish of an assignment closes nothing (was: the finish
+  // of a2 closed the lead's terminal); an agent's terminal closes when its project ends.
+  test('the end of a project closes an agent terminal once, also through a restart', async () => {
     const { p, fake, w, watcher, hostToken, lead } = await withLead()
     fake.show(lead, 'fake agent start')
     await p.agent(`finish ${hostToken} a2`)
+    quiet()
+    await w.tick()
+    expect(fake.calls).not.toContain(`stop ${lead}`)
+    // The person closes the top task: the project ends (S1: its run is Closed).
+    await p.nanda('task close t1 --reason="not needed any more"', 'close')
+    fake.show(lead, 'fake agent output')
     // A busy terminal is not closed; a quiet one is.
     await w.tick()
     expect(fake.calls).not.toContain(`stop ${lead}`)
@@ -238,8 +247,10 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
     await w.tick()
     expect(fake.calls).toContain(`stop ${lead}`)
     expect(terminalMoves(p.work(), lead, 'Closed')).toHaveLength(1)
-    // A finished agent is not resumed (canAct, P5); a restart closes nothing twice.
-    await expect(w.person(resumeSession(sid(lead), 'terra'))).rejects.toThrow('a2 is finished')
+    // An ended agent is not resumed (canAct, P5); a restart closes nothing twice.
+    await expect(w.person(resumeSession(sid(lead), 'terra'))).rejects.toThrow(
+      'p1 is ended: its project h1 ended',
+    )
     quiet()
     await w.tick()
     await watcher().tick()

@@ -1,11 +1,12 @@
 // The selectors of the effects (BUILD.md 3.4 end, 3.7): pure reads of Derived that each effect
-// reacts to. They read RunState and AssignmentState, never run.end or an assignment's end (C1,
-// S1); an irrelevant send is never pending (C5). Under ruling 10.1 no wake, retry of a problem
-// or ask for words is typed: those are steps of nextFor (notices.ts). What the pump sees (quiet,
-// busy, at a prompt) is the effect's own memory (D13), not here.
-import type { Assignment, AssignmentId, Run, SessionId, TaskId, Work } from '../schema/index.ts'
+// reacts to. They read RunState and AgentState, never run.end or an assignment's end (C1, S1);
+// an irrelevant send is never pending (C5). Only a persistent agent or a run has a terminal
+// (ruling 7); an agent's terminal lives to the end of its project (ruling 9). Under ruling 10.1
+// no wake, retry of a problem or ask for words is typed: those are steps of nextFor
+// (notices.ts). What the pump sees (quiet, busy, at a prompt) is the effect's own memory (D13),
+// not here.
+import type { Run, SessionId, Work } from '../schema/index.ts'
 import { sendSessionOf } from './catalog.ts'
-import { currentTask, openedTopOf, within } from './reads.ts'
 import type {
   Derived,
   HostPanesOf,
@@ -18,26 +19,6 @@ import type {
 
 const LIVE = new Set(['Talking', 'Working', 'AwaitingEndAccept'])
 const runLive = (d: Derived, run: Run): boolean => LIVE.has(d.states.runs.get(run.id)?._tag ?? '')
-// A Sol or a Terra runs in a terminal of its own; a Luna runs inside its parent's.
-const realTier = (w: Work, a: Assignment): boolean => {
-  const role = w.workflow.roles.get(a.role)
-  return role?._tag === 'Model' && (role.tier === 'high' || role.tier === 'medium')
-}
-const ended = (d: Derived, a: AssignmentId): boolean =>
-  d.states.assignments.get(a)?._tag === 'Ended'
-// The top task of a run now, after its remakes.
-const topNow = (w: Work, run: Run): TaskId | undefined => {
-  const opened = openedTopOf(w, run.id)
-  return opened === undefined ? undefined : currentTask(w, opened)
-}
-// The run that holds an assignment's tree, if any.
-const runOfAssignment = (w: Work, a: Assignment): Run | undefined =>
-  [...w.runs.values()].find((r) => {
-    const top = topNow(w, r)
-    return top !== undefined && within(w, a.task, top)
-  })
-const isRunSession = (w: Work, sid: SessionId): boolean =>
-  [...w.runs.values()].some((r) => r.session === sid)
 // The person's Stop holds until the person's Resume; the end of work closes a terminal once.
 const stopped = (w: Work, sid: SessionId): boolean =>
   w.terminalEvents
@@ -64,38 +45,41 @@ export const hostPanesOf: HostPanesOf = (d) =>
       : [],
   )
 
-// C1: each Working Sol or Terra of a live run's tree, with no terminal, or one that never briefed.
+// C1, ruling 7: each persistent agent on an assignment with no terminal, or with one that took no
+// assignment yet (its launch failed). OnAssignment holds only in a run that is not Done or Closed.
 export const terminalsToStart: TerminalsToStart = (d) => {
   const w = d.moment.work
-  return [...w.assignments.values()].flatMap((a): ReadonlyArray<ToStart> => {
-    if (d.states.assignments.get(a.id)?._tag !== 'Working' || !realTier(w, a)) return []
-    const run = runOfAssignment(w, a)
-    if (run === undefined || !runLive(d, run)) return []
-    const sid = w.sessions.get(a.id)?.session
-    if (sid === undefined) return [{ assignment: a.id, session: { _tag: 'New' } }]
+  return [...w.agents.values()].flatMap((x): ReadonlyArray<ToStart> => {
+    if (d.states.agents.get(x.id)?._tag !== 'OnAssignment') return []
+    if (x.terminal._tag === 'NotStarted') return [{ agent: x.id, session: { _tag: 'New' } }]
+    const sid = x.terminal.session
     const again =
       d.moment.outside.terminals[sid] === undefined &&
       !stopped(w, sid) &&
       !closedOnce(w, sid) &&
-      (w.meta.get(a.id)?.briefs ?? 0) === 0 &&
-      !isRunSession(w, sid)
-    return again ? [{ assignment: a.id, session: { _tag: 'Again', session: sid } }] : []
+      ![...w.sessions.values()].some((s) => s.session === sid)
+    return again ? [{ agent: x.id, session: { _tag: 'Again', session: sid } }] : []
   })
 }
 
-// C1, S1: the terminal of an Ended agent, or of a run that is Done or Closed, once; the person's
-// own pane and a stopped terminal stay.
+// The started terminal of each persistent agent, with its AgentState.
+const agentTerminals = (d: Derived) =>
+  [...d.moment.work.agents.values()].flatMap((x) =>
+    x.terminal._tag === 'Started'
+      ? [{ agent: x.id, session: x.terminal.session, state: d.states.agents.get(x.id) }]
+      : [],
+  )
+
+// C1, S1, ruling 9: the terminal of an agent whose project is Done or Closed (the end of one
+// assignment closes nothing), or of a run that is Done or Closed, once; the person's own pane
+// and a stopped terminal stay.
 export const terminalsToClose: TerminalsToClose = (d) => {
   const w = d.moment.work
   const out: Array<ReturnType<TerminalsToClose>[number]> = []
-  for (const s of w.sessions.values()) {
-    const a = w.assignments.get(s.assignment)
-    if (a === undefined || isRunSession(w, s.session)) continue
-    const run = runOfAssignment(w, a)
-    const runEnded = run !== undefined && !runLive(d, run) && topNow(w, run) !== undefined
-    if (!ended(d, a.id) && !runEnded) continue
-    if (closedOnce(w, s.session) || stopped(w, s.session)) continue
-    out.push({ session: s.session, owner: { _tag: 'Agent', assignment: a.id } })
+  for (const x of agentTerminals(d)) {
+    if (x.state?._tag !== 'Ended') continue
+    if (closedOnce(w, x.session) || stopped(w, x.session)) continue
+    out.push({ session: x.session, owner: { _tag: 'Agent', agent: x.agent } })
   }
   for (const r of w.runs.values()) {
     const state = d.states.runs.get(r.id)?._tag
@@ -106,8 +90,8 @@ export const terminalsToClose: TerminalsToClose = (d) => {
   return out
 }
 
-// C1, S1: the terminals that the supervisor watches: live runs, and agents that are not Ended in
-// a run that is not Done or Closed, each with a reading of the pump.
+// C1, S1: the terminals that the supervisor watches: live runs, and agents that are not Ended
+// (a Between agent too: its process can end), each with a reading of the pump.
 export const terminalsToWatch: TerminalsToWatch = (d) => {
   const w = d.moment.work
   const seen = (sid: SessionId) => d.moment.outside.terminals[sid] !== undefined
@@ -117,13 +101,9 @@ export const terminalsToWatch: TerminalsToWatch = (d) => {
       out.push({ session: r.session, owner: { _tag: 'Run', run: r.id } })
     }
   }
-  for (const s of w.sessions.values()) {
-    const a = w.assignments.get(s.assignment)
-    if (a === undefined || ended(d, a.id) || isRunSession(w, s.session) || !seen(s.session))
-      continue
-    const run = runOfAssignment(w, a)
-    if (run !== undefined && !runLive(d, run)) continue
-    out.push({ session: s.session, owner: { _tag: 'Agent', assignment: a.id } })
+  for (const x of agentTerminals(d)) {
+    if (x.state === undefined || x.state._tag === 'Ended' || !seen(x.session)) continue
+    out.push({ session: x.session, owner: { _tag: 'Agent', agent: x.agent } })
   }
   return out
 }

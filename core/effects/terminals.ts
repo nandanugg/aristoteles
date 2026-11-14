@@ -2,35 +2,36 @@
 // folded from its stored moves and refined by what the pump saw (D13): the fold is here; the
 // refinement is the effects'. Pure: no pump, no store write.
 import {
-  type Assignment,
+  type AgentId,
   type AssignmentId,
   type EventRef,
   human,
   type Logged,
   Moves,
+  type PersistentAgent,
   type RunId,
   type SessionId,
   type Supervised,
   type TerminalMove,
   type TerminalState,
+  type TerminalTier,
   type Time,
   type Work,
 } from '../schema/index.ts'
-
-export type TerminalTier = 'sol' | 'terra'
 
 export const seqOf = (ref: EventRef): number => Number(ref.slice(1))
 export const refOf = (seq: number): EventRef => `e${seq}` as EventRef
 export const msOf = (at: Time): number => Date.parse(at)
 export const timeOf = (ms: number): Time => new Date(ms).toISOString() as Time
 
-// The terminal tier of an assignment's role: a Sol or a Terra runs in a terminal of its own; a
-// Luna or a program has none.
-export const tierOf = (w: Work, a: Assignment): TerminalTier | undefined => {
-  const role = w.workflow.roles.get(a.role)
-  if (role?._tag !== 'Model') return undefined
-  return role.tier === 'high' ? 'sol' : role.tier === 'medium' ? 'terra' : undefined
-}
+// The terminal tier of a persistent agent: the tier it kept from its birth (ruling 13). Any tier
+// can be persistent, so each has its commands (ruling 10).
+const TERMINAL_TIER = { high: 'sol', medium: 'terra', low: 'luna' } as const
+export const tierOf = (x: PersistentAgent): TerminalTier => TERMINAL_TIER[x.tier]
+
+// The persistent agent whose terminal a session is.
+export const agentOfSession = (w: Work, sid: SessionId): PersistentAgent | undefined =>
+  [...w.agents.values()].find((x) => x.terminal._tag === 'Started' && x.terminal.session === sid)
 
 // The terminal whose agent wrote an event: an agent's own, or a run's (its host's task draft).
 const sessionOfAuthor = (w: Work, author: Logged['recorded']['author']): SessionId | undefined => {
@@ -39,9 +40,11 @@ const sessionOfAuthor = (w: Work, author: Logged['recorded']['author']): Session
   return undefined
 }
 
-// The run or the agent that a session stands for.
-const ownerOf = (w: Work, sid: SessionId): RunId | AssignmentId | undefined =>
+// The run, the persistent agent or the assignment that a session stands for. An agent's session
+// holds its assignments too (ruling 9), so the agent comes first.
+const ownerOf = (w: Work, sid: SessionId): RunId | AgentId | AssignmentId | undefined =>
   [...w.runs.values()].find((r) => r.session === sid)?.id ??
+  agentOfSession(w, sid)?.id ??
   [...w.sessions.values()].find((s) => s.session === sid)?.assignment
 
 type Move = typeof TerminalMove.Type
@@ -77,9 +80,10 @@ const moved = (
 }
 
 // Folds stored events into the states of the terminals: a run's start (and its move to another
-// pane) and a Terminal move name their session; any act of an agent touches the terminal it runs
-// in, and brings a failed one back with no person. A move that the state does not allow (a prompt
-// of a stopped terminal, a second close) leaves the state as it is: only the person leaves Stopped.
+// pane), an agent's start and a Terminal move name their session; any act of an agent touches the
+// terminal it runs in, and brings a failed one back with no person. A move that the state does not
+// allow (a prompt of a stopped terminal, a second close) leaves the state as it is: only the
+// person leaves Stopped.
 export const foldTerminals = (
   from: ReadonlyMap<SessionId, Supervised>,
   w: Work,
@@ -97,6 +101,8 @@ export const foldTerminals = (
     if (e._tag === 'Run' && 'create' in e) {
       put(e.create.session, Moves.startTerminal(at))
     } else if (e._tag === 'Run' && 'move' in e && e.move._tag === 'HostMoved') {
+      put(e.move.session, Moves.startTerminal(at))
+    } else if (e._tag === 'Agent') {
       put(e.move.session, Moves.startTerminal(at))
     } else if (e._tag === 'Terminal') {
       put(e.id, moved(into.get(e.id)?.state, e.move, at, author))
@@ -119,6 +125,7 @@ const lastRestartSeq = (w: Work, sid: SessionId): number => {
     const e = recorded.event
     const restart =
       (e._tag === 'Run' && 'create' in e && e.create.session === sid) ||
+      (e._tag === 'Agent' && e.move.session === sid) ||
       (e._tag === 'Terminal' &&
         e.id === sid &&
         (e.move._tag === 'Started' || e.move._tag === 'Stopped' || e.move._tag === 'Resumed'))

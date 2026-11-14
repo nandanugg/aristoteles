@@ -15,7 +15,8 @@ const dirWith = (text: string | null): string => {
   return dir
 }
 
-const TIER = 'tiers:\n  sol:\n    launch: claude --session {session}\n    start: go {token}\n'
+// Ruling 9, onboarding 2026-11-14 (P9): the start words name {agent}, not {token}.
+const TIER = 'tiers:\n  sol:\n    launch: claude --session {session}\n    start: go {agent}\n'
 const readCases: Array<[string, string | null, string?]> = [
   ['no file', null],
   ['an empty file', ''],
@@ -40,7 +41,8 @@ const readCases: Array<[string, string | null, string?]> = [
   ['silentMinutes 0', 'tiers:\n  sol:\n    silentMinutes: 0\n', 'aristoteles.yaml: tiers.sol.silentMinutes is a whole number of 1 or more'],
   ['a launch with no {session}', 'tiers:\n  sol:\n    launch: claude\n', 'aristoteles.yaml: tiers.sol.launch has no {session}: the UI gives each real agent its session id, so that a resume finds it'],
   ['a resume with no {session}', 'tiers:\n  sol:\n    resume: claude\n', 'aristoteles.yaml: tiers.sol.resume has no {session}'],
-  ['a start with no {token}', 'tiers:\n  sol:\n    start: go\n', 'aristoteles.yaml: tiers.sol.start has no {token}'],
+  // Ruling 9, onboarding 2026-11-14 (P9): the start words name {agent} (was {token}).
+  ['a start with no {agent}', 'tiers:\n  sol:\n    start: go\n', 'aristoteles.yaml: tiers.sol.start has no {agent}'],
   ['retryMinutes 0', 'retryMinutes: 0\n', 'aristoteles.yaml: retryMinutes is a whole number of 1 or more'],
   ['hostWaitMinutes 2.5', 'hostWaitMinutes: 2.5\n', 'aristoteles.yaml: hostWaitMinutes is a whole number of 1 or more'],
   ['sound that is a text', 'sound: "yes"\n', 'aristoteles.yaml: sound is true or false'],
@@ -70,19 +72,20 @@ describe('readSettings', () => {
 // Each case: the file before, and the settings to write.
 const SCHEMA_LINE = '# yaml-language-server: $schema=schema/aristoteles.schema.json\n'
 const BASE = `${SCHEMA_LINE}people:\n  - name: Nanda\nroles: {}\n`
+// Ruling 9, onboarding 2026-11-14 (P9): each start below names {agent} (was {token}).
 const writeCases: Array<[string, string | null, Obj]> = [
   ['a theme into a file with a schema line', BASE, { theme: 'dark' }],
-  ['every setting into a plain file', 'people:\n  - name: Nanda\n', { tiers: { sol: { launch: 'c {session}', start: 'go {token}' } }, retryMinutes: 3, hostWaitMinutes: 4, sound: true, theme: 'dark' }],
+  ['every setting into a plain file', 'people:\n  - name: Nanda\n', { tiers: { sol: { launch: 'c {session}', start: 'go {agent}' } }, retryMinutes: 3, hostWaitMinutes: 4, sound: true, theme: 'dark' }],
   ['a replaced block', `${BASE}theme: light\nsound: false\n`, { theme: 'dark', sound: true }],
-  ['a replaced block of several lines with blanks', `${BASE}tiers:\n  sol:\n    launch: a {session}\n\n    start: b {token}\n\n\nsound: true\n`, { tiers: { terra: { start: 'x {token}', errors: ['boom'] } } }],
+  ['a replaced block of several lines with blanks', `${BASE}tiers:\n  sol:\n    launch: a {session}\n\n    start: b {agent}\n\n\nsound: true\n`, { tiers: { terra: { start: 'x {agent}', errors: ['boom'] } } }],
   ['a block that is removed', `${BASE}theme: dark\nsound: true\n`, { theme: undefined }],
   ['a key that is not there and removed', BASE, { sound: undefined }],
   ['no file', null, { theme: 'dark' }],
   ['no key of the settings in the object', `${BASE}theme: dark\n`, { other: 1 }],
   ['a file with no final newline', 'people:\n  - name: Nanda', { sound: true }],
   ['an empty settings object', BASE, {}],
-  ['a block with a comment line inside', `${BASE}tiers:\n  # about sol\n  sol:\n    start: go {token}\n`, { tiers: {} }],
-  ['a text with a colon and a quote', BASE, { tiers: { sol: { start: 'say "hi": {token}', prompts: ["it's", 'a: b'] } } }],
+  ['a block with a comment line inside', `${BASE}tiers:\n  # about sol\n  sol:\n    start: go {agent}\n`, { tiers: {} }],
+  ['a text with a colon and a quote', BASE, { tiers: { sol: { start: 'say "hi": {agent}', prompts: ["it's", 'a: b'] } } }],
   // Ruling 10, onboarding 2026-11-14: a luna tier is written (was refused).
   ['a luna tier', BASE, { tiers: { luna: { model: 'small' } } }],
 ]
@@ -104,7 +107,8 @@ describe('writeSettings', () => {
   }
   test('the settings that were written read back the same', async () => {
     const dir = dirWith(BASE)
-    const settings = { tiers: { sol: { start: 'go {token}' } }, sound: true, theme: 'dark' }
+    // Ruling 9, onboarding 2026-11-14 (P9): the start words name {agent} (was {token}).
+    const settings = { tiers: { sol: { start: 'go {agent}' } }, sound: true, theme: 'dark' }
     await runNew(next.writeSettings(dir, settings))
     expect(await runNew(next.readSettings(dir))).toMatchObject({ ok: settings })
   })

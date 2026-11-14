@@ -18,6 +18,7 @@ import {
   type SessionId,
   type TaskDraftId,
   type TaskId,
+  type TerminalTier,
   type Time,
 } from '../schema/index.ts'
 import { Now, Pump, Tokens } from '../services/index.ts'
@@ -32,6 +33,7 @@ import {
   tiersNow,
 } from './acting.ts'
 import { DEFAULT_RETRY, fill, problemRetryLine } from './lines.ts'
+import { agentOfSession } from './terminals.ts'
 import type { Acted } from './types.ts'
 
 // The words of a choice are never blank here: each one is a literal of this file.
@@ -59,17 +61,23 @@ export const stopSession = (sid: SessionId) =>
     }
   })
 
-// The person's Resume, also of a failed terminal: its tries start again.
-// canAct first: a refused Resume (a finished agent, the host's own pane) starts no process.
-export const resumeSession = (sid: SessionId, tier: 'sol' | 'terra') =>
+// The person's Resume, also of a failed terminal: its tries start again. The retry prompt names
+// the wait of the terminal's owner: its agent (ruling 9), or the run of its host.
+// canAct first: a refused Resume (an ended agent, the host's own pane) starts no process.
+export const resumeSession = (sid: SessionId, tier: TerminalTier) =>
   Effect.gen(function* () {
     const by = yield* personOnPage
     const input = { _tag: 'ResumeTerminal', target: { session: sid }, content: { tier } } as const
-    const may = canAct(yield* now, by, intentOf(input))
+    const d = yield* now
+    const may = canAct(d, by, intentOf(input))
     if (may._tag === 'MayNot') return yield* Effect.fail(may.refusal)
+    const w = d.moment.work
+    const run = [...w.runs.values()].find((r) => r.session === sid)
+    const owner = agentOfSession(w, sid)?.id ?? run?.id
     const t = (yield* tiersNow)[tier]
-    const retry = t?.retryInput ?? DEFAULT_RETRY
-    const command = fill(t?.resume ?? t?.launch ?? '', { session: sid, prompt: retry })
+    const retry = fill(t?.retryInput ?? DEFAULT_RETRY, { agent: owner })
+    const values = { session: sid, model: t?.model, prompt: retry }
+    const command = fill(t?.resume ?? t?.launch ?? '', values)
     yield* (yield* Pump).resume(sid, { command, env: {}, cols: 160, rows: 48 })
     yield* act({ by, input })
   })
@@ -134,11 +142,19 @@ export const closeRun = (run: RunId, reason: string) =>
     const pump = yield* Pump
     const ownPane = (sid: SessionId) =>
       Effect.map(pump.paneOf(sid), (p) => p._tag === 'PersonPane')
+    // The terminals of the project: its persistent agents' (ruling 9), and any other session of
+    // an assignment in its tree; an agent's session holds several assignments, so each stops once.
+    const sessions = new Set<SessionId>()
+    for (const x of w.agents.values()) {
+      if (x.run === run && x.terminal._tag === 'Started') sessions.add(x.terminal.session)
+    }
     for (const s of w.sessions.values()) {
       const a = w.assignments.get(s.assignment)
-      if (top === undefined || a === undefined || !within(w, a.task, top)) continue
-      if (s.session === r.session || (yield* ownPane(s.session))) continue
-      yield* stopSession(s.session)
+      if (top !== undefined && a !== undefined && within(w, a.task, top)) sessions.add(s.session)
+    }
+    for (const sid of sessions) {
+      if (sid === r.session || (yield* ownPane(sid))) continue
+      yield* stopSession(sid)
     }
     if (yield* ownPane(r.session)) yield* pump.release(r.session)
     else yield* stopSession(r.session)

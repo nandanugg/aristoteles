@@ -3,16 +3,24 @@
 // lines and exits 0. Nothing is typed into a terminal: this command is how they hear of work.
 //   work wait <token> [--seconds=<n>]       an agent (a host after its top task opened too)
 //   work wait --by=<run> [--seconds=<n>]    a host before its top task opens, in its own pane
+//   work wait --by=<agent> [--seconds=<n>]  a persistent agent, in its own terminal (ruling 9)
 // While it blocks, a marker next to the store says that the actor waits, so that the watcher does
 // not take it for a silent terminal (adapters/live/waiting.ts).
 import { Effect, Fiber } from 'effect'
 import type { Derived } from '../../../core/derived/index.ts'
-import { type Steps, type WaitEnd, type Waiter, waitFor } from '../../../core/effects/wait.ts'
 import {
-  type AssignmentId,
+  heldBy,
+  type Steps,
+  stepsOf,
+  type WaitEnd,
+  type Waiter,
+  waitFor,
+} from '../../../core/effects/wait.ts'
+import {
+  type PersistentAgent,
+  prefixOf,
   refuse,
   type Run,
-  type RunId,
   type SessionId,
 } from '../../../core/schema/index.ts'
 import { Dir, Env, Now, Store, Tokens } from '../../../core/services/index.ts'
@@ -54,6 +62,24 @@ const checkPane = (run: Run) =>
     )
   })
 
+// Only the terminal of a persistent agent waits as that agent: there the wait gives it each new
+// assignment with its token.
+const checkAgent = (x: PersistentAgent) =>
+  Effect.gen(function* () {
+    const { vars } = yield* Env
+    if (x.terminal._tag === 'NotStarted') {
+      return yield* refuse(
+        `${x.id} has no terminal yet; the UI starts it when ${x.id} has an assignment`,
+        'do not start it yourself',
+      )
+    }
+    if (vars.ARISTOTELES_SESSION === x.terminal.session) return
+    return yield* refuse(
+      `work wait --by=${x.id} runs only in the terminal of ${x.id} (${x.terminal.session})`,
+      'run it in that terminal, or pass the token of your assignment: work wait <token>',
+    )
+  })
+
 const secondsOf = (value: string | true | undefined) =>
   Effect.gen(function* () {
     if (value === undefined) return WAIT_SECONDS
@@ -62,8 +88,20 @@ const secondsOf = (value: string | true | undefined) =>
     return yield* refuse('--seconds is a number of seconds above 0, such as --seconds=540')
   })
 
-const linesOf = (d: Derived, steps: Steps, token: string): ReadonlyArray<string> =>
-  nextLines(d, steps.next, token)
+// The lines of the steps. A persistent agent acts by each open assignment: the steps of each one
+// come under its id, with the place of its token (the wait prints only the tokens it makes).
+const linesOf = (d: Derived, waiter: Waiter, steps: Steps, token: string) => {
+  if (waiter._tag !== 'Persistent') return nextLines(d, steps.next, token)
+  const w = d.moment.work
+  return heldBy(d, waiter.agent).flatMap((a) => {
+    const task = w.assignments.get(a)?.task
+    const name = task === undefined ? '' : (w.tasks.get(task)?.name ?? '')
+    const next = stepsOf(d, { _tag: 'Agent', assignment: a }).next
+    const lines = nextLines(d, next, `${a}.<token>`)
+    return [`${a} (${task ?? ''} ${name}):`, ...(lines.length ? lines : ['nothing is ready now.'])]
+      .map((line, i) => (i === 0 ? line : `  ${line}`))
+  })
+}
 
 // The host's top task opened: its Sol takes the run's terminal with a new token. The host writes
 // it as a model run, as `run continue` does (the store lets a ModelRun take a Sol's terminal).
@@ -90,6 +128,55 @@ const opened = (end: Extract<WaitEnd, { _tag: 'Opened' }>) =>
     ]
   })
 
+// New assignments of a persistent agent: each takes the agent's terminal with a new token. The
+// agent writes it as a model run, as the host does for its Sol (the store lets a ModelRun take
+// an assignment's terminal).
+const given = (end: Extract<WaitEnd, { _tag: 'Given' }>) =>
+  Effect.gen(function* () {
+    const at = yield* (yield* Now).read
+    const w = end.d.moment.work
+    const lines: Array<string> = []
+    for (const a of end.assignments) {
+      const secret = yield* (yield* Tokens).random
+      yield* act(
+        { _tag: 'ModelRun', name: end.agent, at },
+        {
+          _tag: 'StartSession',
+          target: { assignment: a },
+          content: { session: end.session, secret },
+        },
+      )
+      const x = w.assignments.get(a)
+      const name = x === undefined ? '' : (w.tasks.get(x.task)?.name ?? '')
+      lines.push(
+        `${a} is yours: ${x?.task ?? ''} ${name}, as ${x?.role ?? ''}. ` +
+          `Your command: work brief ${a}.${secret}`,
+      )
+    }
+    return [
+      ...lines,
+      'Keep one token for each assignment that you hold.',
+      `When you have nothing to do, run work wait --by=${end.agent}.`,
+    ]
+  })
+
+// The words of an end: an agent's assignment, a persistent agent, or a host's run.
+const endedWords = (d: Derived, waiter: Waiter): string => {
+  switch (waiter._tag) {
+    case 'Agent': {
+      const runs = d.moment.work.assignments.get(waiter.assignment)?.runs
+      return runs?._tag === 'Agent'
+        ? `${waiter.assignment} is finished; run work wait --by=${runs.agent} for the next ` +
+            `work of ${runs.agent}.`
+        : `${waiter.assignment} is finished; there is nothing more for it.`
+    }
+    case 'Persistent':
+      return `${waiter.agent} has ended: its project is done or closed; nothing more comes to it.`
+    case 'Host':
+      return `${waiter.run} has ended; there is nothing more for its host.`
+  }
+}
+
 const wait: Command = (call) =>
   Effect.gen(function* () {
     const { args } = call
@@ -102,12 +189,24 @@ const wait: Command = (call) =>
     let again: string
     if (token !== null || by === undefined) {
       const caller = yield* agentCallerOf(work, token)
-      if (tierOfAssignment(work, caller.assignment) === 'low') {
-        return [`a low role has one unit: work brief ${caller.token} shows it.`]
+      // A low assignment with no terminal of its own runs as a subagent: one unit, no wait. A
+      // persistent low agent waits like any agent (ruling 10).
+      const runs = work.assignments.get(caller.assignment)?.runs
+      if (runs?._tag !== 'Agent' && tierOfAssignment(work, caller.assignment) === 'low') {
+        return [
+          `${caller.assignment} runs as a subagent and has one unit: ` +
+            `work brief ${caller.token} shows it.`,
+        ]
       }
       waiter = { _tag: 'Agent', assignment: caller.assignment }
       session = work.sessions.get(caller.assignment)?.session ?? null
       again = caller.token
+    } else if (prefixOf(by) === 'p') {
+      const { agent } = yield* lookupKind('Agent', ['p'], work, by)
+      yield* checkAgent(agent)
+      waiter = { _tag: 'Persistent', agent: agent.id }
+      session = agent.terminal._tag === 'Started' ? agent.terminal.session : null
+      again = `--by=${agent.id}`
     } else {
       const { run } = yield* lookupKind('Run', ['h'], work, by)
       yield* checkPane(run)
@@ -115,7 +214,12 @@ const wait: Command = (call) =>
       session = run.session
       again = `--by=${run.id}`
     }
-    const actor: AssignmentId | RunId = waiter._tag === 'Agent' ? waiter.assignment : waiter.run
+    const actor =
+      waiter._tag === 'Agent'
+        ? waiter.assignment
+        : waiter._tag === 'Persistent'
+          ? waiter.agent
+          : waiter.run
     const { cwd } = yield* Dir
     const { vars } = yield* Env
     const place: WaitPlace = { env: vars, cwd, actor }
@@ -161,16 +265,14 @@ const wait: Command = (call) =>
       case 'NoStore':
         return yield* Effect.die(`no work store in ${cwd}, and the store opened`)
       case 'Ended':
-        return yield* done(null, [
-          waiter._tag === 'Agent'
-            ? `${actor} is finished; there is nothing more for it.`
-            : `${actor} has ended; there is nothing more for its host.`,
-        ])
+        return yield* done(null, [endedWords(end.d, waiter)])
       case 'Opened':
         return yield* done(null, yield* opened(end))
+      case 'Given':
+        return yield* done(null, yield* given(end))
       case 'Ready':
       case 'Changed': {
-        const lines = linesOf(end.d, end.steps, again)
+        const lines = linesOf(end.d, waiter, end.steps, again)
         const head = end._tag === 'Changed' ? ['your next steps changed.'] : []
         const none = lines.length === 0 ? ['nothing is ready now.'] : []
         return yield* done(end.steps.key, [
@@ -183,7 +285,7 @@ const wait: Command = (call) =>
       case 'Quiet':
         return yield* done(end.steps.key, [
           `nothing changed; run work wait ${again} again.`,
-          ...linesOf(end.d, end.steps, again),
+          ...linesOf(end.d, waiter, end.steps, again),
         ])
     }
   })

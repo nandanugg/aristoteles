@@ -46,7 +46,10 @@ const briefedLead = async () => {
 }
 
 describe('the findings that the effects close', () => {
-  test('C1: the remake of t1 ends its lead; no retry, and its terminal closes once', async () => {
+  // Ruling 9, onboarding 2026-11-14: C1 reads AgentState for a terminal now. The end of a2's
+  // task leaves its agent p1 Between and supervised (was: a2 Ended, not supervised, and its
+  // terminal closed); the end of the project ends p1: no retry, and its terminal closes once.
+  test('C1: the remake of t1 ends a2, not its agent; the end of the project does', async () => {
     const { p, fake, w, hostToken, lead } = await briefedLead()
     // The host remakes t1: no finish of a2, and no cascade event; a2 is Ended by its task.
     await p.agent(REMAKE.replace('{host}', hostToken))
@@ -54,16 +57,27 @@ describe('the findings that the effects close', () => {
       _tag: 'Ended',
       why: { _tag: 'TaskEnded', task: 't1' },
     })
-    // Its tool exits: an agent of an ended task is not supervised, so nothing is tried again.
+    expect(derivedNow(p.dir).states.agents.get('p1' as never)).toEqual({ _tag: 'Between' })
+    // Its tool exits while it is Between: the process restarts, and its prompt names its wait.
+    fake.end(lead)
+    later(31_000)
+    await w.tick()
+    expect(sendsInto(p.work(), 'Retry', lead)).toHaveLength(1)
+    const [resumed] = fake.commands.filter((c) => c.startsWith(`resume ${lead}:`))
+    expect(resumed).toContain('Run work wait --by=p1, and do what it prints.')
+    expect(fake.calls).not.toContain(`stop ${lead}`)
+    // The person closes the top task (t2 since the remake): the project ends, and p1 with it.
+    await p.nanda('task close t2 --reason="not needed any more"', 'close')
+    expect(derivedNow(p.dir).states.agents.get('p1' as never)?._tag).toBe('Ended')
+    // An agent of an ended project is not supervised: an exit is tried no more.
     fake.end(lead)
     later(31_000)
     await w.tick()
     later(31_000)
     await w.tick()
-    expect(sendsInto(p.work(), 'Retry', lead)).toEqual([])
-    expect(fake.calls).not.toContain(`resume ${lead}`)
+    expect(sendsInto(p.work(), 'Retry', lead)).toHaveLength(1)
     expect(terminalMoves(p.work(), lead, 'Failed')).toEqual([])
-    // Its terminal closes because its AssignmentState is Ended, once.
+    // Its terminal closes because its AgentState is Ended, once.
     expect(fake.calls.filter((c) => c === `stop ${lead}`)).toHaveLength(1)
     expect(terminalMoves(p.work(), lead, 'Closed')).toHaveLength(1)
   })
@@ -76,7 +90,8 @@ describe('the findings that the effects close', () => {
     quiet()
     await w.tick()
     expect(fake.typed(lead)).toBe('')
-    expect(fake.calls).toContain(`stop ${lead}`)
+    // Ruling 9, onboarding 2026-11-14: the agent p1 lives on, so its terminal stays (was: closed).
+    expect(fake.calls).not.toContain(`stop ${lead}`)
     // No drop reason says "its owner ended": the store keeps it Pending, Derived: Irrelevant.
     const sent = p.work().sends.find((s) => s.from._tag === 'Agent')
     expect(sent?.state._tag).toBe('Pending')

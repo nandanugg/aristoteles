@@ -5,6 +5,9 @@
 //
 // A host waits by its run before its top task opens: then it gets the Sol of that task (the CLI
 // gives it a new token). A host whose Sol ended by a remake of the top task gets the new Sol too.
+// A persistent agent waits by its id in its own terminal (ruling 9): each new assignment of the
+// agent ends the wait (the CLI gives each a token), and the steps of all its open assignments
+// count as its steps.
 // The loop reads the store through a cheap probe of its last seq, and derives again on a new
 // seq, or each deriveMs (a hold, a time or the outside can change alone).
 import { Clock, Effect } from 'effect'
@@ -17,8 +20,10 @@ import {
   stepKey,
 } from '../derived/index.ts'
 import type {
+  AgentId,
   AssignmentId,
   Author,
+  NonEmpty,
   OutsideFailed,
   RunId,
   SessionId,
@@ -30,6 +35,7 @@ import { momentOf, WorkCache } from '../state/index.ts'
 export type Waiter =
   | { readonly _tag: 'Agent'; readonly assignment: AssignmentId }
   | { readonly _tag: 'Host'; readonly run: RunId }
+  | { readonly _tag: 'Persistent'; readonly agent: AgentId }
 
 export interface Steps {
   readonly next: ReadonlyArray<NextStep>
@@ -50,6 +56,14 @@ export type WaitEnd =
       readonly sol: AssignmentId
       readonly session: SessionId
     }
+  // New assignments of a persistent agent: they take its terminal, each with a new token.
+  | {
+      readonly _tag: 'Given'
+      readonly d: Derived
+      readonly agent: AgentId
+      readonly session: SessionId
+      readonly assignments: NonEmpty<AssignmentId>
+    }
   | { readonly _tag: 'Ended'; readonly d: Derived }
   | { readonly _tag: 'NoStore' }
 
@@ -68,12 +82,26 @@ export interface WaitOptions {
   readonly blocking: Effect.Effect<void>
 }
 
-const authorOf = (w: Waiter): Author =>
-  w._tag === 'Agent' ? { _tag: 'Agent', assignment: w.assignment } : { _tag: 'Host', run: w.run }
+// The open assignments of a persistent agent (P6: a split can give it several at once).
+export const heldBy = (d: Derived, agent: AgentId): ReadonlyArray<AssignmentId> => {
+  const state = d.states.agents.get(agent)
+  return state?._tag === 'OnAssignment' ? state.assignments : []
+}
+
+// The actors whose steps a waiter waits for: a persistent agent acts by each open assignment.
+const actorsOf = (d: Derived, w: Waiter): ReadonlyArray<Author> => {
+  switch (w._tag) {
+    case 'Agent':
+      return [{ _tag: 'Agent', assignment: w.assignment }]
+    case 'Host':
+      return [{ _tag: 'Host', run: w.run }]
+    case 'Persistent':
+      return heldBy(d, w.agent).map((assignment) => ({ _tag: 'Agent', assignment }))
+  }
+}
 
 export const stepsOf = (d: Derived, waiter: Waiter): Steps => {
-  const actor = authorOf(waiter)
-  const next = nextFor(d, actor)
+  const next = actorsOf(d, waiter).flatMap((actor) => nextFor(d, actor))
   return { next, key: stepKey(next), ready: next.some((s) => s._tag === 'Do') }
 }
 
@@ -87,10 +115,28 @@ const solOf = (d: Derived, run: RunId): WaitEnd | null => {
     : null
 }
 
-// An end that needs no steps: the actor ended, or the host's top task opened. The Sol of a run
-// that ended (its top task was remade) hands the run's terminal to the new Sol.
+// The open assignments of a persistent agent that its terminal has not taken yet.
+const givenTo = (d: Derived, agent: AgentId): WaitEnd | null => {
+  const w = d.moment.work
+  const x = w.agents.get(agent)
+  if (x?.terminal._tag !== 'Started') return null
+  const session = x.terminal.session
+  const [first, ...rest] = heldBy(d, agent).filter((a) => w.sessions.get(a)?.session !== session)
+  return first === undefined
+    ? null
+    : { _tag: 'Given', d, agent, session, assignments: [first, ...rest] }
+}
+
+// An end that needs no steps: the actor ended, the host's top task opened, or a persistent agent
+// got a new assignment. The Sol of a run that ended (its top task was remade) hands the run's
+// terminal to the new Sol.
 const endOf = (d: Derived, waiter: Waiter): WaitEnd | null => {
   const w = d.moment.work
+  if (waiter._tag === 'Persistent') {
+    const state = d.states.agents.get(waiter.agent)
+    if (state === undefined || state._tag === 'Ended') return { _tag: 'Ended', d }
+    return givenTo(d, waiter.agent)
+  }
   if (waiter._tag === 'Agent') {
     const state = d.states.assignments.get(waiter.assignment)
     if (state !== undefined && state._tag !== 'Ended') return null
