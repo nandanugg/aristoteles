@@ -21,8 +21,11 @@ SQLite file that links each task to the version of the direction that it used.
 ## Requirements
 
 - [Bun](https://bun.sh) 1.4.3 or later (tested with 1.4.4). On macOS, an older Bun can wait for
-  ever in a sync spawn (oven-sh/bun issue 34069), and the page's terminals then stop.
+  ever in a sync spawn (oven-sh/bun issue 34069), and the page's terminals then stop. Install it
+  as https://bun.com/docs/installation says (on Linux its installer needs `unzip`), and put
+  `~/.bun/bin` on the PATH of the shell that runs your AI CLI.
 - git.
+- tmux 3 or later, for the terminals of the agents.
 
 ## Start from your AI CLI
 
@@ -33,10 +36,10 @@ so you talk with the host there or on the page. No step guesses which CLI you us
 
 ```text
 Use aristoteles in this folder.
-1. Find aristoteles. If `work` is on the PATH, it links to <the aristoteles folder>/bin/work.js.
+1. Find aristoteles. When `work` is on the PATH, it is a link to <the aristoteles folder>/bin/work.js.
    If not, run: git clone https://github.com/nandanugg/aristoteles.git ~/.aristoteles/code
    Then run `bun install --production` in that folder (Bun 1.4.3 or later, git and tmux are
-   necessary), and link the CLI:
+   necessary), and link the CLI (and put ~/.local/bin on the PATH when it is not there):
    mkdir -p ~/.local/bin && ln -s ~/.aristoteles/code/bin/work.js ~/.local/bin/work
    When `work` is still not on the PATH, use `bun <the aristoteles folder>/bin/work.js` in its place.
    Then run `work skill install` in this folder: it links the /aristoteles skill here, out of git.
@@ -65,7 +68,7 @@ the store until the end:
    its icon, its model, and whether it is persistent. Only a persistent role gets a terminal of
    its own; a role that is not persistent runs as a subagent. Accept, revise, or remove each role.
 4. Approve all roles. That starts the store with only the accepted result (at a terminal:
-   `work onboard approve-roles`; the page and the command ask for your confirmation). Commit
+   `work onboard approve-roles`; the page and the command ask you to type the word `approve`). Commit
    `aristoteles.yaml`. The host then records the fit of each agent role: a role fits when its words pass
    the static checks of work and a yes answer to seven short questions about its kind of work
    (`guides/fitness.yaml`); a role with no fit record gets no work.
@@ -125,16 +128,22 @@ start from that file. A build that fails changes nothing: that call runs the cod
 work and its reviews, and the real terminal of each AI agent. It needs `bun install` once in the
 aristoteles folder, and tmux for the terminals.
 
+It prints the page's address, with a key. The first visit with the key sets a cookie; a visit with
+no key and no cookie gets 403. The server listens on 127.0.0.1 only: on a remote machine, open a
+tunnel (`ssh -L <port>:127.0.0.1:<port> <machine>`) and open the address on your own machine. A
+machine with no browser opener (a server over ssh) only prints the address.
+
 - **A project is a talk** with the host, the AI CLI that you triggered: the page shows its
   terminal. Tell it what you want; it drafts the top task, and you open it with one click.
 - **Persistent agents and subagents.** A persistent role (any tier) runs in a real terminal that
   you can open and type into, from its first assignment to the end of the project; the UI starts
   it, and it takes its work with `work wait --by=<agent>`. A role that is not persistent runs as
   a subagent inside the terminal that gives it the work. Only a terminal starts subagents.
-- **Only five kinds of decision need you**, each with a badge: a system problem (something the
+- **Only six kinds of decision need you**, each with a badge: a system problem (something the
   work needs does not work, such as a cluster or an account limit), a direction problem (a
   result shows that a direction can be read in two ways, or is wrong), the end of a project, your words that an agent relayed as an act (you confirm it),
-  and new words of a role. The host handles the rest, and writes its words on each decision
+  new words of a role, and an adjustment (a drafted change of a role or a direction after the
+  store starts). The host handles the rest, and writes its words on each decision
   first.
 - **The settings** (the gear) are in `aristoteles.yaml`: the command of each tier, for example
   `claude --model opus --session-id {session} {prompt}`, its resume command, the words of an

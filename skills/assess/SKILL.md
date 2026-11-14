@@ -24,7 +24,8 @@ again. The store starts at the end, with only the accepted result.
 1. **Read the project** (the part "Read the project" below) for its kinds of work and its
    repeatable parts.
 2. **Draft the config:** run `work onboard config` with no `--file`. It refuses and prints the
-   form to copy; `work onboard role`, `ask`, and `draft` print theirs the same way. Write
+   form to copy; `work onboard role <role>`, `ask <id>`, and `draft <id>` (after `found <id>`)
+   print theirs the same way. Write
    `.work/drafts/config.yaml` in that form (the part "The config draft" below says what it
    holds), then run `work onboard config --file=.work/drafts/config.yaml`. The command runs the
    checks of `work config check` on it, and prints `next: work onboard found <id>`.
@@ -240,7 +241,7 @@ piece as below. The roles go into the config draft, the directions into directio
   `description`, the `intro`, and the `responsibilities` from the prompt file of the agent, and
   put its path in `found`.
   - a writer: a low role with `do` and its `output` form (`<file>#<section>` for one section
-    of a file);
+    of a markdown file; a maker of code reports `<repo>@<commit>`, one commit);
   - a judge or a checker: a low role with `review: [<the writer>]`; each thing that it checks is
     a rule with `checkedBy: <the judge>`;
   - a lead that runs one section and decides it: a medium role with `approve: [<the writer>]`;
