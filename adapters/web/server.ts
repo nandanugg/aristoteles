@@ -84,6 +84,19 @@ const json = (body: unknown, status = 200) =>
 const answer = <A, I>(schema: Schema.Codec<A, I>, value: A) =>
   json(Schema.encodeSync(schema)(value))
 
+// An answer of more than one packet, gzipped when the browser takes it: the canvas of a big project
+// is about 10 KB of JSON, on the Wi-Fi of a phone (the page budget, plan/rebuild/BENCH.md).
+const gzipped = async (req: Request, res: Response): Promise<Response> => {
+  const text = await res.text()
+  const headers = new Headers(res.headers)
+  headers.set('vary', 'accept-encoding')
+  if (text.length < 1400 || !/\bgzip\b/.test(req.headers.get('accept-encoding') ?? '')) {
+    return new Response(text, { status: res.status, headers })
+  }
+  headers.set('content-encoding', 'gzip')
+  return new Response(Bun.gzipSync(text), { status: res.status, headers })
+}
+
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
 
 const messageOf = (error: unknown): string =>
@@ -536,7 +549,8 @@ export function startServer(options: ServerOptions): ServerHandle {
         try {
           const own = await extend.api?.(req, url, { readState, send })
           if (own) return own
-          return (await api(url.pathname, url)) ?? json({ error: 'no such address' }, 404)
+          const res = (await api(url.pathname, url)) ?? json({ error: 'no such address' }, 404)
+          return gzipped(req, res)
         } catch (error) {
           return json({ error: messageOf(error) }, 500)
         }
