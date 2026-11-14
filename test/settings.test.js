@@ -80,9 +80,10 @@ describe('aristoteles.yaml', () => {
   test('the settings have defaults', async () => {
     const p = project({ 'aristoteles.yaml': SETTINGS + WORK_YAML })
     const s = await settingsOf(p)
+    // Ruling 9, onboarding 2026-11-14 (P9): the start words and the retry name the agent's wait (were: a token, work next).
     expect(s.tiers.sol).toEqual({
       launch: 'agent-tool --model large --session-id {session}', resume: 'agent-tool --resume {session}',
-      start: 'Use the work skill. Your command: work brief {token}', errors: [], prompts: [], silentMinutes: 10, retryInput: 'System message, not from the person. Run work next with your token, and do what it says.',
+      start: 'Use the work skill. You are {agent}: run work wait --by={agent}, and do what it prints.', errors: [], prompts: [], silentMinutes: 10, retryInput: 'System message, not from the person. Run work wait --by={agent}, and do what it prints.',
     })
     expect(s.tiers.terra.prompts).toEqual(['Do you want to proceed?'])
     expect([s.retryMinutes, s.hostWaitMinutes, s.sound, s.theme]).toEqual([5, 10, false, 'light'])

@@ -191,7 +191,8 @@ describe('what agents see', () => {
   test('L1: assign prints the whole subagent prompt with the project folder', async () => {
     const { p, lead } = await started()
     const out = ok(await p.agent(`assign ${lead} t1 --role=writer`)).out
-    expect(out).toContain('Start a Haiku subagent with this prompt, and nothing else:')
+    // Ruling 7, onboarding 2026-11-14: a disposable role starts as a subagent on the model of its tier (was: "Start a Haiku subagent").
+    expect(out).toContain('Start a subagent on Haiku (the low model) with this prompt, and nothing else:')
     expect(out).toContain('Use the work skill. In <project>, run: work brief a2.')
   })
 })

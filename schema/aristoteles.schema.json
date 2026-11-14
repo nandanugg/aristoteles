@@ -434,8 +434,8 @@
         },
         "start": {
           "type": "string",
-          "pattern": "\\{token\\}",
-          "description": "The first input; it starts the skill. The default: Use the work skill. Your command: work brief {token}"
+          "pattern": "\\{agent\\}",
+          "description": "The first input of a persistent agent; it starts the skill. {agent} is the id of the agent (p1). The default: Use the work skill. You are {agent}: run work wait --by={agent}, and do what it prints."
         },
         "skills": {
           "type": "string",
@@ -462,7 +462,7 @@
         },
         "retryInput": {
           "type": "string",
-          "description": "The input that a live session gets on a retry. The default is continue."
+          "description": "The input that a restarted session gets as its argument; {agent} is the id of its agent. The default: System message, not from the person. Run work wait --by={agent}, and do what it prints."
         }
       }
     }

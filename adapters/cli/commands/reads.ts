@@ -67,7 +67,8 @@ const next: Command = (call) =>
     if (d.states.assignments.get(a)?._tag === 'Ended') {
       return [`${a} is finished; there is nothing more for it.`]
     }
-    if (tierOfAssignment(work, a) === 'low') {
+    // A persistent low agent (runs Agent) holds many units; a subagent of a low role has one.
+    if (work.assignments.get(a)?.runs._tag !== 'Agent' && tierOfAssignment(work, a) === 'low') {
       return [`a low role has one unit: work brief ${token} shows it.`]
     }
     const actor = { _tag: 'Agent', assignment: a } as const

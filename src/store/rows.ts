@@ -60,10 +60,13 @@ const terminalColumns = (
   }
 }
 
-// What a terminal stands for, as the old row named it: the run of its session (its host too),
-// else the agent of its session.
+// What a terminal stands for: the run of its session (its host too), else the persistent agent
+// that started it (ruling 9: also before its first assignment), else the assignment of its session.
 const terminalOf = (work: Work, session: SessionId): string => {
   for (const r of work.runs.values()) if (r.session === session) return r.id
+  for (const x of work.agents.values()) {
+    if (x.terminal._tag === 'Started' && x.terminal.session === session) return x.id
+  }
   for (const s of work.sessions.values()) if (s.session === session) return s.assignment
   throw new Error(`rowsOf: no run or agent has the session ${session}`)
 }

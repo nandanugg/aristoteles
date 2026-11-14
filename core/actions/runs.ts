@@ -178,9 +178,13 @@ const paneHost = (d: Derived, socket: string, pane: string): Run | undefined =>
       r.terminal.pane === pane
     )
   })
-// The terminal of a session: a run's (its host), or an agent's.
+// The terminal of a session: a run's (its host), a persistent agent's (ruling 9: also before its
+// first assignment), or an assignment's.
 const terminalOf = (w: Work, session: SessionId): boolean =>
   [...w.runs.values()].some((r) => r.session === session) ||
+  [...w.agents.values()].some(
+    (x) => x.terminal._tag === 'Started' && x.terminal.session === session,
+  ) ||
   [...w.sessions.values()].some((s) => s.session === session)
 
 // The directions that a task may name, with their current standards in the file's shape.
