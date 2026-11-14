@@ -145,9 +145,10 @@ When the task is accepted, run each step in READY (put the work on its base, fin
 (read-only: no snapshot, no claim)"
 `;
 
+// Nanda, 2026-11-15: the host at onboarding has no token, so the next line asks for the person first.
 exports[`identity: tokens and the terminal an agent with no terminal cannot act as the person: person command from an agent shell 1`] = `
 "refused: this is a person command; a person runs it at a terminal
-next: an agent passes its token first: work <command> <token> ..."
+next: ask the person to type it at their terminal; an agent command takes its token first: work <command> <token> ..."
 `;
 
 exports[`the claim of an attempt one claim at a time; the parent frees a stopped subagent: second claim 1`] = `

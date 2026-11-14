@@ -95,7 +95,8 @@ export const personOf = (
     if (!terminal.isTTY && !terminal.onPage) {
       return yield* refuse(
         'this is a person command; a person runs it at a terminal',
-        'an agent passes its token first: work <command> <token> ...',
+        'ask the person to type it at their terminal; an agent command takes its token first: ' +
+          'work <command> <token> ...',
       )
     }
     if (Object.keys(env.vars).some((k) => k.startsWith('GIT_CONFIG'))) {

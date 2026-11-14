@@ -247,7 +247,8 @@ const config = (call: Call) =>
     const names = Object.keys(roles)
     return [
       `${DRAFT} holds the config draft: ${names.length} roles (${names.join(', ')}); each waits for the person on the agents page.`,
-      'next: work onboard found <id> for each topic, then work onboard draft <id> --file=<direction.yaml>',
+      'next: start the page (work start --detach), where the person sees each direction; then ' +
+        'work onboard found <id> for each topic, and work onboard draft <id> --file=<direction.yaml>',
     ]
   })
 
