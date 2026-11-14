@@ -30,11 +30,13 @@ const alive = (pid: number): boolean => {
     return false
   }
 }
-const openBrowser = (url: string) =>
-  Bun.spawn([process.platform === 'darwin' ? 'open' : 'xdg-open', url], {
-    stdout: 'ignore',
-    stderr: 'ignore',
-  })
+// The page opens in a browser when the machine has an opener; a machine with none (a server over
+// ssh) has the address that the start printed. A missing program would stop the start itself.
+const openBrowser = (url: string) => {
+  const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
+  if (Bun.which(opener) === null) return
+  Bun.spawn([opener, url], { stdout: 'ignore', stderr: 'ignore' })
+}
 
 // The address of the server of the dir that runs now, from its record; undefined: none runs.
 const runningUrl = async (dir: string, record: string): Promise<string | undefined> => {
