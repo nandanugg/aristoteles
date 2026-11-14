@@ -25,11 +25,13 @@ export const pageBundle = (): Promise<string> => {
 }
 
 // The static files of the page: path -> [file under the repo, content type]. xterm.js and its
-// addon and style load when the first terminal opens (adapters/web/app/terminal.ts).
+// addon and style load when the first terminal opens (adapters/web/app/terminal.ts); the role
+// icons when a grid of agents shows (adapters/web/app/agents.ts).
 export const PAGE_FILES: Readonly<Record<string, readonly [string, string]>> = {
   '/': ['adapters/web/app/index.html', 'text/html; charset=utf-8'],
   '/style.css': ['adapters/web/app/style.css', 'text/css'],
   '/vendor/xterm.js': ['node_modules/@xterm/xterm/lib/xterm.js', 'text/javascript'],
   '/vendor/xterm.css': ['node_modules/@xterm/xterm/css/xterm.css', 'text/css'],
   '/vendor/addon-fit.js': ['node_modules/@xterm/addon-fit/lib/addon-fit.js', 'text/javascript'],
+  '/vendor/role-icons.js': ['adapters/web/vendor/role-icons.js', 'text/javascript'],
 }
