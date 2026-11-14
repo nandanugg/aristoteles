@@ -116,16 +116,29 @@ async function expectNextCanAct(dir, env, real, minute) {
   if (violations.length > 0) throw new Error(`next offers what canAct refuses:\n${violations.join('\n')}`)
 }
 
+// The documents of the fixture project: the cases of its directions point into them.
+const DOCS = {
+  'docs/tsd.md': '# TSD\n\n## Introduction\n\nTODO\n\n## Design\n\nTODO\n',
+  'docs/facts.md': '# Facts\n\n## Dedupe\n\nThe export ran twice for one merchant.\n',
+}
+
 // The folder of a dir has the name that people read (the name of a dir is its folder name).
 export function project(files = {}, name = 'report-export') {
+  return projectOf({
+    'aristoteles.yaml': WORK_YAML, 'directions/tsd-writing.yaml': DIRECTION, 'task.yaml': TASK, 'fit.yaml': FIT,
+    ...DOCS, ...files,
+  }, name)
+}
+
+// Onboarding (BUILD.md 1e): a project with no aristoteles.yaml and no store, only its own files.
+// The host's drafts are the ONBOARD_* texts below; a test writes the ones that it needs.
+export function onboardingProject(files = {}, name = 'report-export') {
+  return projectOf({ ...DOCS, '.claude/agents/linter.md': '# Linter\n\nChecks one section.\n', ...files }, name)
+}
+
+function projectOf(all, name) {
   const dir = join(mkdtempSync(join(tmpdir(), 'work-')), name)
   mkdirSync(dir)
-  const all = {
-    'aristoteles.yaml': WORK_YAML, 'directions/tsd-writing.yaml': DIRECTION, 'task.yaml': TASK, 'fit.yaml': FIT,
-    'docs/tsd.md': '# TSD\n\n## Introduction\n\nTODO\n\n## Design\n\nTODO\n',
-    'docs/facts.md': '# Facts\n\n## Dedupe\n\nThe export ran twice for one merchant.\n',
-    ...files,
-  }
   for (const [path, text] of Object.entries(all)) write(dir, path, text)
   let minute = 0
   // A test with the server of the UI uses the real clock, because the server acts at the real time.

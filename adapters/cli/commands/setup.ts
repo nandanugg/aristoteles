@@ -1,4 +1,4 @@
-// The commands init, config, role.
+// The commands init, config, role, skill.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { staticFit, wordsFit } from '../../../core/actions/config.ts'
@@ -6,6 +6,7 @@ import { roleWordsDraftAt } from '../../../core/derived/index.ts'
 import {
   type Author,
   type EventRef,
+  OutsideFailed,
   Refused,
   refuse,
   RoleName,
@@ -24,6 +25,7 @@ import {
   refusing,
   roleHash,
 } from '../../../core/services/index.ts'
+import { installSkill, SKILL_FILE } from '../../live/skill-install.ts'
 import { renderRoleWords } from '../../words/index.ts'
 import { textOf, wordsOf } from '../args.ts'
 import { agentCallerOf, callerOf, authorOf, isPerson, personAuthor } from '../caller.ts'
@@ -286,4 +288,20 @@ const role: Command = (call) =>
     return [`${key} fits; recorded${by._tag === 'ModelRun' ? ` by ${by.name}` : ''}.`]
   })
 
-export const commands: Commands = { init, config, role }
+// work skill install (ruling 12): the /aristoteles skill in this dir, as two local links that git
+// excludes. It needs no aristoteles.yaml and no store, so it is the first act in a new dir.
+const skill: Command = (call) =>
+  Effect.gen(function* () {
+    if (call.args.positional[0] !== 'install') return yield* refuse('use work skill install')
+    const { cwd } = yield* Dir
+    const lines = yield* Effect.try({
+      try: () => installSkill(cwd),
+      catch: (e) => new OutsideFailed({ system: 'files', message: String(e), next: null }),
+    })
+    return [
+      ...lines,
+      `next: read ${SKILL_FILE} and do what it says; a session started with /aristoteles reads it too`,
+    ]
+  })
+
+export const commands: Commands = { init, config, role, skill }

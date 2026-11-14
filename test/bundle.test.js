@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdtempSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -17,7 +18,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { reported } from './harness.js'
+import { onboardingProject, reported } from './harness.js'
 
 const ROOT = join(import.meta.dir, '..')
 
@@ -88,6 +89,22 @@ describe('bin/work.js', () => {
     const words = await Promise.all(started.map((s) => new Response(s.stdout).text()))
     expect(words).toEqual(started.map(() => sources[0].out))
     expect(bundles()).toEqual([second])
+    rmSync(code, { recursive: true, force: true })
+  }, 30000)
+
+  // Ruling 12, onboarding 2026-11-14: the install links the SKILL.md of the code root. In the bundle
+  // each file keeps its own folder, so the link never points into .cache/.
+  test('work skill install from the bundle links the SKILL.md of the code, never the cache', () => {
+    const code = copy()
+    const p = onboardingProject()
+    const env = { ...process.env, WORK_DIR: p.dir, ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }
+    for (const key of ['TMUX', 'TMUX_PANE', 'TMUX_SOCKET']) delete env[key]
+    const r = Bun.spawnSync(['bun', join(code, 'bin', 'work.js'), 'skill', 'install'], { env, cwd: p.dir })
+    expect(r.exitCode).toBe(0)
+    expect(readdirSync(join(code, '.cache', 'cli'))).toHaveLength(1)
+    const link = readlinkSync(join(p.dir, '.claude', 'skills', 'aristoteles', 'SKILL.md'))
+    expect(link).toBe(join(realpathSync(code), 'skills', 'aristoteles', 'SKILL.md'))
+    expect(link).not.toContain('.cache')
     rmSync(code, { recursive: true, force: true })
   }, 30000)
 })

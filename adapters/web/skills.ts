@@ -1,15 +1,16 @@
 // The skills of the launched AI tools (Nanda, 2026-11-11): aristoteles.yaml names the skills
-// folder of each tier; a skill that is missing there is linked to this repo's own, and said.
+// folder of each tier; a skill that is missing there is linked to this repo's own, and said. The
+// aristoteles skill is not here: work skill install links it (adapters/live/skill-install.ts).
 // work start links them, and the supervisor again before each launch, because the tiers can change
 // after the start (the settings on the page, or the roles that the person accepts). Each link
-// points into this machine, so git of the dir excludes it (git-exclude.ts).
+// points into this machine, so git of the dir excludes it (adapters/live/git-exclude.ts).
 import { lstatSync, mkdirSync, readlinkSync, symlinkSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { Effect } from 'effect'
 import { FilesLive, readSettings } from '../../core/services/index.ts'
-import { excludeFromGit } from './git-exclude.ts'
+import { excludeFromGit } from '../live/git-exclude.ts'
 
-const SKILLS = ['aristoteles', 'work', 'assess', 'role-fitness']
+const SKILLS = ['work', 'assess', 'role-fitness']
 export const linkSkills = (dir: string): ReadonlyArray<string> => {
   const lines: string[] = []
   // A dir whose settings do not read has no skills folder to link into.
