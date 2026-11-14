@@ -52,7 +52,7 @@ import {
   resultAt,
   roleNameOf,
   roleOf,
-  tierOf,
+  tierOfAssignment,
 } from './records.ts'
 import { contentAt, contentNow, directionIdsOf, sameFor, underNow } from './versions.ts'
 
@@ -321,8 +321,8 @@ export const decidersOfDraft = (w: Work, draft: RevisionId): Tree<DraftLeaf> => 
 }
 // The owner's leaf also matches a high role with a Change act on the direction at its time.
 const standsInForOwner = (w: Work, by: By, direction: DirectionId, when: Time): boolean => {
-  const tier = tierOf(roleOf(w, by))
-  return (tier === undefined || tier === 'high') && can(w, by, 'Change', direction, when)
+  const tier = isAssignment(by) ? tierOfAssignment(w, assignmentAt(w, by)) : null
+  return (tier === null || tier === 'high') && can(w, by, 'Change', direction, when)
 }
 // The OwnerAccept leaf matches only the owner as the person: a stand-in does not count (S2).
 export const draftMatches =

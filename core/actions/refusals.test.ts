@@ -469,6 +469,16 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     expect(draft({ _tag: 'SetCases', direction: 'tsd-writing', file: 'two.yaml' })).toBe(
       'two.yaml: cases lists 2',
     )
+    const hld = h.DIRECTION.replaceAll('tsd-writing', 'hld-writing')
+      .replaceAll('no-code-proof', 'hld-no-code')
+      .replaceAll('no-ticket-ids', 'hld-no-ids')
+      .replaceAll('repeatable', 'hld-repeatable')
+    p.write('hld.yaml', hld)
+    ok(await p.agent('direction new --file=hld.yaml --by=assess'))
+    const drafted = { _tag: 'RetireDirection', direction: 'hld-writing' }
+    expect(message(act(derivedIn(p), HOST_RUN, adjust(drafted)))).toBe(
+      'hld-writing has no version yet; its draft waits for its accept',
+    )
     retire(p)
     const after = derivedIn(p)
     const again = { _tag: 'RetireDirection', direction: 'tsd-writing' }

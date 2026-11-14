@@ -67,9 +67,10 @@ import {
   type Where,
   type Work,
 } from '../schema/index.ts'
+import { tierOfAssignment } from '../state/records.ts'
 
 // The tier of an assignment, kept at its give (core/state records.ts): every reader reads it.
-export { tierOfAssignment } from '../state/records.ts'
+export { tierOfAssignment }
 
 // --- getters -------------------------------------------------------------------------------------
 
@@ -961,8 +962,8 @@ export const decidersOfDraft = (w: Work, draft: RevisionId): Tree<DraftLeaf> => 
 }
 // The owner's leaf also matches a high role with a Change act on the direction at its time.
 const standsInForOwner = (w: Work, by: By, direction: DirectionId, when: Time): boolean => {
-  const tier = tierOf(roleOf(w, by))
-  return (tier === undefined || tier === 'high') && can(w, by, 'Change', direction, when)
+  const tier = isAssignment(by) ? tierOfAssignment(w, assignmentAt(w, by)) : null
+  return (tier === null || tier === 'high') && can(w, by, 'Change', direction, when)
 }
 // The OwnerAccept leaf matches only the owner as the person: a stand-in does not count (S2).
 export const draftMatches =
