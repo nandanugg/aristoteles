@@ -36,6 +36,7 @@ import {
   prepareStart,
   type QuestionDraft,
   type RoleNotes,
+  readConfig,
   readDirection,
   readOnboarding,
   refusing,
@@ -618,11 +619,21 @@ const approveRoles = Effect.gen(function* () {
   const name = yield* personOf(undefined, { word: 'approve', show })
   const by = { _tag: 'Person' as const, name, channel: yield* personChannel }
   const start = yield* prepareStart(cwd, name, (yield* Env).vars)
-  // The refusal of the start is what the person reads; the write back runs before it shows.
-  const done = yield* act(by, {
-    _tag: 'DefineWorkflow',
-    target: {},
-    content: { directions: start.directions },
+  // The checks of work config check on the file that the start wrote, then the store. The refusal
+  // is what the person reads; the write back runs before it shows.
+  const done = yield* Effect.gen(function* () {
+    const problems = yield* configProblems((yield* readConfig(cwd)).config)
+    if (problems.length) {
+      return yield* refuse(
+        `${CONFIG}: ${problems.join('; ')}`,
+        'the host writes the role again (work onboard role), and the person accepts it',
+      )
+    }
+    return yield* act(by, {
+      _tag: 'DefineWorkflow',
+      target: {},
+      content: { directions: start.directions },
+    })
   }).pipe(Effect.onError(() => Effect.ignore(start.restore)))
   yield* start.finish
   const { config } = done.work
