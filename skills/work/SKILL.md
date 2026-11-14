@@ -55,6 +55,26 @@ work wait <token>
   person can still talk to you. When it returns, do its steps, then run `work wait` again.
 - A subagent does not wait: it stops where its brief says STOP, and its parent starts it again.
 
+### A persistent agent
+
+A persistent agent has a terminal of its own for the whole project, and holds many assignments
+one after the other. Its first input is "Use the work skill. You are p1: run work wait --by=p1,
+and do what it prints." Its loop:
+
+1. Run `work wait --by=<your agent>` (for example `p1`). It runs only in your own terminal. It
+   returns when you have a new assignment, and prints each one: `a5 is yours: <task> <name>, as
+   <role>. Your command: work brief a5.<secret>`.
+2. Keep one token for each assignment that you hold. Run the brief of each, and do its steps
+   with that token. The wait prints the steps of each open assignment under its id.
+3. `work wait <token>` still waits for one assignment only. When an assignment is finished, it
+   prints `a5 is finished; run work wait --by=p1 for the next work of p1.`
+4. When you have nothing to do, run `work wait --by=<your agent>` again, in the background when
+   your AI CLI allows it. After a restart, your first input says "System message, not from the
+   person": do its command, `work wait --by=<your agent>`.
+
+You are in the terminal of one agent, so you start the subagents of your disposable roles. Your
+own subagents start none (below).
+
 ## You are the host of a project (the UI)
 
 The person triggered you in their AI CLI (the `aristoteles` skill), and you started or continued a
@@ -98,14 +118,22 @@ talk with the person, then you run its top task.
    - text in your terminal comes from the person. Only a restart of a terminal gives a first
      prompt that starts with "System message, not from the person": do its command.
 
-### Real agents and subagents
+### Persistent agents and subagents
 
-- A medium (Terra) or high (Sol) role runs as a **real agent**, in its own terminal that the
-  person can inspect. Do not start it yourself: `work assign` records it, and the UI starts its
-  terminal with its brief as the first prompt. Then run `work wait <your token>`: it returns
-  when the work of the child changes your next steps.
-- A low (Luna) role runs as a **subagent** inside your own session: start it as below. It does
-  a short job, so it needs no terminal of its own.
+Persistence and tier are apart. Each role says in `aristoteles.yaml` whether it is persistent.
+
+- A **persistent** role (any tier) runs as an agent in a terminal of its own, which the person
+  can inspect. Do not start it yourself: `work assign` prints that the assignment runs in its
+  agent (`a2 runs in p1, the persistent <role> agent of h1`), and the UI starts the terminal when
+  the agent has none. The agent gets the assignment through `work wait --by=p1`. Then run
+  `work wait <your token>`: it returns when the work of the child changes your next steps.
+- A role that is not persistent runs as a **subagent** inside your own session: start it as
+  below. It does a short job, so it needs no terminal of its own.
+- **Only a terminal starts subagents:** the host, and a persistent agent. A subagent starts none;
+  `work assign` by a subagent is refused. When its work needs more agents, it tells the agent
+  above it with `work ask <token> --text="<what the work needs>"`, and stops. When you start a
+  subagent, tell it this rule in its prompt. The launch command of a persistent agent sets
+  `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` for Claude Code; the host sets it for itself.
 
 ## You give work to a subagent
 
@@ -113,12 +141,14 @@ talk with the person, then you run its top task.
    prompt, for example:
 
    ```
-   Start a Haiku subagent with this prompt, and nothing else:
+   Start a subagent on <model> (the low model) with this prompt, and nothing else:
      Use the work skill. In /path/to/project, run: work brief a7.<secret>
    ```
 
-2. Start that subagent (low = Haiku, medium = Sonnet, high = Opus) with exactly that prompt.
-   Keep the token: a later attempt of the same assignment uses the same command.
+2. Start that subagent on the model that the line names, with exactly that prompt. The model is
+   `tiers.<sol|terra|luna>.model` of the settings, else the class of the tier (high = Opus,
+   medium = Sonnet, low = Haiku). Keep the token: a later attempt of the same assignment uses
+   the same command.
 3. When it stops, run `work next <your token>`. It lists the steps that are ready, with
    each command filled in (a redo, a checker to start, an escalation to resolve, an answer,
    the finish steps). `work waiting --for=<your id>` lists what waits for you.
@@ -126,6 +156,28 @@ talk with the person, then you run its top task.
 Read a child's brief with `work assignment show <id>` (it takes no snapshot). If a child
 stopped in the middle of an attempt, `work free <your token> <child id>` frees it for a new
 subagent.
+
+## Adjust the roles and the directions
+
+After the store starts, onboarding is over, and a change of the roles or of the directions is an
+event that the person accepts (an adjustment). Work in progress keeps what it started with.
+
+- A high agent (with its token), or the host outside any task (`--by=<your run>`), drafts one
+  change with `work adjust`:
+  - `work adjust <token> add-role <role> --file=<role.yaml>` (the keys of one role, with its
+    `persistence` and `icon`) and `work adjust <token> remove-role <role>`;
+  - `work adjust <token> tier <role> --tier=low|medium|high`;
+  - `work adjust <token> persistence <role> --persistent=true|false --why=<words>`;
+  - `work adjust <token> retire <direction>`;
+  - `work adjust <token> cases <direction> --file=<cases.yaml>` (`cases:` with 3 or more real
+    cases, each `{ file, line, excerpt, fit: Follows | Breaks }`).
+  The high role that the host plays for a top task stays persistent.
+- The person shows and decides it: `work adjust show <event>`, `work adjust accept <event>`,
+  `work adjust reject <event> --reason=<words>`, or on the page. A rejected adjustment shows its
+  reason in `work waiting`.
+- The person says what to change in words: `work suggest roles --says="<the change>"` for the
+  roles, `work suggest <direction> --says="<the change>"` for a direction. Draft the adjustment
+  that answers it.
 
 ## Escalations
 
@@ -190,8 +242,13 @@ The person runs commands with no token, at a terminal. An agent never runs a per
 
 ## The person sets up a project
 
+0. In a new dir, start with onboarding (the `aristoteles` skill, then the `assess` skill): the
+   host drafts the config, the directions, and the roles as files with `work onboard`, the person
+   checks each one on the page, and `work onboard approve-roles` starts the store. Then go to
+   step 3. The steps 1 and 2 are the by-hand path; `work init` refuses while onboarding files
+   exist.
 1. Write `aristoteles.yaml` (people, limits per tier, roles, and `decide` when a maker has more
-   than one decider). `schema/aristoteles.schema.json` gives its form. Every agent role is low,
+   than one decider). Each agent role also says `persistence: { persistent, why }` and an `icon`. `schema/aristoteles.schema.json` gives its form. Every agent role is low,
    medium, or high; a program role (`kind: program`) runs a command on each report and has no
    tier; the person plays no role. `aristoteles.yaml` names no directions.
    `outsideSourceHours` (72 by default) is how long a revision of a source outside git holds

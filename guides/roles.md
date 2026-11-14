@@ -13,6 +13,36 @@ of work: a file that breaks one is refused, or the work stops later at that chec
 - The high role of a top task decides that task last. Then the end of the project goes to the
   person.
 
+## Persistence and icon
+
+- Each agent role says `persistence: { persistent: true | false, why: <one line> }` and an `icon`.
+  A program role has an icon and no persistence.
+- Tier and persistence are apart. Only a persistent role gets a terminal of its own, for the
+  whole project; a role that is not persistent runs as a subagent of a terminal. Any tier can be
+  persistent.
+- The lead is persistent. The host plays the high role of each top task, and the host is a
+  terminal, so a dir needs at least one persistent high role. The store start is refused
+  without it.
+- Only a terminal starts subagents: the host, and a persistent agent. A subagent starts none; it
+  tells the terminal above it what the work needs.
+- The words of a role give principles that work as criteria for its kind of work, so that the
+  four acts (do, review, approve, change) have a standard: what a good unit is, what a reviewer
+  checks, what a lead approves, and what the high role changes.
+
+### Choose persistence with the Rumsfeld matrix
+
+This is guidance for the person who writes the roles. No file holds the matrix and no page shows
+it; the `why` of a role says the reason in plain words.
+
+| The role works on | Persistence | Why |
+|---|---|---|
+| Known knowns: the work is known and repeats | persistent | It starts cheaper subagents in parallel: workers that do the known work. |
+| Known unknowns: the work is known, and some facts are missing | persistent | It starts subagents to find the facts: validators and surveyors that check a claim or fill in what is missing. |
+| Unknown knowns and unknown unknowns: the work needs judgment that no rule gives | disposable by default | A big agent, started for one unit. Make it persistent when the project needs it again and again, for example an advisor with the knowledge of its domain. |
+
+A disposable agent that starts disposable agents shows repetitive work. Make that role
+persistent, so that its terminal starts the subagents, or give the work to a persistent role.
+
 ## Fit
 
 - An agent role gets work (Open, or an assign) only when it has a fit record for its current
@@ -67,14 +97,20 @@ of work: a file that breaks one is refused, or the work stops later at that chec
 
 ## The files of work in the dir
 
-- `aristoteles.draft.yaml`: the draft of the roles. The accept on the page removes it.
+- `aristoteles.draft.yaml`: the draft of the roles and the tiers (onboarding). The store start
+  removes it.
 - `aristoteles.yaml`: the people, the limits, the roles, and the tiers. Commit it.
-- `.work/`: the worktrees of the agents and the logs of the programs.
+- `.work/assess/`: the onboarding files, one for each direction and one for the roles. Only
+  `work onboard` writes there, and the store start deletes the folder. The host keeps its own
+  draft files in `.work/drafts/` and sends each one with `work onboard ... --file=`.
+- `.work/`: also the worktrees of the agents and the logs of the programs.
 - The links to the aristoteles skills in the `skills` folder of each tier (for example
   `.claude/skills/work`). Each one points into the aristoteles folder of this machine. The
-  app's own skills in that folder stay as they are.
-- `work start` adds `.work/` and each link to `.git/info/exclude`, so git does not commit them
-  and the app's `.gitignore` does not change. When you use work with no `work start`, keep
-  `.work/` out of git yourself.
+  app's own skills in that folder stay as they are. `work skill install` links the
+  `aristoteles` skill in `.claude/skills/aristoteles` and `.agents/skills/aristoteles`; the
+  project's `CLAUDE.md` and `AGENTS.md` are never edited.
+- `work start` and `work skill install` add `.work/` and each link to `.git/info/exclude`, so git
+  does not commit them and the app's `.gitignore` does not change. When you use work with no
+  `work start`, keep `.work/` out of git yourself.
 - An agent that makes commits works in a worktree of the base of its workspace (the last commit
   when no base is set). A change that is not committed is not there.

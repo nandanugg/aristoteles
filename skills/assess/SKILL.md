@@ -1,90 +1,202 @@
 ---
 name: assess
-description: Read an app (a repo of code or documents) and draft its directions in aristoteles with the work CLI, so that its owner accepts or rejects each one. Use when the person asks to assess an app, to turn the agent harness of an app into aristoteles, to find or suggest the directions of an app, to start the directions of a new work project, or when work waiting shows a suggestion that asks for a new direction.
+description: Read a project (a repo of code or documents) and onboard it into aristoteles with the work CLI - draft its roles and its directions as files, with real cases, so that the person accepts or rejects each one on the page. Also drafts a new direction after the store exists. Use when the person asks to assess an app, to turn the agent harness of an app into aristoteles, to find or suggest the directions of an app, to onboard a dir, or when work waiting shows a suggestion that asks for a new direction.
 ---
 
 # assess
 
-You read one app and write the first drafts of its directions. A direction says what the work
-is for; its standards say how the output looks; its rules are the checks that a reviewer does
-on one result. You write drafts only: the owner (a person) accepts or rejects each one. You
-work outside any task, so you name yourself with `--by=assess` in each command.
+You read one project and write the first drafts of its roles and its directions. A direction
+says what the work is for; its standards say how the output looks; its rules are the checks that
+a reviewer does on one result. You write drafts only: the person accepts, revises, or removes
+each one. You run in the AI CLI that the person opened in the dir: you are its host.
 
 When `work` is not on the PATH, `work …` means `bun <the aristoteles folder>/bin/work.js …`.
-Run it in the dir that the person names (the folder with `aristoteles.yaml`). The person ran
-`work init` there first, unless the dir has no `aristoteles.yaml` yet (below). You run in the
-AI CLI that the person opened in the dir: you are its host.
+Run it in the dir that the person names.
 
-## A dir with no `aristoteles.yaml` yet
+## Onboarding a new dir
 
-The roles and the people must exist before any direction, so do this part first:
+Onboarding works on files, before any store exists. Your own draft files go in `.work/drafts/`
+(make the folder). Never write into `.work/assess/`: it belongs to `work onboard`, which keeps
+one file there for each direction and one for the roles. Send each draft through a
+`work onboard` command with `--file=`; a refusal says what to fix, so fix the file and send it
+again. The store starts at the end, with only the accepted result.
 
-1. Read the app (step 3 below) for its kinds of work: code, documents, or both. When the app
-   has its own agent harness, map each piece of it as the next section says.
-2. Read `work guide roles`: the checks of work on the roles. Then write
-   `aristoteles.draft.yaml` beside where `aristoteles.yaml` goes: the `people` (the exact name
-   that `git config user.name` gives in the dir is the person; when it gives none, ask the
-   person for the name to set there), the `limits` (start with `briefChars`
-   of 6000 for low, 12000 for medium, and 16000 for high: the brief counts the tier's guide text,
-   so a limit needs room above it), the `roles`, and `decide` when a maker has
-   more than one decider, in the form of `schema/aristoteles.schema.json`. Every dir has a
-   role of each tier:
-   - a high (Sol) role for each kind of top task (for example `architect`). The host drafts a
-     top task for it, and the person opens it on the page. This role splits the top task, gives
-     the parts to lower roles, decides their results, and decides the result of the top task
-     last; then the end of the project comes to the person. Give no other high role a part in
-     these decisions: a high role gets work only from the person, and the page gives it only
-     to the high role of a top task;
-   - a medium (Terra) role that runs a part with a full review cycle (for example `lead`);
-   - low (Luna) makers, each with its `output` form, and low checkers;
-   - a program role for each check program that the work runs on a report (no tier).
+1. **Read the project** (the part "Read the project" below) for its kinds of work and its
+   repeatable parts.
+2. **Draft the config:** write `.work/drafts/config.yaml`, with the keys of
+   `aristoteles.draft.yaml` (the form of `schema/aristoteles.schema.json`), then
+   `work onboard config --file=.work/drafts/config.yaml`. The part "The config draft" below says
+   what it holds. The command runs the checks of `work config check` on it.
+3. **Open the page:** `work start --detach`. It keeps running when this AI CLI ends. Tell the
+   person to read it: each role waits there as a card, and each direction as a topic.
+4. **Name the topics:** `work onboard found <id>` for each direction that you will draft (a
+   lower-case id with dashes). Each one shows Loading on the page until you draft it. Then draft
+   them all; the person opens any one that is ready.
+5. **Draft each direction:** write `.work/drafts/<id>.yaml` (the part "A direction draft"), then
+   `work onboard draft <id> --file=.work/drafts/<id>.yaml`. The first draft of a new direction
+   gives its `id`, and the module renames the file in one step.
+6. **Ask when you need an answer** (the part "Questions"): `work onboard ask <id>
+   --file=.work/drafts/<id>.questions.yaml`.
+7. **Wait for the person:** `work onboard wait` (540 seconds at most; run it in the background
+   when your AI CLI allows it, so that the person can still talk to you). It returns when
+   something waits for you, and prints each direction and role with its state, each request, and
+   the command that answers it:
+   - a direction to draft, or to draft again after a Revise (the words of the person): do step 5
+     again, with the same id;
+   - answers that the person submitted: draft the direction again with them;
+   - a company direction that the person asked for: the part "A company direction";
+   - a role to write again after a Revise: write its file (the part "One role"), then
+     `work onboard role <role> --file=.work/drafts/<role>.yaml`.
+   `work onboard show <id>|<role>` prints one direction or role as the person sees it. When
+   nothing waits, run `work onboard wait` again; do not poll and do not ask the person.
+8. **The end is the person's.** The roles step opens when every direction is accepted or removed.
+   The person approves all roles on the page, or at a terminal with `work onboard approve-roles`
+   (it asks for the typed word `approve`). That starts the store. Never run the approve
+   yourself. Then do the next line that it prints: `work role fit <role>` for each agent role
+   (the `role-fitness` skill; answer the seven questions of `guides/fitness.yaml` with one real
+   example each, in `.work/fit/<role>.yaml`, then
+   `work role fit <role> --answers=.work/fit/<role>.yaml --by=assess`). A role with no fit record
+   gets no work. A role that does not fit needs new words: write them in a file, run
+   `work role draft <role> --file=<words.yaml> --by=assess`, and ask the person to accept them on
+   the page; then record its fit again. A new tier or another persistence is an adjustment
+   (`work adjust`, the `work` skill).
 
-   Also write the `tiers`: the commands of the AI CLI that you run in now, because the UI
-   starts each Sol and Terra agent with them. Give `sol` and `terra` each a `launch` command
-   with `{session}` (the session id that the UI gives the agent) and `{prompt}` (its first
-   input), a `resume` command with `{session}`, and the `skills` folder of that CLI, relative
-   to the dir. When the CLI can choose a model, put the model of the tier in its commands. Ask
-   the person only for a command that you do not know. For example, for Claude Code:
+## Read the project
 
-   ```yaml
-   tiers:
-     sol:
-       launch: claude --model opus --session-id {session} {prompt}
-       resume: claude --resume {session} {prompt}
-       skills: .claude/skills
-   ```
-3. Run `work config check`. It reads the draft as the accept on the page does, and runs the
-   static fit checks of each role. Fix the draft until it passes. Then answer the seven
-   questions of `<the aristoteles folder>/guides/fitness.yaml` for each agent role, and fix a
-   role that does not fit now: after the accept, only the words of a role can change. Then
-   start the page:
-   `work start --detach` (it keeps running when this AI CLI ends). Stop, and tell the person:
-   - read the draft on the page, and accept the roles there. The page writes
-     `aristoteles.yaml`, runs `work init`, and links the skills. A refusal says what to fix in
-     the draft;
-   - commit what the agents need, also `aristoteles.yaml`. `work start` keeps `.work/` and the
-     linked skills out of git.
+Read in this order, and stop reading a topic when it has evidence in two places. Read at most
+40 files in all; name what you did not read in your report.
 
-   Wait until the person tells you that the roles are accepted; `aristoteles.yaml` then exists.
-   When the person asks for a change of the roles, change the draft, run `work config check`,
-   and ask the person to read the page again. When the person says that the accept was refused,
-   read the refusal that they give, and fix the draft.
-4. Record the fit of each agent role (the `role-fitness` skill): `work role fit <role>`, the
-   answers in `.work/fit/<role>.yaml`, then
-   `work role fit <role> --answers=.work/fit/<role>.yaml --by=assess`. A role with no fit
-   record gets no work. A role that does not fit needs new words (`description`, `intro`,
-   `responsibilities`, `output`): write them in a file, run
-   `work role draft <role> --file=<words.yaml> --by=assess`, and ask the person to accept them
-   on the page; then record its fit again. A reject shows in `work waiting` with its reason. Do not edit `aristoteles.yaml`: an edit stops every
-   write until the person applies it. A new role, a new act, or a new tier cannot change after
-   the accept. Then go on with the steps below.
+- the agent files that exist: `CLAUDE.md` and `AGENTS.md` (at the root and in sub-folders),
+  `.claude/` (also `.claude/agents/`), `.agents/skills/`, `skills/`, and the guides of the app;
+- the README and the docs;
+- the code, for the patterns that repeat: search for the constructs of each topic (for example
+  feature flags, configuration, migrations, tests, logging);
+- the recent history: `git log --oneline -50`, and the words "always", "never", "must" in the
+  docs and the agent files.
+
+Group what you found into directions, one idea each. Draft a direction only when the project
+shows it in at least two places, or a document of the project states it. Leave out a topic with
+one weak sign, and name it in your report. Read `work guide writing` and
+`work guide direction-review` first: write and check every draft with them.
+
+## The config draft
+
+The file has the keys of `aristoteles.draft.yaml`: `people`, `limits`, `roles`, `decide`, `tiers`.
+
+- `people`: the exact name that `git config user.name` gives in the dir is the person. When it
+  gives none, ask the person for the name to set there.
+- `limits`: start with `briefChars` of 6000 for low, 12000 for medium, and 16000 for high. The
+  brief counts the guide text of its tier, so a limit needs room above it.
+- `decide`: needed when a maker has more than one decider.
+- `roles`: read `work guide roles` (the checks of work on the roles). Every dir has a role of
+  each tier:
+  - a high (Sol) role for each kind of top task (for example `architect`). The host drafts a top
+    task for it, and the person opens it on the page. This role splits the top task, gives the
+    parts to lower roles, decides their results, and decides the result of the top task last;
+    then the end of the project comes to the person. Give no other high role a part in these
+    decisions: a high role gets work only from the person, and the page gives it only to the high
+    role of a top task;
+  - a medium (Terra) role that runs a part with a full review cycle (for example `lead`);
+  - low (Luna) makers, each with its `output` form, and low checkers;
+  - a program role for each check program that the work runs on a report (no tier, no
+    persistence).
+- `tiers`: the commands of the AI CLI that you run in now (the part "The tiers" below).
+
+Each role has the keys of a role of `aristoteles.yaml`, and two more for its card:
+
+```yaml
+roles:
+  <role>:
+    tier: high | medium | low
+    description: <what the role does, in one line>
+    intro: <the first words of its brief>
+    responsibilities: [<one exact output or command>]
+    acts: [{ do: <its work> }]          # or [{ review: [<role>] }] or [{ approve: [<role>] }]
+    persistence: { persistent: true | false, why: <one line> }
+    icon: <a name of the list below>
+    summary: <the one line of its card>
+    found: <where the project has this role, such as .claude/agents/<role>.md>   # leave it out for a new role
+```
+
+Roles that the project has already come first: give them `found`, and take their `description`,
+`intro`, and `responsibilities` from that file. A role that the project needs and lacks is new:
+leave `found` out. A program role has no `persistence`.
+
+Icons: bot, book-open, brain, clipboard-check, compass, crown, eye, feather, file-text,
+flask-conical, gavel, git-branch, hammer, layers, lightbulb, list-checks, map, microscope,
+pen-tool, puzzle, scale, search, shield-check, sparkles, telescope, terminal, user-cog, wrench.
+
+### The words of a role
+
+A task is done, reviewed, approved, or changed: these four acts are the standard workflow, and a
+role does not choose them. Its words give principles that work as criteria for its kind of work:
+what a good unit of it is, so that the role can do it, a reviewer can review it, a lead can
+approve it, and the high role can change it. A responsibility that gives no criterion is not
+enough: say the exact output and the exact command (`work guide roles` lists the static checks,
+and `guides/fitness.yaml` the seven questions).
+
+### Persistence, and the Rumsfeld matrix
+
+Tier and persistence are apart. Only a persistent role gets a terminal of its own, for the whole
+project; a role that is not persistent runs as a subagent of a terminal. Use the matrix to
+choose, and write the reason in `why`. Never write the matrix itself into the files: the page
+does not show it.
+
+- Known knowns and known unknowns: persistent. The role knows the work, or knows what it must
+  find out, so it starts cheaper subagents in parallel: workers, validators, and surveyors that
+  check a claim or fill in facts.
+- Unknown knowns and unknown unknowns: a big agent, disposable by default. Make it persistent
+  when the project needs it again and again, for example an advisor with the knowledge of its
+  domain.
+- The lead is persistent: the host plays the high role of each top task, and the host is a
+  terminal. Make at least one high role persistent, or the store start is refused. The person has
+  no toggle for that role. Disposable high roles work under it.
+- A disposable agent that starts disposable agents shows repetitive work: only a terminal (the
+  host, or a persistent agent) starts subagents. A role that is not persistent hands a need for
+  more agents back to the terminal above it. Write that in its `responsibilities`.
+- A role of any tier can be persistent, also a low one. A low role that does one short job
+  again and again is disposable by default.
+
+### The tiers
+
+The UI starts each persistent agent with the commands of its tier. Give `sol`, `terra`, and
+`luna` each a `model`, a `launch` command, a `resume` command, and the `skills` folder of the AI
+CLI, relative to the dir. `launch` and `resume` name the model as `{model}`, and have `{session}`
+(the session id that the UI gives the agent) and `{prompt}` (its first input). Give the commands
+of the CLI that you run in now; ask the person only for a command that you do not know. When the
+CLI can start subagents, set its limit on nested subagents in the command: only a terminal starts
+subagents, so a persistent agent must not let its subagents start more. For Claude Code, with
+the environment prefix:
+
+```yaml
+tiers:
+  sol:
+    model: opus
+    launch: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 claude --model {model} --session-id {session} {prompt}
+    resume: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 claude --model {model} --resume {session} {prompt}
+    skills: .claude/skills
+  terra:
+    model: sonnet
+    # the same launch, resume, and skills
+  luna:
+    model: haiku
+    # the same launch, resume, and skills
+```
+
+The start words of a persistent agent have a default ("Use the work skill. You are {agent}: run
+work wait --by={agent}, and do what it prints."); leave `start` out.
+
+### One role
+
+A role file has the keys of one role, with `summary` and `found`, as in the config draft:
+`work onboard role <role> --file=.work/drafts/<role>.yaml`. It is for a new role, and for the
+answer to a Revise. It clears the request of the role.
 
 ## An app with its own harness
 
 Some apps run their own agents already: instruction docs, check programs, agent prompts (a
 writer, a judge, a lead), a loop that writes and checks, a web app, a publish step. Map each
-piece as below. You still write drafts only: the roles go into `aristoteles.draft.yaml`, the
-directions into direction drafts, and the owner accepts or rejects each one.
+piece as below. The roles go into the config draft, the directions into direction drafts.
 
 - **Instruction and standard docs** → directions, standards, and rules, in the owner's own
   words (`work guide writing`). A rule is one check that a reviewer can do on one result, so a
@@ -98,8 +210,9 @@ directions into direction drafts, and the owner accepts or rejects each one.
   accepts all of its checks; any other exit rejects the result. A check that needs the
   judgment of a model is a low role that reviews. When the program reads other arguments than
   `{output}` or `{workspace.path}`, say in the report what to change.
-- **Agents** → roles by tier, each with its acts. Take the `description`, the `intro`, and the
-  `responsibilities` from the prompt file of the agent.
+- **Agents** → roles by tier, each with its acts, its persistence, and its icon. Take the
+  `description`, the `intro`, and the `responsibilities` from the prompt file of the agent, and
+  put its path in `found`.
   - a writer: a low role with `do` and its `output` form (`<file>#<section>` for one section
     of a file);
   - a judge or a checker: a low role with `review: [<the writer>]`; each thing that it checks is
@@ -133,103 +246,111 @@ directions into direction drafts, and the owner accepts or rejects each one.
   ends with the end of the project; then the person runs the publish step as before. Name
   each one in the report, with the command that the person runs.
 - **The run history** of the harness (old runs, attempts, findings) is not carried: the dir
-  starts with a fresh store at `work init`. Name where the history stays in the report.
+  starts with a fresh store. Name where the history stays in the report.
 
-## Polish each draft before you send it
+## A direction draft
 
-Each new version of a direction comes to its owner on the page, so give no direction an
-`approvedBy`. Before you send a new direction, read it with each question of
-`work guide direction-review`, and fix it: the person reads it only after that polish.
+A direction draft has exactly these keys: `id name from says standards cases`. It has no `owner`
+and no `approvedBy`: the person who starts the store owns each direction.
 
-## Inputs
+```yaml
+id: <direction id, lower case with dashes>
+name: <a short name>
+from: [<the principles that ground it, of the eleven: Logos, Pathos, Ethos, Mythos, Oikos,
+       Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
+says: |
+  <what the work is for, in any markdown; the whole idea in the first paragraph>
+standards:
+  - id: <standard id>
+    where: <optional: { section: <heading id> } for one section, or
+            { section: [<heading id>, <heading id>] } for some sections>
+    says: |
+      <how the output looks; one idea; headers for its pieces>
+    rules:
+      - id: <rule id, unique in the project>
+        checkedBy: <a role of the config draft that reviews or approves the maker>
+        says: |
+          <one check, in its first sentence; reasons and examples under headers>
+cases:
+  - { file: <path>, line: <n>, excerpt: <a short part of the file as it is now>, fit: Follows }
+```
 
-- The app: a folder or a repo to read.
-- The project folder, with `aristoteles.yaml` (its people and roles).
-- Optional: the suggestions that ask for a new direction (`work waiting` lists them as
-  `s<n> asks for a new direction`). Each one gives an aim and concerns. Answer those first.
+Each standard follows from the words of its direction. Each rule is one check that a reviewer
+does on one result of a maker: its output form in the config draft (a commit, a section of a
+file). A check of something else (a diagnosis, a report) is not a rule of this project; name it
+in the report. Leave `checkedBy` out when no role fits, and say so in the report. Name no AI
+model and no AI vendor; the names of the project's own tools (for example Consul, Unleash,
+Kafka) are the words of the work. Do not copy a company direction into a direction of the
+project.
 
-## Steps
+**Cases.** Give at least 3 real cases for each direction. A case is a file, a line, a short
+excerpt, and a fit: `Follows` for code that follows the direction, `Breaks` for code that breaks
+it. Give both kinds when the code has both. Each case is real now: its excerpt is a short part
+of its file as it is today, and the command refuses a case that is not. A break is information
+for the person to judge the direction; it makes no task. More or other cases come on request
+(a Revise); a change of cases makes no new version of the direction.
 
-1. Read `work guide writing` and `work guide direction-review`. Write and check every draft
-   with them.
-2. Read what the project has: `work waiting` (open suggestions, drafts that wait),
-   `work role list` and `work role show <role>` (the roles that can check a rule, and the output
-   form of each maker), and
-   `work search <words>` for each topic that you find (a direction can exist already, also a
-   company direction). A project with no `aristoteles.lock` follows no company direction.
+**Polish before you send.** Read the draft with each question of `work guide direction-review`,
+and fix it: the person reads it only after that polish.
 
-3. Read the app, in this order, and stop when a topic has enough evidence:
-   - the agent files that exist: `CLAUDE.md` and `AGENTS.md` (at the root and in
-     sub-folders), `.claude/`, `.agents/skills/`, `skills/`, and the guides of the app;
-   - the README and the docs;
-   - the code, for the patterns that repeat: search for the constructs of each topic (for
-     example feature flags, configuration, migrations, tests, logging);
-   - the recent history: `git log --oneline -50`, and the words "always", "never", "must" in
-     the docs and the agent files.
+## Questions
 
-   Stop reading a topic when it has evidence in two places. Read at most 40 files in all; name
-   what you did not read in the report.
-4. Group what you found into directions, one idea each. Draft a direction only when the app
-   shows it in at least two places, or a document of the app states it. Leave out a topic with
-   one weak sign, and name it in your report.
-5. For each direction, write a file (for example `.work/assess/<id>.yaml`):
+When you cannot draft a direction without an answer, write
+`.work/drafts/<id>.questions.yaml` and send it with `work onboard ask <id> --file=<it>`; the
+direction shows Question. Each question says what you must know, names one real case, and gives
+exactly two options, A and B:
 
-   ```yaml
-   id: <direction id, lower case with dashes>
-   name: <a short name>
-   owner: <the person who accepts it: a person of aristoteles.yaml>
-   from: [<the principles that ground it, of the eleven: Logos, Pathos, Ethos, Mythos, Oikos,
-          Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
-   says: |
-     <what the work is for, in any markdown; the whole idea in the first paragraph>
-   standards:
-     - id: <standard id>
-       where: <optional: { section: <heading id> } for one section, or
-               { section: [<heading id>, <heading id>] } for some sections>
-       says: |
-         <how the output looks; one idea; headers for its pieces>
-       rules:
-         - id: <rule id, unique in the project>
-           checkedBy: <a role of aristoteles.yaml that reviews or approves the maker>
-           says: |
-             <one check, in its first sentence; reasons and examples under headers>
-   ```
+```yaml
+questions:
+  - says: <what you must know to draft the direction>
+    case: { file: <path>, line: <n>, excerpt: <a short part of the file>, fit: Follows | Breaks }
+    options: [<option A>, <option B>]
+```
 
-   Each standard follows from the words of its direction. Each rule is one check that a
-   reviewer does on one result of a maker: its output form in `aristoteles.yaml` (a commit, a
-   section of a file). A check of something else (a diagnosis, a report) is not a rule of this
-   project; name it in the report. Leave `checkedBy` out when no role of `aristoteles.yaml`
-   fits, and say so in the report. `work direction new` with no file prints this form.
-6. Check the draft with each question of `work guide direction-review`, and fix it before you
-   send it. After you send it, `work direction show d<n>#<entry>` prints one entry of it.
-7. Send it: `work direction new --file=<file> --by=assess`, with `--answers=<s ids>` for the
-   suggestions that it answers. A first draft needs no `--why`. A refusal says what to fix;
-   fix it and send it again. A standard that belongs under a direction with a version goes into
-   a revise of that direction, also one that you did not draft:
-   `work direction revise <direction id> --file=<edit.yaml> --by=assess` (with no file, it
-   prints the form of the edit). Its owner accepts it.
-8. When the owner rejects a draft, `work waiting` shows the Reject and the command. Write a new
-   draft that answers it (`--answers=<the Reject>`), and that proposes something else. Name
-   what it corrects with `--why=<reason> --why-words="<the fact>"` (`work guide writing` lists
-   the five reasons); the owner reads them beside the draft.
+Ask only what the files cannot answer. The person submits one answer for each question
+(`work onboard answer <id> --options=A,B`, or the page). `work onboard wait` then returns, and
+you draft the direction again with the answers; that clears the questions.
 
-## Rules for the words
+## A company direction
 
-- The words are any markdown. Name no AI model and no AI vendor. The names of the app's own
-  tools (for example Consul, Unleash, Kafka) are the words of the work: use them.
-- Write what the app shows. Give the evidence in the report (file paths and what you saw), and
-  keep the direction free of file paths with line numbers.
-- Do not copy a company direction (in `aristoteles.lock`) into a direction of the app. When the
-  app breaks a company direction, say so in the report.
+A company direction is a folder of a git repo that other projects follow. The person asks for it
+on the page (add a company direction) or in the chat; then `work onboard company <id>
+--repo=<repo> --path=<folder>` makes it, and it shows Loading. The text, the standards, and the
+rules come from the folder at one commit: you do not write them. Your draft file has only
+`id` (optional), `checkedBy` (the role that checks each rule), `rules` (`{ <rule id>: <role> }`
+for a rule with another checker), and `cases`; send it with
+`work onboard draft <id> --file=<it>`. Do not copy its words into a direction of the project;
+when the project breaks it, say so in the report. When the person has no company repo, point to
+the public example: https://github.com/nandanugg/aristoteles-example-direction.
+
+## After the store starts
+
+The store exists after `work onboard approve-roles`; then `work onboard` is over, and a change is
+an event.
+
+- A new direction (a suggestion that asks for one, or the person's words): read `work waiting`
+  (each such suggestion shows as `s<n> asks for a new direction`) and `work search <words>`
+  (a direction can exist already, also a company direction). Write the draft in the form that
+  `work direction new` with no file prints, and send it:
+  `work direction new --file=<file> --by=assess`, with `--answers=<s ids>` for the suggestions
+  that it answers. A standard that belongs under a direction with a version goes into
+  `work direction revise <direction id> --file=<edit.yaml> --by=assess`. Its owner accepts it.
+- The cases of a company draft, before its accept:
+  `work direction cases <draft> --file=<cases.yaml> --by=assess`.
+- A role or a direction that must change: `work adjust` (the `work` skill, part "Adjust the roles
+  and the directions"); the person accepts each adjustment.
+- When the owner rejects a draft, `work waiting` shows the Reject and the command. Write a new
+  draft that answers it (`--answers=<the Reject>`) and proposes something else. Name what it
+  corrects with `--why=<reason> --why-words="<the fact>"` (`work guide writing` lists the five
+  reasons).
 
 ## The report
 
 End with one list for the person:
 
-- each draft: its id (`d<n>`), its direction id, one sentence of what it asks for, and the
-  evidence (where you saw it);
-- for an app with its own harness: each piece of the harness and where it went (a role, a
-  rule, a key of `aristoteles.yaml`, or outside the work, with the command that the person
-  runs);
+- each direction: its id, one sentence of what it asks for, and the evidence (where you saw it);
+- each role that you drafted: its tier, its persistence and why, and where the project has it;
+- for an app with its own harness: each piece of the harness and where it went (a role, a rule,
+  a key of the config, or outside the work, with the command that the person runs);
 - each topic that you left out, and why;
-- the command to read them: `work waiting`, then `work direction show d<n>`.
+- the command to read them: `work onboard status`.

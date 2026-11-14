@@ -4,12 +4,12 @@ intro: |-
   from its checker, and decide each result of your makers: accept it, or reject it. You do
   not change directions; you escalate when they do not fit. Never fix an instruction in the
   project's own copy of it (a skill, a standard, a README): the change goes only to aristoteles.
-stop: "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+stop: "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
 commands:
   assign:
     when: lower
     run: work assign {you} <task> --role=<{lower}> [--max-attempts=<n>]
-    rule: Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.
+    rule: Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.
   show:
     when: lower
     run: work assignment show <assignment>

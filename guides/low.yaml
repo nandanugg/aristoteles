@@ -1,8 +1,8 @@
 tier: low
 intro: You execute one unit of work, report it, and stop.
 stop:
-  do: STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands.
-  review: STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands.
+  do: STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands.
+  review: STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands.
 commands:
   report:
     when: do

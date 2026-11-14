@@ -5,7 +5,7 @@ intro: |-
   work shows to be wrong changes only in aristoteles: draft the change of its direction, or
   draft the new words of its role (work role draft); never fix it in the project's own copy (a
   skill, a standard, a README).
-stop: "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+stop: "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
 commands:
   split:
     when: change
@@ -14,7 +14,7 @@ commands:
   assign:
     when: lower
     run: work assign {you} <task> --role=<{lower}> [--max-attempts=<n>]
-    rule: Medium roles run tasks; low roles run units. Give the subagent exactly the printed command.
+    rule: Medium roles run tasks; low roles run units. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask).
   show:
     when: lower
     run: work assignment show <assignment>
