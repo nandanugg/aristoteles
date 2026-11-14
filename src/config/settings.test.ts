@@ -31,6 +31,7 @@ const readCases: Array<[string, string | null, string?]> = [
   ['a launch that names {model} with no model', 'tiers:\n  luna:\n    launch: c --model {model} --session {session}\n', 'aristoteles.yaml: tiers.luna.launch names {model}, and tiers.luna.model is not set'],
   ['a model that is blank', 'tiers:\n  sol:\n    model: "  "\n', 'aristoteles.yaml: tiers.sol.model is a text'],
   ['a tier that is not one', 'tiers:\n  moon: {}\n', 'aristoteles.yaml: tiers.moon is not a tier (sol, terra, luna)'],
+  ['a { } that is not in quotes', 'tiers:\n  luna: { launch: x {session} }\n', 'aristoteles.yaml: tiers.luna has a { } that is not in quotes; quote the text, like launch: "c --session {session}"'],
   ['a key that is not a tier setting', 'tiers:\n  sol:\n    bogus: 1\n', 'aristoteles.yaml: tiers.sol.bogus is not a setting of a tier (model, launch, resume, start, skills, errors, prompts, silentMinutes, retryInput)'],
   ['a launch that is a number', 'tiers:\n  sol:\n    launch: 5\n', 'aristoteles.yaml: tiers.sol.launch is a text'],
   ['a blank retryInput', 'tiers:\n  terra:\n    retryInput: "  "\n', 'aristoteles.yaml: tiers.terra.retryInput is a text'],
