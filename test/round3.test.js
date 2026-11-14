@@ -187,7 +187,10 @@ describe('claims and trees', () => {
 
   test('L4 and L1: a low checker sees only that its review is recorded; STOP names its act', async () => {
     const { p, linter } = await reported()
-    expect(ok(await p.agent('assignment show a3')).out).toContain('STOP after one review or one escalation.')
+    // Ruling 9, onboarding 2026-11-14: the stop line also tells a persistent agent its next wait.
+    expect(ok(await p.agent('assignment show a3')).out).toContain(
+      'STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit).',
+    )
     const r = ok(await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | the introduction | no paths or hashes" ` +
       '--evidence="no-ticket-ids | the introduction | no ticket ids here"')).out
     expect(r).toBe('v2: your review of r1 is recorded.\nSTOP: your parent continues.')
