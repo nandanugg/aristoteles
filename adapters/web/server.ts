@@ -334,7 +334,9 @@ export function startServer(options: ServerOptions): ServerHandle {
       act.act === 'approve-all-roles'
         ? await runtime.runPromiseExit(startStore(dir, name, env))
         : await runtime.runPromiseExit(
-            Effect.map(personAct(dir, name, act), (made) => onboardingWords(act, made)),
+            Effect.flatMap(personAct(dir, name, act), (made) =>
+              Effect.map(readOnboarding(dir), (files) => onboardingWords(act, made, files)),
+            ),
           )
     runSync(refresh)
     return Exit.isSuccess(exit) ? json({ out: exit.value }) : failed(Cause.squash(exit.cause))

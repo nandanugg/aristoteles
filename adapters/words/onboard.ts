@@ -26,16 +26,28 @@ const where = (file: OnboardingDirection): string => {
   }
 }
 
+// A direction by its name once it has a draft, else by its id.
+const titleOf = (file: OnboardingDirection): string =>
+  file.draft._tag === 'Drafted' ? `${file.draft.name} (${file.id})` : file.id
+
+// The person's answers to the questions of a direction, each with the words of its option and its
+// question: what the next draft of the direction follows.
+export const answersWords = (file: OnboardingDirection): string => {
+  const answers = file.questions.flatMap((q) =>
+    q.answer._tag === 'Chosen'
+      ? [`${q.answer.option} ("${short(q.options[q.answer.option === 'A' ? 0 : 1], 60)}") to "${short(q.says, 80)}"`]
+      : [],
+  )
+  return `the answers of ${titleOf(file)} decide its next draft: ${answers.join('; ')}`
+}
+
 // What waits for the host in a direction: a draft to write (a new or company direction, a Revise,
 // submitted answers). A topic that the host found itself and is drafting is its own work.
 const hostWork = (file: OnboardingDirection): string | undefined => {
   if (file.accepted._tag === 'Accepted') return undefined
   if (file.request._tag === 'Revise') return `the person asks: "${short(file.request.words, 120)}"`
   const answered = file.questions.length > 0 && file.questions.every((q) => q.answer._tag !== 'Open')
-  if (answered) {
-    const chosen = file.questions.map((q) => (q.answer._tag === 'Chosen' ? q.answer.option : ''))
-    return `the answers ${chosen.join(', ')} wait for the next draft`
-  }
+  if (answered) return answersWords(file)
   if (file.draft._tag === 'Drafting' && file.asked._tag !== 'Found') return 'it waits for its first draft'
   return undefined
 }

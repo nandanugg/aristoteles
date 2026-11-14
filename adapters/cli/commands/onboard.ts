@@ -43,6 +43,7 @@ import {
 } from '../../../core/services/index.ts'
 import { loadWork } from '../../../core/state/index.ts'
 import {
+  answersWords,
   onboardShowDirection,
   onboardShowRole,
   onboardStatus,
@@ -541,9 +542,10 @@ const answer = (call: Call, id: string | undefined) =>
       )
     }
     yield* asPerson({ act: 'answer', direction, options: [first, ...rest] })
-    return [
-      `${direction}: the answers ${chosen.join(', ')} are submitted; it shows Loading until the host drafts it again.`,
-    ]
+    const { cwd } = yield* Dir
+    const answered = directionIn(yield* readOnboarding(cwd), direction)
+    const words = answered === undefined ? `the answers of ${direction} are in` : answersWords(answered)
+    return [`${words}; it shows Loading until the host drafts it again.`]
   })
 
 const decide = (word: 'accept' | 'remove', id: string | undefined) =>

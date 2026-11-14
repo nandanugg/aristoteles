@@ -4,20 +4,35 @@
 import { Effect } from 'effect'
 import { dispatch } from '../../core/actions/index.ts'
 import { type DirectionId, type OnboardingAct, refuse } from '../../core/schema/index.ts'
-import { CONFIG, GitUser, prepareStart, readConfig } from '../../core/services/index.ts'
+import {
+  CONFIG,
+  GitUser,
+  type OnboardingFiles,
+  prepareStart,
+  readConfig,
+} from '../../core/services/index.ts'
 import { configProblems } from '../live/config-problems.ts'
+import { answersWords } from '../words/index.ts'
 
 type PersonAct = Exclude<OnboardingAct, { readonly act: 'approve-all-roles' }>
 
-// The words of the answer, after the act wrote the files (the directions that it made, accepted).
-export const onboardingWords = (act: PersonAct, made: ReadonlyArray<DirectionId>): string => {
+// The words of the answer, after the act wrote the files (the directions that it made, accepted,
+// and the files as the act left them).
+export const onboardingWords = (
+  act: PersonAct,
+  made: ReadonlyArray<DirectionId>,
+  files: OnboardingFiles,
+): string => {
   switch (act.act) {
     case 'add-direction':
       return `${made.join(', ')}: a new direction; it shows Loading until the host drafts it.`
     case 'add-company-direction':
       return `${made.join(', ')}: a company direction; it shows Loading until the host drafts it.`
-    case 'answer':
-      return `${act.direction}: the answers are submitted; the host drafts it again.`
+    case 'answer': {
+      const answered = files.directions.find((f) => f.id === act.direction)
+      const words = answered === undefined ? `the answers of ${act.direction} are in` : answersWords(answered)
+      return `${words}; the host drafts it again.`
+    }
     case 'accept':
       return `${act.direction} is accepted.`
     case 'revise':

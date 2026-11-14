@@ -71,9 +71,12 @@ describe('the whole onboarding at a terminal', () => {
         '    Follows docs/facts.md:3 "## Dedupe" · current\n' +
         '     A: each fact is one thing\n     B: the facts together are one thing',
     )
-    ok(await p.nanda('onboard answer one-thing --options=B'))
+    // Nanda, 2026-11-15: a reply names the direction and what each answer chose (was: the letters).
+    expect(ok(await p.nanda('onboard answer one-thing --options=B')).out).toBe(
+      'the answers of One thing per section (one-thing) decide its next draft: B ("the facts together are one thing") to "Does a section of facts count as one thing?"; it shows Loading until the host drafts it again.',
+    )
     expect(ok(await p.agent('onboard wait --seconds=1')).out).toContain(
-      '    the answers B wait for the next draft (the host: work onboard draft one-thing --file=<direction.yaml>',
+      '    the answers of One thing per section (one-thing) decide its next draft: B ("the facts together are one thing") to "Does a section of facts count as one thing?" (the host: work onboard draft one-thing --file=<direction.yaml>',
     )
     ok(await p.agent('onboard draft one-thing --file=one.yaml'))
     // Ruling 2: a Revise goes to the host, which drafts again; a remove keeps nothing.

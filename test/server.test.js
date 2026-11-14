@@ -238,7 +238,10 @@ describe('the onboarding pages', () => {
       case: { file: 'docs/facts.md', line: 3, excerpt: '## Dedupe', fit: 'Follows', current: true },
       options: ['each fact is one thing', 'the facts together are one thing'], answer: null,
     }])
-    expect((await onboard({ act: 'answer', direction: 'one-thing', options: ['B'] })).out).toBe('one-thing: the answers are submitted; the host drafts it again.')
+    // Nanda, 2026-11-15: a reply names the direction and what each answer chose.
+    expect((await onboard({ act: 'answer', direction: 'one-thing', options: ['B'] })).out).toBe(
+      'the answers of One thing per section (one-thing) decide its next draft: B ("the facts together are one thing") to "Does a section of facts count as one thing?"; the host drafts it again.',
+    )
     expect((await get('/api/onboarding')).directions.find((d) => d.id === 'one-thing').state).toBe('loading')
     // Ruling 2: Revise sends the words to the host; Remove keeps nothing.
     expect((await onboard({ act: 'revise', direction: 'tsd-writing', words: 'name the reader' })).out).toBe('tsd-writing: the host drafts it again from your words.')

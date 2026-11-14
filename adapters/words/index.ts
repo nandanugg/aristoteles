@@ -57,7 +57,13 @@ export {
 } from './shared.ts'
 export { touchedIds } from './log.ts'
 export { drafterWords, renderRoleWords, roleWordsChange } from './role-words.ts'
-export { onboardShowDirection, onboardShowRole, onboardStatus, waitsForHost } from './onboard.ts'
+export {
+  answersWords,
+  onboardShowDirection,
+  onboardShowRole,
+  onboardStatus,
+  waitsForHost,
+} from './onboard.ts'
 
 // The lines of `work next <token>`: the token goes into the commands that the lines print.
 export type NextLines = (
