@@ -128,6 +128,27 @@ describe('the persistent agents', () => {
     expect(terminalMoves(p.work(), lead, 'Failed')).toHaveLength(1)
   })
 
+  // Nanda, 2026-11-15: the host hears at once of an agent that failed while it waited for work.
+  test('an agent that fails between assignments is a step of its host, on the top task', async () => {
+    const { p, fake, watcher, lead, leadToken, hostToken } = await withLead()
+    await p.agent(`brief ${leadToken}`)
+    await p.agent(`finish ${hostToken} a2`)
+    expect(agentState(p.dir)).toEqual({ _tag: 'Between' })
+    for (const _ of [1, 2, 3, 4, 5]) {
+      fake.end(lead)
+      later(31_000)
+      await watcher().tick()
+    }
+    expect(terminalMoves(p.work(), lead, 'Failed')).toHaveLength(1)
+    const hostSteps = () =>
+      nextFor(derivedNow(p.dir), { _tag: 'Agent', assignment: 'a1' as never }).map((n) => n.what)
+    expect(hostSteps()).toContainEqual(
+      expect.objectContaining({ _tag: 'RecordAgentFailure', agent: 'p1', task: 't1' }),
+    )
+    await p.agent(`problem ${hostToken} t1 --says="p1 failed 3 times while it waited for work"`)
+    expect(hostSteps().map((s) => s._tag)).not.toContain('RecordAgentFailure')
+  })
+
   test('a terminal that the pump lost before its first assignment starts again, once', async () => {
     const { p, w, hostToken } = await hosted()
     await p.agent(`assign ${hostToken} t1 --role=section-lead`)

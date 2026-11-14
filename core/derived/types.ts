@@ -636,6 +636,17 @@ export type StepWhat =
       readonly lastLines: string
       readonly failure: EventRef
     }
+  // The terminal of a persistent agent failed its 3 tries while it waited for work (Nanda,
+  // 2026-11-15): the host of its project records a system problem on the project's top task,
+  // because its next assignment cannot run until the person resumes it.
+  | {
+      readonly _tag: 'RecordAgentFailure'
+      readonly agent: AgentId
+      readonly task: TaskId
+      readonly why: Failure
+      readonly lastLines: string
+      readonly failure: EventRef
+    }
   // The end of a project waits for the host's words (S11, B8: only while the page holds it).
   | { readonly _tag: 'WriteEndWords'; readonly run: RunId }
   // An open problem that the host recorded: it tests it again. asked: the newest ask of the

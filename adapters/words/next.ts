@@ -458,6 +458,16 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
         `work problem ${token} ${s.task} ${PROBLEM}`,
       )
     }
+    case 'RecordAgentFailure': {
+      const last = clean(s.lastLines.split('\n').slice(-3).join(' / '))
+      const role = w.agents.get(s.agent)?.role ?? 'its role'
+      return step(
+        `${s.agent}, the persistent ${role} agent, failed 3 times while it waited for work ` +
+          `(${s.why}). Its last lines: ${last} Its next assignment cannot run until the person ` +
+          'resumes it: record a system problem, and the person resumes it.',
+        `work problem ${token} ${s.task} ${PROBLEM}`,
+      )
+    }
     case 'WriteEndWords':
       return step(
         `the end of ${s.run} waits for the person. Read work guide decision-words, then ` +

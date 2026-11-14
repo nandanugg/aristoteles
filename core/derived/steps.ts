@@ -946,6 +946,7 @@ const IDS: {
   PersonDecides: (s) => [s.kind, s.id],
   AnswerPrompt: (s) => [s.agent, s.prompt],
   RecordFailure: (s) => [s.agent, s.failure],
+  RecordAgentFailure: (s) => [s.agent, s.failure],
   WriteEndWords: (s) => [s.run],
   TestProblem: (s) => [s.problem, ...(s.asked === null ? [] : [s.asked])],
   WaitsForAnswer: (s) => [s.question],

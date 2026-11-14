@@ -13,13 +13,14 @@ import type {
   Work,
 } from '../schema/index.ts'
 import { decisionTaskOf, hostOf, placementOf } from './catalog.ts'
-import { refOf } from './reads.ts'
+import { currentTask, openedTopOf, refOf } from './reads.ts'
 import type { Derived, StepWhat } from './types.ts'
 import { waitingFor } from './waiting.ts'
 
 type NoticeTag =
   | 'AnswerPrompt'
   | 'RecordFailure'
+  | 'RecordAgentFailure'
   | 'WriteEndWords'
   | 'TestProblem'
   | 'WaitsForAnswer'
@@ -128,6 +129,26 @@ const childNotices = (d: Derived, host: AssignmentId, f: Facts): ReadonlyArray<N
       failure: move.ref,
     })
   }
+  // A persistent agent between assignments has no open assignment, so the loop above does not see
+  // its terminal: when it failed, the host of its project hears of it on the project's top task.
+  for (const x of w.agents.values()) {
+    if (x.terminal._tag !== 'Started' || d.states.agents.get(x.id)?._tag !== 'Between') continue
+    const move = f.lastMove.get(x.terminal.session)
+    if (move?._tag !== 'Failed') continue
+    const opened = openedTopOf(w, x.run)
+    if (opened === undefined) continue
+    const top = currentTask(w, opened)
+    if (hostAssignmentOf(d, top) !== host) continue
+    if ((f.problemsOn.get(top) ?? []).some((seq) => seq > move.seq)) continue
+    out.push({
+      _tag: 'RecordAgentFailure',
+      agent: x.id,
+      task: top,
+      why: move.why,
+      lastLines: move.lastLines,
+      failure: move.ref,
+    })
+  }
   return out
 }
 
@@ -185,6 +206,7 @@ const intentsOf = (what: NoticeWhat): ReadonlyArray<Intent> => {
     case 'AnswerPrompt':
       return [{ _tag: 'Send', target: { session: what.session } }]
     case 'RecordFailure':
+    case 'RecordAgentFailure':
       return [{ _tag: 'RecordProblem', target: { task: what.task } }]
     case 'WriteEndWords':
       return [{ _tag: 'WriteHostWords', target: { on: what.run } }]
