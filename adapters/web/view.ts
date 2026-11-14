@@ -511,28 +511,30 @@ const persistentParentOf = (w: Work, a: AssignmentId): Assignment | undefined =>
 }
 
 // The terminal that owns a task: its open assignment of the host or of a persistent agent. When
-// every lead finished, a terminal that still lives owns it: the host of an open run (it acts on
-// the person's end decision), or an agent that waits for its next assignment. A task that only a
-// subagent does runs inside the terminal that assigned it (Nanda, 2026-11-11). Only an agent's
-// terminal can be resumed, while its project goes on; the UI never restarts a host: the person
-// triggers it again (Nanda, 2026-11-13).
+// every lead finished, the host of an open run owns it, because the host acts on the person's
+// end decision. A task that only a subagent does runs inside the terminal that assigned it
+// (Nanda, 2026-11-11). Only live work can be resumed: the terminal of an agent while its project
+// goes on (ruling 9), an open assignment that no run holds; the UI never restarts a host: the
+// person triggers it again (Nanda, 2026-11-13).
 const ownerOf = (d: Derived, task: TaskId): Owner | null => {
   const w = workOf(d)
   const mine = assignmentsOn(w, task)
   const leads = mine.filter(isPersistent)
-  const lives = (a: Assignment) =>
-    a.runs._tag === 'Host'
-      ? runIsOpen(d, a.runs.run)
-      : a.runs._tag === 'Agent' && d.states.agents.get(a.runs.agent)?._tag !== 'Ended'
-  const lead = leads.findLast((a) => !ended(d, a.id)) ?? leads.findLast(lives) ?? leads.at(-1)
+  const hostOfOpenRun = (a: Assignment) => a.runs._tag === 'Host' && runIsOpen(d, a.runs.run)
+  const lead =
+    leads.findLast((a) => !ended(d, a.id)) ?? leads.findLast(hostOfOpenRun) ?? leads.at(-1)
   if (lead) {
+    const runs = lead.runs
     return {
       a: lead.id,
       role: lead.role,
       tier: tierWord(w, lead),
       ...terminalOf(w, lead),
       inside: null,
-      resumable: lead.runs._tag === 'Agent' && lives(lead),
+      resumable:
+        runs._tag === 'Agent'
+          ? d.states.agents.get(runs.agent)?._tag !== 'Ended'
+          : runs._tag === 'NoRun' && !ended(d, lead.id),
     }
   }
   const maker = mine.at(-1)
