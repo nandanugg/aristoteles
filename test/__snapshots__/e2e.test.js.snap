@@ -1,4 +1,5 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+// Rulings 7 and 9, onboarding 2026-11-14: the brief lines that copy the tier guides follow the new guide text.
 
 exports[`the Introduction: write, reject with a point, fix, accept each tier reads its own brief, and the task ends Accepted: writer brief, attempt 1 1`] = `
 "work brief a2 · writer (low) · t1 The Introduction · attempt 1 of 3
@@ -23,7 +24,7 @@ YOUR TURN
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a2.k0002 <rule id> --says="<why it cannot be met, with the fact>"
             Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
-STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept each tier reads its own brief, and the task ends Accepted: linter brief on r1 1`] = `
@@ -53,7 +54,7 @@ YOUR TURN
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a3.k0003 <rule id> --says="<why it cannot be met, with the fact>"
             Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
-STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept each tier reads its own brief, and the task ends Accepted: writer brief, attempt 2 1`] = `
@@ -80,7 +81,7 @@ YOUR TURN
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a2.k0002 <rule id> --says="<why it cannot be met, with the fact>"
             Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
-STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
+STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept the medium brief lists the ready steps with the lead token filled in: section-lead brief 1`] = `
@@ -108,7 +109,7 @@ READY
 
 YOUR TURN
   assign      work assign a1.<token> <task> --role=<writer|linter> [--max-attempts=<n>]
-              Do a unit yourself only when no lower role exists for it. Give the subagent exactly the printed command. One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.
+              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.
   show        work assignment show <assignment>
               Read a child's brief before you give its command; it takes no snapshot.
   result      work result show <result>
@@ -139,7 +140,7 @@ YOUR TURN
               Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.
   checkpoint  work checkpoint a1.<token> t1 --next="<the first thing to do>"
               Save before a pause; work resume a1.<token> t1 shows what changed.
-When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token (it returns when you have work or a step changes; nothing is typed into your terminal); as a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person.
+When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person.
 
 (read-only: no snapshot, no claim)"
 `;
