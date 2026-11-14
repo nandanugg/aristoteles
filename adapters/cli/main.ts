@@ -19,7 +19,9 @@ import {
 } from './args.ts'
 import { agentCallerOf, isPerson, tierOfAssignment } from './caller.ts'
 import type { Call, Command, Commands } from './command.ts'
+import { commands as adjust } from './commands/adjust.ts'
 import { commands as directions } from './commands/directions.ts'
+import { commands as onboard } from './commands/onboard.ts'
 import { commands as reads } from './commands/reads.ts'
 import { commands as setup } from './commands/setup.ts'
 import { commands as tasks } from './commands/tasks.ts'
@@ -39,6 +41,8 @@ const COMMANDS: Commands = {
   ...work,
   ...directions,
   ...waits,
+  ...onboard,
+  ...adjust,
 }
 
 const usage = (message: string, next: string | null = null) =>

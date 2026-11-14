@@ -95,6 +95,38 @@ standards:
       - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }
 `
 
+// Onboarding (BUILD.md 1e): the files that the host writes before any store. The config draft is
+// WORK_YAML with the one line of each card, and where the project has the role (the linter).
+export const ONBOARD_CONFIG = WORK_YAML
+  .replace('icon: compass\n', 'icon: compass\n    summary: Keeps the TSD on its directions.\n')
+  .replace('icon: layers\n', 'icon: layers\n    summary: Runs one section.\n')
+  .replace('icon: feather\n', 'icon: feather\n    summary: Writes one section.\n')
+  .replace('icon: shield-check\n', 'icon: shield-check\n    summary: Checks one section.\n    found: .claude/agents/linter.md\n')
+// The host's draft of the direction that it found: the direction of the fixture with no owner (the
+// person who starts the store owns it).
+export const ONBOARD_DIRECTION = DIRECTION.replace('owner: Nanda\n', '')
+// The host's draft of a new direction that the person asked for: its first draft names its id.
+export const ONBOARD_NEW = `id: one-thing
+name: One thing per section
+from: [Logos]
+says: Each section says one thing.
+cases:
+  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
+  - { file: docs/tsd.md, line: 7, excerpt: "## Design", fit: Follows }
+  - { file: docs/facts.md, line: 3, excerpt: "## Dedupe", fit: Follows }
+standards:
+  - id: one-heading
+    says: A section has one heading.
+    rules:
+      - { id: one-topic, says: "The section stays on its heading", checkedBy: linter }
+`
+// The host's questions about a draft: each names a case and gives two options.
+export const ONBOARD_QUESTIONS = `questions:
+  - says: Does a section of facts count as one thing?
+    case: { file: docs/facts.md, line: 3, excerpt: "## Dedupe", fit: Follows }
+    options: ["each fact is one thing", "the facts together are one thing"]
+`
+
 export const TASK = `name: The Introduction
 text: Write the Introduction from the agreed facts.
 directions: [tsd-writing]

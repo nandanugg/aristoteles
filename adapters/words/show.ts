@@ -1,5 +1,5 @@
 // The show views: a task and its tree, a result with its reviews, a direction, a draft, one piece
-// of them, a question, an evaluation, an assignment. Golden text, as the old CLI showed them. Every
+// of them, a question, an evaluation, an assignment, the cases of a direction, an adjustment. Golden text, as the old CLI showed them. Every
 // state a view prints comes from Derived: the end of a task, the state of a draft, an escalation,
 // an evaluation. Findings that change a view: C1 (an assignment of an ended task), S6/S7 (a draft
 // that is Outdated or Conflicted: Conflicted has no old words, so its line says nothing of it),
@@ -22,12 +22,15 @@ import {
   versionAt,
 } from '../../core/derived/reads.ts'
 import { sameWords } from '../../core/state/versions.ts'
-import type { Derived } from '../../core/derived/index.ts'
+import { adjustmentDraftAt, caseStateOf, type Derived } from '../../core/derived/index.ts'
 import {
+  type Adjustment,
   type AssignmentId,
+  type Case,
   type By,
   type Direction,
   type DirectionId,
+  type EventRef,
   type EvaluationId,
   type QuestionId,
   type ResultId,
@@ -53,9 +56,11 @@ import {
   headersOf,
   indented,
   latestResult,
+  short,
   stateWord,
   who,
 } from './common.ts'
+import { drafterWords } from './role-words.ts'
 import { answerText, draftWaitsText, drafterOf, stopIdOf } from './shared.ts'
 
 // --- one record in words ------------------------------------------------------------------------
@@ -244,7 +249,13 @@ export const renderDirection = (d: Derived, version: VersionId): string => {
     `${version} ${dir.name} (owner ${dir.owner.name}) · ` +
       `${next ? `replaced by ${versionIdOf(next)}` : 'current'}`,
     `made from ${draft.id}, drafted by ` +
-      `${draft.origin._tag === 'Written' ? who(work, draft.origin.by) : 'refresh'}`,
+      `${
+        draft.origin._tag === 'Written'
+          ? who(work, draft.origin.by)
+          : draft.origin._tag === 'Onboarded'
+            ? drafterOf(work, draft)
+            : 'refresh'
+      }`,
     ...contentLines(work, v, base),
   ]
   for (const [id, state] of d.states.revisions) {
@@ -477,3 +488,76 @@ export const renderAssignment = (d: Derived, id: AssignmentId): ReadonlyArray<st
   return [briefOf(d, a.id, `${a.id}.<token>`), '', '(read-only: no snapshot, no claim)']
 }
 
+
+// --- the cases of a direction, and an adjustment (onboarding) -----------------------------------
+
+// One line for each case (ruling 4): its fit, where it is, its excerpt, and its state. A case is
+// stale when its excerpt is no longer in its file; textOf gives the text of a file now (null: no
+// such file), which the adapter reads.
+export const caseLines = (
+  cases: ReadonlyArray<Case>,
+  textOf: (file: string) => string | null,
+): ReadonlyArray<string> =>
+  cases.map((c) => {
+    const state = caseStateOf(textOf(c.file), c)._tag === 'Current' ? 'current' : 'stale'
+    return `  ${c.fit} ${c.file}:${c.line} "${short(c.excerpt, 80)}" · ${state}`
+  })
+
+// What an adjustment changes, in one line.
+export const adjustmentWords = (a: Adjustment): string => {
+  switch (a._tag) {
+    case 'AddRole': {
+      const kind =
+        a.file.kind === 'program'
+          ? 'a program'
+          : `${a.file.tier}, ${a.file.persistence.persistent ? 'persistent' : 'disposable'}`
+      return `add the role ${a.role} (${kind})`
+    }
+    case 'RemoveRole':
+      return `remove the role ${a.role}`
+    case 'SetTier':
+      return `${a.role} becomes a ${a.tier} role`
+    case 'SetPersistence':
+      return (
+        `${a.role} becomes ${a.persistence.persistent ? 'persistent' : 'disposable'}: ` +
+        `"${short(a.persistence.why, 120)}"`
+      )
+    case 'RetireDirection':
+      return `retire the direction ${a.direction}`
+    case 'SetCases':
+      return `give ${a.direction} ${a.cases.length} new cases`
+  }
+}
+
+// The state of an adjustment in words.
+const adjustmentState = (d: Derived, ref: EventRef): string => {
+  const state = d.states.adjustments.get(ref)
+  switch (state?._tag) {
+    case 'Waiting':
+      return `waits for the accept of ${d.moment.work.workflow.owner.name}`
+    case 'Accepted':
+      return `accepted (${state.by})`
+    case 'Rejected':
+      return `rejected (${state.by}): "${state.reason}"`
+    case 'Replaced':
+      return `replaced by ${state.by}`
+    case undefined:
+      return 'unknown'
+  }
+}
+
+// work adjust show <event>: its head line, then what it holds (a new role, new cases).
+export const renderAdjustment = (d: Derived, ref: EventRef): ReadonlyArray<string> | undefined => {
+  const x = adjustmentDraftAt(d.moment.work, ref)
+  if (x === undefined) return undefined
+  const a = x.adjustment
+  const head = `${ref} ${adjustmentWords(a)}, drafted by ${drafterWords(x.by)} · ${adjustmentState(d, ref)}`
+  if (a._tag === 'AddRole') return [head, ...JSON.stringify(a.file, null, 2).split('\n')]
+  if (a._tag === 'SetCases') {
+    return [
+      head,
+      ...a.cases.map((c) => `  ${c.fit} ${c.file}:${c.line} "${short(c.excerpt, 80)}"`),
+    ]
+  }
+  return [head]
+}

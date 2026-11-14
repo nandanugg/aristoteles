@@ -1,0 +1,670 @@
+// work onboard (BUILD.md 1e): onboarding at a terminal, before any store (ruling 1). The host (the
+// AI CLI in the person's pane: no token, no store yet) drafts into the files; the person decides,
+// as on the two pages of onboarding. Each act writes through src/files/onboarding.ts and stores
+// nothing, until approve-roles starts the store with the accepted result only (BUILD.md 1c).
+// This file reads and checks the files that the host names; the module checks the acts.
+import { join } from 'node:path'
+import { Effect, Schema } from 'effect'
+import { readCases } from '../../../core/actions/drafts.ts'
+import { caseStateOf, onboardingStateOf } from '../../../core/derived/index.ts'
+import {
+  Case,
+  type Cases,
+  DirectionId,
+  isNonBlank,
+  type OnboardingDirection,
+  Refused,
+  refuse,
+  RoleName,
+} from '../../../core/schema/index.ts'
+import {
+  CONFIG,
+  configOfText,
+  DRAFT,
+  Dir,
+  type DirectionDraft,
+  Env,
+  Files,
+  fetchFolder,
+  hostAct,
+  mergeDraft,
+  type OnboardingFiles,
+  onboardingExists,
+  type PersonAct,
+  parseYaml,
+  personAct,
+  prepareStart,
+  type QuestionDraft,
+  type RoleNotes,
+  readDirection,
+  readOnboarding,
+  refusing,
+} from '../../../core/services/index.ts'
+import { loadWork } from '../../../core/state/index.ts'
+import {
+  onboardShowDirection,
+  onboardShowRole,
+  onboardStatus,
+  short,
+  waitsForHost,
+} from '../../words/index.ts'
+import { textOf } from '../args.ts'
+import { type Confirm, personChannel, personOf } from '../caller.ts'
+import type { Call, Command, Commands } from '../command.ts'
+import { act } from '../runtime.ts'
+import { configProblems } from './setup.ts'
+import { WAIT_SECONDS } from './wait.ts'
+
+const POLL_MS = 1000
+
+const ROLE_KEYS = `      tier: high | medium | low
+      description: <what the role does, in one line>
+      intro: <the first words of its brief>
+      responsibilities: [<one exact output or command>]
+      acts: [{ do: <its work> }] or [{ review: [<role>] }] or [{ approve: [<role>] }]
+      persistence: { persistent: true | false, why: <one line: why it needs a terminal, or not> }
+      icon: <a role icon, such as compass>
+      summary: <the one line of its card>
+      found: <where the project has the role, such as .claude/agents/<role>.md; leave it out for a new role>`
+const CONFIG_TEMPLATE = `write a file like this, then run the command again:
+  people:
+    - name: <the git user.name of each person>
+  limits: { low: {}, medium: {}, high: {} }
+  roles:
+    <role>:
+${ROLE_KEYS}`
+const ROLE_TEMPLATE = `write a file with the keys of one role, then run the command again:
+${ROLE_KEYS.replaceAll('\n      ', '\n  ').replace(/^ {6}/, '  ')}`
+const CASES = `  cases:   # 3 or more: real code that follows the direction or breaks it
+    - { file: <path>, line: <n>, excerpt: <a short part of the file as it is now>, fit: Follows }`
+const DRAFT_TEMPLATE = `write a file like this, then run the command again:
+  id: <a short id; a new direction takes it from its first draft>
+  name: <a short name>
+  from: [<the principles that ground it, such as Logos>]
+  says: <what the direction asks for>
+  standards:
+    - id: <standard id>
+      says: <how the output looks>
+      rules:
+        - { id: <rule id>, says: <one check>, checkedBy: <a role of ${DRAFT}> }
+${CASES}`
+const COMPANY_TEMPLATE = `write a file like this, then run the command again (the words come from the company folder):
+  checkedBy: <the role that checks each rule>
+  rules: { <rule id>: <the role that checks this rule> }
+${CASES}`
+const QUESTIONS_TEMPLATE = `write a file like this, then run the command again:
+  questions:
+    - says: <what the AI must know to draft the direction>
+      case: { file: <path>, line: <n>, excerpt: <a short part of the file>, fit: Follows | Breaks }
+      options: [<option A>, <option B>]`
+// A draft of onboarding names no owner: readDirection checks the rest of the file with this one,
+// and the person who starts the store owns each direction.
+const OWNER = 'the person'
+const DRAFT_KEYS = ['id', 'name', 'from', 'says', 'standards', 'cases']
+const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'cases']
+
+const isRecord = (x: unknown): x is Readonly<Record<string, unknown>> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x)
+
+// --- reading the files that the host names -------------------------------------------------------
+
+const fileFlag = (call: Call, template: string) => {
+  const file = textOf(call.args.one('file'))
+  return file === undefined
+    ? Effect.fail(refuse(`work onboard ${call.act} needs --file=<file>`, template))
+    : Effect.succeed(file)
+}
+const yamlIn = (file: string) =>
+  Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    const text = yield* (yield* Files).read(join(cwd, file))
+    if (text === null) return yield* refuse(`there is no file ${file} in ${cwd}`)
+    return yield* refusing(() => parseYaml(text)).pipe(
+      Effect.mapError((e) => new Refused({ message: `${file}: ${e.message}`, next: null })),
+    )
+  })
+const idOf = (word: string | undefined) =>
+  word !== undefined && Schema.is(DirectionId)(word)
+    ? Effect.succeed(word)
+    : Effect.fail(
+        refuse(
+          `"${word ?? ''}" is not the id of a direction: lower-case words with dashes`,
+          'work onboard status lists the directions',
+        ),
+      )
+const roleOf = (word: string | undefined) =>
+  word !== undefined && word !== ''
+    ? Effect.succeed(RoleName.make(word))
+    : Effect.fail(refuse('name a role', 'work onboard status lists the roles'))
+
+// The one line of a role's card, and where the project has it.
+const notesOf = (file: string, where: string, raw: Readonly<Record<string, unknown>>) =>
+  Effect.gen(function* () {
+    const { summary, found } = raw
+    if (typeof summary !== 'string' || !isNonBlank(summary)) {
+      return yield* refuse(`${file}: ${where}summary is required: the one line of its card`)
+    }
+    if (found !== undefined && (typeof found !== 'string' || !isNonBlank(found))) {
+      return yield* refuse(`${file}: ${where}found is the path where the project has the role`)
+    }
+    const notes: RoleNotes = {
+      summary,
+      found: found === undefined ? { _tag: 'New' } : { _tag: 'InProject', path: found },
+    }
+    return notes
+  })
+const withoutNotes = ({ summary: _s, found: _f, ...role }: Readonly<Record<string, unknown>>) => role
+
+// The checks of work config check on the draft as it would be: it reads merged into
+// aristoteles.yaml, the git user is one of its people, and the words of each agent role fit.
+const checkDraft = (file: string, raw: Readonly<Record<string, unknown>>) =>
+  Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    const now = yield* (yield* Files).read(join(cwd, CONFIG))
+    const { config } = yield* refusing(() =>
+      mergeDraft(now ?? '', Bun.YAML.stringify(raw, null, 2)),
+    ).pipe(
+      Effect.flatMap((text) => configOfText(cwd, text)),
+      Effect.mapError((e) => new Refused({ message: `${file}: ${e.message}`, next: e.next })),
+    )
+    const problems = yield* configProblems(config)
+    if (problems.length) {
+      return yield* refuse(`${file}: ${problems.join('; ')}`, `change ${file}, then run it again`)
+    }
+  })
+
+// A case is real now: its excerpt is in its file (caseStateOf).
+const realCases = (file: string, cases: ReadonlyArray<typeof Case.Type>) =>
+  Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    const files = yield* Files
+    for (const [i, c] of cases.entries()) {
+      const text = yield* files.read(join(cwd, c.file))
+      if (caseStateOf(text, c)._tag === 'Stale') {
+        return yield* refuse(
+          `${file}: case ${i + 1}: "${short(c.excerpt, 80)}" is not in ${c.file}`,
+          'a case is real: its excerpt is a short part of its file as it is now',
+        )
+      }
+    }
+  })
+
+// The text of each file that a case names, for the stale cases of the words.
+const textsOf = (files: OnboardingFiles) =>
+  Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    const read = yield* Files
+    const texts = new Map<string, string | null>()
+    for (const f of files.directions) {
+      const cases = [
+        ...(f.draft._tag === 'Drafted' ? f.draft.cases : []),
+        ...f.questions.map((q) => q.case),
+      ]
+      for (const c of cases) {
+        if (!texts.has(c.file)) texts.set(c.file, yield* read.read(join(cwd, c.file)))
+      }
+    }
+    return (file: string) => texts.get(file) ?? null
+  })
+
+// Onboarding ends when the store starts: then a change is an adjustment (ruling 14).
+const noStoreYet = Effect.gen(function* () {
+  const { cwd } = yield* Dir
+  if ((yield* loadWork(cwd))._tag === 'NoStore') return
+  return yield* refuse(
+    'the store of this dir has started, so onboarding is over',
+    'a change now is an adjustment: work suggest roles --says="<the change>", or work adjust (a high agent)',
+  )
+})
+
+const directionIn = (files: OnboardingFiles, id: string): OnboardingDirection | undefined =>
+  files.directions.find((f) => f.id === id)
+
+// --- the host's acts ---------------------------------------------------------------------------
+
+const config = (call: Call) =>
+  Effect.gen(function* () {
+    const file = yield* fileFlag(call, CONFIG_TEMPLATE)
+    const raw = yield* yamlIn(file)
+    if (!isRecord(raw) || !isRecord(raw.roles)) {
+      return yield* refuse(`${file}: roles is required`, CONFIG_TEMPLATE)
+    }
+    const notes: Record<string, RoleNotes> = {}
+    const roles: Record<string, unknown> = {}
+    for (const [name, role] of Object.entries(raw.roles)) {
+      if (!isRecord(role)) return yield* refuse(`${file}: roles.${name} gives no keys`, CONFIG_TEMPLATE)
+      notes[name] = yield* notesOf(file, `roles.${name}: `, role)
+      roles[name] = withoutNotes(role)
+    }
+    const draft = { ...raw, roles }
+    yield* checkDraft(file, draft)
+    const { cwd } = yield* Dir
+    yield* hostAct(cwd, { _tag: 'Config', config: draft, notes })
+    const names = Object.keys(roles)
+    return [
+      `${DRAFT} holds the config draft: ${names.length} roles (${names.join(', ')}); each waits for the person on the agents page.`,
+      'next: work onboard found <id> for each topic, then work onboard draft <id> --file=<direction.yaml>',
+    ]
+  })
+
+const role = (call: Call, name: string | undefined) =>
+  Effect.gen(function* () {
+    const key = yield* roleOf(name)
+    const file = yield* fileFlag(call, ROLE_TEMPLATE)
+    const raw = yield* yamlIn(file)
+    if (!isRecord(raw)) return yield* refuse(`${file}: write the keys of one role`, ROLE_TEMPLATE)
+    const notes = yield* notesOf(file, '', raw)
+    const { cwd } = yield* Dir
+    const text = yield* (yield* Files).read(join(cwd, DRAFT))
+    // With no draft yet, the module says what comes first.
+    if (text !== null) {
+      const draft = yield* refusing(() => parseYaml(text))
+      yield* checkDraft(file, { ...draft, roles: { ...draft.roles, [key]: withoutNotes(raw) } })
+    }
+    yield* hostAct(cwd, { _tag: 'Role', role: key, file: withoutNotes(raw), notes })
+    return [
+      `${key}: written into ${DRAFT}; it waits for the person on the agents page.`,
+      'next: work onboard wait, until the person accepts or revises it',
+    ]
+  })
+
+const found = (id: string | undefined) =>
+  Effect.gen(function* () {
+    const direction = yield* idOf(id)
+    const { cwd } = yield* Dir
+    yield* hostAct(cwd, { _tag: 'Found', direction })
+    return [
+      `${direction}: a topic that the host found; it shows Loading until its draft.`,
+      `next: work onboard draft ${direction} --file=<direction.yaml>`,
+    ]
+  })
+
+// A draft of a direction that the project has, or that the person asked for.
+const localDraft = (file: string, raw: Readonly<Record<string, unknown>>, current: OnboardingDirection) =>
+  Effect.gen(function* () {
+    const unknown = Object.keys(raw).find((k) => !DRAFT_KEYS.includes(k))
+    if (unknown !== undefined) {
+      return yield* refuse(
+        `${file}: ${unknown} is no key of an onboarding draft; its keys are ${DRAFT_KEYS.join(', ')}`,
+        unknown === 'owner' ? 'the person who starts the store owns each direction' : DRAFT_TEMPLATE,
+      )
+    }
+    const first = current.asked._tag === 'New' && current.draft._tag === 'Drafting'
+    if (first && raw.id === undefined) {
+      return yield* refuse(
+        `${file}: a new direction takes its id from its first draft`,
+        'write id: <a short id, such as small-changes> in the draft',
+      )
+    }
+    const id = yield* idOf(raw.id === undefined ? current.id : String(raw.id))
+    const read = yield* readDirection(file, { ...raw, id, owner: OWNER }, [OWNER])
+    const draft: Omit<DirectionDraft, 'cases'> = {
+      id,
+      name: read.name,
+      from: read.from,
+      says: read.says,
+      standards: read.standards,
+    }
+    return draft
+  })
+
+// A draft of a company direction: its words come from the folder now (company.ts readFolder); the
+// draft adds the checkers.
+const companyDraft = (
+  file: string,
+  raw: Readonly<Record<string, unknown>>,
+  current: OnboardingDirection,
+  asked: { readonly repo: string; readonly path: string },
+) =>
+  Effect.gen(function* () {
+    const unknown = Object.keys(raw).find((k) => !COMPANY_KEYS.includes(k))
+    if (unknown !== undefined) {
+      return yield* refuse(
+        `${file}: ${unknown} is no key of a company draft; the words come from the folder`,
+        COMPANY_TEMPLATE,
+      )
+    }
+    const { checkedBy, rules } = raw
+    const roleWord = (x: unknown) => typeof x === 'string' && x !== ''
+    if (checkedBy !== undefined && !roleWord(checkedBy)) {
+      return yield* refuse(`${file}: checkedBy names one role`, COMPANY_TEMPLATE)
+    }
+    if (rules !== undefined && !(isRecord(rules) && Object.values(rules).every(roleWord))) {
+      return yield* refuse(`${file}: rules gives the role of each rule by its id`, COMPANY_TEMPLATE)
+    }
+    const checker = (rule: string): string | undefined =>
+      (isRecord(rules) ? (rules[rule] as string | undefined) : undefined) ??
+      (checkedBy as string | undefined)
+    const id = yield* idOf(raw.id === undefined ? current.id : String(raw.id))
+    const env = (yield* Env).vars
+    const { folder } = yield* fetchFolder(env, { ...asked, owner: OWNER })
+    const draft: Omit<DirectionDraft, 'cases'> = {
+      id,
+      name: folder.name,
+      from: [],
+      says: folder.says,
+      standards: folder.standards.map((s) => ({
+        id: s.id,
+        says: s.says,
+        rules: s.rules.map((r) => {
+          const by = checker(r.id)
+          return { id: r.id, says: r.says, ...(by ? { checkedBy: RoleName.make(by) } : {}), supersedes: [] }
+        }),
+      })),
+    }
+    return draft
+  })
+
+const draft = (call: Call, id: string | undefined) =>
+  Effect.gen(function* () {
+    const direction = yield* idOf(id)
+    const { cwd } = yield* Dir
+    const current = directionIn(yield* readOnboarding(cwd), direction)
+    if (current === undefined) {
+      return yield* refuse(
+        `there is no direction ${direction}`,
+        `work onboard status lists them; the host makes one with work onboard found ${direction}`,
+      )
+    }
+    const template = current.asked._tag === 'Company' ? COMPANY_TEMPLATE : DRAFT_TEMPLATE
+    const file = yield* fileFlag(call, template)
+    const raw = yield* yamlIn(file)
+    if (!isRecord(raw)) return yield* refuse(`${file}: write the keys of a draft`, template)
+    const cases: Cases = yield* readCases(file, raw)
+    yield* realCases(file, cases)
+    const words =
+      current.asked._tag === 'Company'
+        ? yield* companyDraft(file, raw, current, current.asked)
+        : yield* localDraft(file, raw, current)
+    const [made = direction] = yield* hostAct(cwd, {
+      _tag: 'Draft',
+      direction,
+      draft: { ...words, cases },
+    })
+    const after = directionIn(yield* readOnboarding(cwd), made)
+    const state = after === undefined ? 'Loading' : onboardingStateOf(after)._tag
+    return [
+      `${made}: drafted${made === direction ? '' : ` (it was ${direction})`}, with ${cases.length} cases; it shows ${state}.`,
+      'next: work onboard wait, until the person accepts, revises or removes it',
+    ]
+  })
+
+const ask = (call: Call, id: string | undefined) =>
+  Effect.gen(function* () {
+    const direction = yield* idOf(id)
+    const file = yield* fileFlag(call, QUESTIONS_TEMPLATE)
+    const raw = yield* yamlIn(file)
+    const list = isRecord(raw) && Array.isArray(raw.questions) ? raw.questions : []
+    if (list.length === 0) return yield* refuse(`${file}: questions lists none`, QUESTIONS_TEMPLATE)
+    const questions: Array<QuestionDraft> = []
+    for (const [i, q] of list.entries()) {
+      const at = `${file}: question ${i + 1}`
+      if (!isRecord(q) || typeof q.says !== 'string' || !isNonBlank(q.says)) {
+        return yield* refuse(`${at} needs says: what the AI must know`, QUESTIONS_TEMPLATE)
+      }
+      if (!Schema.is(Case)(q.case)) {
+        return yield* refuse(`${at}: case is { file, line, excerpt, fit: Follows | Breaks }`, QUESTIONS_TEMPLATE)
+      }
+      const [a, b, ...more] = Array.isArray(q.options) ? q.options : []
+      if (typeof a !== 'string' || typeof b !== 'string' || more.length > 0) {
+        return yield* refuse(`${at}: options lists two options, A and B`, QUESTIONS_TEMPLATE)
+      }
+      questions.push({ says: q.says, case: q.case, options: [a, b] })
+    }
+    yield* realCases(file, questions.map((q) => q.case))
+    const { cwd } = yield* Dir
+    yield* hostAct(cwd, { _tag: 'Ask', direction, questions })
+    return [
+      `${direction}: ${questions.length === 1 ? 'a question' : `${questions.length} questions`} for the person; it shows Question.`,
+      'next: work onboard wait, until the person submits the answers',
+    ]
+  })
+
+// The host names the id of a company direction; the person's has the name of its folder.
+const company = (call: Call, id: string | undefined) =>
+  Effect.gen(function* () {
+    const repo = textOf(call.args.one('repo'))
+    const path = textOf(call.args.one('path'))
+    if (repo === undefined || path === undefined) {
+      return yield* refuse(
+        'a company direction needs --repo=<a git repo> and --path=<its folder of the direction>',
+        'the folder holds direction.md, and a folder for each standard with its rules',
+      )
+    }
+    const { cwd } = yield* Dir
+    const [made] =
+      id === undefined
+        ? yield* asPerson({ act: 'add-company-direction', repo, path })
+        : yield* hostAct(cwd, { _tag: 'Company', direction: yield* idOf(id), repo, path })
+    return [
+      `${made}: a company direction from ${path} of ${repo}; it shows Loading until the host drafts its checkers and cases.`,
+      `next: the host drafts it: work onboard draft ${made} --file=<checkers and cases.yaml>`,
+    ]
+  })
+
+// --- what the host and the person read -----------------------------------------------------------
+
+const status = Effect.gen(function* () {
+  const { cwd } = yield* Dir
+  const files = yield* readOnboarding(cwd)
+  return onboardStatus(files, yield* textsOf(files))
+})
+
+const show = (name: string | undefined) =>
+  Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    const files = yield* readOnboarding(cwd)
+    const file = directionIn(files, name ?? '')
+    if (file !== undefined) return onboardShowDirection(file, yield* textsOf(files))
+    const role = files.roles.find((r) => r.role === name)
+    if (role !== undefined) return onboardShowRole(role)
+    return yield* refuse(`there is no direction or role "${name ?? ''}"`, 'work onboard status lists them')
+  })
+
+// It blocks until something waits for the host (a draft to write, a Revise, submitted answers, a
+// new or company direction, a role to revise), then prints the status. 540 s at most, as work wait.
+const wait = (call: Call) =>
+  Effect.gen(function* () {
+    const given = call.args.one('seconds')
+    const n = Number(given)
+    if (given !== undefined && !(typeof given === 'string' && Number.isFinite(n) && n > 0)) {
+      return yield* refuse('--seconds is a number of seconds above 0, such as --seconds=540')
+    }
+    const seconds = Math.min(given === undefined ? WAIT_SECONDS : n, WAIT_SECONDS)
+    const { cwd } = yield* Dir
+    for (let left = seconds * 1000; ; left -= POLL_MS) {
+      if (!(yield* onboardingExists(cwd))) {
+        return [
+          'onboarding is over: the onboarding files are gone (the store started, or nothing began).',
+          'next: work status shows the store; with no store, the host starts with work onboard config --file=<draft.yaml>',
+        ]
+      }
+      const files = yield* readOnboarding(cwd)
+      if (waitsForHost(files)) return onboardStatus(files, yield* textsOf(files))
+      if (left <= 0) {
+        return [
+          'nothing waits for the host yet; run work onboard wait again.',
+          ...onboardStatus(files, yield* textsOf(files)),
+        ]
+      }
+      yield* Effect.sleep(POLL_MS)
+    }
+  })
+
+// --- the person's acts --------------------------------------------------------------------------
+
+const asPerson = (onboarding: PersonAct, confirm?: Confirm) =>
+  Effect.gen(function* () {
+    const name = yield* personOf(undefined, confirm)
+    const { cwd } = yield* Dir
+    return yield* personAct(cwd, name, onboarding)
+  })
+
+const wordsFlag = (call: Call, flag: string, what: string) => {
+  const words = textOf(call.args.one(flag))
+  return words !== undefined && isNonBlank(words)
+    ? Effect.succeed(words)
+    : Effect.fail(refuse(`work onboard ${call.act} needs --${flag}="<${what}>"`))
+}
+
+const add = (call: Call) =>
+  Effect.gen(function* () {
+    const principle = yield* wordsFlag(call, 'principle', 'the idea of the direction, in your words')
+    const example = textOf(call.args.one('example'))
+    const [made] = yield* asPerson({
+      act: 'add-direction',
+      principle,
+      ...(example === undefined ? {} : { example }),
+    })
+    return [
+      `${made}: a new direction, "${short(principle, 80)}"; it shows Loading until the host drafts it.`,
+      'next: work onboard status shows it; the host drafts it with its cases',
+    ]
+  })
+
+const answer = (call: Call, id: string | undefined) =>
+  Effect.gen(function* () {
+    const direction = yield* idOf(id)
+    const options = (textOf(call.args.one('options')) ?? '').split(',').map((o) => o.trim())
+    const chosen = options.filter((o): o is 'A' | 'B' => o === 'A' || o === 'B')
+    const [first, ...rest] = chosen
+    if (first === undefined || chosen.length !== options.length) {
+      return yield* refuse(
+        '--options gives A or B for each question, in order, such as --options=A,B',
+        `work onboard show ${direction} shows the questions`,
+      )
+    }
+    yield* asPerson({ act: 'answer', direction, options: [first, ...rest] })
+    return [
+      `${direction}: the answers ${chosen.join(', ')} are submitted; it shows Loading until the host drafts it again.`,
+    ]
+  })
+
+const decide = (word: 'accept' | 'remove', id: string | undefined) =>
+  Effect.gen(function* () {
+    const direction = yield* idOf(id)
+    yield* asPerson({ act: word, direction })
+    return [word === 'accept' ? `${direction} is accepted.` : `${direction} is removed; nothing keeps it.`]
+  })
+
+const revise = (call: Call, id: string | undefined) =>
+  Effect.gen(function* () {
+    const direction = yield* idOf(id)
+    const words = yield* wordsFlag(call, 'words', 'what to change')
+    yield* asPerson({ act: 'revise', direction, words })
+    return [`${direction}: the host drafts it again from your words; it shows Loading until then.`]
+  })
+
+const approveDirections = Effect.gen(function* () {
+  const { cwd } = yield* Dir
+  const files = yield* readOnboarding(cwd)
+  const ready = files.directions.filter((f) => onboardingStateOf(f)._tag === 'Ready')
+  if (ready.length === 0) {
+    return yield* refuse('no direction is ready; approve all accepts each ready one', 'work onboard status shows what waits')
+  }
+  const show = `approve all accepts: ${ready.map((f) => f.id).join(', ')}`
+  const accepted = yield* asPerson({ act: 'approve-all-directions' }, { word: 'approve', show })
+  const waiting = files.directions.filter((f) => !accepted.includes(f.id) && f.accepted._tag !== 'Accepted')
+  return [
+    `accepted: ${accepted.join(', ')}.`,
+    ...(waiting.length
+      ? [`still waiting: ${waiting.map((f) => `${f.id} (${onboardingStateOf(f)._tag})`).join(', ')}.`]
+      : ['every direction is accepted or removed: the roles come next (work onboard status).']),
+  ]
+})
+
+const roleAct = (call: Call, name: string | undefined) =>
+  Effect.gen(function* () {
+    const key = yield* roleOf(name)
+    switch (call.act) {
+      case 'accept-role':
+        yield* asPerson({ act: 'accept-role', role: key })
+        return [`${key} is accepted.`]
+      case 'remove-role':
+        yield* asPerson({ act: 'remove-role', role: key })
+        return [`${key} is removed from ${DRAFT}; nothing keeps it.`]
+      case 'revise-role': {
+        const words = yield* wordsFlag(call, 'words', 'what to change')
+        yield* asPerson({ act: 'revise-role', role: key, words })
+        return [`${key}: the host writes it again from your words.`]
+      }
+      default: {
+        const word = textOf(call.args.one('persistent'))
+        if (word !== 'true' && word !== 'false') {
+          return yield* refuse('--persistent is true or false')
+        }
+        yield* asPerson({ act: 'persistence', role: key, persistent: word === 'true' })
+        return [
+          `${key} is ${word === 'true' ? 'persistent: it gets a terminal of its own' : 'disposable: it runs as a subagent of a terminal'}.`,
+        ]
+      }
+    }
+  })
+
+// The store start (BUILD.md 1c): after the typed approve, the lock is taken, aristoteles.yaml is
+// written from the draft, and the person stores the start; a refusal writes the files back.
+const approveRoles = Effect.gen(function* () {
+  const { cwd } = yield* Dir
+  const files = yield* readOnboarding(cwd)
+  const directions = files.directions.map((f) => f.id).join(', ') || 'none'
+  const show =
+    `the store starts with the directions ${directions}, and the roles ` +
+    `${files.roles.map((r) => r.role).join(', ')}; the onboarding files go.`
+  const name = yield* personOf(undefined, { word: 'approve', show })
+  const by = { _tag: 'Person' as const, name, channel: yield* personChannel }
+  const start = yield* prepareStart(cwd, name, (yield* Env).vars)
+  // The refusal of the start is what the person reads; the write back runs before it shows.
+  const done = yield* act(by, {
+    _tag: 'DefineWorkflow',
+    target: {},
+    content: { directions: start.directions },
+  }).pipe(Effect.onError(() => Effect.ignore(start.restore)))
+  yield* start.finish
+  const { config } = done.work
+  const roles = Object.keys(config.roles)
+  const withModel = roles.filter((r) => config.roles[r]?.kind !== 'program')
+  return [
+    `store made for ${config.project} in aristoteles: ${roles.length} roles and ` +
+      `${start.directions.length} directions; the onboarding files are gone.`,
+    `next: work role fit <role> for each role (${withModel.join(', ')}); then work start --detach`,
+  ]
+})
+
+const ACTS: Readonly<Record<string, (call: Call, word: string | undefined) => ReturnType<Command>>> = {
+  config: (call) => config(call),
+  role: (call, word) => role(call, word),
+  found: (_call, word) => found(word),
+  draft: (call, word) => draft(call, word),
+  ask: (call, word) => ask(call, word),
+  company: (call, word) => company(call, word),
+  add: (call) => add(call),
+  answer: (call, word) => answer(call, word),
+  accept: (_call, word) => decide('accept', word),
+  remove: (_call, word) => decide('remove', word),
+  revise: (call, word) => revise(call, word),
+  'approve-directions': () => approveDirections,
+  'accept-role': (call, word) => roleAct(call, word),
+  'revise-role': (call, word) => roleAct(call, word),
+  'remove-role': (call, word) => roleAct(call, word),
+  persistence: (call, word) => roleAct(call, word),
+  'approve-roles': () => approveRoles,
+}
+
+const onboard: Command = (call) =>
+  Effect.gen(function* () {
+    const [, word] = call.args.positional
+    if (call.act === 'status') return yield* status
+    if (call.act === 'show') return yield* show(word)
+    if (call.act === 'wait') return yield* wait(call)
+    const run = call.act === null ? undefined : ACTS[call.act]
+    if (run === undefined) {
+      return yield* refuse(
+        `use work onboard ${['status', 'show', 'wait', ...Object.keys(ACTS)].join('|')}`,
+        'work help lists the forms',
+      )
+    }
+    yield* noStoreYet
+    return yield* run(call, word)
+  })
+
+export const commands: Commands = { onboard }

@@ -1,0 +1,170 @@
+// Onboarding at a terminal (BUILD.md 1e; rulings 1 to 5, 7, 15, onboarding 2026-11-14): the host
+// drafts into the files with work onboard, the person decides as on the two pages, and nothing is
+// stored until approve-roles starts the store with the accepted result only. Each refusal of the
+// start leaves aristoteles.yaml and the onboarding files as they were.
+import { Database } from 'bun:sqlite'
+import { describe, expect, test } from 'bun:test'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  ok,
+  ONBOARD_CONFIG,
+  ONBOARD_DIRECTION,
+  ONBOARD_NEW,
+  ONBOARD_QUESTIONS,
+  onboardingProject,
+} from './harness.js'
+
+const ROLES = ['architect', 'section-lead', 'writer', 'linter']
+const exists = (p, path) => existsSync(join(p.dir, path))
+const eventsOf = (p) => {
+  const db = new Database(join(p.dir, '.work', 'aristoteles.db'), { readonly: true })
+  const rows = db.query('SELECT seq, record, member, event FROM event ORDER BY seq').all()
+  db.close()
+  return rows
+}
+
+// The host's config draft, a direction that it found and drafted, and every role accepted: what
+// is left is the person's approve of the directions and the start.
+async function drafted() {
+  const p = onboardingProject()
+  p.write('draft.yaml', ONBOARD_CONFIG)
+  ok(await p.agent('onboard config --file=draft.yaml'))
+  ok(await p.agent('onboard found tsd-writing'))
+  p.write('tsd.yaml', ONBOARD_DIRECTION)
+  ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+  return p
+}
+const acceptAll = async (p) => {
+  ok(await p.nanda('onboard approve-directions', 'approve'))
+  for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
+}
+
+describe('the whole onboarding at a terminal', () => {
+  test('config, found, draft, ask, answer, revise, remove, approve, roles, persistence, and the start', async () => {
+    const p = onboardingProject()
+    p.write('draft.yaml', ONBOARD_CONFIG)
+    expect(ok(await p.agent('onboard config --file=draft.yaml')).out).toContain(
+      'aristoteles.draft.yaml holds the config draft: 4 roles (architect, section-lead, writer, linter)',
+    )
+    ok(await p.agent('onboard found tsd-writing'))
+    ok(await p.agent('onboard found code-proof'))
+    p.write('tsd.yaml', ONBOARD_DIRECTION)
+    expect(ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml')).out).toStartWith(
+      'tsd-writing: drafted, with 3 cases; it shows Ready.',
+    )
+    // Ruling 5: the person adds a new direction; its first draft names its id.
+    expect(ok(await p.nanda('onboard add --principle="A section says one thing"')).out).toStartWith('new-1: a new direction')
+    p.write('one.yaml', ONBOARD_NEW)
+    expect(ok(await p.agent('onboard draft new-1 --file=one.yaml')).out).toStartWith('one-thing: drafted (it was new-1)')
+    // The host asks with a case and two options; the person answers; the host's wait wakes.
+    p.write('q.yaml', ONBOARD_QUESTIONS)
+    ok(await p.agent('onboard ask one-thing --file=q.yaml'))
+    expect(ok(await p.agent('onboard status')).out).toContain(
+      '  one-thing · Question · One thing per section · asked for by the person: "A section says one thing" · 3 cases\n' +
+        '    1 question for the person: work onboard show one-thing; work onboard answer one-thing --options=A',
+    )
+    expect(ok(await p.nanda('onboard show one-thing')).out).toContain(
+      '  1. Does a section of facts count as one thing?\n' +
+        '    Follows docs/facts.md:3 "## Dedupe" · current\n' +
+        '     A: each fact is one thing\n     B: the facts together are one thing',
+    )
+    ok(await p.nanda('onboard answer one-thing --options=B'))
+    expect(ok(await p.agent('onboard wait --seconds=1')).out).toContain(
+      '    the answers B wait for the next draft (the host: work onboard draft one-thing --file=<direction.yaml>',
+    )
+    ok(await p.agent('onboard draft one-thing --file=one.yaml'))
+    // Ruling 2: a Revise goes to the host, which drafts again; a remove keeps nothing.
+    ok(await p.nanda('onboard revise tsd-writing --words="name the reader of the TSD"'))
+    expect(ok(await p.agent('onboard wait --seconds=1')).out).toContain('the person asks: "name the reader of the TSD"')
+    ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+    ok(await p.nanda('onboard remove code-proof'))
+    expect(exists(p, '.work/assess/code-proof.yaml')).toBe(false)
+    expect(ok(await p.nanda('onboard approve-directions', 'approve')).out).toContain(
+      'accepted: one-thing, tsd-writing.\nevery direction is accepted or removed: the roles come next',
+    )
+    // Ruling 7: the person's toggle writes the persistence with a true reason (P11).
+    ok(await p.nanda('onboard persistence writer --persistent=true'))
+    for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
+    expect(ok(await p.agent('onboard status')).out).toContain(
+      'next: everything is accepted; the person starts the store: work onboard approve-roles',
+    )
+    const started = ok(await p.nanda('onboard approve-roles', 'approve')).out
+    expect(started).toContain('store made for report-export in aristoteles: 4 roles and 2 directions; the onboarding files are gone.')
+    // Question 20, option A: one Workflow.Defined holds the config and the accepted directions.
+    const events = eventsOf(p)
+    expect(events.map((e) => `${e.record}.${e.member}`)).toEqual(['Workflow.Defined'])
+    const { directions } = JSON.parse(events[0].event).create
+    expect(directions.map((x) => [x.direction.id, x.direction.owner, x.cases.length, x.source._tag])).toEqual([
+      ['one-thing', 'Nanda', 3, 'Local'],
+      ['tsd-writing', 'Nanda', 3, 'Local'],
+    ])
+    expect(ok(await p.nanda('direction show tsd-writing')).out).toContain(
+      'tsd-writing@1 TSD writing (owner Nanda) · current\nmade from d2, drafted by the store start of onboarding (e1)',
+    )
+    for (const path of ['.work/assess', 'aristoteles.draft.yaml', '.work/onboarding.lock']) expect(exists(p, path)).toBe(false)
+    const config = Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8'))
+    expect(config.roles.writer.persistence).toEqual({ persistent: true, why: 'Nanda chose it on the agents page.' })
+    expect(config.roles.linter.summary).toBeUndefined()
+    // After the start, an onboarding act is refused: a change is an adjustment now (ruling 14).
+    expect((await p.nanda('onboard add --principle="one more"')).err).toContain('the store of this dir has started, so onboarding is over')
+  })
+})
+
+describe('what onboarding refuses', () => {
+  test('the start refuses a direction that is not accepted, and leaves the files as they were', async () => {
+    const p = await drafted()
+    for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
+    const r = await p.nanda('onboard approve-roles', 'approve')
+    expect(r.err).toContain('refused: tsd-writing is not accepted yet')
+    expect(r.err).toContain('next: accept it or remove it (work onboard accept|remove tsd-writing), then approve again')
+    expect(exists(p, 'aristoteles.yaml')).toBe(false)
+    expect(exists(p, '.work/assess/tsd-writing.yaml')).toBe(true)
+    expect(exists(p, '.work/aristoteles.db')).toBe(false)
+  })
+
+  test('the start refuses a rule whose checker is no accepted role, and writes aristoteles.yaml back', async () => {
+    const settings = 'theme: dark\nsound: false\n'
+    const p = await drafted()
+    p.write('aristoteles.yaml', settings)
+    await acceptAll(p)
+    // The person removes the linter, which checks two rules of tsd-writing.
+    ok(await p.nanda('onboard remove-role linter'))
+    const r = await p.nanda('onboard approve-roles', 'approve')
+    expect(r.err).toContain('refused: rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role')
+    expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe(settings)
+    expect(exists(p, '.work/assess/tsd-writing.yaml')).toBe(true)
+    expect(exists(p, 'aristoteles.draft.yaml')).toBe(true)
+    expect(exists(p, '.work/onboarding.lock')).toBe(false)
+  })
+
+  test('a draft refuses a case whose excerpt is not in its file, and fewer than 3 cases', async () => {
+    const p = await drafted()
+    // P10 rejected, onboarding 2026-11-14: a direction starts with 3 real cases or more.
+    p.write('stale.yaml', ONBOARD_DIRECTION.replace('excerpt: TODO', 'excerpt: DONE'))
+    expect((await p.agent('onboard draft tsd-writing --file=stale.yaml')).err).toContain(
+      'refused: stale.yaml: case 3: "DONE" is not in docs/tsd.md',
+    )
+    p.write('few.yaml', ONBOARD_DIRECTION.replace(/ {2}- \{ file: docs\/tsd.md, line: 5.*\n/, ''))
+    expect((await p.agent('onboard draft tsd-writing --file=few.yaml')).err).toContain('refused: few.yaml: cases lists 2')
+  })
+
+  test('work init refuses while onboarding files exist', async () => {
+    const p = await drafted()
+    p.write('aristoteles.yaml', ONBOARD_CONFIG)
+    const r = await p.nanda('init')
+    expect(r.err).toContain('refused: onboarding files are in this dir (.work/assess/ or aristoteles.draft.yaml)')
+    expect(r.err).toContain('next: approve all on the agents page, or run work onboard approve-roles')
+    expect(exists(p, '.work/aristoteles.db')).toBe(false)
+  })
+
+  test('the role of the top task has no toggle (ruling 15)', async () => {
+    const p = await drafted()
+    for (const persistent of ['false', 'true']) {
+      expect((await p.nanda(`onboard persistence architect --persistent=${persistent}`)).err).toContain(
+        'refused: architect is the role of the top task (the only persistent high role), so it has no toggle',
+      )
+    }
+    expect((await p.nanda('onboard persistence section-lead --persistent=false')).code).toBe(0)
+  })
+})

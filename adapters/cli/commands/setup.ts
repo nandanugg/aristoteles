@@ -5,6 +5,7 @@ import { staticFit, wordsFit } from '../../../core/actions/config.ts'
 import { roleWordsDraftAt } from '../../../core/derived/index.ts'
 import {
   type Author,
+  type ConfigFile,
   type EventRef,
   OutsideFailed,
   Refused,
@@ -13,6 +14,7 @@ import {
   type RoleFile,
 } from '../../../core/schema/index.ts'
 import {
+  ASSESS,
   CONFIG,
   configOfText,
   DRAFT,
@@ -21,6 +23,7 @@ import {
   GitUser,
   mergeDraft,
   Now,
+  onboardingExists,
   readConfig,
   refusing,
   roleHash,
@@ -36,8 +39,16 @@ import { act, peekWork, readWork } from '../runtime.ts'
 const roleIn = (roles: Readonly<Record<string, RoleFile>>, name: string): RoleFile | undefined =>
   Object.hasOwn(roles, name) ? roles[name] : undefined
 
+// One dir has one way to start: while onboarding files are here, the store starts from them.
 const init: Command = () =>
   Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    if (yield* onboardingExists(cwd)) {
+      return yield* refuse(
+        `onboarding files are in this dir (${ASSESS}/ or ${DRAFT}); the store starts from them`,
+        'approve all on the agents page, or run work onboard approve-roles',
+      )
+    }
     const by = yield* personAuthor(undefined)
     const done = yield* act(by, { _tag: 'DefineWorkflow', target: {}, content: { directions: [] } })
     const { config } = done.work
@@ -49,6 +60,20 @@ const init: Command = () =>
         'a model drafts each direction (work direction new --file=<direction.yaml> --by=<model>), and you accept it; ' +
         'then work task open --file=<task.yaml>',
     ]
+  })
+
+// What work config check refuses in a config that reads: the git user is not one of its people,
+// or the words of an agent role fail their static fit. work onboard checks a draft with it too.
+export const configProblems = (config: ConfigFile) =>
+  Effect.gen(function* () {
+    const problems: Array<string> = []
+    const user = yield* (yield* GitUser).name
+    if (!config.people.includes(user)) problems.push(`${user} (git user.name) is not in the people`)
+    for (const [role, r] of Object.entries(config.roles)) {
+      // The static fit of a role with no work behind it: its own words only.
+      if (r.kind !== 'program') problems.push(...wordsFit(r).map((p) => `${role}: ${p}`))
+    }
+    return problems
   })
 
 // work config check (Nanda, 2026-11-13): what Accept the roles on the page would store, read the
@@ -67,14 +92,8 @@ const checkConfig = Effect.gen(function* () {
     Effect.flatMap((text) => configOfText(cwd, text)),
     Effect.mapError((e) => new Refused({ message: `${name}: ${e.message}`, next: e.next })),
   )
-  const problems: Array<string> = []
-  const user = yield* (yield* GitUser).name
-  if (!config.people.includes(user)) problems.push(`${user} (git user.name) is not in the people`)
+  const problems = yield* configProblems(config)
   const agents = Object.entries(config.roles).filter(([, r]) => r.kind !== 'program')
-  for (const [role, r] of agents) {
-    // The static fit of a role with no work behind it: its own words only.
-    problems.push(...wordsFit(r).map((p) => `${role}: ${p}`))
-  }
   if (problems.length) {
     return yield* refuse(
       `${name}: ${problems.join('; ')}`,
