@@ -374,7 +374,10 @@ export const hostAct = (
           const roles = Object.keys(read.config.roles)
           const bare = missingNotes(roles, act.notes)
           if (bare !== undefined) {
-            return yield* refuse(`the role ${bare} has no summary: the one line of its card`)
+            return yield* refuse(
+              `the role ${bare} has no summary: the one line of its card`,
+              'write a summary for each role in the config draft',
+            )
           }
           yield* writeWhole(join(dir, DRAFT), text)
           const entries = roles.map((r) => [r, { ...act.notes[r], request: NONE, accepted: WAITING }])
@@ -414,7 +417,7 @@ export const hostAct = (
               `draft it first: work onboard draft ${file.id} --file=<direction.yaml>`,
             )
           }
-          if (act.questions.length === 0) return yield* refuse('ask names one question or more')
+          if (act.questions.length === 0) return yield* refuse('ask names one question or more', 'write the questions in the file')
           const open = { _tag: 'Open' } as const
           const questions = act.questions.map((q) => ({ ...q, answer: open }))
           // The questions answer a Revise too: the request is done.
@@ -532,7 +535,7 @@ export const personAct = (
           })
         case 'add-company-direction': {
           const id = folderId(act.path)
-          if (id === '') return yield* refuse(`${act.path} names no folder`)
+          if (id === '') return yield* refuse(`${act.path} names no folder`, 'name the folder of the direction in its repo')
           return yield* newFile(dir, DirectionId.make(id), {
             _tag: 'Company',
             repo: act.repo,
@@ -542,7 +545,7 @@ export const personAct = (
         case 'answer': {
           const file = yield* needDirection(dir, act.direction)
           const open = file.questions.filter((q) => q.answer._tag === 'Open')
-          if (open.length === 0) return yield* refuse(`${file.id} has no open question`)
+          if (open.length === 0) return yield* refuse(`${file.id} has no open question`, 'work onboard status shows what waits')
           if (act.options.length !== open.length) {
             return yield* refuse(
               `${file.id} has ${open.length} open questions, and ${act.options.length} options were given`,
@@ -568,7 +571,7 @@ export const personAct = (
         case 'revise': {
           const file = yield* needDirection(dir, act.direction)
           if (file.draft._tag === 'Drafting') {
-            return yield* refuse(`${file.id} has no draft yet; the host drafts it`)
+            return yield* refuse(`${file.id} has no draft yet; the host drafts it`, 'work onboard status shows what waits')
           }
           const request = { _tag: 'Revise' as const, words: act.words }
           yield* writeDirection(dir, { ...file, request, accepted: WAITING })
@@ -582,7 +585,7 @@ export const personAct = (
         case 'approve-all-directions': {
           const ready = (yield* readDirections(dir)).filter((f) => notReady(f) === undefined)
           if (ready.length === 0) {
-            return yield* refuse('no direction is ready; approve all accepts each ready one')
+            return yield* refuse('no direction is ready; approve all accepts each ready one', 'work onboard status shows what waits')
           }
           for (const file of ready) yield* writeDirection(dir, { ...file, accepted: ACCEPTED })
           return ready.map((f) => f.id)
@@ -600,7 +603,7 @@ export const personAct = (
             )
           }
           if (act.act === 'accept-role' && state.request._tag === 'Revise') {
-            return yield* refuse(`a Revise of ${act.role} waits for the host`)
+            return yield* refuse(`a Revise of ${act.role} waits for the host`, 'work onboard status shows what waits')
           }
           const next: OnboardingRoleState =
             'words' in act
@@ -622,7 +625,10 @@ export const personAct = (
           const known = yield* needDraft(dir)
           const role = yield* roleIn(known, act.role)
           if (role.kind === 'program') {
-            return yield* refuse(`${act.role} is a program; it runs in the CLI and has no persistence`)
+            return yield* refuse(
+              `${act.role} is a program; it runs in the CLI and has no persistence`,
+              'toggle the persistence of an agent role',
+            )
           }
           // Ruling 15: the role of the top task is the persistent high role that the host plays;
           // while it is the only one, its card has no toggle.

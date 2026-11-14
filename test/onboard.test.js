@@ -4,9 +4,11 @@
 // start leaves aristoteles.yaml and the onboarding files as they were.
 import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  git,
   ok,
   ONBOARD_CONFIG,
   ONBOARD_DIRECTION,
@@ -108,6 +110,68 @@ describe('the whole onboarding at a terminal', () => {
     expect(config.roles.linter.summary).toBeUndefined()
     // After the start, an onboarding act is refused: a change is an adjustment now (ruling 14).
     expect((await p.nanda('onboard add --principle="one more"')).err).toContain('the store of this dir has started, so onboarding is over')
+  })
+})
+
+// A company repo with one direction, one standard and one rule (ruling 6).
+const companyRepo = async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'company-'))
+  const folder = 'directions/feature-flags'
+  await Bun.write(join(dir, folder, 'direction.md'), '# Feature flags\n\nEach critical change is under a flag.\n')
+  await Bun.write(join(dir, folder, 'naming/standard.md'), 'The flag name tells the feature.\n')
+  await Bun.write(join(dir, folder, 'naming/upper-snake.md'), 'The flag is FF_<FEATURE>.\n')
+  git(dir, 'init', '-q', '-b', 'main')
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-q', '-m', 'feature flags')
+  return { dir, folder, commit: git(dir, 'rev-parse', 'HEAD') }
+}
+const COMPANY_DRAFT = `checkedBy: linter
+cases:
+  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
+  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
+  - { file: docs/facts.md, line: 3, excerpt: "## Dedupe", fit: Follows }
+`
+const withCompany = async () => {
+  const company = await companyRepo()
+  const p = onboardingProject()
+  p.write('draft.yaml', ONBOARD_CONFIG)
+  ok(await p.agent('onboard config --file=draft.yaml'))
+  const added = ok(await p.nanda(`onboard company --repo=${company.dir} --path=${company.folder}`)).out
+  expect(added).toStartWith('feature-flags: a company direction from directions/feature-flags of')
+  p.write('ff.yaml', COMPANY_DRAFT)
+  ok(await p.agent('onboard draft feature-flags --file=ff.yaml'))
+  await acceptAll(p)
+  return { p, company }
+}
+
+describe('a company direction in onboarding (ruling 6)', () => {
+  test('its words come from the folder; the start keeps it a company direction, in aristoteles.lock', async () => {
+    const { p, company } = await withCompany()
+    ok(await p.nanda('onboard approve-roles', 'approve'))
+    const { directions } = JSON.parse(eventsOf(p)[0].event).create
+    expect(directions[0].direction.standards[0].rules[0]).toEqual({
+      id: 'upper-snake', says: 'The flag is FF_<FEATURE>.', checkedBy: 'linter', supersedes: [],
+    })
+    expect(directions[0].source).toEqual({
+      _tag: 'External', repo: company.dir, path: company.folder, ref: { _tag: 'DefaultBranch' }, commit: company.commit,
+    })
+    const lock = Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.lock'), 'utf8'))
+    expect(lock['feature-flags']).toEqual({
+      repo: company.dir, path: company.folder, owner: 'Nanda', rules: { 'upper-snake': 'linter' }, commit: company.commit,
+    })
+    // The refresh of the next command finds the folder as the store holds it: no new draft.
+    expect(ok(await p.nanda('waiting')).err).not.toContain('came in')
+  })
+
+  test('the start refuses a company folder that changed since its draft', async () => {
+    const { p, company } = await withCompany()
+    await Bun.write(join(company.dir, company.folder, 'naming/upper-snake.md'), 'The flag is FF_<TEAM>_<FEATURE>.\n')
+    git(company.dir, 'commit', '-q', '-am', 'the team')
+    const r = await p.nanda('onboard approve-roles', 'approve')
+    expect(r.err).toContain('refused: the company folder of feature-flags changed since its draft')
+    expect(exists(p, 'aristoteles.yaml')).toBe(false)
+    expect(exists(p, 'aristoteles.lock')).toBe(false)
+    expect(exists(p, '.work/assess/feature-flags.yaml')).toBe(true)
   })
 })
 

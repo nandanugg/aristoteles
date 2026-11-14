@@ -118,9 +118,11 @@ const yamlIn = (file: string) =>
   Effect.gen(function* () {
     const { cwd } = yield* Dir
     const text = yield* (yield* Files).read(join(cwd, file))
-    if (text === null) return yield* refuse(`there is no file ${file} in ${cwd}`)
+    if (text === null) return yield* refuse(`there is no file ${file} in ${cwd}`, 'write the file first, then run the command again')
     return yield* refusing(() => parseYaml(text)).pipe(
-      Effect.mapError((e) => new Refused({ message: `${file}: ${e.message}`, next: null })),
+      Effect.mapError(
+        (e) => new Refused({ message: `${file}: ${e.message}`, next: `write ${file} as yaml` }),
+      ),
     )
   })
 const idOf = (word: string | undefined) =>
@@ -142,10 +144,10 @@ const notesOf = (file: string, where: string, raw: Readonly<Record<string, unkno
   Effect.gen(function* () {
     const { summary, found } = raw
     if (typeof summary !== 'string' || !isNonBlank(summary)) {
-      return yield* refuse(`${file}: ${where}summary is required: the one line of its card`)
+      return yield* refuse(`${file}: ${where}summary is required: the one line of its card`, ROLE_TEMPLATE)
     }
     if (found !== undefined && (typeof found !== 'string' || !isNonBlank(found))) {
-      return yield* refuse(`${file}: ${where}found is the path where the project has the role`)
+      return yield* refuse(`${file}: ${where}found is the path where the project has the role`, ROLE_TEMPLATE)
     }
     const notes: RoleNotes = {
       summary,
@@ -468,7 +470,7 @@ const wait = (call: Call) =>
     const given = call.args.one('seconds')
     const n = Number(given)
     if (given !== undefined && !(typeof given === 'string' && Number.isFinite(n) && n > 0)) {
-      return yield* refuse('--seconds is a number of seconds above 0, such as --seconds=540')
+      return yield* refuse('--seconds is a number of seconds above 0', 'run it again, such as work onboard wait --seconds=540')
     }
     const seconds = Math.min(given === undefined ? WAIT_SECONDS : n, WAIT_SECONDS)
     const { cwd } = yield* Dir
@@ -504,7 +506,10 @@ const wordsFlag = (call: Call, flag: string, what: string) => {
   const words = textOf(call.args.one(flag))
   return words !== undefined && isNonBlank(words)
     ? Effect.succeed(words)
-    : Effect.fail(refuse(`work onboard ${call.act} needs --${flag}="<${what}>"`))
+    : Effect.fail(refuse(
+          `work onboard ${call.act} needs --${flag}="<${what}>"`,
+          'run it again with the flag',
+        ))
 }
 
 const add = (call: Call) =>
@@ -591,7 +596,7 @@ const roleAct = (call: Call, name: string | undefined) =>
       default: {
         const word = textOf(call.args.one('persistent'))
         if (word !== 'true' && word !== 'false') {
-          return yield* refuse('--persistent is true or false')
+          return yield* refuse('--persistent is true or false', 'run it again with --persistent=true or --persistent=false')
         }
         yield* asPerson({ act: 'persistence', role: key, persistent: word === 'true' })
         return [

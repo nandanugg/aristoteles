@@ -311,7 +311,7 @@ const role: Command = (call) =>
 // excludes. It needs no aristoteles.yaml and no store, so it is the first act in a new dir.
 const skill: Command = (call) =>
   Effect.gen(function* () {
-    if (call.args.positional[0] !== 'install') return yield* refuse('use work skill install')
+    if (call.args.positional[0] !== 'install') return yield* refuse('use work skill install', 'work help lists the commands')
     const { cwd } = yield* Dir
     const lines = yield* Effect.try({
       try: () => installSkill(cwd),
