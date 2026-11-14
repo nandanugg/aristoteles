@@ -72,6 +72,14 @@ export const REFUSALS = {
       ),
     closedNeed: (need: string) =>
       no(`${need} is closed; a task does not need a closed task`, 'Pick', 'need an open task'),
+    // The host plays the high role of the top task, and the host is a terminal (ruling 15).
+    disposable: (role: string) =>
+      no(
+        `a top task goes to a persistent role: ${role} is disposable, so it runs only as a ` +
+          'subagent of a terminal',
+        'Pick',
+        'name a persistent high role',
+      ),
   },
   RecordProblem: {
     noWords: () =>
@@ -100,6 +108,16 @@ export const REFUSALS = {
       ),
   },
   StartSession: {
+    badId: (session: string) =>
+      no(
+        `"${session}": a session id is letters, digits, dot, dash`,
+        'Pick',
+        'name the session with letters, digits, dot, dash',
+      ),
+    sessionInUse: (session: string) =>
+      no(`the session ${session} is in use`, 'Pick', 'start the terminal with a new session'),
+  },
+  StartAgent: {
     badId: (session: string) =>
       no(
         `"${session}": a session id is letters, digits, dot, dash`,
@@ -244,6 +262,9 @@ const DraftTask: Action<'DraftTask'> = ({ by, input }) =>
     if (named === undefined) return yield* fail(R.DraftTask.unknownRole(role))
     const tier = named._tag === 'Model' ? named.tier : 'program'
     if (tier !== 'high') return yield* fail(R.DraftTask.notHigh(role, tier))
+    if (named._tag === 'Model' && named.persistence._tag === 'Disposable') {
+      return yield* fail(R.DraftTask.disposable(role))
+    }
     const task = yield* followNeeds(d, taskDataOf(read), R.DraftTask.closedNeed)
     const drafted = { _tag: 'Drafted' as const, run: input.target.run, task, role: named.role }
     return [create('TaskDraft', drafted)]
@@ -318,13 +339,41 @@ const StartSession: Action<'StartSession'> = ({ by, input }) =>
     const task = taskAt(w, a.task)
     const ofRun = (r: Run) => task.serves._tag === 'TopTask' && runOfTree(w, task.id)?.id === r.id
     const taken = [...w.runs.values()].some((r) => r.session === session && !ofRun(r))
-    if (other || taken) return yield* fail(R.StartSession.sessionInUse(session))
+    // One terminal holds many assignments (ruling 9): those of a persistent agent share its
+    // started session, and those of the host share the session of its run.
+    const runs = a.runs
+    const terminal = runs._tag === 'Agent' ? w.agents.get(runs.agent)?.terminal : undefined
+    const ofAgent = terminal?._tag === 'Started' && terminal.session === session
+    const ofHost = runs._tag === 'Host' && w.runs.get(runs.run)?.session === session
+    if (!ofAgent && !ofHost && (other || taken)) {
+      return yield* fail(R.StartSession.sessionInUse(session))
+    }
     const started = {
       _tag: 'Started' as const,
       for: assignment,
       secret: secret ? sha(secret) : null,
     }
     return [move('Terminal', session, started)]
+  })
+
+// The supervisor starts the one terminal of a persistent agent, in a new session (P3).
+const StartAgent: Action<'StartAgent'> = ({ by, input }) =>
+  Effect.gen(function* () {
+    const d = yield* current
+    yield* allowed(d, by, input)
+    const w = d.moment.work
+    const { session } = input.content
+    if (!SESSION_WORDS.test(session)) return yield* fail(R.StartAgent.badId(session))
+    const used =
+      [...w.runs.values()].some((r) => r.session === session) ||
+      [...w.sessions.values()].some(
+        (s) => s.session === session && d.states.assignments.get(s.assignment)?._tag !== 'Ended',
+      ) ||
+      [...w.agents.values()].some(
+        (x) => x.terminal._tag === 'Started' && x.terminal.session === session,
+      )
+    if (used) return yield* fail(R.StartAgent.sessionInUse(session))
+    return [move('Agent', input.target.agent, { _tag: 'Started', session })]
   })
 
 const ReportTerminal: Action<'ReportTerminal'> = ({ by, input }) =>
@@ -424,6 +473,7 @@ export const ACTIONS = {
   FixProblem,
   WriteHostWords,
   StartSession,
+  StartAgent,
   ReportTerminal,
   StopTerminal,
   ResumeTerminal,

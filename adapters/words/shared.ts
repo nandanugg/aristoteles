@@ -51,6 +51,8 @@ export const aboutId = (work: Work, about: Suggestion['about']): string => {
       return standardAt(work, about.standard).id
     case 'Rule':
       return ruleAt(work, about.rule).id
+    case 'Roles':
+      return 'the roles'
   }
 }
 
@@ -71,6 +73,7 @@ export const attemptWords = (d: Derived, a: AssignmentId): string => {
 // company direction.
 export const drafterOf = (work: Work, x: Revision<Direction>): string => {
   if (x.origin._tag === 'Written') return who(work, x.origin.by)
+  if (x.origin._tag === 'Onboarded') return `the store start of onboarding (${x.origin.event})`
   const source = directionAt(work, x.of).source
   const where = source._tag === 'External' ? `${source.repo} (${source.path})` : ''
   const tag = x.origin.ref._tag === 'Tag' ? ` (tag ${x.origin.ref.tag})` : ''
@@ -100,6 +103,8 @@ export const reviseAgainOf = (
   const work = d.moment.work
   const open = (id: AssignmentId): boolean => d.states.assignments.get(id)?._tag !== 'Ended'
   const x = draftAt(work, draft)
+  // An onboarded draft is official at the store start: no Reject reaches it.
+  if (x.origin._tag === 'Onboarded') return { text: `${draft} is official`, step: null }
   // A company direction changes in its repo: the project stays on its accepted commit.
   if (x.origin._tag === 'Imported') {
     const source = directionAt(work, x.of).source

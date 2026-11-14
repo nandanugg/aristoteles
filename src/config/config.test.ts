@@ -11,14 +11,18 @@ import { checkerProblem } from '../domain/files.ts'
 // biome-ignore lint/suspicious/noExplicitAny: a mutable raw config of a test
 type Obj = any
 
+// Ruling 7, onboarding 2026-11-14: each agent role says its persistence and its icon; a program
+// has an icon only (P1, P12). The snapshots of the hashes and the restored texts follow.
+const persistent = { persistent: true, why: 'it leads the project' }
+const disposable = { persistent: false, why: 'it does one piece of work once' }
 const good = (): Obj => ({
   people: [{ name: 'Nanda' }, { name: 'Dewi' }],
   limits: { low: { Assignment: { attempts: 3 } }, high: { Review: { rules: 4 } } },
   roles: {
-    writer: { tier: 'low', description: 'writes', intro: 'you write', responsibilities: ['one'], acts: [{ do: 'write' }], timeout: 60 },
-    checker: { tier: 'medium', description: 'checks', intro: 'you check', responsibilities: ['one'], output: 'a note', acts: [{ review: ['writer'] }, { approve: ['writer'] }] },
-    boss: { tier: 'high', description: 'leads', intro: 'you lead', responsibilities: ['one'], acts: [{ approve: ['writer'] }, { change: ['tsd'] }] },
-    linter: { kind: 'program', run: './lint', on: 'report', acts: [{ review: ['writer'] }], checks: ['r1'] },
+    writer: { tier: 'low', description: 'writes', intro: 'you write', responsibilities: ['one'], acts: [{ do: 'write' }], timeout: 60, persistence: disposable, icon: 'feather' },
+    checker: { tier: 'medium', description: 'checks', intro: 'you check', responsibilities: ['one'], output: 'a note', acts: [{ review: ['writer'] }, { approve: ['writer'] }], persistence: persistent, icon: 'eye' },
+    boss: { tier: 'high', description: 'leads', intro: 'you lead', responsibilities: ['one'], acts: [{ approve: ['writer'] }, { change: ['tsd'] }], persistence: persistent, icon: 'crown' },
+    linter: { kind: 'program', run: './lint', on: 'report', acts: [{ review: ['writer'] }], checks: ['r1'], icon: 'terminal' },
   },
   decide: [{ resultsOf: 'writer', by: { or: ['checker', 'boss'] } }],
   tiers: { sol: { launch: 'claude --session {session}', start: 'go {token}', silentMinutes: 5 } },
@@ -49,7 +53,13 @@ const configCases: Array<[string, string | null]> = [
   ['the project key', edit((o) => { o.project = 'x' })],
   ['the directions key', edit((o) => { o.directions = [] })],
   ['an unknown key', edit((o) => { o.colour = 'red' })],
+  // Ruling 10, onboarding 2026-11-14: every tier has its commands, so a luna reads (was refused).
   ['tiers: luna', edit((o) => { o.tiers.luna = {} })],
+  ['tiers: a model and {model} in launch and resume', edit((o) => { o.tiers.luna = { model: 'small', launch: 'c --model {model} --session {session}', resume: 'c --model {model} --resume {session}' } })],
+  ['tiers: {model} in launch with no model', edit((o) => { o.tiers.sol.launch = 'c --model {model} --session {session}' })],
+  ['tiers: {model} in resume with no model', edit((o) => { o.tiers.sol.resume = 'c --model {model} --resume {session}' })],
+  ['tiers: a tier that is not one', edit((o) => { o.tiers.moon = {} })],
+  // Ruling 10, onboarding 2026-11-14 (P9): model is a setting of a tier, so the list names it.
   ['tiers: a key that is not a setting', edit((o) => { o.tiers.sol.bogus = 1 })],
   ['tiers: launch is not a text', edit((o) => { o.tiers.sol.launch = 5 })],
   ['tiers: start is blank', edit((o) => { o.tiers.sol.start = '  ' })],
@@ -82,6 +92,14 @@ const configCases: Array<[string, string | null]> = [
   ['a role with a blank intro', edit((o) => { o.roles.writer.intro = ' ' })],
   ['a role with no responsibilities', edit((o) => { o.roles.writer.responsibilities = [] })],
   ['a role with no acts', edit((o) => { o.roles.writer.acts = [] })],
+  ['a role with no persistence', edit((o) => { delete o.roles.writer.persistence })],
+  ['a role whose persistence has no why', edit((o) => { o.roles.writer.persistence = { persistent: false } })],
+  ['a role whose persistence is a word', edit((o) => { o.roles.writer.persistence = 'yes' })],
+  ['a role whose persistence has another key', edit((o) => { o.roles.writer.persistence = { ...disposable, tier: 'low' } })],
+  ['a role with no icon', edit((o) => { delete o.roles.writer.icon })],
+  ['a role with an icon outside the set', edit((o) => { o.roles.writer.icon = 'rocket' })],
+  ['a program with no icon', edit((o) => { delete o.roles.linter.icon })],
+  ['a program with a persistence', edit((o) => { o.roles.linter.persistence = disposable })],
   ['an act with two keys', edit((o) => { o.roles.writer.acts = [{ do: 'a', review: [] }] })],
   ['an act with an unknown key', edit((o) => { o.roles.writer.acts = [{ jump: 'a' }] })],
   ['an act that names no role', edit((o) => { o.roles.checker.acts = [{ review: ['ghost'] }] })],

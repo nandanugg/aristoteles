@@ -30,6 +30,15 @@ export {
   taskStateOf,
 } from './catalog.ts'
 
+export {
+  type AdjustmentDraft,
+  type AdjustmentState,
+  adjustmentDraftAt,
+  adjustmentProblem,
+} from './adjustments.ts'
+export { agentStateOf } from './catalog.ts'
+export { type CaseState, caseStateOf, onboardingStateOf } from './onboarding.ts'
+export { tierOfAssignment } from './reads.ts'
 export { canAct } from './can.ts'
 export {
   type RoleWords,

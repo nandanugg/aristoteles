@@ -75,6 +75,7 @@ const official: Direction = {
     },
   ],
   source: { _tag: 'External', repo: company.repo, path: company.path },
+  cases: [],
 }
 const drafted: Direction = {
   _tag: 'NewDirection',
@@ -85,6 +86,7 @@ const drafted: Direction = {
   maxStandards: { _tag: 'Unlimited' },
   approvedBy: { _tag: 'Owner' },
   source: { _tag: 'Local' },
+  cases: [],
 }
 const revision = (
   id: RevisionId,
@@ -228,6 +230,7 @@ const work: Work = {
         task: t1,
         under: new Map([[tsd, 1 as PositiveInt]]),
         parent: { _tag: 'GivenByPerson' },
+        runs: { _tag: 'Host', run: h1 },
         when: at(5),
         end: { _tag: 'Finished', when: at(25) },
       },
@@ -243,6 +246,7 @@ const work: Work = {
         under: new Map(),
         maxAttempts: { _tag: 'AtMost', max: 3 as PositiveInt },
         parent: { _tag: 'Parent', id: a1 },
+        runs: { _tag: 'Subagent', tier: 'low' },
         when: at(6),
         end: { _tag: 'NotEnded' },
       },
@@ -351,6 +355,7 @@ const work: Work = {
     [a1, { assignment: a1, session: 's-host' as SessionId, at: at(5) }],
     [a2, { assignment: a2, session: 's-writer' as SessionId, at: at(6) }],
   ]),
+  agents: new Map(),
   taskDrafts: new Map([
     [
       'td1' as TaskDraftId,

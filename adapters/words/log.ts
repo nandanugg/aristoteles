@@ -87,9 +87,11 @@ const partsOf = (logged: Logged, work: Work | undefined): string => {
     const name =
       about._tag === 'NewDirection'
         ? 'a new direction'
-        : about._tag === 'Direction'
-          ? about.direction
-          : about.key
+        : about._tag === 'Roles'
+          ? 'the roles'
+          : about._tag === 'Direction'
+            ? about.direction
+            : about.key
     return `${name}: "${cut(e.create.says)}"`
   }
   if (e._tag === 'Evaluation') return `${e.create.stop.id} at the level ${e.create.level}`
@@ -144,6 +146,11 @@ const OLD_TYPE: Total<string> = {
   'Role.Fitted': 'role.fit',
   'Role.WordsDrafted': 'role.draft',
   'Role.WordsRejected': 'role.reject',
+  // New (onboarding): the start of an agent's terminal, and the adjustments.
+  'Agent.Started': 'agent.start',
+  'Adjustment.Drafted': 'adjust',
+  'Adjustment.Accepted': 'adjust.accept',
+  'Adjustment.Rejected': 'adjust.reject',
   'Run.HostJoined': 'run.start',
   'Run.HostStarted': 'run.start',
   'Run.HostMoved': 'run.continue',
@@ -195,6 +202,7 @@ const OLD_TYPE: Total<string> = {
   'Revision.Drafted': 'direction.new',
   'Revision.Revised': 'direction.revise',
   'Revision.Imported': 'company.import',
+  'Revision.CasesAdded': 'direction.cases',
   'Permission.Granted': 'grant',
   'Permission.Revoked': 'revoke',
   'Source.Moved': 'source',

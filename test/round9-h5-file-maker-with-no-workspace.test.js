@@ -9,9 +9,11 @@ import { describe, expect, test } from 'bun:test'
 import { INTRO_V2, WORK_YAML, ok, started, tokenIn } from
   './harness.js'
 
+// Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
 const SCRIBE = '  scribe:\n    tier: low\n    description: Writes the design of the TSD.\n    intro: You write the design.\n' +
   '    responsibilities:\n      - Write the section under its heading in docs/tsd.md.\n    output: "docs/tsd.md#<section>"\n' +
-  '    acts: [{ do: write the design }]\n'
+  '    acts: [{ do: write the design }]\n' +
+  '    persistence: { persistent: false, why: It writes the design once. }\n    icon: feather\n'
 
 describe('H5 a maker whose output names its file in words, on a task with no workspace', () => {
   test('the scribe of t2 (no workspace) is assigned and briefed while a2 holds docs/tsd.md, and its report is refused for ever', async () => {

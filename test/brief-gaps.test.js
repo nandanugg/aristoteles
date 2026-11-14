@@ -45,6 +45,7 @@ describe('the brief of an agent that escalated', () => {
 
 describe('a review in a brief', () => {
   // A proofreader reviews the work of a linter, so it does not cover the writer of the result.
+  // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
   const yaml =
     WORK_YAML.replace('acts: [{ approve: [writer] }]', 'acts: [{ approve: [writer, proofreader] }]') +
     `  proofreader:
@@ -54,6 +55,8 @@ describe('a review in a brief', () => {
     responsibilities:
       - Read it.
     acts: [{ review: [linter] }]
+    persistence: { persistent: false, why: It reads one section once. }
+    icon: eye
 `
   test('a role that does not cover the maker gets no accept line, and the engine refuses it', async () => {
     const { p, lead } = await started({ 'aristoteles.yaml': yaml })

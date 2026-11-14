@@ -312,7 +312,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     try {
       const done = await dispatched({
         by,
-        input: { _tag: 'DefineWorkflow', target: {}, content: {} },
+        input: { _tag: 'DefineWorkflow', target: {}, content: { directions: [] } },
       })
       rmSync(draft)
       const { project, roles } = done.work.config
@@ -361,6 +361,8 @@ export function startServer(options: ServerOptions): ServerHandle {
       case 'reject-task':
       case 'accept-words':
       case 'reject-words':
+      case 'accept-adjustment':
+      case 'reject-adjustment':
         return actAs(b)
       case 'settings':
         runSync(writeSettings(dir, b.settings))

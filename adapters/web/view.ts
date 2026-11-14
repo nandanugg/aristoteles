@@ -10,6 +10,7 @@ import {
   blockersOf,
   type Derived,
   isEndedTask,
+  adjustmentDraftAt,
   roleWordsDraftAt,
   SURFACES,
   waitingFor,
@@ -380,6 +381,20 @@ const decisionOf = (d: Derived, item: WaitingItem): Decision | undefined => {
           'wait for your decision.',
         role: x.role,
         lines: roleWordsChange(w, x),
+        words: null,
+        shown: item.hold,
+        ...shared,
+      }
+    }
+    // A drafted adjustment (ruling 14): no host writes words about it.
+    case 'Adjustment': {
+      const x = adjustmentDraftAt(w, item.draft)
+      if (x === undefined) return undefined
+      return {
+        _tag: 'Adjustment',
+        id: item.draft,
+        text: `An adjustment, drafted by ${drafterWords(x.by)}, waits for your decision.`,
+        adjustment: x.adjustment,
         words: null,
         shown: item.hold,
         ...shared,

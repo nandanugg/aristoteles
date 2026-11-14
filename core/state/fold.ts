@@ -17,7 +17,7 @@ import {
 import { actOf, damaged, put, unchanged } from './act.ts'
 import { checkpointStep } from './checkpoint.ts'
 import { briefed, finish, freed, given, report } from './steps/assignments.ts'
-import { drafted, suggested } from './steps/directions.ts'
+import { casesAdded, drafted, suggested } from './steps/directions.ts'
 import { confirmed, forwarded } from './steps/forwards.ts'
 import {
   answered,
@@ -36,6 +36,7 @@ import {
   hostJoined,
   hostMoved,
   hostStarted,
+  agentStarted,
   hostWords,
   problemFixed,
   problemRecorded,
@@ -47,7 +48,10 @@ import {
   terminalStarted,
 } from './steps/ui.ts'
 import {
-  newWork,
+  adjustmentAccepted,
+  adjustmentDrafted,
+  adjustmentRejected,
+  defined,
   roleFitted,
   roleWordsChanged,
   roleWordsDrafted,
@@ -62,6 +66,10 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
   'Role.Fitted': roleFitted,
   'Role.WordsDrafted': roleWordsDrafted,
   'Role.WordsRejected': roleWordsRejected,
+  'Agent.Started': agentStarted,
+  'Adjustment.Drafted': (w) => adjustmentDrafted(w),
+  'Adjustment.Accepted': adjustmentAccepted,
+  'Adjustment.Rejected': adjustmentRejected,
   'Run.HostJoined': hostJoined,
   'Run.HostStarted': hostStarted,
   'Run.HostMoved': hostMoved,
@@ -115,6 +123,7 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
   'Revision.Drafted': (w, e, r) => drafted(w, e, actOf(r), r),
   'Revision.Revised': (w, e, r) => drafted(w, e, actOf(r), r),
   'Revision.Imported': (w, e, r) => drafted(w, e, actOf(r), r),
+  'Revision.CasesAdded': casesAdded,
   'Permission.Granted': (w, e, r) => granted(w, e, actOf(r)),
   'Permission.Revoked': (w, e, r) => revoked(w, e, actOf(r), r),
   'Source.Moved': (w, e) =>
@@ -157,8 +166,9 @@ export const fold: Fold = (events) => {
   const who = first.author._tag === 'Person' ? first.author.name : first.author._tag
   // One log for the whole fold, so a long store folds in linear time; each step reads the
   // events before it.
-  const log: Array<Logged> = [{ recorded: first, created: [] }]
-  let work: Work = { ...newWork(e, who), events: log }
+  const start = defined(e, who, first)
+  const log: Array<Logged> = [{ recorded: first, created: start.created }]
+  let work: Work = { ...start.work, events: log }
   for (const recorded of rest) {
     const stepped = stepOf(work, recorded)
     log.push({ recorded, created: stepped.created })

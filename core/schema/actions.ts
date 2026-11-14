@@ -5,9 +5,10 @@
 // The CLI and the page decode their input into one ActionInput; the action reads the files that
 // a content names (FilePath) through the Files service. Where a content type says "P5 decides",
 // the actions package fixes the decoded form (an additive change).
-import type { Level } from '../../src/domain/closed.ts'
+import type { Level, Tier } from '../../src/domain/closed.ts'
 import type {
   EvidenceData,
+  OnboardedDirection,
   ForwardedAct,
   Line,
   Enter,
@@ -19,6 +20,7 @@ import type {
 } from '../../src/domain/events.ts'
 import type { CompanyCheckers, CompanyFolder, ExternalSource, Settings } from '../../src/domain/files.ts'
 import type {
+  AgentId,
   AnswerId,
   AssignmentId,
   DirectionId,
@@ -58,6 +60,7 @@ export interface PaneInput {
 // What a suggestion is about, by the key that the person or agent typed (events.ts Suggestion).
 export type SuggestAbout =
   | { readonly _tag: 'NewDirection' }
+  | { readonly _tag: 'Roles' } // P7: work suggest roles
   | { readonly _tag: 'Direction'; readonly direction: DirectionId }
   | { readonly _tag: 'Standard'; readonly key: string }
   | { readonly _tag: 'Rule'; readonly key: string }
@@ -74,6 +77,20 @@ export interface WhyInput {
   readonly reason: string | null
   readonly words: Words | null
 }
+// An adjustment as a model drafts it (ruling 14): a new role and other cases name a file, which
+// the action reads and checks; the rest is typed.
+export type AdjustmentInput =
+  | { readonly _tag: 'AddRole'; readonly role: RoleName; readonly file: FilePath }
+  | { readonly _tag: 'RemoveRole'; readonly role: RoleName }
+  | { readonly _tag: 'SetTier'; readonly role: RoleName; readonly tier: Tier }
+  | {
+      readonly _tag: 'SetPersistence'
+      readonly role: RoleName
+      readonly persistent: boolean
+      readonly why: Words
+    }
+  | { readonly _tag: 'RetireDirection'; readonly direction: DirectionId }
+  | { readonly _tag: 'SetCases'; readonly direction: DirectionId; readonly file: FilePath }
 // One --point of a reject, with the rule that it breaks (--breaks), as typed.
 export interface PointInput {
   readonly text: Words
@@ -89,7 +106,9 @@ type In<K extends string, T, C> = {
 
 export type ActionInput =
   // --- the workflow and its config ------------------------------------------------------------
-  | In<'DefineWorkflow', None, None> // work init: reads aristoteles.yaml of the dir
+  // work init (no directions), or the store start of onboarding with the accepted directions
+  // (Question 20, option A): reads aristoteles.yaml of the dir
+  | In<'DefineWorkflow', None, { readonly directions: ReadonlyArray<OnboardedDirection> }>
   | In<'ApplyConfig', None, None> // work config apply, page accept-roles
   | In<'RestoreConfig', None, None> // work config restore: files only, no event
   | In<'FitRole', { readonly role: RoleName }, { readonly answers: FilePath }>
@@ -100,6 +119,11 @@ export type ActionInput =
   | In<'AcceptRoleWords', { readonly draft: EventRef }, None>
   | In<'RejectRoleWords', { readonly draft: EventRef }, { readonly reason: Words }>
   | In<'SaveSettings', None, { readonly settings: Settings }> // page settings: files only
+  // work adjust: a high agent or a model run drafts one change of a role or a direction; the
+  // person accepts it (a role adjustment writes aristoteles.yaml) or rejects it with a reason.
+  | In<'DraftAdjustment', None, { readonly adjustment: AdjustmentInput }>
+  | In<'AcceptAdjustment', { readonly draft: EventRef }, None>
+  | In<'RejectAdjustment', { readonly draft: EventRef }, { readonly reason: Words }>
   // --- runs, task drafts, problems, terminals, sends (the UI) ----------------------------------
   | In<'JoinRun', None, { readonly pane: PaneInput }> // work run start
   | In<'ContinueRun', { readonly run: RunId }, { readonly pane: PaneInput; readonly quote: Words }>
@@ -111,10 +135,12 @@ export type ActionInput =
   | In<'FixProblem', { readonly problem: ProblemId }, None>
   | In<'WriteHostWords', { readonly on: ProblemId | RevisionId | RunId }, { readonly text: Words; readonly hope: Words | null }>
   | In<'StartSession', { readonly assignment: AssignmentId }, { readonly session: SessionId; readonly secret: RawSecret | null }>
+  // The supervisor starts the one terminal of a persistent agent (P3).
+  | In<'StartAgent', { readonly agent: AgentId }, { readonly session: SessionId }>
   // work event, and the watcher: a failure after three tries, a prompt, a close.
   | In<'ReportTerminal', { readonly session: SessionId }, { readonly move: Extract<typeof TerminalMove.Type, { readonly _tag: 'Failed' | 'Prompted' | 'Closed' }> }>
   | In<'StopTerminal', { readonly session: SessionId }, None> // page stop
-  | In<'ResumeTerminal', { readonly session: SessionId }, { readonly tier: 'sol' | 'terra' }> // page resume
+  | In<'ResumeTerminal', { readonly session: SessionId }, { readonly tier: 'sol' | 'terra' | 'luna' }> // page resume
   | In<'Send', { readonly session: SessionId }, { readonly keys: typeof Line.Type | typeof Enter.Type }> // work send
   | In<'SupervisorSend', { readonly reason: typeof StartReason.Type | typeof SupervisorReason.Type }, { readonly keys: typeof Line.Type | typeof Enter.Type | { readonly _tag: 'StartPrompt' } }>
   | In<'SendDelivered', { readonly send: EventRef }, None>
@@ -151,6 +177,9 @@ export type ActionInput =
   | In<'DraftDirection', None, { readonly file: FilePath; readonly answers: ReadonlyArray<AnswerId>; readonly why: WhyInput }>
   | In<'ReviseDirection', { readonly direction: DirectionId }, { readonly file: FilePath; readonly answers: ReadonlyArray<AnswerId>; readonly why: WhyInput }>
   | In<'ImportCompany', { readonly direction: DirectionId }, { readonly source: typeof ExternalSource.Type; readonly folder: typeof CompanyFolder.Type; readonly owner: string; readonly checkers: typeof CompanyCheckers.Type }>
+  // A model gives a company draft of a new direction its cases; the file holds cases: (P10
+  // rejected, onboarding 2026-11-14).
+  | In<'AddCases', { readonly draft: RevisionId }, { readonly file: FilePath }>
   | In<'Suggest', { readonly about: SuggestAbout }, { readonly says: Words }>
   | In<'Grant', { readonly act: GrantedAct; readonly to: RoleName }, { readonly until: Time }>
   | In<'Revoke', { readonly permission: PermissionId }, None>

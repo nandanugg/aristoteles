@@ -23,8 +23,15 @@ const readCases: Array<[string, string | null, string?]> = [
   ['a sol tier', TIER],
   ['theme dark and sound', 'theme: dark\nsound: true\nretryMinutes: 2\nhostWaitMinutes: 20\n'],
   ['a file that does not parse', 'tiers: [1\n', 'YAML Parse error: Unexpected token'],
-  ['a luna tier', 'tiers:\n  luna: {}\n', 'aristoteles.yaml: tiers.luna: only sol and terra run in terminals (a luna is a subagent)'],
-  ['a key that is not a tier setting', 'tiers:\n  sol:\n    bogus: 1\n', 'aristoteles.yaml: tiers.sol.bogus is not a setting of a tier (launch, resume, start, skills, errors, prompts, silentMinutes, retryInput)'],
+  // Ruling 10, onboarding 2026-11-14: the three tiers have their commands, so a luna reads (was
+  // refused), and a tier names its model once (P9), so the list of settings names model.
+  ['a luna tier', 'tiers:\n  luna: {}\n'],
+  ['three tiers with a model each', 'tiers:\n  sol: { model: big }\n  terra: { model: mid }\n  luna: { model: small }\n'],
+  ['a launch that names {model}', 'tiers:\n  luna:\n    model: small\n    launch: c --model {model} --session {session}\n'],
+  ['a launch that names {model} with no model', 'tiers:\n  luna:\n    launch: c --model {model} --session {session}\n', 'aristoteles.yaml: tiers.luna.launch names {model}, and tiers.luna.model is not set'],
+  ['a model that is blank', 'tiers:\n  sol:\n    model: "  "\n', 'aristoteles.yaml: tiers.sol.model is a text'],
+  ['a tier that is not one', 'tiers:\n  moon: {}\n', 'aristoteles.yaml: tiers.moon is not a tier (sol, terra, luna)'],
+  ['a key that is not a tier setting', 'tiers:\n  sol:\n    bogus: 1\n', 'aristoteles.yaml: tiers.sol.bogus is not a setting of a tier (model, launch, resume, start, skills, errors, prompts, silentMinutes, retryInput)'],
   ['a launch that is a number', 'tiers:\n  sol:\n    launch: 5\n', 'aristoteles.yaml: tiers.sol.launch is a text'],
   ['a blank retryInput', 'tiers:\n  terra:\n    retryInput: "  "\n', 'aristoteles.yaml: tiers.terra.retryInput is a text'],
   ['errors that are numbers', 'tiers:\n  sol:\n    errors: [1, 2]\n', 'aristoteles.yaml: tiers.sol.errors is a list of words'],
@@ -75,10 +82,12 @@ const writeCases: Array<[string, string | null, Obj]> = [
   ['an empty settings object', BASE, {}],
   ['a block with a comment line inside', `${BASE}tiers:\n  # about sol\n  sol:\n    start: go {token}\n`, { tiers: {} }],
   ['a text with a colon and a quote', BASE, { tiers: { sol: { start: 'say "hi": {token}', prompts: ["it's", 'a: b'] } } }],
+  // Ruling 10, onboarding 2026-11-14: a luna tier is written (was refused).
+  ['a luna tier', BASE, { tiers: { luna: { model: 'small' } } }],
 ]
 const refusedWrites: Array<[string, string | null, Obj]> = [
   ['a theme that is blue', BASE, { theme: 'blue' }],
-  ['a luna tier', BASE, { tiers: { luna: {} } }],
+  ['a tier that is not one', BASE, { tiers: { moon: {} } }],
   ['a launch with no {session}', BASE, { tiers: { sol: { launch: 'c' } } }],
   ['sound that is a text', BASE, { sound: 'yes' }],
   ['retryMinutes that is 0', BASE, { retryMinutes: 0 }],

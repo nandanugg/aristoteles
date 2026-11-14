@@ -4,6 +4,7 @@
 // The bookkeeping steps of D14 are gone: no finish of a child of an ended task, no finish in an
 // ended task, no finish of a child after an accept (C1, I2).
 import type { Intent } from '../schema/actions.ts'
+import { MIN_CASES } from '../schema/index.ts'
 import type {
   Assignment,
   AssignmentId,
@@ -38,7 +39,6 @@ import {
   mayChange,
   openedTopOf,
   reviewsOf,
-  roleAt,
   sameRole,
   stopAnswered,
   stopKey,
@@ -47,7 +47,9 @@ import {
   unresolvedEscalationItems,
   within,
   workStop,
+  tierOfAssignment,
 } from './reads.ts'
+import { rolesSuggestionsWaiting } from './adjustments.ts'
 import { hostOf } from './catalog.ts'
 import type { Derived, Idle, NextFor, NextStep, Placement, StepKey, StepWhat } from './types.ts'
 import { isEndedTask } from './types.ts'
@@ -68,10 +70,9 @@ const nonEmpty = <A>(list: ReadonlyArray<A>): NonEmpty<A> | undefined => {
   return one === undefined ? undefined : [one, ...rest]
 }
 export const RANK: { readonly [T in Tier]: number } = { low: 1, medium: 2, high: 3 }
-export const tierOfA = (w: Work, a: Assignment): Tier | undefined => {
-  const role = roleAt(w, a.role)
-  return role._tag === 'Model' ? role.tier : undefined
-}
+// The tier of an assignment for the words (brief, shared): the one kept at its give.
+export const tierOfA = (w: Work, a: Assignment): Tier | undefined =>
+  tierOfAssignment(w, a) ?? undefined
 const parentId = (a: Assignment): AssignmentId | undefined =>
   a.parent._tag === 'Parent' ? a.parent.id : undefined
 // x is above a: its parent, at any depth.
@@ -84,8 +85,8 @@ const isAbove = (w: Work, x: AssignmentId, a: Assignment): boolean => {
   return false
 }
 const lowerRoles = (w: Work, a: Assignment) => {
-  const own = tierOfA(w, a)
-  if (own === undefined) return []
+  const own = tierOfAssignment(w, a)
+  if (own === null) return []
   return [...w.workflow.roles.values()].flatMap((r) =>
     r._tag === 'Model' && RANK[r.tier] < RANK[own] ? [r] : [],
   )
@@ -202,7 +203,7 @@ export const highAbove = (d: Derived, x: Assignment): Assignment | undefined => 
   for (let y = parentId(x); y !== undefined;) {
     const up = w.assignments.get(y)
     if (up === undefined) return undefined
-    if (!ended(d, up.id) && tierOfA(w, up) === 'high') return up
+    if (!ended(d, up.id) && tierOfAssignment(w, up) === 'high') return up
     y = parentId(up)
   }
   return undefined
@@ -289,6 +290,27 @@ const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   })
 }
 
+// What reaches an active host from no project (onboarding): a company draft of a new direction
+// with too few cases, whose cases the host adds before the person's accept (P10 rejected,
+// onboarding 2026-11-14); the person's words about the roles, which the host drafts as an
+// adjustment (P7).
+const onboardingSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
+  const w = d.moment.work
+  if (!hostedSessions(d, a.id).some((s) => terminalLive(d, s))) return []
+  const steps: Array<Candidate> = []
+  for (const x of w.drafts.values()) {
+    if (x._tag !== 'New' || x.cases.length >= MIN_CASES) continue
+    if (d.states.revisions.get(x.id)?._tag !== 'Waiting') continue
+    const what: StepWhat = { _tag: 'AddCases', draft: x.id, direction: x.of }
+    steps.push(act(what, { _tag: 'AddCases', target: { draft: x.id } }))
+  }
+  for (const y of rolesSuggestionsWaiting(w)) {
+    const what: StepWhat = { _tag: 'AnswerRolesSuggestion', suggestion: y.id }
+    steps.push(act(what, { _tag: 'DraftAdjustment', target: {} }))
+  }
+  return steps
+}
+
 // --- the steps of an agent -----------------------------------------------------------------------
 
 // The candidate steps of a medium or high assignment, in the old order; an ended one has none.
@@ -313,6 +335,7 @@ export const candidatesOf = (d: Derived, id: AssignmentId): ReadonlyArray<Candid
   if (over !== undefined) return steps
   steps.push(...shortenSteps(d, a))
   steps.push(...explainSteps(d, a))
+  steps.push(...onboardingSteps(d, a))
   // A result made from an old input: its maker makes it again, at the turn of its decider (B3).
   for (const t of w.tasks.values()) {
     if (!within(w, t.id, a.task) || !taskOpen(d, t.id)) continue
@@ -385,7 +408,7 @@ const expiredSources = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => 
 const draftSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   const w = d.moment.work
   const at = d.moment.at
-  const high = tierOfA(w, a) === 'high'
+  const high = tierOfAssignment(w, a) === 'high'
   const steps: Array<Candidate> = []
   const own = [...w.directions.values()].filter(
     (x) =>
@@ -487,7 +510,7 @@ const escalateTask = (a: Assignment): Intent => ({
 // The steps of one open task of the tree that is not accepted.
 const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate> => {
   const w = d.moment.work
-  const tier = tierOfA(w, a)
+  const tier = tierOfAssignment(w, a)
   const high = tier === 'high'
   const result = latestResultOf(w, t.id)
   const items = result ? blockersOfResult(w, result.id) : []
@@ -527,11 +550,11 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
   if (t.needs.some(waitsFor)) return steps
   // An open medium whose task holds this one runs it: first one below this assignment.
   const running = [...w.assignments.values()].filter((x) => {
-    const xt = tierOfA(w, x)
+    const xt = tierOfAssignment(w, x)
     return (
       !ended(d, x.id) &&
       xt === 'medium' &&
-      tier !== undefined &&
+      tier !== null &&
       RANK[tier] > RANK.medium &&
       within(w, t.id, x.task)
     )
@@ -603,7 +626,7 @@ const taskRejects = (w: Work, task: TaskId): ReadonlyArray<PointId> =>
 // A task that waits for an evaluation, or for the change that its evaluation asks for.
 const evaluationSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate> => {
   const w = d.moment.work
-  const high = tierOfA(w, a) === 'high'
+  const high = tierOfAssignment(w, a) === 'high'
   const steps: Array<Candidate> = []
   const stops = stopsOf(w, t.id).filter((s) => !stopAnswered(w, s))
   for (const stop of stops) {
@@ -627,7 +650,7 @@ const evaluationSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Cand
       continue
     }
     const evaluator = [...w.assignments.values()].find(
-      (x) => !ended(d, x.id) && tierOfA(w, x) === 'high' && within(w, t.id, x.task),
+      (x) => !ended(d, x.id) && tierOfAssignment(w, x) === 'high' && within(w, t.id, x.task),
     )
     steps.push(
       wait(
@@ -709,7 +732,7 @@ const changePointSteps = (
     )
     if (drafts) return [wait({ _tag: 'ChangeWaitsForDraft', point, drafts, first })]
     const local = localDirections(w, t.id)
-    if (tierOfA(w, a) === 'high' && local.length > 0) {
+    if (tierOfAssignment(w, a) === 'high' && local.length > 0) {
       const what: StepWhat = {
         _tag: 'ReviseForPoint',
         point,
@@ -788,8 +811,8 @@ const checkerSteps = (
     if (checker) {
       return wait({ _tag: 'GiveCheckerCommand', checker: checker.id, result, task: t.id })
     }
-    const own = tierOfA(w, a)
-    if (r?._tag === 'Model' && own !== undefined && RANK[r.tier] >= RANK[own]) {
+    const own = tierOfAssignment(w, a)
+    if (r?._tag === 'Model' && own !== null && RANK[r.tier] >= RANK[own]) {
       const what: StepWhat = { _tag: 'CheckerOfHigherTier', result, role }
       const escalate: Intent = { _tag: 'EscalateResult', target: { result } }
       return escalatedResult(d, a, result) ? wait(what) : act(what, escalate)
@@ -879,6 +902,8 @@ const IDS: {
   ReviewDraft: (s) => [s.draft],
   ReviseRejectedDraft: (s) => [s.draft, s.reject],
   AnswerSuggestion: (s) => [s.suggestion, s.direction],
+  AnswerRolesSuggestion: (s) => [s.suggestion],
+  AddCases: (s) => [s.draft],
   PutOnBase: (s) => [s.task, s.result],
   FinishAcceptedTask: (s) => [s.task],
   EvaluationWaitsForOwner: (s) => [s.evaluation, s.task],

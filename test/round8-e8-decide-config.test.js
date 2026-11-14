@@ -9,6 +9,7 @@ import { init, INTRO_V2, ok, project, tokenIn, WORK_YAML } from
 const LINT = '--evidence="no-code-proof | the introduction | no paths or hashes there" ' +
   '--evidence="no-ticket-ids | the introduction | no ticket ids there"'
 const REPEATABLE = '--evidence="repeatable | the introduction | a reviewer can repeat it"'
+// Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
 const PROOFREADER = `  proofreader:
     tier: low
     description: Reads one section and decides it after the lead.
@@ -16,6 +17,8 @@ const PROOFREADER = `  proofreader:
     responsibilities:
       - Accept or reject the section with work review.
     acts: [{ approve: [writer] }]
+    persistence: { persistent: false, why: It decides one section once. }
+    icon: eye
 `
 
 // The lead runs t1; the writer reported r1; the linter and the lead accepted it.

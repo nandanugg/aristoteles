@@ -26,13 +26,15 @@ export const openDrafts = (
 export const waitsForNewDraft = (d: Derived, x: Revision<Direction>): boolean => {
   const state = d.states.revisions.get(x.id)
   const veto = state?._tag === 'Vetoed' ? state.by : undefined
-  const sameReviser = (y: Revision<Direction>) =>
-    x.origin._tag === 'Imported'
-      ? y.origin._tag === 'Imported'
-      : y.origin._tag === 'Written' &&
-        (typeof x.origin.by === 'string' || typeof y.origin.by === 'string'
-          ? x.origin.by === y.origin.by
-          : x.origin.by.run === y.origin.by.run && x.origin.by.name === y.origin.by.name)
+  const sameReviser = (y: Revision<Direction>) => {
+    if (x.origin._tag !== 'Written') return y.origin._tag === x.origin._tag
+    return (
+      y.origin._tag === 'Written' &&
+      (typeof x.origin.by === 'string' || typeof y.origin.by === 'string'
+        ? x.origin.by === y.origin.by
+        : x.origin.by.run === y.origin.by.run && x.origin.by.name === y.origin.by.name)
+    )
+  }
   return [...d.moment.work.drafts.values()].every(
     (y) =>
       !(veto !== undefined && y.answers.includes(veto)) &&

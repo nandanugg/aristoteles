@@ -116,6 +116,21 @@ export const taskDrafted = (
   return { work: { ...next, taskDrafts: put(next.taskDrafts, id, draft) }, created: [id] }
 }
 
+// --- persistent agents ---------------------------------------------------------------------------
+
+// The supervisor starts the one terminal of an agent that the fold made at its first give (P3).
+export const agentStarted = (
+  work: Work,
+  e: EventOf<'Agent.Started'>,
+  r: RecordedOf<'Agent.Started'>,
+): Stepped => {
+  const agent = work.agents.get(e.id)
+  if (agent?.terminal._tag !== 'NotStarted') return damaged(r, `${e.id} is no agent to start`)
+  const notStarted = { ...agent, terminal: agent.terminal }
+  const started = Moves.MOVES['Agent.Started'](notStarted, e.move.session, r.at)
+  return unchanged({ ...work, agents: put(work.agents, e.id, started) })
+}
+
 // --- system problems -----------------------------------------------------------------------------
 
 export const problemRecorded = (

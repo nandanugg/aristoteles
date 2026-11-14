@@ -13,10 +13,12 @@ import {
   type DeciderLeaf,
   type EventRef,
   human,
+  MIN_CASES,
   type NonBlank,
   type TaskId,
   type Work,
 } from '../schema/index.ts'
+import { adjustmentDraftAt, adjustmentProblem } from './adjustments.ts'
 import { decisionTaskOf, hostOf, personOfForward, placementOf } from './catalog.ts'
 import { metAt, turnOf, waitsForWords, leavesOf } from './deciders.ts'
 import {
@@ -67,7 +69,7 @@ import {
   stopRefTask,
   stopText,
   taskOfTarget,
-  tierOf,
+  tierOfAssignment,
   roleAt,
   versionNumberOf,
   within,
@@ -148,7 +150,6 @@ const agentOf = (c: Ctx): Assignment | undefined =>
   c.actor._tag === 'Agent' || c.actor._tag === 'Program'
     ? c.w.assignments.get(c.actor.assignment)
     : undefined
-const tierOfA = (w: Work, a: Assignment): string | undefined => tierOf(roleAt(w, a.role))
 // A low agent with no claim has not read its brief yet, or its one unit is done.
 const needClaim = (c: Ctx, a: Assignment): CanAct => {
   const claim = c.w.meta.get(a.id)?.claim
@@ -156,7 +157,7 @@ const needClaim = (c: Ctx, a: Assignment): CanAct => {
   const done =
     [...c.w.results.values()].some((r) => r.by === a.id) ||
     [...c.w.reviews.values()].some((r) => r.by === a.id)
-  if (tierOfA(c.w, a) === 'low' && done) {
+  if (tierOfAssignment(c.w, a) === 'low' && done) {
     return no(
       'your unit is done; this assignment has no open brief',
       'Wait',
@@ -174,7 +175,7 @@ const exists = (found: boolean, id: string, what: string): CanAct =>
 // The tier of the agent that acts; the person, a model run and the system act as high.
 const tierOfActor = (c: Ctx): string => {
   const a = agentOf(c)
-  return a === undefined ? 'high' : String(tierOfA(c.w, a))
+  return a === undefined ? 'high' : String(tierOfAssignment(c.w, a))
 }
 // An act that only a high role (or the person) does.
 const highOnly = (c: Ctx, message: (tier: string) => string, kind: ChoiceKind, words: string) => {
@@ -211,6 +212,10 @@ const give: Check<'Give'> = (c, { target: { task, role } }) => {
   const makes = isDo(w, role)
   const tier = r._tag === 'Model' ? r.tier : undefined
   const by = c.by
+  // A top task goes to a persistent role (ruling 15): the person gives work only to a terminal.
+  const disposable = r._tag === 'Model' && r.persistence._tag === 'Disposable'
+  const byPerson = by !== undefined && !isAssignment(by) && by._tag === 'Human'
+  if (byPerson && disposable && tier !== 'low') return disposableTop(role)
   if (by !== undefined && !isAssignment(by) && by._tag === 'Human' && tier === 'low') {
     const leads = [...w.workflow.roles.values()]
       .filter((x) => x._tag === 'Model' && x.tier !== 'low')
@@ -224,19 +229,31 @@ const give: Check<'Give'> = (c, { target: { task, role } }) => {
   if (by !== undefined && isAssignment(by)) {
     const parent = w.assignments.get(by)
     if (parent === undefined) return exists(false, by, 'assignment')
-    const own = RANK[tierOfA(w, parent) ?? '']
+    const own = RANK[tierOfAssignment(w, parent) ?? '']
     const theirs = RANK[tier ?? '']
     const ended = d.states.assignments.get(parent.id)?._tag === 'Ended'
     if (ended) return no('the parent assignment is finished', 'Escalate', `tell ${upTo(parent)}`)
     if (own !== undefined && theirs !== undefined && theirs >= own) {
       // No tier is below low: a low agent's only choice is to escalate.
-      const low = tierOfA(w, parent) === 'low'
+      const low = tierOfAssignment(w, parent) === 'low'
       return no(
-        `a ${tierOfA(w, parent)} role assigns only lower tiers; "${role}" is ${tier}`,
+        `a ${tierOfAssignment(w, parent)} role assigns only lower tiers; "${role}" is ${tier}`,
         low ? 'Escalate' : 'Pick',
         low
           ? 'escalate it: no tier is below low'
           : 'give a role of a lower tier, or escalate for a higher one',
+      )
+    }
+    // Only a terminal starts subagents (ruling 8): an assignment that runs as a subagent hands
+    // what the work needs back to the terminal above it. It reads runs, never the env.
+    if (parent.runs._tag === 'Subagent') {
+      const above = parent.parent._tag === 'Parent' ? parent.parent.id : 'the person'
+      return no(
+        'only a terminal (the host or a persistent agent) starts subagents; ' +
+          `${parent.id} runs as a subagent of ${above}: tell ${above} what the work needs ` +
+          '(work ask)',
+        'Escalate',
+        `tell ${above} what the work needs (work ask)`,
       )
     }
     if (!within(w, task, parent.task)) {
@@ -295,6 +312,14 @@ const give: Check<'Give'> = (c, { target: { task, role } }) => {
   return MAY
 }
 const RANK: Readonly<Record<string, number>> = { low: 1, medium: 2, high: 3 }
+// A disposable role runs only as a subagent of a terminal, so no person gives it a top task.
+export const disposableTop = (role: string): CanAct =>
+  no(
+    `a top task goes to a persistent role: ${role} is disposable, so it runs only as a subagent ` +
+      'of a terminal',
+    'Pick',
+    'give the task to a persistent role',
+  )
 // A maker needs a decider: the giver, or an assignment above it, approves its role now.
 const approverAbove = (c: Ctx, from: AssignmentId, role: string): boolean => {
   const { w } = c
@@ -357,7 +382,7 @@ const brief: Check<'Brief'> = (c, { target: { assignment } }) => {
     return no(`${a.id} is finished`, 'Escalate', `do no more work for it; tell ${upTo(a)}`)
   }
   const claim = w.meta.get(a.id)?.claim
-  if (claim !== undefined && claim._tag !== 'Free' && tierOfA(w, a) === 'low') {
+  if (claim !== undefined && claim._tag !== 'Free' && tierOfAssignment(w, a) === 'low') {
     return no(
       `${a.id} is claimed since ${claim.since.slice(11, 16)} by another subagent`,
       'Escalate',
@@ -443,7 +468,7 @@ const notYours = (c: Ctx, by: By, maker: Assignment | undefined, task: string): 
 const lowChecks = (c: Ctx, target: string): CanAct => {
   const { w, d } = c
   const a = agentOf(c)
-  if (a === undefined || tierOfA(w, a) !== 'low' || isDo(w, a.role)) return MAY
+  if (a === undefined || tierOfAssignment(w, a) !== 'low' || isDo(w, a.role)) return MAY
   const claim = w.meta.get(a.id)?.claim
   const briefed = claim?._tag === 'Checking' ? claim.result : undefined
   if (briefed === undefined) {
@@ -526,7 +551,7 @@ const rejectTask = (c: Ctx, task: string): CanAct => {
 // A low role reviews only results: no draft, no evaluation.
 const lowReview = (c: Ctx, what: string): CanAct => {
   const a = agentOf(c)
-  return a !== undefined && tierOfA(c.w, a) === 'low'
+  return a !== undefined && tierOfAssignment(c.w, a) === 'low'
     ? no(`a low role does not review ${what}`, 'Escalate', 'escalate it to your parent')
     : MAY
 }
@@ -588,10 +613,13 @@ const reviewDraft = (c: Ctx, id: string, accept: boolean): CanAct => {
     default:
       break
   }
+  // An onboarded draft is official at the store start, so no review reaches it.
   const reviser: By =
     draft.origin._tag === 'Written'
       ? draft.origin.by
-      : { _tag: 'Agent', name: 'refresh', run: draft.origin.commit }
+      : draft.origin._tag === 'Imported'
+        ? { _tag: 'Agent', name: 'refresh', run: draft.origin.commit }
+        : { _tag: 'Agent', name: 'onboarding', run: draft.origin.event }
   if (sameActor(w, by, reviser) || below(w, by, reviser)) {
     return no(
       `${id} is your own draft, or a draft from above you; another actor reviews it`,
@@ -678,6 +706,19 @@ const reviewEvaluation = (c: Ctx, id: string): CanAct => {
   return MAY
 }
 
+// A direction starts with its cases (P10 rejected, onboarding 2026-11-14): the accept of a new
+// direction whose draft holds fewer waits until a model adds them.
+const draftCases = (c: Ctx, id: string): CanAct => {
+  const x = c.w.drafts.get(id as never)
+  if (x?._tag !== 'New' || x.cases.length >= MIN_CASES) return MAY
+  const name = directionAt(c.w, x.of).name
+  return no(
+    `${id} drafts the new direction ${name} with ${x.cases.length} cases; a direction starts ` +
+      `with at least ${MIN_CASES} cases: real code that follows it or breaks it`,
+    'Wait',
+    `a model adds its cases first: work direction cases ${id} --file=<cases.yaml>`,
+  )
+}
 const acceptOf: Check<'Accept'> = (c, { target: { of } }) =>
   first(
     () => agentOpen(c),
@@ -685,7 +726,10 @@ const acceptOf: Check<'Accept'> = (c, { target: { of } }) =>
       of._tag === 'Result'
         ? reviewResult(c, of.id, true)
         : of._tag === 'Revision'
-          ? reviewDraft(c, of.id, true)
+          ? first(
+              () => reviewDraft(c, of.id, true),
+              () => draftCases(c, of.id),
+            )
           : reviewEvaluation(c, of.id),
   )
 const rejectOf: Check<'Reject'> = (c, { target: { of } }) =>
@@ -712,7 +756,7 @@ const recheck: Check<'Recheck'> = (c, { target: { result } }) => {
   if (a === undefined) return no("a recheck is an agent's act", 'Pick', 'an agent asks for it')
   const r = w.results.get(result)
   if (r === undefined) return exists(false, result, 'result')
-  if (tierOfA(w, a) === 'low') {
+  if (tierOfAssignment(w, a) === 'low') {
     return no('a low role does not ask for a recheck; escalate it', 'Escalate', 'escalate it')
   }
   if (!within(w, r.task, a.task)) {
@@ -802,7 +846,7 @@ const resolve: Check<'Resolve'> = (c, { target: { escalation } }) => {
 const ask: Check<'Ask'> = (c, { target: { to } }) => {
   const a = agentOf(c)
   if (a === undefined) return no("a question is an agent's act", 'Pick', 'an agent asks')
-  if (tierOfA(c.w, a) === 'low' && to === 'Owner') {
+  if (tierOfAssignment(c.w, a) === 'low' && to === 'Owner') {
     return no('a low role asks its parent', 'Pick', 'ask your parent')
   }
   // The host answers from the directions; it asks nobody above it.
@@ -881,7 +925,7 @@ const evaluate: Check<'Evaluate'> = (c, { target: { stop } }) => {
   const a = agentOf(c)
   if (!person && a !== undefined) {
     const label = labelOf(w, a.id)
-    const tier = tierOfA(w, a)
+    const tier = tierOfAssignment(w, a)
     if (tier !== 'high') {
       return no(
         `${label} is ${tier}; only a high role evaluates a stop: escalate it to your parent`,
@@ -1394,7 +1438,7 @@ const send: Check<'Send'> = (c, { target: { session } }) => {
 const topForwards = (c: Ctx): CanAct => {
   const a = agentOf(c)
   if (a === undefined) return MAY
-  if (a.parent._tag !== 'Parent' && tierOfA(c.w, a) !== 'low') return MAY
+  if (a.parent._tag !== 'Parent' && tierOfAssignment(c.w, a) !== 'low') return MAY
   return no(
     'only the top agent (medium or high, with no parent) forwards the person',
     'Escalate',
@@ -1447,7 +1491,8 @@ const taskNamed = (c: Ctx, task: string): CanAct =>
   exists(c.w.tasks.has(task as never), task, 'task')
 const lowNo = (c: Ctx, message: string, words: string): CanAct => {
   const a = agentOf(c)
-  return a !== undefined && tierOfA(c.w, a) === 'low' ? no(message, 'Escalate', words) : MAY
+  const low = a !== undefined && tierOfAssignment(c.w, a) === 'low'
+  return low ? no(message, 'Escalate', words) : MAY
 }
 // New words of a role (ruling 2026-11-14): a high role or a model run outside any task drafts
 // them, and the person accepts or rejects them; the person writes their own in the file.
@@ -1494,6 +1539,80 @@ const decideRoleWords = (c: Ctx, draft: EventRef): CanAct => {
   }
 }
 
+// --- onboarding: adjustments, cases, persistent agents -------------------------------------------
+
+// A model drafts a change; the person says it in words (ruling 14).
+const modelDrafts = (c: Ctx, what: string): CanAct => {
+  if (c.actor._tag === 'Person') {
+    return no(
+      `a model drafts ${what}; the person says it in words`,
+      'Pick',
+      'say it in words: work suggest; a model drafts it',
+    )
+  }
+  return highOnly(
+    c,
+    (tier) => `a high role drafts ${what}; this assignment is ${tier}`,
+    'Escalate',
+    'escalate it to the high role above you',
+  )
+}
+const draftAdjustment: Check<'DraftAdjustment'> = (c) =>
+  first(
+    () => agentOpen(c),
+    () => modelDrafts(c, 'an adjustment'),
+  )
+const decideAdjustment = (c: Ctx, draft: EventRef, accept: boolean): CanAct => {
+  const x = adjustmentDraftAt(c.w, draft)
+  if (x === undefined) return exists(false, draft, 'drafted adjustment')
+  const state = c.d.states.adjustments.get(draft)
+  const waits = 'decide an adjustment that waits'
+  switch (state?._tag) {
+    case 'Accepted':
+      return no(`${draft} is accepted already (${state.by})`, 'Pick', waits)
+    case 'Rejected':
+      return no(`${draft} is rejected already (${state.by})`, 'Pick', waits)
+    case 'Replaced':
+      return no(`${draft} is replaced by the newer draft ${state.by}`, 'Pick', `decide ${state.by}`)
+    default:
+      break
+  }
+  // The accept checks the adjustment again, at its own time.
+  const problem = accept ? adjustmentProblem(c.d, x.adjustment) : undefined
+  return problem === undefined ? MAY : { _tag: 'MayNot', refusal: problem }
+}
+const addCases: Check<'AddCases'> = (c, { target: { draft } }) =>
+  first(
+    () => agentOpen(c),
+    () => modelDrafts(c, 'the cases of a draft'),
+    () => {
+      const x = c.w.drafts.get(draft)
+      if (x === undefined) return exists(false, draft, 'draft')
+      if (x._tag !== 'New') {
+        return no(
+          `${draft} changes a direction that has a version; cases make no new version`,
+          'Pick',
+          'give other cases of a direction with work adjust cases',
+        )
+      }
+      const state = c.d.states.revisions.get(draft)
+      if (state?._tag !== 'Waiting') {
+        return no(`${draft} waits for no accept`, 'Pick', 'add the cases of a draft that waits')
+      }
+      return MAY
+    },
+  )
+const startAgent: Check<'StartAgent'> = (c, { target: { agent } }) => {
+  const x = c.w.agents.get(agent)
+  if (x === undefined) return exists(false, agent, 'agent')
+  if (x.terminal._tag === 'Started') {
+    return no(`${agent} has its terminal ${x.terminal.session}`, 'Pick', 'nothing to start')
+  }
+  return c.d.states.agents.get(agent)?._tag === 'Ended'
+    ? no(`${agent} is ended: its project ${x.run} ended`, 'Pick', 'start an agent of an open run')
+    : MAY
+}
+
 const CHECKS: { readonly [K in ActionTag]: Check<K> } = {
   DefineWorkflow: () =>
     no('the store has a config; use work config apply', 'Pick', 'apply the config'),
@@ -1510,6 +1629,9 @@ const CHECKS: { readonly [K in ActionTag]: Check<K> } = {
   AcceptRoleWords: (c, { target: { draft } }) => decideRoleWords(c, draft),
   RejectRoleWords: (c, { target: { draft } }) => decideRoleWords(c, draft),
   SaveSettings: () => MAY,
+  DraftAdjustment: draftAdjustment,
+  AcceptAdjustment: (c, { target: { draft } }) => decideAdjustment(c, draft, true),
+  RejectAdjustment: (c, { target: { draft } }) => decideAdjustment(c, draft, false),
   JoinRun: () => MAY,
   ContinueRun: continueRun,
   EndRun: endRun,
@@ -1519,6 +1641,7 @@ const CHECKS: { readonly [K in ActionTag]: Check<K> } = {
   FixProblem: fixProblem,
   WriteHostWords: hostWords,
   StartSession: startSession,
+  StartAgent: startAgent,
   ReportTerminal: () => MAY,
   StopTerminal: stopTerminal,
   ResumeTerminal: resumeTerminal,
@@ -1601,6 +1724,7 @@ const CHECKS: { readonly [K in ActionTag]: Check<K> } = {
   DraftDirection: draftDirection,
   ReviseDirection: revise,
   ImportCompany: () => MAY,
+  AddCases: addCases,
   Suggest: (c) => agentOpen(c),
   Grant: (c, i) =>
     first(
@@ -1635,6 +1759,8 @@ const CLAIMED: ReadonlySet<ActionTag> = new Set<ActionTag>([
   'DraftDirection',
   'ReviseDirection',
   'DraftRoleWords',
+  'DraftAdjustment',
+  'AddCases',
   'Forward',
   'Grant',
   'Revoke',

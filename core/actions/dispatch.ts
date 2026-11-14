@@ -84,15 +84,20 @@ export const dispatchWith =
       let done: Dispatched | undefined
       const seq = yield* opened.write((events) =>
         Effect.gen(function* () {
-          // work init: the first event of an empty store, from aristoteles.yaml.
+          // work init, or the store start of onboarding: the first event of an empty store, from
+          // aristoteles.yaml and the accepted directions; the fold makes their versions.
           if (events.length === 0) {
-            if (!create) return yield* Effect.fail(STORE.noStore(`no work store in ${cwd}`, cwd))
-            const [event] = yield* defineWorkflow(given.by, cwd)
+            if (given.input._tag !== 'DefineWorkflow') {
+              return yield* Effect.fail(STORE.noStore(`no work store in ${cwd}`, cwd))
+            }
+            const { directions } = given.input.content
+            const [event] = yield* defineWorkflow(given.by, cwd, directions)
             if (event === undefined) return yield* Effect.die('work init made no event')
             const draft: Draft = { at: yield* clock.read, author: given.by, event }
             const work = fold([{ ...draft, seq: 1 } as Recorded])
-            done = { seq: 1, work, created: [] }
-            return { draft, rows: [] }
+            const created = work.events[0]?.created ?? []
+            done = { seq: 1, work, created }
+            return { draft, rows: rowsOf(work, opened.dir) }
           }
           const work = yield* folding(() => fold(events))
           const call = personByName(work, given)

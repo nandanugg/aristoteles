@@ -77,6 +77,7 @@ export const REFUSALS = {
       no(`${need} is closed; a task does not need a closed task`, 'Pick', 'need an open task'),
     noResult: (result: string) =>
       no(`there is no result ${result}`, 'Pick', 'start from a result that exists'),
+    retired: (direction: string, by: string, file: string) => retired(direction, by, file),
   },
   OpenTaskFromDraft: {
     unknownRole: (draft: string, role: string) =>
@@ -120,6 +121,7 @@ export const REFUSALS = {
       ),
   },
   RemakeTask: {
+    retired: (direction: string, by: string, file: string) => retired(direction, by, file),
     noReason: () =>
       no('a remake needs a reason', 'Write', 'write how the scope changed, with --reason'),
     closedNeed: (need: string) =>
@@ -308,6 +310,20 @@ const answersARejection = (d: Derived, id: string | null, notReject: (id: string
 
 // --- tasks ---------------------------------------------------------------------------------------
 
+// A new task cannot name a retired direction (ruling 13); a task that names it keeps it until the
+// task ends, and split parts keep the directions of their task.
+const retired = (direction: string, by: string, file: string) =>
+  no(
+    `${direction} is retired (${by}); a new task cannot name it`,
+    'Write',
+    `take ${direction} out of the directions of ${file}`,
+  )
+const retiredOf = (d: Derived, directions: ReadonlyArray<string>) =>
+  directions.flatMap((id) => {
+    const state = d.states.directions.get(id as never)
+    return state?._tag === 'Retired' ? [{ id, by: state.by }] : []
+  })[0]
+
 const OpenTask: Action<'OpenTask'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
@@ -319,6 +335,8 @@ const OpenTask: Action<'OpenTask'> = ({ by, input }) =>
     const read = yield* readTask(file, yield* readText(cwd, file), taskDirections(w)).pipe(
       Effect.mapError(asWrite(file)),
     )
+    const gone = retiredOf(d, read.directions)
+    if (gone !== undefined) return yield* fail(R.OpenTask.retired(gone.id, gone.by, file))
     yield* checkRealNames(cwd, read.workspace)
     yield* checkCaseTwins(d, read.workspace)
     const task = yield* followNeeds(d, taskDataOf(read), R.OpenTask.closedNeed)
@@ -551,6 +569,8 @@ const RemakeTask: Action<'RemakeTask'> = ({ by, input }) =>
     const read = yield* readTask(file, yield* readText(cwd, file), taskDirections(w)).pipe(
       Effect.mapError(asWrite(file)),
     )
+    const gone = read.named.includes('directions') ? retiredOf(d, read.directions) : undefined
+    if (gone !== undefined) return yield* fail(R.RemakeTask.retired(gone.id, gone.by, file))
     yield* checkRealNames(cwd, read.workspace)
     yield* checkCaseTwins(d, read.workspace)
     yield* answersARejection(d, answers, R.RemakeTask.notReject)

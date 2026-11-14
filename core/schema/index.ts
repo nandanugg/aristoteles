@@ -15,6 +15,7 @@ export * from '../../src/domain/errors.ts'
 
 // --- the stored events (Schemas: the store's contract, R2) -------------------------------------
 export {
+  Adjustment as AdjustmentSchema,
   ConfirmableAct,
   CountedAct,
   create,
@@ -33,6 +34,7 @@ export {
   Line,
   memberOf,
   move,
+  OnboardedDirection,
   PointData,
   Recorded,
   ReportedWork,
@@ -52,6 +54,7 @@ export {
   writtenBy,
 } from '../../src/domain/events.ts'
 export type {
+  Adjustment,
   Draft,
   EventGroup,
   EventOf,
@@ -63,6 +66,8 @@ export type {
 
 // --- the files that people write ----------------------------------------------------------------
 export {
+  Case,
+  Cases,
   checkerProblem,
   CompanyCheckers,
   CompanyFolder,
@@ -71,7 +76,9 @@ export {
   ContextKey,
   DirectionFile,
   ExternalSource,
+  MIN_CASES,
   PartFile,
+  PersistenceFile,
   ReviseFile,
   RoleFile,
   Settings,
@@ -116,6 +123,7 @@ export type {
   OfficialDirection,
   Permission,
   PermissionState,
+  Persistence,
   Point,
   Question,
   QuestionStatus,
@@ -130,6 +138,7 @@ export type {
   Reviser,
   Role,
   Rule,
+  Runs,
   Section,
   Source,
   SourceState,
@@ -157,6 +166,7 @@ export type { CreatedId, Fit, Forward, Logged, Stepped, Work } from '../../src/d
 export type {
   Activity,
   AgentSession,
+  AgentState,
   Decision,
   DraftChange,
   DropReason,
@@ -166,6 +176,7 @@ export type {
   HostWords,
   PageAct,
   PageMessage,
+  PersistentAgent,
   Problem,
   ProblemActor,
   Run,
@@ -220,6 +231,14 @@ export {
   versionIdOf,
 } from '../../src/domain/derived.ts'
 export type { RejectPoint } from '../../src/domain/derived.ts'
+// The files of onboarding (before the store) and their derived states.
+export {
+  AiQuestion,
+  OnboardingAct,
+  OnboardingDirection,
+  OnboardingRoleState,
+} from '../../src/domain/onboarding.ts'
+export type { OnboardingDirectionState, OnboardingRole } from '../../src/domain/onboarding.ts'
 export * from '../../src/domain/context.ts'
 export * from '../../src/domain/lookup.ts'
 // The moves of the records: only core/state (the fold) uses them (BUILD.md 3.3).

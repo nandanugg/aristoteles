@@ -8,6 +8,7 @@
 // with _tag (the owner's rulings, 2026-11-11 and 2026-11-12); part 4's optionals and its kind,
 // act and type keys are the outside (the JSON that the page reads), kept as today.
 import type {
+  Adjustment,
   Destination,
   DropReason as DropReasonSchema,
   Enter,
@@ -18,14 +19,16 @@ import type {
   TaskData,
 } from './events.ts'
 import type { Settings } from './files.ts'
-import type { Why } from './model.ts'
+import type { NonEmpty, Tier, Why } from './model.ts'
 import type { Human } from './actor.ts'
 import type {
+  AgentId,
   AssignmentId,
   EventRef,
   NonBlank,
   ProblemId,
   RevisionId,
+  RoleName,
   RunId,
   SessionId,
   TaskDraftId,
@@ -78,6 +81,29 @@ export type RunState =
   | { readonly _tag: 'AwaitingEndAccept'; readonly top: TaskId }
   | { readonly _tag: 'Done'; readonly at: Time } // the watcher closes the host terminal
   | { readonly _tag: 'Closed'; readonly at: Time }
+
+// An agent of a persistent role, for one project (ruling 9): it lives from the first assignment
+// of its role in the run to the end of the run, in one terminal. Its assignments attach to it, as
+// those of the top task attach to the host. The fold makes it at that first give (P3), before any
+// session exists; the supervisor starts its terminal later. It keeps the tier of its role at its
+// birth (ruling 13: work in progress keeps what it started with).
+export interface PersistentAgent {
+  readonly id: AgentId // p1
+  readonly role: RoleName
+  readonly run: RunId // its project
+  readonly tier: Tier
+  readonly terminal:
+    | { readonly _tag: 'NotStarted' }
+    | { readonly _tag: 'Started'; readonly session: SessionId; readonly at: Time }
+  readonly at: Time // its first assignment
+}
+// Derived, never stored. OnAssignment: its open assignments (a split gives one role parts that
+// run at once, P6). Between: it waits in work wait, and its silence is no fault. Ended: its run is
+// Done or Closed, so its terminal closes.
+export type AgentState =
+  | { readonly _tag: 'OnAssignment'; readonly assignments: NonEmpty<AssignmentId> }
+  | { readonly _tag: 'Between' }
+  | { readonly _tag: 'Ended'; readonly at: Time }
 
 // A top task that a host drafts; only the person opens it. 
 export interface TaskDraft {
@@ -239,17 +265,18 @@ export type Activity =
       readonly lastTry: Time
     }
 
-// The terminal that a session stands for: a run (its host too), or an agent.
+// The terminal that a session stands for: a run (its host too), an assignment, or a persistent
+// agent.
 export interface Supervised {
   readonly session: SessionId
-  readonly for: RunId | AssignmentId
+  readonly for: RunId | AssignmentId | AgentId
   readonly state: TerminalState
 }
 
 // --- 3. The decisions that reach the person ----------------------------------------------------
 
-// A decision: one of four that reach the person (README: "only four kinds of decision need
-// you"; the JSON names the kind in "kind"). Replaces view.js itemsOf's objects.
+// A decision: one of the kinds that reach the person (the JSON names the kind in "kind").
+// Replaces view.js itemsOf's objects.
 export type Decision = DecisionBase &
   (
     | { readonly _tag: 'System'; readonly stopped: TaskId } // a system problem (id: sp..)
@@ -270,6 +297,8 @@ export type Decision = DecisionBase &
     // new words of a role that a high agent or a host drafted, for the person's accept or reject
     // (id: e..; ruling 2026-11-14). lines: '-' a word of now, '+' its drafted word.
     | { readonly _tag: 'RoleWords'; readonly role: Text; readonly lines: ReadonlyArray<Text> }
+    // a drafted adjustment of a role or a direction (id: e..; ruling 14)
+    | { readonly _tag: 'Adjustment'; readonly adjustment: Adjustment }
   )
 interface DecisionBase {
   readonly id: Text
@@ -489,7 +518,11 @@ export type PageAct =
   | { readonly act: 'open'; readonly draft: TaskDraftId }
   | { readonly act: 'close'; readonly run: RunId; readonly reason?: Text }
   | { readonly act: 'stop'; readonly session: SessionId }
-  | { readonly act: 'resume'; readonly session: SessionId; readonly tier: 'sol' | 'terra' }
+  | {
+      readonly act: 'resume'
+      readonly session: SessionId
+      readonly tier: 'sol' | 'terra' | 'luna'
+    }
   | { readonly act: 'fixed'; readonly problem: ProblemId }
   | { readonly act: 'accept-draft'; readonly draft: RevisionId; readonly comment?: Text }
   | { readonly act: 'reject-draft'; readonly draft: RevisionId; readonly reason: Text }
@@ -500,3 +533,6 @@ export type PageAct =
   // the person decides new words of a role (ruling 2026-11-14)
   | { readonly act: 'accept-words'; readonly draft: EventRef }
   | { readonly act: 'reject-words'; readonly draft: EventRef; readonly reason: Text }
+  // the person decides a drafted adjustment (ruling 14)
+  | { readonly act: 'accept-adjustment'; readonly draft: EventRef }
+  | { readonly act: 'reject-adjustment'; readonly draft: EventRef; readonly reason: Text }

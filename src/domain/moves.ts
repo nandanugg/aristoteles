@@ -11,6 +11,7 @@ import type {
   Answerer,
   Assignment,
   By,
+  Case,
   Direction,
   Meta,
   NonBlank,
@@ -18,6 +19,7 @@ import type {
   OfficialDirection,
   Permission,
   Question,
+  Revision,
   Snapshot,
   Task,
   Text,
@@ -30,6 +32,7 @@ import type {
   Failure,
   HostRun,
   HostTerminal,
+  PersistentAgent,
   Problem,
   ProblemActor,
   Run,
@@ -37,8 +40,8 @@ import type {
   TaskDraft,
   TerminalState,
 } from './ui-model.ts'
-import type { EventGroup, MoveTag } from './events.ts'
-import type { ConfigFile, RoleWords } from './files.ts'
+import type { Adjustment, EventGroup, MoveTag } from './events.ts'
+import type { ConfigFile, RoleFile, RoleWords } from './files.ts'
 import type { Forward } from './work.ts'
 
 // A record whose field F is in the state T: Task & { end: Closed } is a closed task.
@@ -88,6 +91,13 @@ export const recordProblem = (
 ): In<Problem, 'fixed', 'NotFixed'> => ({ ...fields, fixed: { _tag: 'NotFixed' } })
 export const sendText = (fields: Without<Send, 'state'>): PendingSend =>
   ({ ...fields, state: { _tag: 'Pending' } }) as PendingSend
+// A persistent agent is born at the first give of its role in a run, before its terminal (P3).
+export const bornAgent = (
+  fields: Omit<PersistentAgent, 'terminal'>,
+): In<PersistentAgent, 'terminal', 'NotStarted'> => ({
+  ...fields,
+  terminal: { _tag: 'NotStarted' },
+})
 
 // --- Task --------------------------------------------------------------------------------------
 
@@ -209,14 +219,64 @@ export const changeRoleWords = (
   ),
 })
 
+// The accept of an adjustment of a role (ruling 14): a new role, a removed one, another tier or
+// another persistence. Every other key of the role stays as it is.
+export const adjustRoles = (config: ConfigFile, adjustment: Adjustment): ConfigFile => {
+  const roles = { ...config.roles }
+  const agentRole = (name: string): Extract<RoleFile, { readonly kind: 'agent' }> | undefined => {
+    const r = roles[name]
+    return r?.kind === 'agent' ? r : undefined
+  }
+  switch (adjustment._tag) {
+    case 'AddRole':
+      roles[adjustment.role] = adjustment.file
+      break
+    case 'RemoveRole':
+      delete roles[adjustment.role]
+      break
+    case 'SetTier': {
+      const r = agentRole(adjustment.role)
+      if (r !== undefined) roles[adjustment.role] = { ...r, tier: adjustment.tier }
+      break
+    }
+    case 'SetPersistence': {
+      const r = agentRole(adjustment.role)
+      if (r !== undefined) roles[adjustment.role] = { ...r, persistence: adjustment.persistence }
+      break
+    }
+    case 'RetireDirection':
+    case 'SetCases':
+      return config
+  }
+  return { ...config, roles }
+}
+
 // --- Direction ---------------------------------------------------------------------------------
 
 // The accept that meets the deciders of a draft makes its version official: a new direction
-// becomes official with it, an official one adds it as its current version.
-export const makeOfficial = (d: Direction, version: Version<Direction>): OfficialDirection =>
+// becomes official with it and takes the cases of the draft; an official one adds it as its
+// current version and keeps its cases (ruling 4: cases make no new version).
+export const makeOfficial = (
+  d: Direction,
+  version: Version<Direction>,
+  cases: ReadonlyArray<Case>,
+): OfficialDirection =>
   d._tag === 'NewDirection'
-    ? { ...d, _tag: 'Official', versions: [version] }
+    ? { ...d, _tag: 'Official', versions: [version], cases }
     : { ...d, versions: [...d.versions, version] as NonEmpty<Version<Direction>> }
+
+// Adjustment.Accepted of SetCases: other cases of an official direction, with no new version.
+export const setCases = (d: OfficialDirection, cases: ReadonlyArray<Case>): OfficialDirection => ({
+  ...d,
+  cases,
+})
+
+// Revision.CasesAdded: a model gives a company draft of a new direction its cases before the
+// accept (P10 rejected, onboarding 2026-11-14). The latest counts.
+export const addCases = (
+  x: Extract<Revision<Direction>, { readonly _tag: 'New' }>,
+  cases: ReadonlyArray<Case>,
+): Extract<Revision<Direction>, { readonly _tag: 'New' }> => ({ ...x, cases })
 
 // --- the UI: runs, task drafts, problems, sends ----------------------------------------------
 
@@ -249,6 +309,16 @@ export const openTaskDraft = (
   draft: In<TaskDraft, 'opened', 'NotOpened'>,
   task: TaskId,
 ): In<TaskDraft, 'opened', 'Opened'> => ({ ...draft, opened: { _tag: 'Opened', task } })
+
+// Agent.Started: the supervisor starts the one terminal of a persistent agent, once.
+export const startAgent = (
+  agent: In<PersistentAgent, 'terminal', 'NotStarted'>,
+  session: SessionId,
+  at: Time,
+): In<PersistentAgent, 'terminal', 'Started'> => ({
+  ...agent,
+  terminal: { _tag: 'Started', session, at },
+})
 
 // Problem.Fixed: a fix ends an open problem; the record keeps who fixed it.
 export const fixProblem = (
@@ -337,6 +407,12 @@ export const MOVES = {
   // (core/derived, ruling 2026-11-14).
   'Role.WordsDrafted': null,
   'Role.WordsRejected': null,
+  'Agent.Started': startAgent,
+  // The state of an adjustment follows from the log (core/derived); its accept changes the config
+  // or a direction through adjustRoles and setCases.
+  'Adjustment.Accepted': null,
+  'Adjustment.Rejected': null,
+  'Revision.CasesAdded': addCases,
   'Run.HostMoved': moveHost,
   'Run.Done': runDone,
   'Run.Closed': runClosed,

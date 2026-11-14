@@ -8,6 +8,7 @@
 import type { Agent, Author, Human } from './actor.ts'
 import type { CountedAct, Event, EventOf, ForwardedAct, Recorded } from './events.ts'
 import type {
+  AgentId,
   AssignmentId,
   DirectionId,
   EscalationId,
@@ -96,7 +97,7 @@ export const ok4: Accept = { ...base, by: a, id: v, _tag: 'Accept', of: ofResult
 // @ts-expect-error 4: an Accept of a result with no evidence
 export const p4: Accept = { ...base, by: a, id: v, _tag: 'Accept', of: { ...ofResult, evidence: [] }, reason: null }
 
-const asg = { id: a, actor: agent, task: t, under, parent: { _tag: 'GivenByPerson' }, when: now, end: { _tag: 'NotEnded' } } as const
+const asg = { id: a, actor: agent, task: t, under, parent: { _tag: 'GivenByPerson' }, runs: { _tag: 'Subagent', tier: 'low' }, when: now, end: { _tag: 'NotEnded' } } as const
 export const ok5: Assignment = { ...asg, role: linter, _tag: 'Reviewer' }
 // @ts-expect-error 5a: the record: a Reviewer with maxAttempts
 export const p5a: Assignment = { ...asg, role: linter, _tag: 'Reviewer', maxAttempts: { _tag: 'AtMost', max: pos3 } }
@@ -121,14 +122,14 @@ export const ok7c: Event = { _tag: 'Question', create: asked }
 export const p7c: Event = { _tag: 'Question', create: { ...asked, text: '' } }
 
 const why = { _tag: 'Given', reason: 'Shorten', words: null } as const
-const revBase = { _tag: 'New', id: d, of: did, answers: [rej], when: now, at: 1, says: 's', standards: [] } as const
+const revBase = { _tag: 'New', id: d, of: did, answers: [rej], when: now, at: 1, says: 's', standards: [], cases: [] } as const
 export const ok8: Revision<Direction> = { ...revBase, origin: { _tag: 'Written', by: a }, why }
 // @ts-expect-error 8a: a person as the reviser
 export const p8a: Revision<Direction> = { ...revBase, origin: { _tag: 'Written', by: nanda }, why }
 // @ts-expect-error 8b: a reason that is no reason
 export const p8b: Revision<Direction> = { ...revBase, origin: { _tag: 'Written', by: a }, why: { ...why, reason: 'typo' } }
 
-const dirBase = { id: did, name: 'x', owner: nanda, maxStandards: { _tag: 'Unlimited' }, approvedBy: { _tag: 'Owner' }, source: { _tag: 'Local' } } as const
+const dirBase = { id: did, name: 'x', owner: nanda, maxStandards: { _tag: 'Unlimited' }, approvedBy: { _tag: 'Owner' }, source: { _tag: 'Local' }, cases: [] } as const
 const version1: Version<Direction> = { of: did, number: 1 as PositiveInt, revision: d, when: now, says: 's', standards: [] }
 export const ok10: Direction = { ...dirBase, from: ['Logos'], _tag: 'Official', versions: [version1] }
 // @ts-expect-error 10a: a principle that does not exist
@@ -222,9 +223,9 @@ export const pA4: Reject = { ...base, by: a, _tag: 'Reject', id: rej, of: { ...o
 
 
 const config = { project: 'p', people: ['Nanda'], limits: { low: {}, medium: {}, high: {} }, roles: {} }
-export const okA7: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...config, decide: { [role]: 'a' } }, hashes: {}, texts: {} } }
+export const okA7: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...config, decide: { [role]: 'a' } }, hashes: {}, texts: {}, directions: [] } }
 // @ts-expect-error A7: the stored config holds a list of entries, so two for one maker
-export const pA7: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...config, decide: [{ resultsOf: role, by: 'a' }, { resultsOf: role, by: 'b' }] }, hashes: {}, texts: {} } }
+export const pA7: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...config, decide: [{ resultsOf: role, by: 'a' }, { resultsOf: role, by: 'b' }] }, hashes: {}, texts: {}, directions: [] } }
 
 // A8 (a version of another direction inside an official one) is open with the owner (card 1).
 const dirX = { ...dirBase, _tag: 'Official' } as const
@@ -325,13 +326,26 @@ export const okN12: Under = new Map([[did, 2 as PositiveInt]])
 // @ts-expect-error N12: a version id (of any direction) under the key of a direction
 export const n12: Under = new Map([[did, vid]])
 
-const roleFile = { description: 'd', intro: 'i', responsibilities: [], acts: [], checks: [] }
+const roleFile = { description: 'd', intro: 'i', responsibilities: [], acts: [], checks: [], persistence: { persistent: true, why: 'w' }, icon: 'bot' } as const
 const defined = { project: 'p', people: ['Nanda'], limits: { low: {}, medium: {}, high: {} }, decide: {} }
-export const okN14: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { ...roleFile, kind: 'agent', tier: 'high' } } }, hashes: {}, texts: {} } }
+export const okN14: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { ...roleFile, kind: 'agent', tier: 'high' } } }, hashes: {}, texts: {}, directions: [] } }
 // @ts-expect-error N14: an agent role with no tier
-export const n14: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { ...roleFile, kind: 'agent' } } }, hashes: {}, texts: {} } }
+export const n14: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { ...roleFile, kind: 'agent' } } }, hashes: {}, texts: {}, directions: [] } }
 
 // N15 (a closed terminal closed again) is part of the UI proposal, open with the owner.
+
+// Onboarding: an agent role names its persistence and its icon; a program has no persistence
+// (P12); a case fits Follows or Breaks; a subagent keeps its tier (P2).
+const aCase = { file: 'docs/a.md', line: 1 as PositiveInt, excerpt: 'x', fit: 'Follows' } as const
+// @ts-expect-error O1: an agent role with no persistence
+export const o1: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { description: 'd', intro: 'i', responsibilities: [], acts: [], checks: [], icon: 'bot', kind: 'agent', tier: 'high' } } }, hashes: {}, texts: {}, directions: [] } }
+// @ts-expect-error O2: an icon outside the page's set
+export const o2: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { ...roleFile, icon: 'rocket', kind: 'agent', tier: 'high' } } }, hashes: {}, texts: {}, directions: [] } }
+// @ts-expect-error O3: a case that neither follows nor breaks
+export const o3: Event = { _tag: 'Revision', id: d, move: { _tag: 'CasesAdded', cases: [aCase, aCase, { ...aCase, fit: 'Maybe' }] } }
+// @ts-expect-error O4: a subagent with no tier
+export const o4: Assignment = { ...asg, role: linter, _tag: 'Reviewer', runs: { _tag: 'Subagent' } }
+export const okO5: Recorded = { seq: 2, at: now, author: { _tag: 'Supervisor', name: 'Nanda' }, event: { _tag: 'Agent', id: 'p1' as AgentId, move: { _tag: 'Started', session: s1 } } }
 
 const ofEvaluation = { _tag: 'Evaluation', id: ev, evidence: [evidence] } as const
 export const okN16: Accept = { ...base, id: v, by: nanda, _tag: 'Accept', of: ofEvaluation, reason: null }
@@ -356,7 +370,7 @@ export const s24c: Event = { _tag: 'Send', id: e12, move: { _tag: 'Dropped', why
 export const s25: Event = { _tag: 'Send', create: sentByAgent }
 export const s26a: Event = { _tag: 'Question', create: { _tag: 'Escalated', text: 'blocked' } }
 export const s26b: Event = { _tag: 'Question', create: { _tag: 'Asked', text: 'x', to: { _tag: 'Owner' } } }
-export const s27: Event = { _tag: 'Revision', create: { _tag: 'Drafted', direction: { id: did, name: 'd2 name', owner: 'Nanda', from: ['Logos'], says: 's', standards: [] }, answers: [], why: { _tag: 'NoneGiven' } } }
+export const s27: Event = { _tag: 'Revision', create: { _tag: 'Drafted', direction: { id: did, name: 'd2 name', owner: 'Nanda', from: ['Logos'], says: 's', standards: [] }, cases: [aCase, aCase, aCase], answers: [], why: { _tag: 'NoneGiven' } } }
 export const s28: Event = { _tag: 'Role', id: role, move: { _tag: 'Fitted', hash: 'h', answers: [{ id: 1, yes: true, why: 'y' }] } }
 export const r21: Resolve = {
   id: v, by: nanda, under, when: now, at: 1,

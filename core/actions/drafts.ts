@@ -24,13 +24,18 @@ import type { Refusal } from '../schema/errors.ts'
 import {
   type AnswerId,
   type Author,
+  type Case,
+  type Cases,
   checkerProblem,
   create,
   type Direction,
   type DirectionId,
   type EventOf,
+  isNonBlank,
   type Limit,
   lookup,
+  MIN_CASES,
+  type PositiveInt,
   type Recorded,
   type Revision,
   type RoleName,
@@ -214,6 +219,20 @@ export const DRAFT = {
       'Write',
       `change the standard of the rule "${says}"`,
     ),
+  aboutRoles: (words: string) =>
+    no(
+      `${words} is about the roles; an adjustment of a role answers it, not a direction`,
+      'Pick',
+      'draft the adjustment that it asks for with work adjust',
+    ),
+  // --- the cases of a new direction (P10 rejected, onboarding 2026-11-14) ---
+  cases: (file: string, what: string) =>
+    no(
+      `${file}: ${what}`,
+      'Write',
+      `write in ${file} at least ${MIN_CASES} cases: real code that follows the direction or ` +
+        'breaks it, each { file, line, excerpt, fit: Follows | Breaks }',
+    ),
   // --- a company commit ---
   localId: (id: string) =>
     no(
@@ -242,6 +261,38 @@ const firstOf = (checks: (guard: Guard) => void): Refusal | undefined => {
 }
 const failIf = (r: Refusal | undefined): Effect.Effect<void, Refusal> =>
   r === undefined ? Effect.void : fail(r)
+
+// --- the cases of a file ------------------------------------------------------------------------
+
+// The cases: key of a file (a direction file, or a cases file): at least 3, each a file, a line, a
+// short excerpt, and whether the code follows the direction or breaks it (ruling 4). The excerpt
+// is not read here: whether it is still in its file is a derived state that the words show.
+export const readCases = (file: string, raw: unknown): Effect.Effect<Cases, Refusal> => {
+  const value = raw !== null && typeof raw === 'object' ? (raw as { cases?: unknown }).cases : null
+  const cases: ReadonlyArray<Record<string, unknown>> = Array.isArray(value) ? value : []
+  if (cases.length < MIN_CASES) {
+    return fail(DRAFT.cases(file, `cases lists ${cases.length}`))
+  }
+  const read: Array<Case> = []
+  for (const [i, c] of cases.entries()) {
+    const at = `case ${i + 1}`
+    const line = c?.line
+    if (typeof c?.file !== 'string' || !isNonBlank(c.file)) {
+      return fail(DRAFT.cases(file, `${at} needs a file`))
+    }
+    if (typeof line !== 'number' || !Number.isInteger(line) || line < 1) {
+      return fail(DRAFT.cases(file, `${at}: line is a whole number of 1 or more`))
+    }
+    if (typeof c.excerpt !== 'string' || !isNonBlank(c.excerpt)) {
+      return fail(DRAFT.cases(file, `${at} needs an excerpt`))
+    }
+    if (c.fit !== 'Follows' && c.fit !== 'Breaks') {
+      return fail(DRAFT.cases(file, `${at}: fit is Follows or Breaks`))
+    }
+    read.push({ file: c.file, line: line as PositiveInt, excerpt: c.excerpt, fit: c.fit })
+  }
+  return Effect.succeed(read as unknown as Cases)
+}
 
 // --- the answers ---------------------------------------------------------------------------------
 
@@ -457,6 +508,7 @@ const suggestionAnswered = (
   const name = directionAt(w, from.of).name
   const about = s.about
   if (about._tag === 'NewDirection') return DRAFT.asksNew(words, name)
+  if (about._tag === 'Roles') return DRAFT.aboutRoles(words)
   if (about._tag === 'Direction') {
     if (about.direction !== from.of) {
       return DRAFT.aboutOther(words, directionAt(w, about.direction).name, name)
@@ -532,7 +584,7 @@ const withDraft = (d: Derived, by: Author, event: ReturnType<typeof create<'Revi
 export const checkDrafted = (
   d: Derived,
   by: Author,
-  data: Omit<EventOf<'Revision.Drafted'>['create'], '_tag'>,
+  data: Omit<EventOf<'Revision.Drafted'>['create'], '_tag' | 'cases'>,
 ): Effect.Effect<void, Refusal> => {
   const w = d.moment.work
   const file = data.direction
@@ -551,7 +603,9 @@ export const checkDrafted = (
     standardChecks(w, drafted, [], { add, remove: [], replace: [] }, guard)
   })
   if (problem !== undefined || answers.length === 0) return failIf(problem)
-  const { work, draft } = withDraft(d, by, create('Revision', { _tag: 'Drafted', ...data }))
+  // The cases do not change what a draft proposes, so the draft that it compares holds none.
+  const proposed = create('Revision', { _tag: 'Drafted', ...data, cases: [] })
+  const { work, draft } = withDraft(d, by, proposed)
   if (draft === undefined) return Effect.void
   const to = contentOfDraft(draft)
   for (const a of answers) {

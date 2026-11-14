@@ -18,6 +18,8 @@ export type ActionAct = Extract<
       | 'reject-task'
       | 'accept-words'
       | 'reject-words'
+      | 'accept-adjustment'
+      | 'reject-adjustment'
   }
 >
 
@@ -65,6 +67,17 @@ export const callOf = (act: ActionAct, by: Author): ActionCall => {
           content: { reason: act.reason },
         },
       }
+    case 'accept-adjustment':
+      return { by, input: { _tag: 'AcceptAdjustment', target: { draft: act.draft }, content: {} } }
+    case 'reject-adjustment':
+      return {
+        by,
+        input: {
+          _tag: 'RejectAdjustment',
+          target: { draft: act.draft },
+          content: { reason: act.reason },
+        },
+      }
   }
 }
 
@@ -88,6 +101,10 @@ export const wordsOf = (act: ActionAct, created: ReadonlyArray<CreatedId>): stri
     case 'accept-words':
       return `${act.draft} accepted: the new words are in aristoteles.yaml; record the fit again.`
     case 'reject-words':
+      return `${act.draft} rejected.`
+    case 'accept-adjustment':
+      return `${act.draft} accepted.`
+    case 'reject-adjustment':
       return `${act.draft} rejected.`
   }
 }

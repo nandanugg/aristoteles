@@ -158,6 +158,12 @@ const roleWordsRejectedRow = (d: Derived, item: Of<'RoleWordsRejected'>): string
   return `${item.draft} (new words of ${item.role}) is rejected: "${short(reason, 120)}"; ${again}`
 }
 
+// A drafted adjustment (ruling 14), one plain row each; W2 writes their full rows.
+const adjustmentRow = (item: Of<'Adjustment'>): string =>
+  `${item.draft} an adjustment waits for the person\n    work adjust show ${item.draft}`
+const adjustmentRejectedRow = (item: Of<'AdjustmentRejected'>): string =>
+  `${item.draft} (an adjustment) is rejected; its drafter drafts a new one`
+
 // A draft that waits for a role's accept first names that role, and the assign when no open
 // assignment of that role, outside the reviser's tree, can review it.
 const roleRow = (d: Derived, item: Of<'DraftForRole'>, direction: DirectionId): string => {
@@ -273,6 +279,11 @@ const suggestionRow = (d: Derived, item: Of<'Suggestion'>): string => {
   if (y === undefined) throw new Error(`the work has no suggestion ${item.suggestion}`)
   // A suggestion that asks for a new direction: no task follows it, so a model run outside any
   // task drafts it (the skill that reads an app), and its owner accepts it. Each person sees it.
+  // The roles (P7): the host drafts the adjustment that the words ask for.
+  if (item.about._tag === 'Roles') {
+    const said = `"${short(y.says, 120)}" (${who(w, y.by)})`
+    return `${y.id} says about the roles: ${said}; the host drafts it`
+  }
   if (item.about._tag === 'NewDirection') {
     return (
       `${y.id} asks for a new direction: "${short(y.says, 120)}" ` +
@@ -450,6 +461,8 @@ export const waitingRows = (d: Derived, all: ReadonlyArray<WaitingItem>): Readon
 
   rows.push(...of('RoleWords').map((i) => roleWordsRow(d, i)))
   rows.push(...of('RoleWordsRejected').map((i) => roleWordsRejectedRow(d, i)))
+  rows.push(...of('Adjustment').map(adjustmentRow))
+  rows.push(...of('AdjustmentRejected').map(adjustmentRejectedRow))
 
   // The stops of one task are together in the items: the evaluations that wait for the owner, then
   // one row for the stops that no one evaluated.

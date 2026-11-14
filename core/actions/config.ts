@@ -1,22 +1,45 @@
-// The actions of the workflow and its config: work init, config apply and restore, role fit, the
-// drafts of the words of a role and their accept or reject, and the page's settings.
+// The actions of the workflow and its config: work init and the store start of onboarding,
+// config apply and restore, role fit, the drafts of the words of a role and their accept or
+// reject, the adjustments of roles and directions, and the page's settings.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { type Derived, type RoleWords, roleWordsDraftAt } from '../derived/index.ts'
 import {
+  adjustmentDraftAt,
+  adjustmentProblem,
+  type Derived,
+  type RoleWords,
+  roleWordsDraftAt,
+} from '../derived/index.ts'
+import type { AdjustmentInput } from '../schema/actions.ts'
+import {
+  type Adjustment,
+  checkerProblem,
   type ConfigFile,
   create,
   currentVersion,
   type Event,
   isNonBlank,
+  MIN_CASES,
   move,
+  type OnboardedDirection,
   officialDirections,
+  type Recorded,
   type RoleFile,
   RoleName,
   type Work,
 } from '../schema/index.ts'
-import { Files, readConfig, restoreConfig, roleHash, writeSettings } from '../services/index.ts'
+import {
+  configOfText,
+  Files,
+  readApprovedBy,
+  readConfig,
+  restoreConfig,
+  roleHash,
+  writeSettings,
+} from '../services/index.ts'
+import { foldStep } from '../state/index.ts'
 import type { Refusal } from '../schema/errors.ts'
+import { DRAFT, readCases } from './drafts.ts'
 import {
   allowed,
   asWrite,
@@ -39,13 +62,48 @@ export const REFUSALS = {
         'Write',
         `add ${name || 'your name'} to the people of ${CONFIG}`,
       ),
+    // The store start of onboarding (BUILD.md section 3).
+    noHostRole: () =>
+      no(
+        'the workflow has no persistent high role; the host plays the high role of each top ' +
+          'task, and the host is a terminal (ruling 15)',
+        'Write',
+        `make a high role of ${CONFIG} persistent`,
+      ),
+    sameId: (id: string) =>
+      no(`two directions have the id ${id}`, 'Write', 'give each direction its own id'),
+    owner: (id: string, owner: string) =>
+      no(
+        `the owner ${owner} of ${id} is not in the people of ${CONFIG}`,
+        'Write',
+        `name a person of ${CONFIG} as the owner of ${id}`,
+      ),
+    fewCases: (id: string, count: string) =>
+      no(
+        `${id} has ${count} cases; a direction starts with at least ${MIN_CASES} cases`,
+        'Write',
+        `give ${id} at least ${MIN_CASES} cases`,
+      ),
+    notRole: (rule: string, direction: string, role: string) =>
+      no(
+        `rule ${rule} of ${direction} is checked by ${role}, which is not an accepted role`,
+        'Write',
+        `name an accepted role in checkedBy of ${rule}`,
+      ),
+    checker: DRAFT.checker,
+    hasStandard: DRAFT.hasStandard,
+    ruleIdUsed: DRAFT.ruleIdUsed,
+    supersedesMissing: DRAFT.supersedesMissing,
+    tooMany: DRAFT.tooMany,
+    programChecks: DRAFT.programChecks,
   },
   ApplyConfig: {
     notWords: (other: string) =>
       no(
         `work config apply changes only the words of roles; this also changes: ${other}`,
         'Write',
-        `change back ${other} in ${CONFIG}; a new store takes such a change (DESIGN.md section 9)`,
+        `change back ${other} in ${CONFIG}; a high agent drafts such a change with work ` +
+          'adjust, and the person accepts it',
       ),
   },
   RestoreConfig: {},
@@ -96,25 +154,111 @@ export const REFUSALS = {
     noReason: () =>
       no('a reject of new words needs a reason', 'Write', 'write why with --reason'),
   },
+  DraftAdjustment: {
+    cases: DRAFT.cases,
+    noWhy: (role: string) =>
+      no(
+        `the persistence of ${role} needs a reason`,
+        'Write',
+        'write why with --why: the card of the role shows it',
+      ),
+    notBlock: (what: string) =>
+      no(`${CONFIG}: ${what}`, 'Write', `write each role as a block of its own under roles:`),
+    notRole: (file: string, what: string) =>
+      no(`${file}: ${what}`, 'Write', `give the keys of one role in ${file}`),
+    config: (what: string) =>
+      no(what, 'Write', 'change the role so that work config check reads it'),
+  },
+  AcceptAdjustment: {
+    notBlock: (what: string) =>
+      no(`${CONFIG}: ${what}`, 'Write', `write each role as a block of its own under roles:`),
+    notExact: () =>
+      no(
+        `${CONFIG} would hold more than the adjustment`,
+        'Write',
+        `restore ${CONFIG} as stored (work config restore), then accept again`,
+      ),
+  },
+  RejectAdjustment: {
+    noReason: () =>
+      no('a reject of an adjustment needs a reason', 'Write', 'write why with --reason'),
+  },
   SaveSettings: {},
 } satisfies Readonly<Record<string, RefusalsOf>>
 const R = REFUSALS
 
 const fail = <A = never>(r: Refusal): Effect.Effect<A, Refusal> => Effect.fail(r)
 
-// --- work init ----------------------------------------------------------------------------------
+// --- work init, and the store start of onboarding ----------------------------------------------
 
-// The first event of a store: the workflow of aristoteles.yaml. dispatch runs this on an empty
-// store; on a store with events, canAct refuses DefineWorkflow (the store has a config).
+// What keeps the accepted directions of onboarding out of a new store: the checks of work
+// direction new over the roles of the file, as no store exists yet. A workflow with no
+// persistent high role has no host (ruling 15), so work init refuses it too.
+const startProblem = (
+  config: ConfigFile,
+  directions: ReadonlyArray<OnboardedDirection>,
+): Refusal | undefined => {
+  const S = R.DefineWorkflow
+  const hostRole = Object.values(config.roles).some(
+    (r) => r.kind === 'agent' && r.tier === 'high' && r.persistence.persistent,
+  )
+  if (!hostRole) return S.noHostRole()
+  const ids = new Set<string>()
+  const rules = new Map<string, string | undefined>()
+  for (const { direction: d, cases } of directions) {
+    if (ids.has(d.id)) return S.sameId(d.id)
+    ids.add(d.id)
+    if (!config.people.includes(d.owner)) return S.owner(d.id, d.owner)
+    if (cases.length < MIN_CASES) return S.fewCases(d.id, String(cases.length))
+    if (d.maxStandards !== undefined && d.standards.length > d.maxStandards) {
+      return S.tooMany(d.name, String(d.standards.length), String(d.maxStandards))
+    }
+    const standards = new Set<string>()
+    for (const s of d.standards) {
+      if (standards.has(s.id)) return S.hasStandard(d.name, s.id)
+      standards.add(s.id)
+      for (const r of s.rules) {
+        if (rules.has(r.id)) return S.ruleIdUsed(r.id)
+        rules.set(r.id, r.checkedBy)
+        // A direction of a new store has no version before it, so it supersedes nothing.
+        const [old] = r.supersedes
+        if (old !== undefined) return S.supersedesMissing(r.id, old)
+        if (r.checkedBy !== undefined && config.roles[r.checkedBy] === undefined) {
+          return S.notRole(r.id, d.id, r.checkedBy)
+        }
+        const problem = checkerProblem(config.roles, r.id, r.checkedBy)
+        if (problem !== null) return S.checker(problem, r.id)
+      }
+    }
+  }
+  for (const [name, role] of Object.entries(config.roles)) {
+    if (role.kind !== 'program') continue
+    const wrong = role.checks.find((id) => rules.has(id) && rules.get(id) !== name)
+    if (wrong !== undefined) return S.programChecks(name, wrong)
+  }
+  return undefined
+}
+
+// The first event of a store: the workflow of aristoteles.yaml, and the directions that
+// onboarding accepted (none for work init). dispatch runs this on an empty store; on a store
+// with events, canAct refuses DefineWorkflow (the store has a config).
 export const defineWorkflow = (
   by: { readonly _tag: string; readonly name?: string },
   cwd: string,
+  directions: ReadonlyArray<OnboardedDirection>,
 ): Effect.Effect<ReadonlyArray<Event>, Refusal, Files> =>
   Effect.gen(function* () {
     const { config, hashes, texts } = yield* readConfig(cwd).pipe(Effect.mapError(asWrite(CONFIG)))
     const name = by.name ?? ''
     if (!config.people.includes(name)) return yield* fail(R.DefineWorkflow.notInPeople(name))
-    return [create('Workflow', { _tag: 'Defined', config, hashes, texts })]
+    const problem = startProblem(config, directions)
+    if (problem !== undefined) return yield* fail(problem)
+    for (const { direction } of directions) {
+      yield* readApprovedBy(direction.id, direction, config.roles, config.people).pipe(
+        Effect.mapError(asWrite(direction.id)),
+      )
+    }
+    return [create('Workflow', { _tag: 'Defined', config, hashes, texts, directions })]
   })
 
 const DefineWorkflow: Action<'DefineWorkflow'> = ({ by, input }) =>
@@ -154,7 +298,9 @@ const diffConfig = (config: ConfigFile, old: ConfigFile) => {
     }
     const { description, intro, responsibilities, output, ...rest } = role
     const { description: d0, intro: i0, responsibilities: r0, output: o0, ...rest0 } = was
-    if (canon(rest) !== canon(rest0)) other.push(`the acts or tier of ${roleName}`)
+    if (canon(rest) !== canon(rest0)) {
+      other.push(`the acts, tier, persistence or icon of ${roleName}`)
+    }
     if (canon([description, intro, responsibilities, output]) !== canon([d0, i0, r0, o0])) {
       const words = { description, intro, responsibilities }
       text[roleName] = output === undefined ? words : { ...words, output }
@@ -365,14 +511,15 @@ const keyLine = (
       i >= from && i < to && indentOf(l) === indent && l.trimStart().startsWith(`${key}:`),
   )
 
-// aristoteles.yaml with new words of a role: only the block of each drafted word in the block of
-// the role is written again (a word that the role lacks goes at its end), so the person's git diff
-// shows only those words. problem: what keeps the words out.
-const withRoleWords = (
+// aristoteles.yaml with new keys of a role (its words, its tier, its persistence): only the block
+// of each key in the block of the role is written again (a key that the role lacks goes at its
+// end), so the person's git diff shows only those keys. problem: what keeps the keys out.
+type Edited = { readonly text: string } | { readonly problem: string }
+const withRoleKeys = (
   file: string,
   role: string,
-  words: RoleWords,
-): { readonly text: string } | { readonly problem: string } => {
+  words: Readonly<Record<string, unknown>>,
+): Edited => {
   const lines = file.split('\n')
   const top = lines.findIndex((l) => /^roles:\s*$/.test(l))
   if (top === -1) return { problem: 'it has no block of roles' }
@@ -430,7 +577,7 @@ const AcceptRoleWords: Action<'AcceptRoleWords'> = ({ by, input }) =>
     const files = yield* Files
     const path = join(d.moment.outside.cwd, CONFIG)
     const text = (yield* files.read(path)) ?? ''
-    const merged = withRoleWords(text, draft.role, draft.words)
+    const merged = withRoleKeys(text, draft.role, draft.words)
     if ('problem' in merged) return yield* fail(R.AcceptRoleWords.notBlock(merged.problem))
     yield* files.write(path, merged.text).pipe(Effect.orDie)
     const restore = files.write(path, text).pipe(Effect.orDie)
@@ -449,6 +596,155 @@ const RejectRoleWords: Action<'RejectRoleWords'> = ({ by, input }) =>
     return [move('Role', x.role, { _tag: 'WordsRejected', draft, reason })]
   })
 
+// --- adjustments after the first start (ruling 14) ---------------------------------------------
+
+// The block of the roles, and the indent of a role in it; undefined: no block.
+const rolesBlock = (lines: ReadonlyArray<string>) => {
+  const top = lines.findIndex((l) => /^roles:\s*$/.test(l))
+  if (top === -1) return undefined
+  const indent = indentOf(lines.slice(top + 1).find((l) => l.trim() !== '') ?? '')
+  return { top, end: blockEnd(lines, top), indent }
+}
+// aristoteles.yaml with a role adjustment: a new role at the end of the roles, a removed role's
+// block gone, or one key of a role written again.
+const withAdjustment = (file: string, a: Adjustment): Edited => {
+  switch (a._tag) {
+    case 'SetTier':
+      return withRoleKeys(file, a.role, { tier: a.tier })
+    case 'SetPersistence':
+      return withRoleKeys(file, a.role, { persistence: a.persistence })
+    case 'RetireDirection':
+    case 'SetCases':
+      return { text: file }
+    default:
+      break
+  }
+  const lines = file.split('\n')
+  const block = rolesBlock(lines)
+  if (block === undefined) return { problem: 'it has no block of roles' }
+  if (a._tag === 'AddRole') {
+    const body = yamlLines(a.file).map((l) => ' '.repeat(block.indent + 2) + l)
+    lines.splice(block.end, 0, `${' '.repeat(block.indent)}${a.role}:`, ...body)
+    return { text: lines.join('\n') }
+  }
+  const at = keyLine(lines, [block.top + 1, block.end], block.indent, a.role)
+  if (at === -1) return { problem: `the role ${a.role} is not a block of its own under roles` }
+  lines.splice(at, blockEnd(lines, at) - at)
+  return { text: lines.join('\n') }
+}
+
+// The adjustment of the input: the files that it names read and checked.
+const adjustmentOf = (
+  d: Derived,
+  input: AdjustmentInput,
+): Effect.Effect<Adjustment, Refusal, Files> =>
+  Effect.gen(function* () {
+    const cwd = d.moment.outside.cwd
+    switch (input._tag) {
+      case 'SetCases': {
+        const cases = yield* readCases(input.file, yield* readYaml(cwd, input.file))
+        return { _tag: 'SetCases', direction: input.direction, cases }
+      }
+      case 'SetPersistence': {
+        const { role, persistent, why } = input
+        if (!isNonBlank(why)) return yield* fail(R.DraftAdjustment.noWhy(role))
+        return { _tag: 'SetPersistence', role, persistence: { persistent, why } }
+      }
+      case 'AddRole': {
+        // The new role as work config check reads it, in the file with the role added.
+        const raw = yield* readYaml(cwd, input.file)
+        if (!isRaw(raw) || Object.keys(raw).length === 0) {
+          return yield* fail(R.DraftAdjustment.notRole(input.file, 'it gives no keys of a role'))
+        }
+        const text = (yield* (yield* Files).read(join(cwd, CONFIG))) ?? ''
+        const lines = text.split('\n')
+        const block = rolesBlock(lines)
+        if (block === undefined) {
+          return yield* fail(R.DraftAdjustment.notBlock('it has no block of roles'))
+        }
+        const body = yamlLines(raw).map((l) => ' '.repeat(block.indent + 2) + l)
+        lines.splice(block.end, 0, `${' '.repeat(block.indent)}${input.role}:`, ...body)
+        const read = yield* configOfText(cwd, lines.join('\n')).pipe(
+          Effect.mapError((e) => R.DraftAdjustment.config(e.message)),
+        )
+        const file = read.config.roles[input.role]
+        if (file === undefined) return yield* Effect.die('the added role reads back')
+        return { _tag: 'AddRole', role: input.role, file }
+      }
+      default:
+        return input
+    }
+  })
+
+const DraftAdjustment: Action<'DraftAdjustment'> = ({ by, input }) =>
+  Effect.gen(function* () {
+    const d = yield* current
+    yield* configUnchanged(d, by)
+    yield* allowed(d, by, input)
+    const adjustment = yield* adjustmentOf(d, input.content.adjustment)
+    const problem = adjustmentProblem(d, adjustment)
+    if (problem !== undefined) return yield* fail(problem)
+    // A role adjustment must leave a file that work config check reads.
+    const cwd = d.moment.outside.cwd
+    const text = (yield* (yield* Files).read(join(cwd, CONFIG))) ?? ''
+    const edited = withAdjustment(text, adjustment)
+    if ('problem' in edited) return yield* fail(R.DraftAdjustment.notBlock(edited.problem))
+    yield* configOfText(cwd, edited.text).pipe(
+      Effect.mapError((e) => R.DraftAdjustment.config(e.message)),
+    )
+    return [create('Adjustment', { _tag: 'Drafted', adjustment })]
+  })
+
+// A role adjustment writes aristoteles.yaml as an accept of role words does (the file must be as
+// stored first; a refusal writes it back), and stores its new text; the file then holds what the
+// fold makes of the accept, and nothing more. A direction adjustment stores the text of now.
+const AcceptAdjustment: Action<'AcceptAdjustment'> = ({ by, input }) =>
+  Effect.gen(function* () {
+    const d = yield* current
+    yield* configUnchanged(d, by)
+    yield* allowed(d, by, input)
+    const w = d.moment.work
+    const { draft } = input.target
+    const x = adjustmentDraftAt(w, draft)
+    if (x === undefined) return yield* Effect.die('canAct let an accept name no adjustment')
+    if (!('role' in x.adjustment)) {
+      return [move('Adjustment', draft, { _tag: 'Accepted', hashes: w.hashes, texts: w.texts })]
+    }
+    const files = yield* Files
+    const cwd = d.moment.outside.cwd
+    const path = join(cwd, CONFIG)
+    const text = (yield* files.read(path)) ?? ''
+    const edited = withAdjustment(text, x.adjustment)
+    if ('problem' in edited) return yield* fail(R.AcceptAdjustment.notBlock(edited.problem))
+    yield* files.write(path, edited.text).pipe(Effect.orDie)
+    const restore = files.write(path, text).pipe(Effect.orDie)
+    const read = yield* readConfig(cwd).pipe(
+      Effect.mapError(asWrite(CONFIG)),
+      Effect.tapError(() => restore),
+    )
+    const event = move('Adjustment', draft, {
+      _tag: 'Accepted',
+      hashes: read.hashes,
+      texts: read.texts,
+    })
+    const seq = (w.events.at(-1)?.recorded.seq ?? 0) + 1
+    const after = foldStep(w, { seq, at: d.moment.at, author: by, event } as Recorded)
+    if (canon(after.work.config) !== canon(read.config)) {
+      yield* restore
+      return yield* fail(R.AcceptAdjustment.notExact())
+    }
+    return [event]
+  })
+
+const RejectAdjustment: Action<'RejectAdjustment'> = ({ by, input }) =>
+  Effect.gen(function* () {
+    const d = yield* current
+    yield* allowed(d, by, input)
+    const reason = input.content.reason
+    if (!isNonBlank(reason)) return yield* fail(R.RejectAdjustment.noReason())
+    return [move('Adjustment', input.target.draft, { _tag: 'Rejected', reason })]
+  })
+
 export const ACTIONS = {
   DefineWorkflow,
   ApplyConfig,
@@ -457,5 +753,8 @@ export const ACTIONS = {
   DraftRoleWords,
   AcceptRoleWords,
   RejectRoleWords,
+  DraftAdjustment,
+  AcceptAdjustment,
+  RejectAdjustment,
   SaveSettings,
 }

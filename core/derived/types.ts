@@ -8,6 +8,8 @@
 import type { Intent } from '../schema/actions.ts'
 import type { Refusal } from '../schema/errors.ts'
 import type {
+  AgentId,
+  AgentState,
   Answerer,
   AssignmentId,
   Attempt,
@@ -52,6 +54,7 @@ import type {
   VersionId,
 } from '../schema/index.ts'
 import type { Moment } from '../state/index.ts'
+import type { AdjustmentState } from './adjustments.ts'
 import type { RoleWordsState } from './role-words.ts'
 
 // =================================================================================================
@@ -76,6 +79,9 @@ export interface States {
   readonly sources: ReadonlyArray<SourceSeen>
   // Each draft of new words of a role, by its event (ruling 2026-11-14).
   readonly roleWords: ReadonlyMap<EventRef, RoleWordsState>
+  // Each persistent agent (ruling 9), and each drafted adjustment by its event (ruling 14).
+  readonly agents: ReadonlyMap<AgentId, AgentState>
+  readonly adjustments: ReadonlyMap<EventRef, AdjustmentState>
 }
 
 // What every reader reads: the moment, and the state of each record at that moment.
@@ -96,9 +102,12 @@ export type PermissionStateOf = (permission: Permission, at: Time) => Permission
 
 // --- 2. DirectionState (NEW): the edge version -> draft -----------------------------------------
 // Drafted: no version yet (its first draft waits). Official: the version that is current now.
+// Retired: the accept of an adjustment that retires it (ruling 13); a new task cannot name it, and
+// a task that names it keeps it until the task ends.
 export type DirectionState =
   | { readonly _tag: 'Drafted' }
   | { readonly _tag: 'Official'; readonly current: VersionId }
+  | { readonly _tag: 'Retired'; readonly by: EventRef }
 export type DirectionStateOf = (m: Moment, direction: DirectionId) => DirectionState
 
 // --- 3. RevisionState (NEW, replaces model.ts RevisionState): S2, S6, S7 ------------------------
@@ -391,6 +400,8 @@ export type WaitingKind =
   | 'DraftVetoed'
   | 'RoleWords'
   | 'RoleWordsRejected'
+  | 'Adjustment'
+  | 'AdjustmentRejected'
   | 'ChangePoint'
   | 'Stop'
   | 'EvaluationForOwner'
@@ -438,6 +449,11 @@ export type StepWhat =
       readonly suggestion: SuggestionId
       readonly direction: DirectionId
     }
+  // The person's words about the roles (P7): the host drafts the adjustment that they ask for.
+  | { readonly _tag: 'AnswerRolesSuggestion'; readonly suggestion: SuggestionId }
+  // A company draft of a new direction waits for its cases (P10 rejected, onboarding
+  // 2026-11-14): the host adds them before the person's accept.
+  | { readonly _tag: 'AddCases'; readonly draft: RevisionId; readonly direction: DirectionId }
   | {
       readonly _tag: 'PutOnBase'
       readonly task: TaskId
@@ -688,6 +704,10 @@ export type WaitingItem = WaitingBase &
         readonly hold: Hold
       }
     | { readonly _tag: 'RoleWordsRejected'; readonly draft: EventRef; readonly role: RoleName }
+    // A drafted adjustment (ruling 14): a draft for the person (page: Adjustment), and a rejected
+    // draft that waits for a newer one of its drafter.
+    | { readonly _tag: 'Adjustment'; readonly draft: EventRef; readonly hold: Hold }
+    | { readonly _tag: 'AdjustmentRejected'; readonly draft: EventRef }
     | { readonly _tag: 'ChangePoint'; readonly task: TaskId; readonly point: PointId }
     | { readonly _tag: 'Stop'; readonly task: TaskId; readonly stop: Stop }
     | { readonly _tag: 'EvaluationForOwner'; readonly evaluation: EvaluationId }
@@ -697,6 +717,7 @@ export type WaitingItem = WaitingBase &
         readonly about:
           | { readonly _tag: 'Direction'; readonly direction: DirectionId }
           | { readonly _tag: 'NewDirection' }
+          | { readonly _tag: 'Roles' }
       }
     | { readonly _tag: 'DecideResult'; readonly result: ResultId; readonly leaf: DeciderLeaf }
     // A maker that waits for a file that another maker holds (one maker per file at a time).
@@ -735,6 +756,8 @@ export const SURFACES = {
   DraftVetoed: { cli: true, page: 'None' },
   RoleWords: { cli: true, page: 'RoleWords' },
   RoleWordsRejected: { cli: true, page: 'None' },
+  Adjustment: { cli: true, page: 'Adjustment' },
+  AdjustmentRejected: { cli: true, page: 'None' },
   ChangePoint: { cli: true, page: 'None' },
   Stop: { cli: true, page: 'None' },
   EvaluationForOwner: { cli: true, page: 'None' },

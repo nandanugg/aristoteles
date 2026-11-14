@@ -9,7 +9,9 @@ import { checkNextCanAct, main } from './code.js'
 const CHECK_NEXT = process.env.WORK_CHECK_NEXT === '1'
 
 // Ruling 2026-11-14 (brief limits leave room for the guide): the limits sit above the tier's
-// guide text, which counts in the brief.
+// guide text, which counts in the brief. Ruling 7, onboarding 2026-11-14: each agent role says its
+// persistence and its icon; the high and medium roles keep their terminals, the low ones run as
+// subagents.
 export const WORK_YAML = `people:
   - name: Nanda
 limits:
@@ -25,6 +27,10 @@ roles:
       - Split the TSD into sections with work task split.
       - Suggest a direction change with work direction revise when a Reject has no rule.
     acts: [{ approve: [section-lead, writer] }]
+    persistence:
+      persistent: true
+      why: It holds the TSD for the whole project and starts the lower roles.
+    icon: compass
   section-lead:
     tier: medium
     description: Runs one section - assigns the writer and the linter, and decides the section.
@@ -33,6 +39,10 @@ roles:
       - Assign the writer, then the linter on each result, with work assign.
       - Escalate with work escalate when the directions do not fit.
     acts: [{ approve: [writer] }]
+    persistence:
+      persistent: true
+      why: It runs one section through its writers and linters until it decides the section.
+    icon: layers
   writer:
     tier: low
     description: Writes one TSD section from its brief.
@@ -42,6 +52,10 @@ roles:
       - Report it with work report as <file>#<section>.
     output: "<file>#<section>"
     acts: [{ do: write one TSD section }]
+    persistence:
+      persistent: false
+      why: It writes one section once, from its brief.
+    icon: feather
   linter:
     tier: low
     description: Checks one section against the rules in its checks.
@@ -50,8 +64,14 @@ roles:
       - Give one --evidence line for each rule in your checks.
       - Reject with one --point for each rule that the section breaks.
     acts: [{ review: [writer] }]
+    persistence:
+      persistent: false
+      why: It checks one section once against the rules in its checks.
+    icon: shield-check
 `
 
+// P10 rejected, onboarding 2026-11-14: a direction starts with at least 3 cases, real code of the
+// fixture's files that follows it or breaks it.
 export const DIRECTION = `id: tsd-writing
 name: TSD writing
 owner: Nanda
@@ -68,6 +88,10 @@ standards:
     says: Tell the story first, in plain words.
     rules:
       - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }
+cases:
+  - { file: docs/facts.md, line: 5, excerpt: The export ran twice for one merchant., fit: Follows }
+  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
+  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
 `
 
 export const TASK = `name: The Introduction
@@ -257,7 +281,8 @@ export async function reported(files) {
   return { ...s, linter }
 }
 
-// A small code project: a lead, an implementer that reports <repo>@<commit>, and a gate.
+// A small code project: a lead, an implementer that reports <repo>@<commit>, and a gate. Ruling 7,
+// onboarding 2026-11-14: persistence and icon, as in WORK_YAML; the gate has an icon only.
 export const CODE_YAML = `people:
   - name: Nanda
 limits:
@@ -271,6 +296,10 @@ roles:
     responsibilities:
       - Evaluate a fix whose implementer used its last try on a fault, with work evaluate.
     acts: [{ approve: [lead, implementer] }]
+    persistence:
+      persistent: true
+      why: It keeps every fix of the project on its directions and evaluates a fix that fails.
+    icon: compass
   lead:
     tier: medium
     description: Runs one fix - assigns the implementer and decides the fix.
@@ -278,6 +307,10 @@ roles:
     responsibilities:
       - Assign the implementer with work assign.
     acts: [{ approve: [implementer] }]
+    persistence:
+      persistent: true
+      why: It runs one fix through the implementer until it decides the fix.
+    icon: layers
   implementer:
     tier: low
     description: Makes one fix as one commit in the workspace repo.
@@ -286,12 +319,17 @@ roles:
       - Commit the fix in <repo> and report it as <repo>@<commit>.
     output: "<repo>@<commit>"
     acts: [{ do: make one fix }]
+    persistence:
+      persistent: false
+      why: It makes one fix once, as one commit.
+    icon: wrench
   gate:
     kind: program
     run: "test -f ok.txt"
     on: report
     checks: [suite-passes]
     acts: [{ review: [implementer] }]
+    icon: terminal
 `
 export const CODE_DIRECTION = `id: fixes
 name: Fixes
@@ -302,6 +340,10 @@ standards:
     says: The suite passes on the fix.
     rules:
       - { id: suite-passes, says: "The suite passes on the reported commit", checkedBy: gate }
+cases:
+  - { file: app/ok.txt, line: 1, excerpt: ok, fit: Follows }
+  - { file: aristoteles.yaml, line: 43, excerpt: 'run: "test -f ok.txt"', fit: Follows }
+  - { file: task.yaml, line: 2, excerpt: Fix the key so that the test passes., fit: Follows }
 `
 export const CODE_TASK = `name: Fix the key
 text: Fix the key so that the test passes.

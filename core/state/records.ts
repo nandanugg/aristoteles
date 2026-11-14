@@ -27,6 +27,7 @@ import {
   type StandardEntry,
   type Task,
   type TaskId,
+  type Tier,
   type Time,
   type Under,
   type Version,
@@ -95,6 +96,22 @@ export const roleNameOf = (w: Work, by: By): RoleName | undefined =>
   isAssignment(by) ? assignmentAt(w, by).role : undefined
 export const tierOf = (role: Role | undefined): string | undefined =>
   role?._tag === 'Model' ? role.tier : undefined
+// The tier of an assignment, kept at its give (ruling 13): the host's is high, an agent's is the
+// tier of its persistent agent, a program has none. A later change of the role's tier changes no
+// open assignment.
+export const tierOfAssignment = (w: Work, a: Assignment): Tier | null => {
+  switch (a.runs._tag) {
+    case 'Host':
+      return 'high'
+    case 'Agent':
+      return w.agents.get(a.runs.agent)?.tier ?? null
+    case 'Subagent':
+    case 'NoRun':
+      return a.runs.tier
+    case 'Program':
+      return null
+  }
+}
 
 // --- the trees -----------------------------------------------------------------------------------
 

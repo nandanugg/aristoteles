@@ -46,15 +46,33 @@ exports[`readConfig an unknown key 1`] = `
 }
 `;
 
-exports[`readConfig tiers: luna 1`] = `
+// Ruling 10, onboarding 2026-11-14: a luna reads (was refused).
+exports[`readConfig tiers: luna 1`] = `"ok"`;
+
+exports[`readConfig tiers: a model and {model} in launch and resume 1`] = `"ok"`;
+
+exports[`readConfig tiers: {model} in launch with no model 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.luna: only sol and terra run in terminals (a luna is a subagent)",
+  "refused": "aristoteles.yaml: tiers.sol.launch names {model}, and tiers.sol.model is not set",
 }
 `;
 
+exports[`readConfig tiers: {model} in resume with no model 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.sol.resume names {model}, and tiers.sol.model is not set",
+}
+`;
+
+exports[`readConfig tiers: a tier that is not one 1`] = `
+{
+  "refused": "aristoteles.yaml: tiers.moon is not a tier (sol, terra, luna)",
+}
+`;
+
+// Ruling 10, onboarding 2026-11-14 (P9): the list names model.
 exports[`readConfig tiers: a key that is not a setting 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.bogus is not a setting of a tier (launch, resume, start, skills, errors, prompts, silentMinutes, retryInput)",
+  "refused": "aristoteles.yaml: tiers.sol.bogus is not a setting of a tier (model, launch, resume, start, skills, errors, prompts, silentMinutes, retryInput)",
 }
 `;
 
@@ -228,6 +246,54 @@ exports[`readConfig a role with no acts 1`] = `
 }
 `;
 
+exports[`readConfig a role with no persistence 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets a terminal of its own; a disposable role runs as a subagent)",
+}
+`;
+
+exports[`readConfig a role whose persistence has no why 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets a terminal of its own; a disposable role runs as a subagent)",
+}
+`;
+
+exports[`readConfig a role whose persistence is a word 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets a terminal of its own; a disposable role runs as a subagent)",
+}
+`;
+
+exports[`readConfig a role whose persistence has another key 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets a terminal of its own; a disposable role runs as a subagent)",
+}
+`;
+
+exports[`readConfig a role with no icon 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: icon is required: one of bot, book-open, brain, clipboard-check, compass, crown, eye, feather, file-text, flask-conical, gavel, git-branch, hammer, layers, lightbulb, list-checks, map, microscope, pen-tool, puzzle, scale, search, shield-check, sparkles, telescope, terminal, user-cog, wrench",
+}
+`;
+
+exports[`readConfig a role with an icon outside the set 1`] = `
+{
+  "refused": "aristoteles.yaml roles.writer: icon is required: one of bot, book-open, brain, clipboard-check, compass, crown, eye, feather, file-text, flask-conical, gavel, git-branch, hammer, layers, lightbulb, list-checks, map, microscope, pen-tool, puzzle, scale, search, shield-check, sparkles, telescope, terminal, user-cog, wrench",
+}
+`;
+
+exports[`readConfig a program with no icon 1`] = `
+{
+  "refused": "aristoteles.yaml roles.linter: icon is required: one of bot, book-open, brain, clipboard-check, compass, crown, eye, feather, file-text, flask-conical, gavel, git-branch, hammer, layers, lightbulb, list-checks, map, microscope, pen-tool, puzzle, scale, search, shield-check, sparkles, telescope, terminal, user-cog, wrench",
+}
+`;
+
+exports[`readConfig a program with a persistence 1`] = `
+{
+  "refused": "aristoteles.yaml roles.linter: a program runs in the CLI, never in a terminal: remove its persistence",
+}
+`;
+
 exports[`readConfig an act with two keys 1`] = `
 {
   "refused": "aristoteles.yaml roles.writer: each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, { change: [direction ids] }",
@@ -334,10 +400,11 @@ exports[`fileHashes and the hash of the mechanism no file 1`] = `
 }
 `;
 
+// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`fileHashes and the hash of the mechanism a good file 1`] = `
 {
   "ok": {
-    "aristoteles.yaml": "d09d738d7f0d0a33a8a11731cdd91b7c5a951fc8b4c155277fda7eedfa8d7e7a",
+    "aristoteles.yaml": "c9b26ff7be09c7fcbe77ba96fb4aca694fcfdbbdc1a9b3fc04a134dfa6c66bdb",
   },
 }
 `;
@@ -358,6 +425,7 @@ exports[`fileHashes and the hash of the mechanism an empty file 1`] = `
 }
 `;
 
+// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig the stored text and a file with other settings 1`] = `
 "people: 
   - name: Nanda
@@ -379,6 +447,10 @@ roles:
     acts: 
       - do: write
     timeout: 60
+    persistence: 
+      persistent: false
+      why: it does one piece of work once
+    icon: feather
   checker: 
     tier: medium
     description: checks
@@ -391,6 +463,11 @@ roles:
           - writer
       - approve: 
           - writer
+    persistence: 
+      &persistence
+      persistent: true
+      why: it leads the project
+    icon: eye
   boss: 
     tier: high
     description: leads
@@ -402,6 +479,9 @@ roles:
           - writer
       - change: 
           - tsd
+    persistence: 
+      *persistence
+    icon: crown
   linter: 
     kind: program
     run: ./lint
@@ -411,6 +491,7 @@ roles:
           - writer
     checks: 
       - r1
+    icon: terminal
 decide: 
   - resultsOf: writer
     by: 
@@ -422,6 +503,7 @@ theme: light
 "
 `;
 
+// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig a stored text with no settings, a file with some 1`] = `
 "theme: dark
 sound: true
@@ -450,6 +532,10 @@ roles:
     acts: 
       - do: write
     timeout: 60
+    persistence: 
+      persistent: false
+      why: it does one piece of work once
+    icon: feather
   checker: 
     tier: medium
     description: checks
@@ -462,6 +548,11 @@ roles:
           - writer
       - approve: 
           - writer
+    persistence: 
+      &persistence
+      persistent: true
+      why: it leads the project
+    icon: eye
   boss: 
     tier: high
     description: leads
@@ -473,6 +564,9 @@ roles:
           - writer
       - change: 
           - tsd
+    persistence: 
+      *persistence
+    icon: crown
   linter: 
     kind: program
     run: ./lint
@@ -482,6 +576,7 @@ roles:
           - writer
     checks: 
       - r1
+    icon: terminal
 decide: 
   - resultsOf: writer
     by: 
@@ -491,6 +586,7 @@ decide:
 "
 `;
 
+// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig no file now 1`] = `
 "people: 
   - name: Nanda
@@ -512,6 +608,10 @@ roles:
     acts: 
       - do: write
     timeout: 60
+    persistence: 
+      persistent: false
+      why: it does one piece of work once
+    icon: feather
   checker: 
     tier: medium
     description: checks
@@ -524,6 +624,11 @@ roles:
           - writer
       - approve: 
           - writer
+    persistence: 
+      &persistence
+      persistent: true
+      why: it leads the project
+    icon: eye
   boss: 
     tier: high
     description: leads
@@ -535,6 +640,9 @@ roles:
           - writer
       - change: 
           - tsd
+    persistence: 
+      *persistence
+    icon: crown
   linter: 
     kind: program
     run: ./lint
@@ -544,6 +652,7 @@ roles:
           - writer
     checks: 
       - r1
+    icon: terminal
 decide: 
   - resultsOf: writer
     by: 
@@ -553,6 +662,7 @@ decide:
 "
 `;
 
+// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig a file now that does not parse 1`] = `
 "people: 
   - name: Nanda
@@ -574,6 +684,10 @@ roles:
     acts: 
       - do: write
     timeout: 60
+    persistence: 
+      persistent: false
+      why: it does one piece of work once
+    icon: feather
   checker: 
     tier: medium
     description: checks
@@ -586,6 +700,11 @@ roles:
           - writer
       - approve: 
           - writer
+    persistence: 
+      &persistence
+      persistent: true
+      why: it leads the project
+    icon: eye
   boss: 
     tier: high
     description: leads
@@ -597,6 +716,9 @@ roles:
           - writer
       - change: 
           - tsd
+    persistence: 
+      *persistence
+    icon: crown
   linter: 
     kind: program
     run: ./lint
@@ -606,6 +728,7 @@ roles:
           - writer
     checks: 
       - r1
+    icon: terminal
 decide: 
   - resultsOf: writer
     by: 
@@ -615,6 +738,7 @@ decide:
 "
 `;
 
+// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig a stored text with comments 1`] = `
 "# schema line
 # second
@@ -638,6 +762,10 @@ roles:
     acts: 
       - do: write
     timeout: 60
+    persistence: 
+      persistent: false
+      why: it does one piece of work once
+    icon: feather
   checker: 
     tier: medium
     description: checks
@@ -650,6 +778,11 @@ roles:
           - writer
       - approve: 
           - writer
+    persistence: 
+      &persistence
+      persistent: true
+      why: it leads the project
+    icon: eye
   boss: 
     tier: high
     description: leads
@@ -661,6 +794,9 @@ roles:
           - writer
       - change: 
           - tsd
+    persistence: 
+      *persistence
+    icon: crown
   linter: 
     kind: program
     run: ./lint
@@ -670,6 +806,7 @@ roles:
           - writer
     checks: 
       - r1
+    icon: terminal
 decide: 
   - resultsOf: writer
     by: 

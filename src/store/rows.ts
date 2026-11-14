@@ -25,11 +25,13 @@ const actorText = (actor: Actor) => ('run' in actor ? `${actor.name} run ${actor
 const byText = (by: By) => (typeof by === 'string' ? by : actorText(by))
 const problemActorText = (by: ProblemActor) => (by._tag === 'Host' ? by.assignment : by.name)
 
-// The id that a suggestion is about; null: it asks for a new direction.
+// The id that a suggestion is about; null: it asks for a new direction; roles: the roles (P7).
 const aboutId = (about: SuggestionAbout): string | null => {
   switch (about._tag) {
     case 'NewDirection':
       return null
+    case 'Roles':
+      return 'roles'
     case 'Direction':
       return about.direction
     case 'Standard':
@@ -137,8 +139,14 @@ export const rowsOf = (work: Work, dir: string): ReadonlyArray<ReaderRow> => {
       direction: x.of,
       base: x._tag === 'Change' ? x.base : null,
       says: x.says,
-      // An import's old author was the refresh as a run of its commit.
-      by: x.origin._tag === 'Written' ? byText(x.origin.by) : `refresh run ${x.origin.commit}`,
+      // An import's old author was the refresh as a run of its commit; an onboarded draft's
+      // author is the store start of onboarding, by its event.
+      by:
+        x.origin._tag === 'Written'
+          ? byText(x.origin.by)
+          : x.origin._tag === 'Imported'
+            ? `refresh run ${x.origin.commit}`
+            : `onboarding ${x.origin.event}`,
       // The old column held the reviser's words: its words when given, else its reason.
       why: x.why._tag === 'Given' ? (x.why.words ?? x.why.reason) : null,
       at: x.when,

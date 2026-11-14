@@ -14,8 +14,9 @@
 // kinds share a pattern for (an escalation, a resolve, a reject).
 import { Schema } from 'effect'
 import { Author } from './actor.ts'
-import { Level, Reason } from './closed.ts'
+import { Level, Reason, Tier } from './closed.ts'
 import {
+  Cases,
   CompanyCheckers,
   CompanyFolder,
   ConfigFile,
@@ -23,7 +24,9 @@ import {
   DirectionFile,
   ExternalSource,
   PartFile,
+  PersistenceFile,
   ReviseFile,
+  RoleFile,
   RoleWords,
   Snapshot,
   type TaskFile,
@@ -31,6 +34,7 @@ import {
   type Workspace,
 } from './files.ts'
 import {
+  AgentId,
   AnswerId,
   AssignmentId,
   DirectionId,
@@ -169,8 +173,21 @@ const Failure = Schema.Literals(['ended', 'error', 'silent'])
 
 // --- the workflow, roles, runs, terminals and sends ---------------------------------------------
 
-// work init (old config), and later changes of the words of roles (old config.text). A dir has
-// one workflow: its move names no id.
+// An accepted direction of onboarding, as the store start keeps it (Question 20, option A): its
+// file, its cases, and where it comes from, so that a company direction stays one and the daily
+// refresh follows it (P8).
+export const OnboardedDirection = Schema.Struct({
+  direction: DirectionFile,
+  cases: Cases,
+  source: Schema.Union([
+    Schema.TaggedStruct('Local', {}),
+    Schema.TaggedStruct('External', ExternalSource.fields),
+  ]),
+})
+export type OnboardedDirection = typeof OnboardedDirection.Type
+
+// work init (old config), or the store start of onboarding with the accepted directions; later
+// changes of the words of roles (old config.text). A dir has one workflow: its move names no id.
 export const WorkflowMove = Schema.Union([
   Schema.TaggedStruct('RoleWordsChanged', {
     roles: Schema.Record(Text, RoleWords),
@@ -185,6 +202,7 @@ const Workflow = Schema.Union([
       config: ConfigFile,
       hashes: Schema.Record(Text, Text),
       texts: Schema.Record(Text, Text),
+      directions: Schema.Array(OnboardedDirection),
     }),
   ),
   Schema.TaggedStruct('Workflow', { move: WorkflowMove }),
@@ -205,6 +223,34 @@ export const RoleMove = Schema.Union([
   Schema.TaggedStruct('WordsRejected', { draft: EventRef, reason: NonBlank }),
 ])
 const Role = moved('Role', RoleName, RoleMove)
+// A persistent agent (P3): the fold makes it at the first give of its role in a run; the
+// supervisor starts its terminal later, in a session that it makes.
+export const AgentMove = Schema.Union([Schema.TaggedStruct('Started', { session: SessionId })])
+const Agent = moved('Agent', AgentId, AgentMove)
+// After the store starts, a role or a direction changes by an adjustment (ruling 14): a high agent
+// or a model run drafts one change, and the person accepts it or rejects it with a reason. The
+// draft is named by its event (P5); an accept of a role adjustment holds the new text of
+// aristoteles.yaml, as a change of role words does.
+export const Adjustment = Schema.Union([
+  Schema.TaggedStruct('AddRole', { role: RoleName, file: RoleFile }),
+  Schema.TaggedStruct('RemoveRole', { role: RoleName }),
+  Schema.TaggedStruct('SetTier', { role: RoleName, tier: Tier }),
+  Schema.TaggedStruct('SetPersistence', { role: RoleName, persistence: PersistenceFile }),
+  Schema.TaggedStruct('RetireDirection', { direction: DirectionId }),
+  Schema.TaggedStruct('SetCases', { direction: DirectionId, cases: Cases }),
+])
+export type Adjustment = typeof Adjustment.Type
+export const AdjustmentMove = Schema.Union([
+  Schema.TaggedStruct('Accepted', {
+    hashes: Schema.Record(Text, Text),
+    texts: Schema.Record(Text, Text),
+  }),
+  Schema.TaggedStruct('Rejected', { reason: NonBlank }),
+])
+const AdjustmentEvent = Schema.Union([
+  created('Adjustment', Schema.TaggedStruct('Drafted', { adjustment: Adjustment })),
+  moved('Adjustment', EventRef, AdjustmentMove),
+])
 // A pane of the person's own tmux server: its socket ($TMUX) and its pane id ($TMUX_PANE).
 export const PersonPane = { socket: Text, pane: Text }
 // A run of the UI (work run start, continue, done, close). HostMoved: the AI CLI that the person
@@ -527,6 +573,8 @@ const Suggestion = created(
       Schema.TaggedStruct('Direction', { direction: DirectionId }),
       Schema.TaggedStruct('Standard', { key: Text }),
       Schema.TaggedStruct('Rule', { key: Text }),
+      // The roles of the workflow (P7): a model drafts the adjustment that the words ask for.
+      Schema.TaggedStruct('Roles', {}),
     ]),
     says: NonBlank,
   }),
@@ -542,30 +590,38 @@ export const Why = Schema.Union([
 ])
 // A draft (a Revision) of a direction: the whole of a new one (the CLI word: direction new), a
 // change of its current version (direction revise), or a commit of a company direction (the
-// daily refresh). Its state (waiting, vetoed, official) follows from the reviews.
-const Revision = created(
-  'Revision',
-  Schema.Union([
-    Schema.TaggedStruct('Drafted', {
-      direction: DirectionFile,
-      answers: Schema.Array(AnswerId),
-      why: Why,
-    }),
-    Schema.TaggedStruct('Revised', {
-      direction: DirectionId,
-      edit: ReviseFile,
-      answers: Schema.Array(AnswerId),
-      why: Why,
-    }),
-    Schema.TaggedStruct('Imported', {
-      direction: DirectionId,
-      source: ExternalSource,
-      folder: CompanyFolder,
-      owner: Text,
-      checkers: CompanyCheckers,
-    }),
-  ]),
-)
+// daily refresh). Its state (waiting, vetoed, official) follows from the reviews. A new direction
+// starts with its cases (P10 rejected, onboarding 2026-11-14); a revise has none, since cases make
+// no new version (ruling 4). A company draft of a new direction gets its cases from a model before
+// the accept (CasesAdded: the latest counts).
+export const RevisionMove = Schema.Union([Schema.TaggedStruct('CasesAdded', { cases: Cases })])
+const Revision = Schema.Union([
+  created(
+    'Revision',
+    Schema.Union([
+      Schema.TaggedStruct('Drafted', {
+        direction: DirectionFile,
+        cases: Cases,
+        answers: Schema.Array(AnswerId),
+        why: Why,
+      }),
+      Schema.TaggedStruct('Revised', {
+        direction: DirectionId,
+        edit: ReviseFile,
+        answers: Schema.Array(AnswerId),
+        why: Why,
+      }),
+      Schema.TaggedStruct('Imported', {
+        direction: DirectionId,
+        source: ExternalSource,
+        folder: CompanyFolder,
+        owner: Text,
+        checkers: CompanyCheckers,
+      }),
+    ]),
+  ),
+  moved('Revision', RevisionId, RevisionMove),
+])
 // The act that a permission gives (every act but Do; the CLI word: grant --act).
 export const GrantedAct = Schema.Union([
   Schema.TaggedStruct('Review', { resultsOf: Schema.Array(RoleName) }),
@@ -630,6 +686,8 @@ const Forward = Schema.Union([
 export const Event = Schema.Union([
   ...Workflow.members,
   Role,
+  Agent,
+  ...AdjustmentEvent.members,
   ...Run.members,
   TaskDraft,
   ...Problem.members,
@@ -644,7 +702,7 @@ export const Event = Schema.Union([
   Note,
   Evaluation,
   Suggestion,
-  Revision,
+  ...Revision.members,
   ...Permission.members,
   ...Source.members,
   Checkpoint,
@@ -751,6 +809,8 @@ export const WRITTEN_BY = {
     'Suggestion.Suggestion',
     'Revision.Drafted',
     'Revision.Revised',
+    'Revision.CasesAdded',
+    'Adjustment.Drafted',
     'Permission.Granted',
     'Permission.Revoked',
     'Source.Moved',
@@ -792,17 +852,22 @@ export const WRITTEN_BY = {
     'Permission.Granted',
     'Permission.Revoked',
     'Forward.Confirmed',
+    'Adjustment.Accepted',
+    'Adjustment.Rejected',
   ],
   // A host run before it has an assignment: its task draft.
   Host: ['TaskDraft.Drafted'],
   // A model run outside any task: its draft of a new direction, its revise of a direction that
   // has a version (a host revises a direction, ruling 2026-11-14), the fit of a role (the host
-  // that drafted the roles records their fits, Nanda 2026-11-13), and new words of a role. The AI
-  // CLI that the person triggers in a pane: it starts a run there, or continues a run there on
-  // the person's quoted words, and then takes the terminal of the run's Sol with a new token.
+  // that drafted the roles records their fits, Nanda 2026-11-13), new words of a role, the cases
+  // of a company draft, and an adjustment (onboarding). The AI CLI that the person triggers in a
+  // pane: it starts a run there, or continues a run there on the person's quoted words, and then
+  // takes the terminal of the run's Sol with a new token.
   ModelRun: [
     'Revision.Drafted',
     'Revision.Revised',
+    'Revision.CasesAdded',
+    'Adjustment.Drafted',
     'Role.Fitted',
     'Role.WordsDrafted',
     'Run.HostJoined',
@@ -811,9 +876,10 @@ export const WRITTEN_BY = {
   ],
   // The CLI's own assign and finish of a program.
   System: ['Assignment.GivenReviewer', 'Assignment.Finished'],
-  // The supervisor of the terminals: its sessions, what it sees, its sends and their fate, and
-  // the problems that it records and fixes.
+  // The supervisor of the terminals: its sessions, what it sees, its sends and their fate, the
+  // problems that it records and fixes, and the start of a persistent agent's terminal.
   Supervisor: [
+    'Agent.Started',
     'Terminal.Started',
     'Terminal.Failed',
     'Terminal.Prompted',

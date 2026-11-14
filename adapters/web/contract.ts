@@ -5,6 +5,7 @@
 // tagged `shown` in the domain, and the wire has `kind` and `shown: boolean`.
 import { Schema, SchemaGetter } from 'effect'
 import {
+  AdjustmentSchema,
   AssignmentId,
   EventRef,
   ProblemId,
@@ -74,6 +75,8 @@ const DecisionDomain = Schema.Union([
   Schema.TaggedStruct('Confirm', { ...DecisionBase, quote: Text }),
   // New words of a role (ruling 2026-11-14).
   Schema.TaggedStruct('RoleWords', { ...DecisionBase, role: Text, lines: Schema.Array(Text) }),
+  // A drafted adjustment (ruling 14).
+  Schema.TaggedStruct('Adjustment', { ...DecisionBase, adjustment: AdjustmentSchema }),
 ])
 type DecisionEncoded = typeof DecisionDomain.Encoded
 
@@ -102,6 +105,11 @@ const DecisionWire = Schema.Union([
     ...WireBase,
     role: Text,
     lines: Schema.Array(Text),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal('adjustment'),
+    ...WireBase,
+    adjustment: Schema.toEncoded(AdjustmentSchema),
   }),
 ])
 type DecisionWireType = typeof DecisionWire.Type
@@ -133,6 +141,8 @@ const toWire = (d: DecisionEncoded): DecisionWireType => {
       return { kind: 'confirm', ...base, hope: null, quote: d.quote }
     case 'RoleWords':
       return { kind: 'roleWords', ...base, hope: null, role: d.role, lines: d.lines }
+    case 'Adjustment':
+      return { kind: 'adjustment', ...base, hope: null, adjustment: d.adjustment }
   }
 }
 
@@ -161,6 +171,8 @@ const fromWire = (w: DecisionWireType): DecisionEncoded => {
       return { _tag: 'Confirm', ...base, quote: w.quote }
     case 'roleWords':
       return { _tag: 'RoleWords', ...base, role: w.role, lines: w.lines }
+    case 'adjustment':
+      return { _tag: 'Adjustment', ...base, adjustment: w.adjustment }
   }
 }
 
@@ -402,7 +414,7 @@ export const PageAct = Schema.Union([
   Schema.Struct({
     act: Schema.Literal('resume'),
     session: SessionId,
-    tier: Schema.Literals(['sol', 'terra']),
+    tier: Schema.Literals(['sol', 'terra', 'luna']),
   }),
   Schema.Struct({ act: Schema.Literal('fixed'), problem: ProblemId }),
   Schema.Struct({
@@ -417,6 +429,9 @@ export const PageAct = Schema.Union([
   Schema.Struct({ act: Schema.Literal('settings'), settings: SettingsChange }),
   Schema.Struct({ act: Schema.Literal('accept-words'), draft: EventRef }),
   Schema.Struct({ act: Schema.Literal('reject-words'), draft: EventRef, reason: Text }),
+  // The person decides a drafted adjustment (ruling 14).
+  Schema.Struct({ act: Schema.Literal('accept-adjustment'), draft: EventRef }),
+  Schema.Struct({ act: Schema.Literal('reject-adjustment'), draft: EventRef, reason: Text }),
 ])
 export type PageAct = typeof PageAct.Type
 export const ACTS = [
@@ -434,6 +449,8 @@ export const ACTS = [
   'settings',
   'accept-words',
   'reject-words',
+  'accept-adjustment',
+  'reject-adjustment',
 ] as const
 
 // The answer of an act: { out } (and { run, session } for a new project), or { error }.

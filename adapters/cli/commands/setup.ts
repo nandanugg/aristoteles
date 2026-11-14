@@ -37,7 +37,7 @@ const roleIn = (roles: Readonly<Record<string, RoleFile>>, name: string): RoleFi
 const init: Command = () =>
   Effect.gen(function* () {
     const by = yield* personAuthor(undefined)
-    const done = yield* act(by, { _tag: 'DefineWorkflow', target: {}, content: {} })
+    const done = yield* act(by, { _tag: 'DefineWorkflow', target: {}, content: { directions: [] } })
     const { config } = done.work
     const roles = Object.keys(config.roles)
     const withModel = roles.filter((r) => config.roles[r]?.kind !== 'program')

@@ -69,8 +69,10 @@ describe('F-Q2 one maker for each file: a task with no workspace', () => {
 
   test('a maker whose output names no file reports a file of the project folder, with no workspace', async () => {
     // A note-taker: a maker whose output form names no file, so its assign is not refused.
+    // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
     const NOTER = '  noter:\n    tier: low\n    description: Writes a note.\n    intro: You write one note.\n' +
-      '    responsibilities:\n      - Write the note.\n    output: "<link>"\n    acts: [{ do: write one note }]\n'
+      '    responsibilities:\n      - Write the note.\n    output: "<link>"\n    acts: [{ do: write one note }]\n' +
+      '    persistence: { persistent: false, why: It writes one note once. }\n    icon: pen-tool\n'
     const yaml = WORK_YAML.replace('acts: [{ approve: [writer] }]', 'acts: [{ approve: [writer, noter] }]').replace('  linter:\n', `${NOTER}  linter:\n`)
     const { p, lead } = await started({ 'aristoteles.yaml': yaml })
     ok(await p.nanda('role fit noter --answers=fit.yaml'))

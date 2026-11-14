@@ -384,6 +384,7 @@ const KIND = {
   end: 'The end of the project',
   confirm: 'Your words, relayed',
   roleWords: 'New words of a role',
+  adjustment: 'An adjustment',
 }
 const kindOf = (item: Decision): keyof typeof KIND => {
   switch (item._tag) {
@@ -397,6 +398,8 @@ const kindOf = (item: Decision): keyof typeof KIND => {
       return 'confirm'
     case 'RoleWords':
       return 'roleWords'
+    case 'Adjustment':
+      return 'adjustment'
   }
 }
 function Item({ item }: { item: Decision }) {
@@ -438,8 +441,12 @@ function Item({ item }: { item: Decision }) {
   const words = Schema.decodeUnknownSync(EventRef)
   const acceptWords = () => post({ act: 'accept-words', draft: words(item.id) })
   const rejectWords = () => post({ act: 'reject-words', draft: words(item.id), reason: comment })
+  const acceptAdjustment = () => post({ act: 'accept-adjustment', draft: words(item.id) })
+  const rejectAdjustment = () =>
+    post({ act: 'reject-adjustment', draft: words(item.id), reason: comment })
   // A decision takes one comment: a reject needs it, an accept does not.
-  const decides = kind === 'direction' || kind === 'end' || kind === 'roleWords'
+  const decides =
+    kind === 'direction' || kind === 'end' || kind === 'roleWords' || kind === 'adjustment'
   const noComment = !comment.trim()
   // New words of a role read as a change too: each word of now, then its drafted word.
   const change =
@@ -480,6 +487,10 @@ function Item({ item }: { item: Decision }) {
         <button class="btn primary" onClick=${run(acceptWords)}>Accept the words</button>
         <button class="btn" disabled=${noComment}
           onClick=${run(rejectWords)}>Reject the words</button>` : ''}
+      ${kind === 'adjustment' ? html`
+        <button class="btn primary" onClick=${run(acceptAdjustment)}>Accept</button>
+        <button class="btn" disabled=${noComment}
+          onClick=${run(rejectAdjustment)}>Reject</button>` : ''}
     </div>
   </div>`
 }

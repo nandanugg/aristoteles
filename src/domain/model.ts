@@ -30,14 +30,16 @@ import type {
   Stop as StopSchema,
   Why as WhySchema,
 } from './events.ts'
-import type { ContextKey, Snapshot } from './files.ts'
+import type { Case, ContextKey, Snapshot } from './files.ts'
 import type {
+  AgentId,
   AnswerId,
   AssignmentId,
   CheckpointId,
   DirectionId,
   EscalationId,
   EvaluationId,
+  EventRef,
   ExhaustionId,
   NonBlank,
   NoteId,
@@ -51,6 +53,7 @@ import type {
   RevisionId,
   RoleName,
   RuleEntry,
+  RunId,
   StandardEntry,
   SuggestionId,
   TaskId,
@@ -61,7 +64,7 @@ import type {
 export type Text = string
 export type { NonBlank }
 export type NonEmpty<A> = readonly [A, ...A[]]
-export type { Level, Principle, Reason, Snapshot, Tier }
+export type { Case, Level, Principle, Reason, Snapshot, Tier }
 
 // A map with at least one key. Only a smart constructor makes one (context.ts whereOf).
 declare const nonEmptyMap: unique symbol
@@ -138,11 +141,13 @@ export type Version<T extends Versioned> = ContentOf<T> & {
 // page: Revision.why: none given, or one of the five reasons with the reviser's words or none.
 export type Why = typeof WhySchema.Type
 
-// Who wrote a draft, and where from: one fact with two forms. A model of this dir writes it, or
+// Who wrote a draft, and where from: one fact with three forms. A model of this dir writes it,
 // the daily refresh imports a commit of the company repo of its direction (the repo and the
-// folder are the Direction's source).
+// folder are the Direction's source), or the store start of onboarding holds it (Question 20,
+// option A: the person accepted it on the page, so no draft event and no accept event exist).
 export type RevisionOrigin =
   | { readonly _tag: 'Written'; readonly by: Reviser }
+  | { readonly _tag: 'Onboarded'; readonly event: EventRef } // the start event: e1
   | {
       readonly _tag: 'Imported'
       readonly commit: Text
@@ -152,10 +157,12 @@ export type RevisionOrigin =
     }
 
 // page: Revision<T>. A draft of T: a new one, or a change of a version. Its reviews point to it
-// (Review.of); it is official when a version has it as its revision.
+// (Review.of); it is official when a version has it as its revision. A new one holds the cases
+// that its accept gives the direction (P10 rejected, onboarding 2026-11-14): 3 or more, or none
+// yet for a company draft until a model adds them; a change holds none (ruling 4).
 export type Revision<T extends Versioned> = ContentOf<T> &
   (
-    | { readonly _tag: 'New' } // page: no base; it becomes version 1
+    | { readonly _tag: 'New'; readonly cases: ReadonlyArray<Case> } // page: no base; version 1
     | { readonly _tag: 'Change'; readonly base: VersionId } // the version that it changes
   ) & {
     readonly id: RevisionId // not on the page: d3
@@ -183,6 +190,7 @@ export type SuggestionAbout =
   | { readonly _tag: 'Direction'; readonly direction: DirectionId }
   | { readonly _tag: 'Standard'; readonly standard: StandardEntry }
   | { readonly _tag: 'Rule'; readonly rule: RuleEntry }
+  | { readonly _tag: 'Roles' } // P7: the roles of the workflow; a model drafts the adjustment
 
 // page: Permission. One act, for a time: it covers an act from its own time (when) to its until,
 // and before its revoke. No grant gives Do: a maker is a role. The CLI words: grant, revoke.
@@ -246,12 +254,23 @@ export interface Limits {
 // page: playedBy: derived (derived.ts playedBy): the tier's model, or the program's name; a
 // person plays no role. Its words are the Work's config (Work.config.roles), kept once.
 export type Role = RoleBase &
-  ({ readonly _tag: 'Model'; readonly tier: Tier } | { readonly _tag: 'Program' })
+  (
+    | { readonly _tag: 'Model'; readonly tier: Tier; readonly persistence: Persistence }
+    | { readonly _tag: 'Program' }
+  )
 interface RoleBase {
   readonly role: RoleName // the system's own name: 'writer', 'linter'
+  readonly icon: Text // an icon of the page (closed.ts ROLE_ICONS), on the card of the role
   readonly acts: ReadonlyArray<Act>
   readonly limits: Limits // the CLI: those of its tier; a program's are all Unlimited
 }
+
+// How a role of a model runs, apart from its tier (ruling 7). The card of the role shows why.
+export type Persistence =
+  // a terminal of its own, for the whole project, so it can start subagents
+  | { readonly _tag: 'Persistent'; readonly why: NonBlank }
+  // a subagent of a terminal, with no terminal of its own, so it starts nothing
+  | { readonly _tag: 'Disposable'; readonly why: NonBlank }
 
 // page: Act. The engine knows four acts; each says on what.
 export type Act =
@@ -288,6 +307,9 @@ interface DirectionBase {
   readonly source:
     | { readonly _tag: 'Local' }
     | { readonly _tag: 'External'; readonly repo: Text; readonly path: Text }
+  // Real code that follows it or breaks it (ruling 4): 3 or more once it is official, none while
+  // it is drafted (its draft holds them). A change of cases makes no new version.
+  readonly cases: ReadonlyArray<Case>
 }
 export type OfficialDirection = Extract<Direction, { readonly _tag: 'Official' }>
 
@@ -416,9 +438,19 @@ interface AssignmentBase {
   readonly parent:
     | { readonly _tag: 'GivenByPerson' }
     | { readonly _tag: 'Parent'; readonly id: AssignmentId }
+  readonly runs: Runs // where it runs, fixed at the give
   readonly when: Time // not on the page
   readonly end: AssignmentEnd // not on the page: the engine's finished
 }
+// page: Assignment.runs (onboarding). An open assignment keeps the tier and the persistence of
+// its role at its give (ruling 13), so the members that no record holds keep the tier (P2).
+export type Runs =
+  | { readonly _tag: 'Host'; readonly run: RunId } // the high role of the top task of a run
+  | { readonly _tag: 'Agent'; readonly agent: AgentId } // the persistent agent of its role
+  | { readonly _tag: 'Subagent'; readonly tier: Tier } // a disposable role: inside a terminal
+  // a persistent role on a task that no run holds (opened at a terminal): no terminal starts
+  | { readonly _tag: 'NoRun'; readonly tier: Tier }
+  | { readonly _tag: 'Program' } // a check program, which the CLI runs
 export type Maker = AssignmentBase & {
   readonly _tag: 'Maker'
   // page: maxAttempts?: how many faults it may make: its parent's number, else its role's limit.

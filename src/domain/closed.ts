@@ -6,6 +6,41 @@ import { Schema } from 'effect'
 export const Tier = Schema.Literals(['low', 'medium', 'high'])
 export type Tier = typeof Tier.Type
 
+// page: RoleBase.icon. The icon of a role on its card (onboarding): a name of the page's set of
+// stroke icons, so that every role has one the page can draw.
+export const ROLE_ICONS = [
+  'bot',
+  'book-open',
+  'brain',
+  'clipboard-check',
+  'compass',
+  'crown',
+  'eye',
+  'feather',
+  'file-text',
+  'flask-conical',
+  'gavel',
+  'git-branch',
+  'hammer',
+  'layers',
+  'lightbulb',
+  'list-checks',
+  'map',
+  'microscope',
+  'pen-tool',
+  'puzzle',
+  'scale',
+  'search',
+  'shield-check',
+  'sparkles',
+  'telescope',
+  'terminal',
+  'user-cog',
+  'wrench',
+] as const
+export const RoleIcon = Schema.Literals(ROLE_ICONS)
+export type RoleIcon = typeof RoleIcon.Type
+
 // page: Level. The deepest cause of a mistake.
 export const Level = Schema.Literals(['task', 'standard', 'direction', 'principle'])
 export type Level = typeof Level.Type

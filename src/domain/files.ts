@@ -2,8 +2,8 @@
 // mechanism and the settings), a task file, a direction file, a company folder. Their parsed
 // forms are stored inside events, so each one is a Schema.
 import { Schema } from 'effect'
-import { Principle, Tier } from './closed.ts'
-import { DirectionId, ResultId, RoleName, TaskId } from './ids.ts'
+import { Principle, RoleIcon, Tier } from './closed.ts'
+import { DirectionId, NonBlank, PositiveInt, ResultId, RoleName, TaskId } from './ids.ts'
 
 // The key of a standard or a rule in a file (Standard.id, Rule.id of the page).
 const Key = Schema.String
@@ -57,9 +57,15 @@ export const ActFile = Schema.Union([
 ])
 export type ActFile = typeof ActFile.Type
 
+// How an agent role runs, apart from its tier (ruling 7): a persistent role gets a terminal of
+// its own; a disposable role runs as a subagent of a terminal. why: the reason on its card.
+export const PersistenceFile = Schema.Struct({ persistent: Schema.Boolean, why: NonBlank })
+export type PersistenceFile = typeof PersistenceFile.Type
+
 // A role of aristoteles.yaml after readConfig: an agent of a tier, or a program that checks on
 // each report. The keys keep the file's order, and an absent key stays absent, so that the JSON
-// of a role (its fit hash) is the old one; what each kind needs is required.
+// of a role (its fit hash) is the old one; what each kind needs is required. persistence and
+// icon go last (onboarding), so the old keys keep their order.
 export const RoleFile = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal('agent'),
@@ -70,6 +76,8 @@ export const RoleFile = Schema.Union([
     output: Schema.optionalKey(Schema.String),
     acts: Schema.Array(ActFile),
     checks: Schema.Array(Key),
+    persistence: PersistenceFile,
+    icon: RoleIcon,
   }),
   Schema.Struct({
     kind: Schema.Literal('program'),
@@ -84,6 +92,8 @@ export const RoleFile = Schema.Union([
     on: Schema.Literal('report'),
     checks: Schema.Array(Key),
     timeout: Schema.optionalKey(Schema.Number),
+    // A program runs in the CLI, never in a terminal: it has an icon and no persistence.
+    icon: RoleIcon,
   }),
 ])
 export type RoleFile = typeof RoleFile.Type
@@ -155,10 +165,13 @@ export const RoleWords = Schema.Struct({
 })
 export type RoleWords = typeof RoleWords.Type
 
-// The settings of the UI, from aristoteles.yaml now (never stored).
-export const TerminalTier = Schema.Literals(['sol', 'terra'])
+// The settings of the UI, from aristoteles.yaml now (never stored). Every tier has its commands
+// (ruling 10): a role of any tier can be persistent. model: the tier's model, once; launch and
+// resume name it as {model}.
+export const TerminalTier = Schema.Literals(['sol', 'terra', 'luna'])
 export type TerminalTier = typeof TerminalTier.Type
 export const TierSettings = Schema.Struct({
+  model: Schema.optionalKey(Schema.String),
   launch: Schema.optionalKey(Schema.String),
   resume: Schema.optionalKey(Schema.String),
   start: Schema.String,
@@ -173,6 +186,7 @@ export const Settings = Schema.Struct({
   tiers: Schema.Struct({
     sol: Schema.optionalKey(TierSettings),
     terra: Schema.optionalKey(TierSettings),
+    luna: Schema.optionalKey(TierSettings),
   }),
   retryMinutes: Schema.Number,
   hostWaitMinutes: Schema.Number,
@@ -239,6 +253,21 @@ export const StandardFile = Schema.Struct({
   rules: Schema.Array(RuleFile),
 })
 export type StandardFile = typeof StandardFile.Type
+
+// page: Case. Real code of the project that follows a direction or breaks it (ruling 4): a file,
+// the line the page points to, and a short excerpt. A break is information only: it makes no
+// task (ruling 17).
+export const Case = Schema.Struct({
+  file: Schema.String,
+  line: PositiveInt,
+  excerpt: NonBlank,
+  fit: Schema.Literals(['Follows', 'Breaks']),
+})
+export type Case = typeof Case.Type
+// A direction starts with at least 3 cases (P10 rejected, onboarding 2026-11-14).
+export const MIN_CASES = 3
+export const Cases = Schema.Array(Case).check(Schema.isMinLength(MIN_CASES))
+export type Cases = typeof Cases.Type
 
 // A direction file after readDirection and readApprovedBy.
 export const DirectionFile = Schema.Struct({

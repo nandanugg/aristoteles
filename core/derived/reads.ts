@@ -68,6 +68,9 @@ import {
   type Work,
 } from '../schema/index.ts'
 
+// The tier of an assignment, kept at its give (core/state records.ts): every reader reads it.
+export { tierOfAssignment } from '../state/records.ts'
+
 // --- getters -------------------------------------------------------------------------------------
 
 const need = <K, V>(map: ReadonlyMap<K, V>, key: K, what: string): V => {

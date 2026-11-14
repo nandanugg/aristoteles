@@ -2,11 +2,12 @@
 import { join } from 'node:path'
 import { Effect } from 'effect'
 import type { OutsideFailed, Refused } from '../domain/errors.ts'
-import type { Settings } from '../domain/files.ts'
+import { type Settings, TerminalTier } from '../domain/files.ts'
 import { Files } from '../services/outside.ts'
 import { CONFIG, fail, parseYaml, type Raw, refusing, SETTING_KEYS } from './core.ts'
 
 export const TIER_KEYS = [
+  'model',
   'launch',
   'resume',
   'start',
@@ -31,19 +32,19 @@ const TIER_DEFAULTS = {
 
 const wholeNumber = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 1
 
-// The settings of a parsed file, checked, with their defaults. Sol and Terra run as real agents
-// in terminals, so only they have commands: a Luna is a subagent inside its parent's terminal.
+// The settings of a parsed file, checked, with their defaults. Every tier has its commands
+// (ruling 10): a role of any tier can be persistent, and runs in a terminal of its own.
 export const readSettingsOf = (raw: Raw): Settings => {
   const tiers: Record<string, unknown> = {}
   for (const [tier, t] of Object.entries<Raw>(raw.tiers ?? {})) {
-    if (!['sol', 'terra'].includes(tier)) {
-      fail(CONFIG, `tiers.${tier}: only sol and terra run in terminals (a luna is a subagent)`)
+    if (!(TerminalTier.literals as ReadonlyArray<string>).includes(tier)) {
+      fail(CONFIG, `tiers.${tier} is not a tier (${TerminalTier.literals.join(', ')})`)
     }
     const key = Object.keys(t ?? {}).find((k) => !(TIER_KEYS as readonly string[]).includes(k))
     if (key) {
       fail(CONFIG, `tiers.${tier}.${key} is not a setting of a tier (${TIER_KEYS.join(', ')})`)
     }
-    for (const k of ['launch', 'resume', 'start', 'skills', 'retryInput']) {
+    for (const k of ['model', 'launch', 'resume', 'start', 'skills', 'retryInput']) {
       if (t[k] !== undefined && (typeof t[k] !== 'string' || !t[k].trim())) {
         fail(CONFIG, `tiers.${tier}.${k} is a text`)
       }
@@ -68,6 +69,12 @@ export const readSettingsOf = (raw: Raw): Settings => {
     }
     if (t.resume !== undefined && !t.resume.includes('{session}')) {
       fail(CONFIG, `tiers.${tier}.resume has no {session}`)
+    }
+    // The model lives once (P9): a command names it as {model}.
+    for (const k of ['launch', 'resume']) {
+      if (t[k]?.includes('{model}') && t.model === undefined) {
+        fail(CONFIG, `tiers.${tier}.${k} names {model}, and tiers.${tier}.model is not set`)
+      }
     }
     if (t.start !== undefined && !t.start.includes('{token}')) {
       fail(CONFIG, `tiers.${tier}.start has no {token}`)

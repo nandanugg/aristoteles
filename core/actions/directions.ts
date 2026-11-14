@@ -30,6 +30,7 @@ import {
   checkImported,
   checkRevised,
   DRAFT,
+  readCases,
   reviseAnswersFound,
 } from './drafts.ts'
 import { PERSON_ACTS } from './reviews.ts'
@@ -86,6 +87,7 @@ export const REFUSALS = {
     badFile: (file: string, what: string) => no(`${file}: ${what}`, 'Write', `correct ${file}`),
   },
   ImportCompany: { ...DRAFT },
+  AddCases: { cases: DRAFT.cases },
   Suggest: {
     noWords: () =>
       no('a suggestion says something: give its words', 'Write', 'write what you suggest'),
@@ -343,7 +345,9 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
     const direction = approvedBy === undefined ? base : { ...base, approvedBy }
     const drafted = { direction, answers, why }
     yield* checkDrafted(d, by, drafted)
-    return [create('Revision', { _tag: 'Drafted', ...drafted })]
+    // A new direction starts with its cases (P10 rejected, onboarding 2026-11-14).
+    const cases = yield* readCases(file, raw)
+    return [create('Revision', { _tag: 'Drafted', direction, cases, answers, why })]
   })
 
 const ReviseDirection: Action<'ReviseDirection'> = ({ by, input }) =>
@@ -368,6 +372,17 @@ const ImportCompany: Action<'ImportCompany'> = ({ by, input }) =>
     const imported = { direction: input.target.direction, ...input.content }
     yield* checkImported(d, imported)
     return [create('Revision', { _tag: 'Imported', ...imported })]
+  })
+
+// A model gives a company draft of a new direction its cases before the accept (P10 rejected,
+// onboarding 2026-11-14); the latest counts.
+const AddCases: Action<'AddCases'> = ({ by, input }) =>
+  Effect.gen(function* () {
+    const d = yield* current
+    yield* allowed(d, by, input)
+    const { file } = input.content
+    const cases = yield* readCases(file, yield* readYaml(d.moment.outside.cwd, file))
+    return [move('Revision', input.target.draft, { _tag: 'CasesAdded', cases })]
   })
 
 // --- suggestions and permissions -----------------------------------------------------------------
@@ -395,14 +410,11 @@ const Suggest: Action<'Suggest'> = ({ by, input }) =>
     const { about } = input.target
     const { says } = input.content
     if (blank(says)) return yield* fail(R.Suggest.noWords())
-    const key =
-      about._tag === 'NewDirection'
-        ? null
-        : about._tag === 'Direction'
-          ? about.direction
-          : about.key
-    const made =
-      key === null ? { _tag: 'NewDirection' as const } : yield* aboutOf(d.moment.work, key)
+    if (about._tag === 'Roles' || about._tag === 'NewDirection') {
+      return [create('Suggestion', { _tag: 'Suggestion', about, says: says as never })]
+    }
+    const key = about._tag === 'Direction' ? about.direction : about.key
+    const made = yield* aboutOf(d.moment.work, key)
     return [create('Suggestion', { _tag: 'Suggestion', about: made, says: says as never })]
   })
 
@@ -574,6 +586,7 @@ export const ACTIONS = {
   DraftDirection,
   ReviseDirection,
   ImportCompany,
+  AddCases,
   Suggest,
   Grant,
   Revoke,

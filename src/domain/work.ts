@@ -5,6 +5,7 @@ import type { Author } from './actor.ts'
 import type { ConfirmableAct, CountedAct, FitAnswer, Recorded } from './events.ts'
 import type { ConfigFile } from './files.ts'
 import type {
+  AgentId,
   AssignmentId,
   CheckpointId,
   Counters,
@@ -54,6 +55,7 @@ import type {
 import type {
   AgentSession,
   HostWords,
+  PersistentAgent,
   Problem,
   Run,
   Send,
@@ -80,6 +82,7 @@ export type CreatedId =
   | TaskDraftId
   | ProblemId
   | VersionId
+  | AgentId
 
 // One stored event, and the ids that its step made (work log prints both).
 export interface Logged {
@@ -151,6 +154,8 @@ export interface Work {
   // The UI (the types are in ui-model.ts).
   readonly runs: ReadonlyMap<RunId, Run>
   readonly sessions: ReadonlyMap<AssignmentId, AgentSession>
+  // The persistent agents, each of one role in one run (onboarding).
+  readonly agents: ReadonlyMap<AgentId, PersistentAgent>
   readonly taskDrafts: ReadonlyMap<TaskDraftId, TaskDraft>
   readonly problems: ReadonlyMap<ProblemId, Problem>
   readonly terminalEvents: ReadonlyArray<TerminalEvent>

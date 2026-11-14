@@ -7,7 +7,10 @@ import {
   playedBy,
   type PointId,
   type Result,
+  type Role,
+  type Runs,
   type Stepped,
+  type Task,
   type Time,
   type Work,
 } from '../../schema/index.ts'
@@ -24,7 +27,7 @@ import {
   roleAt,
   runOf,
   taskAt,
-  tierOf,
+  tierOfAssignment,
   underNowOf,
 } from '../records.ts'
 import { underNow } from '../versions.ts'
@@ -55,12 +58,40 @@ const endAssignment = (b: Build, id: AssignmentId, when: Time): void => {
 }
 // A low agent's claim ends with its one unit; a medium or high claim lasts until finish.
 export const endUnit = (b: Build, id: AssignmentId): void => {
-  const tier = tierOf(roleAt(b.work, assignmentAt(b.work, id).role))
-  if (tier !== 'low' && tier !== undefined) return
+  const tier = tierOfAssignment(b.work, assignmentAt(b.work, id))
+  if (tier !== 'low' && tier !== null) return
   const meta = b.work.meta.get(id)
   if (meta !== undefined) {
     b.work = { ...b.work, meta: put(b.work.meta, id, Moves.freeClaim(meta)) }
   }
+}
+
+// Where an assignment runs, fixed at its give (onboarding, BUILD.md section 3): a program in the
+// CLI; in a run, the host's role on the host, a persistent role on its one agent (made at the
+// first give of the role in the run: ruling 9), a disposable role as a subagent. With no run, a
+// persistent role has no terminal to attach to (P2). The agent keeps its tier for its project.
+const runsOf = (b: Build, task: Task, role: Role, when: Time): Runs => {
+  if (role._tag === 'Program') return { _tag: 'Program' }
+  const run = runOf(b.work, task.id)
+  const persistent = role.persistence._tag === 'Persistent'
+  if (run === undefined) {
+    return persistent ? { _tag: 'NoRun', tier: role.tier } : { _tag: 'Subagent', tier: role.tier }
+  }
+  const hosts = [...b.work.assignments.values()].filter(
+    (a) => a.runs._tag === 'Host' && a.runs.run === run.id,
+  )
+  // The first high assignment on each top task of the run is the host's, as hostSession gives it
+  // the session of the run (a remake makes a new top task); a later give of the host's role too.
+  const first =
+    task.serves._tag === 'TopTask' && role.tier === 'high' && !hosts.some((a) => a.task === task.id)
+  if (first || hosts.some((a) => a.role === role.role)) return { _tag: 'Host', run: run.id }
+  const agent = [...b.work.agents.values()].find((x) => x.run === run.id && x.role === role.role)
+  if (agent !== undefined) return { _tag: 'Agent', agent: agent.id }
+  if (!persistent) return { _tag: 'Subagent', tier: role.tier }
+  const id = b.name('agent')
+  const born = Moves.bornAgent({ id, role: role.role, run: run.id, tier: role.tier, at: when })
+  b.work = { ...b.work, agents: put(b.work.agents, id, born) }
+  return { _tag: 'Agent', agent: id }
 }
 
 // A parent's give (or the person's): the assignment, its token, and, for a maker, the end of
@@ -86,6 +117,7 @@ const give = (
         ? ({ _tag: 'Parent', id: act.by } as const)
         : ({ _tag: 'GivenByPerson' } as const),
       when: act.when,
+      runs: runsOf(b, task, role, act.when),
     }
     const assignment =
       d._tag === 'GivenMaker'

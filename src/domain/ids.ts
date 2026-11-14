@@ -51,6 +51,10 @@ export const TaskDraftId = matching(/^td\d+$/).pipe(Schema.brand('TaskDraftId'))
 export type TaskDraftId = typeof TaskDraftId.Type
 export const ProblemId = matching(/^sp\d+$/).pipe(Schema.brand('ProblemId'))
 export type ProblemId = typeof ProblemId.Type
+// A persistent agent of a role in one project (onboarding): p1. It lives from the first
+// assignment of its role in the run to the end of the run (ruling 9).
+export const AgentId = matching(/^p\d+$/).pipe(Schema.brand('AgentId'))
+export type AgentId = typeof AgentId.Type
 // A stored act by its seq, as the person's confirm (work confirm) names it: e12.
 export const EventRef = matching(/^e\d+$/).pipe(Schema.brand('EventRef'))
 export type EventRef = typeof EventRef.Type
@@ -129,6 +133,7 @@ export const PREFIX = {
   run: 'h',
   taskDraft: 'td',
   problem: 'sp',
+  agent: 'p',
 } as const
 export type Counted = keyof typeof PREFIX
 export type Prefix = (typeof PREFIX)[Counted]
@@ -150,6 +155,7 @@ export const NOUN: { readonly [P in Prefix]: string } = {
   h: 'run',
   td: 'task draft',
   sp: 'system problem',
+  p: 'agent',
 }
 export const isPrefix = (word: string): word is Prefix => Object.hasOwn(NOUN, word)
 
@@ -172,6 +178,7 @@ export interface IdByKind {
   readonly run: RunId
   readonly taskDraft: TaskDraftId
   readonly problem: ProblemId
+  readonly agent: AgentId
 }
 
 // The counters of the ids, one per kind.
@@ -192,6 +199,7 @@ export const noCounters: Counters = {
   run: 0,
   taskDraft: 0,
   problem: 0,
+  agent: 0,
 }
 
 // The next id of a kind, and the counters after it. The order of the names

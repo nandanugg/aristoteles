@@ -162,6 +162,17 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
           `--answers=${s.suggestion}`,
       )
     }
+    // Onboarding: one plain step each; W3 writes their full words.
+    case 'AnswerRolesSuggestion':
+      return step(
+        `${s.suggestion} says about the roles; draft the adjustment that it asks for`,
+        `work adjust ${token} <change>`,
+      )
+    case 'AddCases':
+      return step(
+        `${s.draft} drafts the new direction ${s.direction} with too few cases; add its cases`,
+        `work direction cases ${token} ${s.draft} --file=<cases.yaml>`,
+      )
     case 'PutOnBase': {
       const output = `${s.repo}@${s.commit}`
       return step(

@@ -5,15 +5,18 @@
 import {
   type AnswerId,
   type By,
+  type Case,
   type Deciders,
   type Direction,
   type DirectionFile,
   type DirectionId,
   type EventOf,
+  type EventRef,
   human,
   type Human,
   type Limit,
   Moves,
+  type OnboardedDirection,
   type PositiveInt,
   type Reviser,
   type Revision,
@@ -158,6 +161,10 @@ interface DraftFields {
   readonly why: Why
   readonly origin: RevisionOrigin
 }
+// The cases of a new direction's draft: those of its file, or none yet for a company draft.
+interface NewFields {
+  readonly cases: ReadonlyArray<Case>
+}
 // A model writes each draft: an assignment, or a run outside any task.
 const reviserOf = (by: By): Reviser => {
   if (typeof by === 'string' || by._tag === 'Agent') return by
@@ -168,7 +175,8 @@ const reviserOf = (by: By): Reviser => {
 const fresh = (
   w: Work,
   x: DraftOf,
-  input: DraftFields & {
+  input: DraftFields &
+    NewFields & {
     readonly id: DirectionId
     readonly name: string
     readonly owner: Human
@@ -192,9 +200,10 @@ const fresh = (
         ? ({ _tag: 'Owner' } as const)
         : ({ _tag: 'Deciders', deciders: approvedBy } as const),
   }
+  // A drafted direction has no cases yet: the accept of its first version gives it its draft's.
   const direction: Direction =
     existing === undefined
-      ? { _tag: 'NewDirection', id: input.id, owner, source: input.source, ...fields }
+      ? { _tag: 'NewDirection', id: input.id, owner, source: input.source, ...fields, cases: [] }
       : { ...existing, ...fields }
   const edit = { add: input.add, remove: [], replace: [] }
   const standards = draftStandards(w, [], edit, scratch, x.id)
@@ -209,6 +218,7 @@ const fresh = (
     why: input.why,
     when: x.when,
     at: x.at,
+    cases: input.cases,
   }
   return { direction, revision, scratch }
 }
@@ -285,8 +295,51 @@ const planDrafted = (
     answerIds: data.answers,
     why: data.why,
     origin: { _tag: 'Written', by: reviserOf(by) } as const,
+    cases: data.cases,
   }
   return fresh(w, x, input, scratch)
+}
+
+// The store start of onboarding: a direction that the person accepted on the page, drafted as a
+// whole and made version 1 in the same step (Question 20, option A). Its origin names the start
+// event; a company direction keeps its source, so that the daily refresh follows it (P8).
+export const onboarded = (b: Build, od: OnboardedDirection, event: EventRef, when: Time): void => {
+  const id = b.name('revision')
+  const x = { id, when, at: b.tick() }
+  const w = b.work
+  const d = od.direction
+  const roles = [...w.workflow.roles.keys()]
+  const approvedBy = d.approvedBy === undefined ? undefined : decidersOf(d.approvedBy, roles)
+  const scratch = scratchOf()
+  const add = d.standards.map((s) => buildStandard(w, s, undefined, entryIn(id, s.id), scratch))
+  const source =
+    od.source._tag === 'Local'
+      ? ({ _tag: 'Local' } as const)
+      : ({ _tag: 'External', repo: od.source.repo, path: od.source.path } as const)
+  const input = {
+    id: d.id,
+    name: d.name,
+    owner: human(d.owner),
+    from: d.from,
+    maxStandards: limitOf(d.maxStandards),
+    approvedBy,
+    source,
+    says: d.says,
+    add,
+    answerIds: [],
+    why: { _tag: 'NoneGiven' } as const,
+    origin: { _tag: 'Onboarded', event } as const,
+    cases: od.cases,
+  }
+  const planned = fresh(w, x, input, scratch)
+  b.work = {
+    ...w,
+    directions: put(w.directions, planned.direction.id, planned.direction),
+    standards: new Map([...w.standards, ...planned.scratch.standards]),
+    rules: new Map([...w.rules, ...planned.scratch.rules]),
+    drafts: put(w.drafts, id, planned.revision),
+  }
+  makeVersion(b, id, when)
 }
 
 // direction revise: a draft of a direction, built on its current version.
@@ -357,6 +410,7 @@ const planImported = (
       answerIds: [],
       why,
       origin,
+      cases: [],
     }
     return fresh(w, x, input, scratch)
   }
@@ -435,7 +489,8 @@ export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
     revision: draft,
     when,
   }
-  b.work = { ...w, directions: put(w.directions, d.id, Moves.makeOfficial(d, version)) }
+  const cases = x._tag === 'New' ? x.cases : []
+  b.work = { ...w, directions: put(w.directions, d.id, Moves.makeOfficial(d, version, cases)) }
   b.created.push(versionId(d.id, version.number))
   if (from === undefined) return
   for (const text of lessonsOf(b.work, d.id, contentOf(from), contentOf(version))) {
@@ -444,6 +499,15 @@ export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
     const lesson = { _tag: 'Lesson' as const, id, from: x.answers, text, rule, when }
     b.work = { ...b.work, notes: put(b.work.notes, id, lesson) }
   }
+}
+
+// A model gives a company draft of a new direction its cases (P10 rejected, onboarding
+// 2026-11-14); a draft of a change has none to take.
+export const casesAdded = (work: Work, e: EventOf<'Revision.CasesAdded'>, r: Seq): Stepped => {
+  const x = work.drafts.get(e.id)
+  if (x?._tag !== 'New') return damaged(r, `${e.id} is no draft of a new direction`)
+  const added = Moves.MOVES['Revision.CasesAdded'](x, e.move.cases)
+  return { work: { ...work, drafts: put(work.drafts, e.id, added) }, created: [] }
 }
 
 // --- suggestions ---------------------------------------------------------------------------------
@@ -469,6 +533,8 @@ const suggestionAbout = (w: Work, about: EventOf<'Suggestion.Suggestion'>['creat
       const rule = findRule(w, about.key)
       return rule === undefined ? undefined : ({ _tag: 'Rule', rule: rule.entry } as const)
     }
+    case 'Roles':
+      return { _tag: 'Roles' } as const
   }
 }
 export const suggested = (

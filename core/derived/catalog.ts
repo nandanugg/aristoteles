@@ -6,6 +6,7 @@ import { leavesOf } from './deciders.ts'
 import {
   assignmentAt,
   blockersOfResult,
+  currentOf,
   currentTask,
   decidersOfDraft,
   directionAt,
@@ -81,6 +82,8 @@ import {
   type SendState,
 } from './types.ts'
 import {
+  type AgentId,
+  type AgentState,
   type Answerer,
   type AssignmentId,
   type Direction,
@@ -111,6 +114,7 @@ import {
   type Work,
 } from '../schema/index.ts'
 import type { Moment } from '../state/index.ts'
+import { adjustmentStates, retiredBy } from './adjustments.ts'
 import { roleWordsStates } from './role-words.ts'
 
 const need = <K, V>(value: V | undefined, what: string, key: K): V => {
@@ -131,6 +135,8 @@ export const permissionStateOf: PermissionStateOf = (x, at) => {
 export const directionStateOf: DirectionStateOf = (m, id) => {
   const d = directionAt(m.work, id)
   if (d._tag === 'NewDirection') return { _tag: 'Drafted' }
+  const retired = retiredBy(m.work, id)
+  if (retired !== undefined) return { _tag: 'Retired', by: retired }
   const current = d.versions[d.versions.length - 1] ?? d.versions[0]
   return { _tag: 'Official', current: versionIdOf(current) }
 }
@@ -181,7 +187,11 @@ export const revisionStateOf: RevisionStateOf = (m, id, { direction }) => {
   const x = draftAt(w, id)
   const made = madeBy(w, id)
   if (made !== undefined) return { _tag: 'Official', version: versionIdOf(made) }
-  // S6: Outdated before Vetoed: a draft on an old base is not revised again.
+  // S6: Outdated before Vetoed: a draft on an old base is not revised again. A retired
+  // direction takes no new version, so each of its drafts is outdated.
+  if (direction._tag === 'Retired') {
+    return { _tag: 'Outdated', current: versionIdOf(currentOf(w, x.of)) }
+  }
   if (direction._tag === 'Official' && (x._tag === 'New' || x.base !== direction.current)) {
     return { _tag: 'Outdated', current: direction.current }
   }
@@ -724,8 +734,46 @@ export const derive: Derive = (m) => {
     sends,
     sources: sourceStatesOf(m),
     roleWords: roleWordsStates(w),
+    agents: agentStatesOf(m, runs, assignments),
+    adjustments: adjustmentStates(w),
   }
   return { moment: m, states }
+}
+
+// --- 21. AgentState (onboarding): ruling 9, P6 ---------------------------------------------------
+// Ended when its run is Done or Closed; else on the open assignments that run on it; else Between
+// (it waits in work wait, and its silence is no fault).
+export const agentStateOf = (
+  m: Moment,
+  agent: AgentId,
+  deps: {
+    readonly run: RunState
+    readonly assignments: ReadonlyMap<AssignmentId, AssignmentState>
+  },
+): AgentState => {
+  if (deps.run._tag === 'Done' || deps.run._tag === 'Closed') {
+    return { _tag: 'Ended', at: deps.run.at }
+  }
+  const on = [...m.work.assignments.values()]
+    .filter((a) => a.runs._tag === 'Agent' && a.runs.agent === agent)
+    .filter((a) => deps.assignments.get(a.id)?._tag !== 'Ended')
+    .map((a) => a.id)
+  const [first, ...rest] = on
+  return first === undefined
+    ? { _tag: 'Between' }
+    : { _tag: 'OnAssignment', assignments: [first, ...rest] }
+}
+const agentStatesOf = (
+  m: Moment,
+  runs: ReadonlyMap<RunId, RunState>,
+  assignments: ReadonlyMap<AssignmentId, AssignmentState>,
+): ReadonlyMap<AgentId, AgentState> => {
+  const states = new Map<AgentId, AgentState>()
+  for (const x of m.work.agents.values()) {
+    const run = need(runs.get(x.run), 'run', x.run)
+    states.set(x.id, agentStateOf(m, x.id, { run, assignments }))
+  }
+  return states
 }
 
 // The top task of a run now (after its remakes), with its state.

@@ -13,7 +13,7 @@ import {
   type TaskFile,
   type Workspace,
 } from '../domain/files.ts'
-import { oneOf, PRINCIPLES } from '../domain/closed.ts'
+import { oneOf, PRINCIPLES, ROLE_ICONS } from '../domain/closed.ts'
 import { refuse } from '../domain/errors.ts'
 import { Files } from '../services/outside.ts'
 import {
@@ -123,8 +123,34 @@ const readAct = (where: string, act: Raw, roleNames: string[]): Raw => {
   return { [key]: list(act[key]) }
 }
 
+// Every role is a card with an icon of the page's set (P1).
+const readIcon = (where: string, icon: unknown): void => {
+  if (!(ROLE_ICONS as ReadonlyArray<unknown>).includes(icon)) {
+    fail(where, `icon is required: one of ${ROLE_ICONS.join(', ')}`)
+  }
+}
+// An agent role says how it runs, apart from its tier (ruling 7); a program runs in the CLI, so
+// it has none (P12).
+const PERSISTENCE_FIX =
+  'persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets ' +
+  'a terminal of its own; a disposable role runs as a subagent)'
+const readPersistence = (where: string, p: Raw): void => {
+  const keys = Object.keys(p ?? {})
+  const why = p?.why
+  if (
+    typeof p !== 'object' ||
+    p === null ||
+    typeof p.persistent !== 'boolean' ||
+    typeof why !== 'string' ||
+    !why.trim() ||
+    keys.some((k) => k !== 'persistent' && k !== 'why')
+  ) {
+    fail(where, PERSISTENCE_FIX)
+  }
+}
+
 // The keys keep the old order and an absent key is left out, so the JSON of a role (and its
-// roleHash) is the same as the old one.
+// roleHash) is the same as the old one; persistence and icon go last.
 const readRoles = (raw: Raw): Record<string, RoleFile> => {
   const names = Object.keys(raw)
   const roles: Record<string, RoleFile> = {}
@@ -132,6 +158,9 @@ const readRoles = (raw: Raw): Record<string, RoleFile> => {
     const where = `${CONFIG} roles.${name}`
     if (r?.kind === 'program') {
       if (typeof r.run !== 'string' || r.on !== 'report') fail(where, 'a program needs run and on: report')
+      if (r.persistence !== undefined) {
+        fail(where, 'a program runs in the CLI, never in a terminal: remove its persistence')
+      }
     } else {
       // The person acts with no token at a terminal, so no role is played by a person.
       if (!(TIERS as readonly string[]).includes(r?.tier)) {
@@ -141,7 +170,9 @@ const readRoles = (raw: Raw): Record<string, RoleFile> => {
         if (typeof r[key] !== 'string' || !r[key].trim()) fail(where, `${key} is required`)
       }
       if (list(r.responsibilities).length === 0) fail(where, 'responsibilities must list at least one')
+      readPersistence(where, r.persistence)
     }
+    readIcon(where, r.icon)
     const acts = list(r.acts).map((a) => readAct(where, a, names))
     if (acts.length === 0) fail(where, 'acts must list at least one act')
     const some = <K extends string>(key: K, value: unknown) =>
@@ -158,6 +189,8 @@ const readRoles = (raw: Raw): Record<string, RoleFile> => {
       ...some('on', r.on),
       checks: list(r.checks),
       ...some('timeout', r.timeout),
+      ...some('persistence', r.persistence),
+      icon: r.icon,
     } as unknown as RoleFile
   }
   return roles

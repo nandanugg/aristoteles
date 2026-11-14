@@ -67,6 +67,7 @@ describe('an assignment', () => {
       task: 't1' as TaskId,
       under: new Map(),
       parent: { _tag: 'GivenByPerson' },
+      runs: { _tag: 'Subagent', tier: 'low' },
       when: at(1),
       end: { _tag: 'NotEnded' },
     }
