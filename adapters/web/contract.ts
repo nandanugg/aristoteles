@@ -520,7 +520,8 @@ export const ActAnswer = Schema.Struct({
   run: Schema.optionalKey(Text),
   session: Schema.optionalKey(Text),
 })
-export const ApiError = Schema.Struct({ error: Text })
+// A refusal: its message, and the next line that says what to do, when it has one.
+export const ApiError = Schema.Struct({ error: Text, next: Schema.optionalKey(Text) })
 
 // --- the Schemas agree with the types of ui-model.ts ----------------------------------------
 // A mismatch fails the compile here: each pair is assignable both ways, and neither is `any` (an

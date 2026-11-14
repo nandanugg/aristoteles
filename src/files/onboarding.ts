@@ -488,7 +488,10 @@ const notReady = (file: OnboardingDirection): string | undefined => {
   if (file.questions.some((q) => q.answer._tag === 'Open')) {
     return `${file.id} has questions for you; answer them first`
   }
-  if (file.questions.length > 0) return `the answers of ${file.id} wait for the host's next draft`
+  if (file.questions.length > 0) {
+    const name = file.draft._tag === 'Drafted' ? `${file.draft.name} (${file.id})` : file.id
+    return `the answers of ${name} decide its next draft, and the host has not written it yet`
+  }
   return undefined
 }
 

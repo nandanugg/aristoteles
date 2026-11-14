@@ -272,7 +272,7 @@ button { font: inherit; color: inherit; }
 .field input, .field select { font: 13px var(--mono); padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); }
 .field.check { flex-direction: row; align-items: center; gap: 8px; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-.error { color: var(--reject); font-size: 13px; }
+.error { color: var(--reject); font-size: 13px; white-space: pre-line; }
 .person-line { color: var(--reject); font-size: 13px; margin: 0 0 16px; max-width: 720px; }
 
 @media (max-width: 860px) {
@@ -282,7 +282,7 @@ button { font: inherit; color: inherit; }
 }
 
 /* The acts (part 7). */
-.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 20; max-width: min(640px, calc(100vw - 32px)); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2); }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 20; max-width: min(640px, calc(100vw - 32px)); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2); white-space: pre-line; }
 .card-foot { padding: 0 14px 12px; }
 .btn.wide { width: 100%; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn.quiet { border-color: transparent; background: transparent; color: var(--muted); }

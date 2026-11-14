@@ -99,6 +99,13 @@ const gzipped = async (req: Request, res: Response): Promise<Response> => {
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
 
+// The body of a refused request: the message, and its next line when the error has one (Nanda,
+// 2026-11-15: the page shows it, as the terminal does).
+const refusalOf = (error: unknown): { error: string; next?: string } => {
+  const next = isRecord(error) && typeof error.next === 'string' ? error.next : undefined
+  return next === undefined ? { error: messageOf(error) } : { error: messageOf(error), next }
+}
+
 const messageOf = (error: unknown): string =>
   error instanceof StoreDamaged
     ? `the store is damaged at e${error.seq}: ${error.issue}`
@@ -301,7 +308,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     if (Exit.isSuccess(exit)) return exit.value
     throw new Error(messageOf(Cause.squash(exit.cause)))
   }
-  const failed = (error: unknown) => json({ error: messageOf(error) }, 400)
+  const failed = (error: unknown) => json(refusalOf(error), 400)
   const actAs = async (act: ActionAct): Promise<Response> => {
     const by = await asPerson()
     if (!by) return json({ error: NO_PERSON }, 400)

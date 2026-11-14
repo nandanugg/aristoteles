@@ -34,7 +34,10 @@ const request = <S extends Schema.Top & { readonly DecodingServices: never }>(
     if (!res.ok) {
       const refused = errorBody(body)
       return yield* new ApiError({
-        message: refused._tag === 'Some' ? refused.value.error : res.statusText,
+        message:
+          refused._tag === 'Some'
+            ? [refused.value.error, ...(refused.value.next ? [`next: ${refused.value.next}`] : [])].join('\n')
+            : res.statusText,
       })
     }
     return yield* Schema.decodeUnknownEffect(schema)(body).pipe(

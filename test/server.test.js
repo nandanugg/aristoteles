@@ -246,7 +246,11 @@ describe('the onboarding pages', () => {
     // Ruling 2: Revise sends the words to the host; Remove keeps nothing.
     expect((await onboard({ act: 'revise', direction: 'tsd-writing', words: 'name the reader' })).out).toBe('tsd-writing: the host drafts it again from your words.')
     expect((await get('/api/onboarding')).directions.find((d) => d.id === 'tsd-writing')).toMatchObject({ state: 'loading', request: 'name the reader' })
-    expect((await onboard({ act: 'accept', direction: 'tsd-writing' })).error).toBe('a Revise of tsd-writing waits for the host')
+    // Nanda, 2026-11-15: a refusal on the page brings its next line, as the terminal shows it.
+    expect(await onboard({ act: 'accept', direction: 'tsd-writing' })).toEqual({
+      error: 'a Revise of tsd-writing waits for the host',
+      next: 'work onboard status shows what waits',
+    })
     expect((await onboard({ act: 'remove', direction: 'one-thing' })).out).toBe('one-thing is removed; nothing keeps it.')
     expect(has(p, '.work/assess/one-thing.yaml')).toBe(false)
     ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
