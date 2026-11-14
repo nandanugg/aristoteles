@@ -299,7 +299,9 @@ const inputOf = (w: Work, r: Recorded, dir: string): Read => {
     case 'Suggestion.Suggestion':
       return input({ _tag: 'Suggest', target: { about: c?.about }, content: { says: c?.says } })
     case 'Revision.Drafted': {
-      const file = fileOf(dir, `direction-${k}.yaml`, yaml(c?.direction))
+      // P10 rejected, onboarding 2026-11-14: the file of a new direction holds its cases.
+      const direction = { ...(c?.direction as unknown as object), cases: c?.cases }
+      const file = fileOf(dir, `direction-${k}.yaml`, yaml(direction))
       const why = whyInput(c?.why as never)
       return input({
         _tag: 'DraftDirection',

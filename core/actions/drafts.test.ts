@@ -36,6 +36,9 @@ const refusedWith = (d: Derived, by: Author, input: ActionInput): string =>
   realChoice(refused(act(d, by, input))).message
 
 const RULE_REPEATABLE = 'A reviewer can repeat the problem without the design'
+// A model run outside any task: the host that adds the cases of a company draft.
+const HOST_RUN = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' } as Author
+// P10 rejected, onboarding 2026-11-14: a new direction starts with its cases.
 const REELS = `id: reels
 name: Reels
 owner: Nanda
@@ -45,6 +48,10 @@ standards:
     says: One flow per reel.
     rules:
       - { id: one-flow-only, says: "The reel shows one flow", checkedBy: section-lead }
+cases:
+  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
+  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
+  - { file: docs/facts.md, line: 1, excerpt: "# Facts", fit: Follows }
 `
 
 // The reported scenario, with a Reject of r1 by the lead (a point with no rule, and one that
@@ -303,8 +310,13 @@ describe('an import of a company commit', () => {
     expect(refusedWith(now(), REFRESH, importOf(2, { owner: 'Kai' }))).toBe(
       "Acme is Nanda's; another draft of it keeps its owner",
     )
-    // Official: commit 2 made version 1; the draft of commit 1 is Outdated now.
+    // Official: commit 2 made version 1; the draft of commit 1 is Outdated now. P10 rejected,
+    // onboarding 2026-11-14: a model gives the company draft its cases before the accept.
     const [second] = write(REFRESH, importOf(2))
+    const breaks = '  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }\n'
+    p.write('cases.yaml', `cases:\n${breaks.repeat(3)}`)
+    const cases = { _tag: 'AddCases', target: { draft: second }, content: { file: 'cases.yaml' } }
+    write(HOST_RUN, cases as ActionInput)
     write(NANDA, review(String(second), true))
     expect(refusedWith(now(), REFRESH, importOf(2))).toBe('commit 2222222 of acme is in already')
     expect(now().states.revisions.get(first as never)?._tag).toBe('Outdated')
