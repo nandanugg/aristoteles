@@ -274,6 +274,13 @@ export const assignmentStateOf: AssignmentStateOf = (m, id, { task, parent }) =>
   if (isEndedTask(task)) {
     return { _tag: 'Ended', why: { _tag: 'TaskEnded', task: x.task, state: task } }
   }
+  // A subagent runs only when its parent starts it: when the parent has ended, nobody can start
+  // it again, so it ends too (live, 2026-11-15: a new version reopened t2, its haiku checkers
+  // still counted as working under their ended lead, and nobody could move them).
+  const orphan = parent._tag === 'Parent' && parent.state._tag === 'Ended'
+  if (orphan && x.runs._tag === 'Subagent') {
+    return { _tag: 'Ended', why: { _tag: 'ParentEnded', parent: parent.parent } }
+  }
   if (task._tag === 'Accepted') {
     if (parent._tag === 'Parent' && parent.state._tag === 'Ended') {
       return { _tag: 'Ended', why: { _tag: 'ParentEnded', parent: parent.parent } }
