@@ -338,11 +338,16 @@ export const SupervisorReason = Schema.Union([
   Schema.TaggedStruct('ProblemRetry', { problem: ProblemId }),
   // The host's prompt after the person opens its task draft: into the terminal of its run.
   Schema.TaggedStruct('DraftOpened', { draft: TaskDraftId }),
-  // The retry input of a failed terminal, try 1 to 3: typed, or given to the resume command.
+  // The retry input of a failed terminal, try 1 to 3: typed, or given to the resume command; the
+  // first prompt again, given to the launch command, while the terminal has never run.
   Schema.TaggedStruct('Retry', {
     to: Destination,
     attempt: Schema.Literals([1, 2, 3]),
-    via: Schema.Union([Typed, Schema.TaggedStruct('ResumeArgument', {})]),
+    via: Schema.Union([
+      Typed,
+      Schema.TaggedStruct('ResumeArgument', {}),
+      Schema.TaggedStruct('LaunchArgument', {}),
+    ]),
   }),
 ])
 // Why a send never reached its terminal (ui/watcher.js and ui/pump.js today).

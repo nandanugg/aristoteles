@@ -1,5 +1,5 @@
 // StartTerminals (C1, ruling 7): the one terminal of each persistent agent on an assignment, with
-// no terminal yet, or with one whose launch failed before it took an assignment. Never an Ended
+// no terminal yet, or with one that the pump lost before it ever ran (ranOnce). Never an Ended
 // agent: the selector reads AgentState. Ruling 10.1: the first prompt is an argument of the
 // launch command (its {prompt}, else its last argument); nothing is typed. The first prompt
 // names no token (P9): each assignment reaches the agent through its own work wait (ruling 9).

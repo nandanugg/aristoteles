@@ -2,8 +2,9 @@
 // not Done or Closed (the selector reads AgentState and RunState: an agent of an ended project is
 // not supervised, and a closed run's pane is not watched). Ruling 10.1: nothing is typed.
 // - A terminal of an agent that ended, shows error words or is silent restarts with its resume
-//   command and the retry prompt as its argument, up to 3 times; then its failure is stored, and
-//   the host sees it as a step (core/derived/notices.ts).
+//   command and the retry prompt as its argument (its launch command and first prompt while it
+//   never ran: ranOnce), up to 3 times; then its failure is stored, and the host sees it as a
+//   step (core/derived/notices.ts).
 // - A prompt of an AI CLI is stored once while it shows: the host of a child sees it as a step and
 //   answers it with work send; the host's own prompt is a problem for the person.
 // - An agent that waits in `work wait` (its marker, Outside.waiting) waits: it is not silent. An
@@ -15,6 +16,7 @@ import { Effect } from 'effect'
 import {
   type Derived,
   onPage,
+  ranOnce,
   type ToWatch,
   terminalsToWatch,
   waitingFor,
@@ -184,16 +186,20 @@ const watch = (r: Round, x: ToWatch) =>
     if (r.now - lastTry < timing.retryGap) return
 
     // A restart: the resume command with the retry prompt as its argument, which names the
-    // agent's own wait (ruling 9). A live process stops first (the pump resumes only a terminal
-    // that does not run).
+    // agent's own wait (ruling 9). A terminal that never ran has no conversation to resume: its
+    // launch command again, with its first prompt. A live process stops first (the pump resumes
+    // only a terminal that does not run).
     const attempt = tries === 0 ? 1 : tries === 1 ? 2 : 3
-    const prompt = fill(t?.retryInput ?? DEFAULT_RETRY, { agent: id })
+    const ran = ranOnce(w, sid)
+    const words = ran ? (t?.retryInput ?? DEFAULT_RETRY) : (t?.start ?? '')
+    const prompt = fill(words, { agent: id })
     yield* logLine(`${id}: ${kind}, try ${attempt} of 3`)
-    const via = { _tag: 'ResumeArgument' } as const
+    const via = ran ? ({ _tag: 'ResumeArgument' } as const) : ({ _tag: 'LaunchArgument' } as const)
     const retry = yield* sendLine({ _tag: 'Retry', to: to(sid), attempt, via }, prompt)
     yield* see(sid, { _tag: 'Retrying', why: kind, tries: attempt, lastTry: timeOf(r.now) })
     if (retry === null) return
-    const command = fill(t?.resume ?? t?.launch ?? '', { session: sid, model: t?.model, prompt })
+    const template = ran ? (t?.resume ?? t?.launch) : t?.launch
+    const command = fill(template ?? '', { session: sid, model: t?.model, prompt })
     const restart = Effect.gen(function* () {
       if (!reading.ended) yield* pump.stop(sid)
       yield* pump.resume(sid, { command, env: {}, cols: 160, rows: 48 })

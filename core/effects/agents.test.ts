@@ -15,11 +15,13 @@ import {
   later,
   PROMPT,
   sendsInto,
+  sid,
   terminalMoves,
   tokenIn,
   withLead,
 } from './support.test.ts'
 import { cliSession } from './lines.ts'
+import { resumeSession } from './person.ts'
 
 afterEach(cleanUp)
 
@@ -128,6 +130,36 @@ describe('the persistent agents', () => {
       "'System message, not from the person. Run work wait --by=p1, and do what it prints.'",
     )
     expect(terminalMoves(p.work(), lead, 'Failed')).toHaveLength(1)
+  })
+
+  // Metis, 2026-11-15: the AI CLI failed before it ever ran, so no conversation exists; a resume
+  // shows the session picker of Claude Code. Until the terminal has run once (its wait took an
+  // assignment), a restart launches it again with its first prompt.
+  test('a terminal that ended before it ever ran restarts with its launch command', async () => {
+    const { p, fake, w, hostToken } = await hosted()
+    await p.agent(`assign ${hostToken} t1 --role=section-lead`)
+    await w.tick()
+    const terminal = p.work().agents.get('p1' as never)?.terminal
+    const session = terminal?._tag === 'Started' ? terminal.session : ''
+    const restarts = () => fake.commands.filter((c) => c.startsWith(`resume ${session}:`))
+    fake.end(session)
+    later(31_000)
+    await w.tick()
+    expect(restarts()).toHaveLength(1)
+    expect(restarts()[0]).toStartWith(`resume ${session}: fake start ${cliSession(session)} `)
+    expect(restarts()[0]).toContain('work wait --by=p1')
+    // The person's Resume reads the same: a launch.
+    fake.end(session)
+    await w.person(resumeSession(sid(session), 'terra'))
+    expect(restarts()).toHaveLength(2)
+    expect(restarts()[1]).toStartWith(`resume ${session}: fake start ${cliSession(session)} `)
+    // Once it ran, a restart resumes its conversation.
+    await p.inSession('wait --by=p1 --seconds=1', session)
+    fake.end(session)
+    later(31_000)
+    await w.tick()
+    expect(restarts()).toHaveLength(3)
+    expect(restarts()[2]).toStartWith(`resume ${session}: fake resumed ${cliSession(session)} `)
   })
 
   // Nanda, 2026-11-15: the host hears at once of an agent that failed while it waited for work.

@@ -4,7 +4,14 @@
 // 2026-11-13): the page neither stops nor resumes it, and a Close only stops copying it. Ruling
 // 10.1: no act types into a terminal; the host hears of an Open or a Fixed through `work wait`.
 import { Effect } from 'effect'
-import { canAct, type Derived, hostOf, placementOf, sendsPending } from '../derived/index.ts'
+import {
+  canAct,
+  type Derived,
+  hostOf,
+  placementOf,
+  ranOnce,
+  sendsPending,
+} from '../derived/index.ts'
 import { currentTask, openedTopOf, runOfTree, within } from '../derived/reads.ts'
 import { intentOf } from '../schema/actions.ts'
 import { type Refusal, refusal } from '../schema/errors.ts'
@@ -73,11 +80,14 @@ export const resumeSession = (sid: SessionId, tier: TerminalTier) =>
     if (may._tag === 'MayNot') return yield* Effect.fail(may.refusal)
     const w = d.moment.work
     const run = [...w.runs.values()].find((r) => r.session === sid)
-    const owner = agentOfSession(w, sid)?.id ?? run?.id
+    const agent = agentOfSession(w, sid)?.id
+    const owner = agent ?? run?.id
     const t = (yield* tiersNow)[tier]
-    const retry = fill(t?.retryInput ?? DEFAULT_RETRY, { agent: owner })
-    const values = { session: sid, model: t?.model, prompt: retry }
-    const command = fill(t?.resume ?? t?.launch ?? '', values)
+    // An agent's terminal that never ran has no conversation: its launch, with its first prompt.
+    const ran = agent === undefined || ranOnce(w, sid)
+    const words = ran ? (t?.retryInput ?? DEFAULT_RETRY) : (t?.start ?? '')
+    const values = { session: sid, model: t?.model, prompt: fill(words, { agent: owner }) }
+    const command = fill((ran ? (t?.resume ?? t?.launch) : t?.launch) ?? '', values)
     yield* (yield* Pump).resume(sid, { command, env: {}, cols: 160, rows: 48 })
     yield* act({ by, input })
   })

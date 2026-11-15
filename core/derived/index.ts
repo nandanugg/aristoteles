@@ -51,6 +51,7 @@ export { waitingFor } from './waiting.ts'
 
 export {
   hostPanesOf,
+  ranOnce,
   sendsPending,
   terminalsToClose,
   terminalsToStart,

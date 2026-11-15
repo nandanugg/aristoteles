@@ -28,6 +28,10 @@ const stopped = (w: Work, sid: SessionId): boolean =>
     .at(-1)?.report._tag === 'Stopped'
 const closedOnce = (w: Work, sid: SessionId): boolean =>
   w.terminalEvents.some((t) => t.session === sid && t.report._tag === 'Closed')
+// A terminal has run once when its wait took an assignment (a session names it): only then has its
+// AI CLI a conversation to resume. Before that, a start or a restart launches it again.
+export const ranOnce = (w: Work, sid: SessionId): boolean =>
+  [...w.sessions.values()].some((s) => s.session === sid)
 
 // S1: the host pane of each live run (RunState, not run.end).
 export const hostPanesOf: HostPanesOf = (d) =>
@@ -57,7 +61,7 @@ export const terminalsToStart: TerminalsToStart = (d) => {
       d.moment.outside.terminals[sid] === undefined &&
       !stopped(w, sid) &&
       !closedOnce(w, sid) &&
-      ![...w.sessions.values()].some((s) => s.session === sid)
+      !ranOnce(w, sid)
     return again ? [{ agent: x.id, session: { _tag: 'Again', session: sid } }] : []
   })
 }
