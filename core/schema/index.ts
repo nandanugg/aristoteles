@@ -84,7 +84,6 @@ export {
   PersistenceFile,
   ReviseFile,
   RoleFile,
-  Rung,
   Settings,
   Snapshot,
   Spot,

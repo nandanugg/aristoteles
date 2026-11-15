@@ -259,8 +259,7 @@ export const Spot = Schema.Struct({ file: Schema.String, line: PositiveInt, exce
 export type Spot = typeof Spot.Type
 // A step of a case between the direction and the output, named by the host (Instruction, Writer
 // skill, Validator, Template).
-export const Rung = Schema.Struct({ name: NonBlank, ...Spot.fields })
-export type Rung = typeof Rung.Type
+const Rung = Schema.Struct({ name: NonBlank, ...Spot.fields })
 const Fit = Schema.Literals(['Follows', 'Breaks'])
 
 // page: Case. A ladder from the direction down to a real output of the project (Nanda,
