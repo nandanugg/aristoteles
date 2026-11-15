@@ -47,7 +47,14 @@ const open = async () => {
   // the canvas, the panel, the diff, and a live change
     const { p, s, page, errors, linter, icons } = await open()
     try {
+      // The sidebar starts folded (Nanda, 2026-11-15); the button at the top left opens it.
+      expect(await page.locator('.crumb').count()).toBe(0)
+      expect(await page.getAttribute('.fold', 'aria-expanded')).toBe('false')
+      await page.click('.fold')
+      expect(await page.getAttribute('.fold', 'aria-expanded')).toBe('true')
       expect(await page.textContent('.crumb')).toBe('report-export/ The Introduction')
+      await page.click('.fold')
+      await page.waitForSelector('.crumb', { state: 'detached' })
       expect(await page.textContent('.card.task .task-title')).toBe('t1The Introduction')
       expect(await page.textContent('.card.task .now')).toBe('in review')
       expect(await page.textContent('.card.task .tags')).toBe('Terra · a1')
@@ -114,6 +121,7 @@ const open = async () => {
     await page.waitForSelector('.tab[aria-selected="true"] >> text=Directions')
     expect(page.url()).toBe(`${s.url}t1/t1/directions`)
     // The crumb of the dir leads back to the list.
+    await page.click('.fold')
     await page.click('.crumb-dir')
     await page.waitForSelector('.project-row')
     expect(path()).toBe('/')

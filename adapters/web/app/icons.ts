@@ -83,6 +83,11 @@ export const ICONS = {
   play: html`
     <polygon points="6 3 20 12 6 21 6 3"></polygon>
   `,
+  // The fold button of the sidebar (Lucide panel-left, ISC: vendor/LICENSE-lucide.txt).
+  panel: html`
+    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+    <path d="M9 3v18"></path>
+  `,
   pageUp: html`
     <polyline points="17 11 12 6 7 11"></polyline>
     <polyline points="17 18 12 13 7 18"></polyline>

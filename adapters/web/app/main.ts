@@ -89,16 +89,31 @@ const dot = (kind: string): VNode =>
 interface SidebarProps {
   dir: DirData
   project: string | null
+  open: boolean
+  onToggle: () => void
   onSettings: () => void
 }
 // A project starts in the AI CLI that the person triggers (Nanda, 2026-11-13): that session is the
-// host, so the sidebar starts none.
-function Sidebar({ dir, project, onSettings }: SidebarProps) {
+// host, so the sidebar starts none. The sidebar starts folded (Nanda, 2026-11-15); the button at
+// the top left opens it. Folded, a dot on the button tells of a project that needs the person.
+function Sidebar({ dir, project, open, onToggle, onSettings }: SidebarProps) {
   const current = dir.projects.find((p) => p.id === project)
   const crumbTail = current ? html`<span>/ ${current.title}</span>` : ''
+  const needsYou = !open && dir.projects.some((p) => p.badge)
+  const foot = html`<div class="sidebar-foot">
+    <button class="icon-button" aria-label="Settings"
+      onClick=${onSettings}>${icon(ICONS.gear, 20)}</button>
+  </div>`
+  const toggle = html`<button class="icon-button fold" aria-expanded=${open}
+    aria-label=${open ? 'Hide the projects' : 'Show the projects'}
+    onClick=${onToggle}>${icon(ICONS.panel, 20)}${needsYou
+      ? html`<span class="badge-dot" aria-hidden="true"></span>` : ''}</button>`
+  if (!open) {
+    return html`<nav class="sidebar folded" aria-label="Projects of this dir">${toggle}${foot}</nav>`
+  }
   return html`<nav class="sidebar" aria-label="Projects of this dir">
-    <div class="crumb">${icon(ICONS.folder)}<a class="crumb-dir" href="/" onClick=${follow}><strong
-      >${dir.name}</strong></a>${crumbTail}</div>
+    <div class="crumb">${toggle}${icon(ICONS.folder)}<a class="crumb-dir" href="/"
+      onClick=${follow}><strong>${dir.name}</strong></a>${crumbTail}</div>
     ${dir.projects.map((p) => html`
       <a class="project" href=${`/${p.id}`} onClick=${follow}
         aria-current=${p.id === project ? 'page' : undefined}>
@@ -108,10 +123,7 @@ function Sidebar({ dir, project, onSettings }: SidebarProps) {
           aria-label="Needs you">!</span>` : html`<span
           class="state">${STATE_WORDS[p.state] ?? p.state}</span>`}
       </a>`)}
-    <div class="sidebar-foot">
-      <button class="icon-button" aria-label="Settings"
-        onClick=${onSettings}>${icon(ICONS.gear, 20)}</button>
-    </div>
+    ${foot}
   </nav>`
 }
 
@@ -478,6 +490,7 @@ function App() {
   const [view, setView] = useState<ProjectData | null>(null)
   const [version, setVersion] = useState(0)
   const [settings, setSettings] = useState(false)
+  const [sidebar, setSidebar] = useState(false)
   // Ruling 10.8: a git user.name that is no person of the dir sees no items, and this line.
   const [personLine, setPersonLine] = useState<string | null>(null)
 
@@ -559,7 +572,8 @@ function App() {
   }
   if (!dir) return html`<main class="canvas"></main>`
   return html`<div class="layout">
-    <${Sidebar} dir=${dir} project=${project} onSettings=${() => setSettings(true)} />
+    <${Sidebar} dir=${dir} project=${project} open=${sidebar}
+      onToggle=${() => setSidebar(!sidebar)} onSettings=${() => setSettings(true)} />
     <main class="canvas">
       ${personLine ? html`<p class="person-line">${personLine}</p>` : ''}
       ${!dir.initialized
