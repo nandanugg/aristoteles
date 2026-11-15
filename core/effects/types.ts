@@ -108,7 +108,8 @@ export interface Timing {
   // The pause between the text of a host's send and its Enter.
   readonly enterPause: number
 }
-export const TIMING: Timing = { outputWindow: 8000, retryGap: 30000, enterPause: 250 }
+// enterPause: the pause between a line and its Enter (Nanda, 2026-11-15: more room, safer).
+export const TIMING: Timing = { outputWindow: 8000, retryGap: 30000, enterPause: 1000 }
 
 // The supervisor of one start: its times, the person whose UI it is (the author of its acts), and
 // when it started (an act or a send this much older was handled before it).

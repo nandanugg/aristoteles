@@ -26,6 +26,7 @@ import {
   terminalMoves,
   withLead,
 } from './support.test.ts'
+import { cliSession } from './lines.ts'
 
 afterEach(cleanUp)
 
@@ -40,7 +41,8 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
     // The terra tier has no {prompt} in its launch command: the prompt is its last argument.
     // Ruling 9, onboarding 2026-11-14 (P9): it names the agent and its wait (was: a token).
     const prompt = "'Use the work skill. You are p1: run work wait --by=p1, and do what it prints.'"
-    expect(fake.commands).toContain(`start ${lead}: fake start ${lead} ${prompt}`)
+    // The command names the session as a UUID (Nanda, 2026-11-15: an AI CLI takes no other id).
+    expect(fake.commands).toContain(`start ${lead}: fake start ${cliSession(lead)} ${prompt}`)
     expect(fake.typed(lead)).toBe('')
     const [start] = sendsInto(p.work(), 'Start', lead)
     expect(start?.from).toMatchObject({ reason: { via: { _tag: 'LaunchArgument' } } })
@@ -154,7 +156,7 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
     // Each try is the resume command, with the retry prompt as its argument.
     const resumes = fake.commands.filter((c) => c.startsWith(`resume ${lead}:`))
     expect(resumes).toHaveLength(3)
-    expect(resumes[0]).toContain(`fake resumed ${lead} 'System message, not from the person.`)
+    expect(resumes[0]).toContain(`fake resumed ${cliSession(lead)} 'System message, not from the person.`)
     await fail(third)
     await fail(watcher())
     expect(terminalMoves(p.work(), lead, 'Failed')).toHaveLength(1)

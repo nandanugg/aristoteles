@@ -3,6 +3,7 @@
 // of its command), the text of a problem that the supervisor records, and the text of the
 // person's ask to try a problem again (stored, never typed). They are the content of
 // stored records, so they live with the effects, not in adapters/words.
+import { createHash } from 'node:crypto'
 import type { ProblemId } from '../schema/index.ts'
 
 export const SYSTEM = 'System message, not from the person.'
@@ -12,13 +13,27 @@ export const DEFAULT_RETRY = `${SYSTEM} Run work wait --by={agent}, and do what 
 
 const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
 type Key = 'session' | 'agent' | 'model' | 'prompt'
-// The values of a command: {session}, {agent} and {model} as they are, {prompt} quoted for the
-// shell. A command with no {prompt} gets it as its last argument: a first prompt is never typed
-// (10.1).
+// The session of a command is a UUID: an AI CLI takes no other session id (Claude Code: "Invalid
+// session ID. Must be a valid UUID", Nanda, 2026-11-15). A UUID stays as it is; any other id maps
+// to the same UUID each time (the SHA-1 of the id, shaped as a version 5 UUID), so a launch and
+// its later resumes name one session.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export const cliSession = (session: string): string => {
+  if (UUID.test(session)) return session
+  const h = createHash('sha1').update(session).digest('hex')
+  const variant = ((Number.parseInt(h[16] ?? '0', 16) & 0x3) | 0x8).toString(16)
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`
+}
+
+// The values of a command: {session} as a UUID, {agent} and {model} as they are, {prompt} quoted
+// for the shell. A command with no {prompt} gets it as its last argument: a first prompt is never
+// typed (10.1).
 export const fill = (template: string, values: { readonly [K in Key]?: string }): string => {
-  const filled = template.replace(/\{(session|agent|model|prompt)\}/g, (m, k: Key) =>
-    k === 'prompt' ? quote(values.prompt ?? '') : (values[k] ?? m),
-  )
+  const filled = template.replace(/\{(session|agent|model|prompt)\}/g, (m, k: Key) => {
+    if (k === 'prompt') return quote(values.prompt ?? '')
+    if (k === 'session' && values.session !== undefined) return cliSession(values.session)
+    return values[k] ?? m
+  })
   const appended = values.prompt !== undefined && !template.includes('{prompt}')
   return appended ? `${filled} ${quote(values.prompt ?? '')}` : filled
 }

@@ -19,6 +19,7 @@ import {
   tokenIn,
   withLead,
 } from './support.test.ts'
+import { cliSession } from './lines.ts'
 
 afterEach(cleanUp)
 
@@ -43,7 +44,8 @@ describe('the persistent agents', () => {
     const terminal = p.work().agents.get('p1' as never)?.terminal
     expect(terminal?._tag).toBe('Started')
     const session = terminal?._tag === 'Started' ? terminal.session : ''
-    expect(starts[0]).toStartWith(`start ${session}: fake start ${session} `)
+    // The command names the session as a UUID (Nanda, 2026-11-15: an AI CLI takes no other id).
+    expect(starts[0]).toStartWith(`start ${session}: fake start ${cliSession(session)} `)
   })
 
   test('two assignments of a role in a run start one terminal; one wait gives both', async () => {
