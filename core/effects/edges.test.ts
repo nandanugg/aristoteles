@@ -259,6 +259,17 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
     expect(fake.calls.filter((c) => !c.startsWith('adopt'))).toEqual([])
   })
 
+  // Live, 2026-11-15: a host back from a usage limit read its brief before its wait started; it
+  // was taken for gone, by its old marker.
+  test('a host that acts lately is there, though its last wait returned long ago', async () => {
+    const { p, fake, w, host, hostToken } = await hosted()
+    fake.returned.set(host, clock.now)
+    later(11 * 60_000)
+    await p.agent(`brief ${hostToken}`)
+    await w.tick()
+    expect([...p.work().problems.values()]).toEqual([])
+  })
+
   test('a host whose wait returned lately is there: its quiet pane is no problem', async () => {
     const { p, fake, w, host } = await hosted()
     later(11 * 60_000)

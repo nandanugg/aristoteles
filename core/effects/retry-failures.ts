@@ -153,7 +153,8 @@ const watch = (r: Round, x: ToWatch) =>
     // P8: a host gone from its wait; an agent stalled at its prompt with a ready step (once for
     // each stall: no try since its last sign of life).
     const seen = Math.max(lastAct, lastSeenOf(life, r.now))
-    const gone = host && life._tag === 'Gone'
+    // An act counts as life too: a host that resumed acts before its wait starts (live, 23:21).
+    const gone = host && life._tag === 'Gone' && r.now - seen > silentMs
     const stalled =
       !host &&
       life._tag !== 'Waits' &&
