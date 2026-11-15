@@ -4,7 +4,7 @@
 // and every wait on a maker or a checker has a mover with a step.
 import { beforeAll, describe, expect, test } from 'bun:test'
 import type { AssignmentId, Time, Work } from '../schema/index.ts'
-import { derive, type Derived, nextFor, type NextStep, type StepWhat } from './index.ts'
+import { derive, type Derived, nextFor, type NextStep, stepKey, type StepWhat } from './index.ts'
 import { momentOf, ok, SCENARIOS, tokenIn, type Scenario } from './support.test.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harness from '../../test/harness.js'
@@ -50,6 +50,25 @@ describe('a claim ends with the report of its maker', () => {
     // After its brief the maker holds a claim again, and its step is the report.
     ok(await s.p.agent(`brief ${s.writer}`))
     expect(tags(nextFor(derivedOf(s), agent('a2')))).toEqual(['Do ReportWork'])
+  }, 30000)
+})
+
+// Live, 2026-11-15: the writer fixed r1 and reported r2, the lead rejected r2, and the writer's
+// work wait never returned: the step "read your brief again for t1" had the same key as after
+// the reject of r1, so the wait took it for work it had printed already.
+describe('each new result makes the redo new work', () => {
+  test('the key of the redo step names the latest result', async () => {
+    const s = await rejected()
+    const first = stepKey(nextFor(derivedOf(s), agent('a2')))
+    ok(await s.p.agent(`brief ${s.writer}`))
+    s.p.write('docs/tsd.md', harness.INTRO_V1)
+    ok(await s.p.agent(`report ${s.writer} --output=docs/tsd.md#introduction`))
+    const point = '--point="still a ticket id" --breaks=no-ticket-ids'
+    ok(await s.p.agent(`brief ${s.linter}`))
+    ok(await s.p.agent(`review ${s.linter} r2 reject ${point}`))
+    const second = stepKey(nextFor(derivedOf(s), agent('a2')))
+    expect(tags(nextFor(derivedOf(s), agent('a2')))).toEqual(['Do BriefToMake'])
+    expect(second).not.toBe(first)
   }, 30000)
 })
 

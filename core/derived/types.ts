@@ -586,7 +586,14 @@ export type StepWhat =
     }
   | { readonly _tag: 'MakerWorking'; readonly maker: AssignmentId; readonly task: TaskId }
   // The maker's own steps: it reads its brief (again, to fix a reject), or reports its work.
-  | { readonly _tag: 'BriefToMake'; readonly task: TaskId; readonly redo: boolean }
+  // after: the latest result of the task; each new result makes the step new work, so a wait that
+  // printed the step for r1 returns again after the reject of r2 (Nanda, 2026-11-15).
+  | {
+      readonly _tag: 'BriefToMake'
+      readonly task: TaskId
+      readonly redo: boolean
+      readonly after: ResultId | null
+    }
   | { readonly _tag: 'ReportWork'; readonly maker: AssignmentId; readonly task: TaskId }
   | {
       readonly _tag: 'GiveMakerCommand'

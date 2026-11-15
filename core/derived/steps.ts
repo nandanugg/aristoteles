@@ -767,7 +767,10 @@ const makerStep = (
   if (maker?.id === a.id) {
     const self = { assignment: a.id }
     return claimedSince(w, a.id) === undefined
-      ? act({ _tag: 'BriefToMake', task: t.id, redo }, { _tag: 'Brief', target: self })
+      ? act(
+          { _tag: 'BriefToMake', task: t.id, redo, after: latestResultOf(w, t.id)?.id ?? null },
+          { _tag: 'Brief', target: self },
+        )
       : act({ _tag: 'ReportWork', maker: a.id, task: t.id }, { _tag: 'Report', target: self })
   }
   if (maker && claimedSince(w, maker.id) !== undefined) {
@@ -952,7 +955,7 @@ const IDS: {
   EscalateForPoint: (s) => [s.point, s.result],
   MakerWaitsForFile: (s) => [s.maker, s.before],
   MakerWorking: (s) => [s.maker, s.task],
-  BriefToMake: (s) => [s.task],
+  BriefToMake: (s) => [s.task, s.after ?? 'none'],
   ReportWork: (s) => [s.maker, s.task],
   GiveMakerCommand: (s) => [s.maker, s.task],
   AssignMaker: (s) => [s.task, ...s.roles],
