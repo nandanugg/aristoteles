@@ -219,7 +219,8 @@ function CurrentDirections({ directions }: { directions: OnboardingData['directi
     <article class="direction-page" aria-label=${card.name}>
       <div class="direction-head"><h2>${card.name}</h2></div>
       <div class="muted"><code>${card.id}</code> · ${card.origin}</div>
-      <div class="direction-body"><${DirectionReview} card=${card} /></div>
+      ${'draft' in card ? html`<div class="direction-body">
+        <${DirectionReview} id=${card.id} draft=${card.draft} /></div>` : ''}
     </article>
   </div>`
 }

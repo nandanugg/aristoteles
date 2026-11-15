@@ -37,7 +37,7 @@ describe('aristoteles keeps the links in SQL', () => {
   test('the rows that the store holds are the records that a replay of the acts reads', async () => {
     const { p } = await reported()
     const t1 = await panel(p, 't1')
-    const [tsd] = t1.directions
+    const [tsd] = t1.top.directions
     const db = tables(p)
     // One dir in this store, so no row needs its project.
     const rows = (sql, ...args) => db.query(sql).all(...args)

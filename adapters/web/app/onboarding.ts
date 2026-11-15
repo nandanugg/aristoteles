@@ -22,6 +22,14 @@ const STATE_LABEL: Record<Card['state'], string> = {
   accepted: 'Accepted',
   current: 'Current',
 }
+// What a loading direction waits for, in plain words.
+type Loading = Extract<Card, { readonly state: 'loading' }>
+const LOADING: { readonly [K in Loading['why']]: (card: Loading) => string } = {
+  drafting: () => 'The host drafts it',
+  reset: (card) => `${card.id} is not in the current shape: the host drafts it again`,
+  answered: () => 'The host drafts it again from your answers',
+  revise: (card) => `The host drafts it, from your words: "${'words' in card ? card.words : ''}"`,
+}
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 const text = (e: Event) => (e.currentTarget as HTMLInputElement | HTMLTextAreaElement).value
 
@@ -61,7 +69,7 @@ const nextAfter = (list: ReadonlyArray<Card>, id: string): string | undefined =>
 function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
   const [words, setWords] = useState('')
   // The questions wait for the answers only while the direction shows Question (O4).
-  const open = card.state === 'question' ? card.questions : []
+  const open = card.state === 'question' ? card.open : []
   const [chosen, setChosen] = useState<ReadonlyArray<'A' | 'B' | undefined>>([])
   const act = (fn: () => OnboardingActJson, done = false) =>
     attempt(async () => {
@@ -71,36 +79,40 @@ function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
       return out
     })
   const submit = act(() => {
-    const options = open.map((_, i) => chosen[i] ?? 'A')
+    // Submit is enabled only when each open question has its answer.
+    const options = open.map((_, i) => chosen[i] as 'A' | 'B')
     const [first, ...rest] = options
-    return { act: 'answer', direction: card.id, options: [first ?? 'A', ...rest] }
+    return { act: 'answer', direction: card.id, options: [first as 'A' | 'B', ...rest] }
   })
   const empty = !words.trim()
-  const drafted = card.says !== null
-  const questions = card.questions.map((q, i) => {
-    const n = open.indexOf(q)
-    return html`<fieldset class="question" aria-label=${`question ${i + 1}`}>
+  const answered = 'answered' in card ? card.answered : []
+  // An open question takes the person's choice; an answered one shows the choice it has.
+  const question = (
+    q: (typeof open)[number],
+    i: number,
+    choice: { readonly n: number } | { readonly answer: 'A' | 'B' },
+  ) => html`<fieldset class="question" aria-label=${`question ${i + 1}`}>
       <legend><${Inline} text=${q.says} /></legend>
       <ul class="examples"><${ExampleBlock} e=${q.example} /></ul>
       ${(['A', 'B'] as const).map((o, k) => html`<label class="option">
-        <input type="radio" name=${`${card.id}-q${i}`} disabled=${n < 0}
-          checked=${n < 0 ? q.answer === o : chosen[n] === o}
-          onChange=${() => setChosen((c) => Object.assign([...c], { [n]: o }))} />
+        <input type="radio" name=${`${card.id}-q${i}`} disabled=${'answer' in choice}
+          checked=${'answer' in choice ? choice.answer === o : chosen[choice.n] === o}
+          onChange=${() => 'n' in choice && setChosen((c) => Object.assign([...c], { [choice.n]: o }))} />
         <span>${o}: ${q.options[k]}</span></label>`)}
     </fieldset>`
-  })
+  const questions = [
+    ...open.map((q, n) => question(q, n, { n })),
+    ...answered.map((q, i) => question(q, i, { answer: q.answer })),
+  ]
   return html`<article class="direction-page" aria-label=${card.name}>
     <div class="direction-head"><h2>${card.name}</h2>
       <span class=${`chip ${card.state}`}>${STATE_LABEL[card.state]}</span></div>
     <div class="muted"><code>${card.id}</code> · ${card.origin}</div>
     ${card.principle ? html`<p><strong>The principle:</strong> ${card.principle}</p>` : ''}
     ${card.example ? html`<p><strong>An example:</strong> ${card.example}</p>` : ''}
-    ${card.state === 'loading' ? html`<p class="waits">${card.reset
-      ? `${card.id} is not in the current shape: the host drafts it again`
-      : `The host drafts it${card.request ? `, from your words: "${card.request}"` : ''}`}.</p>`
-      : ''}
+    ${card.state === 'loading' ? html`<p class="waits">${LOADING[card.why](card)}.</p>` : ''}
     <div class="direction-body">
-      <${DirectionReview} card=${card} />
+      ${'draft' in card ? html`<${DirectionReview} id=${card.id} draft=${card.draft} />` : ''}
       ${questions.length ? html`<div class="section-title">Questions of the AI</div>` : ''}
       ${questions}
       ${open.length ? html`<button class="btn primary"
@@ -113,7 +125,7 @@ function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
     <div class="item-actions">
       <button class="btn primary" disabled=${card.state !== 'ready' || !empty}
         onClick=${act(() => ({ act: 'accept', direction: card.id }), true)}>Accept</button>
-      <button class="btn" disabled=${!drafted || empty}
+      <button class="btn" disabled=${!('draft' in card) || empty}
         onClick=${act(() => ({ act: 'revise', direction: card.id, words }))}>Revise</button>
       <button class="btn" onClick=${act(() => ({ act: 'remove', direction: card.id }), true)}>
         Remove</button>

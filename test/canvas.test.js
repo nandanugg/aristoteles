@@ -8,7 +8,7 @@ import { canvas } from './outside.js'
 // The cards of the canvas (the server's /api/project). Each row: the task, and each work card
 // with its review cards.
 const cards = async (p, id = 't1') => (await canvas(p, id)).rows.map((r) =>
-  [r.task.id, r.work.map((w) => [w.a, w.state, w.reviews.map((v) => [v.by, v.decision])])])
+  [r.task.id, r.work.map((w) => [w.a, w.now.state, (w.now.reviews ?? []).map((v) => [v.by, v.decision])])])
 
 const LINT = (where) => `--evidence="no-code-proof | ${where} | no paths or hashes there" --evidence="no-ticket-ids | ${where} | no ticket ids there"`
 

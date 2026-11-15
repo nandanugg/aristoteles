@@ -32,6 +32,7 @@ import type {
   PositiveInt,
   ProblemId,
   QuestionId,
+  ResultId,
   RevisionId,
   RoleName,
   RunId,
@@ -391,20 +392,34 @@ export interface DirView {
   readonly inbox: ReadonlyArray<Decision>
 }
 
-// A project: a run, or a top task that no run holds (opened at a terminal).
-export interface ProjectSummary {
-  readonly id: Text // h.. or t..
-  readonly kind: 'host' | 'task'
+// A project: a run with its session, or a top task that no run holds (opened at a terminal).
+// state: RunState in the old words; top: the current top task, after remakes (a run that talks
+// has none yet).
+export type ProjectSummary = SummaryHead &
+  (
+    | {
+        readonly kind: 'host'
+        readonly id: RunId
+        readonly session: SessionId
+        readonly state: 'talks' | 'works' | 'ends' | 'done' | 'closed'
+        readonly top: TaskId | null
+      }
+    | {
+        readonly kind: 'task'
+        readonly id: TaskId
+        readonly state: 'works' | 'done' | 'closed'
+        readonly top: TaskId
+      }
+  )
+interface SummaryHead {
   readonly at: Time | ''
-  readonly session: SessionId | null
-  readonly state: 'talks' | 'works' | 'ends' | 'done' | 'closed' // RunState in the old words
   readonly title: Text
-  readonly top: TaskId | null // the current top task, after remakes
   readonly badge: boolean // an item shows on a task of its tree
 }
 
 // GET /api/project/<id>: the canvas in layout A.
-export interface ProjectView extends ProjectSummary {
+export type ProjectView = ProjectSummary & ProjectRows
+interface ProjectRows {
   readonly rows: ReadonlyArray<CanvasRow> // the task tree going down; only what runs now
   readonly drafts: ReadonlyArray<TaskDraftView> // a talking run's drafts of the top task
   readonly terminal: TerminalRef | null // a run's own terminal
@@ -443,11 +458,17 @@ export interface WorkCard {
   readonly attempt: { readonly now: number; readonly max: PositiveInt | null }
   readonly terminal: CardTerminal
   readonly inside: AssignmentId | null
-  readonly result: Text | null
-  readonly output: Text | null
-  readonly state: 'works' | 'in review' | 'accepted' | 'rejected' | 'finished'
-  readonly files: number
-  readonly reviews: ReadonlyArray<ReviewCard> // the reviews that run now
+  // The canvas shows only work that runs now: in work, or its result in review with the reviews
+  // that run now.
+  readonly now:
+    | { readonly state: 'works' }
+    | {
+        readonly state: 'in review'
+        readonly result: ResultId
+        readonly output: Text
+        readonly files: number
+        readonly reviews: ReadonlyArray<ReviewCard>
+      }
 }
 export interface ReviewCard {
   readonly id: Text | null // null: a checker that has not reviewed yet, or a decider that waits
@@ -476,10 +497,10 @@ export interface TaskPanel {
   readonly name: Text
   readonly text: Text
   readonly words: Text
-  readonly top: boolean
+  // A top task shows its directions; null: a part of another task.
+  readonly top: { readonly directions: ReadonlyArray<DirectionView> } | null
   readonly decisions: ReadonlyArray<Decision> // the shown decisions on this task
   readonly terminal: TerminalRef | null
-  readonly directions: ReadonlyArray<DirectionView> | null // only on the top task
   readonly results: ReadonlyArray<ResultView>
   // line: the act as work log prints it.
   readonly timeline: ReadonlyArray<{ readonly at: Time; readonly who: Text; readonly line: Text }>
@@ -619,26 +640,51 @@ export interface OnboardingView {
 export type StartView =
   | { readonly state: 'open' | 'waiting' | 'started' }
   | { readonly state: 'blocked'; readonly says: Text; readonly fix: Text }
-// One direction of the list, and the right column when it is open.
-export interface DirectionCard {
+// One direction of the list, and the right column when it is open. Its state says what it has:
+// a draft (or a version) holds all its words at once, and only a question has open questions.
+// loading, question, ready, accepted: a file of onboarding; current: official in the store.
+export type DirectionCard = CardHead &
+  (
+    // the host drafts it: the first draft, or again because its file was in an older shape
+    | { readonly state: 'loading'; readonly why: 'drafting' | 'reset' }
+    // the host drafts it again after the person's answers
+    | {
+        readonly state: 'loading'
+        readonly why: 'answered'
+        readonly draft: DirectionWords
+        readonly answered: NonEmpty<AnsweredView>
+      }
+    // the host drafts it again from the person's words (a Revise)
+    | {
+        readonly state: 'loading'
+        readonly why: 'revise'
+        readonly words: Text
+        readonly draft: DirectionWords
+        readonly answered: ReadonlyArray<AnsweredView>
+      }
+    | {
+        readonly state: 'question'
+        readonly draft: DirectionWords
+        readonly open: NonEmpty<QuestionView>
+      }
+    | { readonly state: 'ready' | 'accepted' | 'current'; readonly draft: DirectionWords }
+  )
+interface CardHead {
   readonly id: Text
   readonly name: Text // before its first draft: the person's principle, or the company folder
-  // loading, question, ready, accepted: a file of onboarding; current: official in the store
-  readonly state: 'loading' | 'question' | 'ready' | 'accepted' | 'current'
   readonly origin: Text // where it comes from, in one line
   readonly principle: Text | null // the words of the person who added it (ruling 5)
   readonly example: Text | null
-  readonly summary: Text | null // shown before the words (Nanda, 2026-11-15); null: no draft yet
+}
+// The words of a draft or of a version, all present together. The summary shows before the words;
+// diff: the words against the last draft, or the version against the one before it (Nanda,
+// 2026-11-15): with none before, every line comes.
+export interface DirectionWords {
+  readonly summary: Text
   readonly flow: ReadonlyArray<FlowStepView> // none: no diagram
-  readonly says: Text | null // null: no draft yet
+  readonly says: Text
   readonly standards: DirectionView['standards'] // each rule names the role that checks it
-  // The words against the last draft, or the version against the one before it (Nanda,
-  // 2026-11-15): with none before, every line comes. null: no draft yet.
-  readonly diff: DraftChange | null
-  readonly questions: ReadonlyArray<QuestionView>
-  readonly request: Text | null // the words of a Revise that wait for the host
-  // its file was in an older shape, so the host drafts it again (Nanda, 2026-11-15)
-  readonly reset: boolean
+  readonly diff: DraftChange
 }
 // One step of the flow of a direction (Nanda, 2026-11-15): an actor acts on another actor or on a
 // file (from equal to to: an act on its own). place: where the project defines the step, with the
@@ -684,7 +730,9 @@ export interface QuestionView {
   readonly says: Text
   readonly example: ExampleView
   readonly options: readonly [Text, Text]
-  readonly answer: 'A' | 'B' | null // null: open
+}
+export interface AnsweredView extends QuestionView {
+  readonly answer: 'A' | 'B'
 }
 // One card of the agents page (ruling 11); its window shows the rest.
 export interface RoleCard {

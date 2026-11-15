@@ -4,13 +4,14 @@
 // around it or the host's words. The directions page and the gear's directions entry show it; the
 // panel of a task shows the words by level (DirectionText).
 import { html } from 'htm/preact'
-import type { DirectionCard } from '../contract.ts'
+import type { DirectionCard, DirectionView } from '../contract.ts'
 import { Change } from './change.ts'
 import { FlowDiagram, whoOf } from './flow.ts'
 import { Markdown } from './markdown.ts'
 
-type Card = typeof DirectionCard.Type
-type ExampleData = Card['flow'][number]['examples'][number]
+// The words of a draft or of a version: a card in any state but the first loading has them.
+type Draft = Extract<typeof DirectionCard.Type, { readonly draft: unknown }>['draft']
+type ExampleData = Draft['flow'][number]['examples'][number]
 type SampleData = ExampleData['output']
 type SpotData = Extract<SampleData, { file: string }>
 
@@ -55,8 +56,8 @@ export function ExampleBlock({ e }: { e: ExampleData }) {
 }
 
 // The examples by marked step, in the order of the flow.
-export function Examples({ card }: { card: Pick<Card, 'flow'> }) {
-  const groups = card.flow
+export function Examples({ draft }: { draft: Pick<Draft, 'flow'> }) {
+  const groups = draft.flow
     .map((s, i) => ({ head: `Step ${i + 1} · ${whoOf(s)}`, of: s.examples }))
     .filter((g) => g.of.length)
   const count = groups.reduce((sum, g) => sum + g.of.length, 0)
@@ -70,28 +71,28 @@ export function Examples({ card }: { card: Pick<Card, 'flow'> }) {
 
 // The direction for its review, in its order: the summary, the flow with its marks, the change of
 // the words (each standard and each rule with its checker inside it), then the examples.
-export function DirectionReview({ card }: { card: Card }) {
+export function DirectionReview({ id, draft }: { id: string; draft: Draft }) {
   return html`<div class="direction-review">
-    ${card.summary ? html`<p class="direction-summary">${card.summary}</p>` : ''}
-    <${FlowDiagram} id=${card.id} flow=${card.flow} />
-    ${card.diff ? html`<div class="section-title">The words</div>
-      <${Change} change=${card.diff} />` : ''}
-    <${Examples} card=${card} />
+    <p class="direction-summary">${draft.summary}</p>
+    <${FlowDiagram} id=${id} flow=${draft.flow} />
+    <div class="section-title">The words</div>
+    <${Change} change=${draft.diff} />
+    <${Examples} draft=${draft} />
   </div>`
 }
 
 // The words of a direction, by level: the direction, then each standard with its rules inside.
 // The summary comes first, then the flow as a sequence diagram, then the words (Nanda,
 // 2026-11-15). The panel of a task shows its directions with it.
-type Words = Pick<Card, 'id' | 'summary' | 'flow' | 'says' | 'standards'>
+type Words = Pick<typeof DirectionView.Type, 'id' | 'summary' | 'flow' | 'says' | 'standards'>
 export function DirectionText({ card }: { card: Words }) {
   return html`<div class="direction-text">
-    ${card.says ? html`<section class="level level-direction" aria-label="Direction">
+    <section class="level level-direction" aria-label="Direction">
       <div class="level-head"><span class="level-tag direction">Direction</span></div>
-      ${card.summary ? html`<p class="direction-summary">${card.summary}</p>` : ''}
+      <p class="direction-summary">${card.summary}</p>
       <${FlowDiagram} id=${card.id} flow=${card.flow} />
       <${Markdown} text=${card.says} />
-    </section>` : ''}
+    </section>
     ${card.standards.map((s) => html`<section class="level level-standard"
       aria-label=${`Standard ${s.id}`}>
       <div class="level-head"><span class="level-tag standard">Standard</span>

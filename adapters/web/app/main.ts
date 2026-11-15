@@ -3,7 +3,6 @@
 // only draws what the server sends; the server reads the store with the engine. The routes and
 // the acts are typed by src/domain/ui-model.ts part 4.
 import type { VNode } from 'preact'
-import { Schema } from 'effect'
 import { html, render } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import {
@@ -16,7 +15,7 @@ import {
   TaskPanel,
   WorkCard as WorkCardSchema,
 } from '../contract.ts'
-import { RunId, type TaskDraftId } from '../../../src/domain/ids.ts'
+import type { TaskDraftId } from '../../../src/domain/ids.ts'
 import type { ActOut } from './api.ts'
 import { api, attempt, chime, post, socket, toast } from './api.ts'
 import { DirectionText } from './direction.ts'
@@ -190,16 +189,16 @@ function TaskCard({ task, selected, onOpen, onStop, onResume }: TaskCardProps) {
 
 function WorkCard({ work, onOpen }: { work: WorkCardData; onOpen: () => void }) {
   const attemptMax = work.attempt.max ? ` of ${work.attempt.max}` : ''
-  const fileWord = work.files === 1 ? 'file' : 'files'
+  const { now } = work
   return html`<section class="card work" aria-label=${`work of ${work.a}`} onClick=${onOpen}>
     <div class="card-head"><span class="kind">WORK</span>
       <span class="tags">${work.a} ${work.role} · ${TIER_NAME[work.tier] ?? work.tier}</span></div>
     <div class="card-body">
-      <div class="kv"><span class="k">Now</span><span class="v">${work.state}</span></div>
+      <div class="kv"><span class="k">Now</span><span class="v">${now.state}</span></div>
       ${work.attempt ? html`<div class="kv"><span class="k">Attempt</span>
         <span class="v">${work.attempt.now}${attemptMax}</span></div>` : ''}
-      ${work.result ? html`<div class="kv"><span class="k">Result</span>
-        <span class="v">${work.result} · ${work.files} ${fileWord}</span>
+      ${now.state === 'in review' ? html`<div class="kv"><span class="k">Result</span>
+        <span class="v">${now.result} · ${now.files} ${now.files === 1 ? 'file' : 'files'}</span>
         </div>` : ''}
     </div>
   </section>`
@@ -289,7 +288,7 @@ function Canvas({ view, selected, onOpen, onStop, onResume, onOpenDraft }: Canva
         <div class="works">${row.work.map((w) => html`
           <div class="chain">
             <${WorkCard} work=${w} onOpen=${() => onOpen(row.task.id, 'diff')} />
-            ${w.reviews.map((r) => html`<span class="link" aria-hidden="true"></span>
+            ${(w.now.state === 'in review' ? w.now.reviews : []).map((r) => html`<span class="link" aria-hidden="true"></span>
               <${ReviewCard} review=${r} onOpen=${() => onOpen(row.task.id, 'description')} />`)}
           </div>`)}
         </div>
@@ -332,7 +331,7 @@ function Description({ panel }: { panel: PanelData }) {
 }
 
 function Directions({ panel }: { panel: PanelData }) {
-  const directions = panel.directions
+  const directions = panel.top?.directions
   if (!directions?.length) {
     return html`<div style="color: var(--faint)">This task follows no direction.</div>`
   }
@@ -576,12 +575,13 @@ function App() {
       'Why do you close this project? ' +
         '(it stops every terminal of the project and closes its tasks)',
     )
-    if (!reason || !view) return undefined
-    return post({ act: 'close', run: Schema.decodeUnknownSync(RunId)(view.id), reason })
+    if (!reason || view?.kind !== 'host') return undefined
+    return post({ act: 'close', run: view.id, reason })
   })
 
-  const sessionWords = view?.session ? ` · session ${view.session}` : ''
-  const canClose = view && view.kind !== 'task' && view.state !== 'done' && view.state !== 'closed'
+  const host = view?.kind === 'host' ? view : null
+  const sessionWords = host ? ` · session ${host.session}` : ''
+  const canClose = host && host.state !== 'done' && host.state !== 'closed'
   if (error) {
     return html`<main class="canvas"><div class="empty"><h2>The UI cannot read this dir</h2>
       <p class="error">${error}</p></div></main>`

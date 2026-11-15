@@ -16,6 +16,7 @@ import {
   PositiveInt,
   ProblemId,
   QuestionId,
+  ResultId,
   RevisionId,
   RoleName,
   RunId,
@@ -224,11 +225,17 @@ export const ReviewCard = Schema.Struct({
   decision: Schema.Literals(['accept', 'reject', 'escalate', 'reviews', 'waits']),
   line: Text,
 })
-// The word of a card (not a record state: the architecture test reads a `state:` beside a
-// spread as a copy of a record with a new state).
-const WorkWord = {
-  state: Schema.Literals(['works', 'in review', 'accepted', 'rejected', 'finished']),
-}
+// The work of a card that runs now: in work, or its result in review.
+const WorkNow = Schema.Union([
+  Schema.Struct({ state: Schema.Literal('works') }),
+  Schema.Struct({
+    state: Schema.Literal('in review'),
+    result: ResultId,
+    output: Text,
+    files: Schema.Number,
+    reviews: Schema.Array(ReviewCard),
+  }),
+])
 export const WorkCard = Schema.Struct({
   a: AssignmentId,
   role: Text,
@@ -236,11 +243,7 @@ export const WorkCard = Schema.Struct({
   attempt: Attempt,
   terminal: CardTerminal,
   inside: Schema.NullOr(AssignmentId),
-  result: Schema.NullOr(Text),
-  output: Schema.NullOr(Text),
-  ...WorkWord,
-  files: Schema.Number,
-  reviews: Schema.Array(ReviewCard),
+  now: WorkNow,
 })
 export const TaskCard = Schema.Struct({
   id: TaskId,
@@ -265,23 +268,38 @@ export const TaskDraftView = Schema.Struct({
 })
 export const TerminalRef = Schema.Struct({ a: Text, terminal: TerminalSeen })
 
-const SummaryFields = {
-  id: Text,
-  kind: Schema.Literals(['host', 'task']),
+const HostSummary = {
+  kind: Schema.Literal('host'),
+  id: RunId,
   at: TimeOrNone,
-  session: Schema.NullOr(SessionId),
+  session: SessionId,
   state: Schema.Literals(['talks', 'works', 'ends', 'done', 'closed']),
   title: Text,
   top: Schema.NullOr(TaskId),
   badge: Schema.Boolean,
 }
-export const ProjectSummary = Schema.Struct(SummaryFields)
-export const ProjectView = Schema.Struct({
-  ...SummaryFields,
+const TaskSummary = {
+  kind: Schema.Literal('task'),
+  id: TaskId,
+  at: TimeOrNone,
+  state: Schema.Literals(['works', 'done', 'closed']),
+  title: Text,
+  top: TaskId,
+  badge: Schema.Boolean,
+}
+export const ProjectSummary = Schema.Union([
+  Schema.Struct(HostSummary),
+  Schema.Struct(TaskSummary),
+])
+const ProjectRows = {
   rows: Schema.Array(CanvasRow),
   drafts: Schema.Array(TaskDraftView),
   terminal: Schema.NullOr(TerminalRef),
-})
+}
+export const ProjectView = Schema.Union([
+  Schema.Struct({ ...HostSummary, ...ProjectRows }),
+  Schema.Struct({ ...TaskSummary, ...ProjectRows }),
+])
 export const DirView = Schema.Struct({
   name: Text,
   path: Text,
@@ -365,10 +383,9 @@ export const TaskPanel = Schema.Struct({
   name: Text,
   text: Text,
   words: Text,
-  top: Schema.Boolean,
+  top: Schema.NullOr(Schema.Struct({ directions: Schema.Array(DirectionView) })),
   decisions: Schema.Array(Decision),
   terminal: Schema.NullOr(TerminalRef),
-  directions: Schema.NullOr(Schema.Array(DirectionView)),
   results: Schema.Array(ResultView),
   timeline: Schema.Array(Schema.Struct({ at: Time, who: Text, line: Text })),
   files: Schema.Array(Schema.Struct({ file: Text, added: Schema.Number, removed: Schema.Number })),
@@ -376,28 +393,57 @@ export const TaskPanel = Schema.Struct({
 export const DiffView = Schema.Struct({ file: Schema.NullOr(Text), diff: Text })
 
 // GET /api/onboarding: the directions page, the agents page, and the gear's two entries.
-export const QuestionView = Schema.Struct({
+const QuestionFields = {
   says: Text,
   example: ExampleView,
   options: Schema.Tuple([Text, Text]),
-  answer: Schema.NullOr(Schema.Literals(['A', 'B'])),
+}
+export const QuestionView = Schema.Struct(QuestionFields)
+const AnsweredView = Schema.Struct({ ...QuestionFields, answer: Schema.Literals(['A', 'B']) })
+const DirectionWords = Schema.Struct({
+  summary: Text,
+  flow: FlowView,
+  says: Text,
+  standards: StandardsView,
+  diff: DraftChange,
 })
-export const DirectionCard = Schema.Struct({
+const CardHead = {
   id: Text,
   name: Text,
-  state: Schema.Literals(['loading', 'question', 'ready', 'accepted', 'current']),
   origin: Text,
   principle: Schema.NullOr(Text),
   example: Schema.NullOr(Text),
-  summary: Schema.NullOr(Text),
-  flow: FlowView,
-  says: Schema.NullOr(Text),
-  standards: StandardsView,
-  diff: Schema.NullOr(DraftChange),
-  questions: Schema.Array(QuestionView),
-  request: Schema.NullOr(Text),
-  reset: Schema.Boolean,
-})
+}
+const draft = DirectionWords
+export const DirectionCard = Schema.Union([
+  Schema.Struct({
+    ...CardHead,
+    state: Schema.Literal('loading'),
+    why: Schema.Literals(['drafting', 'reset']),
+  }),
+  Schema.Struct({
+    ...CardHead,
+    state: Schema.Literal('loading'),
+    why: Schema.Literal('answered'),
+    draft,
+    answered: Schema.NonEmptyArray(AnsweredView),
+  }),
+  Schema.Struct({
+    ...CardHead,
+    state: Schema.Literal('loading'),
+    why: Schema.Literal('revise'),
+    words: Text,
+    draft,
+    answered: Schema.Array(AnsweredView),
+  }),
+  Schema.Struct({
+    ...CardHead,
+    state: Schema.Literal('question'),
+    draft,
+    open: Schema.NonEmptyArray(QuestionView),
+  }),
+  Schema.Struct({ ...CardHead, state: Schema.Literals(['ready', 'accepted', 'current']), draft }),
+])
 export const RoleCard = Schema.Struct({
   role: Text,
   icon: Text,

@@ -6,9 +6,9 @@
 // apply there; once a step is marked, the others are gray. Plain SVG with no library; on a narrow
 // screen the diagram scrolls inside its own box.
 import { html } from 'htm/preact'
-import type { DirectionCard } from '../contract.ts'
+import type { DirectionView } from '../contract.ts'
 
-type Step = (typeof DirectionCard.Type)['flow'][number]
+type Step = (typeof DirectionView.Type)['flow'][number]
 
 // Up to 5 lifelines fit the column of the words (about 720 pixels); more scroll.
 const SPAN = 580 // the room for the gaps between the lifelines

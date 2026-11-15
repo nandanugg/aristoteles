@@ -8,7 +8,6 @@ import { join } from 'node:path'
 import {
   attemptOf,
   blockersOf,
-  onboardingStateOf,
   spotCurrent,
   type Derived,
   isEndedTask,
@@ -65,7 +64,8 @@ import {
   type FlowStep,
   type FlowStepView,
   isSpot,
-  answersIn,
+  type AiQuestion,
+  type AnsweredQuestion,
   draftIn,
   onlyLead,
   type OnboardingDirection,
@@ -245,16 +245,10 @@ const treeOf = (w: Work, task: TaskId): ReadonlyArray<TaskId> => [
   ...partsOf(w, task).flatMap((p) => treeOf(w, p.id)),
 ]
 
-// The word of a result for a card. A superseded result was replaced after its Reject.
-const resultWord = (d: Derived, id: ResultId): WorkCard['state'] => {
-  switch (d.states.results.get(id)?._tag) {
-    case 'Accepted':
-      return 'accepted'
-    case 'InReview':
-      return 'in review'
-    default:
-      return 'rejected'
-  }
+// A result that is neither in review nor accepted: rejected, or replaced after its Reject.
+const rejected = (d: Derived, id: ResultId): boolean => {
+  const tag = d.states.results.get(id)?._tag
+  return tag !== 'Accepted' && tag !== 'InReview'
 }
 
 // What a task does now, in the words of its card (Nanda, 2026-11-11: "the task card only says
@@ -556,9 +550,10 @@ export const inboxOf = (d: Derived, person: string): ReadonlyArray<Decision> =>
 
 // The projects of a dir: each run (a session of the host model), and each top task that no run
 // holds (a task opened at a terminal). The newest first.
+type Bare<K> = Omit<Extract<ProjectSummary, { readonly kind: K }>, 'badge'>
 export const projectsOf = (d: Derived, ctx: ViewContext): ReadonlyArray<ProjectSummary> => {
   const w = workOf(d)
-  const runs = [...w.runs.values()].map((run): Omit<ProjectSummary, 'badge'> => {
+  const runs = [...w.runs.values()].map((run): Bare<'host'> => {
     const opened = openedTopOf(w, run.id)
     const top = opened === undefined ? null : currentTask(w, opened)
     const state = d.states.runs.get(run.id)
@@ -579,14 +574,13 @@ export const projectsOf = (d: Derived, ctx: ViewContext): ReadonlyArray<ProjectS
         replacesOf(w, t.id) === null &&
         runOfTree(w, t.id) === undefined,
     )
-    .map((t): Omit<ProjectSummary, 'badge'> => {
+    .map((t): Bare<'task'> => {
       const now = currentTask(w, t.id)
       const state = d.states.tasks.get(now)?._tag
       return {
         id: t.id,
         kind: 'task',
         at: t.when,
-        session: null,
         state: state === 'Closed' ? 'closed' : state === 'Accepted' ? 'done' : 'works',
         title: taskAt(w, now).name,
         top: now,
@@ -739,33 +733,36 @@ const reviewCards = (d: Derived, result: Result): ReadonlyArray<ReviewCard> => {
 // attempt goes.
 const workCards = (d: Derived, task: TaskId, ctx: ViewContext): ReadonlyArray<WorkCard> => {
   const w = workOf(d)
-  const cards = assignmentsOn(w, task)
+  return assignmentsOn(w, task)
     .filter((a) => isDo(w, a.role))
-    .map((m): WorkCard => {
+    .flatMap((m): ReadonlyArray<WorkCard> => {
       const made = resultsOf(w, task).filter((r) => r.by === m.id)
       const last = made.at(-1)
       // A rejected result of a maker with tries left: its latest attempt is the next one, in work.
       const next =
-        last !== undefined && tryingMaker(d, m.id) && resultWord(d, last.id) === 'rejected'
+        last !== undefined && tryingMaker(d, m.id) && rejected(d, last.id)
       const result = next ? undefined : last
       const parent = persistentParentOf(w, m.id)
       const own = isPersistent(m)
       const session = own ? terminalOf(w, m).session : parent ? terminalOf(w, parent).session : null
-      return {
-        a: m.id,
-        role: m.role,
-        tier: tierWord(w, m),
-        attempt: attemptCard(d, m),
-        terminal: cardTerminal(ctx, w, session),
-        inside: own || !parent ? null : parent.id,
-        result: result ? result.id : null,
-        output: result?.output ?? null,
-        state: result ? resultWord(d, result.id) : ended(d, m.id) ? 'finished' : 'works',
-        files: result ? (w.resultFiles.get(result.id) ?? []).length : 0,
-        reviews: result ? reviewCards(d, result) : [],
-      }
+      const now: WorkCard['now'] | undefined = result
+        ? d.states.results.get(result.id)?._tag === 'InReview'
+          ? {
+              state: 'in review',
+              result: result.id,
+              output: result.output,
+              files: (w.resultFiles.get(result.id) ?? []).length,
+              reviews: reviewCards(d, result),
+            }
+          : undefined
+        : ended(d, m.id)
+          ? undefined
+          : { state: 'works' }
+      if (now === undefined) return []
+      const card = { a: m.id, role: m.role, tier: tierWord(w, m), attempt: attemptCard(d, m) }
+      const inside = own || !parent ? null : parent.id
+      return [{ ...card, terminal: cardTerminal(ctx, w, session), inside, now }]
     })
-  return cards.filter((c) => c.state === 'works' || c.state === 'in review')
 }
 
 const taskCard = (
@@ -931,10 +928,9 @@ export const taskPanel = (d: Derived, id: string, ctx: ViewContext): TaskPanel |
     name: task.name,
     text: task.descriptionAi.text,
     words: taskWords(d, task.id),
-    top: task.serves._tag === 'TopTask',
+    top: task.serves._tag === 'TopTask' ? { directions: directionsView(d, task, ctx.dir) } : null,
     decisions: shownOn(d, decisionsOf(d, ctx.person), task),
     terminal,
-    directions: task.serves._tag === 'TopTask' ? directionsView(d, task, ctx.dir) : null,
     results: resultViews,
     timeline: w.events
       .filter((l) => touchedIds(l).some((x) => ids.has(x)))
@@ -1021,7 +1017,7 @@ const piecesOf = (d: Derived, task: TaskId, ctx: ViewContext): ReadonlyArray<Pie
         const working =
           !ended(d, m.id) &&
           tryingMaker(d, m.id) &&
-          (!latest || resultWord(d, latest.id) === 'rejected')
+          (!latest || rejected(d, latest.id))
         const files = new Set([
           ...results.flatMap((r) => w.resultFiles.get(r.id) ?? []),
           ...Object.keys(before),
@@ -1164,7 +1160,7 @@ const exampleReader = (dir: string) => {
 type Words = {
   readonly summary: string
   readonly says: string
-  readonly standards: DirectionCard['standards']
+  readonly standards: DirectionView['standards']
 }
 const wordsText = (v: Words): string =>
   [
@@ -1184,19 +1180,13 @@ const diffOf = (title: string, before: Words | undefined, now: Words): DraftChan
   direction: title,
   lines: lineDiff(before ? wordsText(before) : '', wordsText(now)),
 })
-const standardsView = (standards: ReadonlyArray<StandardFile>): DirectionCard['standards'] =>
+const standardsView = (standards: ReadonlyArray<StandardFile>): DirectionView['standards'] =>
   standards.map((st) => ({
     id: st.id,
     says: st.says,
     rules: st.rules.map((r) => ({ id: r.id, says: r.says, checkedBy: r.checkedBy ?? null })),
   }))
 
-const STATE_WORD = {
-  Loading: 'loading',
-  Question: 'question',
-  Ready: 'ready',
-  Accepted: 'accepted',
-} as const
 const originOf = (asked: OnboardingDirection['asked']): string => {
   switch (asked._tag) {
     case 'Found':
@@ -1207,42 +1197,61 @@ const originOf = (asked: OnboardingDirection['asked']): string => {
       return `a company direction: ${asked.path} of ${asked.repo}`
   }
 }
-// One file of .work/assess, for the directions page.
+// One file of .work/assess, for the directions page: its stage says what the card has.
 const onboardingDirectionCard = (
   f: OnboardingDirection,
   exampleOf: (e: Example) => ExampleView,
 ): DirectionCard => {
-  const drafted = draftIn(f.stage)
-  const words = drafted && { ...drafted.content, standards: standardsView(drafted.content.standards) }
-  const last = drafted?.previous
-  const title = last ? 'The last draft → this draft' : 'The first draft: every line is new'
   const { asked, stage } = f
-  const answers = answersIn(stage).map((q) => ({ ...q, answer: q.chosen }))
-  const questions = stage._tag === 'Question' ? stage.open.map((q) => ({ ...q, answer: null })) : answers
-  return {
+  const drafted = draftIn(stage)
+  const head = {
     id: f.id,
     name:
       drafted?.name ??
       (asked._tag === 'New' ? asked.principle : asked._tag === 'Company' ? asked.path : f.id),
-    state: STATE_WORD[onboardingStateOf(f)._tag],
     origin: originOf(asked),
     principle: asked._tag === 'New' ? asked.principle : null,
     example: asked._tag === 'New' ? asked.example : null,
-    summary: drafted?.content.summary ?? null,
-    flow: (drafted?.content.flow ?? []).map(flowStepView(exampleOf)),
-    says: drafted?.content.says ?? null,
-    standards: words?.standards ?? [],
-    diff: words
-      ? diffOf(title, last && { ...last, standards: standardsView(last.standards) }, words)
-      : null,
-    questions: questions.map((q) => ({
-      says: q.says,
-      example: exampleOf(q.example),
-      options: q.options,
-      answer: q.answer,
-    })),
-    request: stage._tag === 'Revising' ? stage.words : null,
-    reset: stage._tag === 'Reset',
+  }
+  const question = (q: AiQuestion) => ({
+    says: q.says,
+    example: exampleOf(q.example),
+    options: q.options,
+  })
+  const answered = (q: AnsweredQuestion) => ({ ...question(q), answer: q.chosen })
+  switch (stage._tag) {
+    case 'Drafting':
+      return { ...head, state: 'loading', why: 'drafting' }
+    case 'Reset':
+      return { ...head, state: 'loading', why: 'reset' }
+  }
+  const words = { ...stage.draft.content, standards: standardsView(stage.draft.content.standards) }
+  const last = stage.draft.previous
+  const title = last ? 'The last draft → this draft' : 'The first draft: every line is new'
+  const draft = {
+    ...words,
+    flow: words.flow.map(flowStepView(exampleOf)),
+    diff: diffOf(title, last && { ...last, standards: standardsView(last.standards) }, words),
+  }
+  switch (stage._tag) {
+    case 'Question': {
+      const [first, ...rest] = stage.open
+      return { ...head, state: 'question', draft, open: [question(first), ...rest.map(question)] }
+    }
+    case 'Answered': {
+      const [first, ...rest] = stage.answered
+      const all = [answered(first), ...rest.map(answered)] as const
+      return { ...head, state: 'loading', why: 'answered', draft, answered: all }
+    }
+    case 'Revising': {
+      const { words } = stage
+      const all = stage.answered.map(answered)
+      return { ...head, state: 'loading', why: 'revise', words, draft, answered: all }
+    }
+    case 'Ready':
+      return { ...head, state: 'ready', draft }
+    case 'Accepted':
+      return { ...head, state: 'accepted', draft }
   }
 }
 
@@ -1323,6 +1332,10 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
       const title = before
         ? `${versionIdOf(before)} → ${versionIdOf(v)}`
         : `${versionIdOf(v)}, the first version: every line is new`
+      const diff = diffOf(title, before && { ...before, standards: standardsOf(w, before) }, {
+        ...v,
+        standards,
+      })
       return {
         id: x.id,
         name: x.name,
@@ -1330,17 +1343,13 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
         origin: `${versionIdOf(v)}, owner ${x.owner.name}${from}`,
         principle: null,
         example: null,
-        summary: v.summary,
-        flow: v.flow.map(flowStepView(exampleOf)),
-        says: v.says,
-        standards,
-        diff: diffOf(title, before && { ...before, standards: standardsOf(w, before) }, {
-          ...v,
+        draft: {
+          summary: v.summary,
+          flow: v.flow.map(flowStepView(exampleOf)),
+          says: v.says,
           standards,
-        }),
-        questions: [],
-        request: null,
-        reset: false,
+          diff,
+        },
       }
     })
   const roles = Object.entries(w.config.roles).map(

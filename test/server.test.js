@@ -131,7 +131,7 @@ describe('the server, read only', () => {
     // left, so its work card is attempt 2, in work, with no review yet.
     expect(row.work).toEqual([{
       a: 'a2', role: 'writer', tier: 'luna', attempt: { now: 2, max: 3 }, terminal: { _tag: 'None' }, inside: 'a1',
-      result: null, output: null, state: 'works', files: 0, reviews: [],
+      now: { state: 'works' },
     }])
   })
 
@@ -139,7 +139,7 @@ describe('the server, read only', () => {
     const { p } = await rejected()
     const { get } = serve(p)
     const panel = await get('/api/task/t1')
-    expect(panel).toMatchObject({ id: 't1', name: 'The Introduction', text: 'Write the Introduction from the agreed facts.', top: true })
+    expect(panel).toMatchObject({ id: 't1', name: 'The Introduction', text: 'Write the Introduction from the agreed facts.' })
     expect(panel.results[0]).toMatchObject({ id: 'r1', by: 'a2', output: 'docs/tsd.md#introduction' })
     expect(panel.results[0].reviews[0]).toMatchObject({ id: 'v2.1', by: 'a3', decision: 'Reject', breaks: 'no-ticket-ids' })
     expect(panel.timeline.map((x) => x.line.replace(/^e\d+ \S+ /, ''))).toEqual([
@@ -153,7 +153,7 @@ describe('the server, read only', () => {
       'a3 (agent) brief',
       'a3 (agent) review r1 reject: "the first line cites ABC-2964" breaks no-ticket-ids -> v2',
     ])
-    expect(panel.directions.map((d) => [d.id, d.version, d.standards.map((s) => s.id)])).toEqual([['tsd-writing', 'tsd-writing@1', ['facts-not-proof', 'intro-story']]])
+    expect(panel.top.directions.map((d) => [d.id, d.version, d.standards.map((s) => s.id)])).toEqual([['tsd-writing', 'tsd-writing@1', ['facts-not-proof', 'intro-story']]])
     expect(panel.files).toEqual([{ file: 'docs/tsd.md', added: 1, removed: 1 }])
     const { diff } = await get('/api/diff/t1?file=docs/tsd.md')
     expect(diff).toContain('--- a/docs/tsd.md')
@@ -249,16 +249,16 @@ describe('the onboarding pages', () => {
       ['tsd-writing', 'TSD writing', 'ready', 'found in the project by the host'],
     ])
     const tsd = view.directions[1]
-    expect(tsd.standards[0].rules[0]).toEqual({ id: 'no-code-proof', says: 'No file paths with line numbers, no commit hashes in the body', checkedBy: 'linter' })
+    expect(tsd.draft.standards[0].rules[0]).toEqual({ id: 'no-code-proof', says: 'No file paths with line numbers, no commit hashes in the body', checkedBy: 'linter' })
     // Nanda, 2026-11-15: the marked steps of the flow carry the ids that apply there.
-    expect(tsd.flow.map((f) => f.uses)).toEqual([
+    expect(tsd.draft.flow.map((f) => f.uses)).toEqual([
       [], [], [], ['tsd-writing', 'intro-story', 'repeatable'], ['facts-not-proof', 'no-code-proof'],
     ])
     // Ruling 4: each example in its step, a real sample with its place and whether its excerpt is
     // in its file now, the host's words as they are (Nanda, 2026-11-15).
-    expect(tsd.flow.map((f) => f.examples.length)).toEqual([0, 0, 0, 2, 2])
+    expect(tsd.draft.flow.map((f) => f.examples.length)).toEqual([0, 0, 0, 2, 2])
     const sample = (x) => (x === null || 'written' in x ? x : (({ around: _, ...s }) => s)(x))
-    const examples = tsd.flow.flatMap((f) => f.examples)
+    const examples = tsd.draft.flow.flatMap((f) => f.examples)
     expect(examples.map((e) => ({ ...e, input: sample(e.input), output: sample(e.output) }))).toEqual([
       { fit: 'Follows', input: null, output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', current: true } },
       { fit: 'Breaks', input: null, output: { written: '## Introduction and design, in one section' } },
@@ -272,7 +272,7 @@ describe('the onboarding pages', () => {
       },
     ])
     // A step names its place as one value: its file with a line, or none.
-    expect(tsd.flow.map((f) => f.place)).toEqual([
+    expect(tsd.draft.flow.map((f) => f.place)).toEqual([
       null,
       { file: 'CLAUDE.md', line: 3 },
       { file: '.claude/skills/writer/SKILL.md', line: 3 },
@@ -285,17 +285,17 @@ describe('the onboarding pages', () => {
     expect(examples[2].input.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' ')).toBe('2 3 4 5* 6 7 8')
     const text = readFileSync(join(p.dir, 'docs/tsd.md'), 'utf8')
     p.write('docs/tsd.md', text.replaceAll('TODO', 'Done'))
-    expect((await get('/api/onboarding')).directions[1].flow.flatMap((f) => f.examples)[2].input.current).toBe(false)
+    expect((await get('/api/onboarding')).directions[1].draft.flow.flatMap((f) => f.examples)[2].input.current).toBe(false)
     p.write('docs/tsd.md', text)
     // Nanda, 2026-11-15: the words against the last draft; a first draft has none, so every line
     // comes: the summary, the words, each standard with each rule and its checker.
-    expect(tsd.diff.direction).toBe('The first draft: every line is new')
-    expect(tsd.diff.lines.every((l) => l.startsWith('+'))).toBe(true)
-    expect(tsd.diff.lines).toContain('+  Rule no-code-proof (checked by linter): No file paths with line numbers, no commit hashes in the body')
+    expect(tsd.draft.diff.direction).toBe('The first draft: every line is new')
+    expect(tsd.draft.diff.lines.every((l) => l.startsWith('+'))).toBe(true)
+    expect(tsd.draft.diff.lines).toContain('+  Rule no-code-proof (checked by linter): No file paths with line numbers, no commit hashes in the body')
     // A draft over it keeps the last one, and the diff shows what changed.
     p.write('again.yaml', ONBOARD_DIRECTION.replace('says: Tell the story first, in plain words.', 'says: Tell the story first.'))
     ok(await p.agent('onboard draft tsd-writing --file=again.yaml'))
-    const again = (await get('/api/onboarding')).directions[1].diff
+    const again = (await get('/api/onboarding')).directions[1].draft.diff
     expect(again.direction).toBe('The last draft → this draft')
     expect(again.lines.filter((l) => !l.startsWith(' '))).toEqual([
       '-Standard intro-story: Tell the story first, in plain words.',
@@ -328,7 +328,7 @@ describe('the onboarding pages', () => {
     ok(await p.agent('onboard ask one-thing --file=q.yaml'))
     const asked = (await get('/api/onboarding')).directions.find((d) => d.id === 'one-thing')
     expect(asked).toMatchObject({ state: 'question', principle: 'A section says one thing' })
-    expect(asked.questions).toEqual([{
+    expect(asked.open).toEqual([{
       says: 'Does a section of facts count as one thing?',
       // Nanda, 2026-11-15: the example of a question carries the code around it too.
       example: {
@@ -342,7 +342,7 @@ describe('the onboarding pages', () => {
           ],
         },
       },
-      options: ['each fact is one thing', 'the facts together are one thing'], answer: null,
+      options: ['each fact is one thing', 'the facts together are one thing'],
     }])
     // Nanda, 2026-11-15: a reply names the direction and what each answer chose.
     expect((await onboard({ act: 'answer', direction: 'one-thing', options: ['B'] })).out).toBe(
@@ -351,7 +351,7 @@ describe('the onboarding pages', () => {
     expect((await get('/api/onboarding')).directions.find((d) => d.id === 'one-thing').state).toBe('loading')
     // Ruling 2: Revise sends the words to the host; Remove keeps nothing.
     expect((await onboard({ act: 'revise', direction: 'tsd-writing', words: 'name the reader' })).out).toBe('tsd-writing: the host drafts it again from your words.')
-    expect((await get('/api/onboarding')).directions.find((d) => d.id === 'tsd-writing')).toMatchObject({ state: 'loading', request: 'name the reader' })
+    expect((await get('/api/onboarding')).directions.find((d) => d.id === 'tsd-writing')).toMatchObject({ state: 'loading', why: 'revise', words: 'name the reader' })
     // Nanda, 2026-11-15: a refusal on the page brings its next line, as the terminal shows it.
     expect(await onboard({ act: 'accept', direction: 'tsd-writing' })).toEqual({
       error: 'a Revise of tsd-writing waits for the host',
@@ -407,9 +407,9 @@ describe('the onboarding pages', () => {
     // After the start, the same view reads the store (the gear), and onboarding is over.
     const view = await get('/api/onboarding')
     expect(view.stage).toBe('store')
-    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.flow.flatMap((f) => f.examples).length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 4]])
+    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.draft.flow.flatMap((f) => f.examples).length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 4]])
     // Nanda, 2026-11-15: in the gear, a version against the one before it; the first has none.
-    expect(view.directions[0].diff.direction).toBe('tsd-writing@1, the first version: every line is new')
+    expect(view.directions[0].draft.diff.direction).toBe('tsd-writing@1, the first version: every line is new')
     expect(view.roles.map((r) => [r.role, r.state, r.toggle])).toEqual(ROLES.map((r) => [r, 'current', false]))
     expect((await onboard({ act: 'add-direction', principle: 'one more' })).error).toBe('the store of this dir has started, so onboarding is over; a change now is an adjustment')
     // P7: the text box of the gear stores a suggestion about the roles.
