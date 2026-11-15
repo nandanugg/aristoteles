@@ -49,6 +49,7 @@ import {
   writeSettings,
 } from '../../core/services/index.ts'
 import { momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
+import { buildOf } from '../live/build.ts'
 import { readingsLive } from '../live/readings.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { withBriefMeasure } from '../words/index.ts'
@@ -166,6 +167,9 @@ export function startServer(options: ServerOptions): ServerHandle {
     pump,
     watcher,
   } = options
+
+  // P8: the build of the code that this server runs, read once: a page of another build reloads.
+  const build = buildOf(env)
 
   // --- the store and the cache -----------------------------------------------------------------
 
@@ -641,6 +645,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     websocket: {
       open(ws) {
         sockets.add(ws)
+        ws.send(JSON.stringify({ type: 'hello', build }))
         extend.open?.(ws)
       },
       message(ws, text) {

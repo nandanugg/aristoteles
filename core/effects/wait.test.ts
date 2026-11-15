@@ -36,6 +36,8 @@ const waited = (
       settleMs: 10,
       lastSeq: Effect.succeed(0),
       blocking: Effect.void,
+      build: Effect.succeed('b1'),
+      buildMs: 50,
     }).pipe(Effect.provide(services(p))),
   )
 const a = (id: string): Waiter => ({ _tag: 'Agent', assignment: id as never })
@@ -67,6 +69,28 @@ describe('the wait loop', () => {
     expect(p.work().questions.get('q1' as never)?.status).toMatchObject({ answer: 'm-18' })
     expect(await keyNow()).not.toBe(before)
   })
+
+  // P8, ruling 4: no actor keeps waiting on old code.
+  test('a new build of the installed code ends the wait', async () => {
+    const { p } = await hosted()
+    const first = await waited(p, a('a1'))
+    const seen = first._tag === 'Ready' ? first.steps.key : null
+    let reads = 0
+    const end = await Effect.runPromise(
+      waitFor(a('a1'), {
+        seen,
+        ms: 5000,
+        deriveMs: 3_600_000,
+        pollMs: 50,
+        settleMs: 10,
+        lastSeq: Effect.succeed(0),
+        blocking: Effect.void,
+        build: Effect.sync(() => (++reads < 3 ? 'b1' : 'b2')),
+        buildMs: 100,
+      }).pipe(Effect.provide(services(p))),
+    )
+    expect(end).toEqual({ _tag: 'Updated' })
+  }, 20000)
 
   test('ready work that the last wait printed does not end it: the time does', async () => {
     const { p } = await hosted()
@@ -123,6 +147,8 @@ describe('the wait loop', () => {
         settleMs: 10,
         lastSeq,
         blocking: Effect.void,
+        build: Effect.succeed('b1'),
+        buildMs: 50,
       }).pipe(Effect.provide(services(p))),
     )
     expect(end._tag).not.toBe('Quiet')

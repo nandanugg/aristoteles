@@ -561,6 +561,8 @@ export interface DiffView {
 // optional keys of the messages and of the acts below are the wire format (outside), as today.
 export type ServerMessage =
   | { readonly type: 'changed' }
+  // P8: the build of the server's code, on each open of the socket; a new one reloads the page.
+  | { readonly type: 'hello'; readonly build: string }
   | {
       readonly type: 'term.data'
       readonly session: SessionId

@@ -32,6 +32,7 @@ import {
   seenOf,
   type WaitPlace,
 } from '../../live/waiting.ts'
+import { buildOf } from '../../live/build.ts'
 import { nextLines } from '../../words/index.ts'
 import { textOf } from '../args.ts'
 import { agentCallerOf, isUnit, tokenOfCall } from '../caller.ts'
@@ -44,6 +45,7 @@ export const WAIT_SECONDS = 540
 const POLL_MS = 500
 const DERIVE_MS = 15000
 const SETTLE_MS = 1000
+const BUILD_MS = 5000
 
 // Only the host's own pane waits as its run: there the wait gives the token of its assignment.
 const checkPane = (run: Run) =>
@@ -246,6 +248,8 @@ const wait: Command = (call) =>
       settleMs: SETTLE_MS,
       lastSeq,
       blocking,
+      build: Effect.sync(() => buildOf(vars)),
+      buildMs: BUILD_MS,
     }).pipe(
       Effect.provide(workCacheLayer(cwd)),
       // A wait that blocked waits no more, also when it fails.
@@ -266,6 +270,8 @@ const wait: Command = (call) =>
         return yield* Effect.die(`no work store in ${cwd}, and the store opened`)
       case 'Ended':
         return yield* done(null, [endedWords(end.d, waiter)])
+      case 'Updated':
+        return yield* done(null, [`aristoteles was updated; run work wait ${again} again.`])
       case 'Opened':
         return yield* done(null, yield* opened(end))
       case 'Given':

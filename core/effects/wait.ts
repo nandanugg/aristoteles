@@ -10,7 +10,8 @@
 // count as its steps.
 // The loop reads the store through a cheap probe of its last seq, and derives again on a new
 // seq, when the clock passes the next edge (nextChangeAt: a hold, a grant, a source), or each
-// deriveMs (the outside, git and the files, can change alone).
+// deriveMs (the outside, git and the files, can change alone). It returns when the installed code
+// changes (P8), so that no actor waits on old code.
 import { Clock, Effect } from 'effect'
 import {
   type Derived,
@@ -67,6 +68,8 @@ export type WaitEnd =
       readonly assignments: NonEmpty<AssignmentId>
     }
   | { readonly _tag: 'Ended'; readonly d: Derived }
+  // P8: the installed code changed while the wait blocked: the actor waits again on the new code.
+  | { readonly _tag: 'Updated' }
   | { readonly _tag: 'NoStore' }
 
 const READY_AGAIN_MS = 60_000
@@ -88,6 +91,9 @@ export interface WaitOptions {
   readonly lastSeq: Effect.Effect<number>
   // Runs once, when the wait starts to block (the CLI marks the actor as waiting).
   readonly blocking: Effect.Effect<void>
+  // The build of the installed code (adapters/live/build.ts), read each buildMs.
+  readonly build: Effect.Effect<string>
+  readonly buildMs: number
 }
 
 // The open assignments of a persistent agent (P6: a split can give it several at once).
@@ -193,11 +199,17 @@ export const waitFor = (
     const steps = stepsOf(first, waiter)
     if (steps.ready && steps.key !== o.seen) return { _tag: 'Ready', d: first, steps } as const
     yield* o.blocking
+    const build = yield* o.build
+    let builtAt = start
     let derivedAt = start
     let edge = edgeOf(first)
     for (;;) {
       yield* Effect.sleep(o.pollMs)
       const now = yield* Clock.currentTimeMillis
+      if (now - builtAt >= o.buildMs) {
+        builtAt = now
+        if ((yield* o.build) !== build) return { _tag: 'Updated' } as const
+      }
       const last = yield* o.lastSeq
       const due = now - start >= o.ms
       const passed = Date.parse(yield* (yield* Now).read) >= edge

@@ -5,6 +5,9 @@
 // persistent agent waits by its id in its own terminal, and each new assignment gives it a token
 // (ruling 9). While it blocks, its marker tells the watcher that it waits.
 import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { readMarkers } from '../live/waiting.ts'
 import { cleanUp, hosted, project, tokenIn } from '../../core/effects/support.test.ts'
 
@@ -161,4 +164,27 @@ describe('work wait', () => {
       'a2 is finished; run work wait --by=p1 for the next work of p1.',
     )
   }, 30000)
+
+  // P8, ruling 4: the installed code (here a git repo that ARISTOTELES_CODE names) gets a new
+  // commit while the wait blocks: the wait returns, so that the agent waits on the new code.
+  test('returns when aristoteles is updated', async () => {
+    const { p, token } = await lead()
+    const code = mkdtempSync(join(tmpdir(), 'ar-code-'))
+    const git = (...args: ReadonlyArray<string>) =>
+      Bun.spawnSync(['git', '-C', code, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
+        env: process.env,
+      })
+    git('init', '-q')
+    git('commit', '-q', '--allow-empty', '-m', 'one')
+    ;(p.env as Record<string, string>).ARISTOTELES_CODE = code
+    // The ready work is printed once; the next wait blocks.
+    await p.agent(`wait ${token} --seconds=1`)
+    const waiting = timed(() => p.agent(`wait ${token} --seconds=30`))
+    await Bun.sleep(1500)
+    git('commit', '-q', '--allow-empty', '-m', 'two')
+    const { value, ms } = await waiting
+    rmSync(code, { recursive: true, force: true })
+    expect(value).toBe(`aristoteles was updated; run work wait ${token} again.`)
+    expect(ms).toBeLessThan(15000)
+  }, 40000)
 })

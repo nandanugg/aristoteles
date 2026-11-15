@@ -174,7 +174,8 @@ describe('the server, read only', () => {
     expect(why).toBe('error')
     const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { origin: `http://127.0.0.1:${s.port}` } })
     await new Promise((done) => { ws.onopen = done })
-    const message = new Promise((done) => { ws.onmessage = (m) => done(JSON.parse(m.data)) })
+    // P8: the first message of a socket is the server's build; then the changes.
+    const message = new Promise((done) => { ws.onmessage = (m) => JSON.parse(m.data).type !== 'hello' && done(JSON.parse(m.data)) })
     ok(await p.agent(`next ${lead}`))
     ok(await p.ui('suggest --says="one rule for each check"'))
     expect(await message).toEqual({ type: 'changed' })
@@ -432,7 +433,7 @@ describe('the onboarding pages', () => {
     const { s } = serve(p)
     const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { origin: `http://127.0.0.1:${s.port}` } })
     await new Promise((done) => { ws.onopen = done })
-    const next = () => new Promise((done) => { ws.onmessage = (m) => done(JSON.parse(m.data)) })
+    const next = () => new Promise((done) => { ws.onmessage = (m) => JSON.parse(m.data).type !== 'hello' && done(JSON.parse(m.data)) })
     // The first draft makes .work/assess/; a later file in it is seen too.
     let message = next()
     p.write('draft.yaml', ONBOARD_CONFIG)

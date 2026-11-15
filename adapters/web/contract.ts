@@ -485,6 +485,8 @@ export const PersonView = Schema.Struct({
 
 export const ServerMessage = Schema.Union([
   Schema.Struct({ type: Schema.Literal('changed') }),
+  // P8: the build of the server's code, on each open of the socket; a new one reloads the page.
+  Schema.Struct({ type: Schema.Literal('hello'), build: Schema.String }),
   Schema.Struct({
     type: Schema.Literal('term.data'),
     session: SessionId,

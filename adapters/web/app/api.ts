@@ -90,6 +90,7 @@ const createSocket = () => {
   const listeners = new Set<Listener>()
   let ws: WebSocket
   let queue: string[] = []
+  let build: string | null = null
   const connect = () => {
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
     ws.onopen = () => {
@@ -100,6 +101,12 @@ const createSocket = () => {
     ws.onmessage = (m) => {
       const message = decodeMessage(JSON.parse(String(m.data)))
       if (message._tag === 'None') return
+      // P8: a server of another build than the one that served this page: the page reloads.
+      if (message.value.type === 'hello') {
+        if (build !== null && build !== message.value.build) location.reload()
+        build = message.value.build
+        return
+      }
       for (const fn of listeners) fn(message.value)
     }
     ws.onclose = () => setTimeout(connect, 1000)
