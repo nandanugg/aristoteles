@@ -28,7 +28,13 @@ again. The store starts at the end, with only the accepted result.
    print theirs the same way. Write
    `.work/drafts/config.yaml` in that form (the part "The config draft" below says what it
    holds), then run `work onboard config --file=.work/drafts/config.yaml`. The command runs the
-   checks of `work config check` on it, and prints `next: work onboard found <id>`.
+   checks of `work config check` on it, and prints `next: start the page (work start --detach)`,
+   then `found` and `draft` for each topic. Until the store starts, you may change any part of
+   the config draft (people, limits, tiers and their models, roles): send the whole file again
+   with `work onboard config`, or one role with `work onboard role <role>`. A change clears only
+   the accepts that it touches: a role's own block or its card words clear that role, a tier's
+   settings or the limits of a level clear the roles of that tier, and the people clear none. The
+   person then accepts those roles again.
 3. **Open the page** now, after the config: `work start --detach`. It keeps running when this AI
    CLI ends. Tell the person to read it: each role waits there as a card, and each direction
    appears as you name it, so the person sees it as it comes.
@@ -66,7 +72,11 @@ again. The store starts at the end, with only the accepted result.
 8. **The end is the person's.** The roles step opens when every direction is accepted or removed.
    The person approves all roles on the page, or at a terminal with `work onboard approve-roles`
    (it asks for the typed word `approve`). That starts the store. Never run the approve
-   yourself. Then do the next line that it prints: `work role fit <role>` for each agent role
+   yourself. When the accepted files cannot start a store (two directions use one rule id, a rule
+   names a role that is gone, no persistent high role), `work onboard status` says
+   "the store cannot start", what blocks it, and your step; `work onboard wait` returns with it. Do that
+   step (draft the named direction again, or write the named role), and the person accepts it
+   again. Then do the next line that it prints: `work role fit <role>` for each agent role
    (the `role-fitness` skill: a role "fits" when its words pass the static checks and each of the
    seven questions of `guides/fitness.yaml` gets a yes with one real example of the role's work;
    the fit record is that answer file, in `.work/fit/<role>.yaml`, then

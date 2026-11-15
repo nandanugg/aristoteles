@@ -600,7 +600,13 @@ export interface OnboardingView {
   readonly directions: ReadonlyArray<DirectionCard>
   readonly roles: ReadonlyArray<RoleCard> // the roles that the project has come first
   readonly adjustments: ReadonlyArray<Decision> // after the store; none before it
+  readonly start: StartView
 }
+// Whether the store can start (O1, core/actions startStateOf): open, waiting for an accept, or
+// blocked, with what blocks it and who fixes it. started: the store exists.
+export type StartView =
+  | { readonly state: 'open' | 'waiting' | 'started' }
+  | { readonly state: 'blocked'; readonly says: Text; readonly fix: Text }
 // One direction of the list, and the right column when it is open.
 export interface DirectionCard {
   readonly id: Text

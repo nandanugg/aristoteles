@@ -564,6 +564,38 @@ const open = async () => {
     await page.waitForSelector('.role-card:has-text("section-lead") .accepted')
     for (const role of ['architect', 'writer', 'linter']) ok(await p.nanda(`onboard accept-role ${role}`))
     await page.waitForFunction(() => document.querySelectorAll('.role-card .accepted').length === 4)
+    // O3: the role of the top task has no Remove, as it has no toggle.
+    await page.click('.role-card:has-text("architect")')
+    const lead = '[role=dialog][aria-label="architect"]'
+    await page.waitForSelector(lead)
+    expect(await page.locator(`${lead} .modal-foot >> text=Remove`).count()).toBe(0)
+    await page.mouse.click(4, 450)
+    await page.waitForSelector(lead, { state: 'detached' })
+    // O1: the host drops the linter, which checks rules of TSD writing. Every card is accepted,
+    // but the page says that the store cannot start, why, and who fixes it; Approve all waits.
+    p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, ''))
+    ok(await p.agent('onboard config --file=draft2.yaml'))
+    for (const role of ['writer']) ok(await p.nanda(`onboard accept-role ${role}`))
+    await page.waitForSelector('.start-blocked')
+    expect(await page.textContent('.start-blocked')).toContain(
+      'The store cannot start: rule one-topic of one-thing is checked by linter, which is not an accepted role. ' +
+        'Next: the host drafts one-thing again (work onboard draft one-thing --file=<direction.yaml>), then the person accepts it.')
+    expect(await page.isDisabled('.agents-page >> text=Approve all')).toBe(true)
+    if (process.env.PAGE_SHOTS) {
+      await page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()))
+      for (const [width, height, kind] of [[1440, 900, 'wide'], [375, 812, 'phone']]) {
+        await page.setViewportSize({ width, height })
+        await page.waitForTimeout(300)
+        await page.screenshot({ path: join(process.env.PAGE_SHOTS, `start-blocked-${kind}.png`), fullPage: kind === 'phone' })
+      }
+      await page.setViewportSize({ width: 1440, height: 900 })
+    }
+    // The host's step: it writes the linter again, and the person accepts it.
+    p.write('draft.yaml', ONBOARD_CONFIG)
+    ok(await p.agent('onboard config --file=draft.yaml'))
+    ok(await p.nanda('onboard accept-role linter'))
+    await page.waitForSelector('.start-blocked', { state: 'detached' })
+    await page.waitForFunction(() => document.querySelectorAll('.role-card .accepted').length === 4)
     await page.click('.agents-page >> text=Approve all')
     expect(await page.textContent('[role=alertdialog] .prose')).toContain(
       'The store starts with the directions One thing per section, TSD writing, and the roles linter, architect, section-lead, writer')

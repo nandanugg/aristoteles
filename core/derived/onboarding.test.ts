@@ -174,51 +174,60 @@ describe('Example', () => {
 })
 
 describe('onboardingStateOf', () => {
-  const question = (answer: object) => ({
-    says: 'Is the facts file the source?',
-    example: CASE,
-    options: ['yes', 'no'],
-    answer,
-  })
-  const file = (more: object) =>
+  const question = { says: 'Is the facts file the source?', example: CASE, options: ['yes', 'no'] }
+  const draft = {
+    name: 'TSD writing',
+    from: ['Pathos'],
+    content: { summary: 'S.', flow: FLOW, says: 'The reader decides.', standards: [] },
+    examples: [CASE, BREAKS],
+  }
+  const file = (stage: object) =>
     Schema.decodeUnknownSync(OnboardingDirection)({
       id: 'tsd-writing',
       asked: { _tag: 'Found' },
-      draft: {
-        _tag: 'Drafted',
-        name: 'TSD writing',
-        from: ['Pathos'],
-        content: { summary: 'S.', flow: FLOW, says: 'The reader decides.', standards: [] },
-        examples: [CASE, BREAKS],
-      },
-      questions: [],
-      request: { _tag: 'None' },
-      accepted: { _tag: 'Waiting' },
-      ...more,
+      stage,
     })
   test('Loading while the host drafts, revises, or reads the submitted answers', () => {
-    const drafting = file({ draft: { _tag: 'Drafting' } })
-    expect(onboardingStateOf(drafting)).toEqual({ _tag: 'Loading' })
-    const revise = file({ request: { _tag: 'Revise', words: 'name the cost' } })
+    expect(onboardingStateOf(file({ _tag: 'Drafting' }))).toEqual({ _tag: 'Loading' })
+    const revise = file({ _tag: 'Revising', draft, words: 'name the cost', answered: [] })
     expect(onboardingStateOf(revise)).toEqual({ _tag: 'Loading' })
-    const answered = file({ questions: [question({ _tag: 'Chosen', option: 'A' })] })
+    const answered = file({ _tag: 'Answered', draft, answered: [{ ...question, chosen: 'A' }] })
     expect(onboardingStateOf(answered)).toEqual({ _tag: 'Loading' })
   })
-  test('Question while a question is open, with the open ones', () => {
-    const open = question({ _tag: 'Open' })
-    const asked = file({ questions: [question({ _tag: 'Chosen', option: 'B' }), open] })
-    const state = onboardingStateOf(asked)
-    expect(state._tag).toBe('Question')
-    expect(state._tag === 'Question' ? state.open.map((q) => q.answer._tag) : []).toEqual(['Open'])
+  test('Question while questions are open, with the open ones', () => {
+    const state = onboardingStateOf(file({ _tag: 'Question', draft, open: [question] }))
+    expect(state._tag === 'Question' ? state.open.map((q: { says: string }) => q.says) : []).toEqual([question.says])
   })
   test('Ready when the draft waits for the person, and Accepted after the accept', () => {
-    expect(onboardingStateOf(file({}))).toEqual({ _tag: 'Ready' })
-    expect(onboardingStateOf(file({ accepted: { _tag: 'Accepted' } }))).toEqual({
-      _tag: 'Accepted',
-    })
+    expect(onboardingStateOf(file({ _tag: 'Ready', draft }))).toEqual({ _tag: 'Ready' })
+    expect(onboardingStateOf(file({ _tag: 'Accepted', draft }))).toEqual({ _tag: 'Accepted' })
   })
   test('Loading for a file that the reader reset: the host drafts it again', () => {
-    expect(onboardingStateOf(file({ draft: { _tag: 'Reset' } }))).toEqual({ _tag: 'Loading' })
+    expect(onboardingStateOf(file({ _tag: 'Reset' }))).toEqual({ _tag: 'Loading' })
+  })
+  // T2: an accept, a question, a Revise and answers each come with their draft, so a file that is
+  // Accepted with no draft, or that holds a Revise and open questions beside its accept, does not
+  // decode.
+  test('an Accepted, Question, Answered or Revising file with no draft does not decode', () => {
+    for (const stage of [
+      { _tag: 'Accepted' },
+      { _tag: 'Question', open: [question] },
+      { _tag: 'Question', draft, open: [] },
+      { _tag: 'Answered', draft, answered: [] },
+      { _tag: 'Revising', words: 'shorter', answered: [] },
+    ]) {
+      expect(() => file(stage)).toThrow()
+    }
+    // The four fields of the old shape, Drafting and Accepted at once (2-type-shapes.md, value 1).
+    const old = {
+      id: 'd1',
+      asked: { _tag: 'Found' },
+      draft: { _tag: 'Drafting' },
+      questions: [{ ...question, answer: { _tag: 'Open' } }],
+      request: { _tag: 'Revise', words: 'shorter' },
+      accepted: { _tag: 'Accepted' },
+    }
+    expect(Schema.decodeUnknownOption(OnboardingDirection)(old)._tag).toBe('None')
   })
 })
 

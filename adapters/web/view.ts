@@ -65,6 +65,9 @@ import {
   type FlowStep,
   type FlowStepView,
   isSpot,
+  answersIn,
+  draftIn,
+  onlyLead,
   type OnboardingDirection,
   type OnboardingView,
   type Owner,
@@ -96,6 +99,7 @@ import {
   whereRecord,
   whoOf,
 } from '../../core/schema/index.ts'
+import { startStateOf } from '../../core/actions/index.ts'
 import { type OnboardingFiles, pathOf } from '../../core/services/index.ts'
 import { an } from '../words/common.ts'
 import {
@@ -103,6 +107,7 @@ import {
   describeInner,
   drafterWords,
   logLine,
+  startFixWords,
   roleWordsChange,
   touchedIds,
 } from '../words/index.ts'
@@ -1175,11 +1180,13 @@ const onboardingDirectionCard = (
   f: OnboardingDirection,
   exampleOf: (e: Example) => ExampleView,
 ): DirectionCard => {
-  const drafted = f.draft._tag === 'Drafted' ? f.draft : undefined
+  const drafted = draftIn(f.stage)
   const words = drafted && { ...drafted.content, standards: standardsView(drafted.content.standards) }
   const last = drafted?.previous
   const title = last ? 'The last draft → this draft' : 'The first draft: every line is new'
-  const asked = f.asked
+  const { asked, stage } = f
+  const answers = answersIn(stage).map((q) => ({ ...q, answer: q.chosen }))
+  const questions = stage._tag === 'Question' ? stage.open.map((q) => ({ ...q, answer: null })) : answers
   return {
     id: f.id,
     name:
@@ -1197,14 +1204,14 @@ const onboardingDirectionCard = (
       ? diffOf(title, last && { ...last, standards: standardsView(last.standards) }, words)
       : null,
     examples: (drafted?.examples ?? []).map(exampleOf),
-    questions: f.questions.map((q) => ({
+    questions: questions.map((q) => ({
       says: q.says,
       example: exampleOf(q.example),
       options: q.options,
-      answer: q.answer._tag === 'Chosen' ? q.answer.option : null,
+      answer: q.answer,
     })),
-    request: f.request._tag === 'Revise' ? f.request.words : null,
-    reset: f.draft._tag === 'Reset',
+    request: stage._tag === 'Revising' ? stage.words : null,
+    reset: stage._tag === 'Reset',
   }
 }
 
@@ -1236,18 +1243,16 @@ export const onboardingFilesView = (
   dir: string,
 ): OnboardingView => {
   const exampleOf = exampleReader(dir)
-  const leads = files.roles.filter(
-    (r) => r.file.kind === 'agent' && r.file.tier === 'high' && r.file.persistence.persistent,
-  )
+  const lead = onlyLead(files.config?.roles ?? {})
   const roles = files.roles.map(
     (r): RoleCard => ({
       ...roleCardOf(settings, r.role, r.file),
       summary: r.summary,
       description: r.file.description,
-      toggle: r.file.kind === 'agent' && !(leads.length === 1 && leads[0]?.role === r.role),
+      toggle: r.file.kind === 'agent' && lead !== r.role,
       found: r.found._tag === 'InProject' ? r.found.path : null,
-      state: r.accepted._tag === 'Accepted' ? 'accepted' : 'waiting',
-      request: r.request._tag === 'Revise' ? r.request.words : null,
+      state: r.decision._tag === 'Accepted' ? 'accepted' : 'waiting',
+      request: r.decision._tag === 'Revising' ? r.decision.words : null,
     }),
   )
   return {
@@ -1255,6 +1260,20 @@ export const onboardingFilesView = (
     directions: files.directions.map((f) => onboardingDirectionCard(f, exampleOf)),
     roles: [...roles.filter((r) => r.found !== null), ...roles.filter((r) => r.found === null)],
     adjustments: [],
+    start: startViewOf(files),
+  }
+}
+// What the agents page says of the store start: the one reader (startStateOf), in the words of
+// work onboard status.
+const startViewOf = (files: OnboardingFiles): OnboardingView['start'] => {
+  const start = startStateOf(files)
+  switch (start._tag) {
+    case 'Blocked':
+      return { state: 'blocked', says: start.refusal.message, fix: startFixWords(start.fix) }
+    case 'Open':
+      return { state: 'open' }
+    default:
+      return { state: 'waiting' }
   }
 }
 
@@ -1306,7 +1325,7 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
     }),
   )
   const adjustments = decisionsOf(d, ctx.person).filter((x) => x._tag === 'Adjustment')
-  return { stage: 'store', directions, roles, adjustments }
+  return { stage: 'store', directions, roles, adjustments, start: { state: 'started' } }
 }
 
 // --- the dir --------------------------------------------------------------------------------

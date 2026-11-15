@@ -462,6 +462,7 @@ button { font: inherit; color: inherit; }
 .direction-open .field { margin-top: 14px; }
 .add-form { display: flex; flex-direction: column; gap: 4px; }
 .next-step { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--accept-tint); }
+.start-blocked { margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--reject-tint); border: 1px solid var(--reject); overflow-wrap: anywhere; }
 .waits { color: var(--sol); font-size: 13px; }
 .muted { color: var(--muted); font-size: 13px; }
 .role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }

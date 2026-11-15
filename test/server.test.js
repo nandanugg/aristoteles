@@ -370,9 +370,17 @@ describe('the onboarding pages', () => {
     const { get, onboard, act } = serve(p)
     ok(await p.nanda('onboard approve-directions', 'approve'))
     for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
-    // The person removes the linter, which checks two rules of tsd-writing: the store refuses.
-    ok(await p.nanda('onboard remove-role linter'))
-    expect((await onboard({ act: 'approve-all-roles' })).error).toBe('rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role')
+    // The host drops the linter from the config draft, which checks two rules of tsd-writing: the
+    // page names what blocks the start and who fixes it, and the store refuses (O1).
+    p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, ''))
+    ok(await p.agent('onboard config --file=draft2.yaml'))
+    const blocked = 'rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role'
+    expect((await get('/api/onboarding')).start).toEqual({
+      state: 'blocked',
+      says: blocked,
+      fix: 'the host drafts tsd-writing again (work onboard draft tsd-writing --file=<direction.yaml>), then the person accepts it',
+    })
+    expect((await onboard({ act: 'approve-all-roles' })).error).toBe(`the store cannot start: ${blocked}`)
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe('theme: dark\n')
     for (const path of ['.work/assess/tsd-writing.yaml', 'aristoteles.draft.yaml']) expect(has(p, path)).toBe(true)
     expect(has(p, '.work/onboarding.lock')).toBe(false)

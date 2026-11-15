@@ -467,6 +467,10 @@ export const OnboardingView = Schema.Struct({
   directions: Schema.Array(DirectionCard),
   roles: Schema.Array(RoleCard),
   adjustments: Schema.Array(Decision),
+  start: Schema.Union([
+    Schema.Struct({ state: Schema.Literals(['open', 'waiting', 'started']) }),
+    Schema.Struct({ state: Schema.Literal('blocked'), says: Text, fix: Text }),
+  ]),
 })
 // GET /api/person (ruling 10.8): the page knows the person only by git user.name. A name that is
 // no person of the dir sees no items, and the line says which name to set.

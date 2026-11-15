@@ -5,7 +5,8 @@
 // refusal, 2 a usage mistake, 3 an outside failure or a damaged store, 70 a defect.
 import { Cause, Effect, Exit } from 'effect'
 import { UsageError } from '../../core/schema/index.ts'
-import { Terminal, type WorkIo } from '../../core/services/index.ts'
+import { Dir, Terminal, type WorkIo } from '../../core/services/index.ts'
+import { loadWork } from '../../core/state/index.ts'
 import { refusalLines } from '../words/index.ts'
 import {
   ACT_OF,
@@ -114,6 +115,12 @@ const nextFor = (argv: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const token = argv.find((a) => /^a\d+\.[a-z0-9]+$/.test(a))
     if (token === undefined) {
+      // Before the store, the onboarding status is what the person and the host read (O3).
+      const { cwd } = yield* Dir
+      const store = yield* Effect.result(Effect.scoped(loadWork(cwd)))
+      if (store._tag === 'Success' && store.success._tag === 'NoStore') {
+        return 'next: work onboard status shows what waits'
+      }
       return (yield* isPerson)
         ? 'next: work waiting shows what waits for you'
         : 'next: check the ids with work status or work log; an agent passes its token first'

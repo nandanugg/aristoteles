@@ -60,6 +60,10 @@ export interface RoleActs {
   readonly remove: (role: string) => Done
 }
 
+// A role of the top task has no toggle, and no Remove either: the store cannot start without it
+// (the same predicate: onlyLead). A program has no toggle and can go.
+const removable = (r: RoleCardData): boolean => r.persistence === null || r.toggle
+
 interface GridProps {
   readonly roles: ReadonlyArray<RoleCardData>
   readonly onToggle?: (role: string, persistent: boolean) => void
@@ -145,7 +149,8 @@ function RoleWindow({ role: r, icons, acts, onClose }: WindowProps) {
           onInput=${(e: Event) => setWords((e.currentTarget as HTMLTextAreaElement).value)}>
         </textarea></label>
         <div class="modal-foot">
-          <button class="btn" onClick=${() => then(acts.remove(r.role))}>Remove</button>
+          ${removable(r) ? html`<button class="btn" onClick=${() => then(acts.remove(r.role))}>
+            Remove</button>` : ''}
           <button class="btn" disabled=${empty}
             onClick=${() => then(acts.revise(r.role, words))}>Revise</button>
           <button class="btn primary" disabled=${!empty}

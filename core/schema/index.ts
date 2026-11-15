@@ -251,6 +251,10 @@ export type { RejectPoint } from '../../src/domain/derived.ts'
 // The files of onboarding (before the store) and their derived states.
 export {
   AiQuestion,
+  AnsweredQuestion,
+  answersIn,
+  draftIn,
+  onlyLead,
   OnboardingAct,
   OnboardingDirection,
   OnboardingRoleState,

@@ -34,6 +34,6 @@ export const dispatch: Dispatch = dispatchWith(ACTIONS)
 export { COMMON, type Maker, type Refusals, type RefusalsOf } from './support.ts'
 export { STORE } from './dispatch.ts'
 export { WORKSPACE } from './tasks.ts'
-export { defineWorkflow } from './config.ts'
+export { defineWorkflow, type StartFix, type StartState, startStateOf } from './config.ts'
 export { whyOf } from './directions.ts'
 export { openAnswers } from './drafts.ts'

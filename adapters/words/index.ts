@@ -62,6 +62,8 @@ export {
   onboardShowDirection,
   onboardShowRole,
   onboardStatus,
+  startFixWords,
+  startRefusal,
   waitsForHost,
 } from './onboard.ts'
 

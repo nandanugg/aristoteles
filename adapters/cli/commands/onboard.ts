@@ -6,9 +6,12 @@
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { readExamples } from '../../../core/actions/drafts.ts'
+import { startStateOf } from '../../../core/actions/index.ts'
 import { onboardingStateOf, spotCurrent } from '../../../core/derived/index.ts'
 import {
+  answersIn,
   DirectionId,
+  draftIn,
   Example,
   type Examples,
   firstSentence,
@@ -52,6 +55,7 @@ import {
   onboardShowRole,
   onboardStatus,
   short,
+  startRefusal,
   waitsForHost,
 } from '../../words/index.ts'
 import { textOf } from '../args.ts'
@@ -211,10 +215,8 @@ const textsOf = (files: OnboardingFiles) =>
     const read = yield* Files
     const texts = new Map<string, string | null>()
     for (const f of files.directions) {
-      const examples = [
-        ...(f.draft._tag === 'Drafted' ? f.draft.examples : []),
-        ...f.questions.map((q) => q.example),
-      ]
+      const asked = f.stage._tag === 'Question' ? f.stage.open : answersIn(f.stage)
+      const examples = [...(draftIn(f.stage)?.examples ?? []), ...asked.map((q) => q.example)]
       for (const { file } of examples.flatMap(spotsOf)) {
         if (!texts.has(file)) texts.set(file, yield* read.read(join(cwd, file)))
       }
@@ -234,6 +236,17 @@ const noStoreYet = Effect.gen(function* () {
 
 const directionIn = (files: OnboardingFiles, id: string): OnboardingDirection | undefined =>
   files.directions.find((f) => f.id === id)
+// The store start names this accepted direction, so the host drafts it again (O1).
+const reopens = (files: OnboardingFiles, id: DirectionId): boolean => {
+  const start = startStateOf(files)
+  return start._tag === 'Blocked' && start.fix._tag === 'Direction' && start.fix.direction === id
+}
+// The state that the page shows for a direction now, as the reply of the host's act says it.
+const shownAs = (cwd: string, id: DirectionId) =>
+  Effect.map(readOnboarding(cwd), (files) => {
+    const file = directionIn(files, id)
+    return file === undefined ? 'Loading' : onboardingStateOf(file)._tag
+  })
 
 // --- the host's acts ---------------------------------------------------------------------------
 
@@ -305,7 +318,7 @@ const localDraft = (file: string, raw: Readonly<Record<string, unknown>>, curren
         unknown === 'owner' ? 'the person who starts the store owns each direction' : DRAFT_TEMPLATE,
       )
     }
-    const first = current.asked._tag === 'New' && current.draft._tag === 'Drafting'
+    const first = current.asked._tag === 'New' && current.stage._tag === 'Drafting'
     if (first && raw.id === undefined) {
       return yield* refuse(
         `${file}: a new direction takes its id from its first draft`,
@@ -392,7 +405,8 @@ const draft = (call: Call, id: string | undefined) =>
   Effect.gen(function* () {
     const direction = yield* idOf(id)
     const { cwd } = yield* Dir
-    const current = directionIn(yield* readOnboarding(cwd), direction)
+    const files = yield* readOnboarding(cwd)
+    const current = directionIn(files, direction)
     if (current === undefined) {
       return yield* refuse(
         `there is no direction ${direction}`,
@@ -413,9 +427,9 @@ const draft = (call: Call, id: string | undefined) =>
       _tag: 'Draft',
       direction,
       draft: { ...words, examples },
+      reopen: reopens(files, direction),
     })
-    const after = directionIn(yield* readOnboarding(cwd), made)
-    const state = after === undefined ? 'Loading' : onboardingStateOf(after)._tag
+    const state = yield* shownAs(cwd, made)
     return [
       `${made}: drafted${made === direction ? '' : ` (it was ${direction})`}, with ${examples.length} examples; it shows ${state}.`,
       'next: work onboard wait, until the person accepts, revises or removes it',
@@ -452,8 +466,9 @@ const ask = (call: Call, id: string | undefined) =>
     yield* realExamples(file, questions.map((q) => q.example))
     const { cwd } = yield* Dir
     yield* hostAct(cwd, { _tag: 'Ask', direction, questions })
+    const state = yield* shownAs(cwd, direction)
     return [
-      `${direction}: ${questions.length === 1 ? 'a question' : `${questions.length} questions`} for the person; it shows Question.`,
+      `${direction}: ${questions.length === 1 ? 'a question' : `${questions.length} questions`} for the person; it shows ${state}.`,
       'next: work onboard wait, until the person submits the answers',
     ]
   })
@@ -606,7 +621,7 @@ const approveDirections = Effect.gen(function* () {
   }
   const show = `approve all accepts: ${ready.map((f) => f.id).join(', ')}`
   const accepted = yield* asPerson({ act: 'approve-all-directions' }, { word: 'approve', show })
-  const waiting = files.directions.filter((f) => !accepted.includes(f.id) && f.accepted._tag !== 'Accepted')
+  const waiting = files.directions.filter((f) => !accepted.includes(f.id) && f.stage._tag !== 'Accepted')
   return [
     `accepted: ${accepted.join(', ')}.`,
     ...(waiting.length
@@ -654,7 +669,7 @@ const approveRoles = Effect.gen(function* () {
     `${files.roles.map((r) => r.role).join(', ')}; the onboarding files go.`
   const name = yield* personOf(undefined, { word: 'approve', show })
   const by = { _tag: 'Person' as const, name, channel: yield* personChannel }
-  const start = yield* prepareStart(cwd, name, (yield* Env).vars)
+  const start = yield* prepareStart(cwd, name, (yield* Env).vars, (f) => startRefusal(startStateOf(f)))
   // The checks of work config check on the file that the start wrote, then the store. The refusal
   // is what the person reads; the write back runs before it shows.
   const done = yield* Effect.gen(function* () {

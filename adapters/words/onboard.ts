@@ -2,15 +2,17 @@
 // role, its state, and the command that answers it), `work onboard show` (one of them in full), and
 // what `work onboard wait` waits for. They read the onboarding files only; the adapter reads the
 // text of each case's file (textOf), so a stale case shows.
+import { type StartFix, type StartState, startStateOf } from '../../core/actions/index.ts'
 import { exampleStateOf, onboardingStateOf } from '../../core/derived/index.ts'
 import type {
   AiQuestion,
+  AnsweredQuestion,
   FlowStep,
   OnboardingDirection,
   OnboardingRole,
 } from '../../core/schema/index.ts'
-import { resetWords } from '../../core/schema/index.ts'
-import type { OnboardingFiles } from '../../core/services/index.ts'
+import { answersIn, draftIn, Refused, resetWords } from '../../core/schema/index.ts'
+import { DRAFT, type OnboardingFiles } from '../../core/services/index.ts'
 import { exampleLines, flowLines } from './show.ts'
 import { short } from './common.ts'
 
@@ -29,16 +31,17 @@ const where = (file: OnboardingDirection): string => {
 }
 
 // A direction by its name once it has a draft, else by its id.
-const titleOf = (file: OnboardingDirection): string =>
-  file.draft._tag === 'Drafted' ? `${file.draft.name} (${file.id})` : file.id
+const titleOf = (file: OnboardingDirection): string => {
+  const draft = draftIn(file.stage)
+  return draft ? `${draft.name} (${file.id})` : file.id
+}
 
+const optionOf = (q: AnsweredQuestion): string => q.options[q.chosen === 'A' ? 0 : 1]
 // The person's answers to the questions of a direction, each with the words of its option and its
 // question: what the next draft of the direction follows.
 export const answersWords = (file: OnboardingDirection): string => {
-  const answers = file.questions.flatMap((q) =>
-    q.answer._tag === 'Chosen'
-      ? [`${q.answer.option} ("${short(q.options[q.answer.option === 'A' ? 0 : 1], 60)}") to "${short(q.says, 80)}"`]
-      : [],
+  const answers = answersIn(file.stage).map(
+    (q) => `${q.chosen} ("${short(optionOf(q), 60)}") to "${short(q.says, 80)}"`,
   )
   return `the answers of ${titleOf(file)} decide its next draft: ${answers.join('; ')}`
 }
@@ -46,25 +49,82 @@ export const answersWords = (file: OnboardingDirection): string => {
 // What waits for the host in a direction: a draft to write (a new or company direction, a Revise,
 // submitted answers). A topic that the host found itself and is drafting is its own work.
 const hostWork = (file: OnboardingDirection): string | undefined => {
-  if (file.accepted._tag === 'Accepted') return undefined
-  if (file.request._tag === 'Revise') return `the person asks: "${short(file.request.words, 120)}"`
-  const answered = file.questions.length > 0 && file.questions.every((q) => q.answer._tag !== 'Open')
-  if (answered) return answersWords(file)
-  if (file.draft._tag === 'Reset') return resetWords(file.id)
-  if (file.draft._tag === 'Drafting' && file.asked._tag !== 'Found') return 'it waits for its first draft'
-  return undefined
+  const { stage } = file
+  switch (stage._tag) {
+    case 'Revising': {
+      const asks = `the person asks: "${short(stage.words, 120)}"`
+      return stage.answered.length ? `${asks}; ${answersWords(file)}` : asks
+    }
+    case 'Answered':
+      return answersWords(file)
+    case 'Reset':
+      return resetWords(file.id)
+    case 'Drafting':
+      return file.asked._tag === 'Found' ? undefined : 'it waits for its first draft'
+    default:
+      return undefined
+  }
 }
 const roleWork = (role: OnboardingRole): string | undefined =>
-  role.request._tag === 'Revise' ? `the person asks: "${short(role.request.words, 120)}"` : undefined
+  role.decision._tag === 'Revising' ? `the person asks: "${short(role.decision.words, 120)}"` : undefined
 
-// Whether something waits for the host: work onboard wait ends then.
+// Whether something waits for the host: work onboard wait ends then. A store start that the files
+// block is the host's to fix (O1).
 export const waitsForHost = (files: OnboardingFiles): boolean =>
   files.directions.some((f) => hostWork(f) !== undefined) ||
-  files.roles.some((r) => roleWork(r) !== undefined)
+  files.roles.some((r) => roleWork(r) !== undefined) ||
+  startStateOf(files)._tag === 'Blocked'
+
+// --- the store start ------------------------------------------------------------------------------
+
+// Who fixes what blocks the store start, and with which command.
+export const startFixWords = (fix: StartFix): string => {
+  switch (fix._tag) {
+    case 'Direction':
+      return (
+        `the host drafts ${fix.direction} again (work onboard draft ${fix.direction} ` +
+        '--file=<direction.yaml>), then the person accepts it'
+      )
+    case 'Role':
+      return `the host writes ${fix.role} again (work onboard role ${fix.role} --file=<role.yaml>), then the person accepts it`
+    case 'Lead':
+      return (
+        'the host writes a persistent high role (work onboard role <role> --file=<role.yaml>), ' +
+        'then the person accepts it'
+      )
+  }
+}
+// The refusal of the store start: what the start waits for, from the one reader (startStateOf).
+export const startRefusal = (state: StartState): Refused | undefined => {
+  switch (state._tag) {
+    case 'NoConfig':
+      return new Refused({
+        message: `there is no ${DRAFT} yet: its people and roles come first`,
+        next: 'the host writes the config draft: work onboard config --file=<draft.yaml>',
+      })
+    case 'Blocked':
+      return new Refused({
+        message: `the store cannot start: ${state.refusal.message}`,
+        next: startFixWords(state.fix),
+      })
+    case 'Waiting':
+      return state.on._tag === 'Direction'
+        ? new Refused({
+            message: `${state.on.direction} is not accepted yet`,
+            next: `accept it or remove it (work onboard accept|remove ${state.on.direction}), then approve again`,
+          })
+        : new Refused({
+            message: `the role ${state.on.role} is not accepted yet`,
+            next: `accept it or remove it (work onboard accept-role|remove-role ${state.on.role}), then approve again`,
+          })
+    case 'Open':
+      return undefined
+  }
+}
 
 const staleCount = (file: OnboardingDirection, textOf: TextOf): string => {
-  if (file.draft._tag !== 'Drafted') return ''
-  const { examples } = file.draft
+  const examples = draftIn(file.stage)?.examples
+  if (examples === undefined) return ''
   const stale = examples.filter((e) => exampleStateOf(textOf, e)._tag === 'Stale').length
   return ` · ${countOf(examples.length, 'example')}${stale ? `, ${stale} stale` : ''}`
 }
@@ -74,13 +134,13 @@ const staleCount = (file: OnboardingDirection, textOf: TextOf): string => {
 const directionLines = (file: OnboardingDirection, textOf: TextOf): ReadonlyArray<string> => {
   const id = file.id
   const state = onboardingStateOf(file)
-  const name = file.draft._tag === 'Drafted' ? `${file.draft.name} · ` : ''
-  const summary = file.draft._tag === 'Drafted' ? [file.draft.content.summary] : []
+  const draft = draftIn(file.stage)
+  const name = draft ? `${draft.name} · ` : ''
+  const summary = draft ? [draft.content.summary] : []
   const head = [
     `  ${id} · ${state._tag} · ${name}${where(file)}${staleCount(file, textOf)}`,
     ...summary.map((words) => `    summary: ${short(words, 120)}`),
   ]
-  const host = hostWork(file)
   switch (state._tag) {
     case 'Accepted':
       return head
@@ -99,8 +159,8 @@ const directionLines = (file: OnboardingDirection, textOf: TextOf): ReadonlyArra
     case 'Loading':
       return [
         ...head,
-        `    ${host ?? 'the host drafts it'} (the host: work onboard draft ${id} --file=<direction.yaml>` +
-          `${file.draft._tag === 'Drafted' ? `, or ask ${id} --file=<questions.yaml>` : ''})`,
+        `    ${hostWork(file) ?? 'the host drafts it'} (the host: work onboard draft ${id} --file=<direction.yaml>` +
+          `${draft ? `, or ask ${id} --file=<questions.yaml>` : ''})`,
       ]
   }
 }
@@ -111,17 +171,17 @@ const persistenceOf = (role: OnboardingRole): string =>
     : `${role.file.tier}, ${role.file.persistence.persistent ? 'persistent' : 'disposable'}`
 const foundOf = (role: OnboardingRole): string =>
   role.found._tag === 'InProject' ? ` (in the project: ${role.found.path})` : ''
+const ROLE_STATE = { Waiting: 'Waiting', Revising: 'Revise', Accepted: 'Accepted' } as const
 
 const roleLines = (role: OnboardingRole): ReadonlyArray<string> => {
   const name = role.role
-  const accepted = role.accepted._tag === 'Accepted'
-  const asked = roleWork(role)
-  const state = asked !== undefined ? 'Revise' : accepted ? 'Accepted' : 'Waiting'
+  const state = ROLE_STATE[role.decision._tag]
   const head = `  ${name} · ${state} · ${persistenceOf(role)} · ${short(role.summary, 80)}${foundOf(role)}`
+  const asked = roleWork(role)
   if (asked !== undefined) {
     return [head, `    ${asked} (the host: work onboard role ${name} --file=<role.yaml>)`]
   }
-  if (accepted) return [head]
+  if (role.decision._tag === 'Accepted') return [head]
   const toggle =
     role.file.kind === 'program'
       ? ''
@@ -133,23 +193,27 @@ const roleLines = (role: OnboardingRole): ReadonlyArray<string> => {
   ]
 }
 
-// The one next act of onboarding as a whole.
-const nextOf = (files: OnboardingFiles): string => {
-  if (files.people === null) {
-    return 'next: the host writes the config draft: work onboard config --file=<draft.yaml>'
+// The one next act of onboarding as a whole, from the state of the store start.
+const nextOf = (files: OnboardingFiles, start: StartState): string => {
+  switch (start._tag) {
+    case 'NoConfig':
+      return 'next: the host writes the config draft: work onboard config --file=<draft.yaml>'
+    case 'Blocked':
+      return `next: the store cannot start: ${start.refusal.message}; ${startFixWords(start.fix)}`
+    case 'Waiting': {
+      if (start.on._tag === 'Role') {
+        return 'next: every direction is accepted or removed; the person accepts each role'
+      }
+      const open = files.directions.filter((f) => f.stage._tag !== 'Accepted')
+      return `next: ${countOf(open.length, 'direction')} not accepted yet; the host runs work onboard wait between its drafts`
+    }
+    case 'Open':
+      return 'next: everything is accepted; the person starts the store: work onboard approve-roles'
   }
-  const open = files.directions.filter((f) => f.accepted._tag !== 'Accepted')
-  if (open.length > 0) {
-    return `next: ${countOf(open.length, 'direction')} not accepted yet; the host runs work onboard wait between its drafts`
-  }
-  if (files.roles.some((r) => r.accepted._tag !== 'Accepted')) {
-    return 'next: every direction is accepted or removed; the person accepts each role'
-  }
-  return 'next: everything is accepted; the person starts the store: work onboard approve-roles'
 }
 
 export const onboardStatus = (files: OnboardingFiles, textOf: TextOf): ReadonlyArray<string> => {
-  if (files.people === null && files.directions.length === 0) {
+  if (files.config === null && files.directions.length === 0) {
     return [
       'no onboarding files in this dir yet.',
       'next: the host writes the config draft: work onboard config --file=<draft.yaml>',
@@ -163,14 +227,14 @@ export const onboardStatus = (files: OnboardingFiles, textOf: TextOf): ReadonlyA
   return [
     `directions (${files.directions.length}):`,
     ...files.directions.flatMap((f) => directionLines(f, textOf)),
-    `roles (${files.people === null ? 'no config draft yet' : files.roles.length}):`,
+    `roles (${files.config === null ? 'no config draft yet' : files.roles.length}):`,
     ...roles.flatMap(roleLines),
-    nextOf(files),
+    nextOf(files, startStateOf(files)),
   ]
 }
 
 const questionLines = (
-  q: AiQuestion,
+  q: AiQuestion | AnsweredQuestion,
   i: number,
   flow: ReadonlyArray<FlowStep>,
   textOf: TextOf,
@@ -179,7 +243,7 @@ const questionLines = (
   ...exampleLines([q.example], flow, textOf).map((l) => `  ${l}`),
   `     A: ${q.options[0]}`,
   `     B: ${q.options[1]}`,
-  ...(q.answer._tag === 'Chosen' ? [`     answer: ${q.answer.option}`] : []),
+  ...('chosen' in q ? [`     answer: ${q.chosen}`] : []),
 ]
 
 // work onboard show <id>: the direction in full, as the right column of the page shows it.
@@ -192,8 +256,9 @@ export const onboardShowDirection = (
   if (file.asked._tag === 'New' && file.asked.example !== null) {
     lines.push(`example: ${file.asked.example}`)
   }
-  if (file.draft._tag === 'Drafted') {
-    const { name, from, content, examples } = file.draft
+  const draft = draftIn(file.stage)
+  if (draft) {
+    const { name, from, content, examples } = draft
     lines.push(
       `name: ${name}`,
       `summary: ${content.summary}`,
@@ -209,11 +274,13 @@ export const onboardShowDirection = (
   } else {
     lines.push('no draft yet')
   }
-  if (file.questions.length > 0) {
-    const flow = file.draft._tag === 'Drafted' ? file.draft.content.flow : []
-    lines.push('questions:', ...file.questions.flatMap((q, i) => questionLines(q, i, flow, textOf)))
+  const { stage } = file
+  const questions = stage._tag === 'Question' ? stage.open : answersIn(stage)
+  if (questions.length > 0) {
+    const flow = draft?.content.flow ?? []
+    lines.push('questions:', ...questions.flatMap((q, i) => questionLines(q, i, flow, textOf)))
   }
-  if (file.request._tag === 'Revise') lines.push(`revise: ${file.request.words}`)
+  if (stage._tag === 'Revising') lines.push(`revise: ${stage.words}`)
   return lines
 }
 

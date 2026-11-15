@@ -60,7 +60,8 @@ const nextAfter = (list: ReadonlyArray<Card>, id: string): string | undefined =>
 // examples), the questions, and the acts. More examples are a Revise in words. An accept or a remove opens the next direction (onDone).
 function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
   const [words, setWords] = useState('')
-  const open = card.questions.filter((q) => q.answer === null)
+  // The questions wait for the answers only while the direction shows Question (O4).
+  const open = card.state === 'question' ? card.questions : []
   const [chosen, setChosen] = useState<ReadonlyArray<'A' | 'B' | undefined>>([])
   const act = (fn: () => OnboardingActJson, done = false) =>
     attempt(async () => {
@@ -247,13 +248,20 @@ function Agents({ view }: { view: ViewData }) {
       Open a card to accept, revise, or remove the role.</p>
     ${view.roles.length ? html`<${RoleGrid} roles=${view.roles} onToggle=${toggle} acts=${acts} />`
       : html`<p class="muted">The host has not drafted the roles yet.</p>`}
-    <div class="item-actions"><button class="btn primary" disabled=${view.roles.length === 0}
+    <div class="item-actions"><button class="btn primary" disabled=${view.start.state !== 'open'}
       onClick=${() => setConfirm(true)}>Approve all</button></div>
     ${confirm ? html`<${Confirm} title="Approve all roles and start the store"
       words=${`The store starts with the directions ${directions}, and the roles ${roles}; ` +
         'the onboarding files go. Each role must be accepted first.'}
       onYes=${start} onNo=${() => setConfirm(false)} />` : ''}
   </div>`
+}
+
+// What blocks the store start, and who fixes it (O1): the line of work onboard status.
+function StartBlocked({ start }: { start: ViewData['start'] }) {
+  if (start.state !== 'blocked') return html``
+  return html`<div class="start-blocked" role="status">
+    <strong>The store cannot start:</strong> ${start.says}. Next: ${start.fix}.</div>`
 }
 
 type Step = 'directions' | 'agents'
@@ -285,6 +293,7 @@ export function Onboarding({ dir, version }: { dir: DirData; version: number }) 
     <div class="tabs steps" role="tablist">
       ${stepTab('directions', '1. Directions')}${stepTab('agents', '2. Agents', !agentsOpen)}
     </div>
+    <${StartBlocked} start=${view.start} />
     ${now === 'agents' ? html`<${Agents} view=${view} />`
       : html`<${Directions} view=${view} onAgents=${() => setStep('agents')} />`}
   </div>`

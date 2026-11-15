@@ -220,10 +220,11 @@ describe('what onboarding refuses', () => {
     const p = await drafted()
     p.write('aristoteles.yaml', settings)
     await acceptAll(p)
-    // The person removes the linter, which checks two rules of tsd-writing.
-    ok(await p.nanda('onboard remove-role linter'))
+    // The host drops the linter, which checks two rules of tsd-writing (the person cannot: O1).
+    p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, ''))
+    ok(await p.agent('onboard config --file=draft2.yaml'))
     const r = await p.nanda('onboard approve-roles', 'approve')
-    expect(r.err).toContain('refused: rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role')
+    expect(r.err).toContain('refused: the store cannot start: rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role')
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe(settings)
     expect(exists(p, '.work/assess/tsd-writing.yaml')).toBe(true)
     expect(exists(p, 'aristoteles.draft.yaml')).toBe(true)

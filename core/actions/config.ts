@@ -15,6 +15,7 @@ import {
   type Adjustment,
   checkerProblem,
   type ConfigFile,
+  type DirectionId,
   create,
   currentVersion,
   type Event,
@@ -30,6 +31,8 @@ import {
 } from '../schema/index.ts'
 import {
   configOfText,
+  onboardedOf,
+  type OnboardingFiles,
   Files,
   readApprovedBy,
   readConfig,
@@ -191,53 +194,113 @@ const fail = <A = never>(r: Refusal): Effect.Effect<A, Refusal> => Effect.fail(r
 
 // --- work init, and the store start of onboarding ----------------------------------------------
 
+// What the host writes again so that the store can start: a direction, a role, or a persistent
+// high role (the host plays it).
+export type StartFix =
+  | { readonly _tag: 'Direction'; readonly direction: DirectionId }
+  | { readonly _tag: 'Role'; readonly role: RoleName }
+  | { readonly _tag: 'Lead' }
+interface StartProblem {
+  readonly refusal: Refusal
+  readonly fix: StartFix
+}
+
 // What keeps the accepted directions of onboarding out of a new store: the checks of work
 // direction new over the roles of the file, as no store exists yet. A workflow with no
 // persistent high role has no host (ruling 15), so work init refuses it too.
 const startProblem = (
   config: ConfigFile,
   directions: ReadonlyArray<OnboardedDirection>,
-): Refusal | undefined => {
+): StartProblem | undefined => {
   const S = R.DefineWorkflow
-  const hostRole = Object.values(config.roles).some(
-    (r) => r.kind === 'agent' && r.tier === 'high' && r.persistence.persistent,
-  )
-  if (!hostRole) return S.noHostRole()
+  if (Object.values(config.roles).every((r) => !isLead(r))) {
+    return { refusal: S.noHostRole(), fix: { _tag: 'Lead' } }
+  }
   const ids = new Set<string>()
   const rules = new Map<string, string | undefined>()
   for (const { direction: d, examples } of directions) {
-    if (ids.has(d.id)) return S.sameId(d.id)
-    ids.add(d.id)
-    if (!config.people.includes(d.owner)) return S.owner(d.id, d.owner)
-    const missing = examplesMissing(d.flow, examples)
-    if (missing !== undefined) return S.fewExamples(d.id, missing)
-    if (d.maxStandards !== undefined && d.standards.length > d.maxStandards) {
-      return S.tooMany(d.name, String(d.standards.length), String(d.maxStandards))
-    }
-    const standards = new Set<string>()
-    for (const s of d.standards) {
-      if (standards.has(s.id)) return S.hasStandard(d.name, s.id)
-      standards.add(s.id)
-      for (const r of s.rules) {
-        if (rules.has(r.id)) return S.ruleIdUsed(r.id)
-        rules.set(r.id, r.checkedBy)
-        // A direction of a new store has no version before it, so it supersedes nothing.
-        const [old] = r.supersedes
-        if (old !== undefined) return S.supersedesMissing(r.id, old)
-        if (r.checkedBy !== undefined && config.roles[r.checkedBy] === undefined) {
-          return S.notRole(r.id, d.id, r.checkedBy)
-        }
-        const problem = checkerProblem(config.roles, r.id, r.checkedBy)
-        if (problem !== null) return S.checker(problem, r.id)
-      }
+    const problem = directionProblem(config, d, examples, ids, rules)
+    if (problem !== undefined) {
+      return { refusal: problem, fix: { _tag: 'Direction', direction: d.id } }
     }
   }
   for (const [name, role] of Object.entries(config.roles)) {
     if (role.kind !== 'program') continue
     const wrong = role.checks.find((id) => rules.has(id) && rules.get(id) !== name)
-    if (wrong !== undefined) return S.programChecks(name, wrong)
+    if (wrong !== undefined) {
+      return { refusal: S.programChecks(name, wrong), fix: { _tag: 'Role', role: RoleName.make(name) } }
+    }
   }
   return undefined
+}
+const isLead = (r: RoleFile): boolean =>
+  r.kind === 'agent' && r.tier === 'high' && r.persistence.persistent
+// One direction against the config and the directions before it (ids and rules: what they used).
+const directionProblem = (
+  config: ConfigFile,
+  d: OnboardedDirection['direction'],
+  examples: OnboardedDirection['examples'],
+  ids: Set<string>,
+  rules: Map<string, string | undefined>,
+): Refusal | undefined => {
+  const S = R.DefineWorkflow
+  if (ids.has(d.id)) return S.sameId(d.id)
+  ids.add(d.id)
+  if (!config.people.includes(d.owner)) return S.owner(d.id, d.owner)
+  const missing = examplesMissing(d.flow, examples)
+  if (missing !== undefined) return S.fewExamples(d.id, missing)
+  if (d.maxStandards !== undefined && d.standards.length > d.maxStandards) {
+    return S.tooMany(d.name, String(d.standards.length), String(d.maxStandards))
+  }
+  const standards = new Set<string>()
+  for (const s of d.standards) {
+    if (standards.has(s.id)) return S.hasStandard(d.name, s.id)
+    standards.add(s.id)
+    for (const r of s.rules) {
+      if (rules.has(r.id)) return S.ruleIdUsed(r.id)
+      rules.set(r.id, r.checkedBy)
+      // A direction of a new store has no version before it, so it supersedes nothing.
+      const [old] = r.supersedes
+      if (old !== undefined) return S.supersedesMissing(r.id, old)
+      if (r.checkedBy !== undefined && config.roles[r.checkedBy] === undefined) {
+        return S.notRole(r.id, d.id, r.checkedBy)
+      }
+      const problem = checkerProblem(config.roles, r.id, r.checkedBy)
+      if (problem !== null) return S.checker(problem, r.id)
+    }
+  }
+  return undefined
+}
+
+// page: StartState. Whether the store of onboarding can start, from the files: the one reader for
+// work onboard status and its wait, the agents page, and the start itself (O1). Blocked comes
+// first: an accepted direction or role that the start refuses waits for the host, even while
+// others still wait for the person.
+export type StartState =
+  | { readonly _tag: 'NoConfig' }
+  | { readonly _tag: 'Blocked'; readonly refusal: Refusal; readonly fix: StartFix }
+  | { readonly _tag: 'Waiting'; readonly on: WaitingOn }
+  | { readonly _tag: 'Open' }
+export type WaitingOn =
+  | { readonly _tag: 'Direction'; readonly direction: DirectionId }
+  | { readonly _tag: 'Role'; readonly role: RoleName }
+export const startStateOf = (files: OnboardingFiles): StartState => {
+  const { config } = files
+  if (config === null) return { _tag: 'NoConfig' }
+  // Any person of the people owns the directions here; the start checks the real one.
+  const owner = config.people[0] ?? ''
+  const accepted = files.directions.flatMap((f) =>
+    f.stage._tag === 'Accepted' ? [onboardedOf(f.id, f.stage.draft, owner, { _tag: 'Local' })] : [],
+  )
+  const problem = startProblem(config, accepted)
+  if (problem !== undefined) return { _tag: 'Blocked', ...problem }
+  const direction = files.directions.find((f) => f.stage._tag !== 'Accepted')
+  if (direction !== undefined) {
+    return { _tag: 'Waiting', on: { _tag: 'Direction', direction: direction.id } }
+  }
+  const role = files.roles.find((r) => r.decision._tag !== 'Accepted')
+  if (role !== undefined) return { _tag: 'Waiting', on: { _tag: 'Role', role: role.role } }
+  return { _tag: 'Open' }
 }
 
 // The first event of a store: the workflow of aristoteles.yaml, and the directions that
@@ -253,7 +316,7 @@ export const defineWorkflow = (
     const name = by.name ?? ''
     if (!config.people.includes(name)) return yield* fail(R.DefineWorkflow.notInPeople(name))
     const problem = startProblem(config, directions)
-    if (problem !== undefined) return yield* fail(problem)
+    if (problem !== undefined) return yield* fail(problem.refusal)
     for (const { direction } of directions) {
       yield* readApprovedBy(direction.id, direction, config.roles, config.people).pipe(
         Effect.mapError(asWrite(direction.id)),

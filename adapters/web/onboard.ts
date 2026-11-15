@@ -2,7 +2,7 @@
 // files through src/files/onboarding.ts and stores nothing (ruling 1), but approve all roles, which
 // starts the store with the accepted result only. The words are the page's own short lines.
 import { Effect } from 'effect'
-import { dispatch } from '../../core/actions/index.ts'
+import { dispatch, startStateOf } from '../../core/actions/index.ts'
 import { type DirectionId, type OnboardingAct, refuse } from '../../core/schema/index.ts'
 import {
   CONFIG,
@@ -12,7 +12,7 @@ import {
   readConfig,
 } from '../../core/services/index.ts'
 import { configProblems } from '../live/config-problems.ts'
-import { answersWords } from '../words/index.ts'
+import { answersWords, startRefusal } from '../words/index.ts'
 
 type PersonAct = Exclude<OnboardingAct, { readonly act: 'approve-all-roles' }>
 
@@ -64,7 +64,7 @@ export const startStore = (
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const start = yield* prepareStart(dir, person, env)
+      const start = yield* prepareStart(dir, person, env, (f) => startRefusal(startStateOf(f)))
       const done = yield* Effect.gen(function* () {
         const problems = yield* configProblems((yield* readConfig(dir)).config)
         if (problems.length) {
