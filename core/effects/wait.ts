@@ -178,6 +178,8 @@ export const waitFor = (
 ): Effect.Effect<WaitEnd, StoreDamaged | OutsideFailed, WorkCache | Readings | Now> =>
   Effect.gen(function* () {
     const start = yield* Clock.currentTimeMillis
+    // The seq first, then the look: an event after this seq is a new seq, never a missed one.
+    let seq = yield* o.lastSeq
     const first = yield* look
     if (first === null) return { _tag: 'NoStore' } as const
     const ended = endOf(first, waiter)
@@ -185,7 +187,6 @@ export const waitFor = (
     const steps = stepsOf(first, waiter)
     if (steps.ready && steps.key !== o.seen) return { _tag: 'Ready', d: first, steps } as const
     yield* o.blocking
-    let seq = yield* o.lastSeq
     let derivedAt = start
     let edge = edgeOf(first)
     for (;;) {

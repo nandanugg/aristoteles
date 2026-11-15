@@ -78,6 +78,37 @@ describe('the wait loop', () => {
     expect(await waited(p, a('a1'), seen)).toMatchObject({ _tag: 'Quiet' })
   })
 
+  // P9 (live, 2026-11-15): an event written as the wait starts, before it reads the last seq,
+  // is in the steps of its first look, so the wait never misses it.
+  test('an event written as the wait starts is not missed', async () => {
+    const { p, hostToken } = await hosted()
+    const first = await waited(p, a('a1'))
+    const seen = first._tag === 'Ready' ? first.steps.key : null
+    let written = false
+    const lastSeq = Effect.promise(async () => {
+      if (!written) {
+        written = true
+        await p.agent(`ask ${hostToken} --to=owner --text="Which merchant?"`)
+      }
+      return 1
+    })
+    const start = Date.now()
+    const end = await Effect.runPromise(
+      waitFor(a('a1'), {
+        seen,
+        ms: 3000,
+        deriveMs: 3_600_000,
+        pollMs: 50,
+        settleMs: 10,
+        lastSeq,
+        blocking: Effect.void,
+      }).pipe(Effect.provide(services(p))),
+    )
+    expect(end._tag).not.toBe('Quiet')
+    expect('steps' in end ? end.steps.key : seen).not.toBe(seen)
+    expect(Date.now() - start).toBeLessThan(2000)
+  }, 20000)
+
   // F4: the wait derives again when the clock passes the next edge (nextChangeAt), not only
   // each deriveMs: here the end of the 30-day grant of the task open, which changes the steps.
   test('the wait derives again at the next clock edge', async () => {
