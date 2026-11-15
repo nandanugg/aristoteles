@@ -126,7 +126,7 @@ describe('next', () => {
         if (firstWait < 0 || lastDo < 0) continue
         mixed += 1
         const doOnly = nextLines(d, steps.filter((x) => x._tag === 'Do'), TOKEN)
-        expect(nextLines(d, steps, TOKEN).slice(0, doOnly.length)).toEqual(doOnly)
+        expect(nextLines(d, steps, TOKEN).slice(0, doOnly.length)).toEqual([...doOnly])
       }
     }
     expect(mixed).toBeGreaterThan(0)
