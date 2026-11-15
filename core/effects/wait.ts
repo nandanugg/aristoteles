@@ -9,13 +9,15 @@
 // agent ends the wait (the CLI gives each a token), and the steps of all its open assignments
 // count as its steps.
 // The loop reads the store through a cheap probe of its last seq, and derives again on a new
-// seq, or each deriveMs (a hold, a time or the outside can change alone).
+// seq, when the clock passes the next edge (nextChangeAt: a hold, a grant, a source), or each
+// deriveMs (the outside, git and the files, can change alone).
 import { Clock, Effect } from 'effect'
 import {
   type Derived,
   derive,
   hostOf,
   type NextStep,
+  nextChangeAt,
   nextFor,
   stepKey,
 } from '../derived/index.ts'
@@ -164,6 +166,12 @@ export const look: Effect.Effect<
   return derive(yield* momentOf(cached.work, at))
 })
 
+// The next clock edge of a Derived, in ms; never when none.
+const edgeOf = (d: Derived): number => {
+  const next = nextChangeAt(d)
+  return next === null ? Number.POSITIVE_INFINITY : Date.parse(next)
+}
+
 export const waitFor = (
   waiter: Waiter,
   o: WaitOptions,
@@ -179,16 +187,19 @@ export const waitFor = (
     yield* o.blocking
     let seq = yield* o.lastSeq
     let derivedAt = start
+    let edge = edgeOf(first)
     for (;;) {
       yield* Effect.sleep(o.pollMs)
       const now = yield* Clock.currentTimeMillis
       const last = yield* o.lastSeq
       const due = now - start >= o.ms
-      if (!due && last === seq && now - derivedAt < o.deriveMs) continue
+      const passed = Date.parse(yield* (yield* Now).read) >= edge
+      if (!due && !passed && last === seq && now - derivedAt < o.deriveMs) continue
       seq = last
       derivedAt = now
       const d = yield* look
       if (d === null) return { _tag: 'NoStore' } as const
+      edge = edgeOf(d)
       const end = endOf(d, waiter)
       if (end !== null) return end
       const fresh = stepsOf(d, waiter)

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { Effect, Layer } from 'effect'
 import { Env, Now, Readings, StoreLive } from '../services/index.ts'
 import { workCacheLayer } from '../state/index.ts'
+import { nextChangeAt } from '../derived/index.ts'
 import { outsideNow } from '../derived/support.test.ts'
 import { cleanUp, clock, hosted, type Project } from './support.test.ts'
 import { look, stepsOf, waitFor, type Waiter, type WaitEnd } from './wait.ts'
@@ -21,13 +22,17 @@ const services = (p: Project) => {
     Layer.succeed(Now, { read: Effect.sync(() => new Date(clock.now).toISOString() as never) }),
   )
 }
-const waited = (p: Project, waiter: Waiter, seen: string | null = null): Promise<WaitEnd> =>
+const waited = (
+  p: Project,
+  waiter: Waiter,
+  seen: string | null = null,
+  times = { ms: 300, deriveMs: 100 },
+): Promise<WaitEnd> =>
   Effect.runPromise(
     waitFor(waiter, {
       seen,
-      ms: 300,
+      ...times,
       pollMs: 50,
-      deriveMs: 100,
       settleMs: 10,
       lastSeq: Effect.succeed(0),
       blocking: Effect.void,
@@ -72,4 +77,21 @@ describe('the wait loop', () => {
     expect(d === null ? null : stepsOf(d, a('a1')).key).toBe(seen)
     expect(await waited(p, a('a1'), seen)).toMatchObject({ _tag: 'Quiet' })
   })
+
+  // F4: the wait derives again when the clock passes the next edge (nextChangeAt), not only
+  // each deriveMs: here the end of the 30-day grant of the task open, which changes the steps.
+  test('the wait derives again at the next clock edge', async () => {
+    const { p } = await hosted()
+    const first = await waited(p, a('a1'))
+    const seen = first._tag === 'Ready' ? first.steps.key : null
+    const d = await Effect.runPromise(look.pipe(Effect.provide(services(p))))
+    const edge = Date.parse((d === null ? null : nextChangeAt(d)) ?? '')
+    expect(edge).toBeGreaterThan(clock.now)
+    const start = Date.now()
+    const wait = waited(p, a('a1'), seen, { ms: 8000, deriveMs: 3_600_000 })
+    await Bun.sleep(100)
+    clock.now = edge
+    expect(await wait).toMatchObject({ _tag: 'Changed' })
+    expect(Date.now() - start).toBeLessThan(2000)
+  }, 20000)
 })

@@ -9,15 +9,16 @@
 //   browser can neither act nor read a terminal.
 //
 // The server holds the WorkCache (a SubscriptionRef of the folded Work, renewed from the store,
-// which other processes write) and sends `changed` on each value of its changes. A read derives
-// the Work and renders the views of view.ts; a person's act dispatches its action as the person
-// of git user.name (acts.ts) or goes to the watcher (the terminals).
+// which other processes write) and sends `changed` on each value of its changes, and when the
+// clock passes the next edge of the last read (a hold ends, F4). A read derives the Work and
+// renders the views of view.ts; a person's act dispatches its action as the person of git
+// user.name (acts.ts) or goes to the watcher (the terminals).
 import { existsSync, type FSWatcher, readdirSync, statSync, watch } from 'node:fs'
 import { networkInterfaces } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, SubscriptionRef } from 'effect'
 import { dispatch } from '../../core/actions/index.ts'
-import { type Derived, derive } from '../../core/derived/index.ts'
+import { type Derived, derive, nextChangeAt } from '../../core/derived/index.ts'
 import {
   type AssignmentId,
   type Author,
@@ -103,6 +104,9 @@ const gzipped = async (req: Request, res: Response): Promise<Response> => {
   headers.set('content-encoding', 'gzip')
   return new Response(Bun.gzipSync(text), { status: res.status, headers })
 }
+
+// The longest delay of a timer (2^31 - 1 ms, about 24 days): a later edge waits in steps.
+const MAX_TIMER = 2 ** 31 - 1
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
 
@@ -213,7 +217,29 @@ export function startServer(options: ServerOptions): ServerHandle {
     const at = yield* (yield* Now).read
     return derive(yield* momentOf(work, at))
   })
-  const readDerived = (): Derived | undefined => runSync(derivedNow)
+  // F4: the next clock edge of the last read (nextChangeAt). When the clock passes it, the page
+  // hears `changed` and reads again, which arms the next edge. A timer waits for it; the check
+  // every 3 seconds catches a clock that no timer follows (a test's).
+  let edge: number | null = null
+  let edgeTimer: ReturnType<typeof setTimeout> | undefined
+  const passEdge = () => {
+    clearTimeout(edgeTimer)
+    if (edge === null) return
+    const wait = edge - Date.parse(clock())
+    if (wait > 0) {
+      edgeTimer = setTimeout(passEdge, Math.min(wait, MAX_TIMER))
+      return
+    }
+    edge = null
+    send({ type: 'changed' })
+  }
+  const readDerived = (): Derived | undefined => {
+    const d = runSync(derivedNow)
+    const next = d === undefined ? null : nextChangeAt(d)
+    edge = next === null ? null : Date.parse(next)
+    passEdge()
+    return d
+  }
   // The terminals of a read are those that its derive read (one `tmux list-panes`, not two).
   const context = (d: Derived | undefined, person: string): ViewContext => ({
     dir,
@@ -713,6 +739,7 @@ export function startServer(options: ServerOptions): ServerHandle {
   armAssess()
   const poll = setInterval(() => {
     check()
+    passEdge()
     armAssess()
     const now = onboardingStamp()
     if (now !== seen) onboardingChanged()
@@ -728,6 +755,7 @@ export function startServer(options: ServerOptions): ServerHandle {
       watcher?.stop()
       clearInterval(poll)
       clearTimeout(timer)
+      clearTimeout(edgeTimer)
       clearTimeout(onboardTimer)
       fileWatch?.close()
       dirWatch.close()

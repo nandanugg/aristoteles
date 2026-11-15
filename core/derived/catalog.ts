@@ -92,6 +92,7 @@ import {
   type EvaluationState,
   type EventRef,
   type NonEmpty,
+  type Permission,
   type PermissionId,
   type PermissionState,
   type ProblemId,
@@ -109,6 +110,7 @@ import {
   type TaskDraftState,
   type TaskId,
   type TaskState,
+  type Time,
   versionIdOf,
   type VersionId,
   type Work,
@@ -130,6 +132,13 @@ export const permissionStateOf: PermissionStateOf = (x, at) => {
   if (t > Date.parse(x.until)) return { _tag: 'Ended' }
   return { _tag: 'Covers' }
 }
+// The times at which a permission changes its state, as above (and as covers in reads.ts): it
+// covers from its when, ends 1 ms after its until, and is revoked at the revoke.
+export const permissionEdges = (x: Permission): ReadonlyArray<number> => [
+  Date.parse(x.when),
+  Date.parse(x.until) + 1,
+  ...(x.revoked._tag === 'Revoked' ? [Date.parse(x.revoked.at)] : []),
+]
 
 // --- 2. DirectionState ---------------------------------------------------------------------------
 export const directionStateOf: DirectionStateOf = (m, id) => {
@@ -515,6 +524,9 @@ export const personLeaf = (state: Extract<RevisionState, { _tag: 'Waiting' }>): 
   state.waitsFor.some((l) => l._tag !== 'Role')
 
 // --- 20. SourceState ---------------------------------------------------------------------------
+// The last time at which a source read at seenAt is fresh: it expires 1 ms later.
+export const lastFreshAt = (seenAt: Time, hours: number): number =>
+  Date.parse(seenAt) + hours * 60 * 60 * 1000
 // When an agent last read a source: the last Source event that named it (a fact of the log).
 export const sourceStatesOf: SourceStatesOf = (m) => {
   const w = m.work
@@ -527,7 +539,7 @@ export const sourceStatesOf: SourceStatesOf = (m) => {
     })
     if (seen === undefined) return []
     const seenAt = seen.recorded.at
-    const expired = Date.parse(m.at) - Date.parse(seenAt) > hours * 60 * 60 * 1000
+    const expired = Date.parse(m.at) > lastFreshAt(seenAt, hours)
     return [
       {
         name: s.name,

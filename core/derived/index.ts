@@ -46,6 +46,7 @@ export {
   type RoleWordsState,
   roleWordsDraftAt,
 } from './role-words.ts'
+export { nextChangeAt } from './clock.ts'
 export { nextFor, stepKey } from './steps.ts'
 export { waitingFor } from './waiting.ts'
 
