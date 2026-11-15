@@ -821,7 +821,12 @@ export const sendTargetOf = (
   const w = m.work
   const sid = sendSessionOf(m, send, states)
   const run = [...w.runs.values()].find((r) => r.session === sid)
-  const agent = [...w.sessions.values()].find((s) => s.session === sid)?.assignment
+  // A persistent agent's terminal holds many assignments in turn: its owner is an open one, and
+  // only when all have ended is the send irrelevant (live, 2026-11-15: the host's sends to p1 and
+  // p2 were dropped because their first assignment had ended).
+  const held = [...w.sessions.values()].filter((s) => s.session === sid).map((s) => s.assignment)
+  const open = held.find((a) => states.assignments.get(a)?._tag !== 'Ended')
+  const agent = open ?? held.at(-1)
   const runState = run === undefined ? undefined : states.runs.get(run.id)
   const agentState = agent === undefined ? undefined : states.assignments.get(agent)
   const owner: SessionOwner =

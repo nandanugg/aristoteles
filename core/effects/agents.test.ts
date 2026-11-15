@@ -123,6 +123,11 @@ describe('the persistent agents', () => {
     expect(startsOf(fake.commands, host)).toHaveLength(1)
     const again = await p.inSession('wait --by=p1 --seconds=1', lead)
     expect(again).toContain('a3 is yours: t1 The Introduction, as section-lead.')
+    // Live, 2026-11-15: the host's send to the agent's terminal was dropped as "its owner ended",
+    // because the first assignment of that terminal (a2) had ended; a3 holds it now.
+    await p.agent(`send ${hostToken} a3 --text="go on"`)
+    const sends = derivedNow(p.dir).states.sends
+    expect([...sends.values()].at(-1)?._tag).toBe('Pending')
   })
 
   test('an ended agent process restarts up to 3 times, then fails once', async () => {
