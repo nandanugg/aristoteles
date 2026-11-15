@@ -29,6 +29,7 @@ import {
   type RefusalsOf,
 } from './support.ts'
 import { checkCaseTwins, checkRealNames, followNeeds } from './tasks.ts'
+import type { InputOf } from '../schema/actions.ts'
 import type { Action } from './types.ts'
 
 export const REFUSALS = {
@@ -296,28 +297,31 @@ const FixProblem: Action<'FixProblem'> = ({ by, input }) =>
   })
 
 // One member per kind of decision; a hope only on the words of an open draft.
+type WordsInput = InputOf<'WriteHostWords'>
+const onDraft = (i: WordsInput): i is Extract<WordsInput, { content: { hope: unknown } }> =>
+  i.target.on._tag === 'Draft'
 const WriteHostWords: Action<'WriteHostWords'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
     yield* allowed(d, by, input)
-    const w = d.moment.work
-    const { on } = input.target
-    const { text, hope } = input.content
-    if (blank(text)) return yield* fail(R.WriteHostWords.noWords(on))
+    const { text } = input.content
+    if (blank(text)) return yield* fail(R.WriteHostWords.noWords(input.target.on.id))
     const words = text as never
-    if (w.problems.has(on as never)) {
-      return [create('HostWords', { _tag: 'ProblemWords', on: on as never, text: words })]
+    if (!onDraft(input)) {
+      const { on } = input.target
+      return on._tag === 'Problem'
+        ? [create('HostWords', { _tag: 'ProblemWords', on: on.id, text: words })]
+        : [create('HostWords', { _tag: 'EndWords', on: on.id, text: words })]
     }
-    if (w.runs.has(on as never)) {
-      return [create('HostWords', { _tag: 'EndWords', on: on as never, text: words })]
-    }
-    const official = d.states.revisions.get(on as never)?._tag === 'Official'
-    const draft = { _tag: 'DraftWords' as const, on: on as never, text: words }
+    const { on } = input.target
+    const { hope } = input.content
+    const official = d.states.revisions.get(on.id)?._tag === 'Official'
+    const draft = { _tag: 'DraftWords' as const, on: on.id, text: words }
     if (official) {
-      if (hope !== null) return yield* fail(R.WriteHostWords.hopeOfOfficial(on))
+      if (hope !== null) return yield* fail(R.WriteHostWords.hopeOfOfficial(on.id))
       return [create('HostWords', { ...draft, hope: null })]
     }
-    if (hope === null || !isNonBlank(hope)) return yield* fail(R.WriteHostWords.noHope(on))
+    if (hope === null || !isNonBlank(hope)) return yield* fail(R.WriteHostWords.noHope(on.id))
     return [create('HostWords', { ...draft, hope })]
   })
 
@@ -432,18 +436,12 @@ const Send: Action<'Send'> = ({ by, input }) =>
   })
 
 // The supervisor's send: a start sends only its start words, and every other reason a line or
-// Enter. A mismatch is a bug of the effect that dispatched it.
+// Enter (the input pairs them).
 const SupervisorSend: Action<'SupervisorSend'> = ({ by, input }) =>
   Effect.gen(function* () {
     yield* allowed(yield* current, by, input)
-    const { reason } = input.target
-    const { keys } = input.content
-    const start = reason._tag === 'Start'
-    if (start !== (keys._tag === 'StartPrompt')) {
-      return yield* Effect.die(`SupervisorSend: ${reason._tag} does not send ${keys._tag}`)
-    }
-    const from = { _tag: 'Supervisor' as const, reason }
-    return [create('Send', { _tag: 'Sent', from, keys } as never) as Event]
+    const from = { _tag: 'Supervisor' as const, reason: input.target.reason }
+    return [create('Send', { _tag: 'Sent', from, keys: input.content.keys } as never) as Event]
   })
 
 // A send that is no longer pending makes no event: it was delivered or dropped already (D12).

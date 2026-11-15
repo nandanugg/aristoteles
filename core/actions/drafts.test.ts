@@ -304,7 +304,7 @@ describe('an import of a company commit', () => {
         : {
             _tag: 'Reject',
             target: { of: { _tag: 'Revision', id: draft as never } },
-            content: { points: [], reason: 'not this one' },
+            content: { reason: 'not this one' },
           }
     expect(refusedWith(now(), REFRESH, importOf(1, { id: 'tsd-writing' }))).toBe(
       'tsd-writing is a direction of this dir; a company direction needs another id',

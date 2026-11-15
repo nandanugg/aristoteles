@@ -222,8 +222,8 @@ export type SentPair =
       readonly from: { readonly _tag: 'Supervisor'; readonly reason: SupervisorReason }
       readonly keys: typeof Line.Type | typeof Enter.Type
     }
-// Every reason of the supervisor but a start: a wake, a word to a host about a child, a decision
-// or a problem, the host's prompt after an open, a retry input.
+// Every reason of the supervisor but a start: a wake, a word to a host about a child, a
+// problem, the host's prompt after an open, a retry input.
 export type SupervisorReason = typeof SupervisorReasonSchema.Type
 export type SendState =
   | { readonly _tag: 'Pending' }

@@ -161,12 +161,10 @@ const inputOf = (w: Work, r: Recorded, dir: string): Read => {
     case 'HostWords.ProblemWords':
     case 'HostWords.DraftWords':
     case 'HostWords.EndWords': {
-      const hope = (c as { hope?: string | null } | undefined)?.hope ?? null
-      return input({
-        _tag: 'WriteHostWords',
-        target: { on: c?.on },
-        content: { text: c?.text, hope },
-      })
+      const on = { _tag: tag?.replace('Words', ''), id: c?.on }
+      const hope = (c as { hope?: string | null } | undefined)?.hope
+      const content = hope === undefined ? { text: c?.text } : { text: c?.text, hope }
+      return input({ _tag: 'WriteHostWords', target: { on }, content })
     }
     case 'Task.Opened': {
       const file = fileOf(dir, `task-${k}.yaml`, yaml(taskFile(c?.task as never)))
@@ -251,9 +249,12 @@ const inputOf = (w: Work, r: Recorded, dir: string): Read => {
         points?: ReadonlyArray<{ text: string; breaks?: string | null }>
         reason?: string
       }
-      const points = (of.points ?? []).map((p) => ({ text: p.text, breaks: p.breaks ?? null }))
       const target = { of: { _tag: of._tag, id: of.id } }
-      return input({ _tag: 'Reject', target, content: { points, reason: of.reason ?? null } })
+      if (of.points === undefined) {
+        return input({ _tag: 'Reject', target, content: { reason: of.reason } })
+      }
+      const points = of.points.map((p) => ({ text: p.text, breaks: p.breaks ?? null }))
+      return input({ _tag: 'Reject', target, content: { points } })
     }
     case 'Review.Recheck':
       return input({ _tag: 'Recheck', target: { result: c?.of }, content: { reason: c?.reason } })

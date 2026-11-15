@@ -1,6 +1,7 @@
 // Who wrote a draft, who writes the words of a decision, and who writes the next draft after a
 // Reject: one reader each, so the steps, canAct, the page and the words never disagree.
 import type { AssignmentId, Direction, Revision, Run, Work } from '../schema/index.ts'
+import type { WordsOn } from '../schema/actions.ts'
 import { decisionTaskOf, hostOf, placementOf } from './catalog.ts'
 import { currentTask, openedTopOf, tierOfAssignment } from './reads.ts'
 import { followsDirection } from './steps.ts'
@@ -58,8 +59,8 @@ export const dirDrafters = (d: Derived): ReadonlyArray<AssignmentId> => {
 }
 
 // The host of a decision's project writes its words; a decision of no project, any active host.
-export const explainerOf = (d: Derived, decision: string): Explainer => {
-  const task = decisionTaskOf(d.moment.work, decision)
+export const explainerOf = (d: Derived, on: WordsOn): Explainer => {
+  const task = decisionTaskOf(d.moment.work, on)
   const placement: Placement =
     task === undefined ? { _tag: 'DirWide' } : placementOf(d.moment, task, d.states)
   if (placement._tag === 'OnTask') {
@@ -83,7 +84,7 @@ export const redrafterOf = (d: Derived, x: Revision<Direction>): Redrafter => {
   // A step revises only a change: a new direction of a model run is drafted anew by a model run.
   if (writer === undefined && x._tag === 'New') return { _tag: 'Person' }
   if (writer === undefined) {
-    const e = explainerOf(d, x.id)
+    const e = explainerOf(d, { _tag: 'Draft', id: x.id })
     if (e._tag === 'Host') return { _tag: 'Hosts', hosts: [e.assignment] }
     return e._tag === 'AnyActiveHost' ? { _tag: 'Hosts', hosts: e.hosts } : { _tag: 'Person' }
   }

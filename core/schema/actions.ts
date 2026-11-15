@@ -13,6 +13,7 @@ import type {
   Line,
   Enter,
   Stop,
+  StartPrompt,
   StartReason,
   SupervisorReason,
   DropReason,
@@ -69,7 +70,18 @@ export type AcceptOf =
   | { readonly _tag: 'Result'; readonly id: ResultId }
   | { readonly _tag: 'Revision'; readonly id: RevisionId }
   | { readonly _tag: 'Evaluation'; readonly id: EvaluationId }
-export type RejectOf = AcceptOf | { readonly _tag: 'Task'; readonly id: TaskId }
+// A reject of work names points; a reject of a draft or an evaluation gives its reason.
+export type WorkOf =
+  | { readonly _tag: 'Result'; readonly id: ResultId }
+  | { readonly _tag: 'Task'; readonly id: TaskId }
+export type DraftOf = Exclude<AcceptOf, { readonly _tag: 'Result' }>
+export type RejectOf = WorkOf | DraftOf
+// What the host's words are on: a problem, a draft (with its hope), or the end of a run.
+export type WordsOn =
+  | { readonly _tag: 'Problem'; readonly id: ProblemId }
+  | { readonly _tag: 'Draft'; readonly id: RevisionId }
+  | { readonly _tag: 'End'; readonly id: RunId }
+type Keys = typeof Line.Type | typeof Enter.Type
 // Why a draft changes its direction, as typed (P5 decides): --why, one of the five reasons, and
 // --why-words. The action makes the stored Why: a reason that is no reason is a Pick refusal, and
 // blank words are none given (N5).
@@ -132,7 +144,8 @@ export type ActionInput =
   | In<'DraftTask', { readonly run: RunId }, { readonly file: FilePath }>
   | In<'RecordProblem', { readonly task: TaskId }, { readonly says: Words }>
   | In<'FixProblem', { readonly problem: ProblemId }, None>
-  | In<'WriteHostWords', { readonly on: ProblemId | RevisionId | RunId }, { readonly text: Words; readonly hope: Words | null }>
+  | In<'WriteHostWords', { readonly on: Exclude<WordsOn, { _tag: 'Draft' }> }, { readonly text: Words; readonly hope?: never }>
+  | In<'WriteHostWords', { readonly on: Extract<WordsOn, { _tag: 'Draft' }> }, { readonly text: Words; readonly hope: Words | null }>
   | In<'StartSession', { readonly assignment: AssignmentId }, { readonly session: SessionId; readonly secret: RawSecret | null }>
   // The supervisor starts the one terminal of a persistent agent (P3).
   | In<'StartAgent', { readonly agent: AgentId }, { readonly session: SessionId }>
@@ -140,8 +153,10 @@ export type ActionInput =
   | In<'ReportTerminal', { readonly session: SessionId }, { readonly move: Extract<typeof TerminalMove.Type, { readonly _tag: 'Failed' | 'Prompted' | 'Closed' }> }>
   | In<'StopTerminal', { readonly session: SessionId }, None> // page stop
   | In<'ResumeTerminal', { readonly session: SessionId }, { readonly tier: 'sol' | 'terra' | 'luna' }> // page resume
-  | In<'Send', { readonly session: SessionId }, { readonly keys: typeof Line.Type | typeof Enter.Type }> // work send
-  | In<'SupervisorSend', { readonly reason: typeof StartReason.Type | typeof SupervisorReason.Type }, { readonly keys: typeof Line.Type | typeof Enter.Type | { readonly _tag: 'StartPrompt' } }>
+  | In<'Send', { readonly session: SessionId }, { readonly keys: Keys }> // work send
+  // A start sends only its start words; every other reason a line or Enter.
+  | In<'SupervisorSend', { readonly reason: typeof StartReason.Type }, { readonly keys: typeof StartPrompt.Type }>
+  | In<'SupervisorSend', { readonly reason: typeof SupervisorReason.Type }, { readonly keys: Keys }>
   | In<'SendDelivered', { readonly send: EventRef }, None>
   | In<'SendDropped', { readonly send: EventRef }, { readonly why: typeof DropReason.Type }>
   // --- tasks ------------------------------------------------------------------------------------
@@ -160,8 +175,8 @@ export type ActionInput =
   // madeFrom: the words of --made-from (P5 decides the decoded form; N4 reads git itself).
   | In<'Report', { readonly assignment: AssignmentId }, { readonly output: Words; readonly madeFrom: ReadonlyArray<Words> }>
   | In<'Accept', { readonly of: AcceptOf }, { readonly evidence: ReadonlyArray<typeof EvidenceData.Encoded>; readonly reason: Words | null }>
-  // points for a result or a task; reason for a draft or an evaluation (P5 decides the split).
-  | In<'Reject', { readonly of: RejectOf }, { readonly points: ReadonlyArray<PointInput>; readonly reason: Words | null }>
+  | In<'Reject', { readonly of: WorkOf }, { readonly points: ReadonlyArray<PointInput> }>
+  | In<'Reject', { readonly of: DraftOf }, { readonly reason: Words }>
   | In<'Recheck', { readonly result: ResultId }, { readonly reason: Words }>
   | In<'EscalateResult', { readonly result: ResultId }, { readonly reason: Words }>
   | In<'EscalateTask', { readonly task: TaskId }, { readonly reason: Words }> // a maker sends its task up

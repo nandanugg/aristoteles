@@ -45,6 +45,7 @@ import {
   tierOfAgent,
 } from './support.ts'
 import type { Action } from './types.ts'
+import type { InputOf } from '../schema/actions.ts'
 
 const EVIDENCE_FORM =
   '--evidence="<rule id> | <where you read in the result> | <what you saw there>", one for each ' +
@@ -340,12 +341,23 @@ const pointOffTask = (
   return undefined
 }
 
+type RejectInput = InputOf<'Reject'>
+const ofWork = (i: RejectInput): i is Extract<RejectInput, { content: { points: unknown } }> =>
+  'points' in i.content
 const rejected: Action<'Reject'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
     const w = d.moment.work
+    if (!ofWork(input)) {
+      yield* allowed(d, by, input)
+      const { of } = input.target
+      const { reason } = input.content
+      if (blank(reason)) return yield* fail(R.Reject.noReason(of.id))
+      const said = { _tag: of._tag, id: of.id, reason: reason as never }
+      return [create('Review', { _tag: 'Reject', of: said } as never)]
+    }
     const { of } = input.target
-    const { points, reason } = input.content
+    const { points } = input.content
     // As the old engine (round5 R5-F5): the rule of a point comes before who decides and when; a
     // low agent hears first that it reviews only the result of its brief.
     const a = agentOf(w, by)
@@ -353,11 +365,6 @@ const rejected: Action<'Reject'> = ({ by, input }) =>
     const offTask = of._tag === 'Result' ? pointOffTask(w, of.id, points) : undefined
     if (offTask !== undefined && !low) return yield* fail(offTask)
     yield* allowed(d, by, input)
-    if (of._tag === 'Revision' || of._tag === 'Evaluation') {
-      if (blank(reason)) return yield* fail(R.Reject.noReason(of.id))
-      const said = { _tag: of._tag, id: of.id, reason: reason as never }
-      return [create('Review', { _tag: 'Reject', of: said } as never)]
-    }
     const first = nonEmpty(points)
     if (first === undefined) return yield* fail(R.Reject.noPoint())
     yield* rulesNamed(

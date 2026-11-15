@@ -374,7 +374,6 @@ export type Redrafter =
 export type SendIrrelevant =
   | { readonly _tag: 'OwnerEnded'; readonly assignment: AssignmentId }
   | { readonly _tag: 'RunEnded'; readonly run: RunId }
-  | { readonly _tag: 'DecisionGone'; readonly decision: ProblemId | RevisionId | RunId }
   | { readonly _tag: 'ProblemNotOpen'; readonly problem: ProblemId }
   | { readonly _tag: 'DraftNotOpened'; readonly draft: TaskDraftId }
 export type SendState =
@@ -390,8 +389,6 @@ export type SessionOwner =
 export type SendAbout =
   | { readonly _tag: 'Nothing' }
   | { readonly _tag: 'Problem'; readonly problem: ProblemId; readonly state: ProblemState }
-  | { readonly _tag: 'Revision'; readonly draft: RevisionId; readonly state: RevisionState }
-  | { readonly _tag: 'Run'; readonly run: RunId; readonly state: RunState }
   | { readonly _tag: 'TaskDraft'; readonly draft: TaskDraftId; readonly state: TaskDraftState }
 export interface SendTarget {
   readonly owner: SessionOwner

@@ -62,17 +62,17 @@ const choiceProblems = (r: Refusal): ReadonlyArray<string> => {
   ]
 }
 
-// The tags of ActionInput, read from its source: a list that the table does not repeat.
+// The tags of ActionInput, read from its source: a list that the table does not repeat. A tag
+// whose content depends on its target has one member per kind of target.
 const tagsOfInput = (): ReadonlyArray<string> => {
   const text = readFileSync(join(import.meta.dir, '../schema/actions.ts'), 'utf8')
-  return [...text.matchAll(/\|\s+In<'(\w+)'/g)].map((m) => m[1] ?? '')
+  return [...new Set([...text.matchAll(/\|\s+In<'(\w+)'/g)].map((m) => m[1] ?? ''))]
 }
 
 describe('the table of actions', () => {
   test('it has exactly one action for each tag of ActionInput', () => {
     const tags = tagsOfInput()
     expect(tags.length).toBeGreaterThan(40)
-    expect(new Set(tags).size).toBe(tags.length)
     expect(Object.keys(ACTIONS).sort()).toEqual([...tags].sort())
   })
 
@@ -180,7 +180,7 @@ describe('a sample of real refusals, each with a real choice', () => {
         {
           _tag: 'Reject',
           target: { of: { _tag: 'Result', id: R1 } },
-          content: { points: [], reason: null },
+          content: { points: [] },
         },
       ],
       [

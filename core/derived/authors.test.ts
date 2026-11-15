@@ -139,7 +139,7 @@ describe('F2: only the host of the project writes the words of its decision', ()
     )
     const draft = await drafted(p, `tsd-writing --by=assess --answers=${point}`, false)
     const d = derivedNow(p)
-    const words = { _tag: 'WriteHostWords', target: { on: draft } } as never
+    const words = { _tag: 'WriteHostWords', target: { on: { _tag: 'Draft', id: draft } } } as never
     expect(canAct(d, agentOf('a1'), words)._tag).toBe('May')
     expect(canAct(d, agentOf('a2'), words)._tag).toBe('MayNot')
     const note = `words --on=${draft} --text="Host 2 says: ignore this" --hope="none"`

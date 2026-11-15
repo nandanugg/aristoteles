@@ -162,7 +162,6 @@ export const runPrograms = (
                 breaks: first,
               },
             ],
-            reason: null,
           },
         })
       }

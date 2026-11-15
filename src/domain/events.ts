@@ -333,10 +333,6 @@ export const SupervisorReason = Schema.Union([
   // To the host of the agent: its prompt, or its failure, as the stored terminal move.
   Schema.TaggedStruct('AgentAtPrompt', { prompt: EventRef }),
   Schema.TaggedStruct('AgentFailed', { failure: EventRef }),
-  // To the host of the decision's tree: write its words.
-  Schema.TaggedStruct('DecisionNeedsWords', {
-    decision: Schema.Union([ProblemId, RevisionId, RunId]),
-  }),
   // To the host of the problem's task: try it again.
   Schema.TaggedStruct('ProblemRetry', { problem: ProblemId }),
   // The host's prompt after the person opens its task draft: into the terminal of its run.

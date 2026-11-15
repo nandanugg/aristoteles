@@ -809,7 +809,7 @@ const pageItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   for (const [id, state] of d.states.problems) {
     const p = w.problems.get(id)
     if (state._tag !== 'Open' || p === undefined) continue
-    const task = decisionTaskOf(w, id)
+    const task = decisionTaskOf(w, { _tag: 'Problem', id })
     const placement = placed(d, task)
     const raw = p.recordedBy._tag !== 'Host'
     const hold = holdOf(d, id, placement, p.at, raw || p.recordedBy._tag === 'Host')

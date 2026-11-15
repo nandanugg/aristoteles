@@ -3,7 +3,7 @@
 // whose terminal failed, the end of a project that waits for its host's words, an open problem
 // of the host, and a question that waits for its answer. nextFor lists them after the other
 // steps, so `work wait` returns on them and invariant 4.2 checks their intents.
-import type { Intent } from '../schema/actions.ts'
+import type { Intent, WordsOn } from '../schema/actions.ts'
 import type {
   AssignmentId,
   EventRef,
@@ -154,8 +154,8 @@ const childNotices = (d: Derived, host: AssignmentId, f: Facts): ReadonlyArray<N
 }
 
 // The host of the decision's project writes its words (an end or a problem has a project).
-const hostExplains = (d: Derived, decision: string, host: AssignmentId): boolean => {
-  const e = explainerOf(d, decision)
+const hostExplains = (d: Derived, on: WordsOn, host: AssignmentId): boolean => {
+  const e = explainerOf(d, on)
   return e._tag === 'Host' && e.assignment === host
 }
 // The ends that the page holds for this host's words, and its own open problems.
@@ -164,13 +164,13 @@ const hostNotices = (d: Derived, host: AssignmentId): ReadonlyArray<NoticeWhat> 
   const out: Array<NoticeWhat> = []
   for (const item of waitingFor(d, { _tag: 'Everyone' })) {
     if (item._tag !== 'RunEnd' || item.hold._tag !== 'HeldForHost') continue
-    if (!hostExplains(d, item.run, host)) continue
+    if (!hostExplains(d, { _tag: 'End', id: item.run }, host)) continue
     out.push({ _tag: 'WriteEndWords', run: item.run })
   }
   for (const [id, state] of d.states.problems) {
     const p = w.problems.get(id)
     if (state._tag !== 'Open' || p === undefined || p.recordedBy._tag !== 'Host') continue
-    if (!hostExplains(d, id, host)) continue
+    if (!hostExplains(d, { _tag: 'Problem', id }, host)) continue
     const asks = w.sends.filter(
       (s) =>
         s.from._tag === 'Supervisor' &&
@@ -214,7 +214,7 @@ const intentsOf = (what: NoticeWhat): ReadonlyArray<Intent> => {
     case 'RecordAgentFailure':
       return [{ _tag: 'RecordProblem', target: { task: what.task } }]
     case 'WriteEndWords':
-      return [{ _tag: 'WriteHostWords', target: { on: what.run } }]
+      return [{ _tag: 'WriteHostWords', target: { on: { _tag: 'End', id: what.run } } }]
     // A problem waits for the outside: a Do step would end every wait at once while it is broken.
     case 'TestProblem':
     case 'WaitsForAnswer':

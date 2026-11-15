@@ -79,7 +79,8 @@ export const supervise = <K extends ActionCall['input']['_tag']>(input: InputOf<
     return seq === null ? null : refOf(seq)
   })
 
-type LineReason = InputOf<'SupervisorSend'>['target']['reason']
+type Start = Extract<InputOf<'SupervisorSend'>, { content: { keys: { _tag: 'StartPrompt' } } }>
+type LineReason = Exclude<InputOf<'SupervisorSend'>, Start>['target']['reason']
 const keysOf = (text: string) =>
   isNonBlank(text) ? ({ _tag: 'Line', text } as const) : ({ _tag: 'Enter' } as const)
 
@@ -90,7 +91,7 @@ export const sendLine = (reason: LineReason, text: string) =>
     target: { reason },
     content: { keys: keysOf(text) },
   })
-export const sendStart = (reason: LineReason) =>
+export const sendStart = (reason: Start['target']['reason']) =>
   supervise<'SupervisorSend'>({
     _tag: 'SupervisorSend',
     target: { reason },

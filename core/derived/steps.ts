@@ -280,10 +280,11 @@ const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
     seen.add(item.draft)
     const draft = w.drafts.get(item.draft)
     if (draft === undefined || w.hostWords.has(item.draft)) return []
-    if (authorOf(w, draft)._tag === 'Host' || !explains(explainerOf(d, draft.id), a.id)) return []
+    const on = { _tag: 'Draft', id: draft.id } as const
+    if (authorOf(w, draft)._tag === 'Host' || !explains(explainerOf(d, on), a.id)) return []
     const dirWide = item.placement._tag === 'DirWide'
     const what: StepWhat = { _tag: 'ExplainDraft', draft: draft.id, direction: draft.of, dirWide }
-    return [act(what, { _tag: 'WriteHostWords', target: { on: draft.id } })]
+    return [act(what, { _tag: 'WriteHostWords', target: { on } })]
   })
 }
 

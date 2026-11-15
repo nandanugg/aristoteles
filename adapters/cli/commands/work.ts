@@ -16,7 +16,7 @@ import {
   workStop,
 } from '../../../core/derived/reads.ts'
 import { blockersOf } from '../../../core/derived/index.ts'
-import type { AcceptOf, RejectOf } from '../../../core/schema/actions.ts'
+import type { AcceptOf, InputOf } from '../../../core/schema/actions.ts'
 import {
   type AssignmentId,
   type CheckpointId,
@@ -26,13 +26,10 @@ import {
   lookup,
   type NonBlank,
   type NonEmpty,
-  type ProblemId,
   type QuestionId,
   refuse,
   revisionOf,
-  type RevisionId,
   type ResultId,
-  type RunId,
   type Stop,
   versionIdOf,
   whoOf,
@@ -162,7 +159,7 @@ const review: Command = (call) =>
     const caller = yield* callerOf(work, token, confirm)
     const by = authorOf(caller)
     const reason = textOf(args.one('reason'))
-    let input
+    let input: InputOf<'Accept'> | InputOf<'Reject'>
     if (decisionWord === 'accept') {
       const evidence = yield* evidenceOf(args.all('evidence'))
       const of: AcceptOf | undefined =
@@ -182,26 +179,23 @@ const review: Command = (call) =>
         content: { evidence, reason: reason ?? null },
       } as const
     } else {
-      const of: RejectOf | undefined =
-        found._tag === 'Result'
-          ? { _tag: 'Result', id: found.result.id }
-          : found._tag === 'Task'
-            ? { _tag: 'Task', id: found.task.id }
-            : found._tag === 'Revision'
-              ? { _tag: 'Revision', id: found.revision.id }
-              : found._tag === 'Evaluation'
-                ? { _tag: 'Evaluation', id: found.evaluation.id }
-                : undefined
-      if (of === undefined) return yield* Effect.die(`a review of ${targetId} with no target`)
-      const person = of._tag === 'Revision' || of._tag === 'Evaluation'
-      input = {
-        _tag: 'Reject',
-        target: { of },
-        content: {
-          points: person ? [] : pointsOf(args.flags),
-          reason: person ? wordsOf(args.one('reason')) : null,
-        },
-      } as const
+      const _tag = 'Reject'
+      if (found._tag === 'Result' || found._tag === 'Task') {
+        const of =
+          found._tag === 'Result'
+            ? ({ _tag: 'Result', id: found.result.id } as const)
+            : ({ _tag: 'Task', id: found.task.id } as const)
+        input = { _tag, target: { of }, content: { points: pointsOf(args.flags) } }
+      } else {
+        const of =
+          found._tag === 'Revision'
+            ? ({ _tag: 'Revision', id: found.revision.id } as const)
+            : found._tag === 'Evaluation'
+              ? ({ _tag: 'Evaluation', id: found.evaluation.id } as const)
+              : undefined
+        if (of === undefined) return yield* Effect.die(`a review of ${targetId} with no target`)
+        input = { _tag, target: { of }, content: { reason: wordsOf(args.one('reason')) } }
+      }
     }
     const done = yield* act(by, input)
     const after = yield* derivedAfter(done.work)
@@ -245,7 +239,7 @@ const review: Command = (call) =>
         `${vid}: accept of ${targetId}; it waits for the accept of ${draftWaitsText(after, draft)}.`,
       ]
     }
-    const pointCount = input._tag === 'Reject' ? input.content.points.length : 0
+    const pointCount = 'points' in input.content ? input.content.points.length : 0
     const what =
       input._tag === 'Reject'
         ? `reject of ${targetId} with ${pointCount} point(s): ${Array.from({ length: pointCount }, (_, i) => `${vid}.${i + 1}`).join(', ')}`
@@ -417,20 +411,18 @@ const note: Command = (call) =>
     const text = wordsOf(args.one('text'))
     if (kind === 'Words') {
       const found = yield* lookup(work, String(on), ['sp', 'd', 'h'])
-      const target =
-        found._tag === 'Problem'
-          ? (found.problem.id as ProblemId)
-          : found._tag === 'Revision'
-            ? (found.revision.id as RevisionId)
-            : found._tag === 'Run'
-              ? (found.run.id as RunId)
-              : undefined
-      if (target === undefined) return yield* Effect.die(`lookup of ${String(on)} gave a ${found._tag}`)
-      yield* act(by, {
-        _tag: 'WriteHostWords',
-        target: { on: target },
-        content: { text, hope: hope ?? null },
-      })
+      const words = (input: InputOf<'WriteHostWords'>) => act(by, input)
+      const _tag = 'WriteHostWords'
+      if (found._tag === 'Problem') {
+        const on = { _tag: 'Problem', id: found.problem.id } as const
+        yield* words({ _tag, target: { on }, content: { text } })
+      } else if (found._tag === 'Run') {
+        const on = { _tag: 'End', id: found.run.id } as const
+        yield* words({ _tag, target: { on }, content: { text } })
+      } else if (found._tag === 'Revision') {
+        const on = { _tag: 'Draft', id: found.revision.id } as const
+        yield* words({ _tag, target: { on }, content: { text, hope: hope ?? null } })
+      } else return yield* Effect.die(`lookup of ${String(on)} gave a ${found._tag}`)
       return [`the words of ${on} are written; the UI shows them on the decision.`]
     }
     const done = yield* act(by, {

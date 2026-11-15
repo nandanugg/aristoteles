@@ -550,17 +550,21 @@ const personCould = (
     }
     case 'Reject': {
       const of = r.of
-      const reject = (target: InputOf<'Reject'>['target'], content: InputOf<'Reject'>['content']) =>
-        PERSON_ACTS.Reject({ by, input: { _tag: 'Reject', target, content } })
+      const reject = (input: InputOf<'Reject'>) => PERSON_ACTS.Reject({ by, input })
       switch (of._tag) {
-        case 'Revision':
-          return reject({ of: { _tag: 'Revision', id: of.id } }, { points: [], reason: of.reason })
-        case 'Task': {
-          const points = of.points.map((p) => ({ text: p.text, breaks: null }))
-          return reject({ of: { _tag: 'Task', id: of.id } }, { points, reason: null })
+        case 'Revision': {
+          const target = { of: { _tag: 'Revision', id: of.id } } as const
+          return reject({ _tag: 'Reject', target, content: { reason: of.reason } })
         }
-        case 'Result':
-          return reject({ of: { _tag: 'Result', id: of.id } }, { points: of.points, reason: null })
+        case 'Task': {
+          const target = { of: { _tag: 'Task', id: of.id } } as const
+          const points = of.points.map((p) => ({ text: p.text, breaks: null }))
+          return reject({ _tag: 'Reject', target, content: { points } })
+        }
+        case 'Result': {
+          const target = { of: { _tag: 'Result', id: of.id } } as const
+          return reject({ _tag: 'Reject', target, content: { points: of.points } })
+        }
       }
     }
   }

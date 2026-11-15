@@ -45,7 +45,7 @@ export const callOf = (act: ActionAct, by: Author): ActionCall => {
         input: {
           _tag: 'Reject',
           target: { of: { _tag: 'Revision', id: act.draft } },
-          content: { points: [], reason: act.reason },
+          content: { reason: act.reason },
         },
       }
     case 'confirm':
@@ -64,7 +64,7 @@ export const callOf = (act: ActionAct, by: Author): ActionCall => {
         input: {
           _tag: 'Reject',
           target: { of: { _tag: 'Task', id: act.task } },
-          content: { points: [{ text: act.reason, breaks: null }], reason: null },
+          content: { points: [{ text: act.reason, breaks: null }] },
         },
       }
     case 'accept-words':
@@ -121,7 +121,7 @@ export const callOf = (act: ActionAct, by: Author): ActionCall => {
         input: {
           _tag: 'Reject',
           target: { of: { _tag: 'Evaluation', id: act.evaluation } },
-          content: { points: [], reason: act.reason },
+          content: { reason: act.reason },
         },
       }
   }

@@ -188,7 +188,7 @@ describe('a low role reviews no draft and no evaluation', () => {
     lockstep(
       d,
       by,
-      { _tag: 'Reject', target: { of }, content: { points: [], reason: 'unclear' } },
+      { _tag: 'Reject', target: { of }, content: { reason: 'unclear' } },
       words,
       'Escalate',
     )
@@ -207,7 +207,7 @@ describe('a low role reviews no draft and no evaluation', () => {
       {
         _tag: 'Reject',
         target: { of: { _tag: 'Evaluation', id: evaluation as never } },
-        content: { points: [], reason: 'not this' },
+        content: { reason: 'not this' },
       },
       'a low role does not review evaluations',
       'Escalate',

@@ -117,6 +117,7 @@ import {
   type Work,
 } from '../schema/index.ts'
 import type { Moment } from '../state/index.ts'
+import type { WordsOn } from '../schema/actions.ts'
 import { adjustmentStates, retiredBy } from './adjustments.ts'
 import { roleWordsStates } from './role-words.ts'
 
@@ -499,32 +500,19 @@ export const sendStateOf: SendStateOf = (m, id, { target }) => {
   if (owner._tag === 'Host' && (owner.state._tag === 'Done' || owner.state._tag === 'Closed')) {
     return { _tag: 'Irrelevant', why: { _tag: 'RunEnded', run: owner.run } }
   }
-  const words = send.from._tag === 'Supervisor' && send.from.reason._tag === 'DecisionNeedsWords'
   switch (about._tag) {
     case 'Nothing':
       return { _tag: 'Pending' }
     case 'Problem':
-      if (about.state._tag === 'Open') return { _tag: 'Pending' }
-      return words
-        ? { _tag: 'Irrelevant', why: { _tag: 'DecisionGone', decision: about.problem } }
+      return about.state._tag === 'Open'
+        ? { _tag: 'Pending' }
         : { _tag: 'Irrelevant', why: { _tag: 'ProblemNotOpen', problem: about.problem } }
-    case 'Revision':
-      return about.state._tag === 'Waiting' && personLeaf(about.state)
-        ? { _tag: 'Pending' }
-        : { _tag: 'Irrelevant', why: { _tag: 'DecisionGone', decision: about.draft } }
-    case 'Run':
-      return about.state._tag === 'AwaitingEndAccept'
-        ? { _tag: 'Pending' }
-        : { _tag: 'Irrelevant', why: { _tag: 'DecisionGone', decision: about.run } }
     case 'TaskDraft':
       return about.state._tag === 'Opened'
         ? { _tag: 'Pending' }
         : { _tag: 'Irrelevant', why: { _tag: 'DraftNotOpened', draft: about.draft } }
   }
 }
-// A draft that waits for a person: a person decider, or the owner's accept (S2).
-export const personLeaf = (state: Extract<RevisionState, { _tag: 'Waiting' }>): boolean =>
-  state.waitsFor.some((l) => l._tag !== 'Role')
 
 // --- 20. SourceState ---------------------------------------------------------------------------
 // The last time at which a source read at seenAt is fresh: it expires 1 ms later.
@@ -584,12 +572,6 @@ export const sendSessionOf = (
       const task = a === undefined ? undefined : w.assignments.get(a)?.task
       return task === undefined ? undefined : hostOfTask(task)
     }
-    case 'DecisionNeedsWords': {
-      // A decision of the whole dir goes to the host of the newest live run, where
-      // decisionsWithoutWords asked it (P6: else a dir-wide line that waited was never typed).
-      const task = decisionTaskOf(w, reason.decision) ?? newestLiveTop(w, states.runs)
-      return task === undefined ? undefined : hostOfTask(task)
-    }
     case 'ProblemRetry': {
       const p = w.problems.get(reason.problem)
       if (p === undefined) return undefined
@@ -601,25 +583,23 @@ export const sendSessionOf = (
     }
   }
 }
-// The top task now of the newest run that is Talking, Working or AwaitingEndAccept.
-const newestLiveTop = (w: Work, runs: ReadonlyMap<RunId, RunState>): TaskId | undefined => {
-  const live = ['Talking', 'Working', 'AwaitingEndAccept']
-  const isLive = (r: { readonly id: RunId }) => live.includes(runs.get(r.id)?._tag ?? '')
-  const newest = [...w.runs.values()].filter(isLive).at(-1)
-  const opened = newest === undefined ? undefined : openedTopOf(w, newest.id)
-  return opened === undefined ? undefined : currentTask(w, opened)
-}
 // The task where a decision of the page sits: a problem's, a draft's answered task, a run's top.
-export const decisionTaskOf = (w: Work, decision: string): TaskId | undefined => {
-  const p = w.problems.get(decision as ProblemId)
-  if (p !== undefined) return problemTask(w, p)
-  const run = w.runs.get(decision as RunId)
-  if (run !== undefined) {
-    const opened = openedTopOf(w, run.id)
-    return opened === undefined ? undefined : currentTask(w, opened)
+export const decisionTaskOf = (w: Work, on: WordsOn): TaskId | undefined => {
+  switch (on._tag) {
+    case 'Problem': {
+      const p = w.problems.get(on.id)
+      return p === undefined ? undefined : problemTask(w, p)
+    }
+    case 'End': {
+      const opened = openedTopOf(w, on.id)
+      return opened === undefined ? undefined : currentTask(w, opened)
+    }
+    case 'Draft':
+      return w.drafts
+        .get(on.id)
+        ?.answers.map((a) => taskOfAnswer(w, a))
+        .find((t) => t !== undefined)
   }
-  const draft = w.drafts.get(decision as RevisionId)
-  return draft?.answers.map((a) => taskOfAnswer(w, a)).find((t) => t !== undefined)
 }
 // The task of a Reject (or one of its points) that a draft answers; a suggestion has none.
 export const taskOfAnswer = (w: Work, answer: string): TaskId | undefined => {
@@ -863,14 +843,6 @@ const aboutOf = (
     return state === undefined ? { _tag: 'Nothing' } : { _tag: 'Problem', problem: id, state }
   }
   switch (reason._tag) {
-    case 'DecisionNeedsWords': {
-      const id = reason.decision
-      const draft = states.revisions.get(id as RevisionId)
-      if (draft !== undefined) return { _tag: 'Revision', draft: id as RevisionId, state: draft }
-      const run = states.runs.get(id as RunId)
-      if (run !== undefined) return { _tag: 'Run', run: id as RunId, state: run }
-      return problem(id as ProblemId)
-    }
     case 'ProblemRetry':
       return problem(reason.problem)
     case 'DraftOpened': {
