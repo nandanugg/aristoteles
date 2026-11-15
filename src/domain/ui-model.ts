@@ -574,13 +574,22 @@ export interface DirectionCard {
   readonly request: Text | null // the words of a Revise that wait for the host
 }
 // A case (ruling 4): real code that follows or breaks the direction. current: its excerpt is in
-// its file now; a stale case asks for other cases.
+// its file now; a stale case asks for other cases. around: the real code, so the person sees the
+// case in place (Nanda, 2026-11-15): 3 lines above and 3 below the lines of the excerpt (or its
+// line, when the excerpt is gone), the lines of the excerpt marked; none when the file does not
+// read.
 export interface CaseView {
   readonly file: Text
   readonly line: number
   readonly excerpt: Text
   readonly fit: 'Follows' | 'Breaks'
   readonly current: boolean
+  readonly around: ReadonlyArray<CaseLine>
+}
+export interface CaseLine {
+  readonly line: number
+  readonly text: Text
+  readonly mark: boolean
 }
 // A question of the AI about a draft (ruling 5): a case, and the options A and B.
 export interface QuestionView {

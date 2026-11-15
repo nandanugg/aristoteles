@@ -981,6 +981,30 @@ const filesOf = (d: Derived, task: TaskId, ctx: ViewContext) => {
 
 // --- the onboarding pages and the gear (GET /api/onboarding) --------------------------------
 
+// The lines of a file around a case (Nanda, 2026-11-15): the lines of its excerpt, at the place
+// nearest to the line that the case names, or that line when the excerpt is not there; and 3
+// lines above and below. A long line is cut, so a minified file stays small on the page.
+const AROUND = 3
+const LINE_CHARS = 240
+const aroundOf = (text: string | null, c: Case): CaseView['around'] => {
+  if (text === null) return []
+  // A last line end starts no line of its own.
+  const lines = text.replace(/\n$/, '').split('\n')
+  const first = c.excerpt.trim().split('\n')[0]?.trim() ?? ''
+  const holds = lines.flatMap((l, n) => (first && l.includes(first) ? [n] : []))
+  const at = holds.sort((a, b) => Math.abs(a + 1 - c.line) - Math.abs(b + 1 - c.line))[0]
+  const start = at ?? c.line - 1
+  if (start < 0 || start >= lines.length) return []
+  const end = at === undefined ? start : start + c.excerpt.trim().split('\n').length - 1
+  const from = Math.max(0, start - AROUND)
+  const to = Math.min(lines.length - 1, end + AROUND)
+  return lines.slice(from, to + 1).map((l, k) => ({
+    line: from + k + 1,
+    text: l.length > LINE_CHARS ? `${l.slice(0, LINE_CHARS)}…` : l,
+    mark: from + k >= start && from + k <= end,
+  }))
+}
+
 // A case is current while its excerpt is in its file (ruling 4): each file is read once a view.
 const caseReader = (dir: string) => {
   const texts = new Map<string, string | null>()
@@ -1000,6 +1024,7 @@ const caseReader = (dir: string) => {
     excerpt: c.excerpt,
     fit: c.fit,
     current: caseStateOf(textOf(c.file), c)._tag === 'Current',
+    around: aroundOf(textOf(c.file), c),
   })
 }
 

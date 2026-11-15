@@ -345,6 +345,7 @@ export const CaseView = Schema.Struct({
   excerpt: Text,
   fit: Schema.Literals(['Follows', 'Breaks']),
   current: Schema.Boolean,
+  around: Schema.Array(Schema.Struct({ line: Schema.Number, text: Text, mark: Schema.Boolean })),
 })
 export const QuestionView = Schema.Struct({
   says: Text,

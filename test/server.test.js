@@ -199,10 +199,21 @@ describe('the onboarding pages', () => {
     const tsd = view.directions[1]
     expect(tsd.standards[0].rules[0]).toEqual({ id: 'no-code-proof', says: 'No file paths with line numbers, no commit hashes in the body', checkedBy: 'linter' })
     // Ruling 4: each case with its place, and whether its excerpt is in its file now.
-    expect(tsd.cases).toEqual([
+    expect(tsd.cases.map(({ around: _, ...c }) => c)).toEqual([
       { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice for one merchant.', fit: 'Follows', current: true },
       { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', fit: 'Follows', current: true },
       { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', fit: 'Breaks', current: true },
+    ])
+    // Nanda, 2026-11-15: each case carries the real code around it (3 lines above and below, as
+    // far as the file goes), its own line marked; a TODO in two places is the one nearest its line.
+    expect(tsd.cases[0].around).toEqual([
+      { line: 2, text: '', mark: false },
+      { line: 3, text: '## Dedupe', mark: false },
+      { line: 4, text: '', mark: false },
+      { line: 5, text: 'The export ran twice for one merchant.', mark: true },
+    ])
+    expect(tsd.cases.map((c) => c.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' '))).toEqual([
+      '2 3 4 5*', '1 2 3* 4 5 6', '2 3 4 5* 6 7 8',
     ])
     p.write('docs/tsd.md', readFileSync(join(p.dir, 'docs/tsd.md'), 'utf8').replaceAll('TODO', 'Done'))
     expect((await get('/api/onboarding')).directions[1].cases[2].current).toBe(false)
@@ -235,7 +246,14 @@ describe('the onboarding pages', () => {
     expect(asked).toMatchObject({ state: 'question', principle: 'A section says one thing' })
     expect(asked.questions).toEqual([{
       says: 'Does a section of facts count as one thing?',
-      case: { file: 'docs/facts.md', line: 3, excerpt: '## Dedupe', fit: 'Follows', current: true },
+      // Nanda, 2026-11-15: the case of a question carries the code around it too.
+      case: {
+        file: 'docs/facts.md', line: 3, excerpt: '## Dedupe', fit: 'Follows', current: true,
+        around: [
+          { line: 1, text: '# Facts', mark: false }, { line: 2, text: '', mark: false }, { line: 3, text: '## Dedupe', mark: true },
+          { line: 4, text: '', mark: false }, { line: 5, text: 'The export ran twice for one merchant.', mark: false },
+        ],
+      },
       options: ['each fact is one thing', 'the facts together are one thing'], answer: null,
     }])
     // Nanda, 2026-11-15: a reply names the direction and what each answer chose.
