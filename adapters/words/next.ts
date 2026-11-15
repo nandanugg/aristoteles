@@ -565,8 +565,13 @@ const claimedSince = (w: Work, a: AssignmentId): string | undefined => {
 
 // The lines that work next prints (the old nextSteps text, line for line): what to do, then the
 // command, indented by two. The token goes into every command that names the agent.
+// Ready work comes first and waits after: a host read seven "runs after" lines, missed the
+// evaluate step at the end, and said "nothing for me yet" (live, 2026-11-15).
 export const nextLines = (
   d: Derived,
   steps: ReadonlyArray<NextStep>,
   token: string,
-): ReadonlyArray<string> => steps.flatMap((s) => linesOf(d, s, token))
+): ReadonlyArray<string> =>
+  [...steps.filter((s) => s._tag === 'Do'), ...steps.filter((s) => s._tag !== 'Do')].flatMap((s) =>
+    linesOf(d, s, token),
+  )

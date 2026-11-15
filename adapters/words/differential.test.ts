@@ -115,6 +115,23 @@ const p9Lines = (w: Work, a: AssignmentId, at: string, pinned: Lines): Lines => 
 }
 
 describe('next', () => {
+  // Live, 2026-11-15: the host missed its evaluate step after seven wait lines.
+  test('the lines of ready steps come before the lines of waits', () => {
+    let mixed = 0
+    for (const { w, d } of built) {
+      for (const a of w.assignments.values()) {
+        const steps = nextFor(d, { _tag: 'Agent', assignment: a.id }).filter((x) => !isNotice(x))
+        const firstWait = steps.findIndex((x) => x._tag === 'Wait')
+        const lastDo = steps.findLastIndex((x) => x._tag === 'Do')
+        if (firstWait < 0 || lastDo < 0) continue
+        mixed += 1
+        const doOnly = nextLines(d, steps.filter((x) => x._tag === 'Do'), TOKEN)
+        expect(nextLines(d, steps, TOKEN).slice(0, doOnly.length)).toEqual(doOnly)
+      }
+    }
+    expect(mixed).toBeGreaterThan(0)
+  })
+
   test('nextLines writes the old lines of each step, but for D14 and C1', () => {
     const seen: Array<string> = []
     let compared = 0
@@ -141,7 +158,9 @@ describe('next', () => {
           seen.push(`${s.name}: P3: ${a.id}`)
           continue
         }
-        expect([s.name, a.id, now]).toEqual([s.name, a.id, lines])
+        // 2026-11-15: ready steps print before waits, so only the order of steps may differ.
+        const sorted = (x: Lines) => [...x].sort()
+        expect([s.name, a.id, sorted(now)]).toEqual([s.name, a.id, sorted(lines)])
         compared += now.length
       }
     }
