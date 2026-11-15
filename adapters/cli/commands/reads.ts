@@ -24,7 +24,7 @@ import {
   waitingLines,
 } from '../../words/index.ts'
 import { textOf } from '../args.ts'
-import { agentCallerOf, tierOfAssignment, tokenOfCall } from '../caller.ts'
+import { agentCallerOf, isUnit, tokenOfCall } from '../caller.ts'
 import type { Command, Commands } from '../command.ts'
 import { GUIDES, lookupKind } from '../lookups.ts'
 import { readWork } from '../runtime.ts'
@@ -67,9 +67,9 @@ const next: Command = (call) =>
     if (d.states.assignments.get(a)?._tag === 'Ended') {
       return [`${a} is finished; there is nothing more for it.`]
     }
-    // A persistent low agent (runs Agent) holds many units; a subagent of a low role has one.
-    if (work.assignments.get(a)?.runs._tag !== 'Agent' && tierOfAssignment(work, a) === 'low') {
-      return [`a low role has one unit: work brief ${token} shows it.`]
+    // A persistent agent (runs Agent) holds many units; a subagent of a role of one unit has one.
+    if (work.assignments.get(a)?.runs._tag !== 'Agent' && isUnit(work, a)) {
+      return [`a role that assigns nothing has one unit: work brief ${token} shows it.`]
     }
     const actor = { _tag: 'Agent', assignment: a } as const
     const lines = nextLines(d, nextFor(d, actor), token)

@@ -299,9 +299,9 @@ describe('adjustments', () => {
   const RETIRE = { _tag: 'RetireDirection', direction: 'tsd-writing' }
   test('Waiting, Accepted, Rejected, Replaced; Retired; who they wait for', async () => {
     const { p } = await h.started()
-    const setTier = (tier: string) => ({ _tag: 'SetTier', role: 'writer', tier })
-    const first = await append(p, HOST_RUN, drafted(setTier('medium')))
-    const second = await append(p, HOST_RUN, drafted(setTier('high')))
+    const setModel = (model: string) => ({ _tag: 'SetModel', role: 'writer', model })
+    const first = await append(p, HOST_RUN, drafted(setModel('sonnet')))
+    const second = await append(p, HOST_RUN, drafted(setModel('opus')))
     const retire = await append(p, HOST_RUN, drafted(RETIRE))
     const accept = await append(p, NANDA, accepted(retire, p))
     const lead = { _tag: 'Agent', assignment: 'a1' } as Author
@@ -361,12 +361,12 @@ describe('what reaches the host from no project', () => {
         's1 suggests about the roles: "a role reads the facts first" (Nanda); answer it with the ' +
           'adjustment that it asks for, one change at a time',
         `  work adjust ${host} add-role <role> --file=<role.yaml>, or remove-role <role>, or ` +
-          'tier <role> --tier=<low|medium|high>, or persistence <role> ' +
+          'model <role> --model=<name>, or persistence <role> ' +
           '--persistent=<true|false> --why="<one line>"',
       ].join('\n'),
     )
     // Once a model drafts a role adjustment after the words, they wait no more.
-    await append(p, HOST_RUN, drafted({ _tag: 'SetTier', role: 'writer', tier: 'medium' }))
+    await append(p, HOST_RUN, drafted({ _tag: 'SetModel', role: 'writer', model: 'sonnet' }))
     const later = derivedOf(p)
     expect(nextFor(later, a1).some((s) => s.what._tag === 'AnswerRolesSuggestion')).toBe(false)
   }, 60000)

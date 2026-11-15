@@ -16,6 +16,7 @@ import {
   sameRole,
   standardAt,
   ruleAt,
+  unitA,
   within,
 } from '../derived/reads.ts'
 import type { Refusal } from '../schema/errors.ts'
@@ -42,7 +43,6 @@ import {
   current,
   no,
   type RefusalsOf,
-  tierOfAgent,
 } from './support.ts'
 import type { Action } from './types.ts'
 import type { InputOf } from '../schema/actions.ts'
@@ -217,7 +217,7 @@ const rulesForAgent = (d: Derived, a: Assignment): ReadonlyArray<Rule> => {
     (x) => x._tag === 'Review' || x._tag === 'Approve',
   )
   const all = rulesOf(w, a.task)
-  if (tierOfAgent(w, a) !== 'low' || !reviews) return all
+  if (!unitA(w, a) || !reviews) return all
   return all.filter((r) => r.checkedBy._tag === 'Role' && r.checkedBy.role === a.role)
 }
 // The evidence lines of an input, as the events keep them: none when a line has a blank part.
@@ -245,7 +245,7 @@ const checkEvidence = (result: Result, evidence: ReadonlyArray<EvidenceData>) =>
 const unchanged = (d: Derived, by: Author, result: Result) => {
   if (!d.moment.outside.changed.has(result.id)) return Effect.void
   const a = agentOf(d.moment.work, by)
-  const low = a !== undefined && tierOfAgent(d.moment.work, a) === 'low'
+  const low = a !== undefined && unitA(d.moment.work, a)
   return fail(low ? REVIEW.changedForLow(result.id) : REVIEW.changed(result.id))
 }
 const nonEmpty = <A>(list: ReadonlyArray<A>): readonly [A, ...Array<A>] | undefined => {
@@ -267,10 +267,10 @@ const accepted: Action<'Accept'> = ({ by, input }) =>
     const { of } = input.target
     const { reason } = input.content
     // The person's accept of a draft needs no evidence; anyone else says where it read. As in the
-    // old CLI, this comes before the state checks, after the one that a low role reviews no draft.
+    // old CLI, this comes before the state checks, after the one that a role of one unit reviews no draft.
     // The Schema refuses a line with a blank place, sight or rule.
     const a = agentOf(w, by)
-    const low = a !== undefined && tierOfAgent(w, a) === 'low'
+    const low = a !== undefined && unitA(w, a)
     const read = evidenceRead(input.content.evidence)
     if (read._tag === 'None') {
       return yield* fail(of._tag === 'Revision' ? R.Accept.draftEvidence(of.id) : R.Accept.noEvidence())
@@ -361,7 +361,7 @@ const rejected: Action<'Reject'> = ({ by, input }) =>
     // As the old engine (round5 R5-F5): the rule of a point comes before who decides and when; a
     // low agent hears first that it reviews only the result of its brief.
     const a = agentOf(w, by)
-    const low = a !== undefined && tierOfAgent(w, a) === 'low'
+    const low = a !== undefined && unitA(w, a)
     const offTask = of._tag === 'Result' ? pointOffTask(w, of.id, points) : undefined
     if (offTask !== undefined && !low) return yield* fail(offTask)
     yield* allowed(d, by, input)

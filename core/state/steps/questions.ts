@@ -122,7 +122,7 @@ export const noted = (
     b.work = { ...b.work, notes: put(b.work.notes, id, note) }
   })
 
-// The high role of the task's tree, or the person, says what is wrong, why, and what to improve.
+// A role of the task's tree that splits, or the person, says what is wrong, why, and what to improve.
 // After the owner rejected an evaluation of the task, the next one of an agent waits too.
 // (derived: EvaluationState owns the owner's decision; the record keeps `after` as a fact.)
 export const evaluated = (work: Work, e: EventOf<'Evaluation.Evaluation'>, act: Act): Stepped =>

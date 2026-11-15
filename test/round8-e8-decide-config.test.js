@@ -11,7 +11,7 @@ const LINT = '--evidence="no-code-proof | the introduction | no paths or hashes 
 const REPEATABLE = '--evidence="repeatable | the introduction | a reviewer can repeat it"'
 // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
 const PROOFREADER = `  proofreader:
-    tier: low
+    model: haiku
     description: Reads one section and decides it after the lead.
     intro: You read one section.
     responsibilities:
@@ -42,7 +42,7 @@ async function decidedByLead(yaml, roles) {
 
 describe('E8 decide order [section-lead, proofreader] with a low decider: the printed assign is the person\'s, and it is refused', () => {
   test('next tells the lead that the person assigns a proofreader; waiting gives the person an assign that is refused', async () => {
-    const yaml = `${WORK_YAML}${PROOFREADER}decide:\n  - { resultsOf: writer, by: { order: [section-lead, proofreader] } }\n`
+    const yaml = `${WORK_YAML.replace("{ assign: [writer, linter] }", "{ assign: [writer, linter, proofreader] }")}${PROOFREADER}decide:\n  - { resultsOf: writer, by: { order: [section-lead, proofreader] } }\n`
     const { p, lead } = await decidedByLead(yaml, ['architect', 'section-lead', 'writer', 'linter', 'proofreader'])
     expect(ok(await p.agent('blockers r1')).out).toContain('no accept yet by proofreader')
     const leadNext = ok(await p.agent(`next ${lead}`)).out
@@ -50,7 +50,7 @@ describe('E8 decide order [section-lead, proofreader] with a low decider: the pr
     // Run the assign that waiting prints for the person, if it prints one.
     const personAssign = waiting.match(/work assign (t\d+) --role=proofreader/)
     const ran = personAssign ? await p.nanda(`assign ${personAssign[1]} --role=proofreader`) : undefined
-    // Correct: the step works. The lead (medium) gives a low role its work, so its next says
+    // Correct: the step works. The lead (sonnet) gives a low role its work, so its next says
     // "work assign <lead token> t1 --role=proofreader"; a step printed for the person runs.
     // Today next says "the person assigns one", and the person's assign is refused ("the person
     // gives work to a medium or high role; proofreader is low, so a lead gives it its work").

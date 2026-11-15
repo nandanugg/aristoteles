@@ -7,8 +7,8 @@ import { Current } from '../../../core/actions/types.ts'
 import {
   assignmentAt,
   roleAt,
-  tierOf,
-  tierOfAssignment,
+  modelOf,
+  modelOfAssignment,
   within,
 } from '../../../core/derived/reads.ts'
 import { fileTurn, waitersOf } from '../../../core/derived/steps.ts'
@@ -24,7 +24,6 @@ import {
   RoleName,
   type RunId,
   type TaskId,
-  type Tier,
   type Time,
   type Work,
 } from '../../../core/schema/index.ts'
@@ -34,8 +33,6 @@ import {
   Env,
   Files,
   Now,
-  readSettings,
-  readSettingsOf,
   Spawn,
   TASK_TEMPLATE,
   Tokens,
@@ -71,7 +68,7 @@ const taskDraft = (call: Call) =>
     if (!file || !/^h\d+$/.test(String(run ?? ''))) {
       return yield* refuse(
         'work task draft --file=<task.yaml> --by=<your run, h..>',
-        `${TASK_TEMPLATE.trimEnd()}\nrole: <the Sol role that does the task>`,
+        `${TASK_TEMPLATE.trimEnd()}\nrole: <the role that splits the task>`,
       )
     }
     const runId = String(run) as RunId
@@ -103,7 +100,7 @@ const taskDraft = (call: Call) =>
     ]
   })
 
-// The person opens a draft of a host: the task, the assign to the Sol role of the draft, and a
+// The person opens a draft of a host: the task, the assign to the role of the draft, and a
 // change grant for 30 days, so that the host may split its project.
 const openDraft = (call: Call, draftId: string) =>
   Effect.gen(function* () {
@@ -116,7 +113,7 @@ const openDraft = (call: Call, draftId: string) =>
       content: {},
     })
     const tid = firstCreated(opened.created)
-    // The same act gives the task to the Sol role of the draft, in the session of its run, and
+    // The same act gives the task to the role of the draft, in the session of its run, and
     // lets that role change the task (its split) for 30 days: the host must split its project.
     const lines = yield* assignWith(
       { ...call, args: { ...call.args, positional: [tid], flags: [['role', draft.role]] } },
@@ -159,7 +156,7 @@ const showTask = (sub: 'show' | 'tree', rest: ReadonlyArray<string>) =>
     return sub === 'tree' ? renderTaskTree(d, task.id) : renderTask(d, task.id)
   })
 
-// A split, a close or a remake: the person, or a high agent that holds a change act on the task.
+// A split, a close or a remake: the person, or an agent that splits and holds a change act on the task.
 const changeTask = (call: Call, sub: 'split' | 'close' | 'remake', rest: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const { args, token } = call
@@ -250,21 +247,6 @@ const task: Command = (call) =>
 
 // --- assign ------------------------------------------------------------------------------------
 
-const MODEL = { high: 'Opus', medium: 'Sonnet', low: 'Haiku' } as const
-const TERMINAL = { high: 'sol', medium: 'terra', low: 'luna' } as const
-
-// The model of a tier for the words (P9): tiers.<tier>.model of the settings now, else the class
-// name of the tier. Settings that do not read give the class name: the act is stored already.
-const modelOf = (tier: Tier) =>
-  Effect.gen(function* () {
-    const { cwd } = yield* Dir
-    const tiers = yield* readSettings(cwd).pipe(
-      Effect.map((s) => s.tiers),
-      Effect.catch(() => Effect.succeed(readSettingsOf({}).tiers)),
-    )
-    return tiers[TERMINAL[tier]]?.model ?? MODEL[tier]
-  })
-
 // assign, as the command and as the step of `task open <draft>`: the caller says who gives.
 const assignWith = (call: Call, given: Author | null, taskWord: string, roleName: string) =>
   Effect.gen(function* () {
@@ -290,10 +272,10 @@ const assignWith = (call: Call, given: Author | null, taskWord: string, roleName
     const d = yield* derivedAfter(done.work)
     const a = done.work.assignments.get(firstCreated(done.created) as AssignmentId)
     if (!a) return yield* Effect.die(`${firstCreated(done.created)} is no assignment`)
-    const tier = tierOfAssignment(done.work, a)
-    if (tier === null) return yield* Effect.die(`${a.id} has a role with no tier`)
+    const model = modelOfAssignment(done.work, a)
+    if (model === null) return yield* Effect.die(`${a.id} has a role with no model`)
     const taskName = done.work.tasks.get(a.task)?.name ?? ''
-    const head = `${a.id} · ${roleName} (${tier}) on ${taskWord} ${taskName}`
+    const head = `${a.id} · ${roleName} (${model}) on ${taskWord} ${taskName}`
     // 10.1: the parent hears of the child through its own work wait.
     const parentWait = token ? [`Then run work wait ${token}: it returns when you have work.`] : []
     // Where the assignment runs, fixed at its give (ruling 7): the host and a persistent agent get
@@ -308,7 +290,7 @@ const assignWith = (call: Call, given: Author | null, taskWord: string, roleName
       return [
         head,
         `${a.id} runs in ${agent.id}, the persistent ${roleName} agent of ${agent.run} ` +
-          `(${tier}, ${yield* modelOf(tier)}). Its terminal gets ${a.id} through work wait ` +
+          `(${model}). Its terminal gets ${a.id} through work wait ` +
           `--by=${agent.id}; the UI starts that terminal when it has none. ` +
           'Do not start it yourself.',
         ...parentWait,
@@ -322,10 +304,7 @@ const assignWith = (call: Call, given: Author | null, taskWord: string, roleName
     const beforeTask = before ? done.work.tasks.get(before.task) : undefined
     // A disposable role runs as a subagent of the terminal that gives it (ruling 7); a persistent
     // role on a task that no run holds keeps the words of before (NoRun).
-    const start =
-      a.runs._tag === 'Subagent'
-        ? `Start a subagent on ${yield* modelOf(tier)} (the ${tier} model)${when}`
-        : `Start ${tier === 'high' ? 'an' : 'a'} ${MODEL[tier]} subagent${when}`
+    const start = `Start a subagent on ${model}${when}`
     return [
       head,
       ...(waits
@@ -368,10 +347,10 @@ const dryRun = (
     const brief = roleAt(stepped.work, assignmentAt(stepped.work, id).role).limits.Assignment
       .briefChars
     const limit = brief._tag === 'AtMost' ? brief.max : undefined
-    const tier = tierOf(roleAt(stepped.work, assignmentAt(stepped.work, id).role))
+    const model = modelOf(roleAt(stepped.work, assignmentAt(stepped.work, id).role))
     return [
       `dry run: the brief of ${roleName} on ${taskWord} has ${size} characters` +
-        (limit ? `; the ${tier} limit is ${limit}.` : '.'),
+        (limit ? `; the limit of ${model} is ${limit}.` : '.'),
       'nothing was stored.',
     ]
   })

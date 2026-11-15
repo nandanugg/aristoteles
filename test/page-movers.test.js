@@ -158,7 +158,7 @@ describe('D3: a suggestion reaches an actor', () => {
     await fitAll(p)
     ok(await p.nanda('task open --file=task.yaml'))
     const s = ok(await p.ui('suggest --says="Write a direction for the API docs"')).out
-    expect(s).toContain('next: no agent can draft it now; give a high role work, and it drafts it: work assign t1 --role=architect')
+    expect(s).toContain('next: no agent can draft it now; give a role that directs work, and it drafts it: work assign t1 --role=architect')
     expect((await inbox(p)).find((d) => d.id === 's1').acts).toEqual([{ _tag: 'Give', task: 't1', role: 'architect' }])
   })
 })

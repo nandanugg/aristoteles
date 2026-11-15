@@ -25,7 +25,6 @@ import {
   type SessionId,
   type TaskDraftId,
   type TaskId,
-  type TerminalTier,
   type Time,
 } from '../schema/index.ts'
 import { Now, Pump, Tokens } from '../services/index.ts'
@@ -39,11 +38,11 @@ import {
   sendStart,
   stateIn,
   terminalsOf,
-  tiersNow,
+  modelsNow,
   to,
 } from './acting.ts'
 import { DEFAULT_RETRY, fill, problemRetryLine } from './lines.ts'
-import { agentOfSession, conversationOf } from './terminals.ts'
+import { agentOfSession, conversationOf, modelOfSession } from './terminals.ts'
 import type { Acted } from './types.ts'
 
 // The words of a choice are never blank here: each one is a literal of this file.
@@ -74,10 +73,10 @@ export const stopSession = (sid: SessionId) =>
 // The person's Resume, also of a failed terminal: its tries start again. The retry prompt names
 // the wait of the terminal's owner: its agent (ruling 9), or the run of its host.
 // canAct first: a refused Resume (an ended agent, the host's own pane) starts no process.
-export const resumeSession = (sid: SessionId, tier: TerminalTier) =>
+export const resumeSession = (sid: SessionId) =>
   Effect.gen(function* () {
     const by = yield* personOnPage
-    const input = { _tag: 'ResumeTerminal', target: { session: sid }, content: { tier } } as const
+    const input = { _tag: 'ResumeTerminal', target: { session: sid }, content: {} } as const
     const d = yield* now
     const may = canAct(d, by, intentOf(input))
     if (may._tag === 'MayNot') return yield* Effect.fail(may.refusal)
@@ -85,12 +84,13 @@ export const resumeSession = (sid: SessionId, tier: TerminalTier) =>
     const run = [...w.runs.values()].find((r) => r.session === sid)
     const agent = agentOfSession(w, sid)?.id
     const owner = agent ?? run?.id
-    const t = (yield* tiersNow)[tier]
+    const model = modelOfSession(w, sid)
+    const t = model === undefined ? undefined : (yield* modelsNow)[model]
     // An agent's terminal that never ran has no conversation: its launch, with its first prompt.
     const ran = agent === undefined || ranOnce(w, sid)
     const words = ran ? (t?.retryInput ?? DEFAULT_RETRY) : (t?.start ?? '')
     const session = conversationOf(w, sid, !ran)
-    const values = { session, model: t?.model, prompt: fill(words, { agent: owner }) }
+    const values = { session, model, prompt: fill(words, { agent: owner }) }
     const command = fill((ran ? (t?.resume ?? t?.launch) : t?.launch) ?? '', values)
     // A launch is stored as a Start, so that the next command names its conversation.
     const start = { _tag: 'Start', to: to(sid), via: { _tag: 'LaunchArgument' } } as const
@@ -184,9 +184,9 @@ export const closeRun = (run: RunId, reason: string) =>
     yield* act({ by, input: { _tag: 'CloseRun', target: { run }, content: {} } })
   })
 
-// Open: the person opens the drafted top task, then gives it to the Sol role of the draft, and
+// Open: the person opens the drafted top task, then gives it to the role of the draft, and
 // lets that role change it (its split) for 30 days (D11: three actions, as `work task open <td>`).
-// The host gets the token of its Sol from its own `work wait --by=<run>` (ruling 10.1): no token
+// The host gets the token of its assignment from its own `work wait --by=<run>` (ruling 10.1): no token
 // is shown here, and nothing is typed. host: the assignment that the act made, or null.
 export interface Opened {
   readonly acted: Acted
@@ -209,7 +209,7 @@ export const openDraft = (draft: TaskDraftId) =>
       return none
     }
     const role = RoleName.make(td.role)
-    // The token of this Give is never shown: the host's wait gives the Sol a new one.
+    // The token of this Give is never shown: the host's wait gives the assignment a new one.
     const secret = yield* (yield* Tokens).random
     const given = yield* act({
       by,

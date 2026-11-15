@@ -276,14 +276,17 @@ describe('a host edit of the config draft', () => {
   const edit = (dir: string, change: (c: Obj) => Obj) =>
     host(dir, { _tag: 'Config', config: change(structuredClone(CONFIG)), notes: NOTES })
 
-  test('a tier change clears the roles of that tier only', async () => {
+  // A model's entry (its commands and its limits) is on the card of each role that names it.
+  const withHaiku = (c: Obj, entry: Obj) => ({ ...c, models: { ...c.models, haiku: { ...c.models.haiku, ...entry } } })
+
+  test('a change of a model clears the roles of that model only', async () => {
     const dir = await withConfig()
     await acceptAll(dir)
-    await edit(dir, (c) => ({ ...c, tiers: { luna: { model: 'claude-haiku-4-5' } } }))
+    await edit(dir, (c) => withHaiku(c, { launch: 'small --session-id {session}' }))
     expect(await accepted(dir)).toEqual(['architect', 'section-lead'])
   })
 
-  test('the people clear nothing; the limits of a level clear the roles of that level', async () => {
+  test('the people clear nothing; the limits of a model clear the roles of that model', async () => {
     const dir = await withConfig()
     await acceptAll(dir)
     await edit(dir, (c) => ({ ...c, people: [...c.people, { name: 'Budi' }] }))
@@ -292,26 +295,26 @@ describe('a host edit of the config draft', () => {
     await edit(dir, (c) => ({
       ...c,
       people: [...c.people, { name: 'Budi' }],
-      limits: { ...c.limits, medium: { Assignment: { briefChars: 9000 } } },
+      models: { ...c.models, sonnet: { limits: { Assignment: { briefChars: 9000 } } } },
     }))
     expect(await accepted(dir)).toEqual(['architect', 'writer', 'linter'])
   })
 
-  // The real case: the host changes the luna model and moves one luna role to medium.
-  test("a role's tier clears that role; the card words clear their role", async () => {
+  // The real case: the host changes the commands of a model and moves one role to another model.
+  test("a role's model clears that role; the card words clear their role", async () => {
     const dir = await withConfig()
     await acceptAll(dir)
     await edit(dir, (c) => ({
-      ...c,
-      tiers: { luna: { model: 'haiku' } },
-      roles: { ...c.roles, linter: { ...c.roles.linter, tier: 'medium' } },
+      ...withHaiku(c, { launch: 'small --session-id {session}' }),
+      roles: { ...c.roles, linter: { ...c.roles.linter, model: 'sonnet' } },
     }))
-    // writer: its tier's model; linter: its own tier; architect, section-lead: untouched.
+    // writer: the entry of its model; linter: its own model; architect, section-lead: untouched.
     expect(await accepted(dir)).toEqual(['architect', 'section-lead'])
     await acceptAll(dir)
     const notes = { ...NOTES, writer: { summary: 'writes it', found: { _tag: 'New' } } }
-    const roles = { ...CONFIG.roles, linter: { ...(CONFIG.roles.linter as Obj), tier: 'medium' } }
-    await host(dir, { _tag: 'Config', config: { ...CONFIG, tiers: { luna: { model: 'haiku' } }, roles }, notes })
+    const roles = { ...CONFIG.roles, linter: { ...(CONFIG.roles.linter as Obj), model: 'sonnet' } }
+    const config = { ...withHaiku(CONFIG, { launch: 'small --session-id {session}' }), roles }
+    await host(dir, { _tag: 'Config', config, notes })
     expect(await accepted(dir)).toEqual(['architect', 'section-lead', 'linter'])
   })
 })

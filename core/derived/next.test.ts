@@ -4,7 +4,7 @@
 // that C1 ended; stepKey keeps the tags and ids only.
 import { beforeAll, describe, expect, test } from 'bun:test'
 import type { AssignmentId, Author, ResultId, TaskId, Time, Work } from '../schema/index.ts'
-import { canAct, type Derived, derive, type NextStep, nextFor, stepKey } from './index.ts'
+import { canAct, type Derived, derive, isUnit, type NextStep, nextFor, stepKey } from './index.ts'
 import { candidatesOf } from './steps.ts'
 import { momentOf, pinned, SCENARIOS, type Scenario } from './support.test.ts'
 
@@ -32,10 +32,9 @@ const actorsOf = ({ w, d }: Built): ReadonlyArray<Author> => [
     .map((assignment): Author => ({ _tag: 'Agent', assignment })),
   ...w.config.people.map((name): Author => ({ _tag: 'Person', name, channel: 'terminal' })),
 ]
-const tierOf = (w: Work, a: AssignmentId): string | undefined => {
-  const role = w.workflow.roles.get(w.assignments.get(a)?.role ?? ('' as never))
-  return role?._tag === 'Model' ? role.tier : undefined
-}
+// A role of one unit: a model role that assigns nothing.
+const unitOf = (w: Work, a: AssignmentId): boolean =>
+  isUnit(w.workflow.roles.get(w.assignments.get(a)?.role ?? ('' as never)))
 // D14 (C1, I2): the bookkeeping steps that the new tree does not give.
 const D14 = ['FinishChildOfClosedTask', 'FinishInClosedTask', 'FinishChild']
 
@@ -57,11 +56,10 @@ describe('next => canAct (BUILD.md 4.2)', () => {
     expect(checked).toBeGreaterThan(20)
   })
 
-  test('no candidate step of a medium or high agent is one that its act refuses', () => {
+  test('no candidate step of a lead is one that its act refuses', () => {
     for (const b of built) {
       for (const [a] of b.w.assignments) {
-        const tier = tierOf(b.w, a)
-        if (tier === 'low' || b.d.states.assignments.get(a)?._tag === 'Ended') continue
+        if (unitOf(b.w, a) || b.d.states.assignments.get(a)?._tag === 'Ended') continue
         const actor: Author = { _tag: 'Agent', assignment: a }
         for (const c of candidatesOf(b.d, a)) {
           for (const intent of c.intents) {

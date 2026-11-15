@@ -16,6 +16,7 @@ import {
   ONBOARD_NEW,
   ONBOARD_QUESTIONS,
   onboardingProject,
+  withModels,
 } from './harness.js'
 
 const ROLES = ['architect', 'section-lead', 'writer', 'linter']
@@ -228,7 +229,7 @@ describe('what onboarding refuses', () => {
     p.write('aristoteles.yaml', settings)
     await acceptAll(p)
     // The host drops the linter, which checks two rules of tsd-writing (the person cannot: O1).
-    p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, ''))
+    p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, '').replaceAll(', linter]', ']'))
     ok(await p.agent('onboard config --file=draft2.yaml'))
     const r = await p.nanda('onboard approve-roles', 'approve')
     expect(r.err).toContain('refused: the store cannot start: rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role')
@@ -352,12 +353,12 @@ describe('what onboarding refuses', () => {
   })
 
   // Ruling 1, onboarding 2026-11-14: the config draft reads as the store start would read it, so a
-  // draft whose tiers do not read is refused when the host sends it (was: at accept-roles).
-  test('a config draft whose tiers do not read is refused, and no file is written', async () => {
+  // draft whose models do not read is refused when the host sends it (was: at accept-roles).
+  test('a config draft whose models do not read is refused, and no file is written', async () => {
     const p = onboardingProject()
-    p.write('draft.yaml', `tiers:\n  sol: { launch: host-cli }\n${ONBOARD_CONFIG}`)
+    p.write('draft.yaml', withModels(ONBOARD_CONFIG, { opus: { launch: 'host-cli' } }))
     const r = await p.agent('onboard config --file=draft.yaml')
-    expect(r.err).toContain('tiers.sol.launch has no {session}')
+    expect(r.err).toContain('models.opus.launch has no {session}')
     expect(exists(p, 'aristoteles.draft.yaml')).toBe(false)
   })
 
@@ -365,7 +366,7 @@ describe('what onboarding refuses', () => {
     const p = await drafted()
     for (const persistent of ['false', 'true']) {
       expect((await p.nanda(`onboard persistence architect --persistent=${persistent}`)).err).toContain(
-        'refused: architect is the role of the top task (the only persistent high role), so it has no toggle',
+        'refused: architect is the role of the top task (the only persistent role that splits), so it has no toggle',
       )
     }
     expect((await p.nanda('onboard persistence section-lead --persistent=false')).code).toBe(0)

@@ -35,7 +35,7 @@ describe('one maker for each file at a time', () => {
     expect(assign).toContain('a3 waits for docs/tsd.md: a2 (t2 Intro) writes it first, and one maker writes a file at a time.')
     // Ruling 10.2: the turn passes when a2 is accepted or idle, not at its finish.
     // Ruling 7, onboarding 2026-11-14: a disposable role starts as a subagent on the model of its tier (was: "Start a Haiku subagent").
-    expect(assign).toContain('Start a subagent on Haiku (the low model) at its turn (work next says when) with this prompt')
+    expect(assign).toContain('Start a subagent on haiku at its turn (work next says when) with this prompt')
     const brief = await p.agent(`brief ${second}`)
     expect(brief.code).toBe(1)
     expect(brief.err).toContain('a3 waits for docs/tsd.md: a2 (t2 Intro) writes it first')

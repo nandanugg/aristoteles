@@ -48,7 +48,7 @@ describe('G5 a standard removed and added back with the same words is not the sa
     // Correct: t1 still has the inputs that failed, so a2 takes no brief. Today: a2's attempts
     // are reset (status "attempts 0/1"), and its brief is printed under tsd-writing@3.
     const brief = await p.agent(`brief ${w}`)
-    expect(brief.out).not.toContain('work brief a2 · writer (low) · t1 The Introduction')
+    expect(brief.out).not.toContain('work brief a2 · writer (haiku) · t1 The Introduction')
     expect(brief.err).toContain('t1 has the inputs that failed in the last try of a2')
   }, 20000)
 

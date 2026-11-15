@@ -47,10 +47,10 @@ describe('the wait loop', () => {
     // The old Sol a1 ended with t1, and no Sol is on t2 yet: a1 has ended.
     expect(await waited(p, a('a1'))).toMatchObject({ _tag: 'Ended' })
     await p.nanda('assign t2 --role=architect')
-    expect(await waited(p, a('a1'))).toMatchObject({ _tag: 'Opened', run: 'h1', sol: 'a2' })
+    expect(await waited(p, a('a1'))).toMatchObject({ _tag: 'Opened', run: 'h1', host: 'a2' })
     expect(await waited(p, { _tag: 'Host', run: 'h1' as never })).toMatchObject({
       _tag: 'Opened',
-      sol: 'a2',
+      host: 'a2',
     })
   })
 

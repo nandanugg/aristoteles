@@ -1,5 +1,5 @@
 // work adjust (ruling 14): after the store starts, a role or a direction changes by an adjustment.
-// A high agent (its token) or a host outside any task (--by=<its name>) drafts one change; the
+// An agent that fits roles (its token) or a host outside any task (--by=<its name>) drafts one change; the
 // person shows it, accepts it (a role adjustment writes aristoteles.yaml) or rejects it with a
 // reason. The actions read the files that a draft names and check each change.
 import { Effect } from 'effect'
@@ -11,7 +11,6 @@ import {
   type EventRef,
   refuse,
   RoleName,
-  type Tier,
 } from '../../../core/schema/index.ts'
 import { CONFIG, Now } from '../../../core/services/index.ts'
 import { adjustmentWords, renderAdjustment } from '../../words/index.ts'
@@ -21,14 +20,13 @@ import type { Call, Command, Commands } from '../command.ts'
 import { act, peekWork } from '../runtime.ts'
 
 const ROLE_FILE = `write the keys of the new role in a file, as a role of ${CONFIG} has them:
-  tier: high | medium | low
+  model: <a model of the models table>
   description: <what the role does, in one line>
   intro: <the first words of its brief>
   responsibilities: [<one exact output or command>]
-  acts: [{ do: <its work> }]
+  acts: [{ do: <its work> }]   # also { review | approve | assign: [roles] }, split, direct, fit
   persistence: { persistent: true | false, why: <one line> }
   icon: <a role icon, such as compass>`
-const TIERS: ReadonlyArray<Tier> = ['low', 'medium', 'high']
 
 // The change of each draft form, from its words and flags.
 const adjustmentOf = (call: Call): Effect.Effect<AdjustmentInput, ReturnType<typeof refuse>> =>
@@ -41,11 +39,8 @@ const adjustmentOf = (call: Call): Effect.Effect<AdjustmentInput, ReturnType<typ
         return { _tag: 'AddRole', role: RoleName.make(name), file }
       case 'remove-role':
         return { _tag: 'RemoveRole', role: RoleName.make(name) }
-      case 'tier': {
-        const tier = TIERS.find((t) => t === textOf(call.args.one('tier')))
-        if (tier === undefined) return yield* refuse('--tier is low, medium or high')
-        return { _tag: 'SetTier', role: RoleName.make(name), tier }
-      }
+      case 'model':
+        return { _tag: 'SetModel', role: RoleName.make(name), model: textOf(call.args.one('model')) ?? '' }
       case 'persistence': {
         const persistent = textOf(call.args.one('persistent'))
         if (persistent !== 'true' && persistent !== 'false') {
@@ -62,13 +57,13 @@ const adjustmentOf = (call: Call): Effect.Effect<AdjustmentInput, ReturnType<typ
         return { _tag: 'RetireDirection', direction: DirectionId.make(name) }
       default:
         return yield* refuse(
-          'use work adjust add-role|remove-role|tier|persistence|retire, or show|accept|reject <event>',
+          'use work adjust add-role|remove-role|model|persistence|retire, or show|accept|reject <event>',
           'work help lists the forms',
         )
     }
   })
 
-// The drafter: a high agent by its token, or a model run outside any task that names itself. A
+// The drafter: an agent that fits roles by its token, or a model run outside any task that names itself. A
 // person is refused by the action: the person says it in words (work suggest).
 const drafterOf = (call: Call) =>
   Effect.gen(function* () {
@@ -84,7 +79,7 @@ const drafterOf = (call: Call) =>
     if (!/^[a-z][a-z0-9-]*$/.test(runName ?? '')) {
       return yield* refuse(
         'a model run outside any task names itself: --by=<its name in lower case>',
-        'run it again with --by, for example: work adjust tier <role> --tier=medium --by=host',
+        'run it again with --by, for example: work adjust model <role> --model=<name> --by=host',
       )
     }
     const by: Author = { _tag: 'ModelRun', name: String(runName), at: yield* (yield* Now).read }

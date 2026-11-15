@@ -30,7 +30,7 @@ describe('G1 the next maker is given before the fault on the last try, so no eva
     // version and the same task text that a2 failed on.
     if (give.code === 0) {
       const brief = await p.agent(`brief ${tokenIn(give.out)}`)
-      expect(brief.out).not.toContain('work brief a4 · writer (low) · t1 The Introduction')
+      expect(brief.out).not.toContain('work brief a4 · writer (haiku) · t1 The Introduction')
       expect(brief.err).toContain('t1 waits for an evaluation of the last try of a2')
     } else {
       expect(give.err).toContain('r1')

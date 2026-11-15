@@ -34,7 +34,7 @@ import {
 } from '../../live/waiting.ts'
 import { nextLines } from '../../words/index.ts'
 import { textOf } from '../args.ts'
-import { agentCallerOf, tierOfAssignment, tokenOfCall } from '../caller.ts'
+import { agentCallerOf, isUnit, tokenOfCall } from '../caller.ts'
 import type { Command, Commands } from '../command.ts'
 import { lookupKind } from '../lookups.ts'
 import { act, peekWork } from '../runtime.ts'
@@ -45,7 +45,7 @@ const POLL_MS = 500
 const DERIVE_MS = 15000
 const SETTLE_MS = 1000
 
-// Only the host's own pane waits as its run: there the wait gives the token of its Sol.
+// Only the host's own pane waits as its run: there the wait gives the token of its assignment.
 const checkPane = (run: Run) =>
   Effect.gen(function* () {
     const { vars } = yield* Env
@@ -103,8 +103,8 @@ const linesOf = (d: Derived, waiter: Waiter, steps: Steps, token: string) => {
   })
 }
 
-// The host's top task opened: its Sol takes the run's terminal with a new token. The host writes
-// it as a model run, as `run continue` does (the store lets a ModelRun take a Sol's terminal).
+// The host's top task opened: its assignment takes the run's terminal with a new token. The host writes
+// it as a model run, as `run continue` does (the store lets a ModelRun take a host's terminal).
 const opened = (end: Extract<WaitEnd, { _tag: 'Opened' }>) =>
   Effect.gen(function* () {
     const secret = yield* (yield* Tokens).random
@@ -113,23 +113,23 @@ const opened = (end: Extract<WaitEnd, { _tag: 'Opened' }>) =>
       { _tag: 'ModelRun', name: 'host', at },
       {
         _tag: 'StartSession',
-        target: { assignment: end.sol },
+        target: { assignment: end.host },
         content: { session: end.session, secret },
       },
     )
     const w = end.d.moment.work
-    const task = w.assignments.get(end.sol)?.task
+    const task = w.assignments.get(end.host)?.task
     const name = task === undefined ? '' : (w.tasks.get(task)?.name ?? '')
-    const token = `${end.sol}.${secret}`
+    const token = `${end.host}.${secret}`
     return [
-      `${end.run}: its top task ${task ?? ''} ${name} is open, and you are its Sol (${end.sol}); ` +
+      `${end.run}: its top task ${task ?? ''} ${name} is open, and you are its host (${end.host}); ` +
         `an older token stops working. Your command: work brief ${token}`,
       `When you have nothing to do, run work wait ${token}.`,
     ]
   })
 
 // New assignments of a persistent agent: each takes the agent's terminal with a new token. The
-// agent writes it as a model run, as the host does for its Sol (the store lets a ModelRun take
+// agent writes it as a model run, as the host does for its own assignment (the store lets a ModelRun take
 // an assignment's terminal).
 const given = (end: Extract<WaitEnd, { _tag: 'Given' }>) =>
   Effect.gen(function* () {
@@ -192,7 +192,7 @@ const wait: Command = (call) =>
       // A low assignment with no terminal of its own runs as a subagent: one unit, no wait. A
       // persistent low agent waits like any agent (ruling 10).
       const runs = work.assignments.get(caller.assignment)?.runs
-      if (runs?._tag !== 'Agent' && tierOfAssignment(work, caller.assignment) === 'low') {
+      if (runs?._tag !== 'Agent' && isUnit(work, caller.assignment)) {
         return [
           `${caller.assignment} runs as a subagent and has one unit: ` +
             `work brief ${caller.token} shows it.`,

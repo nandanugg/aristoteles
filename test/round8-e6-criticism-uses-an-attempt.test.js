@@ -25,7 +25,7 @@ describe('E6 the person\'s criticism of a task uses the maker\'s attempt', () =>
     ok(await p.agent(`brief ${linter}`))
     ok(await p.agent(`review ${linter} r1 accept ${LINT}`))
     ok(await p.agent(`review ${lead} r1 accept ${REPEATABLE}`))
-    expect(ok(await p.agent('status')).out).toContain('a2 writer (low) on t1 · attempts 0/1')
+    expect(ok(await p.agent('status')).out).toContain('a2 writer (haiku) on t1 · attempts 0/1')
     // The person criticises t1 (no fault of the writer).
     const reject = ok(await p.nanda('review t1 reject --point="the introduction misses the impact on the merchant"')).out
     const vid = reject.match(/^(v\d+): reject/)[1]
@@ -55,7 +55,7 @@ describe('E6 the person\'s criticism of a task uses the maker\'s attempt', () =>
     // writer's new work is taken. Today status shows 1/1, the brief says "a2 has used its 1
     // attempts; it makes no new result. STOP and tell your parent: it assigns a new writer", and the
     // report is refused (no claim), so the lead spends a new round.
-    expect(afterCriticism).toContain('a2 writer (low) on t1 · attempts 0/1')
+    expect(afterCriticism).toContain('a2 writer (haiku) on t1 · attempts 0/1')
     expect(brief.out).not.toContain('has used its 1 attempts')
     expect(report.code).toBe(0)
   }, 20000)

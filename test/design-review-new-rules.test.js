@@ -132,7 +132,7 @@ describe('an open suggestion shows to whoever answers it', () => {
     const { p } = await reported()
     ok(await p.nanda('suggest facts-not-proof --says="the facts also say what the problem costs"'))
     const waiting = ok(await p.nanda('waiting')).out
-    expect(waiting).toContain(`${OPEN}; no high role works on a task that follows tsd-writing\n    work assign t1 --role=architect`)
+    expect(waiting).toContain(`${OPEN}; no role that directs works on a task that follows tsd-writing\n    work assign t1 --role=architect`)
     const sol = await architect(p)
     expect(ok(await p.nanda('waiting')).out).not.toContain('s1 suggests')
     expect(ok(await p.agent(`next ${sol}`)).out)

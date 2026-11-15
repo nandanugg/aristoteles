@@ -19,7 +19,7 @@ import type {
   TaskData,
 } from './events.ts'
 import type { Settings } from './files.ts'
-import type { NonEmpty, Tier, Why } from './model.ts'
+import type { NonEmpty, Why } from './model.ts'
 import type { Human } from './actor.ts'
 import type {
   AgentId,
@@ -83,7 +83,7 @@ export type RunEnd = HostRun['end']
 export type RunState =
   | { readonly _tag: 'Talking' } // no top task yet: the host drafts it; the canvas shows its drafts
   | { readonly _tag: 'Working'; readonly top: TaskId } // the top task runs
-  // The Sol accepted the top task: an end decision waits for the person (was 'ends')
+  // The host accepted the top task: an end decision waits for the person (was 'ends')
   // since: the time of the last Accept of the top task's result (the hold for the host counts
   // from it).
   | { readonly _tag: 'AwaitingEndAccept'; readonly top: TaskId; readonly since: Time }
@@ -93,13 +93,13 @@ export type RunState =
 // An agent of a persistent role, for one project (ruling 9): it lives from the first assignment
 // of its role in the run to the end of the run, in one terminal. Its assignments attach to it, as
 // those of the top task attach to the host. The fold makes it at that first give (P3), before any
-// session exists; the supervisor starts its terminal later. It keeps the tier of its role at its
+// session exists; the supervisor starts its terminal later. It keeps the model of its role at its
 // birth (ruling 13: work in progress keeps what it started with).
 export interface PersistentAgent {
   readonly id: AgentId // p1
   readonly role: RoleName
   readonly run: RunId // its project
-  readonly tier: Tier
+  readonly model: Text
   readonly terminal:
     | { readonly _tag: 'NotStarted' }
     | { readonly _tag: 'Started'; readonly session: SessionId; readonly at: Time }
@@ -118,7 +118,7 @@ export interface TaskDraft {
   readonly id: TaskDraftId // td1
   readonly run: RunId
   readonly task: TaskData // the task file that the host wrote
-  readonly role: Text // the Sol role that does it
+  readonly role: Text // the role of the host that does it
   readonly at: Time
   // The task that the person opened from it (Task.OpenedFromDraft).
   readonly opened:
@@ -233,7 +233,7 @@ export type SendState =
 // Why a send never reached its terminal (events.ts DropReason).
 export type DropReason = typeof DropReasonSchema.Type
 
-// The terminal of a real agent (a Sol or a Terra), so that the UI can resume it. A host shares the
+// The terminal of a real agent (the host or a persistent agent), so that the UI can resume it. A host shares the
 // session of its run.
 export interface AgentSession {
   readonly assignment: AssignmentId
@@ -299,12 +299,12 @@ export type Decision = DecisionBase &
         readonly hope: Text | null
         readonly why: Why
       }
-    // the end of a project: the Sol accepted its top task, which a reject reopens
+    // the end of a project: the host accepted its top task, which a reject reopens
     | { readonly _tag: 'End'; readonly id: RunId; readonly top: TaskId }
     // a relayed act: an agent relayed the person's words as an act that counts only when the
     // person confirms it (Nanda, 2026-11-13). quote: the person's words.
     | { readonly _tag: 'Confirm'; readonly id: EventRef; readonly quote: Text }
-    // new words of a role that a high agent or a host drafted, for the person's accept or reject
+    // new words of a role that an agent that fits roles, or a host, drafted, for the person's accept or reject
     // (ruling 2026-11-14). lines: '-' a word of now, '+' its drafted word.
     | {
         readonly _tag: 'RoleWords'
@@ -444,7 +444,7 @@ export interface TaskCard {
 export interface Owner {
   readonly a: AssignmentId
   readonly role: Text
-  readonly tier: 'sol' | 'terra' | 'luna' | 'program'
+  readonly model: Text | null // null: a program
   readonly agent: AgentId | null // the persistent agent whose terminal it is
   readonly terminal: CardTerminal
   readonly inside: AssignmentId | null
@@ -454,7 +454,7 @@ export interface Owner {
 export interface WorkCard {
   readonly a: AssignmentId
   readonly role: Text
-  readonly tier: 'sol' | 'terra' | 'luna' | 'program'
+  readonly model: Text | null // null: a program
   readonly attempt: { readonly now: number; readonly max: PositiveInt | null }
   readonly terminal: CardTerminal
   readonly inside: AssignmentId | null
@@ -474,7 +474,7 @@ export interface ReviewCard {
   readonly id: Text | null // null: a checker that has not reviewed yet, or a decider that waits
   readonly by: Text
   readonly role: Text | null
-  readonly tier: 'sol' | 'terra' | 'luna' | 'program' | 'person' | null
+  readonly model: Text | null // null: a program, or the person
   readonly decides: boolean
   readonly decision: 'accept' | 'reject' | 'escalate' | 'reviews' | 'waits'
   readonly line: Text
@@ -592,11 +592,7 @@ export type PageAct =
   | { readonly act: 'open'; readonly draft: TaskDraftId }
   | { readonly act: 'close'; readonly run: RunId; readonly reason?: Text }
   | { readonly act: 'stop'; readonly session: SessionId }
-  | {
-      readonly act: 'resume'
-      readonly session: SessionId
-      readonly tier: 'sol' | 'terra' | 'luna'
-    }
+  | { readonly act: 'resume'; readonly session: SessionId }
   | { readonly act: 'fixed'; readonly problem: ProblemId }
   | { readonly act: 'accept-draft'; readonly draft: RevisionId; readonly comment?: Text }
   | { readonly act: 'reject-draft'; readonly draft: RevisionId; readonly reason: NonBlank }
@@ -632,6 +628,7 @@ export interface OnboardingView {
   readonly stage: 'files' | 'store'
   readonly directions: ReadonlyArray<DirectionCard>
   readonly roles: ReadonlyArray<RoleCard> // the roles that the project has come first
+  readonly models: ReadonlyArray<Text> // the names of the models table, for the model of a role
   readonly adjustments: ReadonlyArray<Decision> // after the store; none before it
   readonly start: StartView
 }
@@ -734,23 +731,27 @@ export interface QuestionView {
 export interface AnsweredView extends QuestionView {
   readonly answer: 'A' | 'B'
 }
-// One card of the agents page (ruling 11); its window shows the rest.
-export interface RoleCard {
+// One card of the agents page (ruling 11); its window shows the rest. An agent role runs on its
+// model and has its persistence; a program runs in the CLI and has neither.
+interface RoleCardBase {
   readonly role: Text
   readonly icon: Text // a name of ROLE_ICONS (adapters/web/vendor/role-icons.js draws it)
-  readonly tier: 'sol' | 'terra' | 'luna' | 'program'
-  // tiers.<t>.model of the settings, or the class of the tier (Opus, Sonnet, Haiku); null: a
-  // program
-  readonly model: Text | null
-  readonly launch: Text | null // tiers.<t>.launch of the settings, read only
   readonly summary: Text // the line of the card; after the store, its description
   readonly description: Text
-  // null: a program
-  readonly persistence: { readonly persistent: boolean; readonly why: Text } | null
-  // false: a program, the role of the top task (the only persistent high role, ruling 15), or a
-  // role of the store (the gear changes it by an adjustment)
-  readonly toggle: boolean
   readonly found: Text | null // where the project has the role
   readonly state: 'waiting' | 'accepted' | 'current' // current: a role of the store
   readonly request: Text | null // the words of a Revise that wait for the host
 }
+export type RoleCard = RoleCardBase &
+  (
+    | {
+        readonly _tag: 'Agent'
+        readonly model: Text // the role's model, an entry of the models table
+        readonly launch: Text | null // models.<model>.launch of the settings, read only
+        readonly persistence: { readonly persistent: boolean; readonly why: Text }
+        // false: the role of the top task (the only persistent role that splits), or a role of
+        // the store (the gear changes it by an adjustment)
+        readonly toggle: boolean
+      }
+    | { readonly _tag: 'Program' }
+  )

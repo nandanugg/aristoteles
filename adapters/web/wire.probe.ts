@@ -14,7 +14,7 @@ import type {
 import type { AssignmentId, ProblemId, RevisionId, SessionId, TaskId, Time } from '../../core/schema/index.ts'
 
 declare const a1: AssignmentId, s1: SessionId, sp1: ProblemId, d1: RevisionId, t1: TaskId, at: Time
-const owner = { a: a1, role: 'r', tier: 'sol', agent: null, inside: null, resumable: true } as const
+const owner = { a: a1, role: 'r', model: 'opus', agent: null, inside: null, resumable: true } as const
 
 // T4: a terminal is in one state, and its session lives in that state.
 // @ts-expect-error a reading that runs and ended

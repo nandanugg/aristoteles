@@ -15,7 +15,8 @@ import {
   reviewItems,
   roleAt,
   standardAt,
-  tierOf,
+  modelOf,
+  unitA,
   untouchedOf,
   within,
 } from '../derived/reads.ts'
@@ -63,7 +64,6 @@ import {
   readText,
   readYaml,
   type RefusalsOf,
-  tierOfAgent,
   upTo,
 } from './support.ts'
 import { outputForm } from './output.ts'
@@ -188,9 +188,9 @@ export const REFUSALS = {
         'Pick',
         'give it with no limit of attempts',
       ),
-    overCeiling: (asked: string, tier: string, ceiling: string) =>
+    overCeiling: (asked: string, model: string, ceiling: string) =>
       no(
-        `maxAttempts ${asked} is over the ${tier} limit of ${ceiling}`,
+        `maxAttempts ${asked} is over the limit of ${model}, ${ceiling}`,
         'Pick',
         `give at most ${ceiling} attempts`,
       ),
@@ -391,7 +391,7 @@ const checkParts = (d: Derived, task: TaskId, raw: unknown, file: string) =>
       if (p.maxRounds !== undefined) {
         return yield* bad(
           `part ${String(name)}: maxRounds is gone; when the tries of a maker end on a fault, ` +
-            'the high role evaluates the mistake',
+            'a role that splits evaluates the mistake',
         )
       }
       if (p.from !== undefined) {
@@ -689,7 +689,7 @@ const Give: Action<'Give'> = ({ by, input }) =>
     const ceiling = maxOf(r.limits.Assignment.attempts)
     if (makes && ceiling !== undefined && maxAttempts !== null && maxAttempts > ceiling) {
       return yield* fail(
-        R.Give.overCeiling(String(maxAttempts), tierOf(r) ?? role, String(ceiling)),
+        R.Give.overCeiling(String(maxAttempts), modelOf(r) ?? role, String(ceiling)),
       )
     }
     const base = { task, role, secret: sha(secret) }
@@ -743,7 +743,7 @@ const Brief: Action<'Brief'> = ({ by, input }) =>
     if (maker && state?._tag === 'OutOfTries') return []
     // Ruling 10.9: a brief over its limit takes no claim; the words say that the agent waits.
     if (state?._tag === 'BriefOver') return []
-    const tier = tierOfAgent(w, a)
+    const unit = unitA(w, a)
     const untouched = untouchedOf(w, a.task)
     if (maker && untouched._tag === 'NotBriefed') {
       const t = w.tasks.get(a.task)
@@ -773,7 +773,7 @@ const Brief: Action<'Brief'> = ({ by, input }) =>
       return [move('Assignment', a.id, { _tag: 'BriefedFirst', untouched: files, before })]
     }
     const latest = latestResultOf(w, a.task)
-    if (tier === 'low' && !maker && latest !== undefined) {
+    if (unit && !maker && latest !== undefined) {
       return [move('Assignment', a.id, { _tag: 'BriefedToCheck', result: latest.id })]
     }
     return [move('Assignment', a.id, { _tag: 'Briefed' })]

@@ -1,4 +1,5 @@
-tier: low
+# The guide of a role that assigns nothing: it runs one unit at a time. A command shows when the
+# role may do its `when`: do, review, or any.
 intro: You execute one unit of work, report it, and stop.
 stop:
   do: STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands.

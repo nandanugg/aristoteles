@@ -33,7 +33,6 @@ type WorkCardData = typeof WorkCardSchema.Type
 type ReviewCardData = typeof ReviewCardSchema.Type
 type Row = ProjectData['rows'][number]
 type TaskCardData = Row['task']
-type Tier = 'sol' | 'terra' | 'luna' | 'program'
 
 const useChanged = (fn: () => void) =>
   useEffect(
@@ -132,9 +131,8 @@ function Sidebar({ dir, project, open, onToggle, onSettings }: SidebarProps) {
 
 // --- the cards -----------------------------------------------------------------------------
 
-const TIER_NAME: Record<string, string> = { sol: 'Sol', terra: 'Terra', luna: 'Luna' }
-const tierIcon = (tier: Tier): VNode =>
-  tier === 'sol' ? ICONS.sol : tier === 'terra' ? ICONS.terra : ICONS.luna
+// The model of a card in words; a program runs none.
+const modelWord = (model: string | null): string => model ?? 'program'
 
 interface TaskCardProps {
   task: TaskCardData
@@ -151,20 +149,19 @@ const stopThen = (fn: () => unknown) => (e: Event) => {
 
 function TaskCard({ task, selected, onOpen, onStop, onResume }: TaskCardProps) {
   const o = task.owner
-  const tier: Tier = o?.tier ?? 'luna'
   // The terminal of a persistent agent is its own, across its assignments (ruling 9).
   const tags = o
     ? o.inside
-      ? `${TIER_NAME[tier]} · in ${o.inside}`
-      : `${TIER_NAME[tier]} · ${o.agent ? `${o.agent} · ${o.a}` : o.a}`
+      ? `${modelWord(o.model)} · in ${o.inside}`
+      : `${modelWord(o.model)} · ${o.agent ? `${o.agent} · ${o.a}` : o.a}`
     : 'no terminal'
   // A subagent's card shows no terminal: it runs inside the one above it.
   const t = o && !o.inside && o.terminal._tag !== 'None' ? o.terminal : null
   const live = t?._tag === 'Live'
-  return html`<section class=${`card task ${tier}${selected ? ' selected' : ''}`}
+  return html`<section class=${`card task${o?.inside ? ' inside' : ''}${selected ? ' selected' : ''}`}
     aria-label=${`${task.id} ${task.name}`} onClick=${() => onOpen(task.id)}>
     <div class="card-head">
-      <span class="tier-icon">${icon(tierIcon(tier), 15)}</span>
+      <span class="role-mark">${icon(ICONS.work, 15)}</span>
       ${t ? html`<span class=${`dot ${live ? 'run' : 'closed'}`}
         role="img" aria-label=${`Its terminal: ${SEEN_WORDS[t._tag]}`}>
         </span>` : ''}
@@ -192,7 +189,7 @@ function WorkCard({ work, onOpen }: { work: WorkCardData; onOpen: () => void }) 
   const { now } = work
   return html`<section class="card work" aria-label=${`work of ${work.a}`} onClick=${onOpen}>
     <div class="card-head"><span class="kind">WORK</span>
-      <span class="tags">${work.a} ${work.role} · ${TIER_NAME[work.tier] ?? work.tier}</span></div>
+      <span class="tags">${work.a} ${work.role} · ${modelWord(work.model)}</span></div>
     <div class="card-body">
       <div class="kv"><span class="k">Now</span><span class="v">${now.state}</span></div>
       ${work.attempt ? html`<div class="kv"><span class="k">Attempt</span>
@@ -264,8 +261,8 @@ function Canvas({ view, selected, onOpen, onStop, onResume, onOpenDraft }: Canva
             : 'The assess skill reads this dir and drafts its directions; each draft waits for you.'
     return html`<div class="talk">
       <p class="talk-words">${words}</p>
-      ${view.drafts.map((d) => html`<section class="card task sol draft-card">
-        <div class="card-head"><span class="tier-icon">${icon(ICONS.sol, 15)}</span>
+      ${view.drafts.map((d) => html`<section class="card task draft-card">
+        <div class="card-head"><span class="role-mark">${icon(ICONS.work, 15)}</span>
           <span class="kind">DRAFT</span><span class="tags">${d.id} · for ${d.role}</span></div>
         <div class="card-body"><div class="task-title">${d.name}</div>
           <div class="now prose">${d.text}</div></div>
@@ -563,10 +560,10 @@ function App() {
   const stop = attempt(async (o: Owner) =>
     o.terminal._tag !== 'None' ? post({ act: 'stop', session: o.terminal.session }) : undefined,
   )
-  // Every tier has its commands (ruling 10), so a persistent agent of any tier resumes.
+  // Every model has its commands (ruling 10), so a persistent agent of any model resumes.
   const resume = attempt(async (o: Owner) =>
-    o.terminal._tag !== 'None' && o.tier !== 'program'
-      ? post({ act: 'resume', session: o.terminal.session, tier: o.tier })
+    o.terminal._tag !== 'None' && o.model !== null
+      ? post({ act: 'resume', session: o.terminal.session })
       : undefined,
   )
   const openDraft = attempt((id: TaskDraftId) => post({ act: 'open', draft: id }))

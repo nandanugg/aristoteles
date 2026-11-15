@@ -49,18 +49,27 @@ const h = harness as {
 }
 export const { DIRECTION, INTRO_V2 } = h
 
-// The sol tier names {prompt} in its launch command; the terra tier does not, so its first prompt
-// goes in as the last argument (ruling 10.1: a first prompt is never typed).
-const SETTINGS = `tiers:
-  sol:
-    launch: fake start {session} {prompt}
-    resume: fake resumed {session} {prompt}
-    prompts: ["Do you want to proceed?"]
-  terra:
-    launch: fake start {session}
-    resume: fake resumed {session} {prompt}
-    prompts: ["Do you want to proceed?"]
-`
+// The commands of the models of WORK_YAML: opus (the architect) names {prompt} in its launch
+// command; sonnet (the section lead) does not, so its first prompt goes in as the last argument
+// (ruling 10.1: a first prompt is never typed). The limits of each model stay.
+const COMMANDS: Readonly<Record<string, string>> = {
+  opus: 'launch: fake start {session} {prompt}',
+  sonnet: 'launch: fake start {session}',
+}
+const withCommands = (yaml: string): string =>
+  Object.entries(COMMANDS).reduce(
+    (text, [model, launch]) =>
+      text.replace(new RegExp(`^  ${model}: +\\{ (limits: .*) \\}$`, 'm'), (_all, limits) =>
+        [
+          `  ${model}:`,
+          `    ${launch}`,
+          '    resume: fake resumed {session} {prompt}',
+          '    prompts: ["Do you want to proceed?"]',
+          `    ${limits}`,
+        ].join('\n'),
+      ),
+    yaml,
+  )
 export const PROMPT = 'Do you want to proceed? (1 yes / 2 no)'
 
 // One clock for the CLI, the supervisor and the fake pump; the test moves it.
@@ -213,7 +222,7 @@ export interface Ran {
 export const project = async () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'work-effects-')), 'report-export')
   const files: Record<string, string> = {
-    'aristoteles.yaml': SETTINGS + h.WORK_YAML,
+    'aristoteles.yaml': withCommands(h.WORK_YAML),
     'directions/tsd-writing.yaml': h.DIRECTION,
     'top.yaml': `${h.TASK_WHOLE}role: architect\n`,
     'again.yaml': `${h.TASK_WHOLE.replace('facts.', 'facts, with the cost.')}role: architect\n`,
@@ -424,7 +433,7 @@ export const hosted = async () => {
   await p.agent(`brief ${hostToken}`)
   return { p, fake, w, watcher, host, hostToken, rec }
 }
-// ... and the host gives t1 to a section lead (a Terra of a persistent role: the agent p1), whose
+// ... and the host gives t1 to a section lead (a persistent role: the agent p1), whose
 // terminal the supervisor starts with its first prompt as the last argument of its launch
 // command. Ruling 9: the first prompt holds no token; the lead's own work wait --by=p1 in that
 // terminal gives it a2 with a new token.

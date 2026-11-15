@@ -134,7 +134,7 @@ const inputOf = (w: Work, r: Recorded, dir: string): Read => {
     case 'Terminal.Stopped':
       return input({ _tag: 'StopTerminal', target: { session: id }, content: {} })
     case 'Terminal.Resumed':
-      return input({ _tag: 'ResumeTerminal', target: { session: id }, content: { tier: 'sol' } })
+      return input({ _tag: 'ResumeTerminal', target: { session: id }, content: {} })
     case 'Send.Sent': {
       const from = c?.from as unknown as {
         _tag: string

@@ -454,7 +454,7 @@ export function startServer(options: ServerOptions): ServerHandle {
         })
       case 'resume':
         return terminals(async (w) => {
-          await w.resumeSession(b.session, b.tier)
+          await w.resumeSession(b.session)
           return json({ out: `${b.session} resumed.` })
         })
       // Fixed: the UI tries the problem at once (the decision of 2026-11-11); the watcher holds

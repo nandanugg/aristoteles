@@ -398,10 +398,10 @@ describe('the fixes of the skills round', () => {
     })
     ok(await p.nanda('init'))
     const lines = (await out(p.agent('role list'))).split('\n')
-    const tierAt = lines.map((l) => l.search(/(high|medium|low) /))
-    expect(new Set(tierAt).size).toBe(1)
+    const modelAt = lines.map((l) => l.search(/(opus|sonnet|haiku) /))
+    expect(new Set(modelAt).size).toBe(1)
     expect(lines.find((l) => l.startsWith(long))).toMatch(
-      /^introduction-section-lead {2}medium {2}Runs one section/,
+      /^introduction-section-lead {2}sonnet {2}Runs one section/,
     )
   })
 
@@ -424,7 +424,7 @@ describe('the fixes of the skills round', () => {
   // P1 (D3): the next line names the one that drafts it; here no high role works yet.
   test('the next line of a suggestion names who drafts it', async () => {
     const { p } = await started()
-    const next = 'next: no agent can draft it now; give a high role work, and it drafts it: ' +
+    const next = 'next: no agent can draft it now; give a role that directs work, and it drafts it: ' +
       'work assign t1 --role=architect'
     expect(await out(p.nanda('suggest --says="a direction for the HLD"'))).toContain(next)
     expect(await out(p.nanda('suggest tsd-writing --says="say the cost first"'))).toContain(next)
@@ -434,8 +434,8 @@ describe('the fixes of the skills round', () => {
   })
 })
 
-// A project of the UI: the host of h1 (a1) briefed on its top task t1. settings: the lines of the
-// tiers before the roles; roles: the rest of aristoteles.yaml.
+// A project of the UI: the host of h1 (a1) briefed on its top task t1. settings: lines before the
+// config; roles: the rest of aristoteles.yaml.
 const hostedRun = async ({ settings = '', roles = WORK_YAML } = {}) => {
   const top = `${TASK_WHOLE}role: architect\n`
   const p = project({ 'aristoteles.yaml': settings + roles, 'top.yaml': top })
@@ -520,8 +520,8 @@ describe('the work assign words, by where the assignment runs', () => {
     const { p, host } = await hostedRun()
     expect(await out(p.agent(`assign ${host} t1 --role=section-lead`))).toBe(
       [
-        'a2 · section-lead (medium) on t1 The Introduction',
-        'a2 runs in p1, the persistent section-lead agent of h1 (medium, Sonnet). Its terminal ' +
+        'a2 · section-lead (sonnet) on t1 The Introduction',
+        'a2 runs in p1, the persistent section-lead agent of h1 (sonnet). Its terminal ' +
           'gets a2 through work wait --by=p1; the UI starts that terminal when it has none. ' +
           'Do not start it yourself.',
         `Then run work wait ${host}: it returns when you have work.`,
@@ -529,24 +529,25 @@ describe('the work assign words, by where the assignment runs', () => {
     )
   })
 
-  test('Subagent: a disposable role starts as a subagent on the model of its tier', async () => {
+  test('Subagent: a disposable role starts as a subagent on the model of its role', async () => {
     const { p, host } = await hostedRun()
     const words = await out(p.agent(`assign ${host} t1 --role=writer`))
     expect(words).toContain(
-      'Start a subagent on Haiku (the low model) with this prompt, and nothing else:',
+      'Start a subagent on haiku with this prompt, and nothing else:',
     )
     expect(words).toContain(PROMPT('a2'))
-    // P9: the model of the tier, when the settings name one.
-    const named = await hostedRun({ settings: 'tiers:\n  luna:\n    model: small-model\n' })
+    // P9: the model that the role names, by its name in the models table.
+    const small = WORK_YAML.replace('  haiku:  {', '  small-model: {').replaceAll('model: haiku', 'model: small-model')
+    const named = await hostedRun({ roles: small })
     const withModel = await out(named.p.agent(`assign ${named.host} t1 --role=writer`))
     expect(withModel).toContain(
-      'Start a subagent on small-model (the low model) with this prompt, and nothing else:',
+      'Start a subagent on small-model with this prompt, and nothing else:',
     )
   })
 
-  // Ruling 10: any tier can be persistent. A persistent writer runs in its agent, so its parent
+  // Ruling 10: a role of any model can be persistent. A persistent writer runs in its agent, so its parent
   // gives it no command: the agent's wait gives it its token.
-  test('Agent of a low role: the parent waits for the terminal of the agent', async () => {
+  test('Agent of a role of one unit: the parent waits for the terminal of the agent', async () => {
     const lasting = WORK_YAML.replace(
       'persistent: false\n      why: It writes one section once, from its brief.',
       'persistent: true\n      why: It writes every section, so it keeps what it read.',
@@ -557,7 +558,7 @@ describe('the work assign words, by where the assignment runs', () => {
     const lead = tokenIn(await out(p.ui('session a2 --id=s-lead --token')))
     ok(await p.agent(`brief ${lead}`))
     expect(await out(p.agent(`assign ${lead} t1 --role=writer`))).toContain(
-      'a3 runs in p2, the persistent writer agent of h1 (low, Haiku).',
+      'a3 runs in p2, the persistent writer agent of h1 (haiku).',
     )
     expect(await out(p.agent(`next ${lead}`))).toBe(
       'make t1: a3 runs in p2, a persistent agent: its terminal gets a3 through work wait ' +
@@ -571,7 +572,7 @@ describe('the work assign words, by where the assignment runs', () => {
     ok(await p.nanda('role fit section-lead --answers=fit.yaml'))
     ok(await p.nanda('task open --file=task.yaml'))
     const words = await out(p.nanda('assign t1 --role=section-lead'))
-    expect(words).toContain('Start a Sonnet subagent with this prompt, and nothing else:')
+    expect(words).toContain('Start a subagent on sonnet with this prompt, and nothing else:')
     expect(words).toContain(PROMPT('a1'))
   })
 })

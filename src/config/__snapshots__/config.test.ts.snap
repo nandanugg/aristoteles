@@ -1,5 +1,4 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
-// Bun 1.4: Bun.YAML.stringify writes no space after a key whose value is on the next lines.
 
 exports[`readConfig a good file 1`] = `"ok"`;
 
@@ -13,7 +12,7 @@ exports[`readConfig an empty file 1`] = `
 
 exports[`readConfig a file of one scalar 1`] = `
 {
-  "refused": "aristoteles.yaml: "0" is not a key of aristoteles.yaml (people, limits, roles, decide, tiers, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
+  "refused": "aristoteles.yaml: "0" is not a key of aristoteles.yaml (people, roles, decide, models, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
 }
 `;
 
@@ -43,96 +42,85 @@ exports[`readConfig the directions key 1`] = `
 
 exports[`readConfig an unknown key 1`] = `
 {
-  "refused": "aristoteles.yaml: "colour" is not a key of aristoteles.yaml (people, limits, roles, decide, tiers, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
+  "refused": "aristoteles.yaml: "colour" is not a key of aristoteles.yaml (people, roles, decide, models, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
 }
 `;
 
-// Ruling 10, onboarding 2026-11-14: a luna reads (was refused).
-exports[`readConfig tiers: luna 1`] = `"ok"`;
+exports[`readConfig models: {model} in launch and resume 1`] = `"ok"`;
 
-exports[`readConfig tiers: a model and {model} in launch and resume 1`] = `"ok"`;
-
-exports[`readConfig tiers: {model} in launch with no model 1`] = `
+exports[`readConfig models: a list 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.launch names {model}, and tiers.sol.model is not set",
+  "refused": "aristoteles.yaml: models is a map of models by name",
 }
 `;
 
-exports[`readConfig tiers: {model} in resume with no model 1`] = `
+exports[`readConfig models: a model that is a word 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.resume names {model}, and tiers.sol.model is not set",
+  "refused": "aristoteles.yaml: models.sonnet is a map of settings",
 }
 `;
 
-exports[`readConfig tiers: a tier that is not one 1`] = `
+exports[`readConfig models: a key that is not a setting 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.moon is not a tier (sol, terra, luna)",
+  "refused": "aristoteles.yaml: models.opus.bogus is not a setting of a model (launch, resume, start, skills, errors, prompts, silentMinutes, retryInput, limits)",
 }
 `;
 
-// Ruling 10, onboarding 2026-11-14 (P9): the list names model.
-exports[`readConfig tiers: a key that is not a setting 1`] = `
+exports[`readConfig models: launch is not a text 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.bogus is not a setting of a tier (model, launch, resume, start, skills, errors, prompts, silentMinutes, retryInput)",
+  "refused": "aristoteles.yaml: models.opus.launch is a text",
 }
 `;
 
-exports[`readConfig tiers: launch is not a text 1`] = `
+exports[`readConfig models: start is blank 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.launch is a text",
+  "refused": "aristoteles.yaml: models.opus.start is a text",
 }
 `;
 
-exports[`readConfig tiers: start is blank 1`] = `
+exports[`readConfig models: errors is not a list of words 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.start is a text",
+  "refused": "aristoteles.yaml: models.opus.errors is a list of words",
 }
 `;
 
-exports[`readConfig tiers: errors is not a list of words 1`] = `
+exports[`readConfig models: prompts is not a list 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.errors is a list of words",
+  "refused": "aristoteles.yaml: models.opus.prompts is a list of words",
 }
 `;
 
-exports[`readConfig tiers: prompts is not a list 1`] = `
+exports[`readConfig models: silentMinutes is 0 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.prompts is a list of words",
+  "refused": "aristoteles.yaml: models.opus.silentMinutes is a whole number of 1 or more",
 }
 `;
 
-exports[`readConfig tiers: silentMinutes is 0 1`] = `
+exports[`readConfig models: silentMinutes is 1.5 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.silentMinutes is a whole number of 1 or more",
+  "refused": "aristoteles.yaml: models.opus.silentMinutes is a whole number of 1 or more",
 }
 `;
 
-exports[`readConfig tiers: silentMinutes is 1.5 1`] = `
+exports[`readConfig models: launch has no {session} 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.silentMinutes is a whole number of 1 or more",
+  "refused": "aristoteles.yaml: models.opus.launch has no {session}: the UI gives each real agent its session id, so that a resume finds it",
 }
 `;
 
-exports[`readConfig tiers: launch has no {session} 1`] = `
+exports[`readConfig models: resume has no {session} 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.launch has no {session}: the UI gives each real agent its session id, so that a resume finds it",
+  "refused": "aristoteles.yaml: models.opus.resume has no {session}",
 }
 `;
 
-exports[`readConfig tiers: resume has no {session} 1`] = `
+exports[`readConfig models: start has no {agent} 1`] = `
 {
-  "refused": "aristoteles.yaml: tiers.sol.resume has no {session}",
+  "refused": "aristoteles.yaml: models.opus.start has no {agent}",
 }
 `;
 
-// Ruling 9, onboarding 2026-11-14 (P9): a start names the agent (was: {token}).
-exports[`readConfig tiers: start has no {agent} 1`] = `
-{
-  "refused": "aristoteles.yaml: tiers.sol.start has no {agent}",
-}
-`;
-
-exports[`readConfig tiers: resume and skills set 1`] = `"ok"`;
+exports[`readConfig models: resume and skills set 1`] = `"ok"`;
 
 exports[`readConfig retryMinutes is 0 1`] = `
 {
@@ -180,19 +168,19 @@ exports[`readConfig a person with a name of an id 1`] = `
 
 exports[`readConfig limits: a part that has none 1`] = `
 {
-  "refused": "aristoteles.yaml: limits.low.Bogus is not a part with limits (Assignment, Review, Result)",
+  "refused": "aristoteles.yaml: models.haiku.limits.Bogus is not a part with limits (Assignment, Review, Result)",
 }
 `;
 
 exports[`readConfig limits: a key that is not a limit 1`] = `
 {
-  "refused": "aristoteles.yaml: limits.low.Assignment.bogus is not a limit of Assignment (briefChars, attempts)",
+  "refused": "aristoteles.yaml: models.haiku.limits.Assignment.bogus is not a limit of Assignment (briefChars, attempts)",
 }
 `;
 
 exports[`readConfig limits: not a whole number 1`] = `
 {
-  "refused": "aristoteles.yaml: limits.low.Assignment.attempts is a whole number of 1 or more",
+  "refused": "aristoteles.yaml: models.haiku.limits.Assignment.attempts is a whole number of 1 or more",
 }
 `;
 
@@ -212,15 +200,21 @@ exports[`readConfig a program that is not on report 1`] = `
 }
 `;
 
-exports[`readConfig a role with a bad tier 1`] = `
+exports[`readConfig a role with a model that the table lacks 1`] = `
 {
-  "refused": "aristoteles.yaml roles.writer: tier is low, medium, or high (the person needs no role)",
+  "refused": "aristoteles.yaml roles.writer: model names an entry of the models table (opus, sonnet, haiku)",
 }
 `;
 
-exports[`readConfig a role with no tier 1`] = `
+exports[`readConfig a role with no model 1`] = `
 {
-  "refused": "aristoteles.yaml roles.writer: tier is low, medium, or high (the person needs no role)",
+  "refused": "aristoteles.yaml roles.writer: model names an entry of the models table (opus, sonnet, haiku)",
+}
+`;
+
+exports[`readConfig a program with a model 1`] = `
+{
+  "refused": "aristoteles.yaml roles.linter: a program runs no model: remove its model",
 }
 `;
 
@@ -298,13 +292,13 @@ exports[`readConfig a program with a persistence 1`] = `
 
 exports[`readConfig an act with two keys 1`] = `
 {
-  "refused": "aristoteles.yaml roles.writer: each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, { change: [direction ids] }",
+  "refused": "aristoteles.yaml roles.writer: each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, { change: [direction ids] }, { assign: [roles] }, split, direct, fit",
 }
 `;
 
 exports[`readConfig an act with an unknown key 1`] = `
 {
-  "refused": "aristoteles.yaml roles.writer: each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, { change: [direction ids] }",
+  "refused": "aristoteles.yaml roles.writer: each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, { change: [direction ids] }, { assign: [roles] }, split, direct, fit",
 }
 `;
 
@@ -316,27 +310,39 @@ exports[`readConfig an act that names no role 1`] = `
 
 exports[`readConfig an act that is a number do 1`] = `"ok"`;
 
-exports[`readConfig no high role 1`] = `
+exports[`readConfig an act that is an unknown word 1`] = `
 {
-  "refused": "aristoteles.yaml: the workflow has no high role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake",
+  "refused": "aristoteles.yaml roles.writer: each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, { change: [direction ids] }, { assign: [roles] }, split, direct, fit",
 }
 `;
 
-exports[`readConfig no medium role 1`] = `
+exports[`readConfig an assign that names no role 1`] = `
 {
-  "refused": "aristoteles.yaml: the workflow has no medium role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake",
+  "refused": "aristoteles.yaml roles.checker: assign names "ghost", which does not exist",
 }
 `;
 
-exports[`readConfig no low role 1`] = `
+exports[`readConfig an assign that names a program 1`] = `
 {
-  "refused": "aristoteles.yaml: the workflow has no low role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake",
+  "refused": "aristoteles.yaml roles.checker: assign names linter, a program; it runs by itself",
+}
+`;
+
+exports[`readConfig a program that splits 1`] = `
+{
+  "refused": "aristoteles.yaml roles.linter: a program only reviews; it assigns nothing and has no authority",
+}
+`;
+
+exports[`readConfig no role splits 1`] = `
+{
+  "refused": "aristoteles.yaml: no role splits; a role with the split act hosts each project and evaluates a mistake",
 }
 `;
 
 exports[`readConfig no roles 1`] = `
 {
-  "refused": "aristoteles.yaml: the workflow has no high role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake",
+  "refused": "aristoteles.yaml: no role splits; a role with the split act hosts each project and evaluates a mistake",
 }
 `;
 
@@ -402,11 +408,10 @@ exports[`fileHashes and the hash of the mechanism no file 1`] = `
 }
 `;
 
-// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`fileHashes and the hash of the mechanism a good file 1`] = `
 {
   "ok": {
-    "aristoteles.yaml": "c9b26ff7be09c7fcbe77ba96fb4aca694fcfdbbdc1a9b3fc04a134dfa6c66bdb",
+    "aristoteles.yaml": "91bde5cc352acb281bb175e7030fcf6931970c8399ba776156d41cdb48bef0aa",
   },
 }
 `;
@@ -422,26 +427,31 @@ exports[`fileHashes and the hash of the mechanism a file that does not parse 1`]
 exports[`fileHashes and the hash of the mechanism an empty file 1`] = `
 {
   "ok": {
-    "aristoteles.yaml": "de39ff103fca747278aa5371a4e94b02ce58175107fff1138e2c89e6e50a3376",
+    "aristoteles.yaml": "cd034a1e7017127ce033a4338bf9f853fa92a61ec1c29b1425ff01a7bd1ff9fc",
   },
 }
 `;
 
-// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig the stored text and a file with other settings 1`] = `
 "people:
   - name: Nanda
   - name: Dewi
-limits:
-  low:
-    Assignment:
-      attempts: 3
-  high:
-    Review:
-      rules: 4
+models:
+  opus:
+    launch: "claude --session {session}"
+    start: "go {agent}"
+    silentMinutes: 5
+    limits:
+      Review:
+        rules: 4
+  sonnet: {}
+  haiku:
+    limits:
+      Assignment:
+        attempts: 3
 roles:
   writer:
-    tier: low
+    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -454,7 +464,7 @@ roles:
       why: it does one piece of work once
     icon: feather
   checker:
-    tier: medium
+    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -465,13 +475,15 @@ roles:
           - writer
       - approve:
           - writer
+      - assign:
+          - writer
     persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
   boss:
-    tier: high
+    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -481,6 +493,12 @@ roles:
           - writer
       - change:
           - tsd
+      - assign:
+          - checker
+          - writer
+      - split
+      - direct
+      - fit
     persistence:
       *persistence
     icon: crown
@@ -505,28 +523,28 @@ theme: light
 "
 `;
 
-// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig a stored text with no settings, a file with some 1`] = `
 "theme: dark
 sound: true
-tiers:
-  sol:
-    launch: "claude --session {session}"
-    start: "go {agent}"
-    silentMinutes: 5
 people:
   - name: Nanda
   - name: Dewi
-limits:
-  low:
-    Assignment:
-      attempts: 3
-  high:
-    Review:
-      rules: 4
+models:
+  opus:
+    limits:
+      Review:
+        rules: 4
+    launch: "claude --session {session}"
+    start: "go {agent}"
+    silentMinutes: 5
+  sonnet: {}
+  haiku:
+    limits:
+      Assignment:
+        attempts: 3
 roles:
   writer:
-    tier: low
+    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -539,7 +557,7 @@ roles:
       why: it does one piece of work once
     icon: feather
   checker:
-    tier: medium
+    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -550,13 +568,15 @@ roles:
           - writer
       - approve:
           - writer
+      - assign:
+          - writer
     persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
   boss:
-    tier: high
+    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -566,6 +586,12 @@ roles:
           - writer
       - change:
           - tsd
+      - assign:
+          - checker
+          - writer
+      - split
+      - direct
+      - fit
     persistence:
       *persistence
     icon: crown
@@ -588,21 +614,117 @@ decide:
 "
 `;
 
-// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
+exports[`restoreConfig a file with other commands and other limits 1`] = `
+"people:
+  - name: Nanda
+  - name: Dewi
+models:
+  opus:
+    launch: "other --session {session}"
+    start: "go {agent}"
+    silentMinutes: 5
+    limits:
+      Review:
+        rules: 4
+  sonnet: {}
+  haiku:
+    limits:
+      Assignment:
+        attempts: 3
+roles:
+  writer:
+    model: haiku
+    description: writes
+    intro: you write
+    responsibilities:
+      - one
+    acts:
+      - do: write
+    timeout: 60
+    persistence:
+      persistent: false
+      why: it does one piece of work once
+    icon: feather
+  checker:
+    model: sonnet
+    description: checks
+    intro: you check
+    responsibilities:
+      - one
+    output: a note
+    acts:
+      - review:
+          - writer
+      - approve:
+          - writer
+      - assign:
+          - writer
+    persistence:
+      &persistence
+      persistent: true
+      why: it leads the project
+    icon: eye
+  boss:
+    model: opus
+    description: leads
+    intro: you lead
+    responsibilities:
+      - one
+    acts:
+      - approve:
+          - writer
+      - change:
+          - tsd
+      - assign:
+          - checker
+          - writer
+      - split
+      - direct
+      - fit
+    persistence:
+      *persistence
+    icon: crown
+  linter:
+    kind: program
+    run: ./lint
+    "on": report
+    acts:
+      - review:
+          - writer
+    checks:
+      - r1
+    icon: terminal
+decide:
+  - resultsOf: writer
+    by:
+      or:
+        - checker
+        - boss
+sound: true
+theme: dark
+"
+`;
+
 exports[`restoreConfig no file now 1`] = `
 "people:
   - name: Nanda
   - name: Dewi
-limits:
-  low:
-    Assignment:
-      attempts: 3
-  high:
-    Review:
-      rules: 4
+models:
+  opus:
+    launch: "claude --session {session}"
+    start: "go {agent}"
+    silentMinutes: 5
+    limits:
+      Review:
+        rules: 4
+  sonnet: {}
+  haiku:
+    limits:
+      Assignment:
+        attempts: 3
 roles:
   writer:
-    tier: low
+    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -615,7 +737,7 @@ roles:
       why: it does one piece of work once
     icon: feather
   checker:
-    tier: medium
+    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -626,13 +748,15 @@ roles:
           - writer
       - approve:
           - writer
+      - assign:
+          - writer
     persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
   boss:
-    tier: high
+    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -642,6 +766,12 @@ roles:
           - writer
       - change:
           - tsd
+      - assign:
+          - checker
+          - writer
+      - split
+      - direct
+      - fit
     persistence:
       *persistence
     icon: crown
@@ -664,21 +794,26 @@ decide:
 "
 `;
 
-// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig a file now that does not parse 1`] = `
 "people:
   - name: Nanda
   - name: Dewi
-limits:
-  low:
-    Assignment:
-      attempts: 3
-  high:
-    Review:
-      rules: 4
+models:
+  opus:
+    launch: "claude --session {session}"
+    start: "go {agent}"
+    silentMinutes: 5
+    limits:
+      Review:
+        rules: 4
+  sonnet: {}
+  haiku:
+    limits:
+      Assignment:
+        attempts: 3
 roles:
   writer:
-    tier: low
+    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -691,7 +826,7 @@ roles:
       why: it does one piece of work once
     icon: feather
   checker:
-    tier: medium
+    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -702,13 +837,15 @@ roles:
           - writer
       - approve:
           - writer
+      - assign:
+          - writer
     persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
   boss:
-    tier: high
+    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -718,6 +855,12 @@ roles:
           - writer
       - change:
           - tsd
+      - assign:
+          - checker
+          - writer
+      - split
+      - direct
+      - fit
     persistence:
       *persistence
     icon: crown
@@ -740,23 +883,28 @@ decide:
 "
 `;
 
-// Ruling 7, onboarding 2026-11-14: the roles have persistence and icon.
 exports[`restoreConfig a stored text with comments 1`] = `
 "# schema line
 # second
 people:
   - name: Nanda
   - name: Dewi
-limits:
-  low:
-    Assignment:
-      attempts: 3
-  high:
-    Review:
-      rules: 4
+models:
+  opus:
+    launch: "claude --session {session}"
+    start: "go {agent}"
+    silentMinutes: 5
+    limits:
+      Review:
+        rules: 4
+  sonnet: {}
+  haiku:
+    limits:
+      Assignment:
+        attempts: 3
 roles:
   writer:
-    tier: low
+    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -769,7 +917,7 @@ roles:
       why: it does one piece of work once
     icon: feather
   checker:
-    tier: medium
+    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -780,13 +928,15 @@ roles:
           - writer
       - approve:
           - writer
+      - assign:
+          - writer
     persistence:
       &persistence
       persistent: true
       why: it leads the project
     icon: eye
   boss:
-    tier: high
+    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -796,6 +946,12 @@ roles:
           - writer
       - change:
           - tsd
+      - assign:
+          - checker
+          - writer
+      - split
+      - direct
+      - fit
     persistence:
       *persistence
     icon: crown
@@ -815,11 +971,6 @@ decide:
       or:
         - checker
         - boss
-tiers:
-  sol:
-    launch: "claude --session {session}"
-    start: "go {agent}"
-    silentMinutes: 5
 sound: true
 theme: light
 "
@@ -972,7 +1123,7 @@ exports[`readTask a workspace path ./a 1`] = `
 
 exports[`readTask maxRounds 1`] = `
 {
-  "refused": "task.yaml: maxRounds is gone: when the tries of a maker end on a fault, the high role evaluates the mistake; leave maxRounds out",
+  "refused": "task.yaml: maxRounds is gone: when the tries of a maker end on a fault, a role that splits evaluates the mistake; leave maxRounds out",
 }
 `;
 
@@ -1065,7 +1216,6 @@ exports[`checkWorkspace a dot path with a slash 1`] = `
 }
 `;
 
-// Nanda, 2026-11-15: a direction has a summary.
 exports[`readDirection a minimal direction 1`] = `
 {
   "ok": {
@@ -1104,7 +1254,6 @@ exports[`readDirection a minimal direction 1`] = `
 }
 `;
 
-// Nanda, 2026-11-15: a direction has a summary.
 exports[`readDirection a full direction 1`] = `
 {
   "ok": {
@@ -1285,13 +1434,13 @@ exports[`readApprovedBy two persons 1`] = `
 
 exports[`readApprovedBy a low role 1`] = `
 {
-  "refused": "d.yaml: approvedBy names writer, a role that reviews no direction (only a medium or high role does)",
+  "refused": "d.yaml: approvedBy names writer, a role that reviews no direction (only a lead, a role that assigns, does)",
 }
 `;
 
 exports[`readApprovedBy a program 1`] = `
 {
-  "refused": "d.yaml: approvedBy names linter, a role that reviews no direction (only a medium or high role does)",
+  "refused": "d.yaml: approvedBy names linter, a role that reviews no direction (only a lead, a role that assigns, does)",
 }
 `;
 

@@ -4,24 +4,25 @@ import { Effect } from 'effect'
 import { Refused } from '../domain/errors.ts'
 
 export const CONFIG = 'aristoteles.yaml'
-// The host's draft of the people, the roles and the tiers; Accept the roles on the page merges it
+// The host's draft of the people, the roles and the models; Accept the roles on the page merges it
 // into aristoteles.yaml (settings.ts mergeDraft).
 export const DRAFT = 'aristoteles.draft.yaml'
-export const MECHANISM_KEYS = ['people', 'limits', 'roles', 'decide'] as const
+// The models table is a setting block, but the limits in it are mechanism: the hash and the
+// stored config read them (config.ts mechanismOf).
+export const MECHANISM_KEYS = ['people', 'roles', 'decide'] as const
 // outsideSourceHours (the owner's ruling, 2026-11-12): how long the revision that an agent read
 // of an outside source holds; after it, work made from that source waits for a new read. It is
 // read from the file now, as the other times are, and a change of it is no change of the
 // mechanism.
 export const SETTING_KEYS = [
-  'tiers',
+  'models',
   'retryMinutes',
   'hostWaitMinutes',
   'outsideSourceHours',
   'sound',
   'theme',
 ] as const
-export const TIERS = ['low', 'medium', 'high'] as const
-// The limits of a tier sit under the part that checks them, as on the page. A file that names
+// The limits of a model sit under the part that checks them, as on the page. A file that names
 // another part (such as Note) is refused.
 export const LIMIT_KEYS = {
   Assignment: ['briefChars', 'attempts'],

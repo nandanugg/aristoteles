@@ -136,7 +136,7 @@ describe('the findings that the effects close', () => {
 
   test('S11: the end of a project waits for its host\'s words: a step, until written', async () => {
     const { p, fake, w, host, hostToken } = await hosted()
-    // The host's Luna writes t1, a linter checks it, and the host accepts it: the end waits.
+    // The host's writer writes t1, a linter checks it, and the host accepts it: the end waits.
     const writer = tokenIn(await p.agent(`assign ${hostToken} t1 --role=writer`))
     await p.agent(`brief ${writer}`)
     p.write('docs/tsd.md', INTRO_V2)

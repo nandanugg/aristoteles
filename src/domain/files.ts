@@ -2,7 +2,7 @@
 // mechanism and the settings), a task file, a direction file, a company folder. Their parsed
 // forms are stored inside events, so each one is a Schema.
 import { Schema } from 'effect'
-import { Principle, RoleIcon, Tier } from './closed.ts'
+import { Authority, Principle, RoleIcon } from './closed.ts'
 import { DirectionId, NonBlank, PositiveInt, ResultId, RoleName, TaskId } from './ids.ts'
 
 // The key of a standard or a rule in a file (Standard.id, Rule.id of the page).
@@ -29,7 +29,7 @@ export const WhereFile = Schema.Record(
 )
 export type WhereFile = typeof WhereFile.Type
 
-export { Tier } from './closed.ts'
+export { Authority } from './closed.ts'
 
 // Who decides: a name (a role; for a direction, a person too), or one of or / and / order.
 export type DeciderFile =
@@ -48,28 +48,31 @@ export const DeciderFile: Schema.Codec<DeciderFile> = Schema.Union([
   }),
 ])
 
-// One act of a role, as aristoteles.yaml writes it: exactly one key.
+// One act of a role, as aristoteles.yaml writes it: one key, or one word (split, direct, fit).
 export const ActFile = Schema.Union([
   Schema.Struct({ do: Schema.String }),
   Schema.Struct({ review: Schema.Array(RoleName) }),
   Schema.Struct({ approve: Schema.Array(RoleName) }),
   Schema.Struct({ change: Schema.Array(DirectionId) }),
+  Schema.Struct({ assign: Schema.Array(RoleName) }),
+  Authority,
 ])
 export type ActFile = typeof ActFile.Type
 
-// How an agent role runs, apart from its tier (ruling 7): a persistent role gets a terminal of
+// How an agent role runs, apart from its model (ruling 7): a persistent role gets a terminal of
 // its own; a disposable role runs as a subagent of a terminal. why: the reason on its card.
 export const PersistenceFile = Schema.Struct({ persistent: Schema.Boolean, why: NonBlank })
 export type PersistenceFile = typeof PersistenceFile.Type
 
-// A role of aristoteles.yaml after readConfig: an agent of a tier, or a program that checks on
+// A role of aristoteles.yaml after readConfig: an agent of a model, or a program that checks on
 // each report. The keys keep the file's order, and an absent key stays absent, so that the JSON
 // of a role (its fit hash) is the old one; what each kind needs is required. persistence and
 // icon go last (onboarding), so the old keys keep their order.
 export const RoleFile = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal('agent'),
-    tier: Tier,
+    // the name of an entry of the models table
+    model: Schema.String,
     description: Schema.String,
     intro: Schema.String,
     responsibilities: Schema.Array(Schema.String),
@@ -81,8 +84,6 @@ export const RoleFile = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal('program'),
-    // A file may name one; a program plays no tier (page: Role).
-    tier: Schema.optionalKey(Tier),
     description: Schema.String,
     intro: Schema.String,
     responsibilities: Schema.Array(Schema.String),
@@ -114,11 +115,11 @@ export const checkerProblem = (
   }
   const role = roles[checkedBy]
   if (!role) return `rule ${id} is checked by "${checkedBy}", which is not a role`
-  const checked = role.acts.flatMap((a) => [
-    ...('review' in a ? a.review : []),
-    ...('approve' in a ? a.approve : []),
-  ])
-  const makes = (name: string) => roles[name]?.acts.some((a) => 'do' in a && Boolean(a.do))
+  const checked = role.acts.flatMap((a) =>
+    typeof a === 'string' ? [] : [...('review' in a ? a.review : []), ...('approve' in a ? a.approve : [])],
+  )
+  const makes = (name: string) =>
+    roles[name]?.acts.some((a) => typeof a !== 'string' && 'do' in a && Boolean(a.do))
   if (!checked.some(makes)) {
     return (
       `rule ${id} is checked by ${checkedBy}, which reviews or approves no role that does ` +
@@ -131,8 +132,8 @@ export const checkerProblem = (
   return null
 }
 
-// The limits of one tier, by the part that checks them.
-export const TierLimits = Schema.Struct({
+// The limits of one model, by the part that checks them: the brief fits its context window.
+export const ModelLimits = Schema.Struct({
   Assignment: Schema.optionalKey(
     Schema.Struct({
       briefChars: Schema.optionalKey(PositiveInt),
@@ -142,14 +143,15 @@ export const TierLimits = Schema.Struct({
   Review: Schema.optionalKey(Schema.Struct({ rules: Schema.optionalKey(PositiveInt) })),
   Result: Schema.optionalKey(Schema.Struct({ size: Schema.optionalKey(PositiveInt) })),
 })
-export type TierLimits = typeof TierLimits.Type
+export type ModelLimits = typeof ModelLimits.Type
 
 // The mechanism of aristoteles.yaml: what the store keeps (the settings stay in the file).
 export const ConfigFile = Schema.Struct({
   // The name of the dir: its folder name.
   project: Schema.String,
   people: Schema.Array(Schema.String),
-  limits: Schema.Struct({ low: TierLimits, medium: TierLimits, high: TierLimits }),
+  // The limits of each model of the models table, by its name.
+  models: Schema.Record(Schema.String, ModelLimits),
   roles: Schema.Record(Schema.String, RoleFile),
   // Who decides the results of each maker: one entry per maker (the file's list, by its role).
   decide: Schema.Record(RoleName, DeciderFile),
@@ -165,13 +167,9 @@ export const RoleWords = Schema.Struct({
 })
 export type RoleWords = typeof RoleWords.Type
 
-// The settings of the UI, from aristoteles.yaml now (never stored). Every tier has its commands
-// (ruling 10): a role of any tier can be persistent. model: the tier's model, once; launch and
-// resume name it as {model}.
-export const TerminalTier = Schema.Literals(['sol', 'terra', 'luna'])
-export type TerminalTier = typeof TerminalTier.Type
-export const TierSettings = Schema.Struct({
-  model: Schema.optionalKey(Schema.String),
+// The settings of the UI, from aristoteles.yaml now (never stored). Every model has its commands
+// (ruling 10): a role of any model can be persistent. launch and resume name the model as {model}.
+export const ModelSettings = Schema.Struct({
   launch: Schema.optionalKey(Schema.String),
   resume: Schema.optionalKey(Schema.String),
   start: Schema.String,
@@ -181,13 +179,10 @@ export const TierSettings = Schema.Struct({
   silentMinutes: PositiveInt,
   retryInput: Schema.String,
 })
-export type TierSettings = typeof TierSettings.Type
+export type ModelSettings = typeof ModelSettings.Type
 export const Settings = Schema.Struct({
-  tiers: Schema.Struct({
-    sol: Schema.optionalKey(TierSettings),
-    terra: Schema.optionalKey(TierSettings),
-    luna: Schema.optionalKey(TierSettings),
-  }),
+  // The commands of each model of the models table, by its name.
+  models: Schema.Record(Schema.String, ModelSettings),
   retryMinutes: PositiveInt,
   hostWaitMinutes: PositiveInt,
   // How long an outside source that an agent read stays fresh (core/derived).

@@ -3,8 +3,8 @@
 // next steps change (tags and ids, as stepKey), else after `ms` with nothing changed. Nothing is
 // typed into a terminal: what the watcher typed before is a step of nextFor now (notices.ts).
 //
-// A host waits by its run before its top task opens: then it gets the Sol of that task (the CLI
-// gives it a new token). A host whose Sol ended by a remake of the top task gets the new Sol too.
+// A host waits by its run before its top task opens: then it gets the assignment of that task (the CLI
+// gives it a new token). A host whose assignment ended by a remake of the top task gets the new one too.
 // A persistent agent waits by its id in its own terminal (ruling 9): each new assignment of the
 // agent ends the wait (the CLI gives each a token), and the steps of all its open assignments
 // count as its steps.
@@ -50,12 +50,12 @@ export type WaitEnd =
   | { readonly _tag: 'Ready'; readonly d: Derived; readonly steps: Steps }
   | { readonly _tag: 'Changed'; readonly d: Derived; readonly steps: Steps }
   | { readonly _tag: 'Quiet'; readonly d: Derived; readonly steps: Steps }
-  // The top task of the host's run opened: its Sol takes the run's terminal.
+  // The top task of the host's run opened: its assignment takes the run's terminal.
   | {
       readonly _tag: 'Opened'
       readonly d: Derived
       readonly run: RunId
-      readonly sol: AssignmentId
+      readonly host: AssignmentId
       readonly session: SessionId
     }
   // New assignments of a persistent agent: they take its terminal, each with a new token.
@@ -107,13 +107,13 @@ export const stepsOf = (d: Derived, waiter: Waiter): Steps => {
   return { next, key: stepKey(next), ready: next.some((s) => s._tag === 'Do') }
 }
 
-// The Sol of a run's top task now, when the run goes on.
+// The host's assignment on a run's top task now, when the run goes on.
 const solOf = (d: Derived, run: RunId): WaitEnd | null => {
   const state = d.states.runs.get(run)
   if (state?._tag !== 'Working' && state?._tag !== 'AwaitingEndAccept') return null
   const host = hostOf(d.moment, { _tag: 'OnTask', task: state.top }, d.states)
   return host._tag === 'Host' && host.run === run
-    ? { _tag: 'Opened', d, run, sol: host.assignment, session: host.session }
+    ? { _tag: 'Opened', d, run, host: host.assignment, session: host.session }
     : null
 }
 
@@ -130,8 +130,8 @@ const givenTo = (d: Derived, agent: AgentId): WaitEnd | null => {
 }
 
 // An end that needs no steps: the actor ended, the host's top task opened, or a persistent agent
-// got a new assignment. The Sol of a run that ended (its top task was remade) hands the run's
-// terminal to the new Sol.
+// got a new assignment. The host of a run whose assignment ended (its top task was remade) hands the
+// run's terminal to the new one.
 const endOf = (d: Derived, waiter: Waiter): WaitEnd | null => {
   const w = d.moment.work
   if (waiter._tag === 'Persistent') {
@@ -145,7 +145,7 @@ const endOf = (d: Derived, waiter: Waiter): WaitEnd | null => {
     const session = w.sessions.get(waiter.assignment)?.session
     const run = [...w.runs.values()].find((r) => r.session === session)
     const next = run === undefined ? null : solOf(d, run.id)
-    return next?._tag === 'Opened' && next.sol !== waiter.assignment ? next : { _tag: 'Ended', d }
+    return next?._tag === 'Opened' && next.host !== waiter.assignment ? next : { _tag: 'Ended', d }
   }
   const state = d.states.runs.get(waiter.run)
   if (state === undefined || state._tag === 'Done' || state._tag === 'Closed') {

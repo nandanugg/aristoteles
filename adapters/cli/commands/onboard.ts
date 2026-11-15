@@ -67,11 +67,12 @@ import { WAIT_SECONDS } from './wait.ts'
 
 const POLL_MS = 1000
 
-const ROLE_KEYS = `      tier: high | medium | low
+const ROLE_KEYS = `      model: <a name of the models table>
       description: <what the role does, in one line>
       intro: <the first words of its brief>
       responsibilities: [<one exact output or command>]
-      acts: [{ do: <its work> }] or [{ review: [<role>] }] or [{ approve: [<role>] }]
+      acts: [{ do: <its work> }] or [{ review: [<role>] }] or [{ approve: [<role>] }], with
+        { assign: [<role>] } and split, direct, fit for a role that gives work, splits, directs, fits
       persistence: { persistent: true | false, why: <one line: why it needs a terminal, or not> }
       icon: <a role icon, such as compass>
       summary: <the one line of its card>
@@ -79,7 +80,8 @@ const ROLE_KEYS = `      tier: high | medium | low
 const CONFIG_TEMPLATE = `write a file like this, then run the command again:
   people:
     - name: <the git user.name of each person>
-  limits: { low: {}, medium: {}, high: {} }
+  models:   # by name: the commands of each, and its limits; a stronger model for more care
+    <model>: { launch: "<cli> --model {model} --session-id {session} {prompt}", limits: {} }
   roles:
     <role>:
 ${ROLE_KEYS}`
@@ -229,7 +231,7 @@ const noStoreYet = Effect.gen(function* () {
   if ((yield* loadWork(cwd))._tag === 'NoStore') return
   return yield* refuse(
     'the store of this dir has started, so onboarding is over',
-    'a change now is an adjustment: work suggest roles --says="<the change>", or work adjust (a high agent)',
+    'a change now is an adjustment: work suggest roles --says="<the change>", or work adjust (an agent that fits roles)',
   )
 })
 

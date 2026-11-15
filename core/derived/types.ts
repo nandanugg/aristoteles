@@ -171,8 +171,8 @@ export type EvaluationStateOf = (m: Moment, evaluation: EvaluationId) => Evaluat
 // --- 8. AssignmentState (NEW, absorbs MakerState): C1, S4, S9, B5, I2 ---------------------------
 // Working: it may act; a maker has its attempt (S4: one count). OutOfTries: a maker whose last try
 // ended on a fault; its task waits for an evaluation. BriefOver (ruling 10.9): its brief is longer
-// than the limit of its tier (Outside.measure); it waits, holds no file turn, and the nearest high
-// role above it shortens the directions of its task or splits the task. Settled: its task is
+// than the limit of its model (Outside.measure); it waits, holds no file turn, and the nearest
+// role above it that splits shortens the directions of its task or splits the task. Settled: its task is
 // accepted: no step, no file turn; it goes back to Working when a version change opens the task
 // again. Ended: final.
 export type Tries =
@@ -318,7 +318,7 @@ export type ForwardStateOf = (
 ) => ForwardState
 
 // --- 18. HostOfTree (NEW): S11 ------------------------------------------------------------------
-// The host of a placement: the open Sol in the session of the run that holds the tree.
+// The host of a placement: the open host assignment in the session of the run that holds the tree.
 export type HostOfTree =
   | {
       readonly _tag: 'Host'
@@ -353,7 +353,7 @@ export type Explainer =
   | { readonly _tag: 'AnyActiveHost'; readonly hosts: NonEmpty<AssignmentId> }
   | { readonly _tag: 'None' }
 // Who writes the next draft after a decider's Reject: its writer; the hosts of a model run's
-// draft (its explainer); an open high role that follows the direction when the writer is
+// draft (its explainer); an open role that directs and follows the direction when the writer is
 // finished; a new role that the person assigns; else the person (the model run again, or words).
 // A company draft changes in its repo; an onboarded one is official.
 export type Redrafter =
@@ -507,7 +507,7 @@ export type StepWhat =
       readonly stop: Stop
       readonly evaluator: AssignmentId
     }
-  | { readonly _tag: 'WaitsForEvaluationNoHigh'; readonly task: TaskId; readonly stop: Stop }
+  | { readonly _tag: 'WaitsForEvaluationNoSplitter'; readonly task: TaskId; readonly stop: Stop }
   | {
       readonly _tag: 'WaitsForParts'
       readonly task: TaskId
@@ -552,14 +552,14 @@ export type StepWhat =
   | { readonly _tag: 'EscalateForReturnedTask'; readonly point: PointId; readonly task: TaskId }
   | { readonly _tag: 'WaitsForOutsideNeed'; readonly task: TaskId; readonly need: TaskId }
   | { readonly _tag: 'RunsAfter'; readonly task: TaskId; readonly need: TaskId }
-  | { readonly _tag: 'MediumRuns'; readonly lead: AssignmentId; readonly task: TaskId }
+  | { readonly _tag: 'LeadRuns'; readonly lead: AssignmentId; readonly task: TaskId }
   | {
-      readonly _tag: 'RunSectionWithMedium'
+      readonly _tag: 'RunSectionWithLead'
       readonly task: TaskId
       readonly roles: NonEmpty<RoleName>
     }
   | { readonly _tag: 'SplitFirst'; readonly task: TaskId }
-  | { readonly _tag: 'RunWithMedium'; readonly task: TaskId; readonly roles: NonEmpty<RoleName> }
+  | { readonly _tag: 'RunWithLead'; readonly task: TaskId; readonly roles: NonEmpty<RoleName> }
   | {
       readonly _tag: 'ChangeWaitsForDraft'
       readonly point: PointId
@@ -609,7 +609,7 @@ export type StepWhat =
       readonly result: ResultId
       readonly task: TaskId
     }
-  | { readonly _tag: 'CheckerOfHigherTier'; readonly result: ResultId; readonly role: RoleName }
+  | { readonly _tag: 'CheckerNotAssigned'; readonly result: ResultId; readonly role: RoleName }
   | {
       readonly _tag: 'AssignChecker'
       readonly result: ResultId
@@ -631,7 +631,7 @@ export type StepWhat =
       readonly task: TaskId
     }
   | { readonly _tag: 'PersonDecides'; readonly kind: WaitingKind; readonly id: string }
-  // Ruling 10.9: a brief over its limit. The agent and its parent wait; the nearest high role
+  // Ruling 10.9: a brief over its limit. The agent and its parent wait; the nearest role that splits
   // above it shortens the directions of its task, or splits the task.
   | {
       readonly _tag: 'BriefOverWaits'
@@ -787,7 +787,7 @@ export type WaitingItem = WaitingBase &
         readonly top: TaskId
         readonly hold: Hold
       }
-    // Ruling 10.9: a brief over its limit with no high role above it: the task's owner splits it.
+    // Ruling 10.9: a brief over its limit with no role above it that splits: the task's owner splits it.
     | { readonly _tag: 'BriefOver'; readonly assignment: AssignmentId; readonly task: TaskId }
   )
 

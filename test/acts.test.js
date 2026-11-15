@@ -37,14 +37,14 @@ describe('the acts of the UI', () => {
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     ok(await p.run('run start', HOST))
     expect((await p.ui('task draft --file=top.yaml --by=h1')).err).toContain('the person tells the host in words; the host drafts the top task, and you open it')
-    expect((await p.run('task draft --file=low.yaml --by=h1', HOST)).err).toContain('the draft names writer, a low role; a top task goes to a high (Sol) role')
+    expect((await p.run('task draft --file=low.yaml --by=h1', HOST)).err).toContain('the draft names writer, which has no split act; a top task goes to a role that splits')
     expect((await p.run('task draft --file=top.yaml --by=h1', { env: { ...HOST.env, TMUX_PANE: '%8' } })).err)
       .toContain('a draft of h1 comes from the terminal of h1')
     expect(ok(await p.run('task draft --file=top.yaml --by=h1', HOST)).out)
       .toBe('td1 drafted by h1: The Introduction, for the role architect.\nit waits for the person to open it: work task open td1')
     expect((await p.run('task open td1', HOST)).err).toContain('this is a person command; a person runs it at a terminal')
     const opened = ok(await p.ui('task open td1')).out
-    expect(opened).toStartWith('t1 opened from td1: The Introduction\na1 · architect (high) on t1 The Introduction')
+    expect(opened).toStartWith('t1 opened from td1: The Introduction\na1 · architect (opus) on t1 The Introduction')
     expect((await p.ui('task open td1')).err).toContain('td1 is opened as t1')
     expect((await p.run('task draft --file=top.yaml --by=h1', HOST)).err).toContain('h1 has its top task t1; a part of it comes from a split')
     expect(ok(await p.ui('run list')).out).toContain('h1 host · works · pane %9')
@@ -76,7 +76,7 @@ describe('the acts of the UI', () => {
   test('a system problem goes on the parent of the task that it stops; the host\'s own text is its words', async () => {
     const { p, host } = await hosted()
     const lead = await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out) // 10.1
-    expect((await p.agent(`problem ${lead} t1 --says="the cluster is down"`)).err).toContain('the host (a Sol) records a system problem')
+    expect((await p.agent(`problem ${lead} t1 --says="the cluster is down"`)).err).toContain('the host (a role that splits) records a system problem')
     expect(ok(await p.agent(`problem ${host} t1 --says="the cluster is down: run make up, then press Fixed"`)).out)
       .toBe('sp1 recorded on t1 The Introduction; it shows to the person until a fix.')
     // The host wrote the problem itself, so its text is its words: the person sees it at once.
@@ -101,7 +101,7 @@ describe('the acts of the UI', () => {
     // A prompt has no tries (the owner's Prompted move holds none; the watcher writes none).
     ok(await p.ui('event a2 --kind=prompt --text="Do you want to proceed?"'))
     expect(ok(await p.agent(`send ${host} a2 --text="1"`)).out).toBe('sent to a2; the UI types it into its terminal.')
-    expect((await p.agent(`send ${lead} a1 --text="1"`)).err).toContain('only the host (a Sol) sends input to the terminal of a child')
+    expect((await p.agent(`send ${lead} a1 --text="1"`)).err).toContain('only the host (a role that splits) sends input to the terminal of a child')
     // A failure is after three tries, and the row keeps them.
     ok(await p.ui('event a2 --kind=error --text="connection error" --tries=3'))
     const db = tables(p)
@@ -202,19 +202,19 @@ describe('an adjustment on the page', () => {
   test('the person accepts an adjustment, or rejects it with a reason', async () => {
     const { p } = await started()
     gitPerson(p)
-    const tier = drafted(ok(await p.agent('adjust tier writer --tier=medium --by=host')).out)
+    const model = drafted(ok(await p.agent('adjust model writer --model=sonnet --by=host')).out)
     const [item] = await decisions(p)
-    expect(item).toMatchObject({ kind: 'adjustment', id: tier, task: null })
+    expect(item).toMatchObject({ kind: 'adjustment', id: model, task: null })
     expect(item.text).toBe(
-      'An adjustment, drafted by host, a model run outside any task, waits for your decision: writer becomes a medium role.',
+      'An adjustment, drafted by host, a model run outside any task, waits for your decision: writer runs on sonnet.',
     )
-    expect(item.adjustment).toEqual({ _tag: 'SetTier', role: 'writer', tier: 'medium' })
-    expect(await act(p, 'accept-adjustment', { draft: tier })).toEqual({ out: `${tier} accepted.` })
-    expect(Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).roles.writer.tier).toBe('medium')
+    expect(item.adjustment).toEqual({ _tag: 'SetModel', role: 'writer', model: 'sonnet' })
+    expect(await act(p, 'accept-adjustment', { draft: model })).toEqual({ out: `${model} accepted.` })
+    expect(Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).roles.writer.model).toBe('sonnet')
     expect(await decisions(p)).toEqual([])
-    const back = drafted(ok(await p.agent('adjust tier writer --tier=low --by=host')).out)
+    const back = drafted(ok(await p.agent('adjust model writer --model=haiku --by=host')).out)
     expect((await act(p, 'reject-adjustment', { draft: back, reason: '' })).error).toBeDefined()
-    expect(await act(p, 'reject-adjustment', { draft: back, reason: 'keep the writer medium' })).toEqual({ out: `${back} rejected.` })
+    expect(await act(p, 'reject-adjustment', { draft: back, reason: 'keep the writer on sonnet' })).toEqual({ out: `${back} rejected.` })
     expect(await decisions(p)).toEqual([])
     expect(ok(await p.nanda(`adjust show ${back}`)).out).toContain('rejected (')
   })

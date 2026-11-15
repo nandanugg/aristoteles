@@ -38,7 +38,7 @@ const noticesOf = (dir: string, a: string) =>
 describe('the supervisor of the terminals (the old edge tests, under ruling 10.1)', () => {
   test('a first prompt is an argument of the launch command; no token is stored', async () => {
     const { p, fake, lead, leadToken } = await withLead()
-    // The terra tier has no {prompt} in its launch command: the prompt is its last argument.
+    // The model sonnet has no {prompt} in its launch command: the prompt is its last argument.
     // Ruling 9, onboarding 2026-11-14 (P9): it names the agent and its wait (was: a token).
     const prompt = "'Use the work skill. You are p1: run work wait --by=p1, and do what it prints.'"
     // The command names the session as a UUID (Nanda, 2026-11-15: an AI CLI takes no other id).
@@ -114,7 +114,7 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
     const words = 'the UI does not start, restart, or stop it'
     await expect(w.person(stopSession(sid(host)))).rejects.toThrow(words)
     // canAct refuses the Resume before the pump is asked (P5 words).
-    await expect(w.person(resumeSession(sid(host), 'sol'))).rejects.toThrow(
+    await expect(w.person(resumeSession(sid(host)))).rejects.toThrow(
       "is the host's own pane, the person's terminal; the page does not resume it",
     )
     expect(fake.calls.filter((c) => c.startsWith('resume'))).toEqual([])
@@ -250,7 +250,7 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
     expect(fake.calls).toContain(`stop ${lead}`)
     expect(terminalMoves(p.work(), lead, 'Closed')).toHaveLength(1)
     // An ended agent is not resumed (canAct, P5); a restart closes nothing twice.
-    await expect(w.person(resumeSession(sid(lead), 'terra'))).rejects.toThrow(
+    await expect(w.person(resumeSession(sid(lead)))).rejects.toThrow(
       'p1 is ended: its project h1 ended',
     )
     quiet()

@@ -14,7 +14,7 @@
 // kinds share a pattern for (an escalation, a resolve, a reject).
 import { Schema } from 'effect'
 import { Author } from './actor.ts'
-import { Level, Reason, Tier } from './closed.ts'
+import { Level, Reason } from './closed.ts'
 import {
   CompanyCheckers,
   CompanyFolder,
@@ -219,7 +219,7 @@ export const FitAnswer = Schema.Struct({
   yes: Schema.Literal(true),
   why: NonBlank,
 })
-// New words of a role after the first start (ruling 2026-11-14): a high agent or a model run
+// New words of a role after the first start (ruling 2026-11-14): an agent that fits roles, or a model run,
 // drafts them, and the person accepts them (Workflow.RoleWordsChanged stores them) or rejects
 // the draft, named by its event. A newer draft of the role replaces a waiting one.
 export const RoleMove = Schema.Union([
@@ -232,14 +232,14 @@ const Role = moved('Role', RoleName, RoleMove)
 // supervisor starts its terminal later, in a session that it makes.
 export const AgentMove = Schema.Union([Schema.TaggedStruct('Started', { session: SessionId })])
 const Agent = moved('Agent', AgentId, AgentMove)
-// After the store starts, a role or a direction changes by an adjustment (ruling 14): a high agent
-// or a model run drafts one change, and the person accepts it or rejects it with a reason. The
+// After the store starts, a role or a direction changes by an adjustment (ruling 14): an agent that fits
+// roles, or a model run, drafts one change, and the person accepts it or rejects it with a reason. The
 // draft is named by its event (P5); an accept of a role adjustment holds the new text of
 // aristoteles.yaml, as a change of role words does.
 export const Adjustment = Schema.Union([
   Schema.TaggedStruct('AddRole', { role: RoleName, file: RoleFile }),
   Schema.TaggedStruct('RemoveRole', { role: RoleName }),
-  Schema.TaggedStruct('SetTier', { role: RoleName, tier: Tier }),
+  Schema.TaggedStruct('SetModel', { role: RoleName, model: NonBlank }),
   Schema.TaggedStruct('SetPersistence', { role: RoleName, persistence: PersistenceFile }),
   Schema.TaggedStruct('RetireDirection', { direction: DirectionId }),
 ])
@@ -362,7 +362,7 @@ export const SendMove = Schema.Union([
   Schema.TaggedStruct('Delivered', {}),
   Schema.TaggedStruct('Dropped', { why: DropReason }),
 ])
-// What is typed: a line then Enter, Enter alone (the default answer of a prompt), or the tier's
+// What is typed: a line then Enter, Enter alone (the default answer of a prompt), or the model's
 // start words with the agent's token (made when typed: the store never keeps a token). Only a
 // start sends the start words, and a start sends nothing else.
 export const Line = Schema.TaggedStruct('Line', { text: NonBlank })
@@ -877,7 +877,7 @@ export const WRITTEN_BY = {
   // that drafted the roles records their fits, Nanda 2026-11-13), new words of a role, the examples
   // of a company draft, and an adjustment (onboarding). The AI CLI that the person triggers in a
   // pane: it starts a run there, or continues a run there on the person's quoted words, and then
-  // takes the terminal of the run's Sol with a new token.
+  // takes the terminal of the run's host with a new token.
   ModelRun: [
     'Revision.Drafted',
     'Revision.Revised',

@@ -200,7 +200,7 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
         `${s.suggestion} suggests about the roles: "${short(y.says, 120)}" (${who(w, y.by)}); ` +
           'answer it with the adjustment that it asks for, one change at a time',
         `work adjust ${token} add-role <role> --file=<role.yaml>, or remove-role <role>, or ` +
-          'tier <role> --tier=<low|medium|high>, or persistence <role> ' +
+          'model <role> --model=<name>, or persistence <role> ' +
           '--persistent=<true|false> --why="<one line>"',
       )
     }
@@ -260,9 +260,9 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
         `${s.task} waits for an evaluation by ${s.evaluator} (${roleOfId(w, s.evaluator)}): ` +
           stopWords(w, s.stop),
       )
-    case 'WaitsForEvaluationNoHigh':
+    case 'WaitsForEvaluationNoSplitter':
       return step(
-        `${s.task} waits for an evaluation: ${stopWords(w, s.stop)}; no high role works on it, ` +
+        `${s.task} waits for an evaluation: ${stopWords(w, s.stop)}; no role that splits works on it, ` +
           'so the person assigns one',
       )
     case 'WaitsForParts':
@@ -315,21 +315,21 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
         `${s.task} ${nameOf(w, s.task)} runs after ${s.need} ${nameOf(w, s.need)} ` +
           `(${stateWord(d, s.need)}); its maker starts when ${s.need} is accepted`,
       )
-    case 'MediumRuns':
+    case 'LeadRuns':
       return step(`${s.lead} (${roleOfId(w, s.lead)}) runs ${s.task} ${nameOf(w, s.task)}`)
-    case 'RunSectionWithMedium':
+    case 'RunSectionWithLead':
       return step(
-        `run ${s.task} with a medium role (its section ${sectionOfTask(w, s.task)} is one ` +
+        `run ${s.task} with a lead (its section ${sectionOfTask(w, s.task)} is one ` +
           'unit, so it is not split)',
         assignOf(at, token),
       )
     case 'SplitFirst':
       return step(
-        `split ${s.task} first, then give each part to a medium role`,
+        `split ${s.task} first, then give each part to a lead`,
         splitOf(at, token),
       )
-    case 'RunWithMedium':
-      return step(`run ${s.task} ${nameOf(w, s.task)} with a medium role`, assignOf(at, token))
+    case 'RunWithLead':
+      return step(`run ${s.task} ${nameOf(w, s.task)} with a lead`, assignOf(at, token))
     case 'ChangeWaitsForDraft':
       return step(
         `${s.point} needs a direction change${s.first ? ' first' : ''}; ${s.drafts.join(', ')} ` +
@@ -413,9 +413,9 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
         lostToken(w, s.checker, s.task, token),
       ]
     }
-    case 'CheckerOfHigherTier':
+    case 'CheckerNotAssigned':
       return step(
-        `${s.result} needs ${s.role}, which only a higher tier assigns`,
+        `${s.result} needs ${s.role}, which your role does not assign`,
         `work escalate ${token} --result=${s.result} --reason="${s.result} needs ${s.role}"`,
       )
     case 'AssignChecker':
@@ -447,7 +447,7 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
     // Ruling 10.9: a brief over its limit is no refusal; it waits for a shorter brief.
     case 'BriefOverWaits':
       return step(
-        `${s.assignment} waits: its brief has ${s.size} characters, and the limit of its tier ` +
+        `${s.assignment} waits: its brief has ${s.size} characters, and the limit of its model ` +
           `is ${s.limit}; the role above it, or the owner of ${s.task}, shortens it` +
           waitsOn(s.drafts),
       )
@@ -515,7 +515,7 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
     case 'ShortenOrSplit':
       return step(
         `${shortenWords(at, s.task)}: the brief of ${s.assignment} ` +
-          `has ${s.size} characters, and the limit of its tier is ${s.limit}` +
+          `has ${s.size} characters, and the limit of its model is ${s.limit}` +
           waitsOn(s.drafts),
         orOf(reviseOf(at, token), splitOf(at, token), remakeOf(at, '<the shorter scope>', token)),
       )

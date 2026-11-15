@@ -27,25 +27,28 @@ import { decidersOf } from '../decisions.ts'
 import { onboarded } from './directions.ts'
 import { eventRef } from './ui.ts'
 
-type TierLimits = Work['config']['limits'][keyof Work['config']['limits']]
+type ModelLimits = Work['config']['models'][string]
 
 const limitOf = (n: PositiveInt | undefined): Limit =>
   n === undefined ? { _tag: 'Unlimited' } : { _tag: 'AtMost', max: n }
-const limitsOf = (tier: TierLimits | undefined): Limits => ({
+const limitsOf = (model: ModelLimits | undefined): Limits => ({
   Assignment: {
-    briefChars: limitOf(tier?.Assignment?.briefChars),
-    attempts: limitOf(tier?.Assignment?.attempts),
+    briefChars: limitOf(model?.Assignment?.briefChars),
+    attempts: limitOf(model?.Assignment?.attempts),
   },
-  Review: { rules: limitOf(tier?.Review?.rules) },
-  Result: { size: limitOf(tier?.Result?.size) },
+  Review: { rules: limitOf(model?.Review?.rules) },
+  Result: { size: limitOf(model?.Result?.size) },
 })
 
-// A role of the workflow from its file: a program, or a model of a tier with its persistence.
+const AUTHORITY_TAG = { split: 'Split', direct: 'Direct', fit: 'Fit' } as const
+// A role of the workflow from its file: a program, or a role of a model with its persistence.
 const roleOf = (config: Work['config'], name: RoleName, r: RoleFile): Role => {
   const acts = r.acts.map((a): RoleAct => {
+    if (typeof a === 'string') return { _tag: AUTHORITY_TAG[a] }
     if ('do' in a) return { _tag: 'Do', work: a.do }
     if ('review' in a) return { _tag: 'Review', resultsOf: a.review }
     if ('approve' in a) return { _tag: 'Approve', resultsOf: a.approve }
+    if ('assign' in a) return { _tag: 'Assign', roles: a.assign }
     return { _tag: 'Change', changesOf: a.change }
   })
   // The keys of before keep their order; the onboarding keys go last.
@@ -55,10 +58,10 @@ const roleOf = (config: Work['config'], name: RoleName, r: RoleFile): Role => {
   const { persistent, why } = r.persistence
   return {
     _tag: 'Model',
-    tier: r.tier,
+    model: r.model,
     role: name,
     acts,
-    limits: limitsOf(config.limits[r.tier]),
+    limits: limitsOf(config.models[r.model]),
     persistence: persistent ? { _tag: 'Persistent', why } : { _tag: 'Disposable', why },
     icon: r.icon,
   }

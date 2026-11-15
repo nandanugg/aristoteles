@@ -71,7 +71,7 @@ describe('an assignment', () => {
       task: 't1' as TaskId,
       under: new Map(),
       parent: { _tag: 'GivenByPerson' },
-      runs: { _tag: 'Subagent', tier: 'low' },
+      runs: { _tag: 'Subagent', model: 'haiku' },
       when: at(1),
       end: { _tag: 'NotEnded' },
     }
@@ -84,7 +84,7 @@ describe('an assignment', () => {
 
 describe('the words of roles', () => {
   test('change their words only, and every move kind has its function, or none', () => {
-    const role = { kind: 'agent', tier: 'low', description: 'old', intro: 'i', acts: [] }
+    const role = { kind: 'agent', model: 'haiku', description: 'old', intro: 'i', acts: [] }
     const config = { roles: { writer: role } } as unknown as ConfigFile
     const changed = MOVES['Workflow.RoleWordsChanged'](config, { writer: { description: 'new' } })
     expect<unknown>(changed.roles.writer).toEqual({ ...role, description: 'new' })
@@ -180,7 +180,7 @@ describe('a persistent agent', () => {
     id: 'p1' as AgentId,
     role: 'section-lead' as RoleName,
     run: 'h1' as RunId,
-    tier: 'medium',
+    model: 'sonnet',
     at: at(1),
   })
   test('Agent.Started moves NotStarted to Started, only', () => {

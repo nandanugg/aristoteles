@@ -21,13 +21,15 @@ import {
   assignmentAt,
   assignmentBy,
   finished,
+  holds,
   isAssignment,
   isDo,
   isOpen,
+  leads,
   roleAt,
+  roleOfA,
   runOf,
   taskAt,
-  tierOfAssignment,
   underNowOf,
 } from '../records.ts'
 import { underNow } from '../versions.ts'
@@ -56,10 +58,9 @@ const endAssignment = (b: Build, id: AssignmentId, when: Time): void => {
   const exhaustion = { id: x, fault: fault.id as PointId, when, at: b.tick() }
   b.work = { ...b.work, exhaustions: put(b.work.exhaustions, x, exhaustion) }
 }
-// A low agent's claim ends with its one unit; a medium or high claim lasts until finish.
+// The claim of a role that assigns nothing ends with its one unit; a lead's lasts until finish.
 export const endUnit = (b: Build, id: AssignmentId): void => {
-  const tier = tierOfAssignment(b.work, assignmentAt(b.work, id))
-  if (tier !== 'low' && tier !== null) return
+  if (leads(roleOfA(b.work, assignmentAt(b.work, id)))) return
   const meta = b.work.meta.get(id)
   if (meta !== undefined) {
     b.work = { ...b.work, meta: put(b.work.meta, id, Moves.freeClaim(meta)) }
@@ -69,27 +70,28 @@ export const endUnit = (b: Build, id: AssignmentId): void => {
 // Where an assignment runs, fixed at its give (onboarding, BUILD.md section 3): a program in the
 // CLI; in a run, the host's role on the host, a persistent role on its one agent (made at the
 // first give of the role in the run: ruling 9), a disposable role as a subagent. With no run, a
-// persistent role has no terminal to attach to (P2). The agent keeps its tier for its project.
+// persistent role has no terminal to attach to (P2). The agent keeps its model for its project.
 const runsOf = (b: Build, task: Task, role: Role, when: Time): Runs => {
   if (role._tag === 'Program') return { _tag: 'Program' }
   const run = runOf(b.work, task.id)
   const persistent = role.persistence._tag === 'Persistent'
   if (run === undefined) {
-    return persistent ? { _tag: 'NoRun', tier: role.tier } : { _tag: 'Subagent', tier: role.tier }
+    return persistent ? { _tag: 'NoRun', model: role.model } : { _tag: 'Subagent', model: role.model }
   }
   const hosts = [...b.work.assignments.values()].filter(
     (a) => a.runs._tag === 'Host' && a.runs.run === run.id,
   )
-  // The first high assignment on each top task of the run is the host's, as hostSession gives it
-  // the session of the run (a remake makes a new top task); a later give of the host's role too.
+  // The first assignment of a role that splits on each top task of the run is the host's, as
+  // hostSession gives it the session of the run (a remake makes a new top task); a later give of
+  // the host's role too.
   const first =
-    task.serves._tag === 'TopTask' && role.tier === 'high' && !hosts.some((a) => a.task === task.id)
+    task.serves._tag === 'TopTask' && holds(role, 'Split') && !hosts.some((a) => a.task === task.id)
   if (first || hosts.some((a) => a.role === role.role)) return { _tag: 'Host', run: run.id }
   const agent = [...b.work.agents.values()].find((x) => x.run === run.id && x.role === role.role)
   if (agent !== undefined) return { _tag: 'Agent', agent: agent.id }
-  if (!persistent) return { _tag: 'Subagent', tier: role.tier }
+  if (!persistent) return { _tag: 'Subagent', model: role.model }
   const id = b.name('agent')
-  const born = Moves.bornAgent({ id, role: role.role, run: run.id, tier: role.tier, at: when })
+  const born = Moves.bornAgent({ id, role: role.role, run: run.id, model: role.model, at: when })
   b.work = { ...b.work, agents: put(b.work.agents, id, born) }
   return { _tag: 'Agent', agent: id }
 }
@@ -144,7 +146,7 @@ const give = (
     }
   })
 
-// The Sol on the top task of a run continues in the session of the run, so the page starts no
+// The host on the top task of a run continues in the session of the run, so the page starts no
 // second terminal for it. (derived: HostOfTree owns which assignment hosts a tree, S11.)
 const hostSession = (work: Work, stepped: Stepped, at: Time): Stepped => {
   const a = stepped.created.find((id) => id.startsWith('a')) as AssignmentId | undefined
@@ -153,7 +155,7 @@ const hostSession = (work: Work, stepped: Stepped, at: Time): Stepped => {
   const task = work.tasks.get(given.task)
   const role = work.workflow.roles.get(given.role)
   const run = task?.serves._tag === 'TopTask' ? runOf(work, task.id) : undefined
-  if (run === undefined || role?._tag !== 'Model' || role.tier !== 'high') return stepped
+  if (run === undefined || role?._tag !== 'Model' || !holds(role, 'Split')) return stepped
   const taken = [...stepped.work.sessions.values()].some(
     (s) =>
       stepped.work.assignments.get(s.assignment)?.task === given.task && s.session === run.session,

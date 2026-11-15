@@ -53,7 +53,7 @@ describe('runs and sessions', () => {
     const old = await solToken(p, ok(await p.ui('task open td1')).out, 'h1', first) // ruling 10.1
     ok(await p.agent(`brief ${old}`))
     const moved = ok(await p.run('run continue h1 --quote="go on with the introduction"', second)).out
-    expect(moved).toContain('you are the Sol of its top task t1 (a1); the old token stops working. Your command: work brief a1.')
+    expect(moved).toContain('you are the host of its top task t1 (a1); the old token stops working. Your command: work brief a1.')
     const fresh = tokenIn(moved)
     expect((await p.agent(`next ${old}`)).err).toContain('the token of a1 is wrong')
     ok(await p.agent(`brief ${fresh}`))

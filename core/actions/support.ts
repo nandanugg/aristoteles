@@ -4,7 +4,7 @@
 import { join } from 'node:path'
 import { Effect } from 'effect'
 import { canAct, type Derived } from '../derived/index.ts'
-import { assignmentAt, isOpenTask, rootOf, tierOfAssignment } from '../derived/reads.ts'
+import { assignmentAt, isOpenTask, rootOf } from '../derived/reads.ts'
 import { type ActionInput, type ActionTag, intentOf } from '../schema/actions.ts'
 import { type ChoiceKind, type Refusal, refusal } from '../schema/errors.ts'
 import {
@@ -91,9 +91,6 @@ export const byOf = (w: Work, by: Author): By | undefined => {
       return undefined
   }
 }
-// The tier kept at the give of the assignment (ruling 13).
-export const tierOfAgent = (w: Work, a: Assignment): string | undefined =>
-  tierOfAssignment(w, a) ?? undefined
 export const upTo = (a: Assignment): string =>
   a.parent._tag === 'Parent' ? 'your parent' : 'the person'
 export const assignment = assignmentAt

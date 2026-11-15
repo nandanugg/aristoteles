@@ -31,9 +31,9 @@ const lockstep = (
   expect(offered).toEqual([])
 }
 
-// The reported scenario: a1 the section lead (medium, top), a2 the writer (low), a3 the linter
-// (low, briefed); the person recorded the problem sp1 on t1.
-describe('the checks of a role, a tier and a top', () => {
+// The reported scenario: a1 the section lead (a lead, top), a2 the writer, a3 the linter
+// (briefed); the person recorded the problem sp1 on t1.
+describe('the checks of a role, its acts and a top', () => {
   let d: Derived
   let lead: Author
   let linter: Author
@@ -45,13 +45,13 @@ describe('the checks of a role, a tier and a top', () => {
     linter = agent(s.linter)
   }, 60000)
 
-  test('a medium role does not split, remake or close a task', () => {
+  test('a role with no split act does not split, remake or close a task', () => {
     const file = { file: 'parts.yaml' }
     lockstep(
       d,
       lead,
       { _tag: 'SplitTask', target: { task: 't1' as never, answers: null }, content: file },
-      'a medium role does not split tasks',
+      'section-lead has no split act, so it does not split tasks',
       'Escalate',
     )
     lockstep(
@@ -62,20 +62,20 @@ describe('the checks of a role, a tier and a top', () => {
         target: { task: 't1' as never, answers: null },
         content: { file: 'task.yaml', reason: 'smaller' },
       },
-      'a medium role does not remake tasks',
+      'section-lead has no split act, so it does not remake tasks',
       'Escalate',
     )
     lockstep(
       d,
       lead,
       { _tag: 'CloseTask', target: { task: 't1' as never }, content: { reason: 'done' } },
-      'a medium role does not close tasks',
+      'section-lead has no split act, so it does not close tasks',
       'Escalate',
     )
   })
 
-  test('only the host (a high role) records or fixes a system problem', () => {
-    const host = 'the host (a Sol) records a system problem; escalate it to your parent'
+  test('only the host (a role that splits) records or fixes a system problem', () => {
+    const host = 'the host (a role that splits) records a system problem; escalate it to your parent'
     lockstep(
       d,
       lead,
@@ -92,20 +92,20 @@ describe('the checks of a role, a tier and a top', () => {
     )
   })
 
-  test('a medium role drafts and revises no direction; the person suggests in words', () => {
+  test('a role with no direct act drafts and revises no direction; the person suggests in words', () => {
     const content = { file: 'd.yaml', answers: [], why: NO_WHY }
     lockstep(
       d,
       lead,
       { _tag: 'DraftDirection', target: {}, content },
-      'a medium role does not draft directions',
+      'section-lead has no direct act, so it does not draft directions',
       'Write',
     )
     lockstep(
       d,
       lead,
       { _tag: 'ReviseDirection', target: { direction: 'tsd-writing' as never }, content },
-      'a medium role does not revise directions; escalate it, or suggest it',
+      'section-lead has no direct act, so it does not revise directions; escalate it, or suggest it',
       'Write',
     )
     lockstep(
@@ -131,26 +131,26 @@ describe('the checks of a role, a tier and a top', () => {
         target: { act: inner as never },
         content: { person: 'Nanda', quote: 'no', channel: 'chat' },
       },
-      'only the top agent (medium or high, with no parent) forwards the person',
+      'only the top agent (a lead, with no parent) forwards the person',
       'Escalate',
     )
   })
 
-  test('a person or a high role records role fitness', () => {
+  test('a person or a role that fits roles records role fitness', () => {
     lockstep(
       d,
       lead,
       { _tag: 'FitRole', target: { role: 'writer' as never }, content: { answers: 'fit.yaml' } },
-      'a person or a high role records role fitness',
+      'a person or a role that fits roles records role fitness',
       'Escalate',
     )
   })
 })
 
-// A low role reviews results only. With a change grant on the direction, the low linter is a
+// A role that assigns nothing reviews results only. With a change grant on the direction, the linter is a
 // candidate reviewer of the open draft d2 (the owner's leaf): its step now waits, as canAct
 // refuses it, where before nextFor offered an accept that the action refused.
-describe('a low role reviews no draft and no evaluation', () => {
+describe('a role that assigns nothing reviews no draft and no evaluation', () => {
   let d: Derived
   let linter: AssignmentId
   let draft: RevisionId
@@ -177,7 +177,7 @@ describe('a low role reviews no draft and no evaluation', () => {
   test('an accept or a reject of a draft', () => {
     const by: Author = { _tag: 'Agent', assignment: linter }
     const of = { _tag: 'Revision', id: draft } as const
-    const words = 'a low role does not review drafts of directions'
+    const words = 'linter assigns nothing, so it does not review drafts of directions'
     lockstep(
       d,
       by,
@@ -209,7 +209,7 @@ describe('a low role reviews no draft and no evaluation', () => {
         target: { of: { _tag: 'Evaluation', id: evaluation as never } },
         content: { reason: 'not this' },
       },
-      'a low role does not review evaluations',
+      'linter assigns nothing, so it does not review evaluations',
       'Escalate',
     )
   })

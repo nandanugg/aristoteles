@@ -12,6 +12,7 @@ import type {
   PointId,
   RejectId,
   Revision,
+  Role,
   RoleName,
   Task,
   TaskId,
@@ -46,9 +47,12 @@ import {
   taskOfTarget,
   within,
   workStop,
-  tierOfAssignment,
+  holds,
+  holdsA,
+  leads as isLead,
+  unitA,
 } from './reads.ts'
-import { fileTurn, followsDirection, highAbove } from './steps.ts'
+import { fileTurn, followsDirection, splitterAbove } from './steps.ts'
 import {
   type Derived,
   type Hold,
@@ -137,14 +141,12 @@ const topOf = (w: Work, t: Task): Task => {
   }
   return top
 }
-const rolesOfTier = (w: Work, wanted: (tier: string | undefined) => boolean): RoleName[] =>
-  [...w.workflow.roles.values()]
-    .filter((r) => wanted(r._tag === 'Model' ? r.tier : undefined))
-    .map((r) => r.role)
+const rolesWhere = (w: Work, wanted: (r: Role) => boolean): RoleName[] =>
+  [...w.workflow.roles.values()].filter(wanted).map((r) => r.role)
 const give = (task: TaskId, roles: ReadonlyArray<RoleName>): ReadonlyArray<Intent> =>
   roles.map((role) => ({ _tag: 'Give', target: { task, role } }))
 const suggest = (about: SuggestAbout): Intent => ({ _tag: 'Suggest', target: { about } })
-// The newest open top task: where the person gives a high role work that no task follows.
+// The newest open top task: where the person gives a role that directs work that no task follows.
 const openTop = (d: Derived): Task | undefined =>
   [...d.moment.work.tasks.values()].findLast(
     (t) =>
@@ -323,7 +325,7 @@ const draftItems = (d: Derived): ReadonlyArray<WaitingItem> => {
 }
 // New words of a role (ruling 2026-11-14): a draft that waits for the person shows at once (no
 // host writes words about it); a rejected draft waits for a newer draft of its role, by its
-// drafter while that agent is open, else by the person, who gives the work to a high role.
+// drafter while that agent is open, else by the person, who gives the work to a role that directs.
 const roleWordsItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   const w = d.moment.work
   const out: Array<WaitingItem> = []
@@ -357,7 +359,7 @@ const roleWordsItems = (d: Derived): ReadonlyArray<WaitingItem> => {
 
 // A drafted adjustment (ruling 14), as new words of a role: a draft that waits shows to the person
 // at once; a rejected one waits for a newer draft of its drafter while that agent is open, else
-// for the person, who gives the work to a high role.
+// for the person, who gives the work to a role that directs.
 const adjustmentItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   const w = d.moment.work
   const out: Array<WaitingItem> = []
@@ -451,14 +453,14 @@ const reviseAgain = (d: Derived, x: Revision<Direction>): ReadonlyArray<Intent> 
 // An open high assignment of the tree of a task that may act (its own brief fits): it answers the
 // task's stops and change points, so the person only waits. remakes: it must also have a change
 // act on the task, as a remake needs one.
-const highActs = (d: Derived, task: TaskId, remakes = false): boolean => {
+const splitterActs = (d: Derived, task: TaskId, remakes = false): boolean => {
   const w = d.moment.work
   return [...w.assignments.values()].some((x) => {
     const state = d.states.assignments.get(x.id)?._tag
     return (
       state !== 'Ended' &&
       state !== 'BriefOver' &&
-      tierOfAssignment(w, x) === 'high' &&
+      holdsA(w, x, 'Split') &&
       within(w, task, x.task) &&
       (!remakes || mayChange(w, x.id, task, d.moment.at))
     )
@@ -507,8 +509,8 @@ const changeItems = (d: Derived): ReadonlyArray<WaitingItem> => {
     const suggests: ReadonlyArray<Intent> = directionIdsOf(w, t.id)
       .filter((x) => openDrafts(d, x).length === 0)
       .map((direction) => suggest({ _tag: 'Direction', direction }))
-    // A high role of the tree drafts the change (steps.ts): the person waits, as for a stop.
-    const intents = highActs(d, t.id) ? [] : [...change, ...suggests]
+    // A role of the tree that directs drafts the change (steps.ts): the person waits, as for a stop.
+    const intents = splitterActs(d, t.id) ? [] : [...change, ...suggests]
     const bare: Bare = {
       _tag: 'ChangePoint',
       task: t.id,
@@ -526,14 +528,14 @@ const changeItems = (d: Derived): ReadonlyArray<WaitingItem> => {
 const stopItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   const w = d.moment.work
   const out: Array<WaitingItem> = []
-  const highRoles = rolesOfTier(w, (tier) => tier === 'high')
+  const splitters = rolesWhere(w, (r) => holds(r, 'Split'))
   for (const t of w.tasks.values()) {
     const s = d.states.tasks.get(t.id)
     if (s === undefined || isEndedTask(s) || s._tag === 'Accepted' || !workStop(w, t.id)) continue
     const owner = person(t.owner.name)
     const placement = placed(d, t.id)
     const stops = stopsOf(w, t.id).filter((x) => !stopAnswered(w, x))
-    const highOpen = highActs(d, t.id)
+    const splitterOpen = splitterActs(d, t.id)
     const top = topOf(w, t)
     if (stops.length === 0) {
       // Evaluated: the task waits for the change that its evaluation asks for.
@@ -550,7 +552,7 @@ const stopItems = (d: Derived): ReadonlyArray<WaitingItem> => {
       if (!e || changing) continue
       const directions = directionIdsOf(w, t.id)
       const remake = e.level === 'task' || directions.length === 0
-      const intents: ReadonlyArray<Intent> = (remake ? highActs(d, t.id, true) : highOpen)
+      const intents: ReadonlyArray<Intent> = (remake ? splitterActs(d, t.id, true) : splitterOpen)
         ? []
         : remake
           ? [{ _tag: 'RemakeTask', target: { task: t.id, answers: null } }]
@@ -594,11 +596,11 @@ const stopItems = (d: Derived): ReadonlyArray<WaitingItem> => {
         out.push({ ...bare, step: stepOf(d, bare, intents) } as WaitingItem)
         continue
       }
-      if (highOpen) continue
+      if (splitterOpen) continue
       const bare: Bare = { _tag: 'Stop', task: t.id, stop, for: owner, placement, at: t.when }
       const intents: ReadonlyArray<Intent> = [
         { _tag: 'Evaluate', target: { stop } },
-        ...give(top.id, highRoles),
+        ...give(top.id, splitters),
       ]
       out.push({ ...bare, step: stepOf(d, bare, intents) } as WaitingItem)
     }
@@ -606,13 +608,13 @@ const stopItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   return out
 }
 
-// A suggestion that no open high role can answer; the words about the roles, and one that asks
-// for a new direction, which the drafters of dirDrafters answer (P1). With no drafter, the person
-// gives a high role work on an open top task, and it drafts.
+// A suggestion that no open role that directs can answer; the words about the roles, and one
+// that asks for a new direction, which the drafters of dirDrafters answer (P1). With no drafter,
+// the person gives a role that directs work on an open top task, and it drafts.
 const suggestionItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   const w = d.moment.work
   const out: Array<WaitingItem> = []
-  const highRoles = rolesOfTier(w, (tier) => tier === 'high')
+  const directors = rolesWhere(w, (r) => holds(r, 'Direct'))
   for (const { y, direction } of suggestionsToDraft(d)) {
     const dir = w.directions.get(direction)
     if (dir === undefined) continue
@@ -623,16 +625,16 @@ const suggestionItems = (d: Derived): ReadonlyArray<WaitingItem> => {
         directionIdsOf(w, t.id).includes(direction),
     )
     const external = dir.source._tag === 'External'
-    const highWorks = [...w.assignments.values()].some((x) => {
+    const directorWorks = [...w.assignments.values()].some((x) => {
       const state = d.states.assignments.get(x.id)?._tag
       return (
         state !== 'Ended' &&
         state !== 'BriefOver' &&
-        tierOfAssignment(w, x) === 'high' &&
+        holdsA(w, x, 'Direct') &&
         followsDirection(d, x, direction)
       )
     })
-    if (!external && highWorks) continue
+    if (!external && directorWorks) continue
     const bare: Bare = {
       _tag: 'Suggestion',
       suggestion: y.id,
@@ -642,12 +644,12 @@ const suggestionItems = (d: Derived): ReadonlyArray<WaitingItem> => {
       placement: placed(d, top?.id),
       at: y.when,
     }
-    const intents = external || top === undefined ? [] : give(top.id, highRoles)
+    const intents = external || top === undefined ? [] : give(top.id, directors)
     out.push({ ...bare, step: stepOf(d, bare, intents) } as WaitingItem)
   }
   const drafters = dirDrafters(d)
   const top = openTop(d)
-  const intents = drafters.length > 0 || top === undefined ? [] : give(top.id, highRoles)
+  const intents = drafters.length > 0 || top === undefined ? [] : give(top.id, directors)
   const dirWide = [
     ...rolesSuggestionsWaiting(w).map((y) => ({ y, about: { _tag: 'Roles' } as const })),
     ...newDirectionsToDraft(d).map((y) => ({ y, about: { _tag: 'NewDirection' } as const })),
@@ -673,7 +675,7 @@ const deciderItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   const out: Array<WaitingItem> = []
   const deciderTags = ['DeciderWaits', 'DeciderAnyApprover', 'DeciderAcceptedUnderOld']
   const open = (id: AssignmentId) => d.states.assignments.get(id)?._tag !== 'Ended'
-  const leads = rolesOfTier(w, (tier) => tier !== undefined && tier !== 'low')
+  const leads = rolesWhere(w, isLead)
   for (const t of w.tasks.values()) {
     const s = d.states.tasks.get(t.id)
     if (s === undefined || isEndedTask(s) || s._tag === 'Accepted') continue
@@ -688,11 +690,11 @@ const deciderItems = (d: Derived): ReadonlyArray<WaitingItem> => {
       )
       if (plays) continue
       const top = topOf(w, t)
-      const low = w.workflow.roles.get(role)
-      const isLow = low?._tag === 'Model' && low.tier === 'low'
+      const r = w.workflow.roles.get(role)
+      const isLow = r?._tag === 'Model' && !isLead(r)
       if (isLow) {
         const leadWorks = [...w.assignments.values()].some(
-          (x) => open(x.id) && tierOfAssignment(w, x) !== 'low' && within(w, t.id, x.task),
+          (x) => open(x.id) && !unitA(w, x) && within(w, t.id, x.task),
         )
         if (leadWorks) continue
       }
@@ -745,7 +747,7 @@ const idleItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   const idle = openTasks.filter(
     (t) => ![...w.assignments.values()].some((x) => open(x.id) && within(w, t.id, x.task)),
   )
-  const leads = rolesOfTier(w, (tier) => tier !== undefined && tier !== 'low')
+  const leads = rolesWhere(w, isLead)
   const parentIdle = (t: Task) =>
     t.serves._tag === 'Serves' && idle.some((i) => i.id === (t.serves as { task: TaskId }).task)
   for (const t of idle.filter((x) => !parentIdle(x))) {
@@ -778,15 +780,15 @@ const idleItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   return out
 }
 
-// Ruling 10.9: a brief over its limit with no high role above it that may act: the owner of its
-// task suggests shorter words for a local direction (a high role writes them), or splits the task
-// (remakes one unit of work, B1).
+// Ruling 10.9: a brief over its limit with no role above it that splits and may act: the owner
+// of its task suggests shorter words for a local direction (a role that directs writes them), or
+// splits the task (remakes one unit of work, B1).
 const briefItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   const w = d.moment.work
   return [...w.assignments.values()].flatMap((x): ReadonlyArray<WaitingItem> => {
     const t = w.tasks.get(x.task)
     if (d.states.assignments.get(x.id)?._tag !== 'BriefOver' || t === undefined) return []
-    if (highAbove(d, x) !== undefined) return []
+    if (splitterAbove(d, x) !== undefined) return []
     const bare: Bare = {
       _tag: 'BriefOver',
       assignment: x.id,

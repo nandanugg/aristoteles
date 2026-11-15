@@ -565,13 +565,13 @@ export const adjustmentWords = (a: Adjustment): string => {
       const kind =
         a.file.kind === 'program'
           ? 'a program'
-          : `${a.file.tier}, ${a.file.persistence.persistent ? 'persistent' : 'disposable'}`
+          : `${a.file.model}, ${a.file.persistence.persistent ? 'persistent' : 'disposable'}`
       return `add the role ${a.role} (${kind})`
     }
     case 'RemoveRole':
       return `remove the role ${a.role}`
-    case 'SetTier':
-      return `${a.role} becomes a ${a.tier} role`
+    case 'SetModel':
+      return `${a.role} runs on ${a.model}`
     case 'SetPersistence':
       return (
         `${a.role} becomes ${a.persistence.persistent ? 'persistent' : 'disposable'}: ` +

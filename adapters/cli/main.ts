@@ -18,7 +18,7 @@ import {
   takeToken,
   USAGE,
 } from './args.ts'
-import { agentCallerOf, isPerson, tierOfAssignment } from './caller.ts'
+import { agentCallerOf, isPerson, isUnit } from './caller.ts'
 import type { Call, Command, Commands } from './command.ts'
 import { commands as adjust } from './commands/adjust.ts'
 import { commands as directions } from './commands/directions.ts'
@@ -130,7 +130,7 @@ const nextFor = (argv: ReadonlyArray<string>) =>
         const { work: now } = yield* readWork
         const a = yield* agentCallerOf(now, token)
         // A flag that the agent left out is its own fix, not a reason to escalate.
-        return tierOfAssignment(now, a.assignment) === 'low'
+        return isUnit(now, a.assignment)
           ? `next: when the refusal names a flag or a word that you left out, run the command again with it; else do not try other commands: run work escalate ${token} --reason="<the refusal, and what you tried>"`
           : `next: when the refusal names a command, run that; else run work next ${token} and do its first step. Do not run the same command again unchanged`
       }),

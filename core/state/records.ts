@@ -27,7 +27,6 @@ import {
   type StandardEntry,
   type Task,
   type TaskId,
-  type Tier,
   type Time,
   type Under,
   type Version,
@@ -94,24 +93,44 @@ export const roleOf = (w: Work, by: By): Role | undefined =>
   isAssignment(by) ? roleAt(w, assignmentAt(w, by).role) : undefined
 export const roleNameOf = (w: Work, by: By): RoleName | undefined =>
   isAssignment(by) ? assignmentAt(w, by).role : undefined
-export const tierOf = (role: Role | undefined): string | undefined =>
-  role?._tag === 'Model' ? role.tier : undefined
-// The tier of an assignment, kept at its give (ruling 13): the host's is high, an agent's is the
-// tier of its persistent agent, a program has none. A later change of the role's tier changes no
-// open assignment.
-export const tierOfAssignment = (w: Work, a: Assignment): Tier | null => {
+// The model of a role; a program runs none.
+export const modelOf = (role: Role | undefined): string | undefined =>
+  role?._tag === 'Model' ? role.model : undefined
+// The model of an assignment, kept at its give (ruling 13): an agent's is the model of its
+// persistent agent, the host's that of its role, and a program has none. A later change of the
+// role's model changes no open assignment.
+export const modelOfAssignment = (w: Work, a: Assignment): string | null => {
   switch (a.runs._tag) {
     case 'Host':
-      return 'high'
+      return modelOf(w.workflow.roles.get(a.role)) ?? null
     case 'Agent':
-      return w.agents.get(a.runs.agent)?.tier ?? null
+      return w.agents.get(a.runs.agent)?.model ?? null
     case 'Subagent':
     case 'NoRun':
-      return a.runs.tier
+      return a.runs.model
     case 'Program':
       return null
   }
 }
+
+// --- the acts of a role ------------------------------------------------------------------------
+
+// The authority of a role (closed.ts AUTHORITY), by the tag of its act.
+export type AuthorityAct = 'Split' | 'Direct' | 'Fit'
+export const holds = (role: Role | undefined, act: AuthorityAct): boolean =>
+  role?.acts.some((x) => x._tag === act) ?? false
+// The roles that a role gives work to (its assign act).
+export const assignsOf = (role: Role | undefined): ReadonlyArray<RoleName> =>
+  role?.acts.flatMap((x) => (x._tag === 'Assign' ? x.roles : [])) ?? []
+// A lead gives work: it holds an assign act. A model role that gives none runs one unit at a time.
+export const leads = (role: Role | undefined): boolean =>
+  role?.acts.some((x) => x._tag === 'Assign') ?? false
+export const isUnit = (role: Role | undefined): boolean => role?._tag === 'Model' && !leads(role)
+// The same reads for the role of an assignment.
+export const roleOfA = (w: Work, a: Assignment): Role | undefined => w.workflow.roles.get(a.role)
+export const holdsA = (w: Work, a: Assignment, act: AuthorityAct): boolean =>
+  holds(roleOfA(w, a), act)
+export const unitA = (w: Work, a: Assignment): boolean => isUnit(roleOfA(w, a))
 
 // --- the trees -----------------------------------------------------------------------------------
 
@@ -175,7 +194,7 @@ export const runOf = (w: Work, task: TaskId): Run | undefined => {
     return t !== undefined && (t === top || currentTask(w, t) === top)
   })
 }
-// The open Sol in the session of the run that holds the top of the task's tree.
+// The open host assignment in the session of the run that holds the top of the task's tree.
 // (derived: HostOfTree, BUILD.md 3.4 row 18, owns this state; the fold keeps it for the answerer
 // that a question stores.)
 export const hostOf = (w: Work, task: TaskId): AssignmentId | undefined => {

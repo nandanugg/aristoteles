@@ -1,4 +1,4 @@
-// The measure of a brief that the limit of a tier reads (ruling 10.9). Core imports no words, so
+// The measure of a brief that the limit of a model reads (ruling 10.9). Core imports no words, so
 // each adapter (the CLI, the server, the watcher) puts this measure into the Outside it reads.
 import { derive, type Derived } from '../../core/derived/index.ts'
 import type { AssignmentId, Time, Work } from '../../core/schema/index.ts'

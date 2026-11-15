@@ -67,10 +67,10 @@ export const REFUSALS = {
     // The store start of onboarding (BUILD.md section 3).
     noHostRole: () =>
       no(
-        'the workflow has no persistent high role; the host plays the high role of each top ' +
-          'task, and the host is a terminal (ruling 15)',
+        'the workflow has no persistent role that splits; the host plays it on each top task, ' +
+          'and the host is a terminal (ruling 15)',
         'Write',
-        `make a high role of ${CONFIG} persistent`,
+        `make a role of ${CONFIG} that splits persistent`,
       ),
     sameId: (id: string) =>
       no(`two directions have the id ${id}`, 'Write', 'give each direction its own id'),
@@ -98,7 +98,7 @@ export const REFUSALS = {
       no(
         `work config apply changes only the words of roles; this also changes: ${other}`,
         'Write',
-        `change back ${other} in ${CONFIG}; a high agent drafts such a change with work ` +
+        `change back ${other} in ${CONFIG}; an agent that fits roles drafts such a change with work ` +
           'adjust, and the person accepts it',
       ),
   },
@@ -157,6 +157,8 @@ export const REFUSALS = {
         'Write',
         'write why with --why: the card of the role shows it',
       ),
+    noModel: (role: string) =>
+      no(`the model of ${role} needs a name`, 'Write', 'name a model of the models table: --model=<name>'),
     notBlock: (what: string) =>
       no(`${CONFIG}: ${what}`, 'Write', `write each role as a block of its own under roles:`),
     notRole: (file: string, what: string) =>
@@ -187,7 +189,7 @@ const fail = <A = never>(r: Refusal): Effect.Effect<A, Refusal> => Effect.fail(r
 // --- work init, and the store start of onboarding ----------------------------------------------
 
 // What the host writes again so that the store can start: a direction, a role, or a persistent
-// high role (the host plays it).
+// role that splits (the host plays it).
 export type StartFix =
   | { readonly _tag: 'Direction'; readonly direction: DirectionId }
   | { readonly _tag: 'Role'; readonly role: RoleName }
@@ -199,7 +201,7 @@ interface StartProblem {
 
 // What keeps the accepted directions of onboarding out of a new store: the checks of work
 // direction new over the roles of the file, as no store exists yet. A workflow with no
-// persistent high role has no host (ruling 15), so work init refuses it too.
+// persistent role that splits has no host (ruling 15), so work init refuses it too.
 const startProblem = (
   config: ConfigFile,
   directions: ReadonlyArray<OnboardedDirection>,
@@ -226,7 +228,7 @@ const startProblem = (
   return undefined
 }
 const isLead = (r: RoleFile): boolean =>
-  r.kind === 'agent' && r.tier === 'high' && r.persistence.persistent
+  r.kind === 'agent' && r.acts.includes('split') && r.persistence.persistent
 // One direction against the config and the directions before it (ids and rules: what they used).
 const directionProblem = (
   config: ConfigFile,
@@ -340,7 +342,7 @@ const roleIn = (roles: Readonly<Record<string, RoleFile>>, name: string): RoleFi
 const diffConfig = (config: ConfigFile, old: ConfigFile) => {
   const text: Record<string, RoleWords> = {}
   const other: Array<string> = []
-  for (const key of ['project', 'people', 'limits', 'decide'] as const) {
+  for (const key of ['project', 'people', 'models', 'decide'] as const) {
     if (canon(config[key]) !== canon(old[key])) other.push(key)
   }
   for (const [roleName, role] of Object.entries(config.roles)) {
@@ -352,7 +354,7 @@ const diffConfig = (config: ConfigFile, old: ConfigFile) => {
     const { description, intro, responsibilities, output, ...rest } = role
     const { description: d0, intro: i0, responsibilities: r0, output: o0, ...rest0 } = was
     if (canon(rest) !== canon(rest0)) {
-      other.push(`the acts, tier, persistence or icon of ${roleName}`)
+      other.push(`the acts, model, persistence or icon of ${roleName}`)
     }
     if (canon([description, intro, responsibilities, output]) !== canon([d0, i0, r0, o0])) {
       const words = { description, intro, responsibilities }
@@ -426,14 +428,13 @@ const VAGUE = new RegExp(
 // The checks of a role's own words: its acts, its responsibilities, its output.
 export const wordsFit = (role: RoleFile): ReadonlyArray<string> => {
   const problems: Array<string> = []
-  if (role.tier === 'low' && role.acts.length !== 1) problems.push('a low role has exactly one act')
   for (const r of role.responsibilities) {
     const verb = VAGUE.exec(r)?.[1]?.toLowerCase()
     if (verb) {
       problems.push(`"${r}" uses the vague verb "${verb}"; name the exact output and command`)
     }
   }
-  if (role.acts.some((a) => 'do' in a) && !role.output) {
+  if (role.acts.some((a) => typeof a !== 'string' && 'do' in a) && !role.output) {
     problems.push('a role with a do act names its output form')
   }
   return problems
@@ -447,10 +448,11 @@ export const staticFit = (work: Work, roleName: string, role: RoleFile): Readonl
     .flatMap((s) => work.standards.get(s)?.rules ?? [])
     .flatMap((r) => work.rules.get(r) ?? [])
     .filter((r) => r.checkedBy._tag === 'Role' && r.checkedBy.role === roleName)
-  const limit = role.tier === undefined ? undefined : work.config.limits[role.tier].Review?.rules
+  const model = role.kind === 'agent' ? role.model : undefined
+  const limit = model === undefined ? undefined : work.config.models[model]?.Review?.rules
   if (limit !== undefined && rules.length > limit) {
     problems.push(
-      `${rules.length} rules name this role; the ${role.tier} limit is ${limit} ` +
+      `${rules.length} rules name this role; the limit of ${model} is ${limit} ` +
         '(work guide limits)',
     )
   }
@@ -522,7 +524,7 @@ const wordsProblem = (words: unknown): string | undefined => {
   if (other.length) {
     return (
       `${other.join(', ')}: only the words of a role change after the first start ` +
-      `(${WORD_KEYS.join(', ')}); a new act or tier needs a new store`
+      `(${WORD_KEYS.join(', ')}); a new act needs a new store, and another model an adjustment`
     )
   }
   const texts = ['description', 'intro', 'output']
@@ -564,7 +566,7 @@ const keyLine = (
       i >= from && i < to && indentOf(l) === indent && l.trimStart().startsWith(`${key}:`),
   )
 
-// aristoteles.yaml with new keys of a role (its words, its tier, its persistence): only the block
+// aristoteles.yaml with new keys of a role (its words, its model, its persistence): only the block
 // of each key in the block of the role is written again (a key that the role lacks goes at its
 // end), so the person's git diff shows only those keys. problem: what keeps the keys out.
 type Edited = { readonly text: string } | { readonly problem: string }
@@ -662,8 +664,8 @@ const rolesBlock = (lines: ReadonlyArray<string>) => {
 // block gone, or one key of a role written again.
 const withAdjustment = (file: string, a: Adjustment): Edited => {
   switch (a._tag) {
-    case 'SetTier':
-      return withRoleKeys(file, a.role, { tier: a.tier })
+    case 'SetModel':
+      return withRoleKeys(file, a.role, { model: a.model })
     case 'SetPersistence':
       return withRoleKeys(file, a.role, { persistence: a.persistence })
     case 'RetireDirection':
@@ -693,6 +695,11 @@ const adjustmentOf = (
   Effect.gen(function* () {
     const cwd = d.moment.outside.cwd
     switch (input._tag) {
+      case 'SetModel': {
+        const { role, model } = input
+        if (!isNonBlank(model)) return yield* fail(R.DraftAdjustment.noModel(role))
+        return { _tag: 'SetModel', role, model }
+      }
       case 'SetPersistence': {
         const { role, persistent, why } = input
         if (!isNonBlank(why)) return yield* fail(R.DraftAdjustment.noWhy(role))

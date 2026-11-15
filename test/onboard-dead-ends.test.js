@@ -14,6 +14,7 @@ import {
   ONBOARD_DIRECTION,
   ONBOARD_QUESTIONS,
   onboardingProject,
+  withModels,
 } from './harness.js'
 
 const ROLES = ['architect', 'section-lead', 'writer', 'linter']
@@ -117,24 +118,25 @@ describe('O1: one reader says whether the store can start', () => {
     ok(await p.nanda('onboard approve-roles', 'approve'))
   })
 
-  test('the only persistent high role cannot go, as it has no toggle', async () => {
+  test('the only persistent role that splits cannot go, as it has no toggle', async () => {
     const p = await drafted()
     const r = await p.nanda('onboard remove-role architect')
     expect(r.code).toBe(1)
-    expect(r.err).toContain('refused: architect is the role of the top task (the only persistent high role)')
+    expect(r.err).toContain('refused: architect is the role of the top task (the only persistent role that splits)')
     expect(r.err).not.toContain('work waiting')
   })
 })
 
 describe('O2: the config draft never freezes before the store', () => {
-  // The real case (2026-11-15): one role accepted, then the host changes the luna model and moves a
-  // luna role to medium. Only the roles that the change touches wait for the person again.
-  test('a tier model and a role tier change after accepts; only the touched roles wait again', async () => {
+  // The real case (2026-11-15): one role accepted, then the host changes the commands of a model
+  // and moves a role to another model. Only the roles that the change touches wait for the person
+  // again: the roles of that model, and the role that moved.
+  test('a model and the model of a role change after accepts; only the touched roles wait again', async () => {
     const p = await drafted()
     await acceptRoles(p)
-    const changed = `tiers:\n  luna: { model: haiku }\n${ONBOARD_CONFIG}`.replace(
-      'linter:\n    tier: low',
-      'linter:\n    tier: medium',
+    const changed = withModels(ONBOARD_CONFIG, { haiku: { launch: 'small --session-id {session}' } }).replace(
+      'linter:\n    model: haiku',
+      'linter:\n    model: sonnet',
     )
     p.write('draft2.yaml', changed)
     ok(await p.agent('onboard config --file=draft2.yaml'))
@@ -142,7 +144,7 @@ describe('O2: the config draft never freezes before the store', () => {
     expect(status).toContain('  architect · Accepted')
     expect(status).toContain('  section-lead · Accepted')
     expect(status).toContain('  writer · Waiting')
-    expect(status).toContain('  linter · Waiting · medium')
+    expect(status).toContain('  linter · Waiting · sonnet')
   })
 
   test('a person outside the people gets a next line that works, and the accepts stay', async () => {

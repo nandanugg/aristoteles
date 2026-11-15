@@ -57,7 +57,7 @@ export type { Watcher, WatcherOptions, WatcherTiming } from './frozen.ts'
 const TICK_MS = 2000
 
 // The words of an Open on the page, as `work task open <td>` writes them. No token: the host gets
-// the token of its Sol from its own `work wait --by=<run>` (ruling 10.1).
+// the token of its assignment from its own `work wait --by=<run>` (ruling 10.1).
 const openWords = (opened: Opened): string => {
   const w = opened.acted.dispatched.work
   const task = opened.task === null ? undefined : w.tasks.get(opened.task)
@@ -66,10 +66,10 @@ const openWords = (opened: Opened): string => {
   if (host === null) return head
   const a = w.assignments.get(host.assignment)
   const role = a === undefined ? undefined : w.workflow.roles.get(a.role)
-  const tier = role?._tag === 'Model' ? role.tier : 'program'
+  const model = role?._tag === 'Model' ? role.model : 'program'
   return [
     head,
-    `${host.assignment} · ${a?.role ?? ''} (${tier}) on ${a?.task ?? ''} ${task?.name ?? ''}`,
+    `${host.assignment} · ${a?.role ?? ''} (${model}) on ${a?.task ?? ''} ${task?.name ?? ''}`,
     `${host.assignment} is the host of ${host.run}; the host gets its token from work wait.`,
   ].join('\n')
 }
@@ -175,16 +175,8 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     open: (draft) =>
       serial(() => run(openDraft(draft as TaskDraftId)).then((opened) => openWords(opened))),
     stopSession: (sid) => serial(() => run(stopSession(SessionId.make(sid)))),
-    // Every tier has its commands (ruling 10): a persistent agent of any tier has a terminal.
-    resumeSession: (sid, tier) =>
-      serial(() => {
-        if (tier !== 'sol' && tier !== 'terra' && tier !== 'luna') {
-          return Promise.reject(
-            new Error(`"${tier}" is not a tier of a terminal (sol, terra, luna)`),
-          )
-        }
-        return run(resumeSession(SessionId.make(sid), tier))
-      }),
+    // Every model has its commands (ruling 10): a persistent agent of any model has a terminal.
+    resumeSession: (sid) => serial(() => run(resumeSession(SessionId.make(sid)))),
     fixed: (problem) => serial(() => run(fixedProblem(problem as ProblemId))),
     close: (runId, reason) => serial(() => run(closeRun(runId as RunId, reason))),
   }

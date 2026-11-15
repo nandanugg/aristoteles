@@ -60,7 +60,7 @@ describe('C-O2 decide order [section-lead, architect] when no architect works on
     ok(await p.agent(`review ${linter} r1 accept ${LINT}`))
     ok(await p.agent(`review ${lead} r1 accept ${REPEATABLE}`))
     expect(ok(await p.agent('blockers r1')).out).toContain('no accept yet by architect')
-    // The lead (medium) cannot assign a high role; the person can. Someone must be told.
+    // The lead (sonnet) cannot assign a high role; the person can. Someone must be told.
     const steps = [ok(await p.agent(`next ${lead}`)).out, ok(await p.nanda('waiting')).out].join('\n')
     expect(steps).toContain('architect')
   })

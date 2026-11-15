@@ -283,7 +283,7 @@ describe('model checks: the two links of a task (proofs.md section 4)', () => {
 describe('revisions come from git', () => {
   test('a typed base of a git source is refused, git gives the base, a new main asks for no recheck, and a low agent records no source', async () => {
     const { p, app, lead, impl } = await codeStarted()
-    expect((await p.agent(`source ${impl} page@v4`)).err).toContain('a low role records no source')
+    expect((await p.agent(`source ${impl} page@v4`)).err).toContain('a role that assigns nothing records no source')
     const base = git(app, 'rev-parse', 'main').slice(0, 12)
     git(app, 'checkout', '-q', '-b', 'fix')
     writeFileSync(`${app}/fix.txt`, `fixed\n`)

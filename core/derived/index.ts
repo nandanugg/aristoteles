@@ -38,7 +38,7 @@ export {
 } from './adjustments.ts'
 export { agentStateOf } from './catalog.ts'
 export { exampleStateOf, type ExampleState, onboardingStateOf, spotCurrent } from './onboarding.ts'
-export { tierOfAssignment } from './reads.ts'
+export { assignsOf, holds, holdsA, isUnit, leads, modelOf, modelOfAssignment, unitA } from './reads.ts'
 export { canAct } from './can.ts'
 export {
   type RoleWords,

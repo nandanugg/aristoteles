@@ -28,12 +28,9 @@ import type { Problem } from './ui-model.ts'
 import { pointId, rejectOf, versionId } from './ids.ts'
 import type { Work } from './work.ts'
 
-// The model that plays each tier.
-const MODEL = { high: 'opus', medium: 'sonnet', low: 'haiku' } as const
-
-// page: Role.playedBy. The tier's model, or the program by its name; a person plays no role.
+// page: Role.playedBy. The role's model, or the program by its name; a person plays no role.
 export const playedBy = (role: Role): string =>
-  role._tag === 'Model' ? MODEL[role.tier] : `program:${role.role}`
+  role._tag === 'Model' ? role.model : `program:${role.role}`
 
 // The words of a role as aristoteles.yaml wrote them: the Work's config keeps them once (a
 // Role keeps no copy). Every role of the workflow is in the config.

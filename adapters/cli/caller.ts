@@ -4,7 +4,7 @@
 // (open, claim, tree) is canAct's. A person command from the terminal of a real agent
 // (ARISTOTELES_SESSION set) is refused.
 import { Effect } from 'effect'
-import { assignmentAt, tierOfAssignment as keptTier } from '../../core/derived/reads.ts'
+import { assignmentAt, unitA } from '../../core/derived/reads.ts'
 import {
   type Author,
   type AssignmentId,
@@ -26,9 +26,8 @@ export interface Confirm {
   readonly show?: string
 }
 
-// The tier of an assignment, kept at its give (ruling 13); undefined: a program's role.
-export const tierOfAssignment = (work: Work, a: AssignmentId): string | undefined =>
-  keptTier(work, assignmentAt(work, a)) ?? undefined
+// An assignment of a role that assigns nothing: it runs one unit at a time.
+export const isUnit = (work: Work, a: AssignmentId): boolean => unitA(work, assignmentAt(work, a))
 
 // An agent: its token names an assignment, and the secret part must match the stored hash.
 export const verify = (

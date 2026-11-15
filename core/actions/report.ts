@@ -12,6 +12,7 @@ import {
   latestResultOf,
   resultsOf,
   reviewsOf,
+  unitA,
   untouchedOf,
   within,
 } from '../derived/reads.ts'
@@ -47,7 +48,6 @@ import {
   current,
   no,
   type RefusalsOf,
-  tierOfAgent,
 } from './support.ts'
 import type { Action } from './types.ts'
 
@@ -229,7 +229,7 @@ const reportOf = (
     const cwd = d.moment.outside.cwd
     const files = yield* Files
     const spawn = yield* Spawn
-    const low = tierOfAgent(w, a) === 'low'
+    const low = unitA(w, a)
     // A refusal of the work: a low agent escalates it (its parent decides).
     const refuse = (r: Refusal) => Effect.fail(low ? R.low(r.message) : r)
     const git = (file: string, ...args: ReadonlyArray<string>) =>

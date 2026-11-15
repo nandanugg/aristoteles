@@ -231,7 +231,7 @@ const reviseDirection = (call: Call, rest: ReadonlyArray<string>) =>
     if (token === null && (yield* isPerson)) {
       return yield* refuse(
         'the person gives direction in words: work suggest <direction, standard, or rule> --says="<the change>"; ' +
-          'a high role writes the draft, and you accept or reject it',
+          'a role that directs writes the draft, and you accept or reject it',
       )
     }
     const directionId = DirectionId.make(String(rest[0]))
@@ -284,7 +284,7 @@ const reviseDirection = (call: Call, rest: ReadonlyArray<string>) =>
   })
 
 // A model gives a company draft of a new direction its flow and examples before the accept (P10 rejected,
-// onboarding 2026-11-14): a high agent with its token, or a model run outside any task (--by).
+// onboarding 2026-11-14): an agent that directs, with its token, or a model run outside any task (--by).
 const draftExamples = (call: Call, rest: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const { args, token } = call

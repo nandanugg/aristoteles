@@ -8,7 +8,7 @@ import { AssignmentId, RunId, Time } from './ids.ts'
 export const Human = Schema.TaggedStruct('Human', { name: Schema.String })
 export type Human = typeof Human.Type
 
-// page: Agent. One run of a model (Sol, Terra, Luna) or of a check program; the tool starts it.
+// page: Agent. One run of a model or of a check program; the tool starts it.
 // A model run outside any task is one too: { name: 'assess', run: <its time> }.
 export const Agent = Schema.TaggedStruct('Agent', { name: Schema.String, run: Schema.String })
 export type Agent = typeof Agent.Type

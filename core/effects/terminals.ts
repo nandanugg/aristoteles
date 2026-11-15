@@ -14,20 +14,27 @@ import {
   type Supervised,
   type TerminalMove,
   type TerminalState,
-  type TerminalTier,
   type Time,
   type Work,
 } from '../schema/index.ts'
+import { modelOf } from '../derived/index.ts'
 
 export const seqOf = (ref: EventRef): number => Number(ref.slice(1))
 export const refOf = (seq: number): EventRef => `e${seq}` as EventRef
 export const msOf = (at: Time): number => Date.parse(at)
 export const timeOf = (ms: number): Time => new Date(ms).toISOString() as Time
 
-// The terminal tier of a persistent agent: the tier it kept from its birth (ruling 13). Any tier
-// can be persistent, so each has its commands (ruling 10).
-const TERMINAL_TIER = { high: 'sol', medium: 'terra', low: 'luna' } as const
-export const tierOf = (x: PersistentAgent): TerminalTier => TERMINAL_TIER[x.tier]
+// The model of a terminal: a persistent agent's, kept from its birth (ruling 13), or the model of
+// the role of the run's host. Any model can be persistent, so each has its commands (ruling 10).
+export const modelOfSession = (w: Work, sid: SessionId): string | undefined => {
+  const agent = agentOfSession(w, sid)
+  if (agent !== undefined) return agent.model
+  const run = [...w.runs.values()].find((r) => r.session === sid || r.formerSessions.includes(sid))
+  const host = [...w.assignments.values()].find(
+    (a) => a.runs._tag === 'Host' && a.runs.run === run?.id,
+  )
+  return host === undefined ? undefined : (modelOf(w.workflow.roles.get(host.role)) ?? undefined)
+}
 
 // The persistent agent whose terminal a session is.
 export const agentOfSession = (w: Work, sid: SessionId): PersistentAgent | undefined =>

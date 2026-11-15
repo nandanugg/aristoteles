@@ -1,12 +1,11 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
-// Rulings 7 and 9, onboarding 2026-11-14: the brief lines that copy the tier guides follow the new guide text.
 
-exports[`the Introduction: write, reject with a point, fix, accept each tier reads its own brief, and the task ends Accepted: writer brief, attempt 1 1`] = `
-"work brief a2 · writer (low) · t1 The Introduction · attempt 1 of 3
+exports[`the Introduction: write, reject with a point, fix, accept each role reads its own brief, and the task ends Accepted: writer brief, attempt 1 1`] = `
+"work brief a2 · writer (haiku) · t1 The Introduction · attempt 1 of 3
 snapshot: tsd-writing@1
 dir: <project> (run every work command in this folder)
 
-YOU ARE  low tier. You execute one unit of work, report it, and stop.
+YOU ARE  You execute one unit of work, report it, and stop.
 ROLE     Writes one TSD section from its brief.
          - Write the section under its heading in the file that WORK IN names.
          - Report it with work report as docs/tsd.md#introduction.
@@ -27,12 +26,12 @@ YOUR TURN
 STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
-exports[`the Introduction: write, reject with a point, fix, accept each tier reads its own brief, and the task ends Accepted: linter brief on r1 1`] = `
-"work brief a3 · linter (low) · t1 The Introduction
+exports[`the Introduction: write, reject with a point, fix, accept each role reads its own brief, and the task ends Accepted: linter brief on r1 1`] = `
+"work brief a3 · linter (haiku) · t1 The Introduction
 snapshot: tsd-writing@1
 dir: <project> (run every work command in this folder)
 
-YOU ARE  low tier. You execute one unit of work, report it, and stop.
+YOU ARE  You execute one unit of work, report it, and stop.
 ROLE     Checks one section against the rules in its checks.
          - Give one --evidence line for each rule in your checks.
          - Reject with one --point for each rule that the section breaks.
@@ -57,12 +56,12 @@ YOUR TURN
 STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
-exports[`the Introduction: write, reject with a point, fix, accept each tier reads its own brief, and the task ends Accepted: writer brief, attempt 2 1`] = `
-"work brief a2 · writer (low) · t1 The Introduction · attempt 2 of 3
+exports[`the Introduction: write, reject with a point, fix, accept each role reads its own brief, and the task ends Accepted: writer brief, attempt 2 1`] = `
+"work brief a2 · writer (haiku) · t1 The Introduction · attempt 2 of 3
 snapshot: tsd-writing@1
 dir: <project> (run every work command in this folder)
 
-YOU ARE  low tier. You execute one unit of work, report it, and stop.
+YOU ARE  You execute one unit of work, report it, and stop.
 ROLE     Writes one TSD section from its brief.
          - Write the section under its heading in the file that WORK IN names.
          - Report it with work report as docs/tsd.md#introduction.
@@ -85,11 +84,11 @@ STOP after one report or one escalation (a persistent agent then runs work wait 
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept the medium brief lists the ready steps with the lead token filled in: section-lead brief 1`] = `
-"work brief a1 · section-lead (medium) · t1 The Introduction
+"work brief a1 · section-lead (sonnet) · t1 The Introduction
 snapshot: tsd-writing@1
 dir: <project> (run every work command in this folder)
 
-YOU ARE  medium tier. You run one task. You give its units to low-tier roles, see that each rule gets evidence
+YOU ARE  You run one task. You give its units to the roles that you assign, see that each rule gets evidence
          from its checker, and decide each result of your makers: accept it, or reject it. You do
          not change directions; you escalate when they do not fit. Never fix an instruction in the
          project's own copy of it (a skill, a standard, a README): the change goes only to aristoteles.
@@ -109,7 +108,7 @@ READY
 
 YOUR TURN
   assign      work assign a1.<token> <task> --role=<writer|linter> [--max-attempts=<n>]
-              Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.
+              Do a unit yourself only when no role that you assign does it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.
   show        work assignment show <assignment>
               Read a child's brief before you give its command; it takes no snapshot.
   result      work result show <result>
@@ -129,7 +128,7 @@ YOUR TURN
   resolve     work resolve a1.<token> <escalation> --resolution="<the agreement, or the direction, in words>"
               Resolve an escalation of a result by your children (work waiting --for=a1 lists them); an escalation with no result is a question, and you answer it. A resolve accepts and rejects nothing; the deciders of the result then accept or reject it. When the answer needs a direction that the directions do not give, escalate to your parent instead.
   escalate    work escalate a1.<token> --reason="<what is missing, and what you tried>" [--result=<result>]
-              Escalate when the directions do not fit, when you cannot decide, or when work passes a limit whose action you cannot do (work guide limits); put the words of the refusal in the reason. When a maker used its last try on a fault, the task waits for the evaluation of the high role; give no new maker before work next says so.
+              Escalate when the directions do not fit, when you cannot decide, or when work passes a limit whose action you cannot do (work guide limits); put the words of the refusal in the reason. When a maker used its last try on a fault, the task waits for the evaluation of the role above that splits; give no new maker before work next says so.
   free        work free a1.<token> <child assignment>
               Only when the child's subagent stopped in the middle; the next work brief claims it again.
   finish      work finish a1.<token> [<child assignment>]
@@ -145,7 +144,6 @@ When the task is accepted, run each step in READY (put the work on its base, fin
 (read-only: no snapshot, no claim)"
 `;
 
-// Nanda, 2026-11-15: the host at onboarding has no token, so the next line asks for the person first.
 exports[`identity: tokens and the terminal an agent with no terminal cannot act as the person: person command from an agent shell 1`] = `
 "refused: this is a person command; a person runs it at a terminal
 next: ask the person to type it at their terminal; an agent command takes its token first: work <command> <token> ..."
@@ -166,9 +164,9 @@ exports[`what was reviewed is what was reported a review of work that changed af
 next: escalate that the work changed after r1 was reported"
 `;
 
-exports[`tiers and trees a tier assigns only lower tiers: medium assigns medium 1`] = `
-"refused: a medium role assigns only lower tiers; "section-lead" is medium
-next: give a role of a lower tier, or escalate for a higher one"
+exports[`assign acts and trees a role assigns only the roles of its assign act: a lead assigns a role that it does not name 1`] = `
+"refused: section-lead assigns only writer, linter; section-lead is not one
+next: give writer or linter, or escalate"
 `;
 
 exports[`a split task joins its parts the joining result waits until every part is accepted: task tree after split 1`] = `

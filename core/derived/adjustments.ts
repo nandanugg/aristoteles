@@ -12,11 +12,10 @@ import {
   type NonBlank,
   type RoleName,
   type Suggestion,
-  type Tier,
   type Time,
   type Work,
 } from '../schema/index.ts'
-import { refOf } from './reads.ts'
+import { holds, refOf } from './reads.ts'
 import type { Derived } from './types.ts'
 
 export interface AdjustmentDraft {
@@ -99,29 +98,27 @@ export const rolesSuggestionsWaiting = (w: Work): ReadonlyArray<Suggestion> => {
 const no = (message: string, words: string): Refusal =>
   refusal(message, 'Pick', words as NonBlank)
 
-// The model roles after a role adjustment: each one's tier and persistence.
+// The model roles after a role adjustment: whether each one splits, and its persistence.
 interface ModelRole {
-  readonly tier: Tier
+  readonly splits: boolean
   readonly persistent: boolean
 }
 const modelRolesAfter = (w: Work, a: Adjustment): ReadonlyMap<string, ModelRole> => {
   const roles = new Map<string, ModelRole>()
   for (const r of w.workflow.roles.values()) {
     if (r._tag !== 'Model') continue
-    roles.set(r.role, { tier: r.tier, persistent: r.persistence._tag === 'Persistent' })
+    roles.set(r.role, { splits: holds(r, 'Split'), persistent: r.persistence._tag === 'Persistent' })
   }
   const was = roles.get('role' in a ? a.role : '')
   switch (a._tag) {
     case 'AddRole':
       if (a.file.kind === 'agent') {
-        roles.set(a.role, { tier: a.file.tier, persistent: a.file.persistence.persistent })
+        const splits = a.file.acts.includes('split')
+        roles.set(a.role, { splits, persistent: a.file.persistence.persistent })
       }
       break
     case 'RemoveRole':
       roles.delete(a.role)
-      break
-    case 'SetTier':
-      if (was !== undefined) roles.set(a.role, { ...was, tier: a.tier })
       break
     case 'SetPersistence':
       if (was !== undefined) roles.set(a.role, { ...was, persistent: a.persistence.persistent })
@@ -132,7 +129,7 @@ const modelRolesAfter = (w: Work, a: Adjustment): ReadonlyMap<string, ModelRole>
   return roles
 }
 
-// The roles that host a run: the host plays the high role of each top task (ruling 15).
+// The roles that host a run: the host plays the role that splits each top task (ruling 15).
 const hostRoles = (w: Work): ReadonlySet<string> =>
   new Set([
     ...[...w.assignments.values()].filter((a) => a.runs._tag === 'Host').map((a) => a.role),
@@ -151,10 +148,14 @@ const roleInUse = (d: Derived, role: RoleName): string | undefined => {
   )
   if (agent !== undefined) return `the agent ${agent.id} plays it`
   const names = (r: (typeof w.config.roles)[string]) =>
-    r.acts.some((act) =>
-      [...('review' in act ? act.review : []), ...('approve' in act ? act.approve : [])].includes(
-        role,
-      ),
+    r.acts.some(
+      (act) =>
+        typeof act !== 'string' &&
+        [
+          ...('review' in act ? act.review : []),
+          ...('approve' in act ? act.approve : []),
+          ...('assign' in act ? act.assign : []),
+        ].includes(role),
     )
   const actor = Object.entries(w.config.roles).find(([name, r]) => name !== role && names(r))
   if (actor !== undefined) return `an act of ${actor[0]} names it`
@@ -204,7 +205,12 @@ export const adjustmentProblem = (d: Derived, a: Adjustment): Refusal | undefine
   } else if (role === undefined) {
     return no(`there is no role ${a.role}`, 'name a role of the workflow')
   } else if (role._tag === 'Program' && a._tag !== 'RemoveRole') {
-    return no(`${a.role} is a program; it has no tier and no persistence`, 'name a role of a model')
+    return no(`${a.role} is a program; it has no model and no persistence`, 'name a role of a model')
+  }
+  const model = a._tag === 'SetModel' ? a.model : a._tag === 'AddRole' && a.file.kind === 'agent' ? a.file.model : undefined
+  if (model !== undefined && !Object.hasOwn(w.config.models, model)) {
+    const names = Object.keys(w.config.models).join(', ')
+    return no(`there is no model ${model} in the models table`, `name one of ${names}`)
   }
   if (a._tag === 'RemoveRole') {
     const used = roleInUse(d, a.role)
@@ -214,26 +220,17 @@ export const adjustmentProblem = (d: Derived, a: Adjustment): Refusal | undefine
   }
   if (a._tag === 'SetPersistence' && !a.persistence.persistent && hostRoles(w).has(a.role)) {
     return no(
-      `${a.role} is the role of the host, which plays the high role of each top task; the host ` +
+      `${a.role} is the role of the host, which splits each top task; the host ` +
         'is a terminal, so its role stays persistent',
       'keep the role of the host persistent',
     )
   }
   const after = [...modelRolesAfter(w, a).values()]
-  if (a._tag === 'SetTier' || a._tag === 'RemoveRole') {
-    const empty = (['high', 'medium', 'low'] as const).find((t) => !after.some((r) => r.tier === t))
-    if (empty !== undefined) {
-      return no(
-        `the workflow would have no ${empty} role; every workflow has the three tiers`,
-        `keep a ${empty} role`,
-      )
-    }
-  }
-  if (!after.some((r) => r.tier === 'high' && r.persistent)) {
+  if (!after.some((r) => r.splits && r.persistent)) {
     return no(
-      'the workflow would have no persistent high role; the host plays the high role of each top ' +
+      'the workflow would have no persistent role that splits; the host plays it on each top ' +
         'task, and the host is a terminal',
-      'keep a persistent high role',
+      'keep a persistent role that splits',
     )
   }
   return undefined

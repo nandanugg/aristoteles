@@ -8,43 +8,43 @@ import { checkNextCanAct, main } from './code.js'
 // canAct (BUILD.md 4.2). Without it, nothing here changes.
 const CHECK_NEXT = process.env.WORK_CHECK_NEXT === '1'
 
-// Ruling 2026-11-14 (brief limits leave room for the guide): the limits sit above the tier's
-// guide text, which counts in the brief. Ruling 7, onboarding 2026-11-14: each agent role says its
-// persistence and its icon; the high and medium roles keep their terminals, the low ones run as
-// subagents.
+// Ruling 2026-11-14 (brief limits leave room for the guide): the limits of a model sit above the
+// text of its guide, which counts in the brief. Ruling 7, onboarding 2026-11-14: each agent role
+// says its persistence and its icon; the leads keep their terminals, the others run as subagents.
+// Owner, 2026-11-15: a role names its model, and its acts say what it may do.
 export const WORK_YAML = `people:
   - name: Nanda
-limits:
-  low:    { Assignment: { briefChars: 6000, attempts: 3 }, Review: { rules: 5 } }
-  medium: { Assignment: { briefChars: 12000 }, Review: { rules: 12 } }
-  high:   { Assignment: { briefChars: 16000 }, Review: { rules: 20 } }
+models:
+  haiku:  { limits: { Assignment: { briefChars: 6000, attempts: 3 }, Review: { rules: 5 } } }
+  sonnet: { limits: { Assignment: { briefChars: 12000 }, Review: { rules: 12 } } }
+  opus:   { limits: { Assignment: { briefChars: 16000 }, Review: { rules: 20 } } }
 roles:
   architect:
-    tier: high
+    model: opus
     description: Keeps the TSD on its directions - splits it and suggests direction changes.
     intro: You keep the TSD on its directions.
     responsibilities:
       - Split the TSD into sections with work task split.
       - Suggest a direction change with work direction revise when a Reject has no rule.
-    acts: [{ approve: [section-lead, writer] }]
+    acts: [{ approve: [section-lead, writer] }, { assign: [section-lead, writer, linter] }, split, direct, fit]
     persistence:
       persistent: true
       why: It holds the TSD for the whole project and starts the lower roles.
     icon: compass
   section-lead:
-    tier: medium
+    model: sonnet
     description: Runs one section - assigns the writer and the linter, and decides the section.
     intro: You run one section until its rules have evidence, or you escalate.
     responsibilities:
       - Assign the writer, then the linter on each result, with work assign.
       - Escalate with work escalate when the directions do not fit.
-    acts: [{ approve: [writer] }]
+    acts: [{ approve: [writer] }, { assign: [writer, linter] }]
     persistence:
       persistent: true
       why: It runs one section through its writers and linters until it decides the section.
     icon: layers
   writer:
-    tier: low
+    model: haiku
     description: Writes one TSD section from its brief.
     intro: You write one section under its heading.
     responsibilities:
@@ -57,7 +57,7 @@ roles:
       why: It writes one section once, from its brief.
     icon: feather
   linter:
-    tier: low
+    model: haiku
     description: Checks one section against the rules in its checks.
     intro: For each rule in your checks, say where you looked and what you saw.
     responsibilities:
@@ -69,6 +69,21 @@ roles:
       why: It checks one section once against the rules in its checks.
     icon: shield-check
 `
+
+// The text of a config with the commands of some models put into its models table: each model
+// line (`  opus: { limits: ... }`) becomes a block with the commands, and keeps its limits.
+export const withModels = (yaml, commands) =>
+  Object.entries(commands).reduce(
+    (text, [model, fields]) =>
+      text.replace(new RegExp(`^  ${model}: +\\{ ?(.*?) ?\\}$`, 'm'), (_all, inner) =>
+        [
+          `  ${model}:`,
+          ...Object.entries(fields).map(([k, v]) => `    ${k}: ${JSON.stringify(v)}`),
+          ...(inner ? [`    ${inner}`] : []),
+        ].join('\n'),
+      ),
+    yaml,
+  )
 
 // Nanda, 2026-11-15: a direction has a flow. The files of a project whose instructions reach a
 // real document (an instruction, the skill of the writer, the template that it fills).
@@ -293,15 +308,15 @@ export const tokenIn = (text) => text.match(/work brief (a\d+\.[a-z0-9]+)/)[1]
 export const HOST_PANE = { TMUX: '/tmp/ar-test-person.sock,1,0', TMUX_PANE: '%9' }
 export const HOST = { env: HOST_PANE }
 
-// The token of a host's Sol after the open of its top task: ruling 10.1, the host gets it from
+// The token of a host's assignment after the open of its top task: ruling 10.1, the host gets it from
 // `work wait --by=<run>` in its pane. The words of the open (_opened) do not hold it; the callers
 // pass them, so that each call shows the open that comes first.
 export async function solToken(p, _opened, run = 'h1', where = HOST) {
   return tokenIn(ok(await p.run(`wait --by=${run} --seconds=1`, where)).out)
 }
 
-// The token of an agent after its assign: the assign of a low role prints it; a real agent (a
-// medium or high role in a project of the UI) gets a new token in the launch command of the
+// The token of an agent after its assign: the assign of a disposable role prints it; a real agent
+// (a persistent role in a project of the UI) gets a new token in the launch command of the
 // terminal that the UI starts for it (ruling 10.1), as this does.
 export async function agentToken(p, assigned) {
   if (/work brief a\d+\./.test(assigned)) return tokenIn(assigned)
@@ -382,34 +397,36 @@ export async function reported(files) {
 // onboarding 2026-11-14: persistence and icon, as in WORK_YAML; the gate has an icon only.
 export const CODE_YAML = `people:
   - name: Nanda
-limits:
-  low: { Assignment: { attempts: 3 } }
+models:
+  haiku: { limits: { Assignment: { attempts: 3 } } }
+  sonnet: {}
+  opus: {}
 # the harness drafts the directions in code-directions/*.yaml
 roles:
   tech-lead:
-    tier: high
+    model: opus
     description: Keeps the fixes on their directions, and evaluates a fix that fails.
     intro: You keep the fixes on their directions.
     responsibilities:
       - Evaluate a fix whose implementer used its last try on a fault, with work evaluate.
-    acts: [{ approve: [lead, implementer] }]
+    acts: [{ approve: [lead, implementer] }, { assign: [lead, implementer] }, split, direct, fit]
     persistence:
       persistent: true
       why: It keeps every fix of the project on its directions and evaluates a fix that fails.
     icon: compass
   lead:
-    tier: medium
+    model: sonnet
     description: Runs one fix - assigns the implementer and decides the fix.
     intro: You run one fix.
     responsibilities:
       - Assign the implementer with work assign.
-    acts: [{ approve: [implementer] }]
+    acts: [{ approve: [implementer] }, { assign: [implementer] }]
     persistence:
       persistent: true
       why: It runs one fix through the implementer until it decides the fix.
     icon: layers
   implementer:
-    tier: low
+    model: haiku
     description: Makes one fix as one commit in the workspace repo.
     intro: You make one fix.
     responsibilities:

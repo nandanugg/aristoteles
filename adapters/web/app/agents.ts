@@ -49,7 +49,9 @@ const roleIcon = (icons: Readonly<Record<string, string>>, name: string, size = 
     stroke-linejoin="round" dangerouslySetInnerHTML=${{ __html: icons[name] ?? '' }}></svg>`
 
 const persistenceWord = (r: RoleCardData): string =>
-  r.persistence === null ? 'program' : r.persistence.persistent ? 'persistent' : 'disposable'
+  r._tag === 'Program' ? 'program' : r.persistence.persistent ? 'persistent' : 'disposable'
+// The model of a card in words: a program runs none.
+const modelWord = (r: RoleCardData): string => (r._tag === 'Agent' ? r.model : 'none')
 
 // The acts of the window of a role on the agents page (the gear's window has none); undefined:
 // the act was refused, and the window stays.
@@ -58,33 +60,35 @@ export interface RoleActs {
   readonly accept: (role: string) => Done
   readonly revise: (role: string, words: string) => Done
   readonly remove: (role: string) => Done
+  readonly model: (role: string, model: string) => Done
 }
 
 // A role of the top task has no toggle, and no Remove either: the store cannot start without it
 // (the same predicate: onlyLead). A program has no toggle and can go.
-const removable = (r: RoleCardData): boolean => r.persistence === null || r.toggle
+const removable = (r: RoleCardData): boolean => r._tag === 'Program' || r.toggle
 
 interface GridProps {
   readonly roles: ReadonlyArray<RoleCardData>
+  readonly models?: ReadonlyArray<string> // the names of the models table
   readonly onToggle?: (role: string, persistent: boolean) => void
   readonly acts?: RoleActs
 }
 // The cards in a grid; a click opens the window of the role. A toggle sets the persistence: the
 // role of the top task has none (ruling 15).
-export function RoleGrid({ roles, onToggle, acts }: GridProps) {
+export function RoleGrid({ roles, models = [], onToggle, acts }: GridProps) {
   const icons = useRoleIcons()
   const [open, setOpen] = useState<string | null>(null)
   const shown = roles.find((r) => r.role === open)
   const checked = (e: Event) => (e.currentTarget as HTMLInputElement).checked
   return html`<div class="role-grid">
-    ${roles.map((r) => html`<section class=${`card role-card ${r.tier}`} aria-label=${r.role}
+    ${roles.map((r) => html`<section class="card role-card" aria-label=${r.role}
       onClick=${() => setOpen(r.role)}>
-      <div class="card-head"><span class="tier-icon">${roleIcon(icons, r.icon)}</span>
+      <div class="card-head"><span class="role-mark">${roleIcon(icons, r.icon)}</span>
         <strong class="role-name">${r.role}</strong>
         ${r.state === 'accepted'
           ? html`<span class="accepted" role="img" aria-label="Accepted">${icon(ICONS.check, 14)}
             </span>` : ''}
-        ${r.toggle && onToggle && r.persistence
+        ${r._tag === 'Agent' && r.toggle && onToggle
           ? html`<label class="switch" onClick=${(e: Event) => e.stopPropagation()}>
             <input type="checkbox" checked=${r.persistence.persistent}
               aria-label=${`${r.role} is persistent`}
@@ -93,14 +97,14 @@ export function RoleGrid({ roles, onToggle, acts }: GridProps) {
           : html`<span class="tags">${persistenceWord(r)}</span>`}
       </div>
       <div class="card-body">
-        <div class="kv"><span class="k">Model</span><span class="v">${r.model ?? 'none'}</span>
+        <div class="kv"><span class="k">Model</span><span class="v">${modelWord(r)}</span>
           </div>
         <div class="now"><${Inline} text=${r.summary} /></div>
         ${r.request
           ? html`<div class="waits">Your words wait for the host: ${r.request}</div>` : ''}
       </div>
     </section>`)}
-    ${shown ? html`<${RoleWindow} role=${shown} icons=${icons} acts=${acts}
+    ${shown ? html`<${RoleWindow} role=${shown} icons=${icons} acts=${acts} models=${models}
       onClose=${() => setOpen(null)} />` : ''}
   </div>`
 }
@@ -109,12 +113,13 @@ interface WindowProps {
   readonly role: RoleCardData
   readonly icons: Readonly<Record<string, string>>
   readonly acts: RoleActs | undefined
+  readonly models: ReadonlyArray<string>
   readonly onClose: () => void
 }
-// The window of one role: the model and the launch command read only from the settings, the
-// words, the persistence with its reason; on the agents page a text box, Accept (the box is
-// empty), Revise (it has words), and Remove.
-function RoleWindow({ role: r, icons, acts, onClose }: WindowProps) {
+// The window of one role: its model (on the agents page, a choice of the models table), the
+// launch command of the model read only, the words, the persistence with its reason; on the
+// agents page a text box, Accept (the box is empty), Revise (it has words), and Remove.
+function RoleWindow({ role: r, icons, acts, models, onClose }: WindowProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [words, setWords] = useState('')
   useEffect(() => {
@@ -129,17 +134,22 @@ function RoleWindow({ role: r, icons, acts, onClose }: WindowProps) {
   return html`<div class="modal-back" onClick=${back}>
     <div class="modal role-window" role="dialog" aria-modal="true" aria-label=${r.role}
       tabindex="-1" ref=${ref}>
-      <h2 class=${r.tier}><span class="tier-icon">${roleIcon(icons, r.icon, 18)}</span>
-        ${r.role}</h2>
-      <div class="kv"><span class="k">Model</span><span class="v">${r.model ?? 'none'}</span>
-        </div>
-      <div class="kv"><span class="k">Launch</span><code class="v">${r.launch ?? 'none'}</code>
+      <h2><span class="role-mark">${roleIcon(icons, r.icon, 18)}</span>${r.role}</h2>
+      ${acts && r._tag === 'Agent' && models.length
+        ? html`<label class="kv"><span class="k">Model</span>
+          <select class="v" value=${r.model} aria-label=${`the model of ${r.role}`}
+            onChange=${(e: Event) => acts.model(r.role, (e.currentTarget as HTMLSelectElement).value)}>
+            ${models.map((m) => html`<option value=${m}>${m}</option>`)}
+          </select></label>`
+        : html`<div class="kv"><span class="k">Model</span><span class="v">${modelWord(r)}</span>
+          </div>`}
+      <div class="kv"><span class="k">Launch</span><code class="v">${(r._tag === 'Agent' && r.launch) || 'none'}</code>
         </div>
       <div class="section-title">Summary</div><${Markdown} text=${r.summary} />
       ${r.description !== r.summary ? html`<div class="section-title">Description</div>
         <${Markdown} text=${r.description} />` : ''}
       <div class="section-title">Persistence</div>
-      ${r.persistence ? html`<p><strong>${persistenceWord(r)}</strong>: <${Inline}
+      ${r._tag === 'Agent' ? html`<p><strong>${persistenceWord(r)}</strong>: <${Inline}
         text=${r.persistence.why} /></p>`
         : html`<p>A program runs in the CLI, never in a terminal.</p>`}
       ${r.found ? html`<p class="muted">The project has it: <code>${r.found}</code></p>` : ''}

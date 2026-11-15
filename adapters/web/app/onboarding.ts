@@ -247,6 +247,8 @@ function Agents({ view }: { view: ViewData }) {
     revise: (role: string, words: string) =>
       attempt(() => postOnboarding({ act: 'revise-role', role, words }))(),
     remove: (role: string) => attempt(() => postOnboarding({ act: 'remove-role', role }))(),
+    model: (role: string, model: string) =>
+      attempt(() => postOnboarding({ act: 'model', role, model }))(),
   }
   const start = attempt(async () => {
     setConfirm(false)
@@ -258,7 +260,8 @@ function Agents({ view }: { view: ViewData }) {
     <p class="muted">A persistent role gets a terminal of its own, for the whole project; a
       disposable role runs as a subagent of a terminal. The role of the top task stays persistent.
       Open a card to accept, revise, or remove the role.</p>
-    ${view.roles.length ? html`<${RoleGrid} roles=${view.roles} onToggle=${toggle} acts=${acts} />`
+    ${view.roles.length ? html`<${RoleGrid} roles=${view.roles} models=${view.models} onToggle=${toggle}
+      acts=${acts} />`
       : html`<p class="muted">The host has not drafted the roles yet.</p>`}
     <div class="item-actions"><button class="btn primary" disabled=${view.start.state !== 'open'}
       onClick=${() => setConfirm(true)}>Approve all</button></div>

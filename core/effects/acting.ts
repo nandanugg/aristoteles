@@ -48,14 +48,14 @@ export const nowMs: Effect.Effect<number, never, Now> = Now.use((now) =>
   Effect.map(now.read, (at) => Date.parse(at)),
 )
 
-// The tiers of the settings now: they can change after work start (the page, the roles that the
-// person accepts). Settings that do not read have no tiers, and the log says why.
-export const tiersNow = Effect.gen(function* () {
+// The models of the settings now: they can change after work start (the page, the roles that
+// the person accepts). Settings that do not read have no models, and the log says why.
+export const modelsNow = Effect.gen(function* () {
   const { cwd } = yield* Dir
   return yield* readSettings(cwd).pipe(
-    Effect.map((s) => s.tiers),
+    Effect.map((s) => s.models),
     Effect.catch((e) =>
-      Effect.as(logLine(`the settings: ${e.message}`), readSettingsOf({}).tiers),
+      Effect.as(logLine(`the settings: ${e.message}`), readSettingsOf({}).models),
     ),
   )
 })

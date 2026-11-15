@@ -207,7 +207,7 @@ export const confirmForward = (
 // --- the workflow -----------------------------------------------------------------------------
 
 // Workflow.RoleWordsChanged: only the words of roles change (description, intro, responsibilities,
-// output), never their acts or tiers.
+// output), never their acts or models.
 export const changeRoleWords = (
   config: ConfigFile,
   roles: Readonly<Record<string, RoleWords>>,
@@ -218,8 +218,8 @@ export const changeRoleWords = (
   ),
 })
 
-// The accept of an adjustment of a role (ruling 14): a new role, a removed one, another tier or
-// another persistence. Every other key of the role stays as it is.
+// The accept of an adjustment of a role (ruling 14): a new role, a removed one, another model
+// or another persistence. Every other key of the role stays as it is.
 export const adjustRoles = (config: ConfigFile, adjustment: Adjustment): ConfigFile => {
   const roles = { ...config.roles }
   const agentRole = (name: string): Extract<RoleFile, { readonly kind: 'agent' }> | undefined => {
@@ -233,9 +233,9 @@ export const adjustRoles = (config: ConfigFile, adjustment: Adjustment): ConfigF
     case 'RemoveRole':
       delete roles[adjustment.role]
       break
-    case 'SetTier': {
+    case 'SetModel': {
       const r = agentRole(adjustment.role)
-      if (r !== undefined) roles[adjustment.role] = { ...r, tier: adjustment.tier }
+      if (r !== undefined) roles[adjustment.role] = { ...r, model: adjustment.model }
       break
     }
     case 'SetPersistence': {

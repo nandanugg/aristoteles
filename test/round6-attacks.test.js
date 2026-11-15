@@ -148,7 +148,7 @@ describe('B6 split: the parts of a task with a section', () => {
     // whose parts share the section is refused with a next step that works.
     const next = ok(await p.agent(`next ${arch}`)).out
     expect(next).not.toContain('split t1 first')
-    expect(next).toContain('run t1 with a medium role')
+    expect(next).toContain('run t1 with a lead')
     p.write('parts.yaml', '- { name: Problem, text: Write the problem. }\n- { name: Impact, text: Write the impact on the merchant. }\n')
     const split = await p.agent(`task split ${arch} t1 --file=parts.yaml`)
     expect(split.err).toContain('t1 has the section introduction, so it is one unit of work; it is not split')

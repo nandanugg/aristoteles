@@ -3,6 +3,7 @@
 // and the decisions. It runs in a process of its own (test/page.test.js starts it): the browser
 // tool can end its whole process group, and that must not end the test run.
 import { expect } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { startServer } from '../code.js'
@@ -10,6 +11,13 @@ import { INTRO_V1, ok, tokenIn, withWriter } from '../harness.js'
 
 const browser = await chromium.launch()
 
+// Waits until a check of the files holds, or fails after 5 s.
+const waitFor = async (check) => {
+  for (const end = Date.now() + 5000; !check(); ) {
+    if (Date.now() > end) throw new Error('a check of the files did not hold in 5 s')
+    await new Promise((done) => setTimeout(done, 100))
+  }
+}
 // PAGE_SHOTS=<folder>: screenshots of a page at a wide and a phone width, for a person to see.
 const shot = async (page, name) => {
   if (!process.env.PAGE_SHOTS) return
@@ -58,8 +66,8 @@ const open = async () => {
       await page.waitForSelector('.crumb', { state: 'hidden' })
       expect(await page.textContent('.card.task .task-title')).toBe('t1The Introduction')
       expect(await page.textContent('.card.task .now')).toBe('in review')
-      expect(await page.textContent('.card.task .tags')).toBe('Terra · a1')
-      expect(await page.textContent('.card.work .tags')).toBe('a2 writer · Luna')
+      expect(await page.textContent('.card.task .tags')).toBe('sonnet · a1')
+      expect(await page.textContent('.card.work .tags')).toBe('a2 writer · haiku')
       // Only what runs: the linter that reviews r1 now, and the decider that r1 waits for.
       expect(await page.locator('.card.review').allTextContents()).toEqual([
         'REVIEWa3 linterreviews', 'DECIDEarchitect or section-leadwaits'])
@@ -367,7 +375,7 @@ const open = async () => {
 {
   // Onboarding (rulings 1 to 6, 11, 15, onboarding 2026-11-14): the directions page with each
   // state, the question form, Revise, Remove and approve all; then the agents page, its grid and
-  // the window of a role; approve all roles starts the store. Then the gear: three tiers with a
+  // the window of a role; approve all roles starts the store. Then the gear: the commands of each
   // model, the entries of the directions and the agents (robot icon), and the sixth decision.
   const {
     FLOW_FILES, ONBOARD_CONFIG, ONBOARD_DIRECTION, ONBOARD_NEW, ONBOARD_QUESTIONS, git, onboardingProject,
@@ -545,17 +553,24 @@ const open = async () => {
     await page.waitForSelector('.role-card .role-icon path, .role-card .role-icon rect')
     expect(icons).toHaveLength(1)
     expect(await page.locator('.role-card .role-name').allTextContents()).toEqual(['linter', 'architect', 'section-lead', 'writer'])
-    expect(await page.textContent('.role-card:has-text("architect") .kv')).toBe('ModelOpus')
+    expect(await page.textContent('.role-card:has-text("architect") .kv')).toBe('Modelopus')
     await shot(page, 'agents')
     // Ruling 15: the role of the top task has no toggle; ruling 7: a toggle sets the persistence.
     expect(await page.locator('.role-card:has-text("architect") input[type=checkbox]').count()).toBe(0)
     await page.click('[aria-label="writer is persistent"]')
     await page.waitForFunction(() => document.querySelector('[aria-label="writer is persistent"]')?.checked === true)
-    // The window of a role: model and launch read only, the words, the persistence and why.
+    // The window of a role: a choice of the model, the launch read only, the words, the
+    // persistence and why.
     await page.click('.role-card:has-text("section-lead")')
     const win = '[role=dialog][aria-label="section-lead"]'
     const words = await page.textContent(win)
-    for (const part of ['ModelSonnet', 'Launchnone', 'Runs one section.', 'persistent: It runs one section through its writers and linters until it decides the section.']) {
+    expect(await page.inputValue(`${win} select`)).toBe('sonnet')
+    // The person revises the model of the role in the config draft; the card follows.
+    await page.selectOption(`${win} select`, 'opus')
+    await waitFor(() => Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.draft.yaml'), 'utf8')).roles['section-lead'].model === 'opus')
+    await page.selectOption(`${win} select`, 'sonnet')
+    await waitFor(() => Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.draft.yaml'), 'utf8')).roles['section-lead'].model === 'sonnet')
+    for (const part of ['Launchnone', 'Runs one section.', 'persistent: It runs one section through its writers and linters until it decides the section.']) {
       expect(words).toContain(part)
     }
     expect(await page.isDisabled(`${win} .modal-foot >> text=Revise`)).toBe(true)
@@ -573,9 +588,10 @@ const open = async () => {
     await page.waitForSelector(lead, { state: 'detached' })
     // O1: the host drops the linter, which checks rules of TSD writing. Every card is accepted,
     // but the page says that the store cannot start, why, and who fixes it; Approve all waits.
-    p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, ''))
+    p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, '').replaceAll(', linter]', ']'))
     ok(await p.agent('onboard config --file=draft2.yaml'))
-    for (const role of ['writer']) ok(await p.nanda(`onboard accept-role ${role}`))
+    // The assign acts of the architect and the lead named the linter, so their cards changed too.
+    for (const role of ['writer', 'architect', 'section-lead']) ok(await p.nanda(`onboard accept-role ${role}`))
     await page.waitForSelector('.start-blocked')
     expect(await page.textContent('.start-blocked')).toContain(
       'The store cannot start: rule one-topic of one-thing is checked by linter, which is not an accepted role. ' +
@@ -593,7 +609,7 @@ const open = async () => {
     // The host's step: it writes the linter again, and the person accepts it.
     p.write('draft.yaml', ONBOARD_CONFIG)
     ok(await p.agent('onboard config --file=draft.yaml'))
-    ok(await p.nanda('onboard accept-role linter'))
+    for (const role of ['linter', 'architect', 'section-lead']) ok(await p.nanda(`onboard accept-role ${role}`))
     await page.waitForSelector('.start-blocked', { state: 'detached' })
     await page.waitForFunction(() => document.querySelectorAll('.role-card .accepted').length === 4)
     await page.click('.agents-page >> text=Approve all')
@@ -602,13 +618,13 @@ const open = async () => {
     await page.click('[role=alertdialog] .btn.primary')
     await page.waitForSelector('text=No project yet')
 
-    // The gear (ruling 13): settings with three tiers, each with a model (ruling 10).
+    // The gear (ruling 13): settings with the commands of each model of the models table (ruling 10).
     await page.click('[aria-label="Settings"]')
     await page.waitForSelector('.gear')
     expect(await page.locator('.gear .tab').allTextContents()).toEqual(['Settings', 'Directions', 'Agents'])
     expect(await page.locator('.gear .tab:has-text("Agents") svg').count()).toBe(1)
-    expect(await page.locator('.tier-set legend').allTextContents()).toEqual(['Sol (high)', 'Terra (medium)', 'Luna (low)'])
-    expect(await page.locator('[aria-label="luna model"]').count()).toBe(1)
+    expect(await page.locator('.model-set legend').allTextContents()).toEqual(['haiku', 'sonnet', 'opus'])
+    expect(await page.locator('[aria-label="haiku launch"]').count()).toBe(1)
     // The directions entry: the current directions and a text box that stores a suggestion.
     await page.click('.gear .tab >> text=Directions')
     // Nanda, 2026-11-15: as on the directions page, a list and the open direction by level (was:
@@ -629,23 +645,23 @@ const open = async () => {
     await page.click('text=Store the suggestion')
     await page.waitForSelector('.toast:has-text("a suggestion; a draft of a direction answers it")')
     // The agents entry: the roles, and the sixth decision: an adjustment that a model drafted.
-    ok(await p.agent('adjust tier writer --tier=medium --by=host'))
+    ok(await p.agent('adjust model writer --model=sonnet --by=host'))
     await page.click('.gear .tab >> text=Agents')
     await page.waitForSelector('.gear .item.adjustment')
     expect(await page.locator('.gear .role-card').count()).toBe(4)
     await shot(page, 'gear-agents')
     expect(await page.locator('.gear .role-card input[type=checkbox]').count()).toBe(0)
     expect(await page.textContent('.gear .item.adjustment .prose')).toBe(
-      'An adjustment, drafted by host, a model run outside any task, waits for your decision: writer becomes a medium role.')
+      'An adjustment, drafted by host, a model run outside any task, waits for your decision: writer runs on sonnet.')
     expect(await page.isDisabled('.gear .item.adjustment .item-actions >> text=Reject')).toBe(true)
-    await page.fill('.gear .item.adjustment textarea', 'the writer stays low')
+    await page.fill('.gear .item.adjustment textarea', 'the writer stays on haiku')
     await page.click('.gear .item.adjustment .item-actions >> text=Reject')
     await page.waitForSelector('.gear .item.adjustment', { state: 'detached' })
-    ok(await p.agent('adjust tier writer --tier=medium --by=host'))
+    ok(await p.agent('adjust model writer --model=sonnet --by=host'))
     await page.waitForSelector('.gear .item.adjustment')
     await page.click('.gear .item.adjustment .item-actions >> text=Accept')
     await page.waitForSelector('.gear .item.adjustment', { state: 'detached' })
-    expect(Bun.YAML.parse(await Bun.file(join(p.dir, 'aristoteles.yaml')).text()).roles.writer.tier).toBe('medium')
+    expect(Bun.YAML.parse(await Bun.file(join(p.dir, 'aristoteles.yaml')).text()).roles.writer.model).toBe('sonnet')
     expect(errors).toEqual([])
   } finally {
     await page.close()

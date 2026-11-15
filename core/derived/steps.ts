@@ -17,7 +17,6 @@ import type {
   RoleName,
   Task,
   TaskId,
-  Tier,
   Work,
 } from '../schema/index.ts'
 import { canAct } from './can.ts'
@@ -47,7 +46,10 @@ import {
   within,
   workStop,
   oneUnit as isOneUnit,
-  tierOfAssignment,
+  assignsOf,
+  holdsA,
+  leads,
+  roleOfA,
 } from './reads.ts'
 import { rolesSuggestionsWaiting } from './adjustments.ts'
 import type { Derived, Idle, NextFor, NextStep, StepKey, StepWhat } from './types.ts'
@@ -82,10 +84,6 @@ const nonEmpty = <A>(list: ReadonlyArray<A>): NonEmpty<A> | undefined => {
   const [one, ...rest] = list
   return one === undefined ? undefined : [one, ...rest]
 }
-export const RANK: { readonly [T in Tier]: number } = { low: 1, medium: 2, high: 3 }
-// The tier of an assignment for the words (brief, shared): the one kept at its give.
-export const tierOfA = (w: Work, a: Assignment): Tier | undefined =>
-  tierOfAssignment(w, a) ?? undefined
 const parentId = (a: Assignment): AssignmentId | undefined =>
   a.parent._tag === 'Parent' ? a.parent.id : undefined
 // x is above a: its parent, at any depth.
@@ -97,13 +95,12 @@ const isAbove = (w: Work, x: AssignmentId, a: Assignment): boolean => {
   }
   return false
 }
-const lowerRoles = (w: Work, a: Assignment) => {
-  const own = tierOfAssignment(w, a)
-  if (own === null) return []
-  return [...w.workflow.roles.values()].flatMap((r) =>
-    r._tag === 'Model' && RANK[r.tier] < RANK[own] ? [r] : [],
-  )
-}
+// The roles that an assignment gives work to: those of its role's assign act.
+export const assignable = (w: Work, a: Assignment) =>
+  assignsOf(roleOfA(w, a)).flatMap((name) => {
+    const r = w.workflow.roles.get(name)
+    return r?._tag === 'Model' ? [r] : []
+  })
 const sectionOf = (t: Task): string | null =>
   t.descriptionAi.context.section._tag === 'Section' ? t.descriptionAi.context.section.id : null
 const claimedSince = (w: Work, a: AssignmentId) => {
@@ -210,15 +207,15 @@ export const waitersOf = (d: Derived, x: AssignmentId): ReadonlyArray<Assignment
 
 // --- a brief over its limit (ruling 10.9) --------------------------------------------------------
 
-// The nearest high assignment above x that may act (not Ended, its own brief fits); none: the
-// owner of its task decides.
-export const highAbove = (d: Derived, x: Assignment): Assignment | undefined => {
+// The nearest assignment above x that splits and may act (not Ended, its own brief fits);
+// none: the owner of its task decides.
+export const splitterAbove = (d: Derived, x: Assignment): Assignment | undefined => {
   const w = d.moment.work
   for (let y = parentId(x); y !== undefined;) {
     const up = w.assignments.get(y)
     if (up === undefined) return undefined
     const waits = d.states.assignments.get(up.id)?._tag === 'BriefOver'
-    if (!ended(d, up.id) && !waits && tierOfAssignment(w, up) === 'high') return up
+    if (!ended(d, up.id) && !waits && holdsA(w, up, 'Split')) return up
     y = parentId(up)
   }
   return undefined
@@ -241,13 +238,13 @@ const briefOver = (d: Derived, x: Assignment): Candidate | undefined => {
   }
   return wait(what)
 }
-// The high role shortens the directions of the task (B2: only local ones), or splits the task
-// (remakes one unit of work).
+// The role above that splits shortens the directions of the task (B2: only local ones), or
+// splits the task (remakes one unit of work).
 const shortenSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   const w = d.moment.work
   return [...w.assignments.values()].flatMap((x): ReadonlyArray<Candidate> => {
     const s = d.states.assignments.get(x.id)
-    if (s?._tag !== 'BriefOver' || highAbove(d, x)?.id !== a.id) return []
+    if (s?._tag !== 'BriefOver' || splitterAbove(d, x)?.id !== a.id) return []
     const directions = localDirections(w, x.task)
     const what: StepWhat = {
       _tag: 'ShortenOrSplit',
@@ -315,7 +312,7 @@ const dirSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
 
 // --- the steps of an agent -----------------------------------------------------------------------
 
-// The candidate steps of a medium or high assignment, in the old order; an ended one has none.
+// The candidate steps of a lead assignment, in the old order; an ended one has none.
 export const candidatesOf = (d: Derived, id: AssignmentId): ReadonlyArray<Candidate> => {
   const w = d.moment.work
   const a = w.assignments.get(id)
@@ -410,7 +407,7 @@ const expiredSources = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => 
 const draftSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   const w = d.moment.work
   const at = d.moment.at
-  const high = tierOfAssignment(w, a) === 'high'
+  const directs = holdsA(w, a, 'Direct')
   const steps: Array<Candidate> = []
   const own = [...w.directions.values()].filter(
     (x) =>
@@ -442,14 +439,14 @@ const draftSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   // A vetoed draft (S6: built on the current version): its redrafter revises it again.
   for (const x of w.drafts.values()) {
     const state = d.states.revisions.get(x.id)
-    if (state?._tag !== 'Vetoed' || x._tag !== 'Change' || !high) continue
+    if (state?._tag !== 'Vetoed' || x._tag !== 'Change' || !directs) continue
     if (!redrafters(redrafterOf(d, x)).includes(a.id) || !waitsForNewDraft(d, x)) continue
     const what: StepWhat = { _tag: 'ReviseRejectedDraft', draft: x.id, reject: state.by }
     steps.push(act(what, ...revise([x.of])))
   }
   for (const { y, direction } of suggestionsToDraft(d)) {
     const local = w.directions.get(direction)?.source._tag === 'Local'
-    if (!high || !local || !followsDirection(d, a, direction)) continue
+    if (!directs || !local || !followsDirection(d, a, direction)) continue
     const what: StepWhat = { _tag: 'AnswerSuggestion', suggestion: y.id, direction }
     steps.push(act(what, ...revise([direction])))
   }
@@ -504,8 +501,7 @@ const escalateTask = (a: Assignment): Intent => ({
 // The steps of one open task of the tree that is not accepted.
 const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate> => {
   const w = d.moment.work
-  const tier = tierOfAssignment(w, a)
-  const high = tier === 'high'
+  const splits = holdsA(w, a, 'Split')
   const result = latestResultOf(w, t.id)
   const items = result ? blockersOfResult(w, result.id) : []
   // A mistake is evaluated before anything else moves the task.
@@ -515,7 +511,7 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
   for (const point of taskRejects(w, t.id)) {
     if (items.some((i) => 'ref' in i && i.ref === point)) continue
     const local = localDirections(w, t.id)
-    if (high && local.length > 0) {
+    if (holdsA(w, a, 'Direct') && local.length > 0) {
       const what: StepWhat = {
         _tag: 'ReviseForReturnedTask',
         point,
@@ -542,41 +538,41 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
     }
   }
   if (t.needs.some(waitsFor)) return steps
-  // An open medium whose task holds this one runs it: first one below this assignment.
-  const running = [...w.assignments.values()].filter((x) => {
-    const xt = tierOfAssignment(w, x)
-    return (
+  // An open lead that this role assigns, whose task holds this one, runs it: first one below
+  // this assignment.
+  const mine = assignsOf(roleOfA(w, a))
+  const running = [...w.assignments.values()].filter(
+    (x) =>
       !ended(d, x.id) &&
-      xt === 'medium' &&
-      tier !== null &&
-      RANK[tier] > RANK.medium &&
-      within(w, t.id, x.task)
-    )
-  })
+      x.id !== a.id &&
+      mine.includes(x.role) &&
+      leads(roleOfA(w, x)) &&
+      within(w, t.id, x.task),
+  )
   const lead = running.find((x) => isAbove(w, a.id, x)) ?? running[0]
   if (lead) {
-    steps.push(wait({ _tag: 'MediumRuns', lead: lead.id, task: t.id }))
+    steps.push(wait({ _tag: 'LeadRuns', lead: lead.id, task: t.id }))
     if (result) {
       steps.push(...changeSteps(d, a, t, result.id, items, false))
       steps.push(...deciderSteps(d, a, result.id, items))
     }
     return steps
   }
-  const lower = lowerRoles(w, a)
-  const mediums = nonEmpty(lower.filter((r) => r.tier === 'medium').map((r) => r.role))
-  if (high && t.id === a.task && !result && t.needs.length === 0 && mediums) {
+  const lower = assignable(w, a)
+  const subLeads = nonEmpty(lower.filter(leads).map((r) => r.role))
+  if (splits && t.id === a.task && !result && t.needs.length === 0 && subLeads) {
     if (sectionOf(t) !== null) {
-      const what: StepWhat = { _tag: 'RunSectionWithMedium', task: t.id, roles: mediums }
-      return [...steps, act(what, ...giveEach(t.id, mediums))]
+      const what: StepWhat = { _tag: 'RunSectionWithLead', task: t.id, roles: subLeads }
+      return [...steps, act(what, ...giveEach(t.id, subLeads))]
     }
     if (mayChange(w, a.id, t.id, d.moment.at)) {
       const split: Intent = { _tag: 'SplitTask', target: { task: t.id, answers: null } }
       return [...steps, act({ _tag: 'SplitFirst', task: t.id }, split)]
     }
   }
-  if (t.id !== a.task && mediums) {
-    const what: StepWhat = { _tag: 'RunWithMedium', task: t.id, roles: mediums }
-    return [...steps, act(what, ...giveEach(t.id, mediums))]
+  if (t.id !== a.task && subLeads) {
+    const what: StepWhat = { _tag: 'RunWithLead', task: t.id, roles: subLeads }
+    return [...steps, act(what, ...giveEach(t.id, subLeads))]
   }
   const changed = result !== undefined && d.moment.outside.changed.has(result.id)
   const fix = items.some(
@@ -588,7 +584,7 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
   if (!result || changed || fix) {
     if (result) steps.push(...changePointSteps(d, a, t, result.id, items, true))
     const makers = lower
-      .filter((r) => r.tier === 'low' && r.acts.some((x) => x._tag === 'Do'))
+      .filter((r) => !leads(r) && r.acts.some((x) => x._tag === 'Do'))
       .map((r) => r.role)
     steps.push(makerStep(d, a, t, result !== undefined, makers))
     return steps
@@ -620,7 +616,7 @@ const taskRejects = (w: Work, task: TaskId): ReadonlyArray<PointId> =>
 // A task that waits for an evaluation, or for the change that its evaluation asks for.
 const evaluationSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate> => {
   const w = d.moment.work
-  const high = tierOfAssignment(w, a) === 'high'
+  const splits = holdsA(w, a, 'Split')
   const steps: Array<Candidate> = []
   const stops = stopsOf(w, t.id).filter((s) => !stopAnswered(w, s))
   for (const stop of stops) {
@@ -637,20 +633,20 @@ const evaluationSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Cand
       steps.push(wait({ _tag: 'EvaluationWaitsForOwner', evaluation: pending.id, task: t.id }))
       continue
     }
-    if (high) {
+    if (splits) {
       steps.push(
         act({ _tag: 'Evaluate', task: t.id, stop }, { _tag: 'Evaluate', target: { stop } }),
       )
       continue
     }
     const evaluator = [...w.assignments.values()].find(
-      (x) => !ended(d, x.id) && tierOfAssignment(w, x) === 'high' && within(w, t.id, x.task),
+      (x) => !ended(d, x.id) && holdsA(w, x, 'Split') && within(w, t.id, x.task),
     )
     steps.push(
       wait(
         evaluator
           ? { _tag: 'WaitsForEvaluationBy', task: t.id, stop, evaluator: evaluator.id }
-          : { _tag: 'WaitsForEvaluationNoHigh', task: t.id, stop },
+          : { _tag: 'WaitsForEvaluationNoSplitter', task: t.id, stop },
       ),
     )
   }
@@ -670,7 +666,7 @@ const evaluationSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Cand
   if (pending) {
     return [wait({ _tag: 'DraftOfEvaluationWaits', task: t.id, draft: pending.id, evaluation })]
   }
-  if (!high) return [wait({ _tag: 'WaitsForChangeOfEvaluation', task: t.id, evaluation })]
+  if (!splits) return [wait({ _tag: 'WaitsForChangeOfEvaluation', task: t.id, evaluation })]
   // B2: a task whose directions are all company directions gets its change through a remake.
   const local = localDirections(w, t.id)
   if (e?.level === 'task' || local.length === 0) {
@@ -726,7 +722,7 @@ const changePointSteps = (
     )
     if (drafts) return [wait({ _tag: 'ChangeWaitsForDraft', point, drafts, first })]
     const local = localDirections(w, t.id)
-    if (tierOfAssignment(w, a) === 'high' && local.length > 0) {
+    if (holdsA(w, a, 'Direct') && local.length > 0) {
       const what: StepWhat = {
         _tag: 'ReviseForPoint',
         point,
@@ -805,9 +801,8 @@ const checkerSteps = (
     if (checker) {
       return wait({ _tag: 'GiveCheckerCommand', checker: checker.id, result, task: t.id })
     }
-    const own = tierOfAssignment(w, a)
-    if (r?._tag === 'Model' && own !== null && RANK[r.tier] >= RANK[own]) {
-      const what: StepWhat = { _tag: 'CheckerOfHigherTier', result, role }
+    if (r?._tag === 'Model' && !assignsOf(roleOfA(w, a)).includes(role)) {
+      const what: StepWhat = { _tag: 'CheckerNotAssigned', result, role }
       const escalate: Intent = { _tag: 'EscalateResult', target: { result } }
       return escalatedResult(d, a, result) ? wait(what) : act(what, escalate)
     }
@@ -842,7 +837,7 @@ const deciderSteps = (
   }
   const task = w.results.get(result)?.task
   if (task === undefined) return []
-  const lower = lowerRoles(w, a).map((r) => r.role)
+  const lower = assignable(w, a).map((r) => r.role)
   return decisionWaitsOn(w, result).map((leaf): Candidate => {
     const open =
       leaf._tag === 'Role'
@@ -904,7 +899,7 @@ const IDS: {
   EvaluationWaitsForOwner: (s) => [s.evaluation, s.task],
   Evaluate: (s) => [s.task, s.stop.id],
   WaitsForEvaluationBy: (s) => [s.task, s.stop.id, s.evaluator],
-  WaitsForEvaluationNoHigh: (s) => [s.task, s.stop.id],
+  WaitsForEvaluationNoSplitter: (s) => [s.task, s.stop.id],
   WaitsForParts: (s) => [s.task, ...(s.evaluation ? [s.evaluation] : [])],
   DraftOfEvaluationWaits: (s) => [s.task, s.draft, ...(s.evaluation ? [s.evaluation] : [])],
   WaitsForChangeOfEvaluation: (s) => [s.task, ...(s.evaluation ? [s.evaluation] : [])],
@@ -915,10 +910,10 @@ const IDS: {
   EscalateForReturnedTask: (s) => [s.point, s.task],
   WaitsForOutsideNeed: (s) => [s.task, s.need],
   RunsAfter: (s) => [s.task, s.need],
-  MediumRuns: (s) => [s.lead, s.task],
-  RunSectionWithMedium: (s) => [s.task, ...s.roles],
+  LeadRuns: (s) => [s.lead, s.task],
+  RunSectionWithLead: (s) => [s.task, ...s.roles],
   SplitFirst: (s) => [s.task],
-  RunWithMedium: (s) => [s.task, ...s.roles],
+  RunWithLead: (s) => [s.task, ...s.roles],
   ChangeWaitsForDraft: (s) => [s.point, ...s.drafts],
   ReviseForPoint: (s) => [s.point, ...s.directions],
   EscalateForPoint: (s) => [s.point, s.result],
@@ -932,7 +927,7 @@ const IDS: {
   CheckYourself: (s) => [s.result],
   CheckerWorking: (s) => [s.checker, s.result],
   GiveCheckerCommand: (s) => [s.checker, s.result, s.task],
-  CheckerOfHigherTier: (s) => [s.result, s.role],
+  CheckerNotAssigned: (s) => [s.result, s.role],
   AssignChecker: (s) => [s.result, s.role, s.task],
   Decide: (s) => [s.result],
   WaitsForDecider: (s) => [s.result, s.decider],

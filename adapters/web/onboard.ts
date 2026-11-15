@@ -47,6 +47,8 @@ export const onboardingWords = (
       return `${act.role}: the host writes it again from your words.`
     case 'remove-role':
       return `${act.role} is removed; nothing keeps it.`
+    case 'model':
+      return `${act.role} runs on ${act.model}.`
     case 'persistence':
       return act.persistent
         ? `${act.role} is persistent: it gets a terminal of its own.`

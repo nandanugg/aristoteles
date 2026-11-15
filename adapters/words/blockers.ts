@@ -238,8 +238,8 @@ export const taskLines = (d: Derived, task: TaskId): ReadonlyArray<string> => {
   return lines
 }
 
-// The open items of one result, with ids, as a view reads them (no assignment: medium, high
-// and views see everything). The readings of the outside are in the moment.
+// The open items of one result, with ids, as a view reads them (no assignment: a lead and the
+// views see everything). The readings of the outside are in the moment.
 const resultLines = (d: Derived, r: ResultId): ReadonlyArray<string> => {
   const { outside } = d.moment
   const lines: Array<string> = []

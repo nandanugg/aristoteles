@@ -5,7 +5,7 @@
 // The CLI and the page decode their input into one ActionInput; the action reads the files that
 // a content names (FilePath) through the Files service. Where a content type says "P5 decides",
 // the actions package fixes the decoded form (an additive change).
-import type { Level, Tier } from '../../src/domain/closed.ts'
+import type { Level } from '../../src/domain/closed.ts'
 import type {
   EvidenceData,
   OnboardedDirection,
@@ -94,7 +94,7 @@ export interface WhyInput {
 export type AdjustmentInput =
   | { readonly _tag: 'AddRole'; readonly role: RoleName; readonly file: FilePath }
   | { readonly _tag: 'RemoveRole'; readonly role: RoleName }
-  | { readonly _tag: 'SetTier'; readonly role: RoleName; readonly tier: Tier }
+  | { readonly _tag: 'SetModel'; readonly role: RoleName; readonly model: Words }
   | {
       readonly _tag: 'SetPersistence'
       readonly role: RoleName
@@ -130,7 +130,7 @@ export type ActionInput =
   | In<'AcceptRoleWords', { readonly draft: EventRef }, None>
   | In<'RejectRoleWords', { readonly draft: EventRef }, { readonly reason: Words }>
   | In<'SaveSettings', None, { readonly settings: Settings }> // page settings: files only
-  // work adjust: a high agent or a model run drafts one change of a role or a direction; the
+  // work adjust: an agent that fits roles, or a model run, drafts one change of a role or a direction; the
   // person accepts it (a role adjustment writes aristoteles.yaml) or rejects it with a reason.
   | In<'DraftAdjustment', None, { readonly adjustment: AdjustmentInput }>
   | In<'AcceptAdjustment', { readonly draft: EventRef }, None>
@@ -140,7 +140,7 @@ export type ActionInput =
   | In<'ContinueRun', { readonly run: RunId }, { readonly pane: PaneInput; readonly quote: Words }>
   | In<'EndRun', { readonly run: RunId }, None> // work run done, page end
   | In<'CloseRun', { readonly run: RunId }, None> // work run close, page close (after CloseTask)
-  // The file holds the task and the role of its Sol (role: <name>), as work task draft reads it.
+  // The file holds the task and the role that splits it (role: <name>), as work task draft reads it.
   | In<'DraftTask', { readonly run: RunId }, { readonly file: FilePath }>
   | In<'RecordProblem', { readonly task: TaskId }, { readonly says: Words }>
   | In<'FixProblem', { readonly problem: ProblemId }, None>
@@ -152,7 +152,7 @@ export type ActionInput =
   // work event, and the watcher: a failure after three tries, a prompt, a close.
   | In<'ReportTerminal', { readonly session: SessionId }, { readonly move: Extract<typeof TerminalMove.Type, { readonly _tag: 'Failed' | 'Prompted' | 'Closed' }> }>
   | In<'StopTerminal', { readonly session: SessionId }, None> // page stop
-  | In<'ResumeTerminal', { readonly session: SessionId }, { readonly tier: 'sol' | 'terra' | 'luna' }> // page resume
+  | In<'ResumeTerminal', { readonly session: SessionId }, None> // page resume
   | In<'Send', { readonly session: SessionId }, { readonly keys: Keys }> // work send
   // A start sends only its start words; every other reason a line or Enter.
   | In<'SupervisorSend', { readonly reason: typeof StartReason.Type }, { readonly keys: typeof StartPrompt.Type }>

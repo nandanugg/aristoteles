@@ -126,8 +126,8 @@ describe('a mistake is evaluated, not tried again', () => {
     ok(await p.agent(`review ${linter3} r2 reject --point="cites ABC-2964" --breaks=no-ticket-ids`))
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
-    // A medium role does not evaluate.
-    expect((await p.agent(`evaluate ${lead} t3 --wrong=x --why=y --improve=z --level=task`)).err).toContain('only a high role evaluates a stop')
+    // A role with no split act does not evaluate.
+    expect((await p.agent(`evaluate ${lead} t3 --wrong=x --why=y --improve=z --level=task`)).err).toContain('a1 (section-lead) has no split act; only a role that splits evaluates a stop')
     ok(await p.agent(`evaluate ${arch} t3 --wrong="r2 cites the ticket" --why="the direction asks for the facts, and the ticket is a fact" ` +
       '--improve="the spirit says that ids are not facts" --level=principle'))
     expect(ok(await p.agent(`next ${lead}`)).out).toContain('ev1 evaluates t3 at the level principle, and waits for Nanda\'s accept')
@@ -138,13 +138,13 @@ describe('a mistake is evaluated, not tried again', () => {
     expect(ok(await p.agent(`next ${arch}`)).out).toContain('ev1 asks for: "the spirit says that ids are not facts"')
   }, 20000)
 
-  test('every workflow has a high role, and a task file names no rounds', async () => {
+  test('every workflow has a role that splits, and a task file names no rounds', async () => {
     const { p } = await started()
     p.write('rounds.yaml', TASK_WHOLE + 'maxRounds: 3\n')
     expect((await p.nanda('task open --file=rounds.yaml')).err).toContain('maxRounds is gone')
     const flat = (await import('./harness.js')).WORK_YAML.replace(/ {2}architect:\n(?: {4}.*\n)+/, '')
       .replace('acts: [{ approve: [writer] }]', 'acts: [{ approve: [writer] }]')
     const q = (await import('./harness.js')).project({ 'aristoteles.yaml': flat })
-    expect((await q.nanda('init')).err).toContain('the workflow has no high role; every workflow has the three tiers')
+    expect((await q.nanda('init')).err).toContain('no role splits; a role with the split act hosts each project and evaluates a mistake')
   })
 })

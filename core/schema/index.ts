@@ -95,7 +95,6 @@ export {
   StandardFile,
   usesProblem,
   TaskFile,
-  TerminalTier,
 } from '../../src/domain/files.ts'
 
 // --- the records of the work (model.ts), without the replaced states ---------------------------

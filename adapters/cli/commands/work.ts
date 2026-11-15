@@ -10,7 +10,7 @@ import {
   resultsOf,
   roleAt,
   stopTask,
-  tierOf,
+  isUnit,
   usedBy,
   within,
   workStop,
@@ -132,7 +132,7 @@ const report: Command = (call) =>
     ]
     yield* runPrograms(done.work, result, (l) => lines.push(l))
     lines.push(
-      tierOf(roleAt(done.work, a.role)) === 'low'
+      isUnit(roleAt(done.work, a.role))
         ? 'STOP: your parent continues.'
         : `next: work next ${caller.token}`,
     )
@@ -245,7 +245,7 @@ const review: Command = (call) =>
         ? `reject of ${targetId} with ${pointCount} point(s): ${Array.from({ length: pointCount }, (_, i) => `${vid}.${i + 1}`).join(', ')}`
         : `accept of ${targetId}`
     // A low checker's unit ends here; the state of the result is its parent's to read.
-    if (caller._tag === 'Agent' && tierOf(roleAt(w, assignmentAt(w, caller.assignment).role)) === 'low') {
+    if (caller._tag === 'Agent' && isUnit(roleAt(w, assignmentAt(w, caller.assignment).role))) {
       const parent = assignmentAt(w, caller.assignment).parent._tag === 'Parent'
       return [`${vid}: your review of ${targetId} is recorded.`, `STOP: ${upTo(parent)} continues.`]
     }
@@ -328,7 +328,7 @@ const escalate: Command = (call) =>
     const to = a.parent._tag === 'Parent' ? a.parent.id : owner
     return [
       `${firstCreated(done.created)} escalated to ${to}.`,
-      tierOf(roleAt(done.work, a.role)) === 'low'
+      isUnit(roleAt(done.work, a.role))
         ? 'STOP: your parent continues.'
         : a.parent._tag === 'Parent'
           ? `next: work next ${caller.token}`

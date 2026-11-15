@@ -29,7 +29,7 @@ import {
 } from '../schema/index.ts'
 import { Env, FilesLive, readConfig, Store, StoreLive } from '../services/index.ts'
 import { fold, foldStep } from './index.ts'
-import { tierOfAssignment } from './records.ts'
+import { modelOfAssignment } from './records.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harnessJs from '../../test/harness.js'
 
@@ -269,9 +269,9 @@ describe('fold gives the Work of the old replay', () => {
   test('started: init, the directions, the fits, a task and its lead', async () => {
     const { p } = await harness.started()
     const work = await sameAsReplay(p.dir, 'started')
-    // No run holds t1, so the persistent lead attaches to no agent: it keeps its tier (P2).
+    // No run holds t1, so the persistent lead attaches to no agent: it keeps its model (P2).
     const a1 = work.assignments.get('a1' as AssignmentId)
-    expect(a1?.runs).toEqual({ _tag: 'NoRun', tier: 'medium' })
+    expect(a1?.runs).toEqual({ _tag: 'NoRun', model: 'sonnet' })
   }, 30000)
 
   test('reported, then a review round: reject, report again, accept, escalate, ask', async () => {
@@ -493,7 +493,7 @@ describe('fold gives the Work of the old replay', () => {
   test('deciders: a vetoed draft, an approvedBy order, a decide order of two roles', async () => {
     // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
     const proofreader =
-      '  proofreader:\n    tier: low\n    description: Reads one section and decides it.\n' +
+      '  proofreader:\n    model: haiku\n    description: Reads one section and decides it.\n' +
       '    intro: You read one section.\n    responsibilities:\n' +
       '      - Accept or reject the section with work review.\n' +
       '    acts: [{ approve: [writer] }]\n' +
@@ -605,7 +605,7 @@ describe('fold gives the Work of the old replay', () => {
     }
   }, 30000)
 
-  test('persistent agents: one agent of a role in a run, its session, its tier kept', async () => {
+  test('persistent agents: one agent of a role in a run, its session, its model kept', async () => {
     const { p, host } = await hosted()
     p.write('parts.yaml', PARTS)
     ok(await p.nanda('task split t1 --file=parts.yaml'))
@@ -619,11 +619,11 @@ describe('fold gives the Work of the old replay', () => {
     ok(await p.ui('session a3 --id=s-lead --token'))
     ok(await p.agent(`brief ${lead}`))
     ok(await p.agent(`assign ${lead} t2 --role=writer`))
-    // A new medium role, then a high tier for section-lead: its agent keeps the tier it started
+    // A new lead role, then another model for section-lead: its agent keeps the model it started
     // with (ruling 13).
     const editor = {
       kind: 'agent',
-      tier: 'medium',
+      model: 'sonnet',
       description: 'Edits one section.',
       intro: 'You edit one section.',
       responsibilities: ['Edit the section under its heading.'],
@@ -636,7 +636,7 @@ describe('fold gives the Work of the old replay', () => {
     const kept = { hashes: w0.hashes, texts: w0.texts }
     for (const adjustment of [
       { _tag: 'AddRole', role: 'editor', file: editor },
-      { _tag: 'SetTier', role: 'section-lead', tier: 'high' },
+      { _tag: 'SetModel', role: 'section-lead', model: 'opus' },
     ]) {
       const drafted = { _tag: 'Adjustment', create: { _tag: 'Drafted', adjustment } }
       const seq = await appendNow(p, HOST_RUN, drafted as Event)
@@ -648,15 +648,15 @@ describe('fold gives the Work of the old replay', () => {
     expect(runs('a1')).toEqual({ _tag: 'Host', run: 'h1' })
     expect(runs('a2')).toEqual({ _tag: 'Agent', agent: 'p1' })
     expect(runs('a3')).toEqual({ _tag: 'Agent', agent: 'p1' })
-    expect(runs('a4')).toEqual({ _tag: 'Subagent', tier: 'low' })
+    expect(runs('a4')).toEqual({ _tag: 'Subagent', model: 'haiku' })
     expect([...work.agents.keys()]).toEqual(['p1' as AgentId])
     const p1 = work.agents.get('p1' as AgentId)
     expect<unknown>(p1?.terminal).toEqual({ _tag: 'Started', session: 's-lead', at: startedAt })
-    expect(p1?.tier).toBe('medium')
+    expect(p1?.model).toBe('sonnet')
     const role = work.workflow.roles.get('section-lead' as RoleName)
-    expect(role?._tag === 'Model' ? role.tier : undefined).toBe('high')
+    expect(role?._tag === 'Model' ? role.model : undefined).toBe('opus')
     const a2 = work.assignments.get('a2' as AssignmentId)
-    expect(a2 === undefined ? null : tierOfAssignment(work, a2)).toBe('medium')
+    expect(a2 === undefined ? null : modelOfAssignment(work, a2)).toBe('sonnet')
     expect(work.sessions.get('a3' as AssignmentId)?.session).toBe('s-lead' as SessionId)
   }, 60000)
 
@@ -664,7 +664,7 @@ describe('fold gives the Work of the old replay', () => {
     const { p } = await harness.started()
     const editor = {
       kind: 'agent',
-      tier: 'medium',
+      model: 'sonnet',
       description: 'Edits one section.',
       intro: 'You edit one section.',
       responsibilities: ['Edit the section under its heading.'],
@@ -679,8 +679,8 @@ describe('fold gives the Work of the old replay', () => {
     const steps: ReadonlyArray<readonly [unknown, 'Accepted' | 'Rejected' | 'None']> = [
       [{ _tag: 'AddRole', role: 'editor', file: editor }, 'Accepted'],
       [{ _tag: 'SetPersistence', role: 'writer', persistence: { persistent: true, why } }, 'Accepted'],
-      [{ _tag: 'SetTier', role: 'editor', tier: 'low' }, 'None'],
-      [{ _tag: 'SetTier', role: 'editor', tier: 'high' }, 'Accepted'],
+      [{ _tag: 'SetModel', role: 'editor', model: 'haiku' }, 'None'],
+      [{ _tag: 'SetModel', role: 'editor', model: 'opus' }, 'Accepted'],
       [{ _tag: 'RemoveRole', role: 'editor' }, 'Rejected'],
       [{ _tag: 'RetireDirection', direction: 'tsd-writing' }, 'Accepted'],
     ]
@@ -697,7 +697,7 @@ describe('fold gives the Work of the old replay', () => {
     }
     const work = await sameAsReplay(p.dir, 'adjustments')
     const editorNow = work.config.roles.editor
-    expect(editorNow?.kind === 'agent' ? editorNow.tier : undefined).toBe('high')
+    expect(editorNow?.kind === 'agent' ? editorNow.model : undefined).toBe('opus')
     expect(work.workflow.roles.get('editor' as RoleName)?._tag).toBe('Model')
     const writer = work.workflow.roles.get('writer' as RoleName)
     expect(writer?._tag === 'Model' ? writer.persistence : undefined).toEqual({

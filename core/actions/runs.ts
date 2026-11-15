@@ -2,7 +2,7 @@
 // sends.
 import { Effect } from 'effect'
 import type { Derived } from '../derived/index.ts'
-import { currentOf, runOfTree, taskAt } from '../derived/reads.ts'
+import { currentOf, holds, runOfTree, taskAt } from '../derived/reads.ts'
 import type { Refusal } from '../schema/errors.ts'
 import {
   create,
@@ -60,27 +60,27 @@ export const REFUSALS = {
   DraftTask: {
     noRole: (file: string) =>
       no(
-        `${file} names no role: add role: <the Sol role that does the task>`,
+        `${file} names no role: add role: <the role that splits the task>`,
         'Write',
-        `add role: <the Sol role> to ${file}`,
+        `add role: <the role that splits it> to ${file}`,
       ),
     unknownRole: (role: string) =>
-      no(`the draft names the role "${role}", which does not exist`, 'Pick', 'name a high role'),
-    notHigh: (role: string, tier: string) =>
+      no(`the draft names the role "${role}", which does not exist`, 'Pick', 'name a role that splits'),
+    notSplitter: (role: string) =>
       no(
-        `the draft names ${role}, a ${tier} role; a top task goes to a high (Sol) role`,
+        `the draft names ${role}, which has no split act; a top task goes to a role that splits`,
         'Pick',
-        'name a high role of the workflow',
+        'name a role of the workflow that splits',
       ),
     closedNeed: (need: string) =>
       no(`${need} is closed; a task does not need a closed task`, 'Pick', 'need an open task'),
-    // The host plays the high role of the top task, and the host is a terminal (ruling 15).
+    // The host plays the role that splits the top task, and the host is a terminal (ruling 15).
     disposable: (role: string) =>
       no(
         `a top task goes to a persistent role: ${role} is disposable, so it runs only as a ` +
           'subagent of a terminal',
         'Pick',
-        'name a persistent high role',
+        'name a persistent role that splits',
       ),
   },
   RecordProblem: {
@@ -243,7 +243,7 @@ const CloseRun: Action<'CloseRun'> = ({ by, input }) =>
     return [move('Run', input.target.run, { _tag: 'Closed' })]
   })
 
-// A host drafts the top task of its project in its file, with the role of its Sol.
+// A host drafts the top task of its project in its file, with the role that splits it.
 const DraftTask: Action<'DraftTask'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
@@ -266,8 +266,7 @@ const DraftTask: Action<'DraftTask'> = ({ by, input }) =>
     yield* checkCaseTwins(d, read.workspace)
     const named = w.workflow.roles.get(RoleName.make(role))
     if (named === undefined) return yield* fail(R.DraftTask.unknownRole(role))
-    const tier = named._tag === 'Model' ? named.tier : 'program'
-    if (tier !== 'high') return yield* fail(R.DraftTask.notHigh(role, tier))
+    if (!holds(named, 'Split')) return yield* fail(R.DraftTask.notSplitter(role))
     if (named._tag === 'Model' && named.persistence._tag === 'Disposable') {
       return yield* fail(R.DraftTask.disposable(role))
     }
@@ -338,14 +337,14 @@ const StartSession: Action<'StartSession'> = ({ by, input }) =>
     const { assignment } = input.target
     const { session, secret } = input.content
     if (!SESSION_WORDS.test(session)) return yield* fail(R.StartSession.badId(session))
-    // An Ended owner holds no session (C1): the Sol of a remade top task hands it on.
+    // An Ended owner holds no session (C1): the host of a remade top task hands it on.
     const other = [...w.sessions.values()].some(
       (s) =>
         s.assignment !== assignment &&
         s.session === session &&
         d.states.assignments.get(s.assignment)?._tag !== 'Ended',
     )
-    // The session of a run belongs to the Sol on its top task.
+    // The session of a run belongs to the host on its top task.
     const a = w.assignments.get(assignment)
     if (a === undefined) return yield* Effect.die('canAct names the assignment')
     const task = taskAt(w, a.task)

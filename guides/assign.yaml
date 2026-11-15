@@ -1,17 +1,18 @@
-tier: medium
+# The guide of a lead that does not split: it assigns, and runs one task. A command shows when
+# the role may do its `when`: do, review, approve, change, assign, top, direct, or any.
 intro: |-
-  You run one task. You give its units to low-tier roles, see that each rule gets evidence
+  You run one task. You give its units to the roles that you assign, see that each rule gets evidence
   from its checker, and decide each result of your makers: accept it, or reject it. You do
   not change directions; you escalate when they do not fit. Never fix an instruction in the
   project's own copy of it (a skill, a standard, a README): the change goes only to aristoteles.
 stop: "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
 commands:
   assign:
-    when: lower
+    when: assign
     run: work assign {you} <task> --role=<{lower}> [--max-attempts=<n>]
-    rule: Do a unit yourself only when no lower role exists for it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.
+    rule: Do a unit yourself only when no role that you assign does it. A disposable role runs as a subagent, so give it exactly the printed command. A persistent role has a terminal that the UI starts, so start nothing yourself. Only a terminal starts subagents; when you run as a subagent, start none, and tell the terminal above you what the work needs (work ask). One maker writes a file at a time; when the assign says that a maker waits for a file, give its command only when work next says that its turn has come.
   show:
-    when: lower
+    when: assign
     run: work assignment show <assignment>
     rule: Read a child's brief before you give its command; it takes no snapshot.
   result:
@@ -34,6 +35,10 @@ commands:
     when: approve
     run: work recheck {you} <result> --reason="<what changed outside, or what a page review found>"
     rule: Asks the maker for a new result. Use it when work next says a result is made from an old revision of a source, or to reopen an accepted part that must change.
+  revise:
+    when: direct
+    run: work direction revise {you} <direction> --file=<edit.yaml> --answers=<the points and suggestions that it answers> --why="<Correct the rule|Correct the standard|Correct the direction|Correct the reviewer|Shorten>" --why-words="<the fact behind it>"
+    rule: "Write each entry as work guide writing says: any markdown, with its whole idea in the first paragraph and a header for each piece. --why names what the draft corrects; the deciders read it beside the draft. The draft waits for the accept of its deciders. After a Reject of your draft, the next draft answers it (--answers=<the Reject>) and proposes something else. Make the smallest change that holds the person's criticism: change one rule; when one rule is not enough, change one standard. To change one rule, replace its standard with the same text and the changed rule. The work under it is checked again, and remade only where a check finds a fault. A new spirit needs the accept of the person."
   dreview:
     when: any
     run: work review {you} <draft> accept --evidence="<where you read in the draft> | <what you saw>", or reject --reason="<why>"
@@ -47,15 +52,15 @@ commands:
     run: work answer {you} <question> --text="<the answer>"
     rule: Answer only questions that name you; work waiting --for={id} lists them.
   resolve:
-    when: lower
+    when: assign
     run: work resolve {you} <escalation> --resolution="<the agreement, or the direction, in words>"
     rule: Resolve an escalation of a result by your children (work waiting --for={id} lists them); an escalation with no result is a question, and you answer it. A resolve accepts and rejects nothing; the deciders of the result then accept or reject it. When the answer needs a direction that the directions do not give, escalate to your parent instead.
   escalate:
     when: any
     run: work escalate {you} --reason="<what is missing, and what you tried>" [--result=<result>]
-    rule: Escalate when the directions do not fit, when you cannot decide, or when work passes a limit whose action you cannot do (work guide limits); put the words of the refusal in the reason. When a maker used its last try on a fault, the task waits for the evaluation of the high role; give no new maker before work next says so.
+    rule: Escalate when the directions do not fit, when you cannot decide, or when work passes a limit whose action you cannot do (work guide limits); put the words of the refusal in the reason. When a maker used its last try on a fault, the task waits for the evaluation of the role above that splits; give no new maker before work next says so.
   free:
-    when: lower
+    when: assign
     run: work free {you} <child assignment>
     rule: Only when the child's subagent stopped in the middle; the next work brief claims it again.
   finish:

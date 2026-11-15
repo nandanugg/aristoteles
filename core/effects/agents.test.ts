@@ -85,7 +85,7 @@ describe('the persistent agents', () => {
     const writer = tokenIn(await p.agent(`assign ${hostToken} t1 --role=writer`))
     expect(p.work().assignments.get('a2' as never)?.runs).toEqual({
       _tag: 'Subagent',
-      tier: 'low',
+      model: 'haiku',
     })
     await p.agent(`brief ${writer}`)
     later(11 * 60_000)
@@ -152,7 +152,7 @@ describe('the persistent agents', () => {
     expect(restarts()[0]).toContain('work wait --by=p1')
     // The person's Resume reads the same: a launch.
     fake.end(session)
-    await w.person(resumeSession(sid(session), 'terra'))
+    await w.person(resumeSession(sid(session)))
     expect(restarts()).toHaveLength(2)
     expect(restarts()[1]).toStartWith(launch(3))
     // Once it ran, a restart resumes its conversation.

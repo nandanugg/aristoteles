@@ -94,7 +94,7 @@ export const startFixWords = (fix: StartFix): string => {
       return `the host writes ${fix.role} again (work onboard role ${fix.role} --file=<role.yaml>), then the person accepts it`
     case 'Lead':
       return (
-        'the host writes a persistent high role (work onboard role <role> --file=<role.yaml>), ' +
+        'the host writes a persistent role that splits (work onboard role <role> --file=<role.yaml>), ' +
         'then the person accepts it'
       )
   }
@@ -174,7 +174,7 @@ const directionLines = (file: OnboardingDirection, textOf: TextOf): ReadonlyArra
 const persistenceOf = (role: OnboardingRole): string =>
   role.file.kind === 'program'
     ? 'program'
-    : `${role.file.tier}, ${role.file.persistence.persistent ? 'persistent' : 'disposable'}`
+    : `${role.file.model}, ${role.file.persistence.persistent ? 'persistent' : 'disposable'}`
 const foundOf = (role: OnboardingRole): string =>
   role.found._tag === 'InProject' ? ` (in the project: ${role.found.path})` : ''
 const ROLE_STATE = { Waiting: 'Waiting', Revising: 'Revise', Accepted: 'Accepted' } as const

@@ -63,11 +63,11 @@ export const aboutId = (work: Work, about: Suggestion['about']): string => {
   }
 }
 
-// The tier of a role: low, medium or high; a check program has none.
-export const tierOfRole = (work: Work, role: string): string | undefined => {
-  const r = work.workflow.roles.get(role as never)
-  return r?._tag === 'Model' ? r.tier : undefined
-}
+// The roles of the workflow that hold one act: the roles that split, direct, or assign.
+export const rolesWith = (work: Work, act: 'Split' | 'Direct' | 'Assign'): string[] =>
+  [...work.workflow.roles.values()]
+    .filter((r) => r.acts.some((x) => x._tag === act))
+    .map((r) => r.role)
 
 // The attempt of a maker in words: the try it is on, never above its limit (bug 9: one count for
 // the brief, the card and work next).
@@ -174,14 +174,14 @@ const runOf = (a: DraftAuthor): string => (a._tag === 'Host' ? a.run : '')
 export const reviseAgain = (d: Derived, draft: RevisionId): string => reviseAgainOf(d, draft).text
 
 // Who answers a suggestion, read from its waiting item (P1): the agents that draft it, the
-// person's assign of a high role, or that nothing can yet. With no item, a high role that follows
+// person's assign of a role that directs, or that nothing can yet. With no item, a role that directs and follows
 // its direction drafts it. command: the assign as a command (the page has a button for it).
 export const suggestionMover = (d: Derived, id: SuggestionId, command = true): string => {
   const w = d.moment.work
   const item = waitingFor(d, { _tag: 'Everyone' }).find(
     (i) => i._tag === 'Suggestion' && i.suggestion === id,
   )
-  if (item?._tag !== 'Suggestion') return 'a high role that follows its direction drafts it'
+  if (item?._tag !== 'Suggestion') return 'a role that directs and follows its direction drafts it'
   const about = item.about._tag === 'Direction' ? w.directions.get(item.about.direction) : undefined
   if (about?.source._tag === 'External') {
     return `${about.id} changes in ${about.source.repo}, with a pull request`
@@ -192,7 +192,7 @@ export const suggestionMover = (d: Derived, id: SuggestionId, command = true): s
   }
   const assign = assignOf(item.step)
   if (assign !== undefined) {
-    const words = 'no agent can draft it now; give a high role work, and it drafts it'
+    const words = 'no agent can draft it now; give a role that directs work, and it drafts it'
     return command ? `${words}: ${assign}` : words
   }
   return 'no agent can draft it now; start a project in your AI CLI, and its host drafts it'

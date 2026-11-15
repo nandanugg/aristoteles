@@ -29,7 +29,7 @@ describe('identity', () => {
     ok(await p.agent(`brief ${writer}`))
     const low = await p.agent(`review ${writer} d2 accept --evidence="edit.yaml | ok"`)
     expect(low.err)
-      .toContain('a low role does not review drafts of directions')
+      .toContain('writer assigns nothing, so it does not review drafts of directions')
   })
 
   test('A4: an escalation to the person is resolved only by the person', async () => {
@@ -50,9 +50,9 @@ describe('identity', () => {
   test('A5: a low assignment does not forward; the person gives no work to a low role', async () => {
     const { p, linter } = await reported()
     expect((await p.agent(`forward ${linter} Nanda reject r1 --quote="no"`)).err)
-      .toContain('only the top agent (medium or high, with no parent) forwards the person')
+      .toContain('only the top agent (a lead, with no parent) forwards the person')
     expect((await p.nanda('assign t1 --role=linter')).err)
-      .toContain('the person gives work to a medium or high role; linter is low, so a lead gives it its work')
+      .toContain('the person gives work to a lead (a role that assigns); linter assigns nothing, so a lead gives it its work')
   })
 
   test('A7: a person command refuses GIT_CONFIG variables', async () => {
@@ -111,7 +111,7 @@ describe('rules', () => {
 
   test('B5: the tier maxAttempts is the default and the ceiling', async () => {
     const { p, lead } = await started()
-    expect((await p.agent(`assign ${lead} t1 --role=writer --max-attempts=5`)).err).toContain('over the low limit of 3')
+    expect((await p.agent(`assign ${lead} t1 --role=writer --max-attempts=5`)).err).toContain('over the limit of haiku, 3')
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
     expect(ok(await p.agent(`brief ${writer}`)).out).toContain('attempt 1 of 3')
   })
@@ -120,7 +120,7 @@ describe('rules', () => {
     const { WORK_YAML } = await import('./harness.js')
     const p = project({ 'aristoteles.yaml': WORK_YAML.replace('attempts: 3 }', 'attempts: 3, resultSize: 9 }') })
     const init = await p.nanda('init')
-    expect(init.err).toContain('limits.low.Assignment.resultSize is not a limit')
+    expect(init.err).toContain('models.haiku.limits.Assignment.resultSize is not a limit')
   })
 
   test('B7: a split part keeps the context of its task and works inside the project', async () => {
@@ -143,7 +143,7 @@ describe('rules', () => {
 describe('what agents see', () => {
   test('C2: a low checker reviews only the result in its brief', async () => {
     const { p, linter } = await reported()
-    expect((await p.agent(`review ${linter} t1 reject --point="no"`)).err).toContain('your brief named r1; a low checker reviews only that result')
+    expect((await p.agent(`review ${linter} t1 reject --point="no"`)).err).toContain('your brief named r1; a checker of one unit reviews only that result')
   })
 
   test('C3: config restore writes the stored aristoteles.yaml back', async () => {
@@ -192,7 +192,7 @@ describe('what agents see', () => {
     const { p, lead } = await started()
     const out = ok(await p.agent(`assign ${lead} t1 --role=writer`)).out
     // Ruling 7, onboarding 2026-11-14: a disposable role starts as a subagent on the model of its tier (was: "Start a Haiku subagent").
-    expect(out).toContain('Start a subagent on Haiku (the low model) with this prompt, and nothing else:')
+    expect(out).toContain('Start a subagent on haiku with this prompt, and nothing else:')
     expect(out).toContain('Use the work skill. In <project>, run: work brief a2.')
   })
 })

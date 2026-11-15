@@ -84,8 +84,8 @@ describe('F6, B2: work waiting assigns only the roles that canAct gives', () => 
 
 describe('B1: a brief over its limit on a task with a section', () => {
   const small = h.WORK_YAML.replace(
-    'medium: { Assignment: { briefChars: 12000 }',
-    'medium: { Assignment: { briefChars: 300 }',
+    'sonnet: { limits: { Assignment: { briefChars: 12000 }',
+    'sonnet: { limits: { Assignment: { briefChars: 300 }',
   )
   test('the brief and work waiting offer a remake, and canAct refuses the split', async () => {
     const p = await opened({ 'aristoteles.yaml': small })

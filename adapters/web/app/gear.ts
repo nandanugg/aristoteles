@@ -11,7 +11,7 @@ import {
   OnboardingView,
   type SettingsChange,
   SuggestionTarget,
-  type TierChange as TierChangeSchema,
+  type ModelChange as ModelChangeSchema,
 } from '../contract.ts'
 import { RoleGrid } from './agents.ts'
 import { api, attempt, post } from './api.ts'
@@ -21,18 +21,15 @@ import { Item } from './item.ts'
 
 type DirData = typeof DirView.Type
 type OnboardingData = typeof OnboardingView.Type
-type TierChange = typeof TierChangeSchema.Type
+type ModelChange = typeof ModelChangeSchema.Type
 type Target = typeof SuggestionTarget.Type
 
 // --- the settings --------------------------------------------------------------------------
 
-// Every tier has its model and commands (ruling 10): a role of any tier can be persistent.
-type TierName = 'sol' | 'terra' | 'luna'
-const TIER_NAMES: ReadonlyArray<TierName> = ['sol', 'terra', 'luna']
-const TIER_LEGEND = { sol: 'Sol (high)', terra: 'Terra (medium)', luna: 'Luna (low)' }
-const TIER_FIELDS = [
-  ['model', 'Model (the commands name it as {model})'],
-  ['launch', 'Launch command ({session} is required, {prompt} is the first input)'],
+// Every model of the models table has its commands (ruling 10): a role of any model can be
+// persistent. The page changes the commands; the models and their limits are in the file.
+const MODEL_FIELDS = [
+  ['launch', 'Launch command ({session} is required, {model} is its name, {prompt} the first input)'],
   ['resume', 'Resume command ({session}, {prompt} is the retry input)'],
   ['start', 'First input ({agent} is the persistent agent, such as p1)'],
   ['skills', 'Skills folder of the AI tool (relative to the dir)'],
@@ -41,7 +38,7 @@ const TIER_FIELDS = [
   ['silentMinutes', 'Minutes of silence that count as a failure'],
   ['retryInput', 'Retry input'],
 ] as const
-type TierField = (typeof TIER_FIELDS)[number][0]
+type ModelField = (typeof MODEL_FIELDS)[number][0]
 
 // The form keeps every value as text, the way the inputs do.
 interface SettingsForm {
@@ -49,15 +46,13 @@ interface SettingsForm {
   sound: boolean
   retryMinutes: string
   hostWaitMinutes: string
-  tiers: Record<TierName, Record<TierField, string>>
+  models: Record<string, Record<ModelField, string>>
 }
 const formOf = (s: DirData['settings']): SettingsForm => {
-  const tier = (name: TierName) => {
-    const t: Record<string, string | number | ReadonlyArray<string> | undefined> = {
-      ...s.tiers[name],
-    }
-    const field = {} as Record<TierField, string>
-    for (const [k] of TIER_FIELDS) {
+  const fields = (m: (typeof s.models)[string]) => {
+    const t: Record<string, string | number | ReadonlyArray<string> | undefined> = { ...m }
+    const field = {} as Record<ModelField, string>
+    for (const [k] of MODEL_FIELDS) {
       const v = t[k]
       field[k] = Array.isArray(v) ? v.join('\n') : v === undefined ? '' : String(v)
     }
@@ -68,17 +63,17 @@ const formOf = (s: DirData['settings']): SettingsForm => {
     sound: s.sound,
     retryMinutes: String(s.retryMinutes),
     hostWaitMinutes: String(s.hostWaitMinutes),
-    tiers: { sol: tier('sol'), terra: tier('terra'), luna: tier('luna') },
+    models: Object.fromEntries(Object.entries(s.models).map(([name, m]) => [name, fields(m)])),
   }
 }
 
 // The words the server reads as settings: only the fields that the person filled in.
 const settingsOf = (form: SettingsForm): SettingsChange => {
-  const tiers: { sol?: TierChange; terra?: TierChange; luna?: TierChange } = {}
-  for (const tier of TIER_NAMES) {
+  const models: Record<string, ModelChange> = {}
+  for (const [name, fields] of Object.entries(form.models)) {
     const t: Record<string, string | number | string[]> = {}
-    for (const [k] of TIER_FIELDS) {
-      const v = form.tiers[tier][k]
+    for (const [k] of MODEL_FIELDS) {
+      const v = fields[k]
       if (v === '') continue
       t[k] =
         k === 'errors' || k === 'prompts'
@@ -90,14 +85,14 @@ const settingsOf = (form: SettingsForm): SettingsChange => {
             ? Number(v)
             : v
     }
-    if (Object.keys(t).length) tiers[tier] = t as TierChange
+    models[name] = t as ModelChange
   }
   return {
     theme: form.theme,
     sound: form.sound,
     retryMinutes: Number(form.retryMinutes),
     hostWaitMinutes: Number(form.hostWaitMinutes),
-    tiers,
+    models,
   }
 }
 
@@ -107,8 +102,11 @@ const value = (e: Event) =>
 function Settings({ dir, onClose }: { dir: DirData; onClose: () => void }) {
   const [form, setForm] = useState<SettingsForm>(() => formOf(dir.settings))
   const setTop = (change: Partial<SettingsForm>) => setForm((f) => ({ ...f, ...change }))
-  const setTier = (tier: TierName, k: TierField, v: string) =>
-    setForm((f) => ({ ...f, tiers: { ...f.tiers, [tier]: { ...f.tiers[tier], [k]: v } } }))
+  const setModel = (name: string, k: ModelField, v: string) =>
+    setForm((f) => {
+      const fields = f.models[name]
+      return fields ? { ...f, models: { ...f.models, [name]: { ...fields, [k]: v } } } : f
+    })
   const save = attempt(async () => {
     const out = await post({ act: 'settings', settings: settingsOf(form) })
     onClose()
@@ -116,7 +114,7 @@ function Settings({ dir, onClose }: { dir: DirData; onClose: () => void }) {
   })
   return html`<div>
     <p class="modal-note">${'They are saved in '}<code>aristoteles.yaml</code>
-      ${' of '}${dir.name}${'. The people and the roles are in the file too; ' +
+      ${' of '}${dir.name}${'. The people, the roles and the limits of each model are in the file too; ' +
       'edit them there, with its schema.'}</p>
     <div class="grid2">
       <label class="field"><span>Theme</span><select value=${form.theme}
@@ -132,14 +130,14 @@ function Settings({ dir, onClose }: { dir: DirData; onClose: () => void }) {
         min="1" value=${form.hostWaitMinutes}
         onInput=${(e: Event) => setTop({ hostWaitMinutes: value(e) })} /></label>
     </div>
-    ${TIER_NAMES.map((tier) => html`<fieldset class="tier-set">
-      <legend>${TIER_LEGEND[tier]}</legend>
-      ${TIER_FIELDS.map(([k, label]) => html`<label class="field">
+    ${Object.entries(form.models).map(([name, fields]) => html`<fieldset class="model-set">
+      <legend>${name}</legend>
+      ${MODEL_FIELDS.map(([k, label]) => html`<label class="field">
         <span>${label}</span>${k === 'errors' || k === 'prompts'
-        ? html`<textarea rows="2" value=${form.tiers[tier][k]}
-          onInput=${(e: Event) => setTier(tier, k, value(e))}></textarea>`
-        : html`<input value=${form.tiers[tier][k]} aria-label=${`${tier} ${k}`}
-          onInput=${(e: Event) => setTier(tier, k, value(e))} />`}</label>`)}
+        ? html`<textarea rows="2" value=${fields[k]}
+          onInput=${(e: Event) => setModel(name, k, value(e))}></textarea>`
+        : html`<input value=${fields[k]} aria-label=${`${name} ${k}`}
+          onInput=${(e: Event) => setModel(name, k, value(e))} />`}</label>`)}
     </fieldset>`)}
     <div class="modal-foot"><button class="btn" onClick=${onClose}>Cancel</button>
       <button class="btn primary" onClick=${save}>Save</button></div>

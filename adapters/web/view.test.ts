@@ -49,5 +49,5 @@ test('a disposable role runs as a subagent: its work shows the terminal above it
   const { p, host, hostToken } = await hosted()
   await p.agent(`assign ${hostToken} t1 --role=writer`)
   const writer = canvasOf(p.dir)?.rows[0]?.work.find((c) => c.role === 'writer')
-  expect(writer).toMatchObject({ a: 'a2', tier: 'luna', terminal: { session: host }, inside: 'a1' })
+  expect(writer).toMatchObject({ a: 'a2', model: 'haiku', terminal: { session: host }, inside: 'a1' })
 })

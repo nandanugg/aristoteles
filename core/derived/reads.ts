@@ -69,10 +69,22 @@ import {
   type Where,
   type Work,
 } from '../schema/index.ts'
-import { tierOfAssignment } from '../state/records.ts'
+import {
+  type AuthorityAct,
+  assignsOf,
+  holds,
+  holdsA,
+  isUnit,
+  leads,
+  modelOf,
+  modelOfAssignment,
+  roleOfA,
+  unitA,
+} from '../state/records.ts'
 
-// The tier of an assignment, kept at its give (core/state records.ts): every reader reads it.
-export { tierOfAssignment }
+// The model of an assignment, kept at its give, and the acts of a role (core/state records.ts):
+// every reader reads them.
+export { type AuthorityAct, assignsOf, holds, holdsA, isUnit, leads, modelOf, modelOfAssignment, roleOfA, unitA }
 
 // --- getters -------------------------------------------------------------------------------------
 
@@ -114,8 +126,6 @@ export const roleOf = (w: Work, by: By): Role | undefined =>
   isAssignment(by) ? roleAt(w, assignmentAt(w, by).role) : undefined
 export const roleNameOf = (w: Work, by: By): RoleName | undefined =>
   isAssignment(by) ? assignmentAt(w, by).role : undefined
-export const tierOf = (role: Role | undefined): string | undefined =>
-  role?._tag === 'Model' ? role.tier : undefined
 // How a refusal names who acts: "a3 (linter)", or the actor's name.
 export const labelOf = (w: Work, by: By): string =>
   isAssignment(by) ? `${by} (${assignmentAt(w, by).role})` : by.name
@@ -379,7 +389,7 @@ export const actsOf = (w: Work, by: By, when: Time): ReadonlyArray<Act> => {
   return [...role.acts, ...granted.map((x) => x.act)]
 }
 const targetsOf = (act: Act): ReadonlyArray<string> =>
-  act._tag === 'Do' ? [] : act._tag === 'Change' ? act.changesOf : act.resultsOf
+  act._tag === 'Change' ? act.changesOf : act._tag === 'Review' || act._tag === 'Approve' ? act.resultsOf : []
 // An act names a target; a direction counts only when it is official.
 const names = (w: Work, act: Act, target: string): boolean =>
   targetsOf(act).includes(target) &&
@@ -778,7 +788,7 @@ export const workStop = (w: Work, task: TaskId): string | undefined => {
   if (waits) {
     return (
       `${task} waits for an evaluation of ${stopText(w, waits)}: what is wrong, why, and what to ` +
-      'improve; the high role of its tree writes it, or the person'
+      'improve; a role of its tree that directs writes it, or the person'
     )
   }
   const last = [...w.exhaustions.values()].filter((x) => exhaustionTask(w, x) === task).at(-1)
@@ -966,10 +976,11 @@ export const decidersOfDraft = (w: Work, draft: RevisionId): Tree<DraftLeaf> => 
   const owner: DraftLeaf = { _tag: 'OwnerAccept', owner: directionAt(w, x.of).owner, why }
   return { _tag: 'And', items: [base, owner] }
 }
-// The owner's leaf also matches a high role with a Change act on the direction at its time.
+// The owner's leaf also matches a role that directs, with a Change act on the direction at its
+// time.
 const standsInForOwner = (w: Work, by: By, direction: DirectionId, when: Time): boolean => {
-  const tier = isAssignment(by) ? tierOfAssignment(w, assignmentAt(w, by)) : null
-  return (tier === null || tier === 'high') && can(w, by, 'Change', direction, when)
+  const directs = !isAssignment(by) || holdsA(w, assignmentAt(w, by), 'Direct')
+  return directs && can(w, by, 'Change', direction, when)
 }
 // The OwnerAccept leaf matches only the owner as the person: a stand-in does not count (S2).
 export const draftMatches =

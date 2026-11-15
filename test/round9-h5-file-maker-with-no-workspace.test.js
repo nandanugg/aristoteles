@@ -10,14 +10,14 @@ import { INTRO_V2, WORK_YAML, ok, started, tokenIn } from
   './harness.js'
 
 // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
-const SCRIBE = '  scribe:\n    tier: low\n    description: Writes the design of the TSD.\n    intro: You write the design.\n' +
+const SCRIBE = '  scribe:\n    model: haiku\n    description: Writes the design of the TSD.\n    intro: You write the design.\n' +
   '    responsibilities:\n      - Write the section under its heading in docs/tsd.md.\n    output: "docs/tsd.md#<section>"\n' +
   '    acts: [{ do: write the design }]\n' +
   '    persistence: { persistent: false, why: It writes the design once. }\n    icon: feather\n'
 
 describe('H5 a maker whose output names its file in words, on a task with no workspace', () => {
   test('the scribe of t2 (no workspace) is assigned and briefed while a2 holds docs/tsd.md, and its report is refused for ever', async () => {
-    const yaml = WORK_YAML.replace('acts: [{ approve: [writer] }]', 'acts: [{ approve: [writer, scribe] }]').replace('  linter:\n', `${SCRIBE}  linter:\n`)
+    const yaml = WORK_YAML.replace('acts: [{ approve: [writer] }, { assign: [writer, linter] }]', 'acts: [{ approve: [writer, scribe] }, { assign: [writer, linter, scribe] }]').replace('  linter:\n', `${SCRIBE}  linter:\n`)
     const { p, lead } = await started({ 'aristoteles.yaml': yaml })
     ok(await p.nanda('role fit scribe --answers=fit.yaml'))
     // a2 holds docs/tsd.md (t1 names it in its workspace).

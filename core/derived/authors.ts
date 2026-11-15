@@ -3,7 +3,7 @@
 import type { AssignmentId, Direction, Revision, Run, Work } from '../schema/index.ts'
 import type { WordsOn } from '../schema/actions.ts'
 import { decisionTaskOf, hostOf, placementOf } from './catalog.ts'
-import { currentTask, openedTopOf, tierOfAssignment } from './reads.ts'
+import { currentTask, holdsA, openedTopOf } from './reads.ts'
 import { followsDirection } from './steps.ts'
 import type { DraftAuthor, Derived, Explainer, Placement, Redrafter } from './types.ts'
 
@@ -27,7 +27,7 @@ export const authorOf = (w: Work, x: Revision<Direction>): DraftAuthor => {
 export const authorAssignment = (a: DraftAuthor): AssignmentId | undefined =>
   a._tag === 'Assignment' || a._tag === 'Host' ? a.assignment : undefined
 
-// The hosts of the open runs (the Sol of each run's top task now), with their sessions.
+// The hosts of the open runs (the host's assignment on each run's top task now), with their sessions.
 const hosts = (d: Derived) => {
   const w = d.moment.work
   return [...w.runs.values()].flatMap((run) => {
@@ -46,15 +46,17 @@ export const activeHosts = (d: Derived): ReadonlyArray<AssignmentId> =>
   hosts(d).map((h) => h.assignment)
 
 // Who drafts what no task follows (P1): a new direction, the examples of a company draft, the
-// adjustment that words about the roles ask for. The active hosts, else every open high agent
-// that may act (a brief over its limit waits).
+// adjustment that words about the roles ask for. The active hosts, else every open agent that
+// directs or fits roles and may act (a brief over its limit waits).
 export const dirDrafters = (d: Derived): ReadonlyArray<AssignmentId> => {
   const active = activeHosts(d)
   if (active.length > 0) return active
   const w = d.moment.work
   return [...w.assignments.values()].flatMap((a) => {
     const s = d.states.assignments.get(a.id)?._tag
-    return s !== 'Ended' && s !== 'BriefOver' && tierOfAssignment(w, a) === 'high' ? [a.id] : []
+    return s !== 'Ended' && s !== 'BriefOver' && (holdsA(w, a, 'Direct') || holdsA(w, a, 'Fit'))
+      ? [a.id]
+      : []
   })
 }
 
@@ -91,7 +93,7 @@ export const redrafterOf = (d: Derived, x: Revision<Direction>): Redrafter => {
   const open = (a: AssignmentId) => d.states.assignments.get(a)?._tag !== 'Ended'
   if (open(writer)) return { _tag: 'Writer', assignment: writer }
   const [one, ...rest] = [...w.assignments.values()].flatMap((y) =>
-    open(y.id) && tierOfAssignment(w, y) === 'high' && followsDirection(d, y, x.of) ? [y.id] : [],
+    open(y.id) && holdsA(w, y, 'Direct') && followsDirection(d, y, x.of) ? [y.id] : [],
   )
   if (one !== undefined) return { _tag: 'Follower', finished: writer, followers: [one, ...rest] }
   const role = w.assignments.get(writer)?.role

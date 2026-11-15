@@ -116,7 +116,7 @@ const work: Work = {
   config: {
     project: 'report-export',
     people: ['Nanda'],
-    limits: { low: {}, medium: {}, high: {} },
+    models: {},
     roles: {},
     decide: {},
   },
@@ -247,7 +247,7 @@ const work: Work = {
         under: new Map(),
         maxAttempts: { _tag: 'AtMost', max: 3 as PositiveInt },
         parent: { _tag: 'Parent', id: a1 },
-        runs: { _tag: 'Subagent', tier: 'low' },
+        runs: { _tag: 'Subagent', model: 'haiku' },
         when: at(6),
         end: { _tag: 'NotEnded' },
       },

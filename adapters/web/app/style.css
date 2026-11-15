@@ -12,15 +12,15 @@
   --link: #a9b8f0;
   --port: #5b74e0;
   --focus: #2563eb;
-  --sol: #b45309;
-  --sol-tint: #fff6e8;
-  --sol-line: #f1dfbd;
-  --terra: #1d4ed8;
-  --terra-tint: #eef4ff;
-  --terra-line: #d6e2fb;
-  --luna: #6d28d9;
-  --luna-tint: #f3f0ff;
-  --luna-line: #e2dbfb;
+  --amber: #b45309;
+  --amber-tint: #fff6e8;
+  --amber-line: #f1dfbd;
+  --blue: #1d4ed8;
+  --blue-tint: #eef4ff;
+  --blue-line: #d6e2fb;
+  --violet: #6d28d9;
+  --violet-tint: #f3f0ff;
+  --violet-line: #e2dbfb;
   --work-tint: #f3f4f6;
   --work-line: #e5e7eb;
   --accept: #067647;
@@ -52,15 +52,15 @@
   --link: #3a4a86;
   --port: #7f93ec;
   --focus: #7aa2ff;
-  --sol: #f2a650;
-  --sol-tint: #2a2117;
-  --sol-line: #4a3820;
-  --terra: #7aa2ff;
-  --terra-tint: #172238;
-  --terra-line: #263a63;
-  --luna: #b49cff;
-  --luna-tint: #221b38;
-  --luna-line: #3a2f63;
+  --amber: #f2a650;
+  --amber-tint: #2a2117;
+  --amber-line: #4a3820;
+  --blue: #7aa2ff;
+  --blue-tint: #172238;
+  --blue-line: #263a63;
+  --violet: #b49cff;
+  --violet-tint: #221b38;
+  --violet-line: #3a2f63;
   --work-tint: #1f232c;
   --work-line: #2f3542;
   --accept: #4ade80;
@@ -120,7 +120,7 @@ button { font: inherit; color: inherit; }
   color: var(--text); text-decoration: none; border: 0; background: transparent; width: 100%; text-align: left; cursor: pointer;
 }
 .project:hover { background: var(--surface-2); }
-.project[aria-current="page"] { background: var(--terra-tint); font-weight: 500; }
+.project[aria-current="page"] { background: var(--blue-tint); font-weight: 500; }
 .project .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project .state { font-size: 12px; color: var(--faint); }
 .sidebar-foot { margin-top: auto; display: flex; }
@@ -172,14 +172,13 @@ button { font: inherit; color: inherit; }
 .tag-button { border: 0; background: transparent; cursor: pointer; padding: 6px 4px; border-radius: 6px; }
 .tag-button:hover { background: rgba(127, 127, 127, 0.14); color: var(--text); }
 .card-head .kind { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); }
-.tier-icon { width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; flex: none; color: #fff; }
-.sol .card-head { background: var(--sol-tint); border-bottom-color: var(--sol-line); }
-.sol .tier-icon { background: var(--sol); }
-.terra .card-head { background: var(--terra-tint); border-bottom-color: var(--terra-line); }
-.terra .tier-icon { background: var(--terra); }
-.luna .card-head { background: var(--luna-tint); border-bottom-color: var(--luna-line); }
-.luna .tier-icon { background: var(--luna); }
-:root[data-theme="dark"] .tier-icon { color: #111; }
+.role-mark { width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; flex: none; color: #fff; background: var(--blue); }
+.task .card-head, .role-card .card-head { background: var(--blue-tint); border-bottom-color: var(--blue-line); }
+.task.inside .card-head { background: var(--violet-tint); border-bottom-color: var(--violet-line); }
+.task.inside .role-mark { background: var(--violet); }
+.draft-card .card-head { background: var(--amber-tint); border-bottom-color: var(--amber-line); }
+.draft-card .role-mark { background: var(--amber); }
+:root[data-theme="dark"] .role-mark { color: #111; }
 .work .card-head { background: var(--work-tint); border-bottom-color: var(--work-line); }
 .review.accept .card-head { background: var(--accept-tint); }
 .review.reject .card-head { background: var(--reject-tint); }
@@ -194,7 +193,7 @@ button { font: inherit; color: inherit; }
 .decision { font-weight: 600; }
 .decision.accept { color: var(--accept); }
 .decision.reject { color: var(--reject); }
-.decision.escalate { color: var(--sol); }
+.decision.escalate { color: var(--amber); }
 .decision.waits { color: var(--waits); }
 .decision.reviews { color: var(--run); }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
@@ -256,10 +255,10 @@ button { font: inherit; color: inherit; }
 .dl .t { white-space: pre-wrap; padding-right: 12px; }
 .dl.add { background: var(--add); color: var(--add-text); }
 .dl.del { background: var(--del); color: var(--del-text); }
-.dl.hunk { background: var(--terra-tint); color: var(--faint); }
+.dl.hunk { background: var(--blue-tint); color: var(--faint); }
 .dl.hunk .x { grid-column: 1 / 4; display: flex; justify-content: center; gap: 2px; }
-.dl.hunk button { border: 0; background: none; color: var(--terra); font: inherit; cursor: pointer; padding: 0 6px; }
-.dl.hunk button:hover { background: var(--terra-line); }
+.dl.hunk button { border: 0; background: none; color: var(--blue); font: inherit; cursor: pointer; padding: 0 6px; }
+.dl.hunk button:hover { background: var(--blue-line); }
 /* The terminal has the pane's size; its font gets smaller to fit the width, and the box scrolls
    when the terminal is still larger (a phone is 375 px wide); .xterm takes the width of its rows. The fit addon of the resize button
    reads the size of .term with its padding (border-box) and takes off only the padding of
@@ -316,7 +315,7 @@ button { font: inherit; color: inherit; }
 .btn.small { min-height: 30px; padding: 0 10px; font-size: 13px; margin-left: auto; }
 .item { margin: 0 18px 12px; border: 1px solid var(--reject); background: var(--reject-tint); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .item.end { border-color: var(--accept); background: var(--accept-tint); }
-.item.question { border-color: var(--terra-line); background: var(--terra-tint); }
+.item.question { border-color: var(--blue-line); background: var(--blue-tint); }
 .item-options { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .item-options .btn { text-align: left; min-height: 36px; padding: 6px 12px; white-space: normal; }
 .item-head { display: flex; align-items: center; gap: 8px; }
@@ -333,8 +332,8 @@ button { font: inherit; color: inherit; }
 .first .draft-text { margin: 12px 0; }
 .modal-note { color: var(--muted); font-size: 13px; margin: -6px 0 14px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
-.tier-set { border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px 4px; margin: 10px 0; }
-.tier-set legend { font-weight: 600; padding: 0 6px; }
+.model-set { border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px 4px; margin: 10px 0; }
+.model-set legend { font-weight: 600; padding: 0 6px; }
 @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } .draft-card { width: 100%; } }
 
 /* The onboarding pages (rulings 2, 3, 11): two columns of directions, then a grid of agents. */
@@ -348,11 +347,11 @@ button { font: inherit; color: inherit; }
 .direction-list { display: flex; flex-direction: column; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; position: sticky; top: 0; max-height: calc(100vh - 32px); overflow: auto; }
 .direction-item { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
 .direction-item:hover { background: var(--surface-2); }
-.direction-item[aria-current="true"] { background: var(--terra-tint); }
+.direction-item[aria-current="true"] { background: var(--blue-tint); }
 .direction-item .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); white-space: nowrap; }
-.chip.ready { border-color: var(--terra-line); background: var(--terra-tint); color: var(--terra); }
-.chip.question { border-color: var(--sol-line); background: var(--sol-tint); color: var(--sol); }
+.chip.ready { border-color: var(--blue-line); background: var(--blue-tint); color: var(--blue); }
+.chip.question { border-color: var(--amber-line); background: var(--amber-tint); color: var(--amber); }
 .chip.accepted, .chip.current { border-color: var(--accept); background: var(--accept-tint); color: var(--accept); }
 .direction-open { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
 .direction-head { display: flex; align-items: center; gap: 10px; }
@@ -377,7 +376,7 @@ button { font: inherit; color: inherit; }
 .md code, .md-inline code { font: 12.5px var(--mono); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .md pre { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow-x: auto; }
 .md pre code { border: 0; padding: 0; background: none; white-space: pre; }
-.md a { color: var(--terra); }
+.md a { color: var(--blue); }
 
 /* The levels of a direction: the direction, each standard, each rule inside its standard. */
 .level { border-radius: 10px; }
@@ -385,11 +384,11 @@ button { font: inherit; color: inherit; }
 .level-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; font-size: 13px; }
 .level-head code { font: 12.5px var(--mono); }
 .level-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 8px; border-radius: 6px; }
-.level-tag.direction { background: var(--sol-tint); color: var(--sol); border: 1px solid var(--sol-line); }
-.level-tag.standard { background: var(--terra-tint); color: var(--terra); border: 1px solid var(--terra-line); }
-.level-tag.rule { background: var(--luna-tint); color: var(--luna); border: 1px solid var(--luna-line); }
-.level-standard { border: 1px solid var(--terra-line); border-left: 4px solid var(--terra); padding: 10px 14px; }
-.level-rule { border: 1px solid var(--luna-line); border-left: 4px solid var(--luna); background: var(--surface-2); padding: 8px 12px; margin-left: 4px; }
+.level-tag.direction { background: var(--amber-tint); color: var(--amber); border: 1px solid var(--amber-line); }
+.level-tag.standard { background: var(--blue-tint); color: var(--blue); border: 1px solid var(--blue-line); }
+.level-tag.rule { background: var(--violet-tint); color: var(--violet); border: 1px solid var(--violet-line); }
+.level-standard { border: 1px solid var(--blue-line); border-left: 4px solid var(--blue); padding: 10px 14px; }
+.level-rule { border: 1px solid var(--violet-line); border-left: 4px solid var(--violet); background: var(--surface-2); padding: 8px 12px; margin-left: 4px; }
 .level-standard > .md + .level-rule { margin-top: 10px; }
 .checker { color: var(--muted); }
 /* The flow of a direction (app/flow.ts): a sequence diagram that scrolls in its own box, and the
@@ -400,41 +399,41 @@ button { font: inherit; color: inherit; }
 .flow-svg { display: block; font: 12px var(--sans); }
 .flow-svg text { fill: var(--text); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 .flow-life line { stroke: var(--line-strong); stroke-dasharray: 4 3; }
-.flow-life rect { fill: var(--terra-tint); stroke: var(--terra-line); }
-.flow-life text { font-weight: 600; stroke: var(--terra-tint); }
+.flow-life rect { fill: var(--blue-tint); stroke: var(--blue-line); }
+.flow-life text { font-weight: 600; stroke: var(--blue-tint); }
 .flow-arrow line { stroke: var(--text); stroke-width: 1.4; }
 .flow-svg marker path { fill: var(--text); }
-.flow-act rect { fill: var(--sol-tint); stroke: var(--sol-line); }
-.flow-act text { stroke: var(--sol-tint); }
-.flow-svg .flow-n { font-weight: 700; fill: var(--sol); }
+.flow-act rect { fill: var(--amber-tint); stroke: var(--amber-line); }
+.flow-act text { stroke: var(--amber-tint); }
+.flow-svg .flow-n { font-weight: 700; fill: var(--amber); }
 /* A step that the direction governs is in the color of the standards, with its ids in a tag;
    once a step is marked, the others are gray (Nanda, 2026-11-15). */
-.flow-arrow.marked line { stroke: var(--terra); stroke-width: 2; }
-.flow-arrow.marked text, .flow-act.marked text { fill: var(--terra); font-weight: 600; }
-.flow-act.marked rect { fill: var(--terra-tint); stroke: var(--terra); }
-.flow-act.marked text { stroke: var(--terra-tint); }
+.flow-arrow.marked line { stroke: var(--blue); stroke-width: 2; }
+.flow-arrow.marked text, .flow-act.marked text { fill: var(--blue); font-weight: 600; }
+.flow-act.marked rect { fill: var(--blue-tint); stroke: var(--blue); }
+.flow-act.marked text { stroke: var(--blue-tint); }
 .flow-arrow.gray line { stroke: var(--line-strong); }
 .flow-svg marker.gray path { fill: var(--line-strong); }
 .flow-svg .gray text, .flow-svg .gray .flow-n { fill: var(--faint); }
 .flow-act.gray rect { fill: var(--surface-2); stroke: var(--line); }
 .flow-act.gray text { stroke: var(--surface-2); }
-.flow-svg .flow-tag rect { fill: var(--terra-tint); stroke: var(--terra-line); }
-.flow-svg .flow-tag text { font: 11px var(--mono); fill: var(--terra); font-weight: 400; stroke: var(--terra-tint); stroke-width: 0; }
+.flow-svg .flow-tag rect { fill: var(--blue-tint); stroke: var(--blue-line); }
+.flow-svg .flow-tag text { font: 11px var(--mono); fill: var(--blue); font-weight: 400; stroke: var(--blue-tint); stroke-width: 0; }
 .flow-steps { margin: 8px 0 0; padding-left: 24px; font-size: 13px; }
 .flow-steps li + li { margin-top: 4px; }
 .flow-who { font-weight: 600; }
 .flow-steps .where { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
-.flow-steps li.marked::marker, .flow-steps li.marked .flow-who { color: var(--terra); }
+.flow-steps li.marked::marker, .flow-steps li.marked .flow-who { color: var(--blue); }
 .flow-steps li.gray, .flow-steps li.gray .where { color: var(--faint); }
-.uses-tag { display: inline-block; font: 11px/1.6 var(--mono); padding: 0 8px; border-radius: 8px; background: var(--terra-tint); color: var(--terra); border: 1px solid var(--terra-line); overflow-wrap: anywhere; }
+.uses-tag { display: inline-block; font: 11px/1.6 var(--mono); padding: 0 8px; border-radius: 8px; background: var(--blue-tint); color: var(--blue); border: 1px solid var(--blue-line); overflow-wrap: anywhere; }
 /* The summary of a direction, before its words: what it asks and why, for a first reading. */
-.direction-summary { max-width: 80ch; margin: 0 0 10px; padding: 8px 12px; font-size: 15px; font-weight: 600; line-height: 1.45; background: var(--sol-tint); border-radius: 8px; }
+.direction-summary { max-width: 80ch; margin: 0 0 10px; padding: 8px 12px; font-size: 15px; font-weight: 600; line-height: 1.45; background: var(--amber-tint); border-radius: 8px; }
 
 /* The examples (Nanda, 2026-11-15): by marked step, each an output that follows or breaks the
    direction (the color of its left edge), with its input for a step that checks or decides. A
    real sample shows the code around it, its lines marked; the host's words are labeled so. */
 .example-group + .example-group { margin-top: 14px; }
-.example-step { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--terra); overflow-wrap: anywhere; }
+.example-step { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--blue); overflow-wrap: anywhere; }
 .examples { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; align-items: start; }
 .example { font-size: 13px; border: 1px solid var(--line); border-left: 4px solid var(--accept); border-radius: 8px; padding: 8px 10px; background: var(--surface); min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .example.breaks { border-left-color: var(--reject); }
@@ -453,17 +452,17 @@ button { font: inherit; color: inherit; }
 .sample-code .line { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); white-space: pre; }
 .sample-code .ln { color: var(--faint); text-align: right; padding-right: 10px; user-select: none; }
 .sample-code .t { padding-right: 10px; }
-.sample-code .line.mark { background: var(--sol-tint); }
-.sample-code .line.mark .ln { color: var(--sol); font-weight: 700; }
-.sample-code mark { background: var(--sol-line); color: inherit; border-radius: 2px; }
-.question { border: 1px solid var(--sol-line); background: var(--sol-tint); border-radius: 10px; padding: 8px 12px 10px; margin: 0 0 10px; }
+.sample-code .line.mark { background: var(--amber-tint); }
+.sample-code .line.mark .ln { color: var(--amber); font-weight: 700; }
+.sample-code mark { background: var(--amber-line); color: inherit; border-radius: 2px; }
+.question { border: 1px solid var(--amber-line); background: var(--amber-tint); border-radius: 10px; padding: 8px 12px 10px; margin: 0 0 10px; }
 .question legend { font-weight: 600; padding: 0 4px; }
 .option { display: flex; align-items: flex-start; gap: 8px; min-height: 32px; padding-top: 6px; cursor: pointer; }
 .direction-open .field { margin-top: 14px; }
 .add-form { display: flex; flex-direction: column; gap: 4px; }
 .next-step { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--accept-tint); }
 .start-blocked { margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--reject-tint); border: 1px solid var(--reject); overflow-wrap: anywhere; }
-.waits { color: var(--sol); font-size: 13px; }
+.waits { color: var(--amber); font-size: 13px; }
 .muted { color: var(--muted); font-size: 13px; }
 .role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 .role-card { width: auto; }
@@ -495,8 +494,8 @@ button { font: inherit; color: inherit; }
 .project-row:hover { border-color: var(--line-strong); }
 .project-row .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .project-row code { font: 12px var(--mono); color: var(--faint); }
-.chip.works, .chip.talks { border-color: var(--terra-line); background: var(--terra-tint); color: var(--terra); }
-.chip.ends { border-color: var(--sol-line); background: var(--sol-tint); color: var(--sol); }
+.chip.works, .chip.talks { border-color: var(--blue-line); background: var(--blue-tint); color: var(--blue); }
+.chip.ends { border-color: var(--amber-line); background: var(--amber-tint); color: var(--amber); }
 .chip.done { border-color: var(--accept); background: var(--accept-tint); color: var(--accept); }
 
 /* The inbox of the dir (P1): the decisions that no open task shows, above the projects. */
@@ -505,7 +504,7 @@ button { font: inherit; color: inherit; }
 .inbox .item { margin: 0 0 12px; }
 .item-task { font: 12px var(--mono); color: var(--faint); margin-left: auto; }
 .item-waits { font-size: 13px; color: var(--muted); border-left: 3px solid var(--line-strong); padding-left: 10px; }
-.item.step, .item.evaluation { border-color: var(--terra-line); background: var(--terra-tint); }
+.item.step, .item.evaluation { border-color: var(--blue-line); background: var(--blue-tint); }
 .item-evaluation { margin: 0; display: grid; gap: 2px; }
 .item-evaluation dt { font-size: 12px; font-weight: 700; color: var(--faint); margin-top: 6px; }
 .item-evaluation dd { margin: 0; white-space: pre-wrap; }

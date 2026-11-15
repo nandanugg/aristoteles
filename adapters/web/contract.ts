@@ -52,7 +52,6 @@ import {
 } from '../../core/schema/index.ts'
 
 const Text = Schema.String
-const Tier = Schema.Literals(['sol', 'terra', 'luna', 'program'])
 // A terminal as the page shows it (ui-model.ts TerminalSeen), and the terminal of a card.
 const seen = (tag: 'Unknown' | 'Live' | 'Ended' | 'Closed') =>
   Schema.TaggedStruct(tag, { session: SessionId })
@@ -210,7 +209,7 @@ export type Decision = typeof Decision.Type
 export const Owner = Schema.Struct({
   a: AssignmentId,
   role: Text,
-  tier: Tier,
+  model: Schema.NullOr(Text),
   agent: Schema.NullOr(AgentId),
   terminal: CardTerminal,
   inside: Schema.NullOr(AssignmentId),
@@ -220,7 +219,7 @@ export const ReviewCard = Schema.Struct({
   id: Schema.NullOr(Text),
   by: Text,
   role: Schema.NullOr(Text),
-  tier: Schema.NullOr(Schema.Literals(['sol', 'terra', 'luna', 'program', 'person'])),
+  model: Schema.NullOr(Text),
   decides: Schema.Boolean,
   decision: Schema.Literals(['accept', 'reject', 'escalate', 'reviews', 'waits']),
   line: Text,
@@ -239,7 +238,7 @@ const WorkNow = Schema.Union([
 export const WorkCard = Schema.Struct({
   a: AssignmentId,
   role: Text,
-  tier: Tier,
+  model: Schema.NullOr(Text),
   attempt: Attempt,
   terminal: CardTerminal,
   inside: Schema.NullOr(AssignmentId),
@@ -444,24 +443,30 @@ export const DirectionCard = Schema.Union([
   }),
   Schema.Struct({ ...CardHead, state: Schema.Literals(['ready', 'accepted', 'current']), draft }),
 ])
-export const RoleCard = Schema.Struct({
+const RoleCardBase = {
   role: Text,
   icon: Text,
-  tier: Tier,
-  model: Schema.NullOr(Text),
-  launch: Schema.NullOr(Text),
   summary: Text,
   description: Text,
-  persistence: Schema.NullOr(Schema.Struct({ persistent: Schema.Boolean, why: Text })),
-  toggle: Schema.Boolean,
   found: Schema.NullOr(Text),
   state: Schema.Literals(['waiting', 'accepted', 'current']),
   request: Schema.NullOr(Text),
-})
+}
+export const RoleCard = Schema.Union([
+  Schema.TaggedStruct('Agent', {
+    ...RoleCardBase,
+    model: Text,
+    launch: Schema.NullOr(Text),
+    persistence: Schema.Struct({ persistent: Schema.Boolean, why: Text }),
+    toggle: Schema.Boolean,
+  }),
+  Schema.TaggedStruct('Program', RoleCardBase),
+])
 export const OnboardingView = Schema.Struct({
   stage: Schema.Literals(['files', 'store']),
   directions: Schema.Array(DirectionCard),
   roles: Schema.Array(RoleCard),
+  models: Schema.Array(Text),
   adjustments: Schema.Array(Decision),
   start: Schema.Union([
     Schema.Struct({ state: Schema.Literals(['open', 'waiting', 'started']) }),
@@ -510,10 +515,9 @@ export const PageMessage = Schema.Union([
 // --- the acts of the person (POST /api/act) -------------------------------------------------
 
 // The settings POST sends only the fields that the person changed: the server fills the rest
-// from the file (a tier keeps the words that it did not send, and outsideSourceHours is not on
-// the form).
-export const TierChange = Schema.Struct({
-  model: Schema.optionalKey(Text),
+// from the file (a model keeps the words that it did not send, and outsideSourceHours is not on
+// the form). The page changes the commands of the models that the table has; it adds none.
+export const ModelChange = Schema.Struct({
   launch: Schema.optionalKey(Text),
   resume: Schema.optionalKey(Text),
   start: Schema.optionalKey(Text),
@@ -529,13 +533,7 @@ export const SettingsChange = Schema.Struct({
   retryMinutes: Schema.optionalKey(Schema.Number),
   hostWaitMinutes: Schema.optionalKey(Schema.Number),
   outsideSourceHours: Schema.optionalKey(Schema.Number),
-  tiers: Schema.optionalKey(
-    Schema.Struct({
-      sol: Schema.optionalKey(TierChange),
-      terra: Schema.optionalKey(TierChange),
-      luna: Schema.optionalKey(TierChange),
-    }),
-  ),
+  models: Schema.optionalKey(Schema.Record(Text, ModelChange)),
 })
 export type SettingsChange = typeof SettingsChange.Type
 
@@ -547,11 +545,7 @@ export const PageAct = Schema.Union([
     reason: Schema.optionalKey(Text),
   }),
   Schema.Struct({ act: Schema.Literal('stop'), session: SessionId }),
-  Schema.Struct({
-    act: Schema.Literal('resume'),
-    session: SessionId,
-    tier: Schema.Literals(['sol', 'terra', 'luna']),
-  }),
+  Schema.Struct({ act: Schema.Literal('resume'), session: SessionId }),
   Schema.Struct({ act: Schema.Literal('fixed'), problem: ProblemId }),
   Schema.Struct({
     act: Schema.Literal('accept-draft'),

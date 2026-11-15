@@ -286,7 +286,7 @@ export const assignmentStateOf: AssignmentStateOf = (m, id, { task, parent }) =>
   if (x._tag === 'Maker' && x.maxAttempts._tag === 'AtMost' && used >= x.maxAttempts.max) {
     return { _tag: 'OutOfTries', used, max: x.maxAttempts.max }
   }
-  // Ruling 10.9: a brief over the limit of its tier waits (the adapter measures the brief).
+  // Ruling 10.9: a brief over the limit of its model waits (the adapter measures the brief).
   const role = roleAt(m.work, x.role)
   const limit = role._tag === 'Model' ? maxOf(role.limits.Assignment.briefChars) : undefined
   const size = limit === undefined ? 0 : m.outside.measure(m.work, id)
@@ -394,7 +394,7 @@ export const runStateOf: RunStateOf = (m, id, { top }) => {
     const end = taskAt(m.work, top.task).end
     return { _tag: 'Closed', at: end._tag === 'NotEnded' ? m.at : end.when }
   }
-  // The Sol of the top task accepted it: the end of the project waits for the person, since the
+  // The host of the top task accepted it: the end of the project waits for the person, since the
   // last Accept of its latest result (an Accepted task has one), else since that result.
   if (top.state._tag !== 'Accepted') return { _tag: 'Working', top: top.task }
   const last = need(latestResultOf(m.work, top.task), 'result of the accepted task', top.task)

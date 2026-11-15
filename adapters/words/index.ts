@@ -53,7 +53,7 @@ export {
   reviseAgain,
   reviseAgainOf,
   stopIdOf,
-  tierOfRole,
+  rolesWith,
 } from './shared.ts'
 export { touchedIds } from './log.ts'
 export { drafterWords, renderRoleWords, roleWordsChange } from './role-words.ts'

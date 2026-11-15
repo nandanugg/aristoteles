@@ -144,7 +144,7 @@ const WORDS: { readonly [K in StepKind]: (d: Derived, item: Of<K>) => Words } = 
       title: 'Rejected words of a role',
       text:
         `The new words of ${x?.role ?? item.role} are rejected: "${short(reason, 120)}". ` +
-        'Say in words what you want; a high role drafts it.',
+        'Say in words what you want; a role that directs drafts it.',
     }
   },
   AdjustmentRejected: (d, item) => {
@@ -156,7 +156,7 @@ const WORDS: { readonly [K in StepKind]: (d: Derived, item: Of<K>) => Words } = 
       title: 'A rejected adjustment',
       text:
         `The adjustment "${what}" is rejected: "${short(reason, 120)}". ` +
-        'Say in words what you want; a high role drafts it.',
+        'Say in words what you want; a role that directs drafts it.',
     }
   },
   ChangePoint: (d, item) => {
@@ -175,7 +175,7 @@ const WORDS: { readonly [K in StepKind]: (d: Derived, item: Of<K>) => Words } = 
       return {
         title: 'A task stopped',
         text:
-          `${t.id} ${t.name} stopped and waits for an evaluation, and no high role works on ` +
+          `${t.id} ${t.name} stopped and waits for an evaluation, and no role that splits works on ` +
           'it. Assign one, or evaluate it yourself.',
       }
     }

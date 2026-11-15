@@ -154,9 +154,9 @@ describe('waiting', () => {
         // P1, P3: the host of t1 drafts the change of v2.1, so the person's step is a Wait, and the
         // row prints no suggest and no split.
         if (s.name === 'uiRun') {
-          expect(added).toEqual(['v2.1 needs a change of tsd-writing; a high role drafts it'])
+          expect(added).toEqual(['v2.1 needs a change of tsd-writing; a role that directs drafts it'])
           expect(removed).toEqual([
-            'v2.1 needs a change of tsd-writing; a high role drafts it, or you suggest it',
+            'v2.1 needs a change of tsd-writing; a role that directs drafts it, or you suggest it',
             '    work suggest tsd-writing --says="<the change>"',
             'v2.1 can also be answered by your split of t1',
             '    work task split t1 --file=<parts.yaml> --review=v2.1',

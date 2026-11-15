@@ -16,7 +16,8 @@ import {
   onPage,
   type PersonKind,
   SURFACES,
-  tierOfAssignment,
+  modelOfAssignment,
+  unitA,
   waitingFor,
   type WaitingItem,
   type WaitingWho,
@@ -130,8 +131,6 @@ export interface ViewContext {
   readonly person: string
 }
 
-type TierName = 'sol' | 'terra' | 'luna' | 'program'
-
 // --- what a view reads from outside the Work: files and git of the dir ----------------------
 
 const readText = (path: string): string => (existsSync(path) ? readFileSync(path, 'utf8') : '')
@@ -158,12 +157,6 @@ const textDiff = (file: string, before: string, after: string): string => {
 
 const byName = (by: By): string => (isAssignment(by) ? by : by.name)
 const workOf = (d: Derived): Work => d.moment.work
-const TIER_WORD = { high: 'sol', medium: 'terra', low: 'luna' } as const
-// The tier that the assignment kept at its give (core/derived tierOfAssignment); none: a program.
-const tierWord = (w: Work, a: Assignment): TierName => {
-  const tier = tierOfAssignment(w, a)
-  return tier === null ? 'program' : TIER_WORD[tier]
-}
 // Where an assignment runs (ruling 7): the host and a persistent agent run in a terminal of their
 // own; a persistent role on a task that no run holds (NoRun) has none, as no terminal starts
 // there. A subagent runs inside the terminal above it, a program in the CLI.
@@ -627,7 +620,7 @@ const ownerOf = (d: Derived, task: TaskId, ctx: ViewContext): Owner | null => {
     return {
       a: lead.id,
       role: lead.role,
-      tier: tierWord(w, lead),
+      model: modelOfAssignment(w, lead),
       agent,
       terminal: cardTerminal(ctx, w, session),
       inside: null,
@@ -643,7 +636,7 @@ const ownerOf = (d: Derived, task: TaskId, ctx: ViewContext): Owner | null => {
   return {
     a: maker.id,
     role: maker.role,
-    tier: tierWord(w, maker),
+    model: modelOfAssignment(w, maker),
     agent: null,
     terminal: cardTerminal(ctx, w, parent ? terminalOf(w, parent).session : null),
     inside: parent?.id ?? null,
@@ -658,7 +651,7 @@ const attemptCard = (d: Derived, m: Assignment) => {
 }
 
 // The reviews of one result that run now (Nanda, 2026-11-11): a review that still stops it (an
-// escalation with no answer, a Reject), a Luna checker that has not reviewed it yet, and a DECIDE
+// escalation with no answer, a Reject), a checker of one unit that has not reviewed it yet, and a DECIDE
 // card for a decider whose accept it still waits for. A done accept goes; the panel keeps it.
 const reviewCards = (d: Derived, result: Result): ReadonlyArray<ReviewCard> => {
   const w = workOf(d)
@@ -679,7 +672,7 @@ const reviewCards = (d: Derived, result: Result): ReadonlyArray<ReviewCard> => {
         id: v.id,
         by: byName(v.by),
         role: agent ? agent.role : 'person',
-        tier: agent ? tierWord(w, agent) : 'person',
+        model: agent ? modelOfAssignment(w, agent) : null,
         decides: agent ? decidesResults(w, v.by, result.id, v.when) : true,
         decision:
           v.decision === 'Accept' ? 'accept' : v.decision === 'Reject' ? 'reject' : 'escalate',
@@ -690,13 +683,13 @@ const reviewCards = (d: Derived, result: Result): ReadonlyArray<ReviewCard> => {
   const since = items.findLastIndex((v) => v.redo)
   const reviewed = (a: Assignment) => items.some((v, i) => i > since && v.by === a.id)
   for (const a of assignmentsOn(w, result.task)) {
-    if (ended(d, a.id) || isDo(w, a.role) || tierWord(w, a) !== 'luna') continue
+    if (ended(d, a.id) || isDo(w, a.role) || !unitA(w, a)) continue
     if (reviewed(a)) continue
     cards.push({
       id: null,
       by: `${a.id} ${a.role}`,
       role: a.role,
-      tier: 'luna',
+      model: modelOfAssignment(w, a),
       decides: false,
       decision: 'reviews',
       line: '',
@@ -723,7 +716,7 @@ const reviewCards = (d: Derived, result: Result): ReadonlyArray<ReviewCard> => {
             : 'a role that decides it'
           : `${result.id} was accepted by its decider under an old version; the decider runs ` +
             'work brief (it reads the current version), then accepts it again'
-    cards.push({ id: null, by, role: null, tier: null, decides: true, decision: 'waits', line: '' })
+    cards.push({ id: null, by, role: null, model: null, decides: true, decision: 'waits', line: '' })
   }
   return cards
 }
@@ -759,7 +752,7 @@ const workCards = (d: Derived, task: TaskId, ctx: ViewContext): ReadonlyArray<Wo
           ? undefined
           : { state: 'works' }
       if (now === undefined) return []
-      const card = { a: m.id, role: m.role, tier: tierWord(w, m), attempt: attemptCard(d, m) }
+      const card = { a: m.id, role: m.role, model: modelOfAssignment(w, m), attempt: attemptCard(d, m) }
       const inside = own || !parent ? null : parent.id
       return [{ ...card, terminal: cardTerminal(ctx, w, session), inside, now }]
     })
@@ -1255,28 +1248,29 @@ const onboardingDirectionCard = (
   }
 }
 
-// The model of a tier: its setting, or the class of the tier (P9, as work assign words it).
-const MODEL_CLASS = { sol: 'Opus', terra: 'Sonnet', luna: 'Haiku' } as const
-// What every card of a role shows, from its file and the settings of its tier (ruling 10).
-const roleCardOf = (settings: Settings, role: string, file: RoleFile) => {
-  if (file.kind === 'program') {
-    const tier = 'program' as const
-    return { role, icon: file.icon, tier, model: null, launch: null, persistence: null }
-  }
-  const tier = TIER_WORD[file.tier]
-  const commands = settings.tiers[tier]
+// The words of a card that its file does not hold: the summary, where the project has it, its
+// state, a Revise that waits, and whether the page toggles its persistence.
+type CardWords = Omit<RoleCard, '_tag' | 'role' | 'icon' | 'model' | 'launch' | 'persistence' | 'toggle'> & {
+  readonly toggle: boolean
+}
+// What every card of a role shows, from its file and the settings of its model (ruling 10).
+const roleCardOf = (settings: Settings, role: string, file: RoleFile, words: CardWords): RoleCard => {
+  const { toggle, ...rest } = words
+  if (file.kind === 'program') return { _tag: 'Program', role, icon: file.icon, ...rest }
   return {
+    _tag: 'Agent',
     role,
     icon: file.icon,
-    tier,
-    model: commands?.model ?? MODEL_CLASS[tier],
-    launch: commands?.launch ?? null,
+    model: file.model,
+    launch: settings.models[file.model]?.launch ?? null,
     persistence: file.persistence,
+    toggle,
+    ...rest,
   }
 }
 
 // Before the store: the onboarding files (ruling 1). The role of the top task has no toggle while
-// it is the only persistent high role (ruling 15); the roles that the project has come first.
+// it is the only persistent role that splits (ruling 15); the roles that the project has come first.
 export const onboardingFilesView = (
   files: OnboardingFiles,
   settings: Settings,
@@ -1284,12 +1278,11 @@ export const onboardingFilesView = (
 ): OnboardingView => {
   const exampleOf = exampleReader(dir)
   const lead = onlyLead(files.config?.roles ?? {})
-  const roles = files.roles.map(
-    (r): RoleCard => ({
-      ...roleCardOf(settings, r.role, r.file),
+  const roles = files.roles.map((r) =>
+    roleCardOf(settings, r.role, r.file, {
       summary: r.summary,
       description: r.file.description,
-      toggle: r.file.kind === 'agent' && lead !== r.role,
+      toggle: lead !== r.role,
       found: r.found._tag === 'InProject' ? r.found.path : null,
       state: r.decision._tag === 'Accepted' ? 'accepted' : 'waiting',
       request: r.decision._tag === 'Revising' ? r.decision.words : null,
@@ -1299,6 +1292,7 @@ export const onboardingFilesView = (
     stage: 'files',
     directions: files.directions.map((f) => onboardingDirectionCard(f, exampleOf)),
     roles: [...roles.filter((r) => r.found !== null), ...roles.filter((r) => r.found === null)],
+    models: Object.keys(settings.models),
     adjustments: [],
     start: startViewOf(files),
   }
@@ -1352,9 +1346,8 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
         },
       }
     })
-  const roles = Object.entries(w.config.roles).map(
-    ([role, file]): RoleCard => ({
-      ...roleCardOf(ctx.settings, role, file),
+  const roles = Object.entries(w.config.roles).map(([role, file]) =>
+    roleCardOf(ctx.settings, role, file, {
       summary: file.description,
       description: file.description,
       toggle: false,
@@ -1366,7 +1359,8 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
   const adjustments = decisionsOf(d, ctx.person).flatMap(({ decision: x }) =>
     x._tag === 'Adjustment' ? [x] : [],
   )
-  return { stage: 'store', directions, roles, adjustments, start: { state: 'started' } }
+  const models = Object.keys(ctx.settings.models)
+  return { stage: 'store', directions, roles, models, adjustments, start: { state: 'started' } }
 }
 
 // --- the dir --------------------------------------------------------------------------------

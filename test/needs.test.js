@@ -106,7 +106,7 @@ describe('the decider decides', () => {
   })
 
   test('a role assigns a maker only when it, or a role above it, decides that maker', async () => {
-    const p = await fresh({ 'aristoteles.yaml': WORK_YAML.replace('acts: [{ approve: [section-lead, writer] }]', 'acts: [{ approve: [section-lead] }]') })
+    const p = await fresh({ 'aristoteles.yaml': WORK_YAML.replace('acts: [{ approve: [section-lead, writer] }, ', 'acts: [{ approve: [section-lead] }, ') })
     const arch = await architect(p)
     expect((await p.agent(`assign ${arch} t1 --role=writer`)).err).toContain('decides no writer results')
   })

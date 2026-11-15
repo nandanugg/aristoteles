@@ -21,7 +21,7 @@
 // The derived states at the end (TaskState of the page, and the additions of plan/types
 // PLAN.md section 5) are computed by the engine; nothing stores them.
 import type { Actor, Agent, Human } from './actor.ts'
-import type { Level, Principle, Reason, Tier } from './closed.ts'
+import type { Level, Principle, Reason } from './closed.ts'
 // The Schemas of the stored events hold the shapes that a record keeps as they are, once.
 import type {
   GrantedAct as GrantedActSchema,
@@ -64,7 +64,7 @@ import type {
 export type Text = string
 export type { NonBlank }
 export type NonEmpty<A> = readonly [A, ...A[]]
-export type { Level, Principle, Reason, Snapshot, Tier }
+export type { Level, Principle, Reason, Snapshot }
 
 // A map with at least one key. Only a smart constructor makes one (context.ts whereOf).
 declare const nonEmptyMap: unique symbol
@@ -214,13 +214,13 @@ export interface Permission {
 
 // --- Workflow ----------------------------------------------------------------------------------
 
-// page: Workflow. The roles of one system, who plays them, their tiers, and the limits.
+// page: Workflow. The roles of one system, who plays them, their models, and the limits.
 export interface Workflow {
   readonly system: Text // the work CLI uses the name of its project
   // not on the page: the person who made the store owns the roles
   readonly owner: Human
-  readonly roles: ReadonlyMap<RoleName, Role> // with the three tiers
-  // The CLI sets no limit for the whole workflow (all Unlimited): each role has its tier's.
+  readonly roles: ReadonlyMap<RoleName, Role>
+  // The CLI sets no limit for the whole workflow (all Unlimited): each role has its model's.
   readonly limits: Limits
   // page: measure?: (a) => number. Not stored: the CLI gives it to each check (CheckContext).
   // page: decide?: who decides the results of a maker, one entry per maker; a maker with none:
@@ -254,29 +254,30 @@ export interface Limits {
   readonly Result: { readonly size: Limit }
 }
 
-// page: Role. A role of a model tier, or a check program (page: "a check program has no tier").
-// page: playedBy: derived (derived.ts playedBy): the tier's model, or the program's name; a
+// page: Role. A role that a model plays, or a check program.
+// page: playedBy: derived (derived.ts playedBy): the role's model, or the program's name; a
 // person plays no role. Its words are the Work's config (Work.config.roles), kept once.
 export type Role = RoleBase &
   (
-    | { readonly _tag: 'Model'; readonly tier: Tier; readonly persistence: Persistence }
+    | { readonly _tag: 'Model'; readonly model: Text; readonly persistence: Persistence }
     | { readonly _tag: 'Program' }
   )
 interface RoleBase {
   readonly role: RoleName // the system's own name: 'writer', 'linter'
   readonly icon: Text // an icon of the page (closed.ts ROLE_ICONS), on the card of the role
   readonly acts: ReadonlyArray<Act>
-  readonly limits: Limits // the CLI: those of its tier; a program's are all Unlimited
+  readonly limits: Limits // the CLI: those of its model; a program's are all Unlimited
 }
 
-// How a role of a model runs, apart from its tier (ruling 7). The card of the role shows why.
+// How a role of a model runs, apart from its model (ruling 7). The card of the role shows why.
 export type Persistence =
   // a terminal of its own, for the whole project, so it can start subagents
   | { readonly _tag: 'Persistent'; readonly why: NonBlank }
   // a subagent of a terminal, with no terminal of its own, so it starts nothing
   | { readonly _tag: 'Disposable'; readonly why: NonBlank }
 
-// page: Act. The engine knows four acts; each says on what.
+// page: Act. The work acts say on what; assign names the roles that the role gives work to;
+// split, direct and fit are the authority of a role (closed.ts AUTHORITY).
 export type Act =
   | { readonly _tag: 'Do'; readonly work: Text }
   | { readonly _tag: 'Review'; readonly resultsOf: ReadonlyArray<RoleName> }
@@ -284,6 +285,10 @@ export type Act =
   // A role's change act names directions by id before they exist; only an official direction
   // counts.
   | { readonly _tag: 'Change'; readonly changesOf: ReadonlyArray<DirectionId | TaskId> }
+  | { readonly _tag: 'Assign'; readonly roles: ReadonlyArray<RoleName> }
+  | { readonly _tag: 'Split' }
+  | { readonly _tag: 'Direct' }
+  | { readonly _tag: 'Fit' }
 // The acts that a permission gives: every act but Do (events.ts GrantedAct).
 export type GrantedAct = typeof GrantedActSchema.Type
 
@@ -303,7 +308,7 @@ interface DirectionBase {
   readonly owner: Human // page: Actor; the CLI's owner is a person of aristoteles.yaml
   readonly from: ReadonlyArray<Principle>
   readonly maxStandards: Limit
-  // page: none: the owner; then a high role with a Change act on it accepts in the owner's place.
+  // page: none: the owner; then a role that directs, with a Change act on it, accepts in the owner's place.
   readonly approvedBy:
     | { readonly _tag: 'Owner' }
     | { readonly _tag: 'Deciders'; readonly deciders: Deciders }
@@ -443,14 +448,14 @@ interface AssignmentBase {
   readonly when: Time // not on the page
   readonly end: AssignmentEnd // not on the page: the engine's finished
 }
-// page: Assignment.runs (onboarding). An open assignment keeps the tier and the persistence of
-// its role at its give (ruling 13), so the members that no record holds keep the tier (P2).
+// page: Assignment.runs (onboarding). An open assignment keeps the model and the persistence of
+// its role at its give (ruling 13), so the members that no record holds keep the model (P2).
 export type Runs =
-  | { readonly _tag: 'Host'; readonly run: RunId } // the high role of the top task of a run
+  | { readonly _tag: 'Host'; readonly run: RunId } // the role that splits the top task of a run
   | { readonly _tag: 'Agent'; readonly agent: AgentId } // the persistent agent of its role
-  | { readonly _tag: 'Subagent'; readonly tier: Tier } // a disposable role: inside a terminal
+  | { readonly _tag: 'Subagent'; readonly model: Text } // a disposable role: inside a terminal
   // a persistent role on a task that no run holds (opened at a terminal): no terminal starts
-  | { readonly _tag: 'NoRun'; readonly tier: Tier }
+  | { readonly _tag: 'NoRun'; readonly model: Text }
   | { readonly _tag: 'Program' } // a check program, which the CLI runs
 export type Maker = AssignmentBase & {
   readonly _tag: 'Maker'
@@ -660,7 +665,7 @@ export type Stop = typeof StopSchema.Type
 export interface Evaluation {
   readonly id: EvaluationId // not on the page
   readonly answers: Stop // the last attempt of a maker, or the person's Reject
-  readonly by: AssignmentId | Human // the high role of the task's tree, or the person
+  readonly by: AssignmentId | Human // a role of the task's tree that splits, or the person
   readonly wrong: NonBlank
   readonly why: NonBlank
   readonly improve: NonEmpty<NonBlank>

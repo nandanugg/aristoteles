@@ -16,7 +16,7 @@ import {
   usesProblem,
   type Workspace,
 } from '../domain/files.ts'
-import { oneOf, PRINCIPLES, ROLE_ICONS } from '../domain/closed.ts'
+import { AUTHORITY, oneOf, PRINCIPLES, ROLE_ICONS } from '../domain/closed.ts'
 import { PositiveInt } from '../domain/ids.ts'
 import { refuse } from '../domain/errors.ts'
 import { Files } from '../services/outside.ts'
@@ -31,11 +31,10 @@ import {
   refusing,
   SETTING_KEYS,
   sha,
-  TIERS,
 } from './core.ts'
 import { readSettingsOf, withSettings } from './settings.ts'
 
-export { CONFIG, LIMIT_KEYS, MECHANISM_KEYS, SETTING_KEYS, sha, TIERS }
+export { CONFIG, LIMIT_KEYS, MECHANISM_KEYS, SETTING_KEYS, sha }
 
 // The fit hash of a role: the sha of its JSON in the key order of readRoles (parity: the stored
 // hashes of `work role fit` compare with this).
@@ -47,6 +46,14 @@ export interface ConfigRead {
   readonly texts: Readonly<Record<string, string>>
 }
 
+// The mechanism of a parsed file: its keys, and the limits of each model (the commands of a
+// model are settings).
+const mechanismOf = (raw: Raw): Raw => ({
+  ...Object.fromEntries(MECHANISM_KEYS.map((k) => [k, raw[k] ?? null])),
+  models: Object.fromEntries(
+    Object.entries<Raw>(raw.models ?? {}).map(([name, m]) => [name, m?.limits ?? null]),
+  ),
+})
 // The hash of the mechanism only: a change of the settings (the UI writes them) is not a change
 // of the stored config. A file that does not parse is still a changed file.
 const mechanismHash = (text: string): string => {
@@ -56,7 +63,7 @@ const mechanismHash = (text: string): string => {
   } catch {
     return sha(text)
   }
-  return sha(JSON.stringify(Object.fromEntries(MECHANISM_KEYS.map((k) => [k, raw[k] ?? null]))))
+  return sha(JSON.stringify(mechanismOf(raw)))
 }
 
 // Who decides: a name (a role; for a direction, a person too), or one of { or }, { and },
@@ -106,17 +113,20 @@ const readDeciders = (
   return by
 }
 
-// An act is exactly one of do, review, approve, change. A change names directions by id: they
-// live in aristoteles, so a name may come before its direction does.
+// An act is one of do, review, approve, change, assign, or a word of authority (split, direct,
+// fit). A change names directions by id: they live in aristoteles, so a name may come before its
+// direction does.
+const ACT_FIX =
+  'each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, ' +
+  `{ change: [direction ids] }, { assign: [roles] }, ${AUTHORITY.join(', ')}`
 const readAct = (where: string, act: Raw, roleNames: string[]): Raw => {
-  const keys = Object.keys(act ?? {})
-  if (keys.length !== 1 || !['do', 'review', 'approve', 'change'].includes(keys[0] as string)) {
-    fail(
-      where,
-      'each act is one of { do: <work> }, { review: [roles] }, { approve: [roles] }, ' +
-        '{ change: [direction ids] }',
-    )
+  if (typeof act === 'string') {
+    if (!(AUTHORITY as ReadonlyArray<string>).includes(act)) fail(where, ACT_FIX)
+    return act
   }
+  const keys = Object.keys(act ?? {})
+  const known = ['do', 'review', 'approve', 'change', 'assign']
+  if (keys.length !== 1 || !known.includes(keys[0] as string)) fail(where, ACT_FIX)
   const key = keys[0] as string
   if (key === 'do') return { do: String(act.do) }
   for (const name of list(act[key])) {
@@ -133,7 +143,7 @@ const readIcon = (where: string, icon: unknown): void => {
     fail(where, `icon is required: one of ${ROLE_ICONS.join(', ')}`)
   }
 }
-// An agent role says how it runs, apart from its tier (ruling 7); a program runs in the CLI, so
+// An agent role says how it runs, apart from its model (ruling 7); a program runs in the CLI, so
 // it has none (P12).
 const PERSISTENCE_FIX =
   'persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets ' +
@@ -153,9 +163,9 @@ const readPersistence = (where: string, p: Raw): void => {
   }
 }
 
-// The keys keep the old order and an absent key is left out, so the JSON of a role (and its
-// roleHash) is the same as the old one; persistence and icon go last.
-const readRoles = (raw: Raw): Record<string, RoleFile> => {
+// The keys keep the file's order and an absent key is left out, so the JSON of a role (and its
+// roleHash) is stable; persistence and icon go last.
+const readRoles = (raw: Raw, models: ReadonlyArray<string>): Record<string, RoleFile> => {
   const names = Object.keys(raw)
   const roles: Record<string, RoleFile> = {}
   for (const [name, r] of Object.entries<Raw>(raw)) {
@@ -165,10 +175,12 @@ const readRoles = (raw: Raw): Record<string, RoleFile> => {
       if (r.persistence !== undefined) {
         fail(where, 'a program runs in the CLI, never in a terminal: remove its persistence')
       }
+      if (r.model !== undefined) fail(where, 'a program runs no model: remove its model')
     } else {
       // The person acts with no token at a terminal, so no role is played by a person.
-      if (!(TIERS as readonly string[]).includes(r?.tier)) {
-        fail(where, 'tier is low, medium, or high (the person needs no role)')
+      if (!models.includes(r?.model)) {
+        const names = models.length ? models.join(', ') : 'none yet'
+        fail(where, `model names an entry of the models table (${names})`)
       }
       for (const key of ['description', 'intro']) {
         if (typeof r[key] !== 'string' || !r[key].trim()) fail(where, `${key} is required`)
@@ -179,11 +191,17 @@ const readRoles = (raw: Raw): Record<string, RoleFile> => {
     readIcon(where, r.icon)
     const acts = list(r.acts).map((a) => readAct(where, a, names))
     if (acts.length === 0) fail(where, 'acts must list at least one act')
+    if (r.kind === 'program' && acts.some((a) => typeof a === 'string' || a.assign)) {
+      fail(where, 'a program only reviews; it assigns nothing and has no authority')
+    }
+    for (const n of acts.flatMap((a) => (typeof a === 'string' ? [] : list(a.assign)))) {
+      if (raw[n]?.kind === 'program') fail(where, `assign names ${n}, a program; it runs by itself`)
+    }
     const some = <K extends string>(key: K, value: unknown) =>
       value === undefined ? {} : { [key]: value }
     roles[name] = {
       kind: r.kind ?? 'agent',
-      ...some('tier', r.tier),
+      ...some('model', r.model),
       description: r.description ?? '',
       intro: r.intro ?? '',
       responsibilities: list(r.responsibilities),
@@ -200,28 +218,30 @@ const readRoles = (raw: Raw): Record<string, RoleFile> => {
   return roles
 }
 
-const readLimits = (raw: Raw): ConfigFile['limits'] => {
-  const limits: Raw = {}
+// The limits of each model of the models table (its commands are settings.ts's).
+const readLimits = (raw: Raw): ConfigFile['models'] => {
+  const models: Raw = {}
   const parts = Object.keys(LIMIT_KEYS)
-  for (const tier of TIERS) {
-    limits[tier] = {}
-    for (const [part, group] of Object.entries<Raw>(raw.limits?.[tier] ?? {})) {
+  for (const [name, m] of Object.entries<Raw>(raw.models ?? {})) {
+    const at = `models.${name}.limits`
+    models[name] = {}
+    for (const [part, group] of Object.entries<Raw>(m?.limits ?? {})) {
       if (!parts.includes(part)) {
-        fail(CONFIG, `limits.${tier}.${part} is not a part with limits (${parts.join(', ')})`)
+        fail(CONFIG, `${at}.${part} is not a part with limits (${parts.join(', ')})`)
       }
       const keys: readonly string[] = LIMIT_KEYS[part as keyof typeof LIMIT_KEYS]
       for (const [key, value] of Object.entries<Raw>(group ?? {})) {
         if (!keys.includes(key)) {
-          fail(CONFIG, `limits.${tier}.${part}.${key} is not a limit of ${part} (${keys.join(', ')})`)
+          fail(CONFIG, `${at}.${part}.${key} is not a limit of ${part} (${keys.join(', ')})`)
         }
         if (!Schema.is(PositiveInt)(value)) {
-          fail(CONFIG, `limits.${tier}.${part}.${key} is a whole number of 1 or more`)
+          fail(CONFIG, `${at}.${part}.${key} is a whole number of 1 or more`)
         }
       }
-      limits[tier][part] = { ...group }
+      models[name][part] = { ...group }
     }
   }
-  return limits
+  return models
 }
 
 // The mechanism of a parsed file, checked. dir gives the name of the project.
@@ -251,27 +271,22 @@ const configOf = (dir: string, raw: Raw): ConfigFile => {
       `the person "${idLike}" has the name of an id (like a1 or t2); give the person another name`,
     )
   }
-  const limits = readLimits(raw)
-  const roles = readRoles(raw.roles ?? {})
-  // Every workflow has the three tiers, from Sol to Terra to Luna: the high role evaluates a mistake.
-  for (const tier of ['high', 'medium', 'low']) {
-    if (!Object.values(roles).some((r) => r.tier === tier)) {
-      fail(
-        CONFIG,
-        `the workflow has no ${tier} role; every workflow has the three tiers (high, medium, low), and the high role evaluates a mistake`,
-      )
-    }
+  const models = readLimits(raw)
+  const roles = readRoles(raw.roles ?? {}, Object.keys(models))
+  // A role that splits evaluates a mistake, and hosts each project.
+  if (!Object.values(roles).some((r) => r.acts.includes('split'))) {
+    fail(CONFIG, 'no role splits; a role with the split act hosts each project and evaluates a mistake')
   }
   // Who decides the results of a maker, when more than one role approves it: each named role
   // has an Approve act on the maker. With no entry, any one of them decides.
   const decide = list(raw.decide).map((d, i) => {
     const where = `${CONFIG} decide ${i + 1}`
-    if (!roles[d?.resultsOf]?.acts.some((a: Raw) => a.do)) {
+    if (!roles[d?.resultsOf]?.acts.some((a: Raw) => a?.do)) {
       fail(where, `resultsOf names "${d?.resultsOf}", which is not a role that does work`)
     }
     const by = readDeciders(where, d.by, Object.keys(roles))
     const other = deciderNames(by).find(
-      (n) => !roles[n]?.acts.some((a: Raw) => a.approve?.includes(d.resultsOf)),
+      (n) => !roles[n]?.acts.some((a: Raw) => a?.approve?.includes(d.resultsOf)),
     )
     if (other) {
       fail(where, `${other} has no Approve act on ${d.resultsOf}; only a role that approves it decides it`)
@@ -288,7 +303,7 @@ const configOf = (dir: string, raw: Raw): ConfigFile => {
   })
   // One entry per maker, so the stored config cannot hold a second (the checks above refuse it).
   const decided = Object.fromEntries(decide)
-  return { project: basename(dir), people, limits, roles, decide: decided } as unknown as ConfigFile
+  return { project: basename(dir), people, models, roles, decide: decided } as unknown as ConfigFile
 }
 
 // readConfig(dir): the mechanism, its hash and its text.
@@ -334,7 +349,17 @@ export const restoreConfig = (dir: string, stored: string): Effect.Effect<void, 
       now = nowText === null ? {} : (Bun.YAML.parse(nowText) ?? {})
     } catch {}
     yield* files.write(path, stored).pipe(Effect.orDie)
-    const settings = Object.fromEntries(SETTING_KEYS.map((k) => [k, now[k]]))
+    const settings: Raw = Object.fromEntries(SETTING_KEYS.map((k) => [k, now[k]]))
+    // The commands of a model are the file's now; its limits are the stored ones.
+    const was = parseYaml(stored).models ?? {}
+    const names = [...new Set([...Object.keys(was), ...Object.keys(now.models ?? {})])]
+    settings.models = Object.fromEntries(
+      names.map((n) => {
+        const { limits: _, ...commands } = now.models?.[n] ?? {}
+        const limits = was[n]?.limits
+        return [n, { ...was[n], ...commands, ...(limits ? { limits } : {}) }]
+      }),
+    )
     const text = yield* refusing(() => withSettings(stored, settings))
     yield* files.write(path, text).pipe(Effect.orDie)
   })
@@ -408,7 +433,7 @@ export const readTask = (
     if (t.maxRounds !== undefined) {
       fail(
         path,
-        'maxRounds is gone: when the tries of a maker end on a fault, the high role evaluates the mistake; leave maxRounds out',
+        'maxRounds is gone: when the tries of a maker end on a fault, a role that splits evaluates the mistake; leave maxRounds out',
       )
     }
     // The tasks that this task needs: their ids; each one is accepted before this task reports.
@@ -435,7 +460,7 @@ export const readTask = (
   })
 
 // Who accepts the next versions of a direction (from its draft file): roles of aristoteles.yaml
-// and its owner. A version is reviewed by a medium or high role, and approved by the owner.
+// and its owner. A version is reviewed by a lead (a role that assigns), and approved by the owner.
 export const readApprovedBy = (
   file: string,
   raw: unknown,
@@ -448,8 +473,8 @@ export const readApprovedBy = (
     const approvedBy = readDeciders(file, d.approvedBy, [...Object.keys(roles), ...people], people)
     for (const n of deciderNames(approvedBy)) {
       const role = roles[n]
-      if (role && (role.kind === 'program' || role.tier === 'low')) {
-        fail(file, `approvedBy names ${n}, a role that reviews no direction (only a medium or high role does)`)
+      if (role && !role.acts.some((a) => typeof a !== 'string' && 'assign' in a)) {
+        fail(file, `approvedBy names ${n}, a role that reviews no direction (only a lead, a role that assigns, does)`)
       }
       if (people.includes(n) && n !== d.owner) {
         fail(file, `approvedBy names ${n}, who is not the owner (${d.owner}); the owner approves`)

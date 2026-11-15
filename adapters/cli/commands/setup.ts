@@ -137,7 +137,7 @@ const WORDS_TEMPLATE = `write a file like this (any of the keys), then run the d
     - <one exact output or command>
   output: <the output form of a maker>`
 
-// work role draft (ruling 2026-11-14): a high role (its token) or a model run outside any task
+// work role draft (ruling 2026-11-14): a role that fits roles (its token) or a model run outside any task
 // (--by) drafts new words of a role. The draft waits in the store for the person, so
 // aristoteles.yaml stays as stored and no write stops.
 const draftRole = (call: Call, key: string) =>
@@ -225,11 +225,12 @@ const role: Command = (call) =>
       // The name column fits the longest name; it is never narrower than the old 14 columns.
       const roles = Object.entries(work.config.roles)
       const width = Math.max(12, ...roles.map(([n]) => n.length)) + 2
+      const modelOf = (r: (typeof roles)[number][1]) => (r.kind === 'program' ? 'program' : r.model)
+      const column = Math.max(8, ...roles.map(([, r]) => modelOf(r).length + 1))
       return roles.map(([n, r]) => {
-        const tier = r.kind === 'program' ? 'program' : (r.tier ?? '')
         const unfit = r.kind !== 'program' && work.fits.get(RoleName.make(n))?.hash !== roleHash(r)
         const fit = unfit ? '  (no fit record)' : ''
-        return `${n.padEnd(width)}${tier.padEnd(8)}${r.description}${fit}`
+        return `${n.padEnd(width)}${modelOf(r).padEnd(column)}${r.description}${fit}`
       })
     }
     const key = String(roleName)
@@ -265,14 +266,14 @@ const role: Command = (call) =>
         `then: work role fit ${key} --answers=<file>`,
       ]
     }
-    // Who records it: the person, a high role (--as=<its token>), or a model run outside any
+    // Who records it: the person, a role that fits roles (--as=<its token>), or a model run outside any
     // task (--by=<its name>), such as the host that drafted the roles (Nanda, 2026-11-13).
     const token = textOf(args.one('as')) ?? null
     const runName = textOf(args.one('by'))
     let by: Author
     if (runName !== undefined && token !== null) {
       return yield* refuse(
-        '--by names a model run outside any task; a high role passes only --as=<its token>',
+        '--by names a model run outside any task; a role that fits roles passes only --as=<its token>',
       )
     }
     if (runName !== undefined && (yield* isPerson)) {

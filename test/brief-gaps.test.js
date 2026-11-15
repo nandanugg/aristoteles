@@ -47,9 +47,9 @@ describe('a review in a brief', () => {
   // A proofreader reviews the work of a linter, so it does not cover the writer of the result.
   // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
   const yaml =
-    WORK_YAML.replace('acts: [{ approve: [writer] }]', 'acts: [{ approve: [writer, proofreader] }]') +
+    WORK_YAML.replace('acts: [{ approve: [writer] }, { assign: [writer, linter] }]', 'acts: [{ approve: [writer, proofreader] }, { assign: [writer, linter, proofreader] }]') +
     `  proofreader:
-    tier: low
+    model: haiku
     description: Reads a section for the lead.
     intro: You read.
     responsibilities:
@@ -96,7 +96,7 @@ describe('the first word of a reply', () => {
 })
 
 describe('send to an agent with no terminal', () => {
-  test('each tier names itself: a Terra and a Luna are not told the same words', async () => {
+  test('each way of running names itself: a persistent agent and a subagent are not told the same words', async () => {
     const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
     await init(p)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
@@ -108,11 +108,11 @@ describe('send to an agent with no terminal', () => {
     ok(await p.agent(`brief ${host}`))
     ok(await p.agent(`assign ${host} t1 --role=section-lead`))
     ok(await p.agent(`assign ${host} t1 --role=writer --max-attempts=3`))
-    const terra = await p.agent(`send ${host} a2 --text="yes"`)
-    expect(terra.err).toContain('a2 has no terminal yet (a Terra gets one')
-    expect(terra.err).not.toContain('Luna')
-    const luna = await p.agent(`send ${host} a3 --text="yes"`)
-    expect(luna.err).toContain('a3 has no terminal (a Luna runs inside the terminal of its parent)')
+    const agent = await p.agent(`send ${host} a2 --text="yes"`)
+    expect(agent.err).toContain('a2 has no terminal yet (it gets one when the UI starts its session)')
+    expect(agent.err).not.toContain('subagent')
+    const subagent = await p.agent(`send ${host} a3 --text="yes"`)
+    expect(subagent.err).toContain('a3 has no terminal (a subagent runs inside the terminal of its parent)')
   }, 30000)
 })
 

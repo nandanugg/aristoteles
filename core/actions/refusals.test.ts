@@ -307,12 +307,12 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     )
   }, 60000)
 
-  test('a task draft for a disposable high role', async () => {
+  test('a task draft for a disposable role that splits', async () => {
     const advisor =
-      '  advisor:\n    tier: high\n    description: Advises on the field of the project.\n' +
+      '  advisor:\n    model: opus\n    description: Advises on the field of the project.\n' +
       '    intro: You advise.\n    responsibilities:\n' +
       '      - Answer the questions of the field.\n' +
-      '    acts: [{ approve: [writer] }]\n' +
+      '    acts: [{ approve: [writer] }, { assign: [writer] }, split]\n' +
       '    persistence: { persistent: false, why: It answers once. }\n    icon: lightbulb\n'
     const p = h.project({
       'aristoteles.yaml': `${h.WORK_YAML}${advisor}`,
@@ -379,8 +379,8 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
       'rule r1 supersedes "old", which is not in the current version',
     )
     expect(why(p.dir, [one({ ...direction, approvedBy: 'writer' })])).toBe(
-      'tsd-writing: approvedBy names writer, a role that reviews no direction (only a medium ' +
-        'or high role does)',
+      'tsd-writing: approvedBy names writer, a role that reviews no direction (only a lead, a ' +
+        'role that assigns, does)',
     )
     const noHost = h.WORK_YAML.replace(
       'persistent: true\n      why: It holds the TSD',
@@ -388,7 +388,7 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     )
     const q = h.project({ 'aristoteles.yaml': noHost })
     expect(why(q.dir, [])).toBe(
-      'the workflow has no persistent high role; the host plays the high role of each top task, ' +
+      'the workflow has no persistent role that splits; the host plays it on each top task, ' +
         'and the host is a terminal (ruling 15)',
     )
     expect(Exit.isSuccess(startIn(p.dir, [one(direction)]))).toBe(true)
@@ -409,22 +409,22 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     expect(message(act(d, NANDA, remake))).toBe(words)
   }, 60000)
 
-  test('adjustments: who drafts, what exists, what is used, the tiers', async () => {
+  test('adjustments: who drafts, what exists, what is used, the models', async () => {
     const { p, lead } = await h.started()
     const editor = (more: string) =>
-      'tier: medium\ndescription: Edits one section.\nintro: You edit one section.\n' +
+      'model: sonnet\ndescription: Edits one section.\nintro: You edit one section.\n' +
       'responsibilities:\n  - Edit the section under its heading.\n' +
       `acts: [{ approve: [writer] }]\n${more}`
     const persistent = 'persistence: { persistent: true, why: It edits. }\n'
     p.write('editor.yaml', editor(`${persistent}icon: pen-tool\n`))
     p.write('bare.yaml', editor('icon: pen-tool\n'))
     const d = derivedIn(p)
-    const setTier = { _tag: 'SetTier', role: 'writer', tier: 'medium' }
-    expect(message(act(d, NANDA, adjust(setTier)))).toBe(
+    const setModel = { _tag: 'SetModel', role: 'writer', model: 'sonnet' }
+    expect(message(act(d, NANDA, adjust(setModel)))).toBe(
       'a model drafts an adjustment; the person says it in words',
     )
-    expect(message(act(d, agent(lead), adjust(setTier)))).toBe(
-      'a high role drafts an adjustment; this assignment is medium',
+    expect(message(act(d, agent(lead), adjust(setModel)))).toBe(
+      'a role that fits roles drafts an adjustment; section-lead has no fit act',
     )
     const draft = (a: unknown) => message(act(d, HOST_RUN, adjust(a)))
     expect(draft({ _tag: 'AddRole', role: 'writer', file: 'editor.yaml' })).toBe(
@@ -439,16 +439,17 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     expect(draft({ _tag: 'RemoveRole', role: 'writer' })).toBe(
       'writer is in use: an act of architect names it',
     )
+    // The assign acts of the architect and the lead name the linter too.
     expect(draft({ _tag: 'RemoveRole', role: 'linter' })).toBe(
-      'linter is in use: it checks the rule no-code-proof of tsd-writing',
+      'linter is in use: an act of architect names it',
     )
-    expect(draft({ _tag: 'SetTier', role: 'section-lead', tier: 'high' })).toBe(
-      'the workflow would have no medium role; every workflow has the three tiers',
+    expect(draft({ _tag: 'SetModel', role: 'section-lead', model: 'tiny' })).toBe(
+      'there is no model tiny in the models table',
     )
     const keep = { persistent: false, why: 'It plans.' }
     expect(draft({ _tag: 'SetPersistence', role: 'architect', ...keep })).toBe(
-      'the workflow would have no persistent high role; the host plays the high role of each ' +
-        'top task, and the host is a terminal',
+      'the workflow would have no persistent role that splits; the host plays it on each top ' +
+        'task, and the host is a terminal',
     )
     expect(draft({ _tag: 'RetireDirection', direction: 'ghost' })).toBe(
       'there is no direction ghost',
@@ -478,7 +479,7 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     const d = derivedIn(p)
     const keep = { _tag: 'SetPersistence', role: 'architect', persistent: false, why: 'It plans.' }
     expect(message(act(d, HOST_RUN, adjust(keep)))).toBe(
-      'architect is the role of the host, which plays the high role of each top task; the host ' +
+      'architect is the role of the host, which splits each top task; the host ' +
         'is a terminal, so its role stays persistent',
     )
   }, 60000)

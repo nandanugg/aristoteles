@@ -2,9 +2,11 @@
 // all take their type from here, so that the lists cannot drift apart.
 import { Schema } from 'effect'
 
-// page: Tier. A model class: Opus, Sonnet, Haiku. The person plays no tier.
-export const Tier = Schema.Literals(['low', 'medium', 'high'])
-export type Tier = typeof Tier.Type
+// The acts of a role beyond its work (do, review, approve, change): split a task (and evaluate
+// its stops, shorten a brief, host a project), draft directions, fit roles. assign names roles.
+export const AUTHORITY = ['split', 'direct', 'fit'] as const
+export const Authority = Schema.Literals(AUTHORITY)
+export type Authority = typeof Authority.Type
 
 // page: RoleBase.icon. The icon of a role on its card (onboarding): a name of the page's set of
 // stroke icons, so that every role has one the page can draw.

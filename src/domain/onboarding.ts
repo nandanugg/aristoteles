@@ -123,17 +123,15 @@ export const OnboardingRoleState = Schema.Struct({
 })
 export type OnboardingRoleState = typeof OnboardingRoleState.Type
 
-// The role of the top task: the only persistent high role, which the host plays (ruling 15). It
-// has no toggle and no remove. With two or more, none is the only one.
+// The role of the top task: the only persistent role that splits, which the host plays (ruling
+// 15). It has no toggle and no remove. With two or more, none is the only one.
 export const onlyLead = (roles: Readonly<Record<string, RoleFile>>): string | undefined => {
   const leads = Object.entries(roles).filter(
-    ([, r]) => r.kind === 'agent' && r.tier === 'high' && r.persistence.persistent,
+    ([, r]) => r.kind === 'agent' && r.acts.includes('split') && r.persistence.persistent,
   )
   return leads.length === 1 ? leads[0]?.[0] : undefined
 }
 
-// The tier settings of each level of a role (aristoteles.yaml tiers).
-const TIER_SETTINGS = { high: 'sol', medium: 'terra', low: 'luna' } as const
 type Block = Readonly<Record<string, unknown>> | undefined
 const part = (raw: unknown, key: string): Block =>
   (raw as Record<string, Block> | undefined)?.[key] ?? undefined
@@ -147,8 +145,8 @@ const canon = (value: unknown): string =>
 const changed = (a: Block, b: Block, key: string): boolean => canon(a?.[key]) !== canon(b?.[key])
 // What a change of the config draft clears before the store (O2): the accept of each role whose
 // card it changes. A role's card is its own block, its entry of decide, and for an agent the
-// limits of its level and the settings (model, launch) of its tier. people and the other settings
-// are on no card, so they clear nothing; a role that goes takes its accept with it.
+// entry of its model in the models table (its commands and its limits). people and the other
+// settings are on no card, so they clear nothing; a role that goes takes its accept with it.
 export const touchedRoles = (
   before: unknown,
   after: unknown,
@@ -159,8 +157,7 @@ export const touchedRoles = (
       if (changed(part(before, 'roles'), part(after, 'roles'), name)) return true
       if (changed(part(before, 'decide'), part(after, 'decide'), name)) return true
       if (role.kind === 'program') return false
-      const limits = changed(part(before, 'limits'), part(after, 'limits'), role.tier)
-      return limits || changed(part(before, 'tiers'), part(after, 'tiers'), TIER_SETTINGS[role.tier])
+      return changed(part(before, 'models'), part(after, 'models'), role.model)
     })
     .map(([name]) => name)
 
@@ -192,6 +189,8 @@ export const OnboardingAct = Schema.Union([
   Schema.Struct({ act: Schema.Literals(['accept-role', 'remove-role']), role: RoleName }),
   Schema.Struct({ act: Schema.Literal('revise-role'), role: RoleName, words: NonBlank }),
   Schema.Struct({ act: Schema.Literal('persistence'), role: RoleName, persistent: Schema.Boolean }),
+  // The model of a role: a name of the models table of the draft.
+  Schema.Struct({ act: Schema.Literal('model'), role: RoleName, model: NonBlank }),
   // After a confirmation: the store starts (BUILD.md 1c).
   Schema.Struct({ act: Schema.Literal('approve-all-roles') }),
 ])

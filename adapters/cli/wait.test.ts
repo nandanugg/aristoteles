@@ -78,7 +78,7 @@ describe('work wait', () => {
     const sol = tokenIn(out)
     expect(out).toBe(
       [
-        'h1: its top task t1 The Introduction is open, and you are its Sol (a1); an older token ' +
+        'h1: its top task t1 The Introduction is open, and you are its host (a1); an older token ' +
           `stops working. Your command: work brief ${sol}`,
         `When you have nothing to do, run work wait ${sol}.`,
       ].join('\n'),
@@ -90,7 +90,7 @@ describe('work wait', () => {
     const { p, token } = await lead()
     const writer = tokenIn(await p.agent(`assign ${token} t1 --role=writer`))
     // Ruling 7, onboarding 2026-11-14: the refusal is for a low assignment that runs as a
-    // subagent (was: "a low role has one unit"); a persistent low agent waits like any agent.
+    // subagent (was: "a role that assigns nothing has one unit"); a persistent low agent waits like any agent.
     expect(await p.agent(`wait ${writer}`)).toBe(
       `a2 runs as a subagent and has one unit: work brief ${writer} shows it.`,
     )

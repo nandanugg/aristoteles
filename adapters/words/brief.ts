@@ -15,13 +15,17 @@ import {
   currentOf,
   decidesResults,
   directionIdsOf,
+  holdsA,
+  leads,
   mayChange,
+  modelOfAssignment,
   rulesOf,
   stopTask,
   taskAt,
+  unitA,
 } from '../../core/derived/reads.ts'
 import { type Derived, nextFor, waitingFor } from '../../core/derived/index.ts'
-import { fileTurn, highAbove, RANK, tierOfA } from '../../core/derived/steps.ts'
+import { assignable, fileTurn, splitterAbove } from '../../core/derived/steps.ts'
 import {
   type Assignment,
   type AssignmentId,
@@ -32,7 +36,6 @@ import {
   type Role,
   type Rule,
   type Task,
-  type Tier,
   type Workspace,
   type Work,
 } from '../../core/schema/index.ts'
@@ -57,59 +60,55 @@ const roleOfAssignment = (w: Work, a: Assignment): Role => {
   if (role === undefined) throw new Error(`the work has no role ${a.role}`)
   return role
 }
-// The roles of a lower tier than the assignment's, in the order of aristoteles.yaml (a program
-// has no tier, so it gives none).
-const lowerRoles = (w: Work, a: Assignment): ReadonlyArray<Extract<Role, { _tag: 'Model' }>> => {
-  const own = tierOfA(w, a)
-  if (own === undefined) return []
-  return [...w.workflow.roles.values()].flatMap((r) =>
-    r._tag === 'Model' && RANK[r.tier] < RANK[own] ? [r] : [],
-  )
-}
-
-// What an assignment may do at a time: the old actKinds, by the `when` of the tier guides.
+// What an assignment may do at a time, by the `when` of the guides.
 interface ActKinds {
   readonly do: boolean
   readonly review: boolean
   readonly approve: boolean
   readonly change: boolean
-  readonly lower: boolean
+  readonly assign: boolean
   readonly top: boolean
-  readonly evaluate: boolean
+  readonly split: boolean
+  readonly direct: boolean
   readonly any: boolean
 }
 const actKinds = (w: Work, a: Assignment, at: string): ActKinds => {
   const acts = actsOf(w, a.id, at as never)
-  const tier = tierOfA(w, a)
   return {
     do: acts.some((x) => x._tag === 'Do'),
     review: acts.some((x) => x._tag === 'Review' || x._tag === 'Approve'),
     approve: acts.some((x) => x._tag === 'Approve'),
     change: mayChange(w, a.id, a.task, at as never),
-    lower: lowerRoles(w, a).length > 0,
-    top: a.parent._tag === 'GivenByPerson' && tier !== 'low',
-    evaluate: tier === 'high',
+    assign: assignable(w, a).length > 0,
+    top: a.parent._tag === 'GivenByPerson' && !unitA(w, a),
+    split: holdsA(w, a, 'Split'),
+    direct: holdsA(w, a, 'Direct'),
     any: true,
   }
 }
-// A low role that makes nothing: it checks the checks of its role on one result.
-const lowChecker = (w: Work, a: Assignment, at: string): boolean =>
-  tierOfA(w, a) === 'low' && !actKinds(w, a, at).do
+// A role of one unit that makes nothing: it checks the checks of its role on one result.
+const unitChecker = (w: Work, a: Assignment, at: string): boolean =>
+  unitA(w, a) && !actKinds(w, a, at).do
 
 // The rules that one review assignment checks: every rule of its task that names its role.
 const checksOf = (w: Work, a: Assignment): ReadonlyArray<Rule> =>
   rulesOf(w, a.task).filter((r) => r.checkedBy._tag === 'Role' && r.checkedBy.role === a.role)
-// A low checker checks its checks; everyone else reads every rule of the task.
+// A checker of one unit checks its checks; everyone else reads every rule of the task.
 const rulesForAt = (w: Work, a: Assignment, at: string): ReadonlyArray<Rule> =>
-  tierOfA(w, a) === 'low' && actKinds(w, a, at).review ? checksOf(w, a) : rulesOf(w, a.task)
+  unitA(w, a) && actKinds(w, a, at).review ? checksOf(w, a) : rulesOf(w, a.task)
 
 // rulesFor(a): the rules that this assignment gives evidence for, at the time of the act.
 export const rulesFor = (d: Derived, a: AssignmentId): ReadonlyArray<Rule> =>
   rulesForAt(d.moment.work, assignmentOf(d.moment.work, a), d.moment.at)
 
-// --- the guides of the tiers ---------------------------------------------------------------------
+// --- the guides ----------------------------------------------------------------------------------
 
-// A tier guide (guides/<tier>.yaml): files of the tool, not of the dir, read once.
+// A guide (guides/<name>.yaml): files of the tool, not of the dir, read once. The acts of a role
+// choose it: a role that splits reads split, a lead that does not split reads assign, and a role
+// that assigns nothing reads unit.
+type GuideName = 'split' | 'assign' | 'unit'
+const guideFor = (w: Work, a: Assignment): GuideName =>
+  holdsA(w, a, 'Split') ? 'split' : leads(roleOfAssignment(w, a)) ? 'assign' : 'unit'
 interface Guide {
   readonly intro: string
   readonly stop: string | { readonly do: string; readonly review: string }
@@ -118,12 +117,12 @@ interface Guide {
   >
 }
 const GUIDES = join(import.meta.dir, '..', '..', 'guides')
-const guides = new Map<Tier, Guide>()
-const guideOf = (tier: Tier): Guide => {
-  const known = guides.get(tier)
+const guides = new Map<GuideName, Guide>()
+const guideOf = (name: GuideName): Guide => {
+  const known = guides.get(name)
   if (known) return known
-  const guide = Bun.YAML.parse(readFileSync(join(GUIDES, `${tier}.yaml`), 'utf8')) as Guide
-  guides.set(tier, guide)
+  const guide = Bun.YAML.parse(readFileSync(join(GUIDES, `${name}.yaml`), 'utf8')) as Guide
+  guides.set(name, guide)
   return guide
 }
 
@@ -193,11 +192,11 @@ const programsFor = (w: Work, a: Assignment): ReadonlyArray<string> =>
     ]
   })
 
-// A low checker reviews the result of its claim; everyone else the latest result.
+// A checker of one unit reviews the result of its claim; everyone else the latest result.
 const reviewedResult = (d: Derived, a: Assignment): Result | undefined => {
   const w = d.moment.work
   const claim = claimOf(w, a.id)
-  return lowChecker(w, a, d.moment.at) && claim._tag === 'Checking'
+  return unitChecker(w, a, d.moment.at) && claim._tag === 'Checking'
     ? w.results.get(claim.result)
     : latestResult(w, a.task)
 }
@@ -226,8 +225,8 @@ const offered = (d: Derived, a: Assignment): ActKinds => {
   return mayReview(d, a, result) ? kinds : { ...kinds, review: false }
 }
 
-// The commands of the tier guide that this assignment may run, with its ids filled in.
-const turnLines = (d: Derived, a: Assignment, tier: Tier, token: string) => {
+// The commands of the guide that this assignment may run, with its ids filled in.
+const turnLines = (d: Derived, a: Assignment, guide: GuideName, token: string) => {
   const w = d.moment.work
   const kinds = offered(d, a)
   const result = latestResult(w, a.task)
@@ -236,7 +235,7 @@ const turnLines = (d: Derived, a: Assignment, tier: Tier, token: string) => {
     (r) =>
       (r.checkedBy._tag === 'Role' && r.checkedBy.role === a.role) ||
       (r.checkedBy._tag === 'Decider' && kinds.approve) ||
-      (tier === 'low' && kinds.review),
+      (guide === 'unit' && kinds.review),
   )
   const where = result ? ` in ${result.output}` : ''
   const values = {
@@ -252,19 +251,19 @@ const turnLines = (d: Derived, a: Assignment, tier: Tier, token: string) => {
             .join(' ')
         : `--evidence="<the place in ${result ? result.output : 'the result'} where you read it> ` +
           '| <what you saw there>"',
-    lower: lowerRoles(w, a)
+    lower: assignable(w, a)
       .map((r) => r.role)
       .join('|'),
   }
-  const shown = Object.entries(guideOf(tier).commands).filter(([, c]) => kinds[c.when])
+  const shown = Object.entries(guideOf(guide).commands).filter(([, c]) => kinds[c.when])
   const width = Math.max(...shown.map(([name]) => name.length)) + 2
   return shown.flatMap(([name, c]) => [
     `  ${name.padEnd(width)}${fill(c.run, values)}`,
     `  ${' '.repeat(width)}${fill(c.rule, values)}`,
   ])
 }
-const stopLine = (d: Derived, a: Assignment, tier: Tier): string => {
-  const stop = guideOf(tier).stop
+const stopLine = (d: Derived, a: Assignment, guide: GuideName): string => {
+  const stop = guideOf(guide).stop
   return typeof stop === 'string'
     ? stop
     : actKinds(d.moment.work, a, d.moment.at).do
@@ -297,13 +296,13 @@ const evaluationLines = (d: Derived, task: Task): ReadonlyArray<string> => {
     ...e.improve.map((x) => `  improve: ${short(x, 160)}`),
   ]
 }
-// A low maker reads the answers to its own questions, and to those that a lead (a medium or high
-// assignment) asked about its task; medium and high read the answers of the task.
+// A maker of one unit reads the answers to its own questions, and to those that a lead asked about
+// its task; a lead reads the answers of the task.
 const answerLines = (d: Derived, a: Assignment): ReadonlyArray<string> => {
   const w = d.moment.work
-  const low = tierOfA(w, a) === 'low'
+  const low = unitA(w, a)
   const askedAbove = (from: AssignmentId | { readonly _tag: 'Human' }) =>
-    typeof from === 'string' && tierOfA(w, assignmentOf(w, from)) !== 'low'
+    typeof from === 'string' && !unitA(w, assignmentOf(w, from))
   return [...d.states.questions]
     .flatMap(([id, state]) => {
       const q = w.questions.get(id)
@@ -357,17 +356,17 @@ const isDecider = (item: Blocker): boolean =>
   item._tag === 'DeciderWaits' ||
   item._tag === 'DeciderAnyApprover'
 
-// The open items of one result, with ids. A low maker sees what to fix; a low checker only its
-// own checks; medium and high see everything.
+// The open items of one result, with ids. A maker of one unit sees what to fix; a checker of one
+// unit only its own checks; a lead sees everything.
 const resultItems = (d: Derived, result: ResultId, a: Assignment): ReadonlyArray<string> => {
   const w = d.moment.work
-  const checker = lowChecker(w, a, d.moment.at)
+  const checker = unitChecker(w, a, d.moment.at)
   const checks = rulesForAt(w, a, d.moment.at).map((x) => x.entry)
-  const low = tierOfA(w, a) === 'low'
+  const low = unitA(w, a)
   const wanted = (item: Blocker): boolean => {
     if (checker) return item._tag === 'Evidence' && checks.includes(item.ref)
     if (!low) return true
-    // The decider's accept is not a low maker's act, so its OPEN does not show it.
+    // The decider's accept is not the act of a maker of one unit, so its OPEN does not show it.
     if (isDecider(item)) return false
     return item._tag !== 'Evidence' || item.rejects.length > 0
   }
@@ -388,12 +387,12 @@ const resultItems = (d: Derived, result: ResultId, a: Assignment): ReadonlyArray
   return lines
 }
 // The OPEN lines of a task for an assignment: those of its latest result, then those of the task,
-// each once (a low checker sees only its result's).
+// each once (a checker of one unit sees only its result's).
 const openItems = (d: Derived, task: Task, a: Assignment): ReadonlyArray<string> => {
   const w = d.moment.work
   const result = latestResult(w, task.id)
   const own = result ? resultItems(d, result.id, a) : []
-  if (lowChecker(w, a, d.moment.at)) return own
+  if (unitChecker(w, a, d.moment.at)) return own
   return [...new Set([...own, ...taskLines(d, task.id)])]
 }
 
@@ -403,7 +402,7 @@ const openItems = (d: Derived, task: Task, a: Assignment): ReadonlyArray<string>
 export const briefOf = (d: Derived, id: AssignmentId, token: string): string =>
   renderBrief(d, id, token, true)
 
-// The size that the limit of a tier measures (ruling 10.9): the brief with a token of a real
+// The size that the limit of a model measures (ruling 10.9): the brief with a token of a real
 // token's length, without its READY steps. The steps change with each act, and the remedy of an
 // over-long brief (shorter directions, or a split) does not change them.
 export const briefSizeOf = (d: Derived, id: AssignmentId): number =>
@@ -414,31 +413,31 @@ const renderBrief = (d: Derived, id: AssignmentId, token: string, ready: boolean
   const at = d.moment.at
   const cwd = d.moment.outside.cwd
   const a = assignmentOf(w, id)
-  const role = roleOfAssignment(w, a)
-  const tier = role._tag === 'Model' ? role.tier : undefined
-  if (tier === undefined) throw new Error(`${id} is a program; a program reads no brief`)
+  const model = modelOfAssignment(w, a)
+  if (model === null) throw new Error(`${id} is a program; a program reads no brief`)
+  const guide = guideFor(w, a)
   const task = taskAt(w, a.task)
   const t = task.descriptionAi
   const config = roleFile(w, a)
   const kinds = offered(d, a)
-  const checker = lowChecker(w, a, at)
+  const checker = unitChecker(w, a, at)
   const attempts = kinds.do ? ` · ${attemptWords(d, id)}` : ''
-  const intro = guideOf(tier).intro.split('\n')
+  const intro = guideOf(guide).intro.split('\n')
   const versions = directionIdsOf(w, task.id).map((x) => {
     const v = currentOf(w, x)
     return `${v.of}@${v.number}`
   })
   const lines: Array<string> = [
-    `work brief ${id} · ${a.role} (${tier}) · ${task.id} ${task.name}${attempts}`,
+    `work brief ${id} · ${a.role} (${model}) · ${task.id} ${task.name}${attempts}`,
     `snapshot: ${versions.join(', ') || 'no directions'}`,
     ...(cwd ? [`dir: ${cwd} (run every work command in this folder)`] : []),
     '',
-    ...block('YOU ARE', [`${tier} tier. ${intro[0]}`, ...intro.slice(1)]),
+    ...block('YOU ARE', intro),
     ...block('ROLE', [
       fillText(config.description, task),
       ...config.responsibilities.map((r) => `- ${fillText(r, task)}`),
     ]),
-    // A low checker reads the maker's task to know what was asked; it writes nothing.
+    // A checker of one unit reads the maker's task to know what was asked; it writes nothing.
     ...block('TASK', [
       checker ? `the maker's task (you check it; you do not do it): ${t.text}` : t.text,
       ...(t.partOf ? [`part of: ${t.partOf}`] : []),
@@ -451,26 +450,26 @@ const renderBrief = (d: Derived, id: AssignmentId, token: string, ready: boolean
     const head = lines.slice(0, cwd ? 3 : 2)
     return [...head, '', closedLine(d, a, task), 'Run no work command for this task.'].join('\n')
   }
-  // Ruling 10.9: a brief over the limit of its tier is not given; the agent waits for a short one.
+  // Ruling 10.9: a brief over the limit of its model is not given; the agent waits for a short one.
   const state = d.states.assignments.get(id)
   if (state?._tag === 'BriefOver') {
     const head = lines.slice(0, cwd ? 3 : 2)
-    const high = highAbove(d, a)
-    const who = high === undefined ? task.owner.name : high.id
+    const above = splitterAbove(d, a)
+    const who = above === undefined ? task.owner.name : above.id
     // B1: the ways are the step of the one who shortens it, each passed canAct.
     const step =
-      high === undefined
+      above === undefined
         ? waitingFor(d, { _tag: 'Everyone' }).find(
             (i) => i._tag === 'BriefOver' && i.assignment === id,
           )?.step
-        : nextFor(d, { _tag: 'Agent', assignment: high.id }).find(
+        : nextFor(d, { _tag: 'Agent', assignment: above.id }).find(
             (s) => s.what._tag === 'ShortenOrSplit' && s.what.assignment === id,
           )
     const ways = step === undefined ? `waits for ${task.id}` : shortenWords(step, task.id, true)
     return [
       ...head,
       '',
-      `Your brief has ${state.size} characters; the limit of the ${tier} tier is ${state.limit}. ` +
+      `Your brief has ${state.size} characters; the limit of ${model} is ${state.limit}. ` +
         `${who} ${ways}.`,
       'Run no work command for this task. STOP: your parent gives you this token again.',
     ].join('\n')
@@ -559,7 +558,7 @@ const renderBrief = (d: Derived, id: AssignmentId, token: string, ready: boolean
       ]),
     )
   }
-  // ANSWERS and NOTES: what was said about the task (a low checker reads none).
+  // ANSWERS and NOTES: what was said about the task (a checker of one unit reads none).
   const answers = checker ? [] : answerLines(d, a)
   if (answers.length) lines.push(...block('ANSWERS', answers))
   const notes = checker ? [] : noteLines(w, a)
@@ -570,7 +569,7 @@ const renderBrief = (d: Derived, id: AssignmentId, token: string, ready: boolean
     const rest = more > 0 ? [`(${more} more: work blockers ${latestResult(w, task.id)?.id})`] : []
     lines.push(...block('OPEN', [...open.slice(0, 6), ...rest]))
   }
-  const steps = ready && tier !== 'low' ? nextFor(d, { _tag: 'Agent', assignment: id }) : []
+  const steps = ready && guide !== 'unit' ? nextFor(d, { _tag: 'Agent', assignment: id }) : []
   const readyLines = nextLines(d, steps, token)
   if (readyLines.length) lines.push('', 'READY', ...readyLines.map((s) => `  ${s}`))
   // Each step only waits (no step has a command): the agent waits for work (ruling 10.1).
@@ -579,7 +578,7 @@ const renderBrief = (d: Derived, id: AssignmentId, token: string, ready: boolean
   if (steps.length && steps.every(waitsOnly)) {
     lines.push('  Nothing to run now: wait for work, as YOUR TURN says.')
   }
-  lines.push('', 'YOUR TURN', ...turnLines(d, a, tier, token), stopLine(d, a, tier))
+  lines.push('', 'YOUR TURN', ...turnLines(d, a, guide, token), stopLine(d, a, guide))
   return lines.join('\n')
 }
 

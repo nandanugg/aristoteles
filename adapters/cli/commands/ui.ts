@@ -5,8 +5,6 @@ import {
   assignmentAt,
   openedTopOf,
   problemTask,
-  roleAt,
-  tierOf,
 } from '../../../core/derived/reads.ts'
 import {
   type AssignmentId,
@@ -23,7 +21,7 @@ import {
 } from '../../../core/schema/index.ts'
 import { Env, Now, Tokens } from '../../../core/services/index.ts'
 import { textOf } from '../args.ts'
-import { agentCallerOf, authorOf, callerOf, personAuthor, tierOfAssignment } from '../caller.ts'
+import { agentCallerOf, authorOf, callerOf, personAuthor } from '../caller.ts'
 import type { Command, Commands } from '../command.ts'
 import { lookupKind } from '../lookups.ts'
 import { act, peekWork, readWork } from '../runtime.ts'
@@ -95,7 +93,7 @@ const run: Command = (call) =>
       ]
     }
     // Continue (Nanda, 2026-11-13): the host moves a run here with the person's words. A run whose
-    // top task is open has its Sol in the host's terminal, so this terminal takes that assignment
+    // top task is open has its host's assignment in the host's terminal, so this terminal takes that assignment
     // too, with a new token; the old one stops working.
     if (sub === 'continue') {
       const id = args.positional[1]
@@ -110,7 +108,7 @@ const run: Command = (call) =>
       const by: Author = { _tag: 'ModelRun', name: 'host', at }
       const { work, d } = yield* peekWork
       const { run: found } = yield* lookupKind('Run', ['h'], work, id)
-      // The Sol of the top task now (after its remakes), and never an Ended one (C1).
+      // The host's assignment on the top task now (after its remakes), and never an Ended one (C1).
       const state = d.states.runs.get(found.id)
       const top =
         state?._tag === 'Working' || state?._tag === 'AwaitingEndAccept' ? state.top : undefined
@@ -128,8 +126,8 @@ const run: Command = (call) =>
       const here =
         `${h} continues: you are its host, in this terminal (pane ${pane}); the page shows it.`
       if (top !== undefined && sol === undefined) {
-        // 10.1: a top task with no Sol yet; the host's work wait gives it the token of its Sol.
-        return [here, `its top task ${String(top)} has no Sol yet: run work wait --by=${h}`]
+        // 10.1: a top task with no host yet; the host's work wait gives it its token.
+        return [here, `its top task ${String(top)} has no host assignment yet: run work wait --by=${h}`]
       }
       if (sol === undefined) {
         return [
@@ -144,7 +142,7 @@ const run: Command = (call) =>
       })
       return [
         here,
-        `you are the Sol of its top task ${String(top)} (${sol}); the old token stops working. Your command: work brief ${sol}.${secret}`,
+        `you are the host of its top task ${String(top)} (${sol}); the old token stops working. Your command: work brief ${sol}.${secret}`,
       ]
     }
     // The end of a project: its top task is accepted, and the person accepts the end last.
@@ -245,11 +243,7 @@ const event: Command = (call) =>
     if (known === 'stopped') {
       yield* act(person, { _tag: 'StopTerminal', target: { session }, content: {} })
     } else if (known === 'resumed') {
-      const tier =
-        target.startsWith('a') && tierOf(roleAt(work, assignmentAt(work, target as AssignmentId).role)) === 'high'
-          ? 'sol'
-          : 'terra'
-      yield* act(person, { _tag: 'ResumeTerminal', target: { session }, content: { tier } })
+      yield* act(person, { _tag: 'ResumeTerminal', target: { session }, content: {} })
     } else {
       const move =
         failed
@@ -266,13 +260,12 @@ const event: Command = (call) =>
     return [`${String(on)}: ${String(kind)} recorded.`]
   })
 
-// Why an assignment has no terminal, by its own tier: only a Luna runs inside its parent's.
+// Why an assignment has no terminal: a subagent runs inside the terminal of its parent.
 const noTerminalWords = (work: Work, to: AssignmentId): string => {
-  const tier = tierOfAssignment(work, to)
-  if (tier === 'low') return `${to} has no terminal (a Luna runs inside the terminal of its parent)`
-  if (tier === undefined) return `${to} has no terminal (a program runs no terminal)`
-  const name = tier === 'high' ? 'Sol' : 'Terra'
-  return `${to} has no terminal yet (a ${name} gets one when the UI starts its session)`
+  const runs = assignmentAt(work, to).runs._tag
+  if (runs === 'Program') return `${to} has no terminal (a program runs no terminal)`
+  if (runs === 'Subagent') return `${to} has no terminal (a subagent runs inside the terminal of its parent)`
+  return `${to} has no terminal yet (it gets one when the UI starts its session)`
 }
 
 // The host sends an input to the terminal of a child; the UI types it there.

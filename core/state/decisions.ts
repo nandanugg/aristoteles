@@ -52,7 +52,7 @@ import {
   resultAt,
   roleNameOf,
   roleOf,
-  tierOfAssignment,
+  holdsA,
 } from './records.ts'
 import { contentAt, contentNow, directionIdsOf, sameFor, underNow } from './versions.ts'
 
@@ -71,7 +71,7 @@ export const actsOf = (w: Work, by: By, when: Time): ReadonlyArray<RoleAct> => {
   return [...role.acts, ...granted.map((x) => x.act)]
 }
 const targetsOf = (act: RoleAct): ReadonlyArray<string> =>
-  act._tag === 'Do' ? [] : act._tag === 'Change' ? act.changesOf : act.resultsOf
+  act._tag === 'Change' ? act.changesOf : act._tag === 'Review' || act._tag === 'Approve' ? act.resultsOf : []
 // An act names a target; a direction counts only when it is official.
 const names = (w: Work, act: RoleAct, target: string): boolean =>
   targetsOf(act).includes(target) &&
@@ -319,10 +319,10 @@ export const decidersOfDraft = (w: Work, draft: RevisionId): Tree<DraftLeaf> => 
   const owner = directionAt(w, draftAt(w, draft).of).owner.name
   return { _tag: 'And', items: [base, { _tag: 'OwnerAccept', owner }] }
 }
-// The owner's leaf also matches a high role with a Change act on the direction at its time.
+// The owner's leaf also matches a role that directs, with a Change act on the direction at its time.
 const standsInForOwner = (w: Work, by: By, direction: DirectionId, when: Time): boolean => {
-  const tier = isAssignment(by) ? tierOfAssignment(w, assignmentAt(w, by)) : null
-  return (tier === null || tier === 'high') && can(w, by, 'Change', direction, when)
+  const directs = !isAssignment(by) || holdsA(w, assignmentAt(w, by), 'Direct')
+  return directs && can(w, by, 'Change', direction, when)
 }
 // The OwnerAccept leaf matches only the owner as the person: a stand-in does not count (S2).
 export const draftMatches =

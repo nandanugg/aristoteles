@@ -17,17 +17,17 @@
   },
   "next a2": {
    "tags": [
-    "CheckerOfHigherTier",
-    "CheckerOfHigherTier"
+    "CheckerNotAssigned",
+    "CheckerNotAssigned"
    ],
-   "key": "CheckerOfHigherTier r1 linter\nCheckerOfHigherTier r1 section-lead"
+   "key": "CheckerNotAssigned r1 linter\nCheckerNotAssigned r1 section-lead"
   },
   "next a3": {
    "tags": [
     "CheckYourself",
-    "CheckerOfHigherTier"
+    "CheckerNotAssigned"
    ],
-   "key": "CheckYourself r1\nCheckerOfHigherTier r1 section-lead"
+   "key": "CheckYourself r1\nCheckerNotAssigned r1 section-lead"
   }
  },
  "rejectedOnce": {
@@ -40,17 +40,17 @@
   },
   "next a2": {
    "tags": [
-    "CheckerOfHigherTier",
-    "CheckerOfHigherTier"
+    "CheckerNotAssigned",
+    "CheckerNotAssigned"
    ],
-   "key": "CheckerOfHigherTier r2 linter\nCheckerOfHigherTier r2 section-lead"
+   "key": "CheckerNotAssigned r2 linter\nCheckerNotAssigned r2 section-lead"
   },
   "next a3": {
    "tags": [
     "CheckYourself",
-    "CheckerOfHigherTier"
+    "CheckerNotAssigned"
    ],
-   "key": "CheckYourself r2\nCheckerOfHigherTier r2 section-lead"
+   "key": "CheckYourself r2\nCheckerNotAssigned r2 section-lead"
   }
  },
  "accepted": {
@@ -85,17 +85,17 @@
   },
   "next a2": {
    "tags": [
-    "CheckerOfHigherTier",
-    "CheckerOfHigherTier"
+    "CheckerNotAssigned",
+    "CheckerNotAssigned"
    ],
-   "key": "CheckerOfHigherTier r1 linter\nCheckerOfHigherTier r1 section-lead"
+   "key": "CheckerNotAssigned r1 linter\nCheckerNotAssigned r1 section-lead"
   },
   "next a3": {
    "tags": [
     "CheckYourself",
-    "CheckerOfHigherTier"
+    "CheckerNotAssigned"
    ],
-   "key": "CheckYourself r1\nCheckerOfHigherTier r1 section-lead"
+   "key": "CheckYourself r1\nCheckerNotAssigned r1 section-lead"
   }
  },
  "codeStarted": {
@@ -121,9 +121,9 @@
   },
   "next a2": {
    "tags": [
-    "MediumRuns"
+    "LeadRuns"
    ],
-   "key": "MediumRuns a1 t1"
+   "key": "LeadRuns a1 t1"
   }
  },
  "relayDecided": {
@@ -135,9 +135,9 @@
   },
   "next a2": {
    "tags": [
-    "MediumRuns"
+    "LeadRuns"
    ],
-   "key": "MediumRuns a1 t1"
+   "key": "LeadRuns a1 t1"
   }
  },
  "vetoed": {
@@ -150,19 +150,19 @@
   "next a2": {
    "tags": [
     "ReviseRejectedDraft",
-    "MediumRuns"
+    "LeadRuns"
    ],
-   "key": "ReviseRejectedDraft d2 v2\nMediumRuns a1 t1"
+   "key": "ReviseRejectedDraft d2 v2\nLeadRuns a1 t1"
   }
  },
  "uiRun": {
   "next a1": {
    "tags": [
     "Answer",
-    "MediumRuns",
+    "LeadRuns",
     "ReviseForPoint"
    ],
-   "key": "Answer q1\nMediumRuns a2 t1\nReviseForPoint v2.1 tsd-writing"
+   "key": "Answer q1\nLeadRuns a2 t1\nReviseForPoint v2.1 tsd-writing"
   },
   "next a2": {
    "tags": [
@@ -173,10 +173,10 @@
   },
   "next a3": {
    "tags": [
-    "CheckerOfHigherTier",
+    "CheckerNotAssigned",
     "EscalateForPoint"
    ],
-   "key": "CheckerOfHigherTier r1 linter\nEscalateForPoint v2.1 r1"
+   "key": "CheckerNotAssigned r1 linter\nEscalateForPoint v2.1 r1"
   }
  },
  "uiRunRemade": {

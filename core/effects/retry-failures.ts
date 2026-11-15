@@ -37,11 +37,11 @@ import {
   step,
   supervise,
   terminalsOf,
-  tiersNow,
+  modelsNow,
   to,
 } from './acting.ts'
 import { clean, DEFAULT_RETRY, fill, hostPromptSays, hostStuckSays } from './lines.ts'
-import { conversationOf, lastActOf, retriesOf, tierOf, timeOf } from './terminals.ts'
+import { conversationOf, lastActOf, modelOfSession, retriesOf, timeOf } from './terminals.ts'
 import { type Memory, Supervision, type WorkEffect } from './types.ts'
 
 // An error shows on the screen until it scrolls away: it counts only when the tool is this quiet.
@@ -52,7 +52,7 @@ interface Round {
   readonly all: ReadonlyArray<ToWatch>
   readonly terminals: Memory['terminals']
   readonly status: Readonly<Record<string, TerminalReading>>
-  readonly tiers: Settings['tiers']
+  readonly models: Settings['models']
   readonly items: ReadonlyArray<WaitingItem>
   readonly now: number
 }
@@ -114,9 +114,8 @@ const watch = (r: Round, x: ToWatch) =>
     // The person's Stop holds, and a closed terminal stays closed.
     if (state._tag === 'Stopped' || state._tag === 'Closed') return
     const host = x.owner._tag === 'Run'
-    const agent = x.owner._tag === 'Agent' ? w.agents.get(x.owner.agent) : undefined
-    const tier = host ? 'sol' : agent === undefined ? undefined : tierOf(agent)
-    const t = tier === undefined ? undefined : r.tiers[tier]
+    const model = modelOfSession(w, sid)
+    const t = model === undefined ? undefined : r.models[model]
     const id = x.owner._tag === 'Run' ? x.owner.run : x.owner.agent
     const tasks = tasksOf(r.d, x.owner)
     const top = host ? tasks[0] : undefined
@@ -200,7 +199,7 @@ const watch = (r: Round, x: ToWatch) =>
     if (retry === null) return
     const template = ran ? (t?.resume ?? t?.launch) : t?.launch
     const session = conversationOf(w, sid, !ran)
-    const command = fill(template ?? '', { session, model: t?.model, prompt })
+    const command = fill(template ?? '', { session, model, prompt })
     const restart = Effect.gen(function* () {
       if (reading._tag === 'Live') yield* pump.stop(sid)
       yield* pump.resume(sid, { command, env: {}, cols: 160, rows: 48 })
@@ -223,7 +222,7 @@ export const RetryFailures: WorkEffect<'RetryFailures'> = {
         all,
         terminals: yield* terminalsOf(d.moment.work),
         status: yield* (yield* Pump).status,
-        tiers: yield* tiersNow,
+        models: yield* modelsNow,
         // The page decisions: the person must act in the tree of each.
         items: waitingFor(d, { _tag: 'Everyone' }).filter(onPage),
         now: yield* nowMs,

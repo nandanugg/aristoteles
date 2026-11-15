@@ -138,8 +138,8 @@ describe('the examples of a new direction (P10 rejected, onboarding 2026-11-14)'
 
 describe('adjustments (ruling 14)', () => {
   const EDITOR =
-    'tier: medium\ndescription: Edits one section.\nintro: You edit one section.\n' +
-    'responsibilities:\n  - Edit the section under its heading.\nacts: [{ approve: [writer] }]\n' +
+    'model: sonnet\ndescription: Edits one section.\nintro: You edit one section.\n' +
+    'responsibilities:\n  - Edit the section under its heading.\nacts: [{ approve: [writer] }, { assign: [writer] }]\n' +
     'persistence: { persistent: true, why: It edits the sections of the project. }\n' +
     'icon: pen-tool\n'
   const ADD_EDITOR = { _tag: 'AddRole', role: 'editor', file: 'editor.yaml' }
@@ -167,15 +167,15 @@ describe('adjustments (ruling 14)', () => {
     p.write('editor.yaml', EDITOR)
     const add = stored(p, HOST_RUN, adjust(ADD_EDITOR))
     stored(p, NANDA, { _tag: 'AcceptAdjustment', target: { draft: refOf(add.seq) }, content: {} })
-    const setTier = stored(p, HOST_RUN, adjust({ _tag: 'SetTier', role: 'writer', tier: 'medium' }))
+    const setModel = stored(p, HOST_RUN, adjust({ _tag: 'SetModel', role: 'writer', model: 'sonnet' }))
     const reason = 'the writer stays a subagent'
     const reject: ActionInput = {
       _tag: 'RejectAdjustment',
-      target: { draft: refOf(setTier.seq) },
+      target: { draft: refOf(setModel.seq) },
       content: { reason },
     }
     stored(p, NANDA, reject)
-    const state = derivedIn(p).states.adjustments.get(refOf(setTier.seq))
+    const state = derivedIn(p).states.adjustments.get(refOf(setModel.seq))
     expect(state?._tag === 'Rejected' ? state.reason : undefined).toBe(reason as never)
     const remove = stored(p, HOST_RUN, adjust({ _tag: 'RemoveRole', role: 'editor' }))
     ok(await p.nanda('role fit editor --answers=fit.yaml'))
@@ -190,9 +190,9 @@ describe('adjustments (ruling 14)', () => {
 })
 
 describe('persistent agents and their one terminal (ruling 9)', () => {
-  // A second persistent medium role, so that a run can hold two agents.
+  // A second persistent lead role, which the architect assigns, so that a run can hold two agents.
   const EDITOR_ROLE =
-    '  editor:\n    tier: medium\n    description: Edits one section.\n' +
+    '  editor:\n    model: sonnet\n    description: Edits one section.\n' +
     '    intro: You edit one section.\n    responsibilities:\n' +
     '      - Edit the section under its heading.\n    acts: [{ approve: [writer] }]\n' +
     '    persistence: { persistent: true, why: It edits the sections of the project. }\n' +
@@ -200,7 +200,7 @@ describe('persistent agents and their one terminal (ruling 9)', () => {
   // A dir with a host run h1, its top task t1 split in two, and section-lead given on each part.
   const twoParts = async () => {
     const p = h.project({
-      'aristoteles.yaml': `${h.WORK_YAML}${EDITOR_ROLE}`,
+      'aristoteles.yaml': `${h.WORK_YAML.replace('{ assign: [section-lead, writer, linter] }', '{ assign: [section-lead, writer, linter, editor] }')}${EDITOR_ROLE}`,
       'top.yaml': `${h.TASK_WHOLE}role: architect\n`,
     })
     await h.init(p)
@@ -255,7 +255,7 @@ describe('persistent agents and their one terminal (ruling 9)', () => {
     ok(await p.agent(`assign ${host} t2 --role=editor`))
     const work = workOf(p.dir)
     const runs = (a: string): unknown => work.assignments.get(a as AssignmentId)?.runs
-    expect(runs('a4')).toEqual({ _tag: 'Subagent', tier: 'low' })
+    expect(runs('a4')).toEqual({ _tag: 'Subagent', model: 'haiku' })
     expect(runs('a5')).toEqual({ _tag: 'Agent', agent: 'p2' })
     const d = derivedIn(p)
     for (const a of ['a1', 'a4', 'a5']) {

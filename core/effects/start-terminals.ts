@@ -5,22 +5,22 @@
 // names no token (P9): each assignment reaches the agent through its own work wait (ruling 9).
 import { Effect } from 'effect'
 import { type Derived, terminalsToStart, type ToStart } from '../derived/index.ts'
-import { SessionId, type Settings, type TerminalTier } from '../schema/index.ts'
+import { SessionId, type Settings } from '../schema/index.ts'
 import { Pump, Tokens } from '../services/index.ts'
-import { delivered, dropped, logLine, sendStart, step, supervise, tiersNow, to } from './acting.ts'
+import { delivered, dropped, logLine, sendStart, step, supervise, modelsNow, to } from './acting.ts'
 import { fill } from './lines.ts'
-import { conversationOf, tierOf } from './terminals.ts'
+import { conversationOf } from './terminals.ts'
 import type { WorkEffect } from './types.ts'
 
-type TierSettings = NonNullable<Settings['tiers'][TerminalTier]>
+type ModelSettings = NonNullable<Settings['models'][string]>
 
-// Starts a terminal: the launch command of the tier, with the first prompt as its argument. The
+// Starts a terminal: the launch command of the model, with the first prompt as its argument. The
 // stored Start send keeps the record of it, never its words.
-const launch = (t: TierSettings, sid: SessionId, session: string, words: string) =>
+const launch = (model: string, t: ModelSettings, sid: SessionId, session: string, words: string) =>
   Effect.gen(function* () {
     const pump = yield* Pump
     const send = yield* sendStart({ _tag: 'Start', to: to(sid), via: { _tag: 'LaunchArgument' } })
-    const command = fill(t.launch ?? '', { session, model: t.model, prompt: words })
+    const command = fill(t.launch ?? '', { session, model, prompt: words })
     const started = yield* Effect.result(
       pump.start(sid, { command, env: {}, cols: 160, rows: 48 }),
     )
@@ -36,9 +36,8 @@ const startAgent = (d: Derived, x: ToStart) =>
   Effect.gen(function* () {
     const agent = d.moment.work.agents.get(x.agent)
     if (agent === undefined) return
-    const tier = tierOf(agent)
-    const t = (yield* tiersNow)[tier]
-    if (!t?.launch) return yield* logLine(`${x.agent}: ${tier} has no launch command`)
+    const t = (yield* modelsNow)[agent.model]
+    if (!t?.launch) return yield* logLine(`${x.agent}: ${agent.model} has no launch command`)
     let sid: SessionId
     if (x.session._tag === 'Again') {
       sid = x.session.session
@@ -51,7 +50,7 @@ const startAgent = (d: Derived, x: ToStart) =>
       })
     }
     const session = conversationOf(d.moment.work, sid, true)
-    yield* launch(t, sid, session, fill(t.start, { agent: x.agent }))
+    yield* launch(agent.model, t, sid, session, fill(t.start, { agent: x.agent }))
     yield* logLine(`${x.agent}: started in ${sid}`)
   })
 

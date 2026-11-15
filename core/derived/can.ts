@@ -26,7 +26,14 @@ import { metAt, turnOf, waitsForWords, leavesOf } from './deciders.ts'
 import {
   actorOf,
   actsOf,
+  type AuthorityAct,
+  assignsOf,
   below,
+  holds,
+  holdsA,
+  isUnit,
+  leads,
+  unitA,
   can,
   coversMaker,
   approvedByOfDraft,
@@ -71,7 +78,6 @@ import {
   stopRefTask,
   stopText,
   taskOfTarget,
-  tierOfAssignment,
   roleAt,
   versionNumberOf,
   within,
@@ -153,14 +159,14 @@ const agentOf = (c: Ctx): Assignment | undefined =>
   c.actor._tag === 'Agent' || c.actor._tag === 'Program'
     ? c.w.assignments.get(c.actor.assignment)
     : undefined
-// A low agent with no claim has not read its brief yet, or its one unit is done.
+// An agent of one unit with no claim has not read its brief yet, or its one unit is done.
 const needClaim = (c: Ctx, a: Assignment): CanAct => {
   const claim = c.w.meta.get(a.id)?.claim
   if (claim !== undefined && claim._tag !== 'Free') return MAY
   const done =
     [...c.w.results.values()].some((r) => r.by === a.id) ||
     [...c.w.reviews.values()].some((r) => r.by === a.id)
-  if (tierOfAssignment(c.w, a) === 'low' && done) {
+  if (unitA(c.w, a) && done) {
     return no(
       'your unit is done; this assignment has no open brief',
       'Wait',
@@ -175,17 +181,19 @@ const needClaim = (c: Ctx, a: Assignment): CanAct => {
 }
 const exists = (found: boolean, id: string, what: string): CanAct =>
   found ? MAY : no(`there is no ${what} ${id}`, 'Pick', `name a ${what} that exists`)
-// The tier of the agent that acts; the person, a model run and the system act as high.
-const tierOfActor = (c: Ctx): string => {
+// An act of authority: the person, a model run and the system hold every one; an agent holds
+// those of its role.
+const needs = (
+  c: Ctx,
+  act: AuthorityAct,
+  message: (role: string) => string,
+  kind: ChoiceKind,
+  words: string,
+): CanAct => {
   const a = agentOf(c)
-  return a === undefined ? 'high' : String(tierOfAssignment(c.w, a))
+  return a === undefined || holdsA(c.w, a, act) ? MAY : no(message(a.role), kind, words)
 }
-// An act that only a high role (or the person) does.
-const highOnly = (c: Ctx, message: (tier: string) => string, kind: ChoiceKind, words: string) => {
-  const tier = tierOfActor(c)
-  return tier === 'high' ? MAY : no(message(tier), kind, words)
-}
-const HOST_PROBLEM = 'the host (a Sol) records a system problem; escalate it to your parent'
+const HOST_PROBLEM = 'the host (a role that splits) records a system problem; escalate it to your parent'
 
 // --- tasks and assignments -----------------------------------------------------------------------
 
@@ -213,38 +221,34 @@ const give: Check<'Give'> = (c, { target: { task, role } }) => {
     return no(`${role} is a program; it runs on each report by itself`, 'Pick', 'give a model role')
   }
   const makes = isDo(w, role)
-  const tier = r._tag === 'Model' ? r.tier : undefined
+  const unit = isUnit(r)
   const by = c.by
   // A top task goes to a persistent role (ruling 15): the person gives work only to a terminal.
   const disposable = r._tag === 'Model' && r.persistence._tag === 'Disposable'
   const byPerson = by !== undefined && !isAssignment(by) && by._tag === 'Human'
-  if (byPerson && disposable && tier !== 'low') return disposableTop(role)
-  if (by !== undefined && !isAssignment(by) && by._tag === 'Human' && tier === 'low') {
-    const leads = [...w.workflow.roles.values()]
-      .filter((x) => x._tag === 'Model' && x.tier !== 'low')
-      .map((x) => x.role)
+  if (byPerson && disposable && !unit) return disposableTop(role)
+  if (byPerson && unit) {
+    const names = [...w.workflow.roles.values()].filter(leads).map((x) => x.role)
     return no(
-      `the person gives work to a medium or high role; ${role} is low, so a lead gives it its work`,
+      `the person gives work to a lead (a role that assigns); ${role} assigns nothing, so a lead ` +
+        'gives it its work',
       'Pick',
-      `give ${task} to a lead: ${leads.join(' or ') || 'a medium or high role'}`,
+      `give ${task} to a lead: ${names.join(' or ') || 'a role that assigns'}`,
     )
   }
   if (by !== undefined && isAssignment(by)) {
     const parent = w.assignments.get(by)
     if (parent === undefined) return exists(false, by, 'assignment')
-    const own = RANK[tierOfAssignment(w, parent) ?? '']
-    const theirs = RANK[tier ?? '']
     const ended = d.states.assignments.get(parent.id)?._tag === 'Ended'
     if (ended) return no('the parent assignment is finished', 'Escalate', `tell ${upTo(parent)}`)
-    if (own !== undefined && theirs !== undefined && theirs >= own) {
-      // No tier is below low: a low agent's only choice is to escalate.
-      const low = tierOfAssignment(w, parent) === 'low'
+    // A role gives work only to the roles that its assign act names.
+    const may = assignsOf(roleAt(w, parent.role))
+    if (r._tag === 'Model' && roleAt(w, parent.role)._tag === 'Model' && !may.includes(role)) {
+      const none = may.length === 0
       return no(
-        `a ${tierOfAssignment(w, parent)} role assigns only lower tiers; "${role}" is ${tier}`,
-        low ? 'Escalate' : 'Pick',
-        low
-          ? 'escalate it: no tier is below low'
-          : 'give a role of a lower tier, or escalate for a higher one',
+        `${parent.role} assigns ${none ? 'no role' : `only ${may.join(', ')}`}; ${role} is not one`,
+        none ? 'Escalate' : 'Pick',
+        none ? 'escalate it: your role assigns no role' : `give ${may.join(' or ')}, or escalate`,
       )
     }
     // Only a terminal starts subagents (ruling 8): an assignment that runs as a subagent hands
@@ -308,13 +312,12 @@ const give: Check<'Give'> = (c, { target: { task, role } }) => {
         `${role} would check ${count} rules; the limit is ${limit}: split the task, so that ` +
           'each part has fewer rules, or shorten the rules (work guide limits)',
         'Escalate',
-        'a high role splits the task',
+        'a role that splits splits the task',
       )
     }
   }
   return MAY
 }
-const RANK: Readonly<Record<string, number>> = { low: 1, medium: 2, high: 3 }
 // A disposable role runs only as a subagent of a terminal, so no person gives it a top task.
 export const disposableTop = (role: string): CanAct =>
   no(
@@ -385,7 +388,7 @@ const brief: Check<'Brief'> = (c, { target: { assignment } }) => {
     return no(`${a.id} is finished`, 'Escalate', `do no more work for it; tell ${upTo(a)}`)
   }
   const claim = w.meta.get(a.id)?.claim
-  if (claim !== undefined && claim._tag !== 'Free' && tierOfAssignment(w, a) === 'low') {
+  if (claim !== undefined && claim._tag !== 'Free' && unitA(w, a)) {
     return no(
       `${a.id} is claimed since ${claim.since.slice(11, 16)} by another subagent`,
       'Escalate',
@@ -466,12 +469,12 @@ const notYours = (c: Ctx, by: By, maker: Assignment | undefined, task: string): 
     'review a result of your own tree',
   )
 
-// A low checker reviews the one result that its brief named (a task too: round2 C2). A newer
+// A checker of one unit reviews the one result that its brief named (a task too: round2 C2). A newer
 // result than that one means escalate; any other target means review the named one.
-const lowChecks = (c: Ctx, target: string): CanAct => {
+const unitChecks = (c: Ctx, target: string): CanAct => {
   const { w, d } = c
   const a = agentOf(c)
-  if (a === undefined || tierOfAssignment(w, a) !== 'low' || isDo(w, a.role)) return MAY
+  if (a === undefined || !unitA(w, a) || isDo(w, a.role)) return MAY
   const claim = w.meta.get(a.id)?.claim
   const briefed = claim?._tag === 'Checking' ? claim.result : undefined
   if (briefed === undefined) {
@@ -479,7 +482,7 @@ const lowChecks = (c: Ctx, target: string): CanAct => {
     return no('your brief named no result to review', 'Escalate', words)
   }
   if (briefed === target) return MAY
-  const message = `your brief named ${briefed}; a low checker reviews only that result`
+  const message = `your brief named ${briefed}; a checker of one unit reviews only that result`
   return d.states.results.get(briefed)?._tag === 'Superseded'
     ? no(message, 'Escalate', `escalate with --result=${briefed}: ${target} came after your brief`)
     : no(message, 'Pick', `review ${briefed}`)
@@ -492,8 +495,8 @@ const reviewResult = (c: Ctx, result: string, accept: boolean): CanAct => {
   const by = c.by
   if (by === undefined)
     return no('a review has an author', 'Pick', 'review as an agent or a person')
-  const low = lowChecks(c, r.id)
-  if (low._tag === 'MayNot') return low
+  const unit = unitChecks(c, r.id)
+  if (unit._tag === 'MayNot') return unit
   if (!mayDecide(c, by, 'Result', r.id, r.task)) {
     return notYours(c, by, w.assignments.get(r.by), r.task)
   }
@@ -543,19 +546,19 @@ const reviewResult = (c: Ctx, result: string, accept: boolean): CanAct => {
 const rejectTask = (c: Ctx, task: string): CanAct => {
   const t = c.w.tasks.get(task as never)
   if (t === undefined) return exists(false, task, 'task')
-  const low = lowChecks(c, task)
-  if (low._tag === 'MayNot') return low
+  const unit = unitChecks(c, task)
+  if (unit._tag === 'MayNot') return unit
   if (c.by === undefined || !mayDecide(c, c.by, 'Task', task, task)) {
     return c.by === undefined ? MAY : notYours(c, c.by, undefined, task)
   }
   return MAY
 }
 
-// A low role reviews only results: no draft, no evaluation.
-const lowReview = (c: Ctx, what: string): CanAct => {
+// A role that assigns nothing reviews only results: no draft, no evaluation.
+const unitReview = (c: Ctx, what: string): CanAct => {
   const a = agentOf(c)
-  return a !== undefined && tierOfAssignment(c.w, a) === 'low'
-    ? no(`a low role does not review ${what}`, 'Escalate', 'escalate it to your parent')
+  return a !== undefined && unitA(c.w, a)
+    ? no(`${a.role} assigns nothing, so it does not review ${what}`, 'Escalate', 'escalate it to your parent')
     : MAY
 }
 
@@ -573,8 +576,8 @@ const reviewDraft = (c: Ctx, id: string, accept: boolean): CanAct => {
   const { w, d } = c
   const draft = w.drafts.get(id as never)
   if (draft === undefined) return exists(false, id, 'draft')
-  const low = lowReview(c, 'drafts of directions')
-  if (low._tag === 'MayNot') return low
+  const unit = unitReview(c, 'drafts of directions')
+  if (unit._tag === 'MayNot') return unit
   const by = c.by
   if (by === undefined)
     return no('a review has an author', 'Pick', 'review as an agent or a person')
@@ -673,8 +676,8 @@ const reviewEvaluation = (c: Ctx, id: string): CanAct => {
   const { w } = c
   const e = w.evaluations.get(id as never)
   if (e === undefined) return exists(false, id, 'evaluation')
-  const low = lowReview(c, 'evaluations')
-  if (low._tag === 'MayNot') return low
+  const unit = unitReview(c, 'evaluations')
+  if (unit._tag === 'MayNot') return unit
   const ref = stopRefOf(w, e.answers)
   const task = ref === undefined ? undefined : w.tasks.get(stopRefTask(w, ref))
   const by = c.by
@@ -762,8 +765,8 @@ const recheck: Check<'Recheck'> = (c, { target: { result } }) => {
   if (a === undefined) return no("a recheck is an agent's act", 'Pick', 'an agent asks for it')
   const r = w.results.get(result)
   if (r === undefined) return exists(false, result, 'result')
-  if (tierOfAssignment(w, a) === 'low') {
-    return no('a low role does not ask for a recheck; escalate it', 'Escalate', 'escalate it')
+  if (unitA(w, a)) {
+    return no(`${a.role} assigns nothing, so it asks for no recheck; escalate it`, 'Escalate', 'escalate it')
   }
   if (!within(w, r.task, a.task)) {
     return no(`${result} is outside the task tree of ${a.id}`, 'Pick', 'name a result of your tree')
@@ -852,8 +855,8 @@ const resolve: Check<'Resolve'> = (c, { target: { escalation } }) => {
 const ask: Check<'Ask'> = (c, { target: { to } }) => {
   const a = agentOf(c)
   if (a === undefined) return no("a question is an agent's act", 'Pick', 'an agent asks')
-  if (tierOfAssignment(c.w, a) === 'low' && to === 'Owner') {
-    return no('a low role asks its parent', 'Pick', 'ask your parent')
+  if (unitA(c.w, a) && to === 'Owner') {
+    return no(`${a.role} assigns nothing, so it asks its parent`, 'Pick', 'ask your parent')
   }
   // The host answers from the directions; only the person is above it (--to=owner, the page).
   const host = hostOf(c.d.moment, { _tag: 'OnTask', task: a.task }, c.d.states)
@@ -902,7 +905,7 @@ const answer: Check<'Answer'> = (c, { target: { question } }) => {
   return MAY
 }
 
-// An evaluation answers one stop: the high role of the task's tree, or its owner.
+// An evaluation answers one stop: a role of the task's tree that splits, or its owner.
 const evaluate: Check<'Evaluate'> = (c, { target: { stop } }) => {
   const { w } = c
   const ref = stopRefOf(w, stop)
@@ -931,10 +934,9 @@ const evaluate: Check<'Evaluate'> = (c, { target: { stop } }) => {
   const a = agentOf(c)
   if (!person && a !== undefined) {
     const label = labelOf(w, a.id)
-    const tier = tierOfAssignment(w, a)
-    if (tier !== 'high') {
+    if (!holdsA(w, a, 'Split')) {
       return no(
-        `${label} is ${tier}; only a high role evaluates a stop: escalate it to your parent`,
+        `${label} has no split act; only a role that splits evaluates a stop: escalate it to your parent`,
         'Escalate',
         'escalate it to your parent',
       )
@@ -1059,9 +1061,9 @@ const changeTask = (c: Ctx, task: string): CanAct => {
   }
   return MAY
 }
-// A change of a task is the person's, or a high role's (before its change act, as the old CLI).
+// A change of a task is the person's, or a role's that splits (before its change act).
 const highChange = (c: Ctx, act: 'split' | 'remake' | 'close', words: string): CanAct =>
-  highOnly(c, (tier) => `a ${tier} role does not ${act} tasks`, 'Escalate', words)
+  needs(c, 'Split', (role) => `${role} has no split act, so it does not ${act} tasks`, 'Escalate', words)
 const split: Check<'SplitTask'> = (c, { target: { task, answers } }) =>
   first(
     () => agentOpen(c),
@@ -1199,7 +1201,7 @@ const close: Check<'CloseTask'> = (c, { target: { task } }) =>
 
 // --- directions ----------------------------------------------------------------------------------
 
-// A model drafts a direction: a high role, or a run outside any task; the person suggests.
+// A model drafts a direction: a role that directs, or a run outside any task; the person suggests.
 const draftDirection: Check<'DraftDirection'> = (c) => {
   if (c.actor._tag === 'Person') {
     return no(
@@ -1209,9 +1211,10 @@ const draftDirection: Check<'DraftDirection'> = (c) => {
       'suggest the direction in words; a model drafts it',
     )
   }
-  return highOnly(
+  return needs(
     c,
-    (tier) => `a ${tier} role does not draft directions`,
+    'Direct',
+    (role) => `${role} has no direct act, so it does not draft directions`,
     'Write',
     'suggest it in words instead',
   )
@@ -1219,9 +1222,10 @@ const draftDirection: Check<'DraftDirection'> = (c) => {
 const revise: Check<'ReviseDirection'> = (c, intent) =>
   first(
     () =>
-      highOnly(
+      needs(
         c,
-        (tier) => `a ${tier} role does not revise directions; escalate it, or suggest it`,
+        'Direct',
+        (role) => `${role} has no direct act, so it does not revise directions; escalate it, or suggest it`,
         'Write',
         'suggest the change in words',
       ),
@@ -1251,7 +1255,7 @@ const reviseOf: Check<'ReviseDirection'> = (c, { target: { direction } }) => {
     return no(
       `the person gives direction in words, as a suggestion about ${d.name}`,
       'Write',
-      `suggest the change of ${direction} in words; a high role writes the draft`,
+      `suggest the change of ${direction} in words; a role that directs writes the draft`,
     )
   }
   return agentOpen(c)
@@ -1346,12 +1350,12 @@ const ownProject = (c: Ctx, task: string): CanAct => {
     'record a problem of your own project',
   )
 }
-// The host (a high role) or the person records and fixes a problem; the old CLI checked the tier
-// before it read the target.
+// The host (a role that splits) or the person records and fixes a problem; the act is checked
+// before the target.
 const hostProblem = (c: Ctx): CanAct =>
   first(
     () => agentOpen(c),
-    () => highOnly(c, () => HOST_PROBLEM, 'Escalate', 'escalate it to your parent'),
+    () => needs(c, 'Split', () => HOST_PROBLEM, 'Escalate', 'escalate it to your parent'),
   )
 const recordProblem: Check<'RecordProblem'> = (c, { target: { task } }) => {
   const host = hostProblem(c)
@@ -1437,9 +1441,9 @@ const send: Check<'Send'> = (c, { target: { session } }) => {
   const a = agentOf(c)
   if (a === undefined) return MAY
   const role = roleAt(c.w, a.role)
-  if (role._tag !== 'Model' || role.tier !== 'high') {
+  if (role._tag !== 'Model' || !holds(role, 'Split')) {
     return no(
-      'only the host (a Sol) sends input to the terminal of a child',
+      'only the host (a role that splits) sends input to the terminal of a child',
       'Escalate',
       'tell your parent',
     )
@@ -1451,13 +1455,13 @@ const send: Check<'Send'> = (c, { target: { session } }) => {
   }
   return MAY
 }
-// Only the top agent (medium or high, with no parent) forwards the person.
+// Only the top agent (a lead, with no parent) forwards the person.
 const topForwards = (c: Ctx): CanAct => {
   const a = agentOf(c)
   if (a === undefined) return MAY
-  if (a.parent._tag !== 'Parent' && tierOfAssignment(c.w, a) !== 'low') return MAY
+  if (a.parent._tag !== 'Parent' && !unitA(c.w, a)) return MAY
   return no(
-    'only the top agent (medium or high, with no parent) forwards the person',
+    'only the top agent (a lead, with no parent) forwards the person',
     'Escalate',
     'ask your parent',
   )
@@ -1506,12 +1510,12 @@ const grant: Check<'Grant'> = (c, { target: { act, to } }) => {
 }
 const taskNamed = (c: Ctx, task: string): CanAct =>
   exists(c.w.tasks.has(task as never), task, 'task')
-const lowNo = (c: Ctx, message: string, words: string): CanAct => {
+const unitNo = (c: Ctx, message: string, words: string): CanAct => {
   const a = agentOf(c)
-  const low = a !== undefined && tierOfAssignment(c.w, a) === 'low'
+  const low = a !== undefined && unitA(c.w, a)
   return low ? no(message, 'Escalate', words) : MAY
 }
-// New words of a role (ruling 2026-11-14): a high role or a model run outside any task drafts
+// New words of a role (ruling 2026-11-14): a role that fits roles, or a model run outside any task, drafts
 // them, and the person accepts or rejects them; the person writes their own in the file.
 const draftRoleWords: Check<'DraftRoleWords'> = (c, { target: { role } }) => {
   if (c.actor._tag === 'Person') {
@@ -1524,9 +1528,10 @@ const draftRoleWords: Check<'DraftRoleWords'> = (c, { target: { role } }) => {
   if (!c.w.workflow.roles.has(role)) {
     return no(`there is no role "${role}"`, 'Pick', 'name a role of the workflow')
   }
-  return highOnly(
+  return needs(
     c,
-    (tier) => `a ${tier} role does not draft the words of a role; escalate them`,
+    'Fit',
+    (role) => `${role} has no fit act, so it does not draft the words of a role; escalate them`,
     'Escalate',
     'escalate the new words of the role to your parent',
   )
@@ -1567,11 +1572,12 @@ const modelDrafts = (c: Ctx, what: string): CanAct => {
       'say it in words: work suggest; a model drafts it',
     )
   }
-  return highOnly(
+  return needs(
     c,
-    (tier) => `a high role drafts ${what}; this assignment is ${tier}`,
+    'Fit',
+    (role) => `a role that fits roles drafts ${what}; ${role} has no fit act`,
     'Escalate',
-    'escalate it to the high role above you',
+    'escalate it to the role above you that fits roles',
   )
 }
 const draftAdjustment: Check<'DraftAdjustment'> = (c) =>
@@ -1636,11 +1642,12 @@ const CHECKS: { readonly [K in ActionTag]: Check<K> } = {
   ApplyConfig: () => MAY,
   RestoreConfig: () => MAY,
   FitRole: (c) =>
-    highOnly(
+    needs(
       c,
-      () => 'a person or a high role records role fitness',
+      'Fit',
+      () => 'a person or a role that fits roles records role fitness',
       'Escalate',
-      'the person or a high role fits it',
+      'the person or a role that fits roles fits it',
     ),
   DraftRoleWords: draftRoleWords,
   AcceptRoleWords: (c, { target: { draft } }) => decideRoleWords(c, draft),
@@ -1730,13 +1737,13 @@ const CHECKS: { readonly [K in ActionTag]: Check<K> } = {
   Checkpoint: (c, i) =>
     first(
       () => agentOpen(c),
-      () => lowNo(c, 'a low role does not checkpoint; report or escalate', 'report or escalate'),
+      () => unitNo(c, 'a role that assigns nothing does not checkpoint; report or escalate', 'report or escalate'),
       () => taskNamed(c, i.target.task),
     ),
   ReadSource: (c) =>
     first(
       () => agentOpen(c),
-      () => lowNo(c, 'a low role records no source', 'stop and tell your parent what changed'),
+      () => unitNo(c, 'a role that assigns nothing records no source', 'stop and tell your parent what changed'),
     ),
   DraftDirection: draftDirection,
   ReviseDirection: revise,

@@ -15,6 +15,6 @@ describe('E4 an agent\'s split gives a part more rounds than its task has left',
     p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { section: facts }, maxRounds: 5 }\n' +
       '- { name: Story, text: Write the story., context: { section: story } }\n')
     expect((await p.agent(`task split ${arch} t1 --file=parts.yaml`)).err)
-      .toContain('part Facts: maxRounds is gone; when the tries of a maker end on a fault, the high role evaluates the mistake')
+      .toContain('part Facts: maxRounds is gone; when the tries of a maker end on a fault, a role that splits evaluates the mistake')
   })
 })

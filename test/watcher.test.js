@@ -1,6 +1,6 @@
 // The watcher and the acts of the UI (plan/ui/BUILD.md parts 6 and 7), with real tmux terminals
 // and the fake AI tool: the host is the AI CLI that the person triggered, in a pane of the
-// person's own tmux server (Nanda, 2026-11-13); Open gives it the top task; a persistent Terra
+// person's own tmux server (Nanda, 2026-11-13); Open gives it the top task; a persistent
 // agent starts in its own terminal, and its own work wait gives it each assignment with a token
 // (rulings 7 and 9, onboarding 2026-11-14); a failed terminal is retried, then the host hears of
 // it; a prompt goes to the host, and the host's send reaches the child; Stop is no failure.
@@ -9,20 +9,23 @@ import { join } from 'node:path'
 import { createPump } from './code.js'
 import { startServer } from './code.js'
 import { createWatcher } from './code.js'
-import { INTRO_V2, TASK_WHOLE, git, init, ok, personPane, project, solToken, tokenIn } from './harness.js'
+import { INTRO_V2, TASK_WHOLE, git, init, ok, personPane, project, solToken, tokenIn, withModels } from './harness.js'
 
 const FAKE = join(import.meta.dir, 'fake-agent.js')
-const SETTINGS = `tiers:
-  sol:
-    launch: bun ${FAKE} start {session} {prompt}
-    resume: bun ${FAKE} resumed {session} {prompt}
-    prompts: ["Do you want to proceed?"]
-  terra:
-    launch: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 bun ${FAKE} start {session} {prompt}
-    resume: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 bun ${FAKE} resumed {session} {prompt}
-    errors: ["connection error"]
-    prompts: ["Do you want to proceed?"]
-`
+// The commands of the models of WORK_YAML: opus (the architect, the host) and sonnet (the lead).
+const COMMANDS = {
+  opus: {
+    launch: `bun ${FAKE} start {session} {prompt}`,
+    resume: `bun ${FAKE} resumed {session} {prompt}`,
+    prompts: ['Do you want to proceed?'],
+  },
+  sonnet: {
+    launch: `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 bun ${FAKE} start {session} {prompt}`,
+    resume: `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 bun ${FAKE} resumed {session} {prompt}`,
+    errors: ['connection error'],
+    prompts: ['Do you want to proceed?'],
+  },
+}
 const stops = []
 afterEach(() => {
   while (stops.length) stops.pop()()
@@ -59,7 +62,7 @@ const P1_START = 'first input: Use the work skill. You are p1: run work wait --b
 // A dir with its roles fitted and the UI running: the server, the pump and the watcher.
 const ui = async () => {
   const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
-  p.write('aristoteles.yaml', SETTINGS + (await Bun.file(join(p.dir, 'aristoteles.yaml')).text()))
+  p.write('aristoteles.yaml', withModels(await Bun.file(join(p.dir, 'aristoteles.yaml')).text(), COMMANDS))
   git(p.dir, 'init', '-q')
   git(p.dir, 'config', 'user.name', 'Nanda')
   await init(p)
@@ -102,7 +105,7 @@ const ui = async () => {
 }
 
 describe('the watcher and the acts of the UI', () => {
-  test('the host in its own pane, Open, a new Terra in its own terminal, a prompt and the host\'s answer, a retry, and Stop', async () => {
+  test('the host in its own pane, Open, a new persistent agent in its own terminal, a prompt and the host\'s answer, a retry, and Stop', async () => {
     const { p, pump, watcher, server, post, screen, later, joinHost } = await ui()
     // An act needs the page's origin (Nanda, 2026-11-15: no key cookie).
     const bad = await fetch(`http://127.0.0.1:${server.port}/api/act`, { method: 'POST', body: '{"act":"accept-roles"}' })
@@ -120,7 +123,7 @@ describe('the watcher and the acts of the UI', () => {
     const hostToken = await solToken(p, opened.body.out, 'h1', { env: hostEnv })
     expect(screen(host)).not.toContain('you said:')
 
-    // The host reads its brief and assigns a Terra of a persistent role: the watcher starts the
+    // The host reads its brief and assigns a persistent role: the watcher starts the
     // terminal of its agent p1. The launch command sets the env of the AI CLI as a shell prefix.
     ok(await p.run(`brief ${hostToken}`, { env: hostEnv }))
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
@@ -160,7 +163,7 @@ describe('the watcher and the acts of the UI', () => {
     expect((await post('stop', { session: lead })).status).toBe(200)
     await watcher.tick()
     expect(pump.status()[lead]).toBeUndefined()
-    expect((await post('resume', { session: lead, tier: 'terra' })).status).toBe(200)
+    expect((await post('resume', { session: lead })).status).toBe(200)
     await until(() => pump.status()[lead]?._tag === 'Live')
   }, 90000)
 
@@ -221,7 +224,7 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   // Ruling 10.1: the answer is a step of the asker (Answered), so its work wait returns.
-  test('the answer of the host wakes the Terra that asked, through its work wait', async () => {
+  test('the answer of the host wakes the persistent agent that asked, through its work wait', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
@@ -247,8 +250,8 @@ describe('the watcher and the acts of the UI', () => {
     expect(screen(lead)).not.toContain('acted. Run work next')
   }, 90000)
 
-  // Ruling 10.1: the resolve changes the steps of the Terra that escalated; its work wait returns.
-  test('the host\'s resolve of an escalation wakes the Terra that escalated, through its work wait', async () => {
+  // Ruling 10.1: the resolve changes the steps of the agent that escalated; its work wait returns.
+  test('the host\'s resolve of an escalation wakes the agent that escalated, through its work wait', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
@@ -264,7 +267,7 @@ describe('the watcher and the acts of the UI', () => {
     await until(() => screen(lead).includes(P1_START))
     const [leadToken] = await agentTokens(p, lead)
     ok(await p.agent(`brief ${leadToken}`))
-    // The writer is a Luna: a subagent in the lead's terminal.
+    // The writer is a subagent in the lead's terminal.
     const writer = tokenIn(ok(await p.agent(`assign ${leadToken} t1 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
     p.write('docs/tsd.md', INTRO_V2)
@@ -281,7 +284,7 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   // Ruling 10.1: the accept of t2 changes the steps of the lead of t3; its work wait returns.
-  test('the accept of a part wakes the Terra of the part that needs it, through its work wait', async () => {
+  test('the accept of a part wakes the agent of the part that needs it, through its work wait', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
@@ -322,7 +325,7 @@ describe('the watcher and the acts of the UI', () => {
   }, 90000)
 
   // Ruling 10.1: the free file changes the steps of the second lead; its work wait returns.
-  test('a Terra whose work next changes wakes, also when no act names it: a file is free', async () => {
+  test('a persistent agent whose work next changes wakes, also when no act names it: a file is free', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()
     const { host, hostEnv } = await joinHost()
     await until(() => screen(host).includes('first input'))
@@ -373,7 +376,7 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.run(`assign ${hostToken} t1 --role=section-lead`, { env: hostEnv }))
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
-    // The person stops the Terra before its brief, and the server starts again: a new watcher.
+    // The person stops the agent before its brief, and the server starts again: a new watcher.
     expect((await post('stop', { session: lead })).status).toBe(200)
     const again = createWatcher({ dir: p.dir, env, pump })
     again.stop()
@@ -387,7 +390,7 @@ describe('the watcher and the acts of the UI', () => {
     expect((await post('fixed', { problem: 'sp1' })).body.out).toBe('sp1: the host runs, and the problem is fixed.')
   }, 90000)
 
-  // Ruling 9, onboarding 2026-11-14: the finish of an assignment closes nothing (was: the Terra's
+  // Ruling 9, onboarding 2026-11-14: the finish of an assignment closes nothing (was: the agent's
   // terminal closed at its finish); the terminal of the agent closes when the project is done.
   test('the end of the project closes its terminals: the host\'s, and the persistent Terra\'s', async () => {
     const { p, pump, post, screen, watcher, later, joinHost } = await ui()

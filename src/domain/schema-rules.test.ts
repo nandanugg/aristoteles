@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test'
 import { Schema } from 'effect'
 import { PointData, ReportedWork, EvidenceData } from './events.ts'
-import { Settings, TierLimits, ReviseFile, DirectionFile } from './files.ts'
+import { Settings, ModelLimits, ReviseFile, DirectionFile } from './files.ts'
 import { AiQuestion } from './onboarding.ts'
 
 const refused = <A, I>(schema: Schema.Codec<A, I>, value: unknown) =>
@@ -14,11 +14,11 @@ const reads = <A, I>(schema: Schema.Codec<A, I>, value: unknown) =>
 
 describe('whole positive numbers', () => {
   test('a limit is a whole number of 1 or more', () => {
-    reads(TierLimits, { Assignment: { attempts: 3, briefChars: 9000 } })
+    reads(ModelLimits, { Assignment: { attempts: 3, briefChars: 9000 } })
     for (const bad of [-3, 0, 1.5]) {
-      refused(TierLimits, { Assignment: { attempts: bad } })
-      refused(TierLimits, { Review: { rules: bad } })
-      refused(TierLimits, { Result: { size: bad } })
+      refused(ModelLimits, { Assignment: { attempts: bad } })
+      refused(ModelLimits, { Review: { rules: bad } })
+      refused(ModelLimits, { Result: { size: bad } })
     }
   })
   test('maxStandards of a direction file, and the minutes and hours of the settings', () => {
@@ -35,7 +35,7 @@ describe('whole positive numbers', () => {
     }
     refused(DirectionFile, direction)
     const settings = {
-      tiers: {},
+      models: {},
       retryMinutes: 5,
       hostWaitMinutes: 10,
       outsideSourceHours: 72,

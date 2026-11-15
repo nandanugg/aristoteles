@@ -47,7 +47,6 @@ import {
   reviseAgainOf,
   stopIdOf,
   suggestionMover,
-  tierOfRole,
 } from './shared.ts'
 import {
   assignOf,
@@ -164,7 +163,7 @@ const roleWordsRejectedRow = (d: Derived, item: Of<'RoleWordsRejected'>): string
       : x.by._tag === 'ModelRun'
         ? `its drafter ${drafterWords(x.by)}, drafts new words that answer it\n` +
           `    ${draft} --by=${x.by.name}`
-        : `a high role drafts new words that answer it`
+        : `a role that fits roles drafts new words that answer it`
   return `${item.draft} (new words of ${item.role}) is rejected: "${short(reason, 120)}"; ${again}`
 }
 
@@ -200,7 +199,7 @@ const adjustmentRejectedRow = (d: Derived, item: Of<'AdjustmentRejected'>): stri
       : x.by._tag === 'ModelRun'
         ? `its drafter ${drafterWords(x.by)}, drafts a new one that answers it\n` +
           `    work adjust <change> --by=${x.by.name}`
-        : 'a high role drafts a new one that answers it'
+        : 'a role that fits roles drafts a new one that answers it'
   return (
     `${item.draft} (an adjustment: ${adjustmentWords(x.adjustment)}) is rejected: ` +
     `"${short(reason, 120)}"; ${again}`
@@ -241,13 +240,13 @@ const personRow = (d: Derived, item: Of<'DraftForPerson'>, direction: DirectionI
 }
 
 // The points of a direction with no open draft; the suggest only when a step offers it (P1: a
-// high role of the tree drafts it, and the person waits).
+// role of the tree that directs drafts it, and the person waits).
 const pointsRow = (direction: DirectionId, points: ReadonlyArray<Of<'ChangePoint'>>): string => {
   const ids = points.map((i) => i.point as string)
   const yours = points.some((i) => suggestedOf(i.step).includes(direction))
   return row(
     `${ids.join(', ')} ${ids.length > 1 ? 'need' : 'needs'} a change of ${direction}; ` +
-      `a high role drafts it${yours ? ', or you suggest it' : ''}`,
+      `a role that directs drafts it${yours ? ', or you suggest it' : ''}`,
     yours ? `work suggest ${direction} --says="<the change>"` : undefined,
   )
 }
@@ -300,12 +299,12 @@ const changeOfEvaluationRow = (d: Derived, item: Of<'Stop'>): string | undefined
       `"${short(e.improve.join('; '), 160)}"`,
     orOf(
       remakeOf(item.step, `as ${e.id} says`),
-      suggest && `${suggest}; a high role drafts it, and you accept the draft`,
+      suggest && `${suggest}; a role that directs drafts it, and you accept the draft`,
     ),
   )
 }
 
-// The stops of one task that no evaluation was written for, and no high role works on it.
+// The stops of one task that no evaluation was written for, and no role that splits works on it.
 const unwrittenRow = (w: Work, task: TaskId, stops: ReadonlyArray<Of<'Stop'>>): string => {
   const t = taskAt(w, task)
   const evaluate = stops
@@ -321,7 +320,7 @@ const unwrittenRow = (w: Work, task: TaskId, stops: ReadonlyArray<Of<'Stop'>>): 
   return row(
     `${t.id} ${t.name} waits for ` +
       (stops.length > 1 ? `${stops.length} evaluations, one for each stop` : 'an evaluation') +
-      ', and no high role works on it',
+      ', and no role that splits works on it',
     orOf(assign, evaluate && (assign ? `evaluate it yourself: ${evaluate}` : evaluate)),
   )
 }
@@ -354,9 +353,9 @@ const suggestionRow = (d: Derived, item: Of<'Suggestion'>): string => {
   }
   return row(
     `${y.id} suggests about ${aboutId(w, y.about)}: "${short(y.says, 120)}" ` +
-      `(${who(w, y.by)}); no high role works on a task that follows ${direction.id}`,
+      `(${who(w, y.by)}); no role that directs works on a task that follows ${direction.id}`,
     assignOf(item.step) ??
-      `you may give no high role a task that follows ${direction.id} now`,
+      `you may give no role that directs a task that follows ${direction.id} now`,
   )
 }
 
@@ -366,9 +365,10 @@ const deciderRow = (d: Derived, item: Of<'DecideResult'>): string => {
   if (item.leaf._tag !== 'Role') throw new Error(`${item.result} waits for a person, not a role`)
   const role = item.leaf.role
   const t = taskAt(w, resultAt(w, item.result).task)
-  // The person gives work only to medium and high roles: a low decider comes from a lead,
+  // The person gives work only to leads: a decider that assigns nothing comes from a lead,
   // whose own next prints the assign. The step names the roles that the person may give.
-  const low = tierOfRole(w, role) === 'low'
+  const r = w.workflow.roles.get(role)
+  const low = r?._tag === 'Model' && !r.acts.some((x) => x._tag === 'Assign')
   return row(
     `${item.result} waits for the accept of ${an(role)}, ` +
       (low ? `and no lead works on ${t.id} to give it its work` : `and no ${role} works on ${t.id}`),
@@ -434,7 +434,7 @@ const endRow = (d: Derived, item: Of<'RunEnd'>): string => {
   )
 }
 
-// Ruling 10.9: a brief over its limit, with no high role above it: the owner splits the task.
+// Ruling 10.9: a brief over its limit, with no role above it that splits: the owner splits it.
 const briefOverRow = (d: Derived, item: Of<'BriefOver'>): string => {
   const w = d.moment.work
   const s = d.states.assignments.get(item.assignment)
@@ -443,7 +443,7 @@ const briefOverRow = (d: Derived, item: Of<'BriefOver'>): string => {
   const t = taskAt(w, item.task)
   return row(
     `${a.id} (${a.role} on ${t.id}) waits: its brief has ${s.size} characters, and the limit ` +
-      `of its tier is ${s.limit}; ${shortenWords(item.step, t.id)}`,
+      `of its model is ${s.limit}; ${shortenWords(item.step, t.id)}`,
     orOf(
       suggestOf(item.step, '<the shorter words>'),
       splitOf(item.step),
@@ -576,8 +576,8 @@ export const renderStatus = (d: Derived): ReadonlyArray<string> => {
       const claim = claimed._tag !== 'Free' ? ` · claimed since ${when(claimed.since)}` : ''
       const parent = a.parent._tag === 'Parent' ? ` · parent ${a.parent.id}` : ''
       const role = roleAt(w, a.role)
-      const tier = role._tag === 'Model' ? role.tier : 'program'
-      return `${a.id} ${a.role} (${tier}) on ${a.task}${attempts}${claim}${parent}`
+      const model = role._tag === 'Model' ? role.model : 'program'
+      return `${a.id} ${a.role} (${model}) on ${a.task}${attempts}${claim}${parent}`
     })
   return rows.length ? rows : ['no open assignments.']
 }

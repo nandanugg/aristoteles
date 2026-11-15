@@ -125,13 +125,13 @@ describe('a draft of the words of a role', () => {
       .toContain(`${second} is replaced by ${third}, a newer draft of the role`)
   })
 
-  test('a high role drafts them with its token; a lower role, the person, and a bad file do not', async () => {
+  test('a role that fits roles drafts them with its token; another role, the person, and a bad file do not', async () => {
     const { p, lead } = await started({ 'words.yaml': WORDS })
     expect((await p.nanda('role draft writer --file=words.yaml')).err).toBe(
       'refused: the person writes the words of writer in aristoteles.yaml, then runs work config apply\n' +
         'next: change the words of writer in aristoteles.yaml; work config apply stores them')
     expect((await p.agent(`role draft ${lead} writer --file=words.yaml`)).err).toBe(
-      'refused: a medium role does not draft the words of a role; escalate them\n' +
+      'refused: section-lead has no fit act, so it does not draft the words of a role; escalate them\n' +
         'next: escalate the new words of the role to your parent')
     expect((await p.agent('role draft writer --file=words.yaml')).err)
       .toContain('a model run outside any task names itself: --by=<its name in lower case>')
@@ -143,7 +143,7 @@ describe('a draft of the words of a role', () => {
     }
     expect(await refused('acts.yaml', 'acts: [{ do: write two sections }]\n')).toBe(
       'refused: acts.yaml: acts: only the words of a role change after the first start ' +
-        '(description, intro, responsibilities, output); a new act or tier needs a new store\n' +
+        '(description, intro, responsibilities, output); a new act needs a new store, and another model an adjustment\n' +
         'next: give only the new words of the role in acts.yaml')
     expect(await refused('same.yaml', 'intro: You write one section under its heading.\n'))
       .toContain('same.yaml gives the words that writer has now')

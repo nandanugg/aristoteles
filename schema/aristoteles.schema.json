@@ -2,11 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/nandanugg/aristoteles/main/schema/aristoteles.schema.json",
   "title": "aristoteles.yaml",
-  "description": "The one file of a dir: the people, the limits, the roles and the deciders (the mechanism), and the settings of the UI. The name of the dir is the name of its folder.",
+  "description": "The one file of a dir: the people, the roles, the deciders and the limits of each model (the mechanism), and the settings of the UI with the commands of each model. The name of the dir is the name of its folder.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "people",
+    "models",
     "roles"
   ],
   "properties": {
@@ -28,24 +29,15 @@
         }
       }
     },
-    "limits": {
-      "description": "The limits of each tier, under the part that checks them.",
+    "models": {
+      "description": "The models that the roles name, by name: the commands of each (settings) and its limits (mechanism). A persistent role of any model runs in a terminal of its own; a disposable role runs as a subagent inside the terminal above it. Choose a stronger model for a role whose work needs more care.",
       "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "low": {
-          "$ref": "#/$defs/tierLimits"
-        },
-        "medium": {
-          "$ref": "#/$defs/tierLimits"
-        },
-        "high": {
-          "$ref": "#/$defs/tierLimits"
-        }
+      "additionalProperties": {
+        "$ref": "#/$defs/model"
       }
     },
     "roles": {
-      "description": "The roles of the dir. Every dir has a role of each tier: high (Sol), medium (Terra) and low (Luna).",
+      "description": "The roles of the dir. Each agent role names its model and its acts; one persistent role splits (it hosts each project).",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/role"
@@ -69,22 +61,6 @@
           "by": {
             "$ref": "#/$defs/deciders"
           }
-        }
-      }
-    },
-    "tiers": {
-      "description": "The commands of the agents of each tier. A persistent role of any tier runs in a terminal of its own; a disposable role runs as a subagent inside the terminal above it.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "sol": {
-          "$ref": "#/$defs/tier"
-        },
-        "terra": {
-          "$ref": "#/$defs/tier"
-        },
-        "luna": {
-          "$ref": "#/$defs/tier"
         }
       }
     },
@@ -120,7 +96,7 @@
       "type": "integer",
       "minimum": 1
     },
-    "tierLimits": {
+    "modelLimits": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -130,7 +106,7 @@
           "properties": {
             "briefChars": {
               "$ref": "#/$defs/count",
-              "description": "The longest brief that the CLI prints. The brief counts the guide text of the tier, so the limit needs room above it (6000 low, 12000 medium, 16000 high)."
+              "description": "The longest brief that the CLI prints, sized to the context window of the model. The brief counts the guide text of the role, so the limit needs room above it (about 6000 for a role that assigns nothing, 16000 for a role that splits)."
             },
             "attempts": {
               "$ref": "#/$defs/count",
@@ -161,7 +137,7 @@
       }
     },
     "act": {
-      "description": "Exactly one of do, review, approve, change.",
+      "description": "One of do, review, approve, change, assign, or a word of authority: split (split, remake and close tasks, evaluate a stop, shorten a brief, host a project), direct (draft and revise directions), fit (fit roles: their words, their fitness, an adjustment).",
       "oneOf": [
         {
           "type": "object",
@@ -219,6 +195,29 @@
               }
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assign"
+          ],
+          "properties": {
+            "assign": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The roles that this role gives work to."
+            }
+          }
+        },
+        {
+          "enum": [
+            "split",
+            "direct",
+            "fit"
+          ]
         }
       ]
     },
@@ -233,12 +232,10 @@
           ],
           "description": "A program runs a command on each report."
         },
-        "tier": {
-          "enum": [
-            "low",
-            "medium",
-            "high"
-          ]
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The name of an entry of the models table."
         },
         "description": {
           "type": "string"
@@ -280,7 +277,7 @@
           "minimum": 1
         },
         "persistence": {
-          "description": "How an agent role runs, apart from its tier: a persistent role gets a terminal of its own for the whole project; a disposable role runs as a subagent of a terminal. why: the reason, which the card of the role shows. A program has none.",
+          "description": "How an agent role runs, apart from its model: a persistent role gets a terminal of its own for the whole project; a disposable role runs as a subagent of a terminal. why: the reason, which the card of the role shows. A program has none.",
           "type": "object",
           "additionalProperties": false,
           "required": [
@@ -346,14 +343,24 @@
       },
       "then": {
         "not": {
-          "required": [
-            "persistence"
+          "anyOf": [
+            {
+              "required": [
+                "persistence"
+              ]
+            },
+            {
+              "required": [
+                "model"
+              ]
+            }
           ]
         }
       },
       "else": {
         "required": [
-          "persistence"
+          "persistence",
+          "model"
         ]
       }
     },
@@ -413,24 +420,19 @@
         }
       ]
     },
-    "tier": {
+    "model": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "model": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The model of the tier; launch and resume name it as {model}."
-        },
         "launch": {
           "type": "string",
           "pattern": "\\{session\\}",
-          "description": "The command that starts an agent; {session} is the session id that the UI gives it, {model} (optional) is the model of the tier, and {prompt} (optional) is its first input, given as an argument."
+          "description": "The command that starts an agent; {session} is the session id that the UI gives it, {model} (optional) is the name of the model, and {prompt} (optional) is its first input, given as an argument."
         },
         "resume": {
           "type": "string",
           "pattern": "\\{session\\}",
-          "description": "The command that continues a closed session; {session} is its id, {model} (optional) is the model of the tier, and {prompt} (optional) is the retry input."
+          "description": "The command that continues a closed session; {session} is its id, {model} (optional) is the name of the model, and {prompt} (optional) is the retry input."
         },
         "start": {
           "type": "string",
@@ -463,6 +465,10 @@
         "retryInput": {
           "type": "string",
           "description": "The input that a restarted session gets as its argument; {agent} is the id of its agent. The default: System message, not from the person. Run work wait --by={agent}, and do what it prints."
+        },
+        "limits": {
+          "$ref": "#/$defs/modelLimits",
+          "description": "The limits of the model, under the part that checks them."
         }
       }
     }

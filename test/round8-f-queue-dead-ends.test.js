@@ -35,7 +35,7 @@ describe('F-Q3 a maker of a task that is split later holds the file for ever', (
       expect(brief.err).toContain('a3 waits for docs/tsd.md: a2')
       expect(next).toContain(`work finish ${lead} a2`)
     } else {
-      expect(brief.out).toContain('work brief a3 · writer (low) · t2 Intro')
+      expect(brief.out).toContain('work brief a3 · writer (haiku) · t2 Intro')
       expect(brief.out).not.toContain('writes docs/tsd.md first')
     }
   })
@@ -82,7 +82,7 @@ describe('F-Q4 a needs that crosses the queue: the person criticises a part that
       expect(brief.err).toContain('a5 waits for docs/tsd.md: a4')
       expect(next).toContain(`work finish ${lead} a4`)
     } else {
-      expect(brief.out).toContain('work brief a5 · writer (low) · t2 Intro')
+      expect(brief.out).toContain('work brief a5 · writer (haiku) · t2 Intro')
       expect(brief.out).not.toContain('writes docs/tsd.md first')
     }
   })

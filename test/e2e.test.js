@@ -5,7 +5,7 @@ import { init, INTRO_V1, INTRO_V2, ok, project, started, TASK_WHOLE, tokenIn, wi
 // The briefs and refusals are golden: the snapshot is the exact text that an agent reads.
 
 describe('the Introduction: write, reject with a point, fix, accept', () => {
-  test('each tier reads its own brief, and the task ends Accepted', async () => {
+  test('each role reads its own brief, and the task ends Accepted', async () => {
     const { p, lead, writer } = await withWriter()
     expect(ok(await p.agent(`brief ${writer}`)).out).toMatchSnapshot('writer brief, attempt 1')
     p.write('docs/tsd.md', INTRO_V1)
@@ -131,23 +131,23 @@ describe('what was reviewed is what was reported', () => {
   })
 })
 
-describe('tiers and trees', () => {
-  test('a tier assigns only lower tiers', async () => {
+describe('assign acts and trees', () => {
+  test('a role assigns only the roles of its assign act', async () => {
     const { p, lead } = await started()
     const r = await p.agent(`assign ${lead} t1 --role=section-lead`)
     // I5, D10: the old generic next line ("run work next ... do its first step") is a real choice.
-    expect(r.err).toMatchSnapshot('medium assigns medium')
+    expect(r.err).toMatchSnapshot('a lead assigns a role that it does not name')
     const { p: q, writer } = await withWriter()
     ok(await q.agent(`brief ${writer}`))
-    expect((await q.agent(`assign ${writer} t1 --role=linter`)).err).toContain('a low role assigns only lower tiers')
+    expect((await q.agent(`assign ${writer} t1 --role=linter`)).err).toContain('writer assigns no role; linter is not one')
   })
 
-  test('a refusal to a low agent says to escalate, not to try other commands', async () => {
+  test('a refusal to an agent of one unit says to escalate, not to try other commands', async () => {
     const { p, writer } = await withWriter()
     ok(await p.agent(`brief ${writer}`))
     const r = await p.agent(`assign ${writer} t1 --role=linter`)
-    // I5, D10: the generic line is gone; a low agent's only choice is to escalate.
-    expect(r.err).toContain('next: escalate it: no tier is below low')
+    // I5, D10: the generic line is gone; a role that assigns nothing can only escalate.
+    expect(r.err).toContain('next: escalate it: your role assigns no role')
     expect(r.err).not.toContain('give a role')
   })
 })
@@ -164,7 +164,7 @@ describe('a mistake is evaluated (Nanda, 2026-11-08)', () => {
     ok(await p.agent(`review ${linter} r1 reject --point="cites ABC-2964" --breaks=no-ticket-ids`))
     // No high role works on t1: the lead is told whom t1 waits for, and the person gets the assign.
     expect(ok(await p.agent(`next ${lead}`)).out).toContain('t1 waits for an evaluation: a2 used its last try on a fault (ex1: r1, cites ABC-2964)')
-    expect(ok(await p.nanda('waiting')).out).toContain('t1 The Introduction waits for an evaluation, and no high role works on it\n    work assign t1 --role=architect')
+    expect(ok(await p.nanda('waiting')).out).toContain('t1 The Introduction waits for an evaluation, and no role that splits works on it\n    work assign t1 --role=architect')
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
     expect(ok(await p.agent(`next ${arch}`)).out).toContain(`work evaluate ${arch} ex1 --wrong=`)
@@ -209,7 +209,7 @@ describe('forwarded person acts', () => {
     const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
     ok(await p.agent(`brief ${linter}`))
     const r = await p.agent(`forward ${linter} Nanda reject r1 --point="x" --quote="x"`)
-    expect(r.err).toContain('only the top agent (medium or high, with no parent) forwards the person')
+    expect(r.err).toContain('only the top agent (a lead, with no parent) forwards the person')
   })
 })
 
@@ -282,8 +282,8 @@ describe('programs run on each report', () => {
 
 describe('limits and config', () => {
   // Ruling 10.9: a brief over its limit is a state of the assignment, not a refusal of the assign;
-  // the low agent waits, and the level above (here the owner) shortens or remakes (t1 has a section: one unit, B1).
-  test('a brief over the tier limit prints only that the agent waits', async () => {
+  // the agent waits, and the level above (here the owner) shortens or remakes (t1 has a section: one unit, B1).
+  test('a brief over the limit of its model prints only that the agent waits', async () => {
     const { WORK_YAML } = await import('./harness.js')
     // Ruling 2026-11-14 (brief limits leave room for the guide): its own small limit.
     const small = WORK_YAML.replace('briefChars: 6000', 'briefChars: 900')
@@ -295,7 +295,7 @@ describe('limits and config', () => {
     ok(await p.agent(`brief ${lead}`))
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
     const brief = ok(await p.agent(`brief ${writer}`)).out
-    expect(brief).toContain('the limit of the low tier is 900. Nanda shortens the directions of t1, or remakes t1.')
+    expect(brief).toContain('the limit of haiku is 900. Nanda shortens the directions of t1, or remakes t1.')
     expect(brief).not.toContain('RULES')
     expect(ok(await p.nanda('waiting')).out).toContain('shorten the directions of t1, or remake t1')
   })

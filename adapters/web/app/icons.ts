@@ -11,28 +11,6 @@ export const icon = (paths: VNode, size = 16): VNode =>
 const d = (...parts: string[]): string => parts.join('')
 
 export const ICONS = {
-  sol: html`
-    <circle cx="12" cy="12" r="4"></circle>
-    <path
-      d=${d(
-        'M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 ',
-        '17.7l-1.4 1.4M19.1 4.9l-1.4 1.4',
-      )}
-    ></path>
-  `,
-  terra: html`
-    <circle cx="12" cy="12" r="10"></circle>
-    <line x1="2" y1="12" x2="22" y2="12"></line>
-    <path
-      d=${d(
-        'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 ',
-        '15.3 15.3 0 0 1 4-10z',
-      )}
-    ></path>
-  `,
-  luna: html`
-    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"></path>
-  `,
   work: html`
     <path d="M12 20h9"></path>
     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path>

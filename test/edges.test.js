@@ -88,7 +88,7 @@ describe('a remade top task stays in its run', () => {
     const out = ok(await p.nanda('assign t2 --role=architect')).out
     expect(out).toContain('a2 is the host of h1; the host gets its token from work wait.')
     const waited = ok(await p.run('wait --by=h1 --seconds=1', HOST)).out
-    expect(waited).toContain('h1: its top task t2 The Introduction is open, and you are its Sol (a2)')
+    expect(waited).toContain('h1: its top task t2 The Introduction is open, and you are its host (a2)')
     ok(await p.agent(`brief ${tokenIn(waited)}`))
     const db = tables(p)
     const run = db.query("SELECT session FROM run WHERE id = 'h1'").get().session

@@ -15,7 +15,7 @@ const architect = async (p, on = 'tsd-writing,t1') => {
 describe('the person, and only the person', () => {
   test('I-N1: no role is played by the person', async () => {
     const p = project({ 'aristoteles.yaml': `${WORK_YAML}  nanda:\n    tier: person\n    description: x\n    intro: x\n    responsibilities: [x]\n    acts: [{ review: [writer] }]\n` })
-    expect((await p.nanda('init')).err).toContain('tier is low, medium, or high (the person needs no role)')
+    expect((await p.nanda('init')).err).toContain('roles.nanda: model names an entry of the models table (haiku, sonnet, opus)')
   })
 
   // Every path by which an agent could act for the person, tried in one table.
@@ -265,6 +265,6 @@ describe('advice', () => {
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     ok(await p.nanda('task open --file=task.yaml'))
     const arch = await architect(p, 't1')
-    expect(ok(await p.agent(`next ${arch}`)).out).toContain(`split t1 first, then give each part to a medium role`)
+    expect(ok(await p.agent(`next ${arch}`)).out).toContain(`split t1 first, then give each part to a lead`)
   })
 })

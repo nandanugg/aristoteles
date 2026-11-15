@@ -5,7 +5,7 @@
 // A reader reads with no lock: a rename always gives it a whole file.
 //   .work/assess/<id>.yaml   one direction (OnboardingDirection)
 //   .work/assess/roles.yaml  the onboarding state of each role (P4)
-//   aristoteles.draft.yaml   the config draft only: people, limits, roles, decide, tiers
+//   aristoteles.draft.yaml   the config draft only: people, roles, decide, models
 // The lock is outside .work/assess/, because the store start deletes that folder before it
 // releases the lock.
 import {
@@ -701,9 +701,9 @@ export const personAct = (
           yield* roleIn(known, act.role)
           if (onlyLead(known.read.config.roles) === act.role) {
             return yield* refuse(
-              `${act.role} is the role of the top task (the only persistent high role), so it ` +
+              `${act.role} is the role of the top task (the only persistent role that splits), so it ` +
                 'stays: the host plays it, and the store cannot start without it (ruling 15)',
-              `keep ${act.role}; the host writes another persistent high role first, if it should go`,
+              `keep ${act.role}; the host writes another persistent role that splits first, if it should go`,
             )
           }
           const [uses] = checkedBy(yield* readDirections(dir), act.role)
@@ -714,7 +714,17 @@ export const personAct = (
                 `revise ${uses.direction} --words="<who checks ${uses.rule} instead of ${act.role}>"`,
             )
           }
-          const { [act.role]: _gone, ...roles } = known.raw.roles
+          const { [act.role]: _gone, ...kept } = known.raw.roles
+          // No role gives work to a role that is gone: it leaves each assign act.
+          const unassigned = (acts: unknown): unknown =>
+            Array.isArray(acts)
+              ? acts.map((a) =>
+                  Array.isArray(a?.assign) ? { assign: a.assign.filter((n: unknown) => n !== act.role) } : a,
+                )
+              : acts
+          const roles = Object.fromEntries(
+            Object.entries(kept).map(([n, r]) => [n, { ...(r as object), acts: unassigned((r as { acts?: unknown }).acts) }]),
+          )
           yield* writeDraft(dir, { ...known.raw, roles })
           const { [act.role]: _state, ...states } = yield* readRoleStates(dir)
           yield* writeRoleStates(dir, states)
@@ -729,11 +739,11 @@ export const personAct = (
               'toggle the persistence of an agent role',
             )
           }
-          // Ruling 15: the role of the top task is the persistent high role that the host plays;
-          // while it is the only one, its card has no toggle.
+          // Ruling 15: the role of the top task is the persistent role that splits, which the host
+          // plays; while it is the only one, its card has no toggle.
           if (onlyLead(known.read.config.roles) === act.role) {
             return yield* refuse(
-              `${act.role} is the role of the top task (the only persistent high role), so it has ` +
+              `${act.role} is the role of the top task (the only persistent role that splits), so it has ` +
                 'no toggle: the host plays it, and the host is a terminal (ruling 15)',
               `keep ${act.role} persistent`,
             )
@@ -743,6 +753,23 @@ export const personAct = (
           yield* writeDraft(dir, {
             ...known.raw,
             roles: { ...known.raw.roles, [act.role]: { ...raw, persistence } },
+          })
+          return []
+        }
+        case 'model': {
+          const known = yield* needDraft(dir)
+          const role = yield* roleIn(known, act.role)
+          if (role.kind === 'program') {
+            return yield* refuse(`${act.role} is a program; it runs no model`, 'pick the model of an agent role')
+          }
+          const names = Object.keys(known.raw.models ?? {})
+          if (!names.includes(act.model)) {
+            return yield* refuse(`there is no model ${act.model} in the models table`, `pick one of ${names.join(', ')}`)
+          }
+          const raw = known.raw.roles[act.role]
+          yield* writeDraft(dir, {
+            ...known.raw,
+            roles: { ...known.raw.roles, [act.role]: { ...raw, model: act.model } },
           })
           return []
         }
