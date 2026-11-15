@@ -10,9 +10,17 @@ import { dbPath } from '../../core/services/index.ts'
 import { excludeFromGit } from '../live/git-exclude.ts'
 import type { DetachedOptions, Env, Pump } from './frozen.ts'
 import { createPump } from './pump.ts'
-import { type ServerHandle, startServer } from './server.ts'
+import { networkAddresses, type ServerHandle, startServer } from './server.ts'
 import { linkSkills } from './skills.ts'
 import { createWatcher } from './watcher.ts'
+
+// The line that gives the addresses of the page for other machines, or none when the machine has
+// no network address.
+const otherMachines = (url: string): ReadonlyArray<string> => {
+  const port = new URL(url).port
+  const urls = networkAddresses().map((a) => `http://${a}:${port}/`)
+  return urls.length === 0 ? [] : [`from other machines: ${urls.join(', ')}`]
+}
 
 // The file that records the running server of a dir (port, pid).
 export const recordOf = (dir: string, env: Env): string =>
@@ -89,6 +97,7 @@ export const workStartDetached = async (
     const url = await runningUrl(dir, record)
     if (url) {
       out(`the UI of ${dir}: ${url}`)
+      for (const line of otherMachines(url)) out(line)
       out(`it runs on its own (process ${child.pid}); its words go to ${log}`)
       return true
     }
@@ -173,6 +182,7 @@ export const workStart = async (
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
   out(`the UI of ${dir}: ${server.url}`)
+  for (const line of otherMachines(server.url)) out(line)
   out('stop it with Ctrl-C; the terminals of the agents keep running in tmux.')
   if (open) openBrowser(server.url)
   return server

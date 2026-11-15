@@ -1005,15 +1005,16 @@ ids.
 
 ## 12. The UI (2026-11-11)
 
-`work start` serves the UI of a dir on 127.0.0.1 (`adapters/web/`): the requirements are in
+`work start` serves the UI of a dir on every interface of the machine (`adapters/web/`): the requirements are in
 `plan/ui/PLAN.md`, the parts and what the build changed in `plan/ui/BUILD.md`.
 
 - `adapters/web/view.ts` builds what the page shows from the fold and the derived states: the
   projects (runs, and top tasks opened at a terminal), the canvas in layout A (task, work and
   review cards; only the latest attempt), the panel of a task, the diff by file, and the decisions
   that reach the person (`waitingFor`).
-- `adapters/web/server.ts`: the locks of the page (127.0.0.1 only; the Host header names
-  127.0.0.1:<port> or localhost:<port>; a websocket and a POST also need the page's own origin),
+- `adapters/web/server.ts`: the locks of the page (it listens on every interface with no key; the
+  Host header names 127.0.0.1, localhost or an address of the machine, with the port; a websocket
+  and a POST also need the page's own origin),
   the read API, `POST /api/act` for the person's acts, and the websocket for "changed" and for
   the terminals.
 - `adapters/web/pump.ts` (on `adapters/live/pump.ts`): the terminals in tmux on the socket

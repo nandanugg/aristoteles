@@ -3,6 +3,7 @@
 // tells the page when the store changes.
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
+import { networkInterfaces } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from './code.js'
 import {
@@ -73,6 +74,21 @@ describe('the server, read only', () => {
       }
     }
     expect(await (await fetch(`${base}/health`)).json()).toEqual({ dir: p.dir })
+  })
+
+  // Nanda, 2026-11-15: the server listens on every interface (a personal project), so another
+  // machine opens the page at a network address of this one; an act from that page is its own.
+  test('the page answers at a network address of the machine, and takes its acts', async () => {
+    const { p } = await rejected()
+    const { s } = serve(p)
+    const address = Object.values(networkInterfaces()).flat().find((a) => a?.family === 'IPv4' && !a.internal)?.address
+    if (address === undefined) return // a machine with no network: nothing to reach
+    const other = `http://${address}:${s.port}`
+    expect((await fetch(`${other}/api/dir`)).status).toBe(200)
+    const act = (origin) =>
+      fetch(`${other}/api/act`, { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ act: 'none' }) })
+    expect((await act(other)).status).toBe(400)
+    expect((await act(`http://rebind.example:${s.port}`)).status).toBe(403)
   })
 
   // Nanda, 2026-11-15: the page has real paths; the server serves the page for each place, so a

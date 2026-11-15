@@ -132,12 +132,13 @@ start from that file. A build that fails changes nothing: that call runs the cod
 work and its reviews, and the real terminal of each AI agent. It needs `bun install` once in the
 aristoteles folder, and tmux for the terminals.
 
-It prints the page's address, `http://127.0.0.1:<port>/`. The server listens on 127.0.0.1 only,
-and answers only a request for `127.0.0.1:<port>` or `localhost:<port>` (any other host name
-gets 403); an act and the terminals need the page's own origin. On a remote machine, open a
-tunnel with the same port on both sides (`ssh -L <port>:127.0.0.1:<port> <machine>`) and open
-the address on your own machine. A machine with no browser opener (a server over ssh) only
-prints the address.
+It prints the page's address, `http://127.0.0.1:<port>/`, and the addresses for other machines
+(`http://<an address of this machine>:<port>/`). The server listens on every interface, with no
+key: anyone on the same network can open the page and type into the agents' terminals, so run
+it only on a network that you trust. It answers only a request that names this machine (any
+other host name gets 403), and an act and the terminals need the page's own origin. Set
+`WORK_PORT` to keep the same port across starts. A machine with no browser opener (a server
+over ssh) only prints the addresses.
 
 - **A project is a talk** with the host, the AI CLI that you triggered: the page shows its
   terminal. Tell it what you want; it drafts the top task, and you open it with one click.

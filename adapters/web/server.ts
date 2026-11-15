@@ -1,10 +1,10 @@
-// startServer (frozen; package P9): the page of a dir, one on 127.0.0.1 only. A terminal in the
-// browser can run any command, and any web page in the same browser can reach a port of this
-// machine. Three locks protect the page (Nanda, 2026-11-15: no key in the address now):
-// - the server listens on 127.0.0.1 only, so no other machine reaches it;
-// - each request must name this server in its Host header (127.0.0.1:<port> or
-//   localhost:<port>), so a page of another name that points to 127.0.0.1 (DNS rebinding) reads
-//   nothing;
+// startServer (frozen; package P9): the page of a dir. A terminal in the browser can run any
+// command. The server listens on every interface of the machine, with no key (Nanda, 2026-11-15:
+// a personal project), so anyone on its network can open the page and type into the terminals.
+// Two locks stay:
+// - each request must name this machine in its Host header (127.0.0.1, localhost or an address
+//   of its own network interfaces, with the server's port), so a page of another name that
+//   points to the machine (DNS rebinding) reads nothing;
 // - an act and the websocket must come from the page's own origin, so another page in the same
 //   browser can neither act nor read a terminal.
 //
@@ -13,6 +13,7 @@
 // the Work and renders the views of view.ts; a person's act dispatches its action as the person
 // of git user.name (acts.ts) or goes to the watcher (the terminals).
 import { existsSync, type FSWatcher, readdirSync, statSync, watch } from 'node:fs'
+import { networkInterfaces } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, SubscriptionRef } from 'effect'
 import { dispatch } from '../../core/actions/index.ts'
@@ -136,6 +137,15 @@ const gitName = async (dir: string): Promise<string> => {
 // The paths of the places of the page: one to three names, none of them the API, the websocket,
 // the health check or a vendor file (each file of the page has a dot in its name).
 const PAGE_PATH = /^\/(?!(?:api|ws|health|vendor)(?:\/|$))[\w-]+(?:\/[\w-]+){0,2}\/?$/
+
+// The addresses of this machine's network interfaces (IPv4, not loopback): another machine opens
+// the page at one of them. Read on each call, since an address can change.
+export const networkAddresses = (): ReadonlyArray<string> =>
+  Object.values(networkInterfaces()).flatMap((list) =>
+    (list ?? []).filter((a) => a.family === 'IPv4' && !a.internal).map((a) => a.address),
+  )
+// The names that a request may give this server in its Host header and its Origin.
+const ownNames = (): ReadonlyArray<string> => ['127.0.0.1', 'localhost', ...networkAddresses()]
 
 const NO_PERSON = 'the page acts as the person of git user.name; set it: git config user.name <you>'
 
@@ -290,11 +300,9 @@ export function startServer(options: ServerOptions): ServerHandle {
   // --- the locks -------------------------------------------------------------------------------
 
   const ownHost = (req: Request, srv: Bun.Server<undefined>) =>
-    [`127.0.0.1:${srv.port}`, `localhost:${srv.port}`].includes(req.headers.get('host') ?? '')
+    ownNames().some((name) => req.headers.get('host') === `${name}:${srv.port}`)
   const sameOrigin = (req: Request, srv: Bun.Server<undefined>) =>
-    [`http://127.0.0.1:${srv.port}`, `http://localhost:${srv.port}`].includes(
-      req.headers.get('origin') ?? '',
-    )
+    ownNames().some((name) => req.headers.get('origin') === `http://${name}:${srv.port}`)
 
   // --- the person's acts (POST /api/act) -------------------------------------------------------
 
@@ -489,7 +497,7 @@ export function startServer(options: ServerOptions): ServerHandle {
   }
 
   const server = Bun.serve<undefined>({
-    hostname: '127.0.0.1',
+    hostname: '0.0.0.0',
     port,
     async fetch(req, srv) {
       const url = new URL(req.url)
