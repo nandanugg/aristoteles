@@ -82,7 +82,9 @@ export type RunState =
   | { readonly _tag: 'Talking' } // no top task yet: the host drafts it; the canvas shows its drafts
   | { readonly _tag: 'Working'; readonly top: TaskId } // the top task runs
   // The Sol accepted the top task: an end decision waits for the person (was 'ends')
-  | { readonly _tag: 'AwaitingEndAccept'; readonly top: TaskId }
+  // since: the time of the last Accept of the top task's result (the hold for the host counts
+  // from it).
+  | { readonly _tag: 'AwaitingEndAccept'; readonly top: TaskId; readonly since: Time }
   | { readonly _tag: 'Done'; readonly at: Time } // the watcher closes the host terminal
   | { readonly _tag: 'Closed'; readonly at: Time }
 

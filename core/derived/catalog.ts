@@ -38,6 +38,7 @@ import {
   within,
   versionAt,
   versionNumberOf,
+  itemsOf,
 } from './reads.ts'
 import {
   type AssignmentStateOf,
@@ -392,10 +393,12 @@ export const runStateOf: RunStateOf = (m, id, { top }) => {
     const end = taskAt(m.work, top.task).end
     return { _tag: 'Closed', at: end._tag === 'NotEnded' ? m.at : end.when }
   }
-  // The Sol of the top task accepted it: the end of the project waits for the person.
-  return top.state._tag === 'Accepted'
-    ? { _tag: 'AwaitingEndAccept', top: top.task }
-    : { _tag: 'Working', top: top.task }
+  // The Sol of the top task accepted it: the end of the project waits for the person, since the
+  // last Accept of its latest result (an Accepted task has one), else since that result.
+  if (top.state._tag !== 'Accepted') return { _tag: 'Working', top: top.task }
+  const last = need(latestResultOf(m.work, top.task), 'result of the accepted task', top.task)
+  const accept = itemsOf(m.work, last.id).findLast((v) => v.decision === 'Accept')
+  return { _tag: 'AwaitingEndAccept', top: top.task, since: accept?.when ?? last.when }
 }
 
 // --- 16. TaskDraftState (S3) -------------------------------------------------------------------

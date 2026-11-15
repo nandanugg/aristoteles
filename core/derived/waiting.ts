@@ -831,14 +831,7 @@ const pageItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   }
   for (const [id, state] of d.states.runs) {
     if (state._tag !== 'AwaitingEndAccept') continue
-    const top = state.top
-    const last = latestResultOf(w, top)
-    const accept = last
-      ? itemsOf(w, last.id)
-          .filter((v) => v.decision === 'Accept')
-          .at(-1)
-      : undefined
-    const at = last ? (accept?.when ?? last.when) : d.moment.at
+    const { top, since: at } = state
     const placement: Placement = { _tag: 'OnTask', task: top }
     const hold = holdOf(d, id, placement, at, false)
     const owner = w.tasks.get(top)?.owner.name ?? w.workflow.owner.name
