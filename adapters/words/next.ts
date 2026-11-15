@@ -403,6 +403,8 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
         `${s.role} runs on the next report of ${s.task}; a recheck asks for one`,
         `work recheck ${token} ${s.result} --reason="check again under the new version"`,
       )
+    case 'BriefToCheck':
+      return step(`check ${s.result}: read your brief again first`, `work brief ${token}`)
     case 'CheckYourself':
       return step(
         `check ${s.result} yourself`,

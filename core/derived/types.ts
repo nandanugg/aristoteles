@@ -612,6 +612,9 @@ export type StepWhat =
       readonly result: ResultId
     }
   | { readonly _tag: 'CheckYourself'; readonly result: ResultId }
+  // A checker with no claim reads its brief again before it checks (its claim ended with its last
+  // review, 28e1045).
+  | { readonly _tag: 'BriefToCheck'; readonly result: ResultId }
   | { readonly _tag: 'CheckerWorking'; readonly checker: AssignmentId; readonly result: ResultId }
   | {
       readonly _tag: 'GiveCheckerCommand'

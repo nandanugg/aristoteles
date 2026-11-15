@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, test } from 'bun:test'
 import type { AssignmentId, Author, ResultId, TaskId, Time, Work } from '../schema/index.ts'
 import { canAct, type Derived, derive, isUnit, type NextStep, nextFor, stepKey } from './index.ts'
 import { leads } from './reads.ts'
-import { candidatesOf } from './steps.ts'
+import { candidatesOf, claimedSince } from './steps.ts'
 import { momentOf, pinned, SCENARIOS, type Scenario } from './support.test.ts'
 
 // The tags of the steps that the old `work next` gave, and the stepKey of those that D14 keeps.
@@ -135,8 +135,12 @@ describe('nextFor equals the old work next, or D14 and C1 explain it', () => {
 
 // P9: a role that leads nothing checks only its own rules, so it no longer escalates for the
 // checkers of other roles; a maker that holds its claim reports, and never waits on itself.
+// P9 follow-up (live, 2026-11-15): a checker whose claim ended with its last review reads its
+// brief again before it checks the next result.
+const unclaimed = (key: string): string => key.replace(/^CheckYourself (r\d+)$/m, 'BriefToCheck $1')
 const p9Key = (w: Work, a: AssignmentId, at: string, key: string): string => {
   if (at === 'codeStarted a2') return 'ReportWork a2 t1'
+  if (claimedSince(w, a) === undefined) key = unclaimed(key)
   const role = w.workflow.roles.get(w.assignments.get(a)?.role ?? ('' as never))
   if (leads(role)) return key
   return key

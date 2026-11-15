@@ -72,6 +72,20 @@ describe('each new result makes the redo new work', () => {
   }, 30000)
 })
 
+// Live, 2026-11-15: a checker reviewed r2, the writer reported r3, and the checker's accept of r3
+// was refused (its claim ended with its review); its step fell back to a wait that woke no one.
+describe('a checker with no claim reads its brief again', () => {
+  test('after its review, the next result gives it a brief step, then the check', async () => {
+    const s = await rejected()
+    ok(await s.p.agent(`brief ${s.writer}`))
+    s.p.write('docs/tsd.md', harness.INTRO_V1)
+    ok(await s.p.agent(`report ${s.writer} --output=docs/tsd.md#introduction`))
+    expect(tags(nextFor(derivedOf(s), agent('a3')))).toEqual(['Do BriefToCheck'])
+    ok(await s.p.agent(`brief ${s.linter}`))
+    expect(tags(nextFor(derivedOf(s), agent('a3')))).toEqual(['Do CheckYourself'])
+  }, 30000)
+})
+
 describe('the reviewers of a result', () => {
   test('a maker may not assign a reviewer of its own result', async () => {
     const s = await writerReported()

@@ -13,6 +13,7 @@ import {
 } from '../../core/derived/index.ts'
 import type { AssignmentId, Work } from '../../core/schema/index.ts'
 import { leads } from '../../core/derived/reads.ts'
+import { claimedSince } from '../../core/derived/steps.ts'
 import { momentOf, pinned, SCENARIOS, type Scenario } from '../../core/derived/support.test.ts'
 import {
   briefOf,
@@ -89,7 +90,19 @@ const P3_REFUSED: Readonly<Record<string, string>> = {
 }
 // P9: a role that leads nothing checks only its own rules, so it no longer escalates for the
 // checkers of other roles (a step line and its command); a maker that holds its claim reports.
-const p9Lines = (w: Work, a: AssignmentId, at: string, lines: Lines): Lines => {
+const p9Lines = (w: Work, a: AssignmentId, at: string, old: Lines): Lines => {
+  // A checker whose claim ended with its last review reads its brief again before it checks.
+  const free = claimedSince(w, a) === undefined
+  const i = free ? old.findIndex((l) => /^check r\d+ yourself$/.test(l)) : -1
+  const lines =
+    i < 0
+      ? old
+      : [
+          ...old.slice(0, i),
+          `check ${old[i]?.split(' ')[1]}: read your brief again first`,
+          '  work brief a0.TOKEN',
+          ...old.slice(i + 2),
+        ]
   if (at === 'codeStarted a2') {
     return ['make t1 as your brief says, then report it', '  work report a0.TOKEN --output=app@<commit>']
   }

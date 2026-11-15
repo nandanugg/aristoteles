@@ -103,7 +103,7 @@ export const assignable = (w: Work, a: Assignment) =>
   })
 const sectionOf = (t: Task): string | null =>
   t.descriptionAi.context.section._tag === 'Section' ? t.descriptionAi.context.section.id : null
-const claimedSince = (w: Work, a: AssignmentId) => {
+export const claimedSince = (w: Work, a: AssignmentId) => {
   const claim = w.meta.get(a)?.claim
   return claim === undefined || claim._tag === 'Free' ? undefined : claim.since
 }
@@ -824,6 +824,11 @@ const checkerStep = (
   const over = checker === undefined ? undefined : briefOver(d, checker)
   if (over !== undefined) return over
   if (role === a.role) {
+    // Live, 2026-11-15: a persistent checker's claim ended with its review of r2, so its accept
+    // of r3 was refused and the step fell back to a wait that woke no one.
+    if (claimedSince(w, a.id) === undefined) {
+      return act({ _tag: 'BriefToCheck', result }, { _tag: 'Brief', target: { assignment: a.id } })
+    }
     return act(
       { _tag: 'CheckYourself', result },
       { _tag: 'Accept', target: { of } },
@@ -963,6 +968,7 @@ const IDS: {
   CheckAgainUnderNewVersion: (s) => [s.result],
   ProgramChecksNextReport: (s) => [s.role, s.task, s.result],
   CheckYourself: (s) => [s.result],
+  BriefToCheck: (s) => [s.result],
   CheckerWorking: (s) => [s.checker, s.result],
   GiveCheckerCommand: (s) => [s.checker, s.result, s.task],
   CheckerNotAssigned: (s) => [s.result, s.role],
