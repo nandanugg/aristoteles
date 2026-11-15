@@ -4,6 +4,7 @@
 import { html } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { type DirView, OnboardingView } from '../contract.ts'
+import { AiToast } from './ai.ts'
 import { RoleGrid } from './agents.ts'
 import { api, attempt, type OnboardingActJson, postOnboarding } from './api.ts'
 import { DirectionReview, ExampleBlock } from './direction.ts'
@@ -311,5 +312,6 @@ export function Onboarding({ dir, version }: { dir: DirData; version: number }) 
     <${StartBlocked} start=${view.start} />
     ${now === 'agents' ? html`<${Agents} view=${view} />`
       : html`<${Directions} view=${view} onAgents=${() => setStep('agents')} />`}
+    <${AiToast} toast=${dir.toast} />
   </div>`
 }

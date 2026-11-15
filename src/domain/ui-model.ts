@@ -390,6 +390,17 @@ export interface DirView {
   readonly projects: ReadonlyArray<ProjectSummary> // the newest first
   // The decisions that no open task shows (P1, F3): of no task, or of a task that ended.
   readonly inbox: ReadonlyArray<Decision>
+  // P8, ruling 3: the toast of the dir view: what the AI does now, or its question for the person.
+  readonly toast: AiToast
+}
+export interface AiToast {
+  readonly status: {
+    readonly by: Text
+    readonly kind: 'working' | 'thinking' | 'applied' | 'feedback' | 'waiting'
+    readonly words: Text
+    readonly text: Text
+  } | null
+  readonly question: Decision | null
 }
 
 // A project: a run with its session, or a top task that no run holds (opened at a terminal).

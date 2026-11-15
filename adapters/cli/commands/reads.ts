@@ -11,7 +11,7 @@ import {
   lookupResult,
   refuse,
 } from '../../../core/schema/index.ts'
-import { Dir, Files, Store } from '../../../core/services/index.ts'
+import { Dir, Env, Files, Now, Store } from '../../../core/services/index.ts'
 import {
   logLine,
   nextLines,
@@ -27,10 +27,36 @@ import { textOf } from '../args.ts'
 import { agentCallerOf, isUnit, tokenOfCall } from '../caller.ts'
 import type { Command, Commands } from '../command.ts'
 import { GUIDES, lookupKind } from '../lookups.ts'
-import { readWork } from '../runtime.ts'
+import { peekWork, readWork } from '../runtime.ts'
+import { isStatusKind, STATUS_KINDS, STATUS_WORDS, writeStatus } from '../../live/status.ts'
 
-const status: Command = () =>
+// P8, ruling 3: work status set --kind=<kind> --text=<words> tells the person what the AI does
+// on the dir view (the toast of the page). The host names itself (--by=h1, or --by=host before the
+// store); an agent passes its token.
+const setStatus = (call: Parameters<Command>[0]) =>
   Effect.gen(function* () {
+    const kind = String(textOf(call.args.one('kind')) ?? '')
+    const text = textOf(call.args.one('text'))?.trim() ?? ''
+    const by = textOf(call.args.one('by'))
+    const usage = `work status set --kind=${STATUS_KINDS.join('|')} --text="<what you do now>" --by=<run>`
+    if (!isStatusKind(kind)) return yield* refuse(`--kind is one of ${STATUS_KINDS.join(', ')}`, usage)
+    if (!text) return yield* refuse('a status needs --text="<what you do now>"', usage)
+    let actor: string
+    if (call.token !== null) {
+      const { work } = yield* peekWork
+      actor = (yield* agentCallerOf(work, call.token)).assignment
+    } else if (by !== undefined && /^[a-z][a-z0-9-]*$/.test(by)) actor = by
+    else return yield* refuse('a status names its AI: --by=<run> (the host), or the token first', usage)
+    const { cwd } = yield* Dir
+    const { vars } = yield* Env
+    const at = Date.parse(yield* (yield* Now).read)
+    writeStatus(vars, cwd, { by: actor, kind, text, at })
+    return [`the page shows: ${STATUS_WORDS[kind]}: ${text}`]
+  })
+
+const status: Command = (call) =>
+  Effect.gen(function* () {
+    if (call.args.positional[0] === 'set') return yield* setStatus(call)
     const { d } = yield* readWork
     return renderStatus(d)
   })

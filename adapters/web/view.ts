@@ -5,6 +5,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { type AiStatus, STATUS_MS, STATUS_WORDS } from '../live/status.ts'
 import {
   attemptOf,
   blockersOf,
@@ -50,6 +51,7 @@ import {
 } from '../../core/derived/reads.ts'
 import {
   type Assignment,
+  type QuestionId,
   type AssignmentId,
   type By,
   type CanvasRow,
@@ -1387,6 +1389,41 @@ export const personView = (
   }
 }
 
+// P8, ruling 3: the toast of the dir view. The newest status shows while it is fresh; an open
+// question of the AI that set it (its assignment, or the host of its run) to the person takes its
+// place, and the person answers it there at once.
+const askedBy = (d: Derived, by: string, question: string): boolean => {
+  const w = d.moment.work
+  const from = w.questions.get(question as QuestionId)?.from
+  if (typeof from !== 'string') return false
+  const run = w.runs.get(by as RunId)
+  const session = w.sessions.get(from)?.session
+  return (
+    from === by ||
+    (run !== undefined && session !== undefined && [run.session, ...run.formerSessions].includes(session))
+  )
+}
+export const toastOf = (
+  d: Derived | undefined,
+  status: AiStatus | null,
+  person: string,
+  now: number,
+): DirView['toast'] => {
+  const question =
+    d === undefined || status === null
+      ? undefined
+      : decisionsOf(d, person).find(
+          (p) => p.shown && p.decision._tag === 'Question' && askedBy(d, status.by, p.decision.id),
+        )?.decision
+  const fresh = status !== null && now - status.at < STATUS_MS
+  return {
+    status: fresh
+      ? { by: status.by, kind: status.kind, words: STATUS_WORDS[status.kind], text: status.text }
+      : null,
+    question: question ?? null,
+  }
+}
+
 export const dirView = (
   d: Derived | undefined,
   dir: {
@@ -1396,6 +1433,8 @@ export const dirView = (
     readonly onboarding: boolean
     readonly hasConfig: boolean
     readonly startPrompt: string
+    readonly status: AiStatus | null
+    readonly now: number
   },
   ctx: ViewContext,
 ): DirView => ({
@@ -1410,4 +1449,5 @@ export const dirView = (
   startPrompt: dir.startPrompt,
   projects: d ? projectsOf(d, ctx) : [],
   inbox: d ? inboxOf(d, ctx.person) : [],
+  toast: toastOf(d, dir.status, ctx.person, dir.now),
 })

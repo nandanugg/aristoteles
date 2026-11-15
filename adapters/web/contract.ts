@@ -299,6 +299,18 @@ export const ProjectView = Schema.Union([
   Schema.Struct({ ...HostSummary, ...ProjectRows }),
   Schema.Struct({ ...TaskSummary, ...ProjectRows }),
 ])
+// P8, ruling 3: the toast of the dir view: what the AI does now, or its question for the person.
+export const AiToast = Schema.Struct({
+  status: Schema.NullOr(
+    Schema.Struct({
+      by: Text,
+      kind: Schema.Literals(['working', 'thinking', 'applied', 'feedback', 'waiting']),
+      words: Text,
+      text: Text,
+    }),
+  ),
+  question: Schema.NullOr(Decision),
+})
 export const DirView = Schema.Struct({
   name: Text,
   path: Text,
@@ -311,6 +323,7 @@ export const DirView = Schema.Struct({
   startPrompt: Text,
   projects: Schema.Array(ProjectSummary),
   inbox: Schema.Array(Decision),
+  toast: AiToast,
 })
 
 const ReviewOfResult = Schema.Struct({

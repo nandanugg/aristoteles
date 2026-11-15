@@ -510,3 +510,14 @@ button { font: inherit; color: inherit; }
 .item-evaluation dd { margin: 0; white-space: pre-wrap; }
 .item code { font: 12px var(--mono); overflow-wrap: anywhere; }
 .inbox-link .badge { width: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; }
+
+/* P8: the toast of the dir view, what the AI does now or its question for the person. */
+.ai-toast { position: fixed; right: 16px; bottom: 16px; z-index: 15; width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; padding: 12px 14px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 14px; }
+.ai-toast.asks { padding: 0; border-color: var(--blue-line); }
+.ai-toast.asks .item { margin: 0; flex: 1; border: 0; }
+.ai-text { color: var(--muted); font-size: 13px; margin-top: 2px; overflow-wrap: anywhere; }
+.ai-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: var(--blue); }
+.ai-dot.working { background: var(--run); }
+.ai-dot.applied { background: var(--accept); }
+.ai-dot.feedback, .ai-dot.waiting { background: var(--amber); }
+.ai-dot.thinking { background: var(--violet); }

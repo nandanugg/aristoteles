@@ -13,6 +13,7 @@ import {
   SuggestionTarget,
   type ModelChange as ModelChangeSchema,
 } from '../contract.ts'
+import { AiToast } from './ai.ts'
 import { RoleGrid } from './agents.ts'
 import { api, attempt, post } from './api.ts'
 import { DirectionReview } from './direction.ts'
@@ -268,6 +269,7 @@ export function Gear({ dir, version, onClose }: GearProps) {
         ${tabButton('agents', 'Agents', icon(ICONS.bot, 15))}
       </div>
       <div class="gear-body">${entry}</div>
+      ${tab === 'settings' ? '' : html`<${AiToast} toast=${dir.toast} />`}
     </div>
   </div>`
 }

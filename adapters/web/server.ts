@@ -51,6 +51,7 @@ import {
 import { momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
 import { buildOf } from '../live/build.ts'
 import { readingsLive } from '../live/readings.ts'
+import { readStatus, statusStamp } from '../live/status.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { withBriefMeasure } from '../words/index.ts'
 import { suggestionMover } from '../words/shared.ts'
@@ -530,6 +531,8 @@ export function startServer(options: ServerOptions): ServerHandle {
           onboarding: runSync(onboardingExists(dir)),
           hasConfig: existsSync(join(dir, CONFIG)),
           startPrompt: startPrompt(dir),
+          status: readStatus(env, dir),
+          now: Date.parse(clock()),
         },
         ctx,
       )
@@ -740,13 +743,15 @@ export function startServer(options: ServerOptions): ServerHandle {
       return ''
     }
   }
-  let seen = onboardingStamp()
+  // The status of the AI (P8: the toast) is a file of another process too.
+  const stamp = () => `${onboardingStamp()}\n${statusStamp(env, dir)}`
+  let seen = stamp()
   armAssess()
   const poll = setInterval(() => {
     check()
     passEdge()
     armAssess()
-    const now = onboardingStamp()
+    const now = stamp()
     if (now !== seen) onboardingChanged()
     seen = now
   }, 3000)
