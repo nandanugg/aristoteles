@@ -35,9 +35,10 @@ brief, not this file, for anything about your task.
   command line (write the command again as the message says); 3 a failure outside the work (a
   file, git, or a damaged store: tell your parent, and the host records it with
   `work problem`); 70 a bug of `work` (stop, and tell your parent; the host tells the person).
-- Stop where the brief says STOP.
+- A subagent stops where its brief says STOP. A terminal (a persistent agent, a host) never
+  stops: it runs `work wait` again.
 
-## When you have nothing to do: `work wait`
+## Keep a `work wait` running: it is how work reaches you
 
 The UI types nothing into your terminal. When you run in a terminal of your own (the UI started
 it, or you are the host of a project), you hear of new work only from `work wait`:
@@ -51,8 +52,9 @@ work wait <token>
   Then it prints your next steps, and you do them.
 - After 9 minutes with no change it returns with `nothing changed; run work wait <token>
   again.` Run it again. `--seconds=<n>` sets another time.
-- Run it with the longest time limit that your AI CLI allows, or in the background, so that the
-  person can still talk to you. When it returns, do its steps, then run `work wait` again.
+- Run it in the background when your AI CLI allows it, so that the person can still talk to you.
+  When it returns, do its steps, then run `work wait` again at once. Never end your turn without
+  a running `work wait`: nothing else can reach you, and the work stops.
 - A subagent does not wait: it stops where its brief says STOP, and its parent starts it again.
 
 ### A persistent agent
@@ -68,8 +70,8 @@ and do what it prints." Its loop:
    with that token. The wait prints the steps of each open assignment under its id.
 3. `work wait <token>` still waits for one assignment only. When an assignment is finished, it
    prints `a5 is finished; run work wait --by=p1 for the next work of p1.`
-4. When you have nothing to do, run `work wait --by=<your agent>` again, in the background when
-   your AI CLI allows it. After a restart, your first input says "System message, not from the
+4. After each step (a report, a review, an escalation), run `work wait --by=<your agent>` again at
+   once, in the background when your AI CLI allows it. Never end your turn without it. After a restart, your first input says "System message, not from the
    person": do its command, `work wait --by=<your agent>`.
 
 You are in the terminal of one agent, so you start the subagents of your disposable roles. Your

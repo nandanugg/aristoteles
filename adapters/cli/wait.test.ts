@@ -33,7 +33,7 @@ describe('work wait', () => {
       [
         'make t1 The Introduction',
         `  work assign ${token} t1 --role=writer`,
-        `When you have nothing to do, run work wait ${token} again.`,
+        `Do the steps above, then run work wait ${token} again at once. Never end your turn without a running work wait: it is the only way new work reaches you.`,
       ].join('\n'),
     )
     // The lead printed this work already: the next wait blocks, then says that nothing changed.
@@ -80,7 +80,7 @@ describe('work wait', () => {
       [
         'h1: its top task t1 The Introduction is open, and you are its host (a1); an older token ' +
           `stops working. Your command: work brief ${sol}`,
-        `When you have nothing to do, run work wait ${sol}.`,
+        `Do the steps above, then run work wait ${sol} again at once. Never end your turn without a running work wait: it is the only way new work reaches you.`,
       ].join('\n'),
     )
     expect(await p.agent(`brief ${sol}`)).toContain('a1')
@@ -132,7 +132,7 @@ describe('work wait', () => {
       [
         `a2 is yours: t1 The Introduction, as section-lead. Your command: work brief ${token}`,
         'Keep one token for each assignment that you hold.',
-        'When you have nothing to do, run work wait --by=p1.',
+        'Do the steps above, then run work wait --by=p1 again at once. Never end your turn without a running work wait: it is the only way new work reaches you.',
       ].join('\n'),
     )
     // The wait wrote the start of a2 in the agent's session, as a model run of p1.
@@ -146,7 +146,7 @@ describe('work wait', () => {
         'a2 (t1 The Introduction):',
         '  make t1 The Introduction',
         '    work assign a2.<token> t1 --role=writer',
-        'When you have nothing to do, run work wait --by=p1 again.',
+        'Do the steps above, then run work wait --by=p1 again at once. Never end your turn without a running work wait: it is the only way new work reaches you.',
       ].join('\n'),
     )
     const quiet = await p.inSession('wait --by=p1 --seconds=1', session)

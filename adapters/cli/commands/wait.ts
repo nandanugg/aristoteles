@@ -124,7 +124,7 @@ const opened = (end: Extract<WaitEnd, { _tag: 'Opened' }>) =>
     return [
       `${end.run}: its top task ${task ?? ''} ${name} is open, and you are its host (${end.host}); ` +
         `an older token stops working. Your command: work brief ${token}`,
-      `When you have nothing to do, run work wait ${token}.`,
+      ...keepWaiting(token),
     ]
   })
 
@@ -156,7 +156,7 @@ const given = (end: Extract<WaitEnd, { _tag: 'Given' }>) =>
     return [
       ...lines,
       'Keep one token for each assignment that you hold.',
-      `When you have nothing to do, run work wait --by=${end.agent}.`,
+      ...keepWaiting(`--by=${end.agent}`),
     ]
   })
 
@@ -279,7 +279,7 @@ const wait: Command = (call) =>
           ...head,
           ...lines,
           ...none,
-          `When you have nothing to do, run work wait ${again} again.`,
+          ...keepWaiting(again),
         ])
       }
       case 'Quiet':
@@ -289,5 +289,14 @@ const wait: Command = (call) =>
         ])
     }
   })
+
+// Every return reminds the agent to wait again: a terminal that ends its turn with no running
+// wait gets nothing more (Nanda, 2026-11-15: agents stopped after a report).
+function keepWaiting(again: string): ReadonlyArray<string> {
+  return [
+    `Do the steps above, then run work wait ${again} again at once. Never end your turn ` +
+      'without a running work wait: it is the only way new work reaches you.',
+  ]
+}
 
 export const commands: Commands = { wait }
