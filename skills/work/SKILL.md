@@ -108,7 +108,10 @@ talk with the person, then you run its top task.
    those. You do everything else:
    - ask the person only with `work ask <token> --to=owner --text="..."` (for a choice, one
      `--option="..."` per answer, two or more). The page shows it, the person answers there,
-     and `work wait` returns with the answer. After the talk of step 1, never ask the person
+     and `work wait` returns with the answer. An option is an act that you can do after the
+     answer. When the step is a person command (a task remake, a grant, a config change), you
+     cannot run it: the option says "You run: <the full command>", never "I run it".
+     After the talk of step 1, never ask the person
      with your AI CLI's own question tool (such as AskUserQuestion).
    - a question of a model comes to you: answer it from the directions (`work answer <token>
      <q> --text=...`). When it shows that a direction can be read in two ways, draft the change
