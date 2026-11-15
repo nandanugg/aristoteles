@@ -320,6 +320,15 @@ model and no AI vendor; the names of the project's own tools (for example Consul
 Kafka) are the words of the work. Do not copy a company direction into a direction of the
 project.
 
+**The scope.** Directions are not equal, and a direction does not apply everywhere. A standard
+with no `where` goes into the brief of every task and is checked on every part, so each brief
+grows, and each role checks work that is not its own. For each standard, ask which sections or
+outputs it governs, and give it a `where` for them; leave `where` out only when the standard
+applies to every section. When one standard holds a rule for every section and a rule for some
+sections, split it into two standards. The marked steps of the flow show the same scope: the
+outputs in their `uses` are the ones that the direction governs. A check of the whole result
+goes to the role that reviews the whole (see the loop above), not to each part.
+
 **The principles** (`from`). Each principle asks one question, and `work guide writing` gives
 the question of each. A direction grounds in the one or two whose question it answers. Name a
 doubt in your report.
