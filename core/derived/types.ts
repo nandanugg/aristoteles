@@ -651,6 +651,9 @@ export type StepWhat =
   // A checker with no claim reads its brief again before it checks (its claim ended with its last
   // review, 28e1045).
   | { readonly _tag: 'BriefToCheck'; readonly result: ResultId }
+  // An agent with no claim whose acts are refused reads its brief first; `then` is the step that it
+  // leads to (live, 2026-11-15: a new lead's assign was refused, and its step was a wait).
+  | { readonly _tag: 'BriefFirst'; readonly then: StepWhat; readonly briefs: number }
   | {
       readonly _tag: 'CheckerWorking'
       readonly checker: AssignmentId

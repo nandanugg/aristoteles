@@ -945,11 +945,18 @@ const deciderSteps = (
 // --- nextFor and stepKey -------------------------------------------------------------------------
 
 // A candidate as a step: its intents that pass canAct; none left, and it waits (D8).
+// An agent with no claim whose acts are all refused reads its brief first, so that its step is
+// never a wait that only its own brief would end.
 const stepOf = (d: Derived, actor: Parameters<NextFor>[1], c: Candidate): NextStep => {
   const allowed = nonEmpty(c.intents.filter((i) => canAct(d, actor, i)._tag === 'May'))
-  return allowed === undefined
-    ? { _tag: 'Wait', what: c.what }
-    : { _tag: 'Do', what: c.what, intents: allowed }
+  if (allowed !== undefined) return { _tag: 'Do', what: c.what, intents: allowed }
+  if (actor._tag !== 'Agent' || c.intents.length === 0) return { _tag: 'Wait', what: c.what }
+  const w = d.moment.work
+  if (claimedSince(w, actor.assignment) !== undefined) return { _tag: 'Wait', what: c.what }
+  const brief: Intent = { _tag: 'Brief', target: { assignment: actor.assignment } }
+  if (canAct(d, actor, brief)._tag !== 'May') return { _tag: 'Wait', what: c.what }
+  const briefs = w.meta.get(actor.assignment)?.briefs ?? 0
+  return { _tag: 'Do', what: { _tag: 'BriefFirst', then: c.what, briefs }, intents: [brief] }
 }
 
 export const nextFor: NextFor = (d, actor) => {
@@ -1019,6 +1026,7 @@ const IDS: {
   ProgramChecksNextReport: (s) => [s.role, s.task, s.result],
   CheckYourself: (s) => [s.result],
   BriefToCheck: (s) => [s.result],
+  BriefFirst: (s) => [keyOfWhat(s.then), `${s.briefs}`],
   CheckerWorking: (s) => [s.checker, s.result, `${s.briefs}`],
   GiveCheckerCommand: (s) => [s.checker, s.result, s.task, `${s.briefs}`],
   CheckerNotAssigned: (s) => [s.result, s.role],

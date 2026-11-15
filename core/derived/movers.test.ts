@@ -33,8 +33,11 @@ const rejected = async () => {
   ok(await s.p.agent(`review ${linter} r1 reject ${point}`))
   return { ...s, linter }
 }
-const derivedOf = (s: { readonly p: { readonly dir: string; readonly now: () => string } }) =>
-  derive(momentOf(s.p.dir, s.p.now() as Time))
+type Dir = { readonly dir: string; readonly now: () => string }
+const derivedOf = (s: { readonly p: Dir } | Dir) => {
+  const p = 'p' in s ? s.p : s
+  return derive(momentOf(p.dir, p.now() as Time))
+}
 const tags = (steps: ReadonlyArray<NextStep>) => steps.map((x) => `${x._tag} ${x.what._tag}`)
 const agent = (id: string) => ({ _tag: 'Agent', assignment: id as AssignmentId }) as const
 
@@ -83,6 +86,26 @@ describe('a checker with no claim reads its brief again', () => {
     expect(tags(nextFor(derivedOf(s), agent('a3')))).toEqual(['Do BriefToCheck'])
     ok(await s.p.agent(`brief ${s.linter}`))
     expect(tags(nextFor(derivedOf(s), agent('a3')))).toEqual(['Do CheckYourself'])
+  }, 30000)
+})
+
+// Live, 2026-11-15: a lead was given t4 and had read no brief; its give of a writer was refused,
+// and its step fell back to a wait. Any agent with no claim whose acts are refused reads its brief.
+describe('an agent with no claim reads its brief first', () => {
+  test('a new lead gets a brief step that leads to its give of a maker', async () => {
+    const p = harness.project()
+    await harness.init(p)
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
+      ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    }
+    ok(await p.nanda('task open --file=task.yaml'))
+    const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
+    const before = nextFor(derivedOf(p), agent('a1'))
+    expect(tags(before)).toEqual(['Do BriefFirst'])
+    const then = before[0]?.what
+    expect(then?._tag === 'BriefFirst' ? then.then._tag : '').toBe('AssignMaker')
+    ok(await p.agent(`brief ${lead}`))
+    expect(tags(nextFor(derivedOf(p), agent('a1')))).toEqual(['Do AssignMaker'])
   }, 30000)
 })
 
