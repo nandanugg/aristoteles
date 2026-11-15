@@ -132,7 +132,7 @@ describe('the persistent agents', () => {
     expect(terminalMoves(p.work(), lead, 'Failed')).toHaveLength(1)
   })
 
-  // Metis, 2026-11-15: the AI CLI failed before it ever ran, so no conversation exists; a resume
+  // A test run, 2026-11-15: the AI CLI failed before it ever ran, so no conversation exists; a resume
   // shows the session picker of Claude Code. Until the terminal has run once (its wait took an
   // assignment), a restart launches it again with its first prompt, in a new conversation: an AI
   // CLI that started one and then crashed refuses its id as in use. A resume names the last one.
