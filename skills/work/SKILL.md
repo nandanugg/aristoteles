@@ -55,6 +55,9 @@ work wait <token>
 - Run it in the background when your AI CLI allows it, so that the person can still talk to you.
   When it returns, do its steps, then run `work wait` again at once. Never end your turn without
   a running `work wait`: nothing else can reach you, and the work stops.
+- Read every return yourself. Never wrap `work wait` in a loop or a filter of your own (for
+  example a `while` loop that keeps only some kinds of step): each return names work for you,
+  and a step that the filter drops stops the work.
 - A subagent does not wait: it stops where its brief says STOP, and its parent starts it again.
 
 ### A persistent agent
