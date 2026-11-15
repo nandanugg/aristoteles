@@ -26,7 +26,7 @@ import type {
   Time,
   Work,
 } from '../schema/index.ts'
-import { canAct, type Derived, nextFor, waitingFor } from './index.ts'
+import { canAct, type Derived, nextFor, stepKey, waitingFor } from './index.ts'
 import { fileTurn } from './steps.ts'
 
 const id = <A>(x: string): A => x as A
@@ -195,6 +195,31 @@ describe('ruling 10.9: a brief over its limit is a derived state', () => {
       what: { _tag: 'PersonDecides', kind: 'BriefOver', id: 'a2' },
       intents: [{ _tag: 'SplitTask', target: { task: id('t1'), answers: null } }],
     })
+  }, 60000)
+
+  // Nanda, 2026-11-15: the person accepted drafts that shorten the directions, and the work wait
+  // of the waiting agent never returned: its steps had the same key. The key holds the size and
+  // the open drafts of the task's directions, so a new draft and its decision change it.
+  test('a draft of its directions, and the decision on it, change the steps of the waiter', async () => {
+    const s = await h.withWriter()
+    const keyOf = () => {
+      const d = derivedOf(workOf(s.p.dir), s.p.now() as Time, s.p.dir, { measure: over('a2') })
+      return stepKey(nextFor(d, agentOf('a2')))
+    }
+    const before = keyOf()
+    s.p.write('change.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
+    const why = '--why="Shorten"'
+    const out = ok(
+      await s.p.agent(`direction revise tsd-writing --file=change.yaml --by=assess ${why}`),
+    ).out
+    const draft = out.match(/^(d\d+) drafted/m)?.[1] ?? ''
+    const drafted = keyOf()
+    expect(drafted).not.toBe(before)
+    expect(drafted).toContain(draft)
+    ok(await s.p.ui(`review ${draft} accept`, 'accept'))
+    const decided = keyOf()
+    expect(decided).not.toBe(drafted)
+    expect(decided).not.toContain(draft)
   }, 60000)
 
   test('a high role above: its next step at once is to shorten or split', async () => {

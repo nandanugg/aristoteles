@@ -433,7 +433,8 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
     case 'BriefOverWaits':
       return step(
         `${s.assignment} waits: its brief has ${s.size} characters, and the limit of its tier ` +
-          `is ${s.limit}; a high role shortens the directions of ${s.task}, or splits ${s.task}`,
+          `is ${s.limit}; a high role shortens the directions of ${s.task}, or splits ${s.task}` +
+          waitsOn(s.drafts),
       )
     // Ruling 10.10: the person reads the host's words beside the draft.
     case 'ExplainDraft': {
@@ -499,13 +500,18 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
     case 'ShortenOrSplit':
       return step(
         `shorten the directions of ${s.task}, or split ${s.task}: the brief of ${s.assignment} ` +
-          `has ${s.size} characters, and the limit of its tier is ${s.limit}`,
+          `has ${s.size} characters, and the limit of its tier is ${s.limit}` +
+          waitsOn(s.drafts),
         (s.directions.length > 0
           ? `work direction revise ${token} ${s.directions.join('|')} --file=<edit.yaml>, or `
           : '') + `work task split ${token} ${s.task} --file=<parts.yaml>`,
       )
   }
 }
+
+// The drafts that a brief over its limit waits on: the person decides them.
+const waitsOn = (drafts: ReadonlyArray<string>): string =>
+  drafts.length ? `; the drafts ${drafts.join(', ')} wait for the person's decision` : ''
 
 // The time that an assignment holds its brief since; '' when it holds none.
 const claimedSince = (w: Work, a: AssignmentId): string | undefined => {

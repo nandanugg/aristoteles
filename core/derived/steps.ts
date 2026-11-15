@@ -13,6 +13,7 @@ import type {
   NonEmpty,
   PointId,
   ResultId,
+  RevisionId,
   RoleName,
   Task,
   TaskId,
@@ -51,10 +52,9 @@ import {
 } from './reads.ts'
 import { rolesSuggestionsWaiting } from './adjustments.ts'
 import { hostOf } from './catalog.ts'
-import { hostDrafted } from './drafts.ts'
 import type { Derived, Idle, NextFor, NextStep, Placement, StepKey, StepWhat } from './types.ts'
 import { isEndedTask } from './types.ts'
-import { openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
+import { hostDrafted, openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
 import { noticesOf } from './notices.ts'
 import { waitingFor } from './waiting.ts'
 
@@ -209,6 +209,11 @@ export const highAbove = (d: Derived, x: Assignment): Assignment | undefined => 
   }
   return undefined
 }
+// The drafts of the directions of a task that wait for a decision. A brief over its limit waits
+// on them, so their ids and the size are in the key of its steps: a decision, or a new size, ends
+// a work wait (Nanda, 2026-11-15: an accept woke no one).
+const openDraftsOfTask = (d: Derived, task: TaskId): ReadonlyArray<RevisionId> =>
+  directionIdsOf(d.moment.work, task).flatMap((dir) => openDrafts(d, dir).map((x) => x.id))
 const briefOver = (d: Derived, x: Assignment): Candidate | undefined => {
   const s = d.states.assignments.get(x.id)
   if (s?._tag !== 'BriefOver') return undefined
@@ -218,6 +223,7 @@ const briefOver = (d: Derived, x: Assignment): Candidate | undefined => {
     task: x.task,
     size: s.size,
     limit: s.limit,
+    drafts: openDraftsOfTask(d, x.task),
   }
   return wait(what)
 }
@@ -235,6 +241,7 @@ const shortenSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
       size: s.size,
       limit: s.limit,
       directions,
+      drafts: openDraftsOfTask(d, x.task),
     }
     const split: Intent = { _tag: 'SplitTask', target: { task: x.task, answers: null } }
     return [act(what, ...revise(directions), split)]
@@ -897,9 +904,9 @@ const IDS: {
   Resolve: (s) => [s.escalation, s.result],
   RecheckStaleSource: (s) => [s.result, s.source],
   RecheckOldNeed: (s) => [s.result, s.need, s.newer],
-  BriefOverWaits: (s) => [s.assignment, s.task],
+  BriefOverWaits: (s) => [s.assignment, s.task, `${s.size}`, ...s.drafts],
   ExplainDraft: (s) => [s.draft],
-  ShortenOrSplit: (s) => [s.assignment, s.task, ...s.directions],
+  ShortenOrSplit: (s) => [s.assignment, s.task, `${s.size}`, ...s.directions, ...s.drafts],
   ReviewDraft: (s) => [s.draft],
   ReviseRejectedDraft: (s) => [s.draft, s.reject],
   AnswerSuggestion: (s) => [s.suggestion, s.direction],

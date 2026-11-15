@@ -607,6 +607,8 @@ export type StepWhat =
       readonly task: TaskId
       readonly size: number
       readonly limit: number
+      // The drafts of the task's directions that wait for a decision: a decision changes the step.
+      readonly drafts: ReadonlyArray<RevisionId>
     }
   // Ruling 10.10: the host writes the words of a draft that waits for the person. A draft from no
   // project (DirWide) goes to every active host; the first words end it for the others.
@@ -664,6 +666,7 @@ export type StepWhat =
       readonly size: number
       readonly limit: number
       readonly directions: ReadonlyArray<DirectionId>
+      readonly drafts: ReadonlyArray<RevisionId>
     }
 
 // D8: a Do step holds the intents that the actor may run, one per option; each passes canAct.
