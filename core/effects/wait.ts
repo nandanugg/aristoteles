@@ -69,6 +69,8 @@ export type WaitEnd =
   | { readonly _tag: 'Ended'; readonly d: Derived }
   | { readonly _tag: 'NoStore' }
 
+const READY_AGAIN_MS = 60_000
+
 export interface WaitOptions {
   // The key that the last return of this actor printed: ready work with this key is not new.
   readonly seen: string | null
@@ -78,6 +80,10 @@ export interface WaitOptions {
   readonly deriveMs: number
   // A burst of acts (a report and its checks) comes back as one return.
   readonly settleMs: number
+  // Ready work that the last return printed comes back after this long if it is still there:
+  // an agent that waited again without doing it is reminded (live, 2026-11-15: a lead printed
+  // "decide r8", waited again, and the run waited 500 s for it).
+  readonly readyAgainMs?: number
   // The last seq of the store, read cheaply.
   readonly lastSeq: Effect.Effect<number>
   // Runs once, when the wait starts to block (the CLI marks the actor as waiting).
@@ -211,6 +217,8 @@ export const waitFor = (
         if (later !== null) return later
         return { _tag: 'Changed', d: settled, steps: stepsOf(settled, waiter) } as const
       }
+      const again = o.readyAgainMs ?? READY_AGAIN_MS
+      if (fresh.ready && now - start >= again) return { _tag: 'Ready', d, steps: fresh } as const
       if (due) return { _tag: 'Quiet', d, steps: fresh } as const
     }
   })

@@ -78,6 +78,27 @@ describe('the wait loop', () => {
     expect(await waited(p, a('a1'), seen)).toMatchObject({ _tag: 'Quiet' })
   })
 
+  // Live, 2026-11-15: a lead printed "decide r8", waited again without deciding, and the run
+  // waited for it until the wait's time ran out. Ready work comes back after readyAgainMs.
+  test('ready work that is still there comes back after readyAgainMs', async () => {
+    const { p } = await hosted()
+    const first = await waited(p, a('a1'))
+    const seen = first._tag === 'Ready' ? first.steps.key : null
+    const again = await Effect.runPromise(
+      waitFor(a('a1'), {
+        seen,
+        ms: 5000,
+        deriveMs: 50,
+        pollMs: 20,
+        settleMs: 10,
+        readyAgainMs: 200,
+        lastSeq: Effect.succeed(0),
+        blocking: Effect.void,
+      }).pipe(Effect.provide(services(p))),
+    )
+    expect(again).toMatchObject({ _tag: 'Ready' })
+  })
+
   // P9 (live, 2026-11-15): an event written as the wait starts, before it reads the last seq,
   // is in the steps of its first look, so the wait never misses it.
   test('an event written as the wait starts is not missed', async () => {
