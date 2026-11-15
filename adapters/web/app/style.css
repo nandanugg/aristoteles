@@ -411,3 +411,15 @@ button { font: inherit; color: inherit; }
   .onboarding-cols, .gear-directions { grid-template-columns: 1fr; }
   .direction-list { position: static; max-height: none; }
 }
+
+/* The projects of a dir (Nanda, 2026-11-15): / lists them; each row opens its project. */
+.crumb-dir { color: inherit; text-decoration: none; }
+.crumb-dir:hover { text-decoration: underline; }
+.project-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-width: 900px; }
+.project-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; color: var(--text); text-decoration: none; }
+.project-row:hover { border-color: var(--line-strong); }
+.project-row .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.project-row code { font: 12px var(--mono); color: var(--faint); }
+.chip.works, .chip.talks { border-color: var(--terra-line); background: var(--terra-tint); color: var(--terra); }
+.chip.ends { border-color: var(--sol-line); background: var(--sol-tint); color: var(--sol); }
+.chip.done { border-color: var(--accept); background: var(--accept-tint); color: var(--accept); }

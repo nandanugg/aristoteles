@@ -133,6 +133,10 @@ const gitName = async (dir: string): Promise<string> => {
   return (await new Response(git.stdout).text()).trim()
 }
 
+// The paths of the places of the page: one to three names, none of them the API, the websocket,
+// the health check or a vendor file (each file of the page has a dot in its name).
+const PAGE_PATH = /^\/(?!(?:api|ws|health|vendor)(?:\/|$))[\w-]+(?:\/[\w-]+){0,2}\/?$/
+
 const NO_PERSON = 'the page acts as the person of git user.name; set it: git config user.name <you>'
 
 export function startServer(options: ServerOptions): ServerHandle {
@@ -527,7 +531,10 @@ export function startServer(options: ServerOptions): ServerHandle {
           return new Response(`${messageOf(error)}\n`, { status: 500 })
         }
       }
-      const file = PAGE_FILES[url.pathname]
+      // A place of the page (/h1, /h1/t1, /h1/t1/diff) is the page, which reads its own path, so
+      // a reload or a bookmark opens the same place (Nanda, 2026-11-15).
+      const place = req.method === 'GET' && PAGE_PATH.test(url.pathname)
+      const file = PAGE_FILES[place ? '/' : url.pathname]
       if (file) return pageFile(await Bun.file(join(ROOT, file[0])).bytes(), file[1])
       if (url.pathname === '/api/act' && req.method === 'POST') {
         try {

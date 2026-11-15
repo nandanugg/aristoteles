@@ -10,6 +10,19 @@ import { INTRO_V1, ok, tokenIn, withWriter } from '../harness.js'
 
 const browser = await chromium.launch()
 
+// PAGE_SHOTS=<folder>: screenshots of a page at a wide and a phone width, for a person to see.
+const shot = async (page, name) => {
+  if (!process.env.PAGE_SHOTS) return
+  await page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()))
+  const size = page.viewportSize()
+  for (const [width, height, kind] of [[2560, 1440, 'wide'], [375, 812, 'phone']]) {
+    await page.setViewportSize({ width, height })
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: join(process.env.PAGE_SHOTS, `${name}-${kind}.png`), fullPage: kind === 'phone' })
+  }
+  await page.setViewportSize(size)
+}
+
 const open = async () => {
   const { p, lead, writer } = await withWriter()
   ok(await p.agent(`brief ${writer}`))
@@ -24,7 +37,8 @@ const open = async () => {
   // BUILD.md 1g: the role icons load only with a view of the agents.
   const icons = []
   page.on('request', (r) => r.url().includes('/vendor/role-icons.js') && icons.push(r.url()))
-  await page.goto(s.url)
+  // Nanda, 2026-11-15: a project has its own path; / lists the projects (it opened the first).
+  await page.goto(`${s.url}t1`)
   await page.waitForSelector('.card.task')
   return { p, s, page, errors, linter, icons }
 }
@@ -63,6 +77,53 @@ const open = async () => {
     }
   }
 {
+  // Nanda, 2026-11-15: real paths. / lists the projects of the dir, a click opens one, a task and
+  // its tab have paths, back and forward work, a reload keeps the place, and an old #/ address
+  // opens its path.
+  const { s, page, errors } = await open()
+  const path = () => new URL(page.url()).pathname
+  try {
+    await page.goto(s.url)
+    await page.waitForSelector('.project-row')
+    expect(await page.locator('.project-row').allTextContents()).toEqual(['The Introductiont1works'])
+    await shot(page, 'projects')
+    await page.click('.project-row')
+    await page.waitForSelector('.card.task')
+    expect(path()).toBe('/t1')
+    await shot(page, 'project')
+    await page.click('.card.task')
+    await page.waitForSelector('.panel .tab')
+    expect(path()).toBe('/t1/t1')
+    await page.click('.tab >> text=Diff')
+    expect(path()).toBe('/t1/t1/diff')
+    await page.reload()
+    await page.waitForSelector('.tab[aria-selected="true"] >> text=Diff')
+    await page.goBack()
+    await page.waitForSelector('.tab[aria-selected="true"] >> text=Description')
+    expect(path()).toBe('/t1/t1')
+    await page.goBack()
+    await page.waitForSelector('.panel', { state: 'detached' })
+    expect(path()).toBe('/t1')
+    await page.goBack()
+    await page.waitForSelector('.project-row')
+    expect(path()).toBe('/')
+    await page.goForward()
+    await page.waitForSelector('.card.task')
+    expect(path()).toBe('/t1')
+    await page.goto(`${s.url}#/t1/t1/directions`)
+    await page.waitForSelector('.tab[aria-selected="true"] >> text=Directions')
+    expect(page.url()).toBe(`${s.url}t1/t1/directions`)
+    // The crumb of the dir leads back to the list.
+    await page.click('.crumb-dir')
+    await page.waitForSelector('.project-row')
+    expect(path()).toBe('/')
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+    s.stop()
+  }
+}
+{
   // the theme of the settings: dark
   {
     const { p, s, page } = await open()
@@ -98,7 +159,8 @@ const open = async () => {
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }, pump })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   try {
-    await page.goto(s.url)
+    // Nanda, 2026-11-15: the project of the host has its own path (/ lists the projects).
+    await page.goto(`${s.url}h1`)
     await page.waitForSelector('.card.task .dot.run')
     await page.click('.tag-button')
     await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent.includes('fake agent start person-host (env none)'))
@@ -189,7 +251,8 @@ const open = async () => {
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') } })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   try {
-    await page.goto(s.url)
+    // Nanda, 2026-11-15: the project of the host has its own path (/ lists the projects).
+    await page.goto(`${s.url}h1`)
     await page.click('.card.task')
     await page.waitForSelector('.item.direction')
     expect(await page.locator('.item .prose').allTextContents()).toEqual([
@@ -273,18 +336,6 @@ const open = async () => {
   ok(await p.agent('onboard found code-proof'))
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') } })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-  // PAGE_SHOTS=<folder>: screenshots of the pages at a wide and a phone width, for a person to see.
-  const shot = async (name) => {
-    if (!process.env.PAGE_SHOTS) return
-    await page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()))
-    const size = page.viewportSize()
-    for (const [width, height, kind] of [[2560, 1440, 'wide'], [375, 812, 'phone']]) {
-      await page.setViewportSize({ width, height })
-      await page.waitForTimeout(300)
-      await page.screenshot({ path: join(process.env.PAGE_SHOTS, `${name}-${kind}.png`), fullPage: kind === 'phone' })
-    }
-    await page.setViewportSize(size)
-  }
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
   const icons = []
@@ -346,7 +397,7 @@ const open = async () => {
       return { fills, scrolled: canvas.scrollTop > 100, sticky: getComputedStyle(list).position, inView: top >= 0 && top < 40 }
     })).toEqual({ fills: true, scrolled: true, sticky: 'sticky', inView: true })
     await page.setViewportSize({ width: 1440, height: 900 })
-    await shot('directions')
+    await shot(page, 'directions')
     expect(await page.isDisabled('.direction-page .item-actions >> text=Revise')).toBe(true)
     await page.fill('.direction-page textarea', 'name the reader of the TSD')
     expect(await page.isDisabled('.direction-page .item-actions >> text=Accept')).toBe(true)
@@ -382,7 +433,7 @@ const open = async () => {
     expect(icons).toHaveLength(1)
     expect(await page.locator('.role-card .role-name').allTextContents()).toEqual(['linter', 'architect', 'section-lead', 'writer'])
     expect(await page.textContent('.role-card:has-text("architect") .kv')).toBe('ModelOpus')
-    await shot('agents')
+    await shot(page, 'agents')
     // Ruling 15: the role of the top task has no toggle; ruling 7: a toggle sets the persistence.
     expect(await page.locator('.role-card:has-text("architect") input[type=checkbox]').count()).toBe(0)
     await page.click('[aria-label="writer is persistent"]')
@@ -422,7 +473,7 @@ const open = async () => {
     await page.click('.gear .direction-item:has-text("TSD writing")')
     expect(await page.textContent('.gear .level-direction h3')).toBe('Where it comes from')
     expect(await page.locator('.gear .case').count()).toBe(3)
-    await shot('gear-directions')
+    await shot(page, 'gear-directions')
     await page.fill('.gear .suggest textarea', 'say who reads the TSD')
     await page.click('text=Store the suggestion')
     await page.waitForSelector('.toast:has-text("a suggestion; a draft of a direction answers it")')
@@ -431,7 +482,7 @@ const open = async () => {
     await page.click('.gear .tab >> text=Agents')
     await page.waitForSelector('.gear .item.adjustment')
     expect(await page.locator('.gear .role-card').count()).toBe(4)
-    await shot('gear-agents')
+    await shot(page, 'gear-agents')
     expect(await page.locator('.gear .role-card input[type=checkbox]').count()).toBe(0)
     expect(await page.textContent('.gear .item.adjustment .prose')).toBe(
       'An adjustment, drafted by host, a model run outside any task, waits for your decision: writer becomes a medium role.')

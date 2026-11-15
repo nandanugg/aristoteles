@@ -42,18 +42,33 @@ const useChanged = (fn: () => void) =>
     [fn],
   )
 
-// The address of the page: #/<project>[/<task>[/<tab>]].
-interface Hash {
+// The address of the page is a path (Nanda, 2026-11-15): / is onboarding or the list of the
+// projects, then /<project>[/<task>[/<tab>]]. The History API keeps it, so back and forward work
+// and each address can be bookmarked; the server serves the page for each such path.
+interface Place {
   readonly project: string | null
   readonly task: string | null
   readonly tab: string | null
 }
-const readHash = (): Hash => {
-  const [, project, task, tab] = location.hash.split('/')
-  return { project: project || null, task: task || null, tab: tab || null }
+const placeNow = (): Place => {
+  const [project, task, tab] = location.pathname.split('/').filter(Boolean)
+  return { project: project ?? null, task: task ?? null, tab: tab ?? null }
 }
-const go = (project: string | null, task?: string | null, tab?: string | null) => {
-  location.hash = `/${[project, task, tab].filter(Boolean).join('/')}`
+// An old address (#/<project>/...) opens the same place once, as its path.
+if (location.hash.startsWith('#/')) history.replaceState(null, '', location.hash.slice(1) || '/')
+// A move in the page: a new entry of the history, and the App reads the place again.
+const goTo = (path: string) => {
+  if (path !== location.pathname) history.pushState(null, '', path)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+const go = (project: string | null, task?: string | null, tab?: string | null) =>
+  goTo(`/${[project, task, tab].filter(Boolean).join('/')}`)
+// A click on a link of the page moves in the page; with a key or another button the browser opens
+// it in a new tab, as any link.
+const follow = (e: MouseEvent) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+  e.preventDefault()
+  goTo((e.currentTarget as HTMLAnchorElement).pathname)
 }
 
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
@@ -61,6 +76,7 @@ const errorText = (e: unknown): string => (e instanceof Error ? e.message : Stri
 const STATE_WORDS: Record<string, string> = {
   talks: 'talks',
   works: 'works',
+  ends: 'ends',
   done: 'done',
   closed: 'closed',
 }
@@ -81,9 +97,11 @@ function Sidebar({ dir, project, onSettings }: SidebarProps) {
   const current = dir.projects.find((p) => p.id === project)
   const crumbTail = current ? html`<span>/ ${current.title}</span>` : ''
   return html`<nav class="sidebar" aria-label="Projects of this dir">
-    <div class="crumb">${icon(ICONS.folder)}<strong>${dir.name}</strong>${crumbTail}</div>
+    <div class="crumb">${icon(ICONS.folder)}<a class="crumb-dir" href="/" onClick=${follow}><strong
+      >${dir.name}</strong></a>${crumbTail}</div>
     ${dir.projects.map((p) => html`
-      <a class="project" href=${`#/${p.id}`} aria-current=${p.id === project ? 'page' : undefined}>
+      <a class="project" href=${`/${p.id}`} onClick=${follow}
+        aria-current=${p.id === project ? 'page' : undefined}>
         ${p.state === 'done' ? icon(ICONS.check, 14) : dot(p.state === 'closed' ? 'closed' : 'run')}
         <span class="title">${p.title}</span>
         ${p.badge ? html`<span class="badge" role="img"
@@ -432,12 +450,31 @@ function FirstStart({ dir }: { dir: DirData }) {
   </div>`
 }
 
+// The projects of a dir with a store (Nanda, 2026-11-15): / lists them, the newest first, each
+// with its name and state, and the person opens one.
+function Projects({ dir }: { dir: DirData }) {
+  if (!dir.projects.length) {
+    return html`<div class="empty"><h2>No project yet</h2>
+      <p>A project starts in your AI CLI: trigger the aristoteles skill there, and that session is
+        the host. Its terminal shows here.</p></div>`
+  }
+  return html`<div class="projects-page">
+    <div class="canvas-head"><h1>Projects of ${dir.name}</h1></div>
+    <ul class="project-list">${dir.projects.map((p) => html`<li><a class="project-row"
+      href=${`/${p.id}`} onClick=${follow}>
+      <span class="title">${p.title}</span><code>${p.id}</code>
+      <span class=${`chip ${p.state}`}>${STATE_WORDS[p.state] ?? p.state}</span>
+      ${p.badge ? html`<span class="badge" role="img" aria-label="Needs you">!</span>` : ''}
+    </a></li>`)}</ul>
+  </div>`
+}
+
 // --- the app -------------------------------------------------------------------------------
 
 function App() {
   const [dir, setDir] = useState<DirData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [hash, setHash] = useState(readHash())
+  const [place, setPlace] = useState(placeNow())
   const [view, setView] = useState<ProjectData | null>(null)
   const [version, setVersion] = useState(0)
   const [settings, setSettings] = useState(false)
@@ -445,9 +482,9 @@ function App() {
   const [personLine, setPersonLine] = useState<string | null>(null)
 
   useEffect(() => {
-    const on = () => setHash(readHash())
-    window.addEventListener('hashchange', on)
-    return () => window.removeEventListener('hashchange', on)
+    const on = () => setPlace(placeNow())
+    window.addEventListener('popstate', on)
+    return () => window.removeEventListener('popstate', on)
   }, [])
   const refresh = () => setVersion((v) => v + 1)
   useChanged(refresh)
@@ -468,12 +505,20 @@ function App() {
   useEffect(() => {
     if (dir) document.documentElement.dataset.theme = dir.theme
   }, [dir?.theme])
-  const project = hash.project ?? dir?.projects[0]?.id ?? null
+  const project = place.project
+  // missing: the server has no project of the path.
+  const [missing, setMissing] = useState(false)
   useEffect(() => {
     if (!project) return setView(null)
     api(`/api/project/${project}`, ProjectView)
-      .then(setView)
-      .catch(() => setView(null))
+      .then((v) => {
+        setView(v)
+        setMissing(false)
+      })
+      .catch(() => {
+        setView(null)
+        setMissing(true)
+      })
   }, [project, version])
 
   // The sound: when a new badge shows, if the settings ask for it.
@@ -521,19 +566,19 @@ function App() {
         ? dir.onboarding
           ? html`<${Onboarding} dir=${dir} version=${version} />`
           : html`<${FirstStart} dir=${dir} />`
-        : !view ? html`<div class="empty"><h2>No project yet</h2>
-          <p>A project starts in your AI CLI: trigger the aristoteles skill there, and that
-            session is the host. Its terminal shows here.</p></div>`
+        : !project ? html`<${Projects} dir=${dir} />`
+        : !view ? missing ? html`<div class="empty"><h2>There is no project ${project} here</h2>
+          <p><a href="/" onClick=${follow}>The projects of ${dir.name}</a></p></div>` : ''
         : html`<div class="canvas-head"><h1>${view.title}</h1>
           <span class="meta">${view.id} · ${view.state}${sessionWords}</span>
             ${canClose ? html`<button class="btn quiet small"
               onClick=${() => closeProject()}>Close project</button>` : ''}</div>
-          <${Canvas} view=${view} selected=${hash.task}
+          <${Canvas} view=${view} selected=${place.task}
             onOpen=${(task: string, tab?: string) => go(project, task, tab)} onStop=${stop}
             onResume=${resume} onOpenDraft=${openDraft} />`}
     </main>
-    ${hash.task ? html`<${Panel} id=${hash.task} tab=${hash.tab} version=${version}
-      onClose=${() => go(project)} onTab=${(t: string) => go(project, hash.task, t)} />` : ''}
+    ${place.task ? html`<${Panel} id=${place.task} tab=${place.tab} version=${version}
+      onClose=${() => go(project)} onTab=${(t: string) => go(project, place.task, t)} />` : ''}
     ${settings ? html`<${Gear} dir=${dir} version=${version}
       onClose=${() => setSettings(false)} />` : ''}
   </div>`

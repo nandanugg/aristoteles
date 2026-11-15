@@ -75,6 +75,24 @@ describe('the server, read only', () => {
     expect(await (await fetch(`${base}/health`)).json()).toEqual({ dir: p.dir })
   })
 
+  // Nanda, 2026-11-15: the page has real paths; the server serves the page for each place, so a
+  // reload of /t1/t1/diff opens the same place, and nothing else becomes the page.
+  test('a place of the page is a path; the server serves the page for it, and only for it', async () => {
+    const p = project()
+    const { s } = serve(p)
+    const base = `http://127.0.0.1:${s.port}`
+    const index = await (await fetch(`${base}/`)).text()
+    expect(index).toContain('<script type="module" src="/app.js">')
+    for (const path of ['/h1', '/h1/', '/h1/t1', '/h1/t1/terminal', '/t1/t1/diff']) {
+      const res = await fetch(`${base}${path}`)
+      expect([path, res.status, res.headers.get('content-type'), await res.text()]).toEqual([path, 200, 'text/html; charset=utf-8', index])
+    }
+    for (const path of ['/favicon.ico', '/h1/t1/diff/more', '/vendor/none.js', '/api/none', '/api', '/ws/none']) {
+      expect([path, (await fetch(`${base}${path}`)).status]).toEqual([path, 404])
+    }
+    expect((await fetch(`${base}/h1`, { method: 'POST' })).status).toBe(404)
+  })
+
   test('the dir lists its projects; a top task opened at a terminal is a project too', async () => {
     const { p } = await rejected()
     ok(await p.run('run start', HOST))
