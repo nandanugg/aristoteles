@@ -62,10 +62,14 @@ works for aristoteles; any other session of the dir still uses the old files of 
    `work ask <token> --to=owner --text="..."`, and one `--option="..."` per answer for a choice.
    The person answers on the page, and `work wait` returns with the answer. Never ask the person
    about a limit.
-10. **When the person does not answer,** do not poll and do not ask again. Say what waits for
+10. **On the directions and agents pages,** the page shows no terminal: tell the person what you
+    do with `work status set --by=<your run> --kind=working|thinking|applied|feedback|waiting
+    --text="<a few words>"` (`--by=host` before the store), each time it changes. A question
+    that you ask with `work ask` shows there in its place.
+11. **When the person does not answer,** do not poll and do not ask again. Say what waits for
     them, with the command that shows it (`work waiting`), and run `work wait`. When the AI CLI
     ends, the person triggers a host again, and continues the project there.
-11. **After the store starts, a change is an adjustment.** A role or a direction of the project
+12. **After the store starts, a change is an adjustment.** A role or a direction of the project
     changes in aristoteles. The person says it in words (`work suggest roles --says="<the
     change>"`, or `work suggest <direction> --says="<the change>"`), and you draft it (the
     `work` skill, part "Adjust the roles and the directions"). The person accepts it on the

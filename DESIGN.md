@@ -1076,11 +1076,25 @@ ids.
   words (`work run continue <run> --quote=`). The pump copies that one pane (`capture-pane`) and
   types into it (`send-keys`); it never starts, resizes, stops, or restarts it, and the watcher
   never restarts a host.
-- Ruling 10.10, as changed (Nanda, 2026-11-15, F7): a direction change from no project goes to
-  every ACTIVE host, and an active host is the host of an open run, whatever its pane shows. The
-  CLI reads no panes and the page reads the pump; both must derive the same steps and holds. A
-  host whose pane died keeps its "explain dN" step until it runs again; the page shows the draft
-  after `hostWaitMinutes`, and an open page hears of it at that time (the next clock edge).
+- P8 (Nanda, 2026-11-15), in place of ruling 10.10 for drafts of no project:
+  - Every piece of work is a dir task or a project task. A draft sits on the task of the Reject
+    that it answers, else on the project of its author (a host's run, an agent's task). The
+    person's own change (a draft that answers a suggestion, a model run outside any task, an
+    onboarded draft) and the company refresh are dir work: they show at once on the dir view, and
+    no host writes words about them.
+  - Revive a dead session, never redirect its work. The markers of `work wait` (pid and a beat
+    every 5 s, kept after the return) are the one reading of liveness for the CLI, the server and
+    the watcher (`Outside.markers`, `core/derived/liveness.ts`): an actor waits now, returned
+    within its model's `silentMinutes`, or is gone. A gone agent restarts with the retry prompt as
+    an argument; an agent idle at its prompt with a ready step restarts once for each stall. A gone
+    host is a system problem for the person ("h1 stopped waiting at 14:05 and has not come back").
+    Its work waits for it; nobody else takes it.
+  - The dir view (the directions page and the agents page, before and after the store) shows no
+    task and no terminal. A toast shows what the AI does (`work status set --kind= --text=`, a
+    file next to the store, stale after 10 minutes); an open question of that AI to the person
+    takes its place there, and the answer counts at once. The project view is as before.
+  - The page reloads when the server's build (the git commit of the installed code, sent on the
+    socket's open) changes; `work wait` returns when it changes while it blocks.
 
 ## 13. Onboarding (2026-11-14)
 
