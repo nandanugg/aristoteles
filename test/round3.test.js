@@ -189,7 +189,7 @@ describe('claims and trees', () => {
     const { p, linter } = await reported()
     // Ruling 9, onboarding 2026-11-14: the stop line also tells a persistent agent its next wait.
     expect(ok(await p.agent('assignment show a3')).out).toContain(
-      'STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit).',
+      'STOP after one review or one escalation.',
     )
     const r = ok(await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | the introduction | no paths or hashes" ` +
       '--evidence="no-ticket-ids | the introduction | no ticket ids here"')).out

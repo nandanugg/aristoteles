@@ -109,9 +109,11 @@ export const rulesFor = (d: Derived, a: AssignmentId): ReadonlyArray<Rule> =>
 type GuideName = 'split' | 'assign' | 'unit'
 const guideFor = (w: Work, a: Assignment): GuideName =>
   holdsA(w, a, 'Split') ? 'split' : leads(roleOfAssignment(w, a)) ? 'assign' : 'unit'
+type Stop = string | { readonly do: string; readonly review: string }
 interface Guide {
   readonly intro: string
-  readonly stop: string | { readonly do: string; readonly review: string }
+  // A subagent ends after its unit; a terminal (a persistent agent, a host) waits for its next.
+  readonly stop: { readonly subagent: Stop; readonly terminal: Stop }
   readonly commands: Readonly<
     Record<string, { readonly when: keyof ActKinds; readonly run: string; readonly rule: string }>
   >
@@ -262,8 +264,12 @@ const turnLines = (d: Derived, a: Assignment, guide: GuideName, token: string) =
     `  ${' '.repeat(width)}${fill(c.rule, values)}`,
   ])
 }
+// One reader of where the assignment runs picks the stop text (Nanda, 2026-11-15: a persistent
+// writer read "STOP" and never waited again).
 const stopLine = (d: Derived, a: Assignment, guide: GuideName): string => {
-  const stop = guideOf(guide).stop
+  const kinds = guideOf(guide).stop
+  const waits = a.runs._tag === 'Agent' || a.runs._tag === 'Host'
+  const stop = waits ? kinds.terminal : kinds.subagent
   return typeof stop === 'string'
     ? stop
     : actKinds(d.moment.work, a, d.moment.at).do

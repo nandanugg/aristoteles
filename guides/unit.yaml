@@ -1,9 +1,15 @@
 # The guide of a role that assigns nothing: it runs one unit at a time. A command shows when the
 # role may do its `when`: do, review, or any.
-intro: You execute one unit of work, report it, and stop.
+intro: You execute one unit of work, and report it.
 stop:
-  do: STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands.
-  review: STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands.
+  # The brief picks the text by where the assignment runs: a subagent ends after its unit; a
+  # terminal (a persistent agent) waits for its next unit.
+  subagent:
+    do: STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands.
+    review: STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands.
+  terminal:
+    do: After one report or one escalation, run work wait --by=<your agent> at once, and do what it prints. Never end your turn without a running work wait. You may run work suggest just before an escalation.
+    review: After one review or one escalation, run work wait --by=<your agent> at once, and do what it prints. Never end your turn without a running work wait. You may run work suggest just before an escalation.
 commands:
   report:
     when: do

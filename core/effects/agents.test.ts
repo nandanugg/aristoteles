@@ -87,7 +87,10 @@ describe('the persistent agents', () => {
       _tag: 'Subagent',
       model: 'haiku',
     })
-    await p.agent(`brief ${writer}`)
+    // A subagent ends after its unit (Nanda, 2026-11-15: the brief picks the stop by where it runs).
+    const subBrief = await p.agent(`brief ${writer}`)
+    expect(String(subBrief)).toContain('STOP after one report')
+    expect(String(subBrief)).not.toContain('Never end your turn without a running work wait')
     later(11 * 60_000)
     await w.tick()
     expect(fake.calls.filter((c) => !c.startsWith('adopt'))).toEqual([])
@@ -96,7 +99,10 @@ describe('the persistent agents', () => {
 
   test('an agent keeps its terminal between assignments, and its silence is no fault', async () => {
     const { p, fake, w, host, hostToken, lead, leadToken } = await withLead()
-    await p.agent(`brief ${leadToken}`)
+    // A persistent agent waits for its next work: its brief never tells it to stop.
+    const brief = String(await p.agent(`brief ${leadToken}`))
+    expect(brief).toContain('Never end your turn without a running work wait')
+    expect(brief).not.toContain('STOP')
     await p.agent(`finish ${hostToken} a2`)
     expect(agentState(p.dir)).toEqual({ _tag: 'Between' })
     // Silent and not in work wait, past its silent minutes: Between, so no restart and no close.

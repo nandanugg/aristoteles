@@ -5,7 +5,7 @@ exports[`the Introduction: write, reject with a point, fix, accept each role rea
 snapshot: tsd-writing@1
 dir: <project> (run every work command in this folder)
 
-YOU ARE  You execute one unit of work, report it, and stop.
+YOU ARE  You execute one unit of work, and report it.
 ROLE     Writes one TSD section from its brief.
          - Write the section under its heading in the file that WORK IN names.
          - Report it with work report as docs/tsd.md#introduction.
@@ -23,7 +23,7 @@ YOUR TURN
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a2.k0002 <rule id> --says="<why it cannot be met, with the fact>"
             Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
-STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept each role reads its own brief, and the task ends Accepted: linter brief on r1 1`] = `
@@ -31,7 +31,7 @@ exports[`the Introduction: write, reject with a point, fix, accept each role rea
 snapshot: tsd-writing@1
 dir: <project> (run every work command in this folder)
 
-YOU ARE  You execute one unit of work, report it, and stop.
+YOU ARE  You execute one unit of work, and report it.
 ROLE     Checks one section against the rules in its checks.
          - Give one --evidence line for each rule in your checks.
          - Reject with one --point for each rule that the section breaks.
@@ -53,7 +53,7 @@ YOUR TURN
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a3.k0003 <rule id> --says="<why it cannot be met, with the fact>"
             Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
-STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept each role reads its own brief, and the task ends Accepted: writer brief, attempt 2 1`] = `
@@ -61,7 +61,7 @@ exports[`the Introduction: write, reject with a point, fix, accept each role rea
 snapshot: tsd-writing@1
 dir: <project> (run every work command in this folder)
 
-YOU ARE  You execute one unit of work, report it, and stop.
+YOU ARE  You execute one unit of work, and report it.
 ROLE     Writes one TSD section from its brief.
          - Write the section under its heading in the file that WORK IN names.
          - Report it with work report as docs/tsd.md#introduction.
@@ -80,7 +80,7 @@ YOUR TURN
             Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.
   suggest   work suggest a2.k0002 <rule id> --says="<why it cannot be met, with the fact>"
             Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.
-STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
 `;
 
 exports[`the Introduction: write, reject with a point, fix, accept the medium brief lists the ready steps with the lead token filled in: section-lead brief 1`] = `
@@ -139,7 +139,7 @@ YOUR TURN
               Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.
   checkpoint  work checkpoint a1.<token> t1 --next="<the first thing to do>"
               Save before a pause; work resume a1.<token> t1 shows what changed.
-When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person.
+When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person.
 
 (read-only: no snapshot, no claim)"
 `;

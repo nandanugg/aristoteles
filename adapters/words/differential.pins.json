@@ -85,7 +85,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderTaskTree t1": [
    "t1 The Introduction · Open"
@@ -224,14 +224,14 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · writer (haiku) · t1 The Introduction · attempt 2 of 3",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Writes one TSD section from its brief.",
    "         - Write the section under its heading in the file that WORK IN names.",
    "         - Report it with work report as docs/tsd.md#introduction.",
@@ -249,14 +249,14 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderBrief a3": [
    "work brief a3 · linter (haiku) · t1 The Introduction",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Checks one section against the rules in its checks.",
    "         - Give one --evidence line for each rule in your checks.",
    "         - Reject with one --point for each rule that the section breaks.",
@@ -278,7 +278,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a2 (writer): docs/tsd.md#introduction",
@@ -438,14 +438,14 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · writer (haiku) · t1 The Introduction · attempt 3 of 3",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Writes one TSD section from its brief.",
    "         - Write the section under its heading in the file that WORK IN names.",
    "         - Report it with work report as docs/tsd.md#introduction.",
@@ -464,14 +464,14 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderBrief a3": [
    "work brief a3 · linter (haiku) · t1 The Introduction",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Checks one section against the rules in its checks.",
    "         - Give one --evidence line for each rule in your checks.",
    "         - Reject with one --point for each rule that the section breaks.",
@@ -493,7 +493,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a2 (writer): docs/tsd.md#introduction",
@@ -664,14 +664,14 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · writer (haiku) · t1 The Introduction · attempt 1 of 3",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Writes one TSD section from its brief.",
    "         - Write the section under its heading in the file that WORK IN names.",
    "         - Report it with work report as docs/tsd.md#introduction.",
@@ -689,14 +689,14 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderBrief a3": [
    "work brief a3 · linter (haiku) · t1 The Introduction",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Checks one section against the rules in its checks.",
    "         - Give one --evidence line for each rule in your checks.",
    "         - Reject with one --point for each rule that the section breaks.",
@@ -716,7 +716,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a2 (writer): docs/tsd.md#introduction",
@@ -871,14 +871,14 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · writer (haiku) · t1 The Introduction · attempt 2 of 3",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Writes one TSD section from its brief.",
    "         - Write the section under its heading in the file that WORK IN names.",
    "         - Report it with work report as docs/tsd.md#introduction.",
@@ -897,14 +897,14 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderBrief a3": [
    "work brief a3 · linter (haiku) · t1 The Introduction",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Checks one section against the rules in its checks.",
    "         - Give one --evidence line for each rule in your checks.",
    "         - Reject with one --point for each rule that the section breaks.",
@@ -926,7 +926,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one review or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one review or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a2 (writer): docs/tsd.md#introduction",
@@ -1053,14 +1053,14 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · implementer (haiku) · t1 Fix the key · attempt 1 of 3",
    "snapshot: fixes@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Makes one fix as one commit in the workspace repo.",
    "         - Commit the fix in app and report it as app@<commit>.",
    "TASK     Fix the key so that the test passes.",
@@ -1077,7 +1077,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderTaskTree t1": [
    "t1 Fix the key · Open"
@@ -1195,7 +1195,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · architect (opus) · t1 The Introduction",
@@ -1260,7 +1260,7 @@
    "              Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
   ],
   "renderTaskTree t1": [
    "t1 The Introduction · Open"
@@ -1378,7 +1378,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · architect (opus) · t1 The Introduction",
@@ -1443,7 +1443,7 @@
    "              Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
   ],
   "renderTaskTree t1": [
    "t1 The Introduction · Open"
@@ -1579,7 +1579,7 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. A question only in chat is not in the record; escalate it, then STOP. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a2": [
    "work brief a2 · architect (opus) · t1 The Introduction",
@@ -1645,7 +1645,7 @@
    "              Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP. When each step in READY only waits, STOP: the terminal above you starts you again when there is work. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
   ],
   "renderTaskTree t1": [
    "t1 The Introduction · Open"
@@ -1817,7 +1817,7 @@
    "              Escalate to the person only what only the person decides: the spirit of a direction, a permission, or a direction problem that no rule settles. Never escalate a limit (work guide limits) or a choice that a rule or a guide settles: decide it yourself.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
+   "When the task tree is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then wait for your next work. Whenever each step in READY only waits, wait for work: run work wait with your token (a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token; keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. Never end your turn without a running work wait. Do not run work next again to check. When only the person can act, put that act in the record first (work escalate), so work waiting --for=<owner> lists it, then wait for work in the same way; a question only in chat is not in the record. Never act for the person. When work passes a limit, do its action in work guide limits; do not ask the person about a limit."
   ],
   "renderBrief a2": [
    "work brief a2 · section-lead (sonnet) · t1 The Introduction",
@@ -1880,14 +1880,14 @@
    "              Run it after you read a source outside git (for example a version of a page), with the revision that you read. The record holds for outsideSourceHours (72 by default); then work next asks you to read the source again. A git source needs no record.",
    "  checkpoint  work checkpoint a0.TOKEN t1 --next=\"<the first thing to do>\"",
    "              Save before a pause; work resume a0.TOKEN t1 shows what changed.",
-   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then STOP (a persistent agent runs work wait --by=<your agent> instead, for its next work). When each step in READY only waits, wait for work: in a terminal of your own, run work wait with your token; a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token (keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. As a subagent, STOP. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
+   "When the task is accepted, run each step in READY (put the work on its base, finish each child, then yourself); then wait for your next work. Whenever each step in READY only waits, wait for work: run work wait with your token (a persistent agent runs work wait --by=<your agent>, which prints each new assignment with its token; keep one token for each assignment that you hold). It returns when you have work or a step changes; nothing is typed into your terminal. Never end your turn without a running work wait. Do not run work next again to check. After an escalation, wait for work in the same way. A question only in chat is not in the record; escalate it. When work passes a limit and you cannot do its action (work guide limits), escalate it with the words of the refusal; do not ask the person."
   ],
   "renderBrief a3": [
    "work brief a3 · writer (haiku) · t1 The Introduction · attempt 2 of 3",
    "snapshot: tsd-writing@1",
    "dir: <dir> (run every work command in this folder)",
    "",
-   "YOU ARE  You execute one unit of work, report it, and stop.",
+   "YOU ARE  You execute one unit of work, and report it.",
    "ROLE     Writes one TSD section from its brief.",
    "         - Write the section under its heading in the file that WORK IN names.",
    "         - Report it with work report as docs/tsd.md#<section>.",
@@ -1906,7 +1906,7 @@
    "            Escalate when the brief is not enough to do the work, or when you cannot decide on the result in your brief (add --result). Do not guess.",
    "  suggest   work suggest a0.TOKEN <rule id> --says=\"<why it cannot be met, with the fact>\"",
    "            Run it only just before you escalate; a suggestion alone does not end your unit. The rule stays until an official draft answers the suggestion. Then escalate, and STOP.",
-   "STOP after one report or one escalation (a persistent agent then runs work wait --by=<your agent> for its next unit). You may run work suggest just before an escalation. Do not run other work commands."
+   "STOP after one report or one escalation. You may run work suggest just before an escalation. Do not run other work commands."
   ],
   "renderResult r1": [
    "r1 on t1 by a3 (writer): docs/tsd.md#introduction",
