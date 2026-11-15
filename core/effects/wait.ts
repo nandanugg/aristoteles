@@ -102,6 +102,13 @@ export const heldBy = (d: Derived, agent: AgentId): ReadonlyArray<AssignmentId> 
   return state?._tag === 'OnAssignment' ? state.assignments : []
 }
 
+// Ready work: a Do step, or the start of the waiter's own subagent, which no act of the engine
+// does (the parent runs it in its AI CLI) but which only the parent can do (live, 2026-11-15: a
+// lead never started its structure-judge again, and t16 waited).
+const isReady = (s: NextStep): boolean =>
+  s._tag === 'Do' ||
+  ((s.what._tag === 'GiveMakerCommand' || s.what._tag === 'GiveCheckerCommand') && s.what.ownChild)
+
 // The actors whose steps a waiter waits for: a persistent agent acts by each open assignment.
 const actorsOf = (d: Derived, w: Waiter): ReadonlyArray<Author> => {
   switch (w._tag) {
@@ -116,7 +123,7 @@ const actorsOf = (d: Derived, w: Waiter): ReadonlyArray<Author> => {
 
 export const stepsOf = (d: Derived, waiter: Waiter): Steps => {
   const next = actorsOf(d, waiter).flatMap((actor) => nextFor(d, actor))
-  return { next, key: stepKey(next), ready: next.some((s) => s._tag === 'Do') }
+  return { next, key: stepKey(next), ready: next.some(isReady) }
 }
 
 // The host's assignment on a run's top task now, when the run goes on.

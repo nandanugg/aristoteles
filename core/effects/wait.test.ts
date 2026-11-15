@@ -7,7 +7,7 @@ import { Env, Now, Readings, StoreLive } from '../services/index.ts'
 import { workCacheLayer } from '../state/index.ts'
 import { nextChangeAt } from '../derived/index.ts'
 import { outsideNow } from '../derived/support.test.ts'
-import { cleanUp, clock, hosted, type Project } from './support.test.ts'
+import { cleanUp, clock, hosted, type Project, withLead } from './support.test.ts'
 import { look, stepsOf, waitFor, type Waiter, type WaitEnd } from './wait.ts'
 
 afterEach(cleanUp)
@@ -123,6 +123,18 @@ describe('the wait loop', () => {
       }).pipe(Effect.provide(services(p))),
     )
     expect(again).toMatchObject({ _tag: 'Ready' })
+  })
+
+  // Live, 2026-11-15: a lead never started its subagent again, because "start your subagent"
+  // was a wait, and a wait is no ready work; the parent is the only one that can do it.
+  test("the start of the waiter's own subagent is ready work", async () => {
+    const { p, leadToken } = await withLead()
+    await p.agent(`brief ${leadToken}`)
+    await p.agent(`assign ${leadToken} t1 --role=writer`)
+    const d = await Effect.runPromise(look.pipe(Effect.provide(services(p))))
+    const steps = d === null ? null : stepsOf(d, a('a2'))
+    expect(steps?.next.some((s) => s.what._tag === 'GiveMakerCommand')).toBe(true)
+    expect(steps?.ready).toBe(true)
   })
 
   // P9 (live, 2026-11-15): an event written as the wait starts, before it reads the last seq,
