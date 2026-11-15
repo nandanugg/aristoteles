@@ -34,13 +34,19 @@ role does it.
 - **When work passes it:** the assign is refused; or, when the brief grew later, `work brief`
   gives no brief, and the agent escalates and stops. The refusal names the largest part of the
   brief.
-- **The action:** make the brief shorter, at the part that is largest:
-  - the directions (their standards and rules): compact them. Draft a change with
-    `--why=Shorten`: shorter words, one rule for one check (merge two rules that check one
-    thing), and a `where` for a standard that only some tasks need. The owner accepts it on
-    the page;
-  - the task (its text or its references): split the task, or remake it with fewer
-    references.
+- **The action:** first find why the brief is large, then fix that cause. Go in this order,
+  and measure after each step:
+  1. **Scope.** Read which standards and rules of the brief apply to this task. A standard
+     that only some sections or outputs need gets a `where`, so that it leaves the briefs of
+     the other tasks. Most large briefs come from standards with no `where`.
+  2. **Repeats.** Merge two rules that check one thing, and remove words that say again what
+     another rule or the role's words already say.
+  3. **Words.** Only then make the remaining words shorter.
+  4. **The task.** When the task itself (its text or its references) is the largest part,
+     split the task, or remake it with fewer references.
+
+  Steps 1 to 3 are a change of the directions: draft it with `--why=Shorten`, and the owner
+  accepts it on the page.
 
   The brief counts the tier's own guide text too, and a shorter direction cannot change it.
   So a limit needs room above that text. Start with 6000 for low, 12000 for medium, and
