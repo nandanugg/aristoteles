@@ -101,7 +101,6 @@ export interface ServerOptions {
   readonly dir: string
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly port?: number
-  readonly key?: string
   readonly clock?: () => string
   readonly extend?: {
     readonly api?: (req: Request, url: URL, tools: ServerTools) => Promise<Response | undefined>
@@ -115,7 +114,6 @@ export interface ServerOptions {
 
 export interface ServerHandle extends ServerTools {
   readonly port: number
-  readonly key: string
   readonly url: string
   readonly stop: () => void
 }

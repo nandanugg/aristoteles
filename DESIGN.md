@@ -1012,9 +1012,10 @@ ids.
   projects (runs, and top tasks opened at a terminal), the canvas in layout A (task, work and
   review cards; only the latest attempt), the panel of a task, the diff by file, and the decisions
   that reach the person (`waitingFor`).
-- `adapters/web/server.ts`: the key of `work start` (a SameSite=Strict cookie; a websocket and a
-  POST also need the page's own origin), the read API, `POST /api/act` for the person's acts, and
-  the websocket for "changed" and for the terminals.
+- `adapters/web/server.ts`: the locks of the page (127.0.0.1 only; the Host header names
+  127.0.0.1:<port> or localhost:<port>; a websocket and a POST also need the page's own origin),
+  the read API, `POST /api/act` for the person's acts, and the websocket for "changed" and for
+  the terminals.
 - `adapters/web/pump.ts` (on `adapters/live/pump.ts`): the terminals in tmux on the socket
   `aristoteles`; `adapters/web/watcher.ts` (on `core/effects`): the life cycle of the real agents
   (start, retry, the host's decisions); `adapters/web/acts.ts`: a person act in the server's

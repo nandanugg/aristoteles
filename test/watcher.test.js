@@ -81,12 +81,11 @@ const ui = async () => {
   watcher.stop()
   const server = startServer({ dir: p.dir, env, pump, watcher })
   stops.push(() => { server.stop(); pump.killServer() })
-  const cookie = `aristoteles-${server.port}=${server.key}`
   const origin = `http://127.0.0.1:${server.port}`
   const post = async (act, body = {}) => {
     // A new connection for each act: the server closes one that is idle for 10 s, and a reused
     // one can be closed under the request.
-    const res = await fetch(`${origin}/api/act`, { method: 'POST', keepalive: false, headers: { cookie, origin, connection: 'close', 'content-type': 'application/json' }, body: JSON.stringify({ act, ...body }) })
+    const res = await fetch(`${origin}/api/act`, { method: 'POST', keepalive: false, headers: { origin, connection: 'close', 'content-type': 'application/json' }, body: JSON.stringify({ act, ...body }) })
     return { status: res.status, body: await res.json() }
   }
   const screen = (sid) => new TextDecoder().decode(pump.snapshot(sid))
@@ -105,8 +104,8 @@ const ui = async () => {
 describe('the watcher and the acts of the UI', () => {
   test('the host in its own pane, Open, a new Terra in its own terminal, a prompt and the host\'s answer, a retry, and Stop', async () => {
     const { p, pump, watcher, server, post, screen, later, joinHost } = await ui()
-    // An act needs the page's origin.
-    const bad = await fetch(`http://127.0.0.1:${server.port}/api/act`, { method: 'POST', headers: { cookie: `aristoteles-${server.port}=${server.key}` }, body: '{"act":"accept-roles"}' })
+    // An act needs the page's origin (Nanda, 2026-11-15: no key cookie).
+    const bad = await fetch(`http://127.0.0.1:${server.port}/api/act`, { method: 'POST', body: '{"act":"accept-roles"}' })
     expect(bad.status).toBe(403)
 
     const { host, hostEnv } = await joinHost()

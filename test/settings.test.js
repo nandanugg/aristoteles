@@ -15,7 +15,7 @@ const onboardingAct = async (p, body) => {
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) } })
   try {
     const origin = `http://127.0.0.1:${s.port}`
-    const headers = { cookie: `aristoteles-${s.port}=${s.key}`, origin, 'content-type': 'application/json' }
+    const headers = { origin, 'content-type': 'application/json' }
     return await (await fetch(`${origin}/api/onboarding`, { method: 'POST', headers, body: JSON.stringify(body) })).json()
   } finally {
     s.stop()

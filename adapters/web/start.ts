@@ -1,6 +1,6 @@
 // `work start`: the UI of a dir, in the browser (Nanda, 2026-11-11). One server for each dir: a
 // second start in the same dir opens the page of the server that runs. The record of a running
-// server (its port, process and key) lives beside the store, outside the dir, because the agents
+// server (its port and process) lives beside the store, outside the dir, because the agents
 // work in the dir.
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -14,7 +14,7 @@ import { type ServerHandle, startServer } from './server.ts'
 import { linkSkills } from './skills.ts'
 import { createWatcher } from './watcher.ts'
 
-// The file that records the running server of a dir (port, pid, key).
+// The file that records the running server of a dir (port, pid).
 export const recordOf = (dir: string, env: Env): string =>
   join(
     dirname(dbPath(env)),
@@ -44,14 +44,13 @@ const runningUrl = async (dir: string, record: string): Promise<string | undefin
   const running = JSON.parse(readFileSync(record, 'utf8')) as {
     readonly port: number
     readonly pid: number
-    readonly key: string
   }
   if (!alive(running.pid)) return undefined
   try {
     const health = (await (await fetch(`http://127.0.0.1:${running.port}/health`)).json()) as {
       readonly dir?: string
     }
-    return health.dir === dir ? `http://127.0.0.1:${running.port}/?key=${running.key}` : undefined
+    return health.dir === dir ? `http://127.0.0.1:${running.port}/` : undefined
   } catch {
     // The process is not our server (or it does not answer): start a new one.
     return undefined
@@ -163,7 +162,7 @@ export const workStart = async (
   mkdirSync(dirname(record), { recursive: true })
   writeFileSync(
     record,
-    JSON.stringify({ dir, port: server.port, pid: process.pid, key: server.key }),
+    JSON.stringify({ dir, port: server.port, pid: process.pid }),
     { mode: 0o600 },
   )
   const stop = () => {

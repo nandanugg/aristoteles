@@ -27,7 +27,9 @@ test('work start --detach runs the page as a process of its own, and a second st
   expect(await workStartDetached(dir, { env, out: (l) => lines.push(l) })).toBe(true)
   const record = JSON.parse(readFileSync(recordOf(dir, env), 'utf8'))
   pids.push(record.pid)
-  const url = `http://127.0.0.1:${record.port}/?key=${record.key}`
+  // Nanda, 2026-11-15: the address and the record hold no key.
+  const url = `http://127.0.0.1:${record.port}/`
+  expect(Object.keys(record).sort()).toEqual(['dir', 'pid', 'port'])
   expect(lines[0]).toBe(`the UI of ${dir}: ${url}`)
   expect(record.pid).not.toBe(process.pid)
   // The call returned, and the server still answers: it is no child that ends with its caller.

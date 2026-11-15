@@ -27,23 +27,22 @@ afterEach(() => {
 const serve = (p) => {
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }, clock: () => '2026-10-25T12:00:00.000Z' })
   servers.push(s)
-  const cookie = `aristoteles-${s.port}=${s.key}`
   const get = async (path) => {
-    const res = await fetch(`http://127.0.0.1:${s.port}${path}`, { headers: { cookie } })
+    const res = await fetch(`http://127.0.0.1:${s.port}${path}`)
     return res.headers.get('content-type')?.includes('json') ? res.json() : res.text()
   }
-  // An act of the onboarding pages: it needs the key and the page's own origin.
+  // An act of the onboarding pages: it needs the page's own origin.
   const onboard = async (body) => {
-    const headers = { cookie, origin: `http://127.0.0.1:${s.port}`, 'content-type': 'application/json' }
+    const headers = { origin: `http://127.0.0.1:${s.port}`, 'content-type': 'application/json' }
     const res = await fetch(`http://127.0.0.1:${s.port}/api/onboarding`, { method: 'POST', headers, body: JSON.stringify(body) })
     return res.json()
   }
   const act = async (body) => {
-    const headers = { cookie, origin: `http://127.0.0.1:${s.port}`, 'content-type': 'application/json' }
+    const headers = { origin: `http://127.0.0.1:${s.port}`, 'content-type': 'application/json' }
     const res = await fetch(`http://127.0.0.1:${s.port}/api/act`, { method: 'POST', headers, body: JSON.stringify(body) })
     return res.json()
   }
-  return { s, cookie, get, onboard, act }
+  return { s, get, onboard, act }
 }
 // The writer reported r1, and the linter rejected it on the rule no-ticket-ids.
 const rejected = async () => {
@@ -58,17 +57,22 @@ const rejected = async () => {
 }
 
 describe('the server, read only', () => {
-  test('every request needs the key; the address of work start sets it as a cookie', async () => {
+  // Nanda, 2026-11-15: the address has no key, and the page needs no cookie (was: a key, and a
+  // cookie for each request). A request that names another host in its Host header is refused,
+  // so a page of a name that points to 127.0.0.1 (DNS rebinding) reads nothing.
+  test('the address has no key; the page answers only a request that names this server', async () => {
     const { p } = await rejected()
     const { s } = serve(p)
     const base = `http://127.0.0.1:${s.port}`
-    expect((await fetch(`${base}/api/dir`)).status).toBe(403)
-    expect((await fetch(`${base}/?key=wrong`, { redirect: 'manual' })).status).toBe(403)
-    const first = await fetch(s.url, { redirect: 'manual' })
-    expect(first.status).toBe(302)
-    expect(first.headers.get('set-cookie')).toBe(`aristoteles-${s.port}=${s.key}; HttpOnly; SameSite=Strict; Path=/`)
+    expect(s.url).toBe(`${base}/`)
+    expect((await fetch(`${base}/api/dir`)).status).toBe(200)
+    expect((await fetch(`${base}/api/dir`, { headers: { host: `localhost:${s.port}` } })).status).toBe(200)
+    for (const host of [`rebind.example:${s.port}`, '127.0.0.1', `127.0.0.1:${s.port + 1}`]) {
+      for (const path of ['/', '/app.js', '/api/dir', '/health', '/ws']) {
+        expect([host, path, (await fetch(`${base}${path}`, { headers: { host } })).status]).toEqual([host, path, 403])
+      }
+    }
     expect(await (await fetch(`${base}/health`)).json()).toEqual({ dir: p.dir })
-    expect(s.url).toStartWith('http://127.0.0.1:')
   })
 
   test('the dir lists its projects; a top task opened at a terminal is a project too', async () => {
@@ -123,16 +127,17 @@ describe('the server, read only', () => {
     expect(diff).toContain('+ABC-2964: the export ran twice for one merchant.')
   })
 
-  test('a websocket tells the page about a new act; it needs the key and the origin of the page', async () => {
+  // Nanda, 2026-11-15: it needs the origin of the page (was: and the key).
+  test('a websocket tells the page about a new act; it needs the origin of the page', async () => {
     const { p, lead } = await rejected()
-    const { s, cookie } = serve(p)
-    const refused = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { cookie } })
+    const { s } = serve(p)
+    const refused = new WebSocket(`ws://127.0.0.1:${s.port}/ws`)
     const why = await new Promise((done) => {
       refused.onerror = () => done('error')
       refused.onopen = () => done('open')
     })
     expect(why).toBe('error')
-    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { cookie, origin: `http://127.0.0.1:${s.port}` } })
+    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { origin: `http://127.0.0.1:${s.port}` } })
     await new Promise((done) => { ws.onopen = done })
     const message = new Promise((done) => { ws.onmessage = (m) => done(JSON.parse(m.data)) })
     ok(await p.agent(`next ${lead}`))
@@ -150,7 +155,7 @@ describe('the server, read only', () => {
     }
     const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }, pump })
     servers.push(s)
-    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { cookie: `aristoteles-${s.port}=${s.key}`, origin: `http://127.0.0.1:${s.port}` } })
+    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { origin: `http://127.0.0.1:${s.port}` } })
     await new Promise((done) => { ws.onopen = done })
     ws.send(JSON.stringify({ type: 'term.resize', session: 's-1', cols: 74, rows: 5 }))
     ws.send(JSON.stringify({ type: 'term.resize', session: 's-1', cols: 120, rows: 40 }))
@@ -322,8 +327,8 @@ describe('the onboarding pages', () => {
 
   test('the server sends changed when the host writes an onboarding file', async () => {
     const p = onboardingProject()
-    const { s, cookie } = serve(p)
-    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { cookie, origin: `http://127.0.0.1:${s.port}` } })
+    const { s } = serve(p)
+    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, { headers: { origin: `http://127.0.0.1:${s.port}` } })
     await new Promise((done) => { ws.onopen = done })
     const next = () => new Promise((done) => { ws.onmessage = (m) => done(JSON.parse(m.data)) })
     // The first draft makes .work/assess/; a later file in it is seen too.

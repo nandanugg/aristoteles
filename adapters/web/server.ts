@@ -1,14 +1,17 @@
 // startServer (frozen; package P9): the page of a dir, one on 127.0.0.1 only. A terminal in the
 // browser can run any command, and any web page in the same browser can reach a port of this
-// machine, so every request needs the key that `work start` puts in the address: the first visit
-// turns it into a cookie that the browser sends only to this page (SameSite=Strict), and a
-// websocket also needs the page's own origin.
+// machine. Three locks protect the page (Nanda, 2026-11-15: no key in the address now):
+// - the server listens on 127.0.0.1 only, so no other machine reaches it;
+// - each request must name this server in its Host header (127.0.0.1:<port> or
+//   localhost:<port>), so a page of another name that points to 127.0.0.1 (DNS rebinding) reads
+//   nothing;
+// - an act and the websocket must come from the page's own origin, so another page in the same
+//   browser can neither act nor read a terminal.
 //
 // The server holds the WorkCache (a SubscriptionRef of the folded Work, renewed from the store,
 // which other processes write) and sends `changed` on each value of its changes. A read derives
 // the Work and renders the views of view.ts; a person's act dispatches its action as the person
 // of git user.name (acts.ts) or goes to the watcher (the terminals).
-import { randomBytes } from 'node:crypto'
 import { existsSync, type FSWatcher, readdirSync, statSync, watch } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, SubscriptionRef } from 'effect'
@@ -137,7 +140,6 @@ export function startServer(options: ServerOptions): ServerHandle {
     dir,
     env = process.env,
     port = 0,
-    key = randomBytes(24).toString('hex'),
     clock = () => new Date().toISOString(),
     extend = {},
     pump,
@@ -281,14 +283,10 @@ export function startServer(options: ServerOptions): ServerHandle {
     }
   }
 
-  // --- the key ---------------------------------------------------------------------------------
+  // --- the locks -------------------------------------------------------------------------------
 
-  // A cookie does not depend on the port, so each server has its own cookie name.
-  const cookieName = (srv: Bun.Server<undefined>) => `aristoteles-${srv.port}`
-  const hasKey = (req: Request, srv: Bun.Server<undefined>) =>
-    (req.headers.get('cookie') ?? '')
-      .split(';')
-      .some((c) => c.trim() === `${cookieName(srv)}=${key}`)
+  const ownHost = (req: Request, srv: Bun.Server<undefined>) =>
+    [`127.0.0.1:${srv.port}`, `localhost:${srv.port}`].includes(req.headers.get('host') ?? '')
   const sameOrigin = (req: Request, srv: Bun.Server<undefined>) =>
     [`http://127.0.0.1:${srv.port}`, `http://localhost:${srv.port}`].includes(
       req.headers.get('origin') ?? '',
@@ -491,20 +489,11 @@ export function startServer(options: ServerOptions): ServerHandle {
     port,
     async fetch(req, srv) {
       const url = new URL(req.url)
-      // A running server says which dir it serves, so that a second `work start` finds it.
-      if (url.pathname === '/health') return json({ dir })
-      if (url.pathname === '/' && url.searchParams.get('key') === key) {
-        return new Response(null, {
-          status: 302,
-          headers: {
-            location: '/',
-            'set-cookie': `${cookieName(srv)}=${key}; HttpOnly; SameSite=Strict; Path=/`,
-          },
-        })
-      }
-      if (!hasKey(req, srv)) {
+      if (!ownHost(req, srv)) {
         return new Response('Open the address that work start printed.\n', { status: 403 })
       }
+      // A running server says which dir it serves, so that a second `work start` finds it.
+      if (url.pathname === '/health') return json({ dir })
       if (url.pathname === '/ws') {
         if (!sameOrigin(req, srv)) {
           return new Response('A websocket comes only from the page of this server.\n', {
@@ -675,8 +664,7 @@ export function startServer(options: ServerOptions): ServerHandle {
 
   return {
     port: server.port ?? 0,
-    key,
-    url: `http://127.0.0.1:${server.port}/?key=${key}`,
+    url: `http://127.0.0.1:${server.port}/`,
     send,
     readState,
     stop() {

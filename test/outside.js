@@ -1,5 +1,5 @@
 // The server of the UI, read from the outside (plan/types/PLAN.md section 7): a test starts it
-// on the dir of a harness project, asks its HTTP API with the key cookie, and stops it. The
+// on the dir of a harness project, asks its HTTP API, and stops it. The
 // SQL tables that the store writes for readers are read only.
 import { Database } from 'bun:sqlite'
 import { join } from 'node:path'
@@ -19,12 +19,11 @@ export function gitPerson(p, name = 'Nanda') {
 // last act), or the time that a test names; stop() always runs, also when a read fails.
 export async function withServer(p, use, at) {
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) }, clock: () => at ?? p.now() })
-  const cookie = `aristoteles-${s.port}=${s.key}`
   const origin = `http://127.0.0.1:${s.port}`
-  const get = async (path) => (await fetch(`${origin}${path}`, { headers: { cookie } })).json()
-  // An act of the person on the page: it needs the key and the page's own origin.
+  const get = async (path) => (await fetch(`${origin}${path}`)).json()
+  // An act of the person on the page: it needs the page's own origin (Nanda, 2026-11-15: no key).
   const post = async (act, body = {}) => {
-    const headers = { cookie, origin, 'content-type': 'application/json' }
+    const headers = { origin, 'content-type': 'application/json' }
     const res = await fetch(`${origin}/api/act`, { method: 'POST', headers, body: JSON.stringify({ act, ...body }) })
     return res.json()
   }
