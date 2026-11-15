@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 import type { OutsideFailed, Refused } from '../domain/errors.ts'
 import { type Settings, TerminalTier } from '../domain/files.ts'
 import { Files } from '../services/outside.ts'
-import { CONFIG, fail, parseYaml, type Raw, refusing, SETTING_KEYS } from './core.ts'
+import { CONFIG, DRAFT, fail, parseYaml, type Raw, refusing, SETTING_KEYS } from './core.ts'
 
 export const TIER_KEYS = [
   'model',
@@ -37,19 +37,19 @@ const wholeNumber = (v: unknown): boolean => Number.isInteger(v) && (v as number
 
 // The settings of a parsed file, checked, with their defaults. Every tier has its commands
 // (ruling 10): a role of any tier can be persistent, and runs in a terminal of its own.
-export const readSettingsOf = (raw: Raw): Settings => {
+export const readSettingsOf = (raw: Raw, file: string = CONFIG): Settings => {
   const tiers: Record<string, unknown> = {}
   for (const [tier, t] of Object.entries<Raw>(raw.tiers ?? {})) {
     if (!(TerminalTier.literals as ReadonlyArray<string>).includes(tier)) {
-      fail(CONFIG, `tiers.${tier} is not a tier (${TerminalTier.literals.join(', ')})`)
+      fail(file, `tiers.${tier} is not a tier (${TerminalTier.literals.join(', ')})`)
     }
     const key = Object.keys(t ?? {}).find((k) => !(TIER_KEYS as readonly string[]).includes(k))
     if (key) {
-      fail(CONFIG, `tiers.${tier}.${key} is not a setting of a tier (${TIER_KEYS.join(', ')})`)
+      fail(file, `tiers.${tier}.${key} is not a setting of a tier (${TIER_KEYS.join(', ')})`)
     }
     for (const k of ['model', 'launch', 'resume', 'start', 'skills', 'retryInput']) {
       if (t[k] !== undefined && (typeof t[k] !== 'string' || !t[k].trim())) {
-        fail(CONFIG, `tiers.${tier}.${k} is a text`)
+        fail(file, `tiers.${tier}.${k} is a text`)
       }
     }
     for (const k of ['errors', 'prompts']) {
@@ -57,11 +57,11 @@ export const readSettingsOf = (raw: Raw): Settings => {
         t[k] !== undefined &&
         (!Array.isArray(t[k]) || t[k].some((w: unknown) => typeof w !== 'string'))
       ) {
-        fail(CONFIG, `tiers.${tier}.${k} is a list of words`)
+        fail(file, `tiers.${tier}.${k} is a list of words`)
       }
     }
     if (t.silentMinutes !== undefined && !wholeNumber(t.silentMinutes)) {
-      fail(CONFIG, `tiers.${tier}.silentMinutes is a whole number of 1 or more`)
+      fail(file, `tiers.${tier}.silentMinutes is a whole number of 1 or more`)
     }
     // {prompt} in a command is the first input, given as an argument so it need not wait.
     if (t.launch !== undefined && !t.launch.includes('{session}')) {
@@ -71,27 +71,27 @@ export const readSettingsOf = (raw: Raw): Settings => {
       )
     }
     if (t.resume !== undefined && !t.resume.includes('{session}')) {
-      fail(CONFIG, `tiers.${tier}.resume has no {session}`)
+      fail(file, `tiers.${tier}.resume has no {session}`)
     }
     // The model lives once (P9): a command names it as {model}.
     for (const k of ['launch', 'resume']) {
       if (t[k]?.includes('{model}') && t.model === undefined) {
-        fail(CONFIG, `tiers.${tier}.${k} names {model}, and tiers.${tier}.model is not set`)
+        fail(file, `tiers.${tier}.${k} names {model}, and tiers.${tier}.model is not set`)
       }
     }
     if (t.start !== undefined && !t.start.includes('{agent}')) {
-      fail(CONFIG, `tiers.${tier}.start has no {agent}`)
+      fail(file, `tiers.${tier}.start has no {agent}`)
     }
     tiers[tier] = { ...TIER_DEFAULTS, ...t }
   }
   for (const k of ['retryMinutes', 'hostWaitMinutes', 'outsideSourceHours']) {
     if (raw[k] !== undefined && !wholeNumber(raw[k])) {
-      fail(CONFIG, `${k} is a whole number of 1 or more`)
+      fail(file, `${k} is a whole number of 1 or more`)
     }
   }
-  if (raw.sound !== undefined && typeof raw.sound !== 'boolean') fail(CONFIG, 'sound is true or false')
+  if (raw.sound !== undefined && typeof raw.sound !== 'boolean') fail(file, 'sound is true or false')
   if (raw.theme !== undefined && !['light', 'dark'].includes(raw.theme)) {
-    fail(CONFIG, 'theme is light or dark')
+    fail(file, 'theme is light or dark')
   }
   return {
     tiers,
@@ -104,11 +104,16 @@ export const readSettingsOf = (raw: Raw): Settings => {
 }
 
 // The settings of a dir, from its file now; a dir with no file has the defaults.
+// Before the store starts, the config draft holds the settings that will apply (the host edits
+// its tiers during onboarding): one reader for both, so the page never shows another model than
+// the file (Nanda, 2026-11-15).
 export const readSettings = (dir: string): Effect.Effect<Settings, Refused, Files> =>
   Effect.gen(function* () {
     const files = yield* Files
-    const text = yield* files.read(join(dir, CONFIG))
-    return yield* refusing(() => readSettingsOf(text === null ? {} : parseYaml(text)))
+    const config = yield* files.read(join(dir, CONFIG))
+    const file = config === null ? DRAFT : CONFIG
+    const text = config ?? (yield* files.read(join(dir, DRAFT)))
+    return yield* refusing(() => readSettingsOf(text === null ? {} : parseYaml(text), file))
   })
 
 const yamlBlock = (key: string, value: unknown): string =>

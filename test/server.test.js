@@ -224,6 +224,19 @@ async function onboarding() {
 }
 
 describe('the onboarding pages', () => {
+  // Nanda, 2026-11-15: the host set the low tier to sonnet in the config draft, and the agents
+  // page still showed the class of the tier: before the store, the draft holds the settings.
+  test('before the store, the role cards read the tiers of the config draft', async () => {
+    const p = onboardingProject()
+    gitPerson(p)
+    const tiers = 'tiers:\n  luna:\n    model: sonnet\n'
+    p.write('draft.yaml', `${ONBOARD_CONFIG}${tiers}`)
+    ok(await p.agent('onboard config --file=draft.yaml'))
+    const { get } = serve(p)
+    const writer = (await get('/api/onboarding')).roles.find((r) => r.role === 'writer')
+    expect([writer.tier, writer.model]).toEqual(['luna', 'sonnet'])
+  })
+
   test('GET /api/onboarding gives the directions page and the agents page from the files', async () => {
     const p = await onboarding()
     ok(await p.agent('onboard found code-proof'))
