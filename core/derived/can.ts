@@ -168,17 +168,18 @@ const needClaim = (c: Ctx, a: Assignment): CanAct => {
     [...c.w.reviews.values()].some((r) => r.by === a.id)
   if (unitA(c.w, a) && done) {
     return no(
-      'your unit is done; this assignment has no open brief',
+      UNIT_DONE,
       'Wait',
       `STOP: ${upTo(a)} continues, and gives you this token again if there is more`,
     )
   }
-  return no(
-    'you have no brief in this attempt',
-    'Wait',
-    'read your brief first; your work follows it',
-  )
+  return no(NO_BRIEF, 'Wait', 'read your brief first; your work follows it')
 }
+// The refusals that only a brief ends: nextFor reads them to give a step to read the brief.
+const UNIT_DONE = 'your unit is done; this assignment has no open brief'
+const NO_BRIEF = 'you have no brief in this attempt'
+export const refusedForBrief = (r: CanAct): boolean =>
+  r._tag === 'MayNot' && (r.refusal.message === NO_BRIEF || r.refusal.message === UNIT_DONE)
 const exists = (found: boolean, id: string, what: string): CanAct =>
   found ? MAY : no(`there is no ${what} ${id}`, 'Pick', `name a ${what} that exists`)
 // An act of authority: the person, a model run and the system hold every one; an agent holds

@@ -19,7 +19,7 @@ import type {
   TaskId,
   Work,
 } from '../schema/index.ts'
-import { canAct } from './can.ts'
+import { canAct, refusedForBrief } from './can.ts'
 import { leafName, turnOf } from './deciders.ts'
 import {
   answered,
@@ -948,9 +948,12 @@ const deciderSteps = (
 // An agent with no claim whose acts are all refused reads its brief first, so that its step is
 // never a wait that only its own brief would end.
 const stepOf = (d: Derived, actor: Parameters<NextFor>[1], c: Candidate): NextStep => {
-  const allowed = nonEmpty(c.intents.filter((i) => canAct(d, actor, i)._tag === 'May'))
+  const checked = c.intents.map((i) => ({ i, r: canAct(d, actor, i) }))
+  const allowed = nonEmpty(checked.flatMap((x) => (x.r._tag === 'May' ? [x.i] : [])))
   if (allowed !== undefined) return { _tag: 'Do', what: c.what, intents: allowed }
-  if (actor._tag !== 'Agent' || c.intents.length === 0) return { _tag: 'Wait', what: c.what }
+  if (actor._tag !== 'Agent' || !checked.some((x) => refusedForBrief(x.r))) {
+    return { _tag: 'Wait', what: c.what }
+  }
   const w = d.moment.work
   if (claimedSince(w, actor.assignment) !== undefined) return { _tag: 'Wait', what: c.what }
   const brief: Intent = { _tag: 'Brief', target: { assignment: actor.assignment } }

@@ -107,6 +107,14 @@ describe('an agent with no claim reads its brief first', () => {
     ok(await p.agent(`brief ${lead}`))
     expect(tags(nextFor(derivedOf(p), agent('a1')))).toEqual(['Do AssignMaker'])
   }, 30000)
+  // Live, 2026-11-15: while the writer worked, its checkers were told to read their briefs to
+  // free it, an act refused because they do not lead, not because they have no brief.
+  test('a step refused for another reason stays a wait', async () => {
+    const s = await rejected()
+    ok(await s.p.agent(`brief ${s.writer}`))
+    const steps = tags(nextFor(derivedOf(s), agent('a3')))
+    expect(steps).not.toContain('Do BriefFirst')
+  }, 30000)
 })
 
 describe('the reviewers of a result', () => {
