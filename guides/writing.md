@@ -36,6 +36,30 @@ what the direction asks and why it matters, for a person who reads it the first 
 `work direction show` show it before the words. Use plain words: no ids, no file paths, no names
 of rules. A draft with no summary is refused. A revise may change it (`summary:` in the edit).
 
+## The flow
+
+A direction has a flow (`flow:` in its file): how it works in the project, from the first act of an
+actor down to the output. The page draws it as a sequence diagram under the summary, and
+`work direction show` prints it as numbered lines.
+
+- Each step is one act: `from` acts, `to` is the actor or the file that it acts on, and `says` is
+  what happens, in one plain line. A step from an actor to the same actor is an act on its own.
+- The first step starts the direction; the last step makes or checks the output.
+- `file` and `line` name where the project defines the step. They carry the sources, so the
+  words of the direction do not say where it comes from.
+- Name each actor the same way in each step; the lifelines are the actors in the order that they
+  first appear.
+
+```yaml
+flow:
+  - { from: Person, to: architect, says: asks for a TSD of the export feature }
+  - { from: architect, to: writer, says: gives each section to a writer, file: CLAUDE.md, line: 12 }
+  - { from: writer, to: writer, says: reads the rule of one heading for each section, file: .claude/skills/writer/SKILL.md, line: 30 }
+  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, file: docs/templates/tsd.md, line: 1 }
+```
+
+A revise may change the flow (`flow:` in the edit gives the whole new flow).
+
 ## Cases
 
 A new direction has at least 3 cases (`cases:` in its file). A case is a ladder from the direction

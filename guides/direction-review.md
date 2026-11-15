@@ -28,6 +28,8 @@ evidence only when each answer is good. Else reject with one reason in this form
     why it matters, for a person who reads it the first time?
 11. **Cases.** Does each case end at a real output (a document, code, a test fixture), and not at
     an instruction? Does each rung have a short name, in order from the direction down?
+12. **Flow.** Does the flow show how the direction works, from its first act down to the output?
+    Does each step name who acts, on whom or on what file, and where the project defines it?
 
 ## The evidence of an accept
 

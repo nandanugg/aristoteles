@@ -1066,6 +1066,14 @@ two options, A and B. The page draws each case as a small vertical ladder.
 it asks and why it matters. It is part of each version, so a revise may change it. A company
 direction takes the first sentence of its folder's words.
 
+**Flow** (Nanda, 2026-11-15). A direction has a flow: the steps of how it works in the project, from
+the first act of an actor down to the output. A step is `{ from, to, says }`, with the `file` and
+`line` where the project defines it; `from` equal to `to` is an act on its own. The lifelines are the
+actors in the order that they first appear. The flow is part of each version, so a revise may
+change it; a draft with no flow has none, and the page draws no diagram. The page draws it as a
+sequence diagram under the summary, and the CLI prints it as numbered lines. It takes the place of
+the words that say where a direction comes from.
+
 **Roles** (rulings 7, 8, 9, 15, 16). Tier and persistence are apart. A role says
 `persistence: { persistent, why }` and an `icon`. Only a persistent role gets a terminal of its own,
 from its first assignment to the end of the project; a role that is not persistent runs as a

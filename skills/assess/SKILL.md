@@ -280,8 +280,8 @@ piece as below. The roles go into the config draft, the directions into directio
 
 ## A direction draft
 
-A direction draft has exactly these keys: `id name from summary says standards cases`. It has no
-`owner` and no `approvedBy`: the person who starts the store owns each direction.
+A direction draft has exactly these keys: `id name from summary flow says standards cases`. It has
+no `owner` and no `approvedBy`: the person who starts the store owns each direction.
 
 ```yaml
 id: <direction id, lower case with dashes>
@@ -289,6 +289,8 @@ name: <a short name>
 from: [<one or two principles of the eleven that ground it: Logos, Pathos, Ethos, Mythos,
        Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
 summary: <one or two plain sentences: what the direction asks, and why it matters>
+flow:
+  - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, file: <where the project defines the step>, line: <n> }
 says: |
   <what the work is for, in any markdown; the whole idea in the first paragraph>
 standards:
@@ -325,6 +327,42 @@ doubt in your report.
 for a person who reads the direction the first time. The page and the CLI show it first, before
 the words. Use plain words: no ids, no file paths, no names of rules. The command refuses a draft
 with no summary.
+
+**The flow.** Write a flow for each direction: how the direction works in the project, from the
+first act of an actor down to the output. The page draws it as a sequence diagram under the
+summary, and the CLI prints it as numbered lines.
+
+- Each step is one act: `from` acts, `to` is the actor or the file that it acts on, and `says` is
+  what happens, in one plain line. A step from an actor to the same actor is an act on its own
+  (the page draws it as a box on its lifeline).
+- The first step is the act that starts the direction (often the person's). The last step makes
+  or checks the output.
+- `file` and `line` name where the project defines the step: the line of the instruction, the
+  skill, the template, or the code. Leave them out when no file defines it.
+- Name each actor the same way in each step: a person, a role of the config draft, a program, or
+  a file. The lifelines are the actors in the order that they first appear.
+- The file and line of the steps carry the sources, so leave out the words of where the direction
+  comes from in `says`.
+
+A direction about how documents are written goes from the person's first act down to the
+document:
+
+```yaml
+flow:
+  - { from: Person, to: architect, says: asks for a TSD of the export feature }
+  - { from: architect, to: writer, says: gives each section to a writer, file: CLAUDE.md, line: 12 }
+  - { from: writer, to: writer, says: reads the rule of one heading for each section, file: .claude/skills/writer/SKILL.md, line: 30 }
+  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, file: docs/templates/tsd.md, line: 1 }
+  - { from: linter, to: docs/tsd/export.md, says: checks that each section says one thing, file: scripts/lint-tsd.sh, line: 8 }
+```
+
+A direction about code is often short:
+
+```yaml
+flow:
+  - { from: developer, to: src/export/config.go, says: reads each env var in one typed function, file: src/export/config.go, line: 9 }
+  - { from: CI, to: src/export, says: fails the build on a direct os.Getenv, file: .golangci.yml, line: 22 }
+```
 
 **Cases.** Give at least 3 real cases for each direction. A case is a ladder from the direction
 down to a real output of the project, so that the person can follow the direction to a result:
@@ -406,7 +444,8 @@ on the page (add a company direction) or in the chat; then `work onboard company
 rules come from the folder at one commit: you do not write them. The summary is the first
 sentence of the folder's words; you do not write it either. Your draft file has only
 `id` (optional), `checkedBy` (the role that checks each rule), `rules` (`{ <rule id>: <role> }`
-for a rule with another checker), and `cases`; send it with
+for a rule with another checker), `flow` (how the direction works in this project), and `cases`;
+send it with
 `work onboard draft <id> --file=<it>`. Do not copy its words into a direction of the project;
 when the project breaks it, say so in the report. When the person has no company repo, point to
 the public example: https://github.com/nandanugg/aristoteles-example-direction.
