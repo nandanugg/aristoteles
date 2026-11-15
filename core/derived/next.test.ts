@@ -123,7 +123,7 @@ describe('nextFor equals the old work next, or D14 and C1 explain it', () => {
         const steps = now.filter((x) => !NOTICES.includes(x.what._tag))
         const key = p9Key(w, a.id, `${s.name} ${a.id}`, was.key)
         if (key !== was.key) seen.push(`${s.name}: P9: ${a.id}`)
-        expect([s.name, a.id, stepKey(steps)]).toEqual([s.name, a.id, key])
+        expect([s.name, a.id, oldKey(stepKey(steps), key)]).toEqual([s.name, a.id, key])
       }
     }
     expect(seen.some((x) => x.startsWith('uiRunRemade: C1: a1 has no step'))).toBe(true)
@@ -132,6 +132,18 @@ describe('nextFor equals the old work next, or D14 and C1 explain it', () => {
     expect(seen).toContain('codeStarted: P9: a2')
   })
 })
+
+// The keys of 2026-11-15 mark a step that waits, and name after the old ids the facts that make a
+// step new work (a read, a brief, a version, an earlier assignment): the key as the old one, when
+// each line starts with its old line.
+const oldKey = (key: string, was: string): string => {
+  const lines = key.split('\n').map((l) => l.replace(/^wait /, ''))
+  const olds = was.split('\n')
+  const same =
+    lines.length === olds.length &&
+    lines.every((l, i) => l === olds[i] || l.startsWith(`${olds[i]} `))
+  return same ? was : lines.join('\n')
+}
 
 // P9: a role that leads nothing checks only its own rules, so it no longer escalates for the
 // checkers of other roles; a maker that holds its claim reports, and never waits on itself.
@@ -150,7 +162,7 @@ const p9Key = (w: Work, a: AssignmentId, at: string, key: string): string => {
 }
 
 describe('stepKey', () => {
-  test('has the tag and the ids of each step, and no words, flags, revisions or times', () => {
+  test('has the tag, the ids and the facts of new work of each step, and no words or flags', () => {
     const steps: ReadonlyArray<NextStep> = [
       {
         _tag: 'Wait',
@@ -170,22 +182,38 @@ describe('stepKey', () => {
           task: 't1' as TaskId,
           redo: true,
           ownChild: true,
+          briefs: 1,
         },
       },
       {
         _tag: 'Do',
-        what: { _tag: 'Decide', result: 'r1' as ResultId, again: false },
+        what: { _tag: 'Decide', result: 'r1' as ResultId, again: false, versions: [] },
         intents: [{ _tag: 'Accept', target: { of: { _tag: 'Result', id: 'r1' as ResultId } } }],
       },
     ]
-    expect(stepKey(steps)).toBe('ReadSource page\nGiveMakerCommand a2 t1\nDecide r1')
+    expect(stepKey(steps)).toBe(
+      'wait ReadSource page 2026-10-25T09:00:00.000Z\nwait GiveMakerCommand a2 t1 1\nDecide r1',
+    )
     const other = steps.map((s) =>
       s.what._tag === 'ReadSource'
         ? { ...s, what: { ...s.what, revision: 'v5', hours: 24 } }
-        : s.what._tag === 'Decide'
-          ? { _tag: 'Wait' as const, what: { ...s.what, again: true } }
+        : s.what._tag === 'GiveMakerCommand'
+          ? { ...s, what: { ...s.what, redo: false, ownChild: false } }
           : s,
     )
     expect(stepKey(other)).toBe(stepKey(steps))
+    // A new read, a new brief, a step that gets its act: each is new work, with a new key.
+    const read = steps.map((s) =>
+      s.what._tag === 'ReadSource'
+        ? { ...s, what: { ...s.what, seenAt: '2026-10-28T09:00:00.000Z' as Time } }
+        : s,
+    )
+    expect(stepKey(read)).not.toBe(stepKey(steps))
+    const brief = steps.map((s) =>
+      s.what._tag === 'GiveMakerCommand' ? { ...s, what: { ...s.what, briefs: 2 } } : s,
+    )
+    expect(stepKey(brief)).not.toBe(stepKey(steps))
+    const waits = steps.map((s) => (s._tag === 'Do' ? { _tag: 'Wait' as const, what: s.what } : s))
+    expect(stepKey(waits)).not.toBe(stepKey(steps))
   })
 })

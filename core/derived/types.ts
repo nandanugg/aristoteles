@@ -446,9 +446,9 @@ export type WaitingKind =
 
 // One kind of step with the ids that it names (the old NextStep of `work next`, minus the
 // bookkeeping steps of D14: FinishChildOfClosedTask, FinishInClosedTask, FinishChild, and of
-// ruling 10.2: FinishIdleChild, since the file turn passes by itself). A field
-// that is not an id only picks words; stepKey leaves it out. PersonDecides is the step of a
-// person's waiting item.
+// ruling 10.2: FinishIdleChild, since the file turn passes by itself). stepKey keeps the ids, and
+// the facts that make a step new work (a read, a brief, a version, an earlier assignment); a field
+// that only picks words it leaves out. PersonDecides is the step of a person's waiting item.
 export type StepWhat =
   | {
       readonly _tag: 'ReadSource'
@@ -494,7 +494,12 @@ export type StepWhat =
       readonly base: string
       readonly commit: string
     }
-  | { readonly _tag: 'FinishAcceptedTask'; readonly task: TaskId }
+  // result: the accepted result; a task returned and accepted again is new work.
+  | {
+      readonly _tag: 'FinishAcceptedTask'
+      readonly task: TaskId
+      readonly result: ResultId | null
+    }
   | {
       readonly _tag: 'EvaluationWaitsForOwner'
       readonly evaluation: EvaluationId
@@ -553,13 +558,20 @@ export type StepWhat =
   | { readonly _tag: 'WaitsForOutsideNeed'; readonly task: TaskId; readonly need: TaskId }
   | { readonly _tag: 'RunsAfter'; readonly task: TaskId; readonly need: TaskId }
   | { readonly _tag: 'LeadRuns'; readonly lead: AssignmentId; readonly task: TaskId }
+  // last: the last assignment of these roles on the task; when it ended, a new give is new work.
   | {
       readonly _tag: 'RunSectionWithLead'
       readonly task: TaskId
       readonly roles: NonEmpty<RoleName>
+      readonly last: AssignmentId | null
     }
   | { readonly _tag: 'SplitFirst'; readonly task: TaskId }
-  | { readonly _tag: 'RunWithLead'; readonly task: TaskId; readonly roles: NonEmpty<RoleName> }
+  | {
+      readonly _tag: 'RunWithLead'
+      readonly task: TaskId
+      readonly roles: NonEmpty<RoleName>
+      readonly last: AssignmentId | null
+    }
   | {
       readonly _tag: 'ChangeWaitsForDraft'
       readonly point: PointId
@@ -584,7 +596,14 @@ export type StepWhat =
       readonly file: string
       readonly before: AssignmentId
     }
-  | { readonly _tag: 'MakerWorking'; readonly maker: AssignmentId; readonly task: TaskId }
+  // briefs: how many briefs the maker read (Meta.briefs). Each brief is a new attempt, so a step of
+  // the next attempt is new work, also after a free.
+  | {
+      readonly _tag: 'MakerWorking'
+      readonly maker: AssignmentId
+      readonly task: TaskId
+      readonly briefs: number
+    }
   // The maker's own steps: it reads its brief (again, to fix a reject), or reports its work.
   // after: the latest result of the task; each new result makes the step new work, so a wait that
   // printed the step for r1 returns again after the reject of r2 (Nanda, 2026-11-15).
@@ -593,18 +612,35 @@ export type StepWhat =
       readonly task: TaskId
       readonly redo: boolean
       readonly after: ResultId | null
+      readonly briefs: number
     }
-  | { readonly _tag: 'ReportWork'; readonly maker: AssignmentId; readonly task: TaskId }
+  | {
+      readonly _tag: 'ReportWork'
+      readonly maker: AssignmentId
+      readonly task: TaskId
+      readonly briefs: number
+    }
   | {
       readonly _tag: 'GiveMakerCommand'
       readonly maker: AssignmentId
       readonly task: TaskId
       readonly redo: boolean
       readonly ownChild: boolean
+      readonly briefs: number
     }
-  | { readonly _tag: 'AssignMaker'; readonly task: TaskId; readonly roles: NonEmpty<RoleName> }
+  | {
+      readonly _tag: 'AssignMaker'
+      readonly task: TaskId
+      readonly roles: NonEmpty<RoleName>
+      readonly last: AssignmentId | null
+    }
   | { readonly _tag: 'NoMakerRole'; readonly task: TaskId }
-  | { readonly _tag: 'CheckAgainUnderNewVersion'; readonly result: ResultId }
+  // versions: the new versions (tsd-writing@3) that the result is checked under again.
+  | {
+      readonly _tag: 'CheckAgainUnderNewVersion'
+      readonly result: ResultId
+      readonly versions: ReadonlyArray<string>
+    }
   | {
       readonly _tag: 'ProgramChecksNextReport'
       readonly role: RoleName
@@ -615,7 +651,12 @@ export type StepWhat =
   // A checker with no claim reads its brief again before it checks (its claim ended with its last
   // review, 28e1045).
   | { readonly _tag: 'BriefToCheck'; readonly result: ResultId }
-  | { readonly _tag: 'CheckerWorking'; readonly checker: AssignmentId; readonly result: ResultId }
+  | {
+      readonly _tag: 'CheckerWorking'
+      readonly checker: AssignmentId
+      readonly result: ResultId
+      readonly briefs: number
+    }
   | {
       readonly _tag: 'GiveCheckerCommand'
       readonly checker: AssignmentId
@@ -623,6 +664,7 @@ export type StepWhat =
       readonly task: TaskId
       // The actor gave the checker: it starts the subagent. Else the checker's parent does.
       readonly ownChild: boolean
+      readonly briefs: number
     }
   | { readonly _tag: 'CheckerNotAssigned'; readonly result: ResultId; readonly role: RoleName }
   | {
@@ -630,14 +672,23 @@ export type StepWhat =
       readonly result: ResultId
       readonly role: RoleName
       readonly task: TaskId
+      readonly last: AssignmentId | null
     }
-  | { readonly _tag: 'Decide'; readonly result: ResultId; readonly again: boolean }
+  // versions: the versions of the task's directions now; a decider that accepted under an old
+  // version decides again under each new one.
+  | {
+      readonly _tag: 'Decide'
+      readonly result: ResultId
+      readonly again: boolean
+      readonly versions: ReadonlyArray<string>
+    }
   | { readonly _tag: 'WaitsForDecider'; readonly result: ResultId; readonly decider: AssignmentId }
   | {
       readonly _tag: 'AssignDecider'
       readonly result: ResultId
       readonly role: RoleName
       readonly task: TaskId
+      readonly last: AssignmentId | null
     }
   | {
       readonly _tag: 'DeciderByPerson'

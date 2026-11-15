@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Effect, Layer } from 'effect'
-import type { Time, Work } from '../schema/index.ts'
+import type { Recorded, Time, Work } from '../schema/index.ts'
 import type { Outside } from '../schema/outside.ts'
 import {
   Env,
@@ -58,20 +58,23 @@ export const { ok, tokenIn, solToken } = h
 
 // --- the Moment of a store -----------------------------------------------------------------------
 
-// The Work of a dir: the fold of its store.
-export const workOf = (dir: string): Work => {
+// The events of the store of a dir, in seq order.
+export const recordedOf = (dir: string): ReadonlyArray<Recorded> => {
   const env = { ARISTOTELES_DB: join(dir, '.work', 'aristoteles.db') }
   return Effect.runSync(
     Effect.gen(function* () {
       const store = yield* Store
       const opened = yield* store.open(dir, { create: false })
-      return fold(yield* opened.events)
+      return yield* opened.events
     }).pipe(
       Effect.scoped,
       Effect.provide(StoreLive.pipe(Layer.provide(Layer.succeed(Env, { vars: env })))),
     ),
   )
 }
+
+// The Work of a dir: the fold of its store.
+export const workOf = (dir: string): Work => fold(recordedOf(dir))
 
 // The readings of the outside, as the live readings make them, with no terminals.
 export const outsideNow = (work: Work, dir: string): Outside => {

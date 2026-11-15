@@ -24,6 +24,7 @@ import { leafName, turnOf } from './deciders.ts'
 import {
   answered,
   blockersOfResult,
+  currentOf,
   deciderOf,
   decidesNow,
   decidesResults,
@@ -103,6 +104,15 @@ export const assignable = (w: Work, a: Assignment) =>
   })
 const sectionOf = (t: Task): string | null =>
   t.descriptionAi.context.section._tag === 'Section' ? t.descriptionAi.context.section.id : null
+// How many briefs an assignment read: each one starts a new attempt.
+const briefsOf = (w: Work, a: AssignmentId): number => w.meta.get(a)?.briefs ?? 0
+// The last assignment of one of the roles on a task, open or ended.
+const lastGiven = (w: Work, task: TaskId, roles: ReadonlyArray<RoleName>): AssignmentId | null =>
+  [...w.assignments.values()].filter((x) => x.task === task && roles.includes(x.role)).at(-1)?.id ??
+  null
+// The versions of directions now, as their ids (tsd-writing@3).
+const versionsNow = (w: Work, directions: ReadonlyArray<DirectionId>): ReadonlyArray<string> =>
+  directions.map((x) => `${x}@${currentOf(w, x).number}`)
 export const claimedSince = (w: Work, a: AssignmentId) => {
   const claim = w.meta.get(a)?.claim
   return claim === undefined || claim._tag === 'Free' ? undefined : claim.since
@@ -479,7 +489,8 @@ const acceptedSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
     steps.push(wait(what))
   }
   const finish: Intent = { _tag: 'Finish', target: { assignment: a.id } }
-  steps.push(act({ _tag: 'FinishAcceptedTask', task: a.task }, finish))
+  const what: StepWhat = { _tag: 'FinishAcceptedTask', task: a.task, result: accepted?.id ?? null }
+  steps.push(act(what, finish))
   return steps
 }
 
@@ -572,7 +583,8 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
   const subLeads = nonEmpty(lower.filter(leads).map((r) => r.role))
   if (splits && t.id === a.task && !result && t.needs.length === 0 && subLeads) {
     if (sectionOf(t) !== null) {
-      const what: StepWhat = { _tag: 'RunSectionWithLead', task: t.id, roles: subLeads }
+      const last = lastGiven(w, t.id, subLeads)
+      const what: StepWhat = { _tag: 'RunSectionWithLead', task: t.id, roles: subLeads, last }
       return [...steps, act(what, ...giveEach(t.id, subLeads))]
     }
     if (mayChange(w, a.id, t.id, d.moment.at)) {
@@ -581,7 +593,8 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
     }
   }
   if (t.id !== a.task && subLeads) {
-    const what: StepWhat = { _tag: 'RunWithLead', task: t.id, roles: subLeads }
+    const last = lastGiven(w, t.id, subLeads)
+    const what: StepWhat = { _tag: 'RunWithLead', task: t.id, roles: subLeads, last }
     return [...steps, act(what, ...giveEach(t.id, subLeads))]
   }
   if (!result || changed || fix) {
@@ -592,8 +605,10 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
     steps.push(makerStep(d, a, t, result !== undefined, makers))
     return steps
   }
-  if (items.some((i) => i._tag === 'OldVersion')) {
-    steps.push(wait({ _tag: 'CheckAgainUnderNewVersion', result: result.id }))
+  const old = items.flatMap((i) => (i._tag === 'OldVersion' ? [i.ref] : []))
+  if (old.length > 0) {
+    const versions = versionsNow(w, old)
+    steps.push(wait({ _tag: 'CheckAgainUnderNewVersion', result: result.id, versions }))
   }
   // The maker of the result does not choose its checkers, nor decide it. A role that leads
   // nothing checks only its own rules: the lead of the task sees to the other checkers.
@@ -763,26 +778,43 @@ const makerStep = (
   const maker = [...w.assignments.values()].find((x) => x.task === t.id && makesNow(d, x))
   const waits = maker && fileTurn(d, maker.id)
   if (maker && waits) return wait({ _tag: 'MakerWaitsForFile', maker: maker.id, ...waits })
+  const briefs = maker === undefined ? 0 : briefsOf(w, maker.id)
   // The maker itself never waits on itself: it reads its brief, or reports what it made.
   if (maker?.id === a.id) {
     const self = { assignment: a.id }
+    const after = latestResultOf(w, t.id)?.id ?? null
     return claimedSince(w, a.id) === undefined
       ? act(
-          { _tag: 'BriefToMake', task: t.id, redo, after: latestResultOf(w, t.id)?.id ?? null },
+          { _tag: 'BriefToMake', task: t.id, redo, after, briefs },
           { _tag: 'Brief', target: self },
         )
-      : act({ _tag: 'ReportWork', maker: a.id, task: t.id }, { _tag: 'Report', target: self })
+      : act(
+          { _tag: 'ReportWork', maker: a.id, task: t.id, briefs },
+          { _tag: 'Report', target: self },
+        )
   }
   if (maker && claimedSince(w, maker.id) !== undefined) {
-    const what: StepWhat = { _tag: 'MakerWorking', maker: maker.id, task: t.id }
+    const what: StepWhat = { _tag: 'MakerWorking', maker: maker.id, task: t.id, briefs }
     return act(what, { _tag: 'Free', target: { assignment: maker.id } })
   }
   if (maker) {
     const ownChild = parentId(maker) === a.id
-    return wait({ _tag: 'GiveMakerCommand', maker: maker.id, task: t.id, redo, ownChild })
+    const what: StepWhat = {
+      _tag: 'GiveMakerCommand',
+      maker: maker.id,
+      task: t.id,
+      redo,
+      ownChild,
+      briefs,
+    }
+    return wait(what)
   }
   const roles = nonEmpty(makers)
-  if (roles) return act({ _tag: 'AssignMaker', task: t.id, roles }, ...giveEach(t.id, roles))
+  if (roles) {
+    const last = lastGiven(w, t.id, roles)
+    const what: StepWhat = { _tag: 'AssignMaker', task: t.id, roles, last }
+    return act(what, ...giveEach(t.id, roles))
+  }
   const what: StepWhat = { _tag: 'NoMakerRole', task: t.id }
   return escalatedTask(d, a) ? wait(what) : act(what, escalateTask(a))
 }
@@ -835,20 +867,30 @@ const checkerStep = (
       { _tag: 'Reject', target: { of } },
     )
   }
+  const briefs = checker === undefined ? 0 : briefsOf(w, checker.id)
   if (checker && claimedSince(w, checker.id) !== undefined) {
-    const what: StepWhat = { _tag: 'CheckerWorking', checker: checker.id, result }
+    const what: StepWhat = { _tag: 'CheckerWorking', checker: checker.id, result, briefs }
     return act(what, { _tag: 'Free', target: { assignment: checker.id } })
   }
   if (checker) {
     const ownChild = parentId(checker) === a.id
-    return wait({ _tag: 'GiveCheckerCommand', checker: checker.id, result, task: t.id, ownChild })
+    const what: StepWhat = {
+      _tag: 'GiveCheckerCommand',
+      checker: checker.id,
+      result,
+      task: t.id,
+      ownChild,
+      briefs,
+    }
+    return wait(what)
   }
   if (r?._tag === 'Model' && !assignsOf(roleOfA(w, a)).includes(role)) {
     const what: StepWhat = { _tag: 'CheckerNotAssigned', result, role }
     const escalate: Intent = { _tag: 'EscalateResult', target: { result } }
     return escalatedResult(d, a, result) ? wait(what) : act(what, escalate)
   }
-  return act({ _tag: 'AssignChecker', result, role, task: t.id }, ...giveEach(t.id, [role]))
+  const last = lastGiven(w, t.id, [role])
+  return act({ _tag: 'AssignChecker', result, role, task: t.id, last }, ...giveEach(t.id, [role]))
 }
 
 // The decider decides when only its accept is left (B3: its turn of an Order); otherwise the step
@@ -866,17 +908,21 @@ const deciderSteps = (
     i._tag === 'DeciderAnyApprover'
   const decider = items.find(isDecider)
   if (!decider || !items.every(isDecider)) return []
+  const task = w.results.get(result)?.task
   if (decidesNow(w, a.id, result, d.moment.at)) {
     const of = { _tag: 'Result', id: result } as const
+    const again = decider._tag === 'DeciderAcceptedUnderOld'
+    // Only a decide again names the versions: a new version that leaves the accept standing is
+    // no new work.
+    const versions = task === undefined || !again ? [] : versionsNow(w, directionIdsOf(w, task))
     return [
       act(
-        { _tag: 'Decide', result, again: decider._tag === 'DeciderAcceptedUnderOld' },
+        { _tag: 'Decide', result, again, versions },
         { _tag: 'Accept', target: { of } },
         { _tag: 'Reject', target: { of } },
       ),
     ]
   }
-  const task = w.results.get(result)?.task
   if (task === undefined) return []
   const lower = assignable(w, a).map((r) => r.role)
   return decisionWaitsOn(w, result).map((leaf): Candidate => {
@@ -888,7 +934,8 @@ const deciderSteps = (
         : undefined
     if (open) return wait({ _tag: 'WaitsForDecider', result, decider: open.id })
     if (leaf._tag === 'Role' && lower.includes(leaf.role)) {
-      const what: StepWhat = { _tag: 'AssignDecider', result, role: leaf.role, task }
+      const last = lastGiven(w, task, [leaf.role])
+      const what: StepWhat = { _tag: 'AssignDecider', result, role: leaf.role, task, last }
       return act(what, ...giveEach(task, [leaf.role]))
     }
     return wait({ _tag: 'DeciderByPerson', result, leaf, task })
@@ -917,14 +964,17 @@ export const nextFor: NextFor = (d, actor) => {
   return []
 }
 
-// The ids that a step names, by its tag (no words, no times, no flags): bug 13.
+// The ids that a step names, by its tag (no words, no flags, no clock): bug 13. Each step also
+// names the facts that make it new work (a read, a brief, a version, an earlier assignment), so
+// a step that comes back for new work has a new key, and work wait returns (Nanda, 2026-11-15).
 const IDS: {
   readonly [K in StepWhat['_tag']]: (s: Extract<StepWhat, { _tag: K }>) => ReadonlyArray<string>
 } = {
-  ReadSource: (s) => [s.source],
+  // seenAt: the time of the last read, a fact of the log; a new read expires as new work.
+  ReadSource: (s) => [s.source, s.seenAt],
   Answer: (s) => [s.question],
   Resolve: (s) => [s.escalation, s.result],
-  RecheckStaleSource: (s) => [s.result, s.source],
+  RecheckStaleSource: (s) => [s.result, s.source, s.now],
   RecheckOldNeed: (s) => [s.result, s.need, s.newer],
   BriefOverWaits: (s) => [s.assignment, s.task, `${s.size}`, ...s.drafts],
   ExplainDraft: (s) => [s.draft],
@@ -936,7 +986,7 @@ const IDS: {
   DraftNewDirection: (s) => [s.suggestion],
   AddExamples: (s) => [s.draft],
   PutOnBase: (s) => [s.task, s.result],
-  FinishAcceptedTask: (s) => [s.task],
+  FinishAcceptedTask: (s) => [s.task, s.result ?? 'none'],
   EvaluationWaitsForOwner: (s) => [s.evaluation, s.task],
   Evaluate: (s) => [s.task, s.stop.id],
   WaitsForEvaluationBy: (s) => [s.task, s.stop.id, s.evaluator],
@@ -952,30 +1002,30 @@ const IDS: {
   WaitsForOutsideNeed: (s) => [s.task, s.need],
   RunsAfter: (s) => [s.task, s.need],
   LeadRuns: (s) => [s.lead, s.task],
-  RunSectionWithLead: (s) => [s.task, ...s.roles],
+  RunSectionWithLead: (s) => [s.task, ...s.roles, s.last ?? 'none'],
   SplitFirst: (s) => [s.task],
-  RunWithLead: (s) => [s.task, ...s.roles],
+  RunWithLead: (s) => [s.task, ...s.roles, s.last ?? 'none'],
   ChangeWaitsForDraft: (s) => [s.point, ...s.drafts],
   ReviseForPoint: (s) => [s.point, ...s.directions],
   EscalateForPoint: (s) => [s.point, s.result],
   MakerWaitsForFile: (s) => [s.maker, s.before],
-  MakerWorking: (s) => [s.maker, s.task],
-  BriefToMake: (s) => [s.task, s.after ?? 'none'],
-  ReportWork: (s) => [s.maker, s.task],
-  GiveMakerCommand: (s) => [s.maker, s.task],
-  AssignMaker: (s) => [s.task, ...s.roles],
+  MakerWorking: (s) => [s.maker, s.task, `${s.briefs}`],
+  BriefToMake: (s) => [s.task, s.after ?? 'none', `${s.briefs}`],
+  ReportWork: (s) => [s.maker, s.task, `${s.briefs}`],
+  GiveMakerCommand: (s) => [s.maker, s.task, `${s.briefs}`],
+  AssignMaker: (s) => [s.task, ...s.roles, s.last ?? 'none'],
   NoMakerRole: (s) => [s.task],
-  CheckAgainUnderNewVersion: (s) => [s.result],
+  CheckAgainUnderNewVersion: (s) => [s.result, ...s.versions],
   ProgramChecksNextReport: (s) => [s.role, s.task, s.result],
   CheckYourself: (s) => [s.result],
   BriefToCheck: (s) => [s.result],
-  CheckerWorking: (s) => [s.checker, s.result],
-  GiveCheckerCommand: (s) => [s.checker, s.result, s.task],
+  CheckerWorking: (s) => [s.checker, s.result, `${s.briefs}`],
+  GiveCheckerCommand: (s) => [s.checker, s.result, s.task, `${s.briefs}`],
   CheckerNotAssigned: (s) => [s.result, s.role],
-  AssignChecker: (s) => [s.result, s.role, s.task],
-  Decide: (s) => [s.result],
+  AssignChecker: (s) => [s.result, s.role, s.task, s.last ?? 'none'],
+  Decide: (s) => [s.result, ...s.versions],
   WaitsForDecider: (s) => [s.result, s.decider],
-  AssignDecider: (s) => [s.result, s.role, s.task],
+  AssignDecider: (s) => [s.result, s.role, s.task, s.last ?? 'none'],
   DeciderByPerson: (s) => [s.result, leafName(s.leaf), s.task],
   PersonDecides: (s) => [s.kind, s.id],
   AnswerPrompt: (s) => [s.agent, s.prompt],
@@ -989,4 +1039,7 @@ const IDS: {
 }
 export const keyOfWhat = (what: StepWhat): string =>
   [what._tag, ...(IDS[what._tag] as (s: StepWhat) => ReadonlyArray<string>)(what)].join(' ')
-export const stepKey: StepKey = (steps) => steps.map((s) => keyOfWhat(s.what)).join('\n')
+// A step that waits is marked: when it gets an act (a grant, a time edge), it is ready work that
+// the last wait did not print.
+export const stepKey: StepKey = (steps) =>
+  steps.map((s) => (s._tag === 'Wait' ? 'wait ' : '') + keyOfWhat(s.what)).join('\n')
