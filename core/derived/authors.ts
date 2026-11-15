@@ -1,9 +1,9 @@
 // Who wrote a draft, who writes the words of a decision, and who writes the next draft after a
 // Reject: one reader each, so the steps, canAct, the page and the words never disagree.
-import type { AssignmentId, Direction, Revision, Run, Work } from '../schema/index.ts'
+import type { AssignmentId, Direction, Revision, Run, TaskId, Work } from '../schema/index.ts'
 import type { WordsOn } from '../schema/actions.ts'
-import { decisionTaskOf, hostOf, placementOf } from './catalog.ts'
-import { currentTask, holdsA, openedTopOf } from './reads.ts'
+import { hostOf, placementOf, taskOfAnswer } from './catalog.ts'
+import { currentTask, holdsA, openedTopOf, problemTask } from './reads.ts'
 import { followsDirection } from './steps.ts'
 import type { DraftAuthor, Derived, Explainer, Placement, Redrafter } from './types.ts'
 
@@ -27,8 +27,40 @@ export const authorOf = (w: Work, x: Revision<Direction>): DraftAuthor => {
 export const authorAssignment = (a: DraftAuthor): AssignmentId | undefined =>
   a._tag === 'Assignment' || a._tag === 'Host' ? a.assignment : undefined
 
-// The hosts of the open runs (the host's assignment on each run's top task now), with their sessions.
-const hosts = (d: Derived) => {
+// The task of a draft (P8): the task of the Reject that it answers; else the project of its
+// author (a host's run, an agent's task). The person's own change (it answers a suggestion, or a
+// model run outside any task wrote it), an onboarded draft and a company refresh are the work of
+// the dir: they have no task.
+export const draftTaskOf = (w: Work, x: Revision<Direction>): TaskId | undefined => {
+  const answered = x.answers.map((a) => taskOfAnswer(w, a)).find((t) => t !== undefined)
+  if (answered !== undefined) return answered
+  if (x.answers.some((a) => a.startsWith('s'))) return undefined
+  const author = authorOf(w, x)
+  if (author._tag === 'Assignment') return w.assignments.get(author.assignment)?.task
+  if (author._tag !== 'Host') return undefined
+  const opened = openedTopOf(w, author.run)
+  return opened === undefined ? undefined : currentTask(w, opened)
+}
+// The task where a decision of the page sits: a problem's, a draft's (draftTaskOf), a run's top.
+export const decisionTaskOf = (w: Work, on: WordsOn): TaskId | undefined => {
+  switch (on._tag) {
+    case 'Problem': {
+      const p = w.problems.get(on.id)
+      return p === undefined ? undefined : problemTask(w, p)
+    }
+    case 'End': {
+      const opened = openedTopOf(w, on.id)
+      return opened === undefined ? undefined : currentTask(w, opened)
+    }
+    case 'Draft': {
+      const x = w.drafts.get(on.id)
+      return x === undefined ? undefined : draftTaskOf(w, x)
+    }
+  }
+}
+
+// The hosts of the open runs (the host's assignment on each run's top task now).
+const runHosts = (d: Derived): ReadonlyArray<AssignmentId> => {
   const w = d.moment.work
   return [...w.runs.values()].flatMap((run) => {
     const state = d.states.runs.get(run.id)?._tag
@@ -36,21 +68,16 @@ const hosts = (d: Derived) => {
     if (opened === undefined || state === 'Done' || state === 'Closed') return []
     const top: Placement = { _tag: 'OnTask', task: currentTask(w, opened) }
     const host = hostOf(d.moment, top, d.states)
-    return host._tag === 'Host' ? [host] : []
+    return host._tag === 'Host' ? [host.assignment] : []
   })
 }
-// Ruling 10.10: the active hosts, the hosts of the open runs (F7). No reading of a pane: the CLI
-// reads none, the page reads the pump, and both must derive the same steps and holds. A host whose
-// pane died keeps its steps until it runs again, as the host of a project does.
-export const activeHosts = (d: Derived): ReadonlyArray<AssignmentId> =>
-  hosts(d).map((h) => h.assignment)
 
 // Who drafts what no task follows (P1): a new direction, the examples of a company draft, the
-// adjustment that words about the roles ask for. The active hosts, else every open agent that
-// directs or fits roles and may act (a brief over its limit waits).
+// adjustment that words about the roles ask for. The hosts of the open runs, else every open agent
+// that directs or fits roles and may act (a brief over its limit waits).
 export const dirDrafters = (d: Derived): ReadonlyArray<AssignmentId> => {
-  const active = activeHosts(d)
-  if (active.length > 0) return active
+  const hosts = runHosts(d)
+  if (hosts.length > 0) return hosts
   const w = d.moment.work
   return [...w.assignments.values()].flatMap((a) => {
     const s = d.states.assignments.get(a.id)?._tag
@@ -60,20 +87,16 @@ export const dirDrafters = (d: Derived): ReadonlyArray<AssignmentId> => {
   })
 }
 
-// The host of a decision's project writes its words; a decision of no project, any active host.
+// The host of a decision's project writes its words. The work of the dir has no host (P8): the
+// person reads it as it is.
 export const explainerOf = (d: Derived, on: WordsOn): Explainer => {
   const task = decisionTaskOf(d.moment.work, on)
-  const placement: Placement =
-    task === undefined ? { _tag: 'DirWide' } : placementOf(d.moment, task, d.states)
-  if (placement._tag === 'OnTask') {
-    const host = hostOf(d.moment, placement, d.states)
-    return host._tag === 'Host' ? { _tag: 'Host', assignment: host.assignment } : { _tag: 'None' }
-  }
-  const [one, ...rest] = activeHosts(d)
-  return one === undefined ? { _tag: 'None' } : { _tag: 'AnyActiveHost', hosts: [one, ...rest] }
+  if (task === undefined) return { _tag: 'None' }
+  const host = hostOf(d.moment, placementOf(d.moment, task, d.states), d.states)
+  return host._tag === 'Host' ? { _tag: 'Host', assignment: host.assignment } : { _tag: 'None' }
 }
 export const explains = (e: Explainer, a: AssignmentId): boolean =>
-  e._tag === 'Host' ? e.assignment === a : e._tag === 'AnyActiveHost' && e.hosts.includes(a)
+  e._tag === 'Host' && e.assignment === a
 
 // Who writes the next draft after a decider's Reject. A model run has ended: the explainer of
 // the draft revises it; with no host, the person runs the model again or says it in words.
@@ -87,8 +110,7 @@ export const redrafterOf = (d: Derived, x: Revision<Direction>): Redrafter => {
   if (writer === undefined && x._tag === 'New') return { _tag: 'Person' }
   if (writer === undefined) {
     const e = explainerOf(d, { _tag: 'Draft', id: x.id })
-    if (e._tag === 'Host') return { _tag: 'Hosts', hosts: [e.assignment] }
-    return e._tag === 'AnyActiveHost' ? { _tag: 'Hosts', hosts: e.hosts } : { _tag: 'Person' }
+    return e._tag === 'Host' ? { _tag: 'Host', assignment: e.assignment } : { _tag: 'Person' }
   }
   const open = (a: AssignmentId) => d.states.assignments.get(a)?._tag !== 'Ended'
   if (open(writer)) return { _tag: 'Writer', assignment: writer }
@@ -104,8 +126,8 @@ export const redrafters = (r: Redrafter): ReadonlyArray<AssignmentId> => {
   switch (r._tag) {
     case 'Writer':
       return [r.assignment]
-    case 'Hosts':
-      return r.hosts
+    case 'Host':
+      return [r.assignment]
     case 'Follower':
       return r.followers
     default:

@@ -346,19 +346,17 @@ export type DraftAuthor =
   | { readonly _tag: 'ModelRun'; readonly name: string; readonly run: string }
   | { readonly _tag: 'Imported' }
   | { readonly _tag: 'Onboarded' }
-// Who writes the words of a decision: the host of its project, or any active host when it has
-// no project (ruling 10.10).
+// Who writes the words of a decision: the host of its project; the work of the dir has none (P8).
 export type Explainer =
   | { readonly _tag: 'Host'; readonly assignment: AssignmentId }
-  | { readonly _tag: 'AnyActiveHost'; readonly hosts: NonEmpty<AssignmentId> }
   | { readonly _tag: 'None' }
-// Who writes the next draft after a decider's Reject: its writer; the hosts of a model run's
+// Who writes the next draft after a decider's Reject: its writer; the host of a model run's
 // draft (its explainer); an open role that directs and follows the direction when the writer is
 // finished; a new role that the person assigns; else the person (the model run again, or words).
 // A company draft changes in its repo; an onboarded one is official.
 export type Redrafter =
   | { readonly _tag: 'Writer'; readonly assignment: AssignmentId }
-  | { readonly _tag: 'Hosts'; readonly hosts: NonEmpty<AssignmentId> }
+  | { readonly _tag: 'Host'; readonly assignment: AssignmentId }
   | {
       readonly _tag: 'Follower'
       readonly finished: AssignmentId
@@ -711,14 +709,8 @@ export type StepWhat =
       // The drafts of the task's directions that wait for a decision: a decision changes the step.
       readonly drafts: ReadonlyArray<RevisionId>
     }
-  // Ruling 10.10: the host writes the words of a draft that waits for the person. A draft from no
-  // project (DirWide) goes to every active host; the first words end it for the others.
-  | {
-      readonly _tag: 'ExplainDraft'
-      readonly draft: RevisionId
-      readonly direction: DirectionId
-      readonly dirWide: boolean
-    }
+  // Ruling 10.10: the host of its project writes the words of a draft that waits for the person.
+  | { readonly _tag: 'ExplainDraft'; readonly draft: RevisionId; readonly direction: DirectionId }
   // The notices of ruling 10.1 (notices.ts): what the watcher typed into a terminal before, as
   // steps of the actor it was for, so that its work wait returns. A child's AI CLI asks (a
   // permission dialog): its host answers with work send.

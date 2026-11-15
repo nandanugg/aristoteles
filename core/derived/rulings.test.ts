@@ -28,7 +28,6 @@ import type {
 } from '../schema/index.ts'
 import { canAct, type Derived, nextFor, stepKey, waitingFor } from './index.ts'
 import { fileTurn } from './steps.ts'
-import type { TerminalReading } from '../schema/outside.ts'
 
 const id = <A>(x: string): A => x as A
 const agentOf = (assignment: string): Author => ({
@@ -269,16 +268,22 @@ describe('ruling 10.9: a brief over its limit is a derived state', () => {
   }, 60000)
 })
 
-describe('ruling 10.10: the words of a direction draft go to the hosts', () => {
+// P8 (Nanda, 2026-11-15): every piece of work is a dir task or a project task. A draft belongs to
+// the project of its author; the person's own change (a model run outside any task, an answer to a
+// suggestion) is the work of the dir: it shows at once, and no host writes words about it.
+describe('P8: a draft sits on the project of its author', () => {
   const CHANGE = 'add:\n  - { id: short, says: Keep it short. }\n'
   const OTHER_PANE = { env: { TMUX: '/tmp/ar-test-person.sock,1,0', TMUX_PANE: '%8' } }
   const explains = (d: Derived, a: string): ReadonlyArray<string> =>
-    nextFor(d, agentOf(a)).flatMap((s) =>
-      s.what._tag === 'ExplainDraft' ? [`${s._tag} ${s.what.draft} ${s.what.dirWide}`] : [],
+    nextFor(d, agentOf(a)).flatMap((s) => (s.what._tag === 'ExplainDraft' ? [s.what.draft] : []))
+  const itemOf = (d: Derived, draft: string) =>
+    waitingFor(d, { _tag: 'Person', name: 'Nanda' }).find(
+      (i): i is Extract<typeof i, { _tag: 'DraftForPerson' }> =>
+        i._tag === 'DraftForPerson' && i.draft === draft,
     )
+  const drafted = (out: string) => out.match(/^(d\d+) drafted/m)?.[1] ?? ''
   let p: Project
   let host1 = ''
-  let draft = ''
   beforeAll(async () => {
     const top = `${h.TASK_WHOLE}role: architect\n`
     p = h.project({ 'top.yaml': top, 'top2.yaml': top.replace('The Introduction', 'Another') })
@@ -295,57 +300,42 @@ describe('ruling 10.10: the words of a direction draft go to the hosts', () => {
     ok(await p.run('task draft --file=top2.yaml --by=h2', OTHER_PANE))
     const opened2 = ok(await p.ui('task open td2')).out
     ok(await p.agent(`brief ${await solToken(p, opened2, 'h2', OTHER_PANE)}`)) // ruling 10.1
-    // A draft that answers nothing of a task: it comes from no project. A model run that is no
-    // host drafts it (a host's own draft carries its words: see the tests below).
     p.write('change.yaml', CHANGE)
-    const out = ok(
-      await p.agent(
-        'direction revise tsd-writing --file=change.yaml --by=assess --why="Correct the standard"',
-      ),
-    ).out
-    draft = out.match(/^(d\d+) drafted/m)?.[1] ?? ''
+    p.write('says.yaml', 'says: Keep each rule short.\n')
   }, 60000)
 
-  test('a draft from no project: every active host gets "explain dN"', () => {
+  test("a host's draft that answers nothing sits on its project", async () => {
+    const why = '--why="Correct the standard"'
+    const out = ok(await p.run(`direction revise tsd-writing --file=change.yaml --by=h1 ${why}`, h.HOST))
     const d = derivedNow(p)
-    expect(explains(d, 'a1')).toEqual([`Do ${draft} true`])
-    expect(explains(d, 'a2')).toEqual([`Do ${draft} true`])
+    const item = itemOf(d, drafted(out.out))
+    expect(item?.placement).toEqual({ _tag: 'OnTask', task: id<TaskId>('t1') })
+    expect(item?.hold._tag).toBe('Shown')
   })
 
-  test('the page holds a draft from no project while a host is active', () => {
-    const items = waitingFor(derivedNow(p), { _tag: 'Person', name: 'Nanda' })
-    const [item] = items.filter((i) => i._tag === 'DraftForPerson')
-    expect(item?.hold._tag).toBe('HeldForHost')
-  })
-
-  // F7: the CLI reads no terminals and the page reads the pump; both derive the same hosts. A host
-  // of an open run is active: a dead pane changes no step and no hold (it keeps its step until
-  // it runs again; the page shows the draft after hostWaitMinutes).
-  test('the CLI and the page derive the same hosts, whatever the panes read', () => {
-    const w = workOf(p.dir)
-    const session = (run: string) => w.runs.get(id(run))?.session ?? ''
-    const reading = (live: boolean): TerminalReading =>
-      live ? { _tag: 'Live', lastOutput: 0 } : { _tag: 'Ended', exit: null, lastOutput: 0 }
-    const page = { [session('h1')]: reading(true), [session('h2')]: reading(false) }
-    const seen = (terminals: Record<string, TerminalReading>) => {
-      const d = derivedOf(w, p.now() as Time, p.dir, { terminals })
-      const [item] = waitingFor(d, { _tag: 'Person', name: 'Nanda' }).filter(
-        (i) => i._tag === 'DraftForPerson',
-      )
-      return { a1: explains(d, 'a1'), a2: explains(d, 'a2'), hold: item?.hold._tag }
-    }
-    const both = { a1: [`Do ${draft} true`], a2: [`Do ${draft} true`], hold: 'HeldForHost' as const }
-    expect(seen({})).toEqual(both)
-    expect(seen(page)).toEqual(both)
-    expect(seen({ [session('h1')]: reading(false), [session('h2')]: reading(false) })).toEqual(both)
-  })
-
-  test('the first host that writes the words ends the step for the others', async () => {
-    const words = '--text="The rules are long." --hope="Shorter briefs."'
-    ok(await p.agent(`note ${host1} words --on=${draft} ${words}`))
+  test('a model run outside any task: dir work, shown at once, no host step', async () => {
+    const why = '--why="Correct the standard"'
+    const out = ok(await p.agent(`direction revise tsd-writing --file=change.yaml --by=assess ${why}`))
+    const draft = drafted(out.out)
     const d = derivedNow(p)
-    expect(explains(d, 'a1')).toEqual([])
-    expect(explains(d, 'a2')).toEqual([])
+    expect(itemOf(d, draft)?.placement).toEqual({ _tag: 'DirWide' })
+    expect(itemOf(d, draft)?.hold._tag).toBe('Shown')
+    expect(explains(d, 'a1')).not.toContain(draft)
+    expect(explains(d, 'a2')).not.toContain(draft)
+  })
+
+  test("the person's change from the gear (it answers a suggestion): dir work, no host step", async () => {
+    const said = ok(await p.ui('suggest tsd-writing --says="keep the rules short"')).out
+    const suggestion = said.match(/\b(s\d+)\b/)?.[1] ?? ''
+    expect(suggestion).not.toBe('')
+    const why = `--why="Correct the standard" --answers=${suggestion}`
+    const out = ok(await p.agent(`direction revise ${host1} tsd-writing --file=says.yaml ${why}`))
+    const draft = drafted(out.out)
+    const d = derivedNow(p)
+    expect(itemOf(d, draft)?.placement).toEqual({ _tag: 'DirWide' })
+    expect(itemOf(d, draft)?.hold._tag).toBe('Shown')
+    expect(explains(d, 'a1')).not.toContain(draft)
+    expect(explains(d, 'a2')).not.toContain(draft)
   })
 })
 
@@ -417,9 +407,9 @@ describe('ruling 10.10: a draft from one project goes to its host only', () => {
     const d = derivedNow(p)
     const explains = (a: string) =>
       nextFor(d, agentOf(a)).flatMap((s) =>
-        s.what._tag === 'ExplainDraft' ? [`${s.what.draft} ${s.what.dirWide}`] : [],
+        s.what._tag === 'ExplainDraft' ? [String(s.what.draft)] : [],
       )
-    expect(explains('a1')).toEqual([`${draft} false`])
+    expect(explains('a1')).toEqual([draft])
     expect(explains('a2')).toEqual([])
   }, 60000)
 })

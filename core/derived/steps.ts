@@ -278,7 +278,7 @@ const shortenSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
 // --- the words of a draft for the person (ruling 10.10) -----------------------------------------
 
 // Each draft that waits for a person and has no words of a host yet: the host of its project
-// writes them; a draft from no project goes to every active host, and the first words end it.
+// writes them; the work of the dir has no host (P8).
 const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   const w = d.moment.work
   const seen = new Set<string>()
@@ -289,8 +289,7 @@ const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
     if (draft === undefined || w.hostWords.has(item.draft)) return []
     const on = { _tag: 'Draft', id: draft.id } as const
     if (authorOf(w, draft)._tag === 'Host' || !explains(explainerOf(d, on), a.id)) return []
-    const dirWide = item.placement._tag === 'DirWide'
-    const what: StepWhat = { _tag: 'ExplainDraft', draft: draft.id, direction: draft.of, dirWide }
+    const what: StepWhat = { _tag: 'ExplainDraft', draft: draft.id, direction: draft.of }
     return [act(what, { _tag: 'WriteHostWords', target: { on } })]
   })
 }

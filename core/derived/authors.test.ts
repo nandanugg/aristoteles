@@ -104,11 +104,17 @@ describe('D4: a model run that is no host drafts; the person rejects it', () => 
     expect(item?.step._tag).toBe('Wait')
   }, 120000)
 
-  test('it answers nothing of a task: every active host revises it', async () => {
+  // P8: a draft that answers nothing of a task is the work of the dir; no host takes it.
+  test('it answers nothing of a task: the person moves it, not the host', async () => {
     const { p } = await hosted()
     const draft = await drafted(p, 'tsd-writing --by=assess', false)
     ok(await p.nanda(`review ${draft} reject --reason="too vague"`, 'reject'))
-    expect(tags(derivedNow(p), 'a1')).toContain('Do ReviseRejectedDraft')
+    const d = derivedNow(p)
+    expect(tags(d, 'a1')).not.toContain('Do ReviseRejectedDraft')
+    const [item] = waitingFor(d, NANDA).filter((i) => i._tag === 'DraftVetoed')
+    expect(item?.step._tag === 'Do' ? item.step.intents.map((i) => i._tag) : []).toEqual([
+      'Suggest',
+    ])
   }, 120000)
 
   test('no host is active: the person moves it, in words or by the model run again', async () => {

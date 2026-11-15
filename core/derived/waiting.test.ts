@@ -53,6 +53,9 @@ describe('the page decisions are the page kinds of waitingFor', () => {
         } else if (kind === 'Confirm') {
           expect(d.states.forwards.get(id as never)?._tag).toBe('Irrelevant')
           seen.push(`${s.name}: C6: ${id}`)
+        } else if (kind === 'Direction' && now.some((y) => y[0] === kind && y[1] === id)) {
+          // P8: a draft sits on the project of its author (it showed for the whole dir).
+          seen.push(`${s.name}: P8: ${id} on ${now.find((y) => y[1] === id)?.[2]}`)
         } else expect([s.name, x]).toEqual([s.name, 'an old decision that is gone'])
       }
       for (const y of now) {
@@ -62,6 +65,7 @@ describe('the page decisions are the page kinds of waitingFor', () => {
           seen.push(`${s.name}: P1: ${y[0]} ${y[1]}`)
           continue
         }
+        if (seen.includes(`${s.name}: P8: ${y[1]} on ${y[2]}`)) continue
         expect([s.name, old.some((x) => JSON.stringify(x) === JSON.stringify(y)), y]).toEqual([
           s.name,
           true,
@@ -71,6 +75,7 @@ describe('the page decisions are the page kinds of waitingFor', () => {
     }
     expect(seen).toContain('uiRunRemade: C3: sp1')
     expect(seen).toContain('escalated: P1: Step v2')
+    expect(seen).toContain('relay: P8: d2 on t1')
   })
 })
 

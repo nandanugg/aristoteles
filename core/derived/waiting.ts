@@ -20,10 +20,17 @@ import type {
   Work,
 } from '../schema/index.ts'
 import { canAct } from './can.ts'
-import { decisionTaskOf, hostOf, placementOf, taskOfAnswer } from './catalog.ts'
+import { hostOf, placementOf } from './catalog.ts'
 import { adjustmentDrafts, rolesSuggestionsWaiting, subjectOf } from './adjustments.ts'
 import { newDirectionsToDraft, openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
-import { authorAssignment, authorOf, activeHosts, dirDrafters, redrafterOf } from './authors.ts'
+import {
+  authorAssignment,
+  authorOf,
+  decisionTaskOf,
+  dirDrafters,
+  draftTaskOf,
+  redrafterOf,
+} from './authors.ts'
 import { roleWordsDrafts } from './role-words.ts'
 import {
   answered,
@@ -155,16 +162,13 @@ const openTop = (d: Derived): Task | undefined =>
 
 // When the page shows an item (decisionsOf): at once when it is raw (a forward, a problem that the
 // UI recorded) or the host's own words, when the host wrote its words, when no host holds its
-// placement (S11: the host of the placement; 10.10: any active host for an item of no project),
-// or after hostWaitMinutes.
+// placement (S11: the host of the placement; P8: the work of the dir has no host), or after
+// hostWaitMinutes.
 const holdOf = (d: Derived, id: string, placement: Placement, at: Time, raw: boolean): Hold => {
   const m = d.moment
   const waitMs = m.outside.settings.hostWaitMinutes * 60000
   const words = m.work.hostWords.get(id as never)
-  const hosted =
-    placement._tag === 'DirWide'
-      ? activeHosts(d).length > 0
-      : hostOf(m, placement, d.states)._tag === 'Host'
+  const hosted = hostOf(m, placement, d.states)._tag === 'Host'
   const late = Date.parse(m.at) - Date.parse(at) >= waitMs
   if (raw || words !== undefined || !hosted || late) return { _tag: 'Shown' }
   return { _tag: 'HeldForHost', until: new Date(Date.parse(at) + waitMs).toISOString() as Time }
@@ -259,7 +263,7 @@ const draftItems = (d: Derived): ReadonlyArray<WaitingItem> => {
     for (const x of w.drafts.values()) {
       const state = d.states.revisions.get(x.id)
       if (x.of !== dir.id || state?._tag !== 'Vetoed' || !waitsForNewDraft(d, x)) continue
-      const placement = placed(d, answeredTask(w, x))
+      const placement = placed(d, draftTaskOf(w, x))
       const item: Bare = {
         _tag: 'DraftVetoed',
         draft: x.id,
@@ -273,7 +277,7 @@ const draftItems = (d: Derived): ReadonlyArray<WaitingItem> => {
     for (const x of openDrafts(d, dir.id)) {
       const state = d.states.revisions.get(x.id)
       if (state?._tag !== 'Waiting') continue
-      const placement = placed(d, answeredTask(w, x))
+      const placement = placed(d, draftTaskOf(w, x))
       const top = [...w.tasks.values()].find(
         (t) =>
           !isEndedTask(d.states.tasks.get(t.id) ?? { _tag: 'Closed' }) &&
@@ -403,9 +407,6 @@ const adjustmentItems = (d: Derived): ReadonlyArray<WaitingItem> => {
 const sayAgain = (by: Author, about: SuggestAbout): ReadonlyArray<Intent> =>
   by._tag === 'ModelRun' ? [] : [suggest(about)]
 
-// The task that a draft answers (its first Reject of a task or a result), for its placement.
-const answeredTask = (w: Work, x: Revision<Direction>): TaskId | undefined =>
-  x.answers.map((a) => taskOfAnswer(w, a)).find((t) => t !== undefined)
 // An open assignment of a role outside the reviser's tree that follows the direction.
 const reviewerOf = (
   d: Derived,

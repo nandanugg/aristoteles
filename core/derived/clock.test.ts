@@ -18,8 +18,13 @@ test('a hold ends at its until; a permission ends 1 ms after its until', async (
   ok(await p.run('task draft --file=top.yaml --by=h1', h.HOST))
   const host = await solToken(p, ok(await p.ui('task open td1')).out)
   ok(await p.agent(`brief ${host}`))
+  // A draft that answers a point of t1 waits for the words of t1's host (P8).
+  const rejected = ok(await p.nanda('review t1 reject --point="the rules are too long"')).out
+  const point = `${rejected.match(/\b(v\d+)\b/)?.[1] ?? ''}.1`
+  await (h as unknown as { evaluated: (p: unknown, t: string) => Promise<unknown> }).evaluated(p, 't1')
   p.write('change.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
-  ok(await p.agent('direction revise tsd-writing --file=change.yaml --by=assess --why="Shorten"'))
+  const why = `--why="Shorten" --answers=${point}`
+  ok(await p.agent(`direction revise tsd-writing --file=change.yaml --by=assess ${why}`))
   const at = (when: Time) => derivedOf(workOf(p.dir), when, p.dir)
   const held = () => {
     const [item] = waitingFor(at(p.now() as Time), { _tag: 'Everyone' }).filter(

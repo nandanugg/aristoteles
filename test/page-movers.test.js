@@ -117,13 +117,15 @@ describe('D5: a draft that waits for the accept of a role with no possible revie
     await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
     p.write('change.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
     ok(await p.run(`direction revise ${host} tsd-writing --file=change.yaml --why="Shorten"`, HOST))
-    const waits = (await inbox(p)).find((d) => d.id === 'd2')
+    // P8: the host's draft sits on its project, t1.
+    const onT1 = async () => (await panel(p, 't1')).decisions
+    const waits = (await onT1()).find((d) => d.id === 'd2')
     expect(waits).toMatchObject({ kind: 'step', title: 'A draft waits for a reviewer' })
     expect(waits.acts).toEqual([{ _tag: 'Give', task: 't1', role: 'section-lead' }])
     const given = await act(p, 'assign', { task: 't1', role: 'section-lead' })
     expect(given.out).toStartWith('a3 · section-lead on t1;')
     // a3 reviews it now: the person waits, and the card is gone.
-    expect((await inbox(p)).find((d) => d.id === 'd2')).toBeUndefined()
+    expect((await onT1()).find((d) => d.id === 'd2')).toBeUndefined()
     expect(ok(await p.nanda('waiting')).out).toContain('d2 waits for the accept of a3 (section-lead)')
   })
 })

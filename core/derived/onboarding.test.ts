@@ -423,5 +423,12 @@ describe('what reaches the host from no project', () => {
       'Reject',
     ])
     expect(nextFor(after, a1).some((s) => s.what._tag === 'AddExamples')).toBe(false)
+    // P8: a company refresh is the work of the dir: it shows at once, and no host explains it.
+    const shown = waitingFor(after, { _tag: 'Person', name: 'Nanda' }).find(
+      (i) => i._tag === 'DraftForPerson' && i.draft === draft.id,
+    )
+    expect(shown?.placement).toEqual({ _tag: 'DirWide' })
+    expect(shown?._tag === 'DraftForPerson' ? shown.hold._tag : undefined).toBe('Shown')
+    expect(nextFor(after, a1).some((s) => s.what._tag === 'ExplainDraft')).toBe(false)
   }, 60000)
 })

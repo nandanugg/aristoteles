@@ -132,11 +132,8 @@ export const reviseAgainOf = (
     }
     case 'Writer':
       return { text: `${writer} ${again} again`, step: null }
-    case 'Hosts': {
-      const [one, ...more] = next.hosts
-      const hosts = more.length ? `an active host (${next.hosts.join(', ')})` : `the host ${one}`
-      return { text: `${writer} has ended; ${hosts} ${again}`, step: null }
-    }
+    case 'Host':
+      return { text: `${writer} has ended; the host ${next.assignment} ${again}`, step: null }
     // No agent writes it: the person runs the model again (the skill that reads an app), and it
     // answers the Reject with the same kind of draft: a whole new direction, or a revise.
     case 'Person': {

@@ -73,7 +73,8 @@ describe('an item that waits for the person shows on an open task', () => {
       'the problem without the design", checkedBy: section-lead } ] } }\n')
     ok(await p.agent(`direction revise ${host} tsd-writing --file=costs.yaml`))
     ok(await p.agent(`direction revise ${host} tsd-writing --file=story.yaml`))
-    expect(await summary(p, 't1')).toEqual([['direction', 'd2', null], ['direction', 'd3', null]])
+    // P8: the host's drafts sit on its project.
+    expect(await summary(p, 't1')).toEqual([['direction', 'd2', 't1'], ['direction', 'd3', 't1']])
     ok(await p.nanda('review d2 accept', 'accept'))
     // d3 is built on tsd-writing@1; d2 became tsd-writing@2 first.
     expect(await summary(p, 't1')).toEqual([])

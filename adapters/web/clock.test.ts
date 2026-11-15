@@ -20,9 +20,13 @@ test('a held draft passes its time: the page hears `changed` and reads it', asyn
   ok(await p.run('task draft --file=top.yaml --by=h1', h.HOST))
   const host = await solToken(p, ok(await p.ui('task open td1')).out)
   ok(await p.agent(`brief ${host}`))
-  // A model run (no host) drafts a change that answers nothing: held for the active host.
+  // A model run (no host) drafts a change that answers a point of t1: held for t1's host (P8).
+  const rejected = ok(await p.nanda('review t1 reject --point="the rules are too long"')).out
+  const point = `${rejected.match(/\b(v\d+)\b/)?.[1] ?? ''}.1`
+  await (h as unknown as { evaluated: (p: unknown, t: string) => Promise<unknown> }).evaluated(p, 't1')
   p.write('change.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
-  ok(await p.agent('direction revise tsd-writing --file=change.yaml --by=assess --why="Shorten"'))
+  const why = `--why="Shorten" --answers=${point}`
+  ok(await p.agent(`direction revise tsd-writing --file=change.yaml --by=assess ${why}`))
   // The person of the page: git user.name of the dir.
   for (const args of [['init', '-q'], ['config', 'user.name', 'Nanda']]) {
     Bun.spawnSync(['git', '-C', p.dir, ...args])

@@ -117,7 +117,6 @@ import {
   type Work,
 } from '../schema/index.ts'
 import type { Moment } from '../state/index.ts'
-import type { WordsOn } from '../schema/actions.ts'
 import { adjustmentStates, retiredBy } from './adjustments.ts'
 import { roleWordsStates } from './role-words.ts'
 
@@ -581,24 +580,6 @@ export const sendSessionOf = (
       const draft = w.taskDrafts.get(reason.draft)
       return draft === undefined ? undefined : w.runs.get(draft.run)?.session
     }
-  }
-}
-// The task where a decision of the page sits: a problem's, a draft's answered task, a run's top.
-export const decisionTaskOf = (w: Work, on: WordsOn): TaskId | undefined => {
-  switch (on._tag) {
-    case 'Problem': {
-      const p = w.problems.get(on.id)
-      return p === undefined ? undefined : problemTask(w, p)
-    }
-    case 'End': {
-      const opened = openedTopOf(w, on.id)
-      return opened === undefined ? undefined : currentTask(w, opened)
-    }
-    case 'Draft':
-      return w.drafts
-        .get(on.id)
-        ?.answers.map((a) => taskOfAnswer(w, a))
-        .find((t) => t !== undefined)
   }
 }
 // The task of a Reject (or one of its points) that a draft answers; a suggestion has none.

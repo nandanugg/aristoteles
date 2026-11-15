@@ -482,8 +482,7 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
       const name = w.directions.get(s.direction)?.name ?? s.direction
       return step(
         `explain ${s.draft}: a change to the direction "${name}" waits for the person; write ` +
-          'the problem and what you hope by the change, in plain words' +
-          (s.dirWide ? ' (it comes from no project: the first host that writes them does it)' : ''),
+          'the problem and what you hope by the change, in plain words',
         `work note ${token} words --on=${s.draft} --text="<the problem>" ` +
           '--hope="<what you hope by this change>"',
       )

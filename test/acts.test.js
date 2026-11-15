@@ -144,11 +144,10 @@ describe('the acts of the UI', () => {
     })
   })
 
-  test('words on a draft: an open draft needs a hope; an official draft takes none', async () => {
+  test('words on a draft: an open draft needs a hope; a draft of the dir takes none', async () => {
     const { p, host } = await hosted()
-    // d1 is official already: its words ask for no hope, and a hope is refused.
-    expect((await p.agent(`note ${host} words --on=d1 --text="x" --hope="y"`)).err).toContain('d1 is already official')
-    expect(ok(await p.agent(`note ${host} words --on=d1 --text="The direction is in force."`)).out).toContain('the words of d1 are written')
+    // d1 came with the store (P8: the work of the dir): no host writes its words.
+    expect((await p.agent(`note ${host} words --on=d1 --text="x"`)).err).toContain('only the host of a project writes the words of a decision')
     p.write('costs.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs. }\n')
     ok(await p.agent(`direction revise ${host} tsd-writing --file=costs.yaml`))
     expect((await p.agent(`note ${host} words --on=d2 --text="x"`)).err).toContain('--hope="<what you hope by this change>"')
