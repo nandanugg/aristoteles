@@ -47,14 +47,17 @@ const xtermLoaded = (): Promise<unknown> => {
 const REPLY = /^(?:\x1b\[[?>][\d;]*c|\x1b\[\d+;\d+R|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))+$/
 
 // The terminal of one session in its box: xterm.js on the socket. It always has the size of the
-// pane in tmux, which the server sends; the box never sizes it (ruling 2026-11-14), and the box
-// scrolls when the terminal is larger. Returns the size that would fill the box now, for the
-// resize button, and the cleanup.
+// pane in tmux, which the server sends; the box never sizes it (ruling 2026-11-14). When the
+// columns are wider than the box, the font gets smaller until they fit, as tmux shows them
+// (Nanda, 2026-11-15); below MIN_FONT the box scrolls sideways. Returns the size that would fill
+// the box now at the full font, for the resize button, and the cleanup.
 type Session = NonNullable<TerminalRef['session']>
 interface OpenTerminal {
   readonly fill: () => { readonly cols: number; readonly rows: number } | undefined
   readonly close: () => void
 }
+const FONT = 13
+const MIN_FONT = 9
 function openTerminal(
   el: HTMLElement,
   session: Session,
@@ -62,7 +65,7 @@ function openTerminal(
 ): OpenTerminal {
   const term = new window.Terminal({
     fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
-    fontSize: 13,
+    fontSize: FONT,
     cursorBlink: true,
     scrollback: 5000,
     theme: { background: '#0b0d12', foreground: '#e5e7eb' },
@@ -71,9 +74,29 @@ function openTerminal(
   const fit = new window.FitAddon.FitAddon()
   term.loadAddon(fit)
   term.open(el)
+  // The largest font, in half pixels, at which every column fits the width of the box.
+  const fits = () => (fit.proposeDimensions()?.cols ?? 0) >= term.cols
+  const fitFont = () => {
+    let size = FONT
+    term.options.fontSize = size
+    while (!fits() && size > MIN_FONT) {
+      size -= 0.5
+      term.options.fontSize = size
+    }
+  }
+  let frame = 0
+  const refit = () => {
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(fitFont)
+  }
+  const watch = new ResizeObserver(refit)
+  watch.observe(el)
   const off = socket.listen((m) => {
     if (m.type === 'open') socket.send({ type: 'term.open', session })
-    if (m.type === 'term.size' && m.session === session) term.resize(m.cols, m.rows)
+    if (m.type === 'term.size' && m.session === session) {
+      term.resize(m.cols, m.rows)
+      refit()
+    }
     if (m.type === 'term.data' && m.session === session) {
       if (m.reset) term.reset()
       term.write(fromBase64(m.data))
@@ -87,8 +110,15 @@ function openTerminal(
   socket.send({ type: 'term.open', session })
   term.focus()
   return {
-    fill: () => fit.proposeDimensions(),
+    fill: () => {
+      term.options.fontSize = FONT
+      const size = fit.proposeDimensions()
+      fitFont()
+      return size
+    },
     close: () => {
+      cancelAnimationFrame(frame)
+      watch.disconnect()
       socket.send({ type: 'term.close', session })
       off()
       input.dispose()

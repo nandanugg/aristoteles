@@ -260,8 +260,8 @@ button { font: inherit; color: inherit; }
 .dl.hunk .x { grid-column: 1 / 4; display: flex; justify-content: center; gap: 2px; }
 .dl.hunk button { border: 0; background: none; color: var(--terra); font: inherit; cursor: pointer; padding: 0 6px; }
 .dl.hunk button:hover { background: var(--terra-line); }
-/* The terminal has the pane's size, so the box scrolls both ways when the terminal is larger (a
-   phone is 375 px wide); .xterm takes the width of its rows. The fit addon of the resize button
+/* The terminal has the pane's size; its font gets smaller to fit the width, and the box scrolls
+   when the terminal is still larger (a phone is 375 px wide); .xterm takes the width of its rows. The fit addon of the resize button
    reads the size of .term with its padding (border-box) and takes off only the padding of
    .xterm, so the padding goes on .xterm: else the last row is cut off. */
 .term { flex: 1; min-height: 0; overflow: auto; background: #0b0d12; }

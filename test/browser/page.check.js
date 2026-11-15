@@ -201,8 +201,8 @@ const open = async () => {
       // Ruling 2026-11-14 (fixed-size terminals): the rows fit in the box only after the resize
       // button. It sets the window in tmux to the size that fills the box, but never less than
       // 80 x 24, and the page then shows the size that tmux reports. The rows fit in the box (the
-      // last row is not cut off), and the width too, unless the box holds fewer than 80 columns
-      // (this panel holds about 70, so it scrolls sideways a little).
+      // last row is not cut off), and the width too: this panel holds about 70 columns at 13 px,
+      // so the font gets smaller until the 80 columns fit (Nanda, 2026-11-15).
       await page.click('text=Fit to box')
       await page.waitForFunction(() => document.querySelectorAll('.xterm-rows > div').length !== 48)
       const [cols, rows] = paneSize().split('x').map(Number)
@@ -214,7 +214,12 @@ const open = async () => {
         return { down: screen.bottom <= box.bottom, across: screen.right <= box.right }
       })
       expect(fits.down).toBe(true)
-      expect(fits.across || cols === 80).toBe(true)
+      expect(fits.across).toBe(true)
+      if (cols === 80) {
+        const font = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.xterm-rows')).fontSize))
+        expect(font).toBeLessThan(13)
+        expect(font).toBeGreaterThanOrEqual(9)
+      }
     } finally {
       small.kill()
     }
