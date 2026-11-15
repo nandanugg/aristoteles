@@ -60,7 +60,7 @@ import {
   type DirView,
   type DraftChange,
   type Example,
-  examplesMissing,
+  isMarked,
   type ExampleView,
   type FlowStep,
   type FlowStepView,
@@ -374,7 +374,7 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
       _tag: 'Accept',
       target: { of },
     })
-    const missing = x._tag === 'New' && examplesMissing(x.flow, x.examples) !== undefined
+    const missing = x._tag === 'New' && !x.flow.some(isMarked)
     const waits = accept._tag === 'May' ? null : missing ? examplesWait(d) : accept.refusal.message
     return {
       _tag: 'Direction',
@@ -796,16 +796,18 @@ export const projectView = (d: Derived, id: string, ctx: ViewContext): ProjectVi
 // The directions of a top task: each one with its version now, its standards and rules, the
 // versions made during the project, and the drafts that wait.
 // The standards of a version, each rule with the role that checks it.
-// A step of the flow of a direction for the page: no file or line is null, an unmarked step uses
-// none (Nanda, 2026-11-15).
-const flowStepView = (s: FlowStep): FlowStepView => ({
-  from: s.from,
-  to: s.to,
-  says: s.says,
-  file: s.file ?? null,
-  line: s.line ?? null,
-  uses: s.uses ?? [],
-})
+// A step of the flow of a direction for the page: no place is null, an unmarked step uses and
+// shows none (Nanda, 2026-11-15).
+const flowStepView =
+  (exampleOf: (e: Example) => ExampleView) =>
+  (s: FlowStep): FlowStepView => ({
+    from: s.from,
+    to: s.to,
+    says: s.says,
+    place: s.place ? { file: s.place.file, line: s.place.line ?? null } : null,
+    uses: s.uses ?? [],
+    examples: (s.examples ?? []).map(exampleOf),
+  })
 const standardsOf = (w: Work, v: Version<Direction>): DirectionView['standards'] =>
   v.standards.map((entry) => {
     const s = standardAt(w, entry)
@@ -820,8 +822,9 @@ const standardsOf = (w: Work, v: Version<Direction>): DirectionView['standards']
     }
   })
 
-const directionsView = (d: Derived, task: Task): ReadonlyArray<DirectionView> => {
+const directionsView = (d: Derived, task: Task, dir: string): ReadonlyArray<DirectionView> => {
   const w = workOf(d)
+  const flowOf = flowStepView(exampleReader(dir))
   const waiting = [...d.states.revisions]
     .filter(([, state]) => state._tag === 'Waiting')
     .flatMap(([id]) => w.drafts.get(id) ?? [])
@@ -835,7 +838,7 @@ const directionsView = (d: Derived, task: Task): ReadonlyArray<DirectionView> =>
         owner: dir.owner.name,
         version: versionIdOf(v),
         summary: v.summary,
-        flow: v.flow.map(flowStepView),
+        flow: v.flow.map(flowOf),
         says: v.says,
         standards: standardsOf(w, v),
         changed:
@@ -901,7 +904,7 @@ export const taskPanel = (d: Derived, id: string, ctx: ViewContext): TaskPanel |
     top: task.serves._tag === 'TopTask',
     decisions: shownOn(d, decisionsOf(d, ctx.person), task),
     terminal,
-    directions: task.serves._tag === 'TopTask' ? directionsView(d, task) : null,
+    directions: task.serves._tag === 'TopTask' ? directionsView(d, task, ctx.dir) : null,
     results: resultViews,
     timeline: w.events
       .filter((l) => touchedIds(l).some((x) => ids.has(x)))
@@ -1120,7 +1123,6 @@ const exampleReader = (dir: string) => {
   const sampleOf = (s: Example['output']): ExampleView['output'] =>
     isSpot(s) ? spotOf(s) : { written: s.written }
   return (e: Example): ExampleView => ({
-    step: e.step,
     fit: e.fit,
     input: e.input ? sampleOf(e.input) : null,
     output: sampleOf(e.output),
@@ -1197,13 +1199,12 @@ const onboardingDirectionCard = (
     principle: asked._tag === 'New' ? asked.principle : null,
     example: asked._tag === 'New' ? asked.example : null,
     summary: drafted?.content.summary ?? null,
-    flow: (drafted?.content.flow ?? []).map(flowStepView),
+    flow: (drafted?.content.flow ?? []).map(flowStepView(exampleOf)),
     says: drafted?.content.says ?? null,
     standards: words?.standards ?? [],
     diff: words
       ? diffOf(title, last && { ...last, standards: standardsView(last.standards) }, words)
       : null,
-    examples: (drafted?.examples ?? []).map(exampleOf),
     questions: questions.map((q) => ({
       says: q.says,
       example: exampleOf(q.example),
@@ -1300,14 +1301,13 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
         principle: null,
         example: null,
         summary: v.summary,
-        flow: v.flow.map(flowStepView),
+        flow: v.flow.map(flowStepView(exampleOf)),
         says: v.says,
         standards,
         diff: diffOf(title, before && { ...before, standards: standardsOf(w, before) }, {
           ...v,
           standards,
         }),
-        examples: x.examples.map(exampleOf),
         questions: [],
         request: null,
         reset: false,

@@ -46,8 +46,8 @@ const NOTES = Object.fromEntries(
 // Nanda, 2026-11-15: an example is an output of a marked step (was: a case, a ladder to an
 // output).
 const OUTPUT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
-const A_CASE = { step: 2, fit: 'Follows', output: OUTPUT }
-const A_BREAK = { step: 2, fit: 'Breaks', output: { written: 'Two changes, one reason.' } }
+const A_CASE = { fit: 'Follows', output: OUTPUT }
+const A_BREAK = { fit: 'Breaks', output: { written: 'Two changes, one reason.' } }
 const draftOf = (id: string): DirectionDraft =>
   ({
     id,
@@ -61,9 +61,9 @@ const draftOf = (id: string): DirectionDraft =>
         from: 'writer',
         to: 'writer',
         says: 'names one reason',
-        file: 'docs/tsd.md',
-        line: 3,
+        place: { file: 'docs/tsd.md', line: 3 },
         uses: ['small-changes', 'says-why'],
+        examples: [A_CASE, A_BREAK],
       },
     ],
     says: 'A change does one thing.',
@@ -74,7 +74,6 @@ const draftOf = (id: string): DirectionDraft =>
         rules: [{ id: 'says-why', says: 'The change says why.', checkedBy: 'linter', supersedes: [] }],
       },
     ],
-    examples: [A_CASE, A_BREAK],
   }) as unknown as DirectionDraft
 const withConfig = async () => {
   const dir = dirOf()

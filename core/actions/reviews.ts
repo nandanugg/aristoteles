@@ -1,7 +1,7 @@
 // The actions of reviews, escalations, questions, notes, evaluations, checkpoints and sources, with
 // their content checks (the rules that the evidence and the points name, the place of the
 // evidence).
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import type { Derived } from '../derived/index.ts'
 import { turnOf, waitsForWords } from '../derived/deciders.ts'
 import {
@@ -24,8 +24,9 @@ import {
   type Author,
   create,
   type DeciderLeaf,
+  isNonBlank,
   currentVersion,
-  type EvidenceData,
+  EvidenceData,
   move,
   type Result,
   type ResultId,
@@ -218,6 +219,9 @@ const rulesForAgent = (d: Derived, a: Assignment): ReadonlyArray<Rule> => {
   if (tierOfAgent(w, a) !== 'low' || !reviews) return all
   return all.filter((r) => r.checkedBy._tag === 'Role' && r.checkedBy.role === a.role)
 }
+// The evidence lines of an input, as the events keep them: none when a line has a blank part.
+const evidenceRead = (lines: ReadonlyArray<typeof EvidenceData.Encoded>) =>
+  Schema.decodeUnknownOption(Schema.Array(EvidenceData))(lines)
 // An agent's evidence names the place it looked and says what it saw in at least three words.
 const checkEvidence = (result: Result, evidence: ReadonlyArray<EvidenceData>) => {
   const [file = '', section] = result.output.split(/[#@]/)
@@ -260,13 +264,18 @@ const accepted: Action<'Accept'> = ({ by, input }) =>
     const d = yield* current
     const w = d.moment.work
     const { of } = input.target
-    const { evidence, reason } = input.content
+    const { reason } = input.content
     // The person's accept of a draft needs no evidence; anyone else says where it read. As in the
     // old CLI, this comes before the state checks, after the one that a low role reviews no draft.
+    // The Schema refuses a line with a blank place, sight or rule.
     const a = agentOf(w, by)
     const low = a !== undefined && tierOfAgent(w, a) === 'low'
-    const said = evidence.some((e) => e.where.trim() !== '' && e.what.trim() !== '')
-    if (of._tag === 'Revision' && by._tag !== 'Person' && !low && !said) {
+    const read = evidenceRead(input.content.evidence)
+    if (read._tag === 'None') {
+      return yield* fail(of._tag === 'Revision' ? R.Accept.draftEvidence(of.id) : R.Accept.noEvidence())
+    }
+    const evidence = read.value
+    if (of._tag === 'Revision' && by._tag !== 'Person' && !low && evidence.length === 0) {
       return yield* fail(R.Accept.draftEvidence(of.id))
     }
     yield* allowed(d, by, input)
@@ -275,14 +284,14 @@ const accepted: Action<'Accept'> = ({ by, input }) =>
       evidence.map((e) => e.rule),
     )
     const given = nonEmpty(evidence)
-    const comment = reason ?? null
+    const comment = reason !== null && isNonBlank(reason) ? reason : null
     if (of._tag === 'Result') {
       const result = w.results.get(of.id)
       if (result === undefined) return yield* Effect.die('canAct names the result')
       yield* unchanged(d, by, result)
       if (a !== undefined) {
         const checks = rulesForAgent(d, a).map((r) => r.id)
-        const named = evidence.flatMap((e) => (e.rule === null ? [] : [e.rule]))
+        const named: ReadonlyArray<string> = evidence.flatMap((e) => (e.rule === null ? [] : [e.rule]))
         const outside = named.filter((r) => !checks.includes(r))
         if (outside.length && low) {
           return yield* fail(
@@ -449,8 +458,11 @@ const resolved: Action<'Resolve'> = ({ by, input }) =>
     const w = d.moment.work
     yield* allowed(d, by, input)
     const { escalation } = input.target
-    const { resolution, evidence } = input.content
+    const { resolution } = input.content
     if (blank(resolution)) return yield* fail(R.Resolve.noResolution())
+    const read = evidenceRead(input.content.evidence)
+    if (read._tag === 'None') return yield* fail(R.Accept.noEvidence())
+    const evidence = read.value
     yield* rulesNamed(
       w,
       evidence.map((e) => e.rule),

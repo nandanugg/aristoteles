@@ -5,7 +5,7 @@
 import { Schema } from 'effect'
 import { html } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { DirectionId } from '../../../src/domain/ids.ts'
+import { DirectionId, NonBlank } from '../../../src/domain/ids.ts'
 import {
   type DirView,
   OnboardingView,
@@ -155,7 +155,7 @@ function Suggest({ targets }: { targets: ReadonlyArray<readonly [string, Target]
   const about = targets[chosen]?.[1]
   const store = attempt(async () => {
     if (!about) return undefined
-    const out = await post({ act: 'suggest', about, says })
+    const out = await post({ act: 'suggest', about, says: Schema.decodeUnknownSync(NonBlank)(says) })
     setSays('')
     return out
   })
@@ -171,7 +171,7 @@ function Suggest({ targets }: { targets: ReadonlyArray<readonly [string, Target]
   </div>`
 }
 
-const isDirectionAdjustment = (tag: string) => tag === 'RetireDirection' || tag === 'SetExamples'
+const isDirectionAdjustment = (tag: string) => tag === 'RetireDirection'
 
 function Entry({ view, kind }: { view: OnboardingData; kind: 'directions' | 'agents' }) {
   const mine = (tag: string) => isDirectionAdjustment(tag) === (kind === 'directions')

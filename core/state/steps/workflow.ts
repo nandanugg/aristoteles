@@ -24,14 +24,13 @@ import {
 } from '../../schema/index.ts'
 import { built, damaged, put, unchanged } from '../act.ts'
 import { decidersOf } from '../decisions.ts'
-import { officialAt } from '../records.ts'
 import { onboarded } from './directions.ts'
 import { eventRef } from './ui.ts'
 
 type TierLimits = Work['config']['limits'][keyof Work['config']['limits']]
 
-const limitOf = (n: number | undefined): Limit =>
-  n === undefined ? { _tag: 'Unlimited' } : { _tag: 'AtMost', max: n as PositiveInt }
+const limitOf = (n: PositiveInt | undefined): Limit =>
+  n === undefined ? { _tag: 'Unlimited' } : { _tag: 'AtMost', max: n }
 const limitsOf = (tier: TierLimits | undefined): Limits => ({
   Assignment: {
     briefChars: limitOf(tier?.Assignment?.briefChars),
@@ -201,7 +200,7 @@ export const adjustmentRejected = (
     : unchanged(work)
 
 // The accept applies the change: a role adjustment to the config and the roles of the workflow,
-// with the stored text of aristoteles.yaml; other examples to an official direction. A retired
+// with the stored text of aristoteles.yaml. A retired
 // direction keeps its record: its state follows from this event (core/derived).
 export const adjustmentAccepted = (
   work: Work,
@@ -210,18 +209,6 @@ export const adjustmentAccepted = (
 ): Stepped => {
   const adjustment = adjustmentAt(work, e.id) ?? damaged(r, `${e.id} drafts no adjustment`)
   const { hashes, texts } = e.move
-  if (adjustment._tag === 'SetExamples') {
-    const official =
-      officialAt(work, adjustment.direction) ??
-      damaged(r, `${adjustment.direction} has no version`)
-    const changed = Moves.setExamples(official, adjustment.examples)
-    return unchanged({
-      ...work,
-      hashes,
-      texts,
-      directions: put(work.directions, official.id, changed),
-    })
-  }
   if (adjustment._tag === 'RetireDirection') return unchanged({ ...work, hashes, texts })
   const config = Moves.adjustRoles(work.config, adjustment)
   const roles = new Map(work.workflow.roles)

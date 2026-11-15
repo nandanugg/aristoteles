@@ -1,16 +1,15 @@
 // The commands direction, suggest, grant, revoke, forward, confirm. The files are read by the
 // actions; the adapter reads the flags, builds the typed act of a forward, and prints the words.
 import { join } from 'node:path'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { currentOf, draftAt } from '../../../core/derived/reads.ts'
 import type { PointInput, SuggestAbout } from '../../../core/schema/actions.ts'
 import {
   type AnswerId,
   type Author,
   DirectionId,
-  type EvidenceData,
+  EvidenceData,
   type EventRef,
-  type Example,
   type FlowStep,
   type ForwardedAct,
   isNonBlank,
@@ -29,6 +28,7 @@ import {
   type RejectId,
   type PermissionId,
   spotsOf,
+  examplesOfFlow,
 } from '../../../core/schema/index.ts'
 import { Dir, Files, Now } from '../../../core/services/index.ts'
 import {
@@ -51,7 +51,7 @@ import { act, derivedAfter, peekWork, readWork } from '../runtime.ts'
 import {
   afterVersion,
   EVIDENCE_FORM,
-  EXAMPLES_FORM,
+  FLOW_FORM,
   evidenceOf,
   pointsOf,
   versionMadeBy,
@@ -75,8 +75,8 @@ const DIRECTION_TEMPLATE = `write a file like this, then run the command again:
       rules:
         - { id: <rule id>, says: <one check>, checkedBy: <role> }`
 
-const EXAMPLES_TEMPLATE = `write a file like this, then run the command again:
-${EXAMPLES_FORM.replace(/^/gm, '  ')}`
+const FLOW_TEMPLATE = `write a file like this, then run the command again:
+${FLOW_FORM.replace(/^/gm, '  ')}`
 
 const REVISE_TEMPLATE =
   'write a file like this (any of the keys), then run the revise again:\n' +
@@ -88,8 +88,9 @@ const REVISE_TEMPLATE =
 // The examples of a direction or of a new draft, by the step of its flow, each with its state
 // (ruling 4): the adapter reads the text of each file now, so an excerpt that left its file shows
 // stale.
-const examplesOf = (examples: ReadonlyArray<Example>, flow: ReadonlyArray<FlowStep>) =>
+const examplesOf = (flow: ReadonlyArray<FlowStep>) =>
   Effect.gen(function* () {
+    const examples = examplesOfFlow(flow)
     if (examples.length === 0) return []
     const { cwd } = yield* Dir
     const files = yield* Files
@@ -97,7 +98,7 @@ const examplesOf = (examples: ReadonlyArray<Example>, flow: ReadonlyArray<FlowSt
     for (const { file } of examples.flatMap(spotsOf)) {
       if (!texts.has(file)) texts.set(file, yield* files.read(join(cwd, file)))
     }
-    return ['examples:', ...exampleLines(examples, flow, (file) => texts.get(file) ?? null)]
+    return ['examples:', ...exampleLines(flow, (file) => texts.get(file) ?? null)]
   })
 
 // <id>[@<n>] or <draft>, then [#<standard, rule, or header>[#<header>]]: one piece.
@@ -109,8 +110,7 @@ const showDirection = (rest: ReadonlyArray<string>) =>
     if (/^d\d+$/.test(address)) {
       const { revision } = yield* lookupKind('Revision', ['d'], work, address)
       if (!keys.length) {
-        const examples =
-          revision._tag === 'New' ? yield* examplesOf(revision.examples, revision.flow) : []
+        const examples = yield* examplesOf(revision.flow)
         return [renderDraft(d, revision.id), ...whyLines(revision.why), ...examples]
       }
       v = revision.id
@@ -132,7 +132,7 @@ const showDirection = (rest: ReadonlyArray<string>) =>
       if (number && !numbered) return yield* refuse(`${id} has no version ${number}`)
       const version = numbered ?? currentOf(work, directionId)
       if (!keys.length) {
-        const examples = yield* examplesOf(dir.examples, currentOf(work, directionId).flow)
+        const examples = yield* examplesOf(currentOf(work, directionId).flow)
         return [renderDirection(d, versionIdOf(version)), ...examples]
       }
       v = versionIdOf(version)
@@ -291,7 +291,7 @@ const draftExamples = (call: Call, rest: ReadonlyArray<string>) =>
     const runName = textOf(args.one('by'))
     const id = String(rest[0])
     const file = textOf(args.one('file'))
-    if (!file) return yield* refuse('the examples of a draft need --file=<examples.yaml>', EXAMPLES_TEMPLATE)
+    if (!file) return yield* refuse('the flow of a draft needs --file=<flow.yaml>', FLOW_TEMPLATE)
     const { work } = yield* peekWork
     if (token !== null && runName !== undefined) {
       return yield* refuse(
@@ -317,7 +317,7 @@ const draftExamples = (call: Call, rest: ReadonlyArray<string>) =>
     const after = yield* derivedAfter(done.work)
     const owner = done.work.directions.get(draft.of)?.owner.name
     return [
-      `${draft.id} has its examples; it waits for the accept of ${draftWaitsText(after, draft.id)}.`,
+      `${draft.id} has its flow and examples; it waits for the accept of ${draftWaitsText(after, draft.id)}.`,
       `next: work direction show ${draft.id}; ${owner} runs work review ${draft.id} accept, or reject --reason="<why>"`,
     ]
   })
@@ -478,11 +478,14 @@ const innerOf = (input: {
   readonly found: Found
   readonly quote: NonBlank
   readonly points: ReadonlyArray<PointInput>
-  readonly evidence: ReadonlyArray<typeof EvidenceData.Type>
+  readonly evidence: ReadonlyArray<typeof EvidenceData.Encoded>
   readonly reason: string | undefined
 }): Effect.Effect<ForwardedAct, ReturnType<typeof refuse>> =>
   Effect.gen(function* () {
-    const { act: word, found, quote, points, evidence, reason } = input
+    const { act: word, found, quote, points, reason } = input
+    const read = Schema.decodeUnknownOption(Schema.Array(EvidenceData))(input.evidence)
+    if (read._tag === 'None') return yield* refuse(`an accept needs ${EVIDENCE_FORM}`)
+    const evidence = read.value
     switch (word) {
       case 'reject': {
         const given = points.length ? points : [{ text: quote, breaks: null }]

@@ -5,7 +5,6 @@
 // This file reads and checks the files that the host names; the module checks the acts.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { readExamples } from '../../../core/actions/drafts.ts'
 import { startStateOf } from '../../../core/actions/index.ts'
 import { onboardingStateOf, spotCurrent } from '../../../core/derived/index.ts'
 import {
@@ -13,7 +12,7 @@ import {
   DirectionId,
   draftIn,
   Example,
-  type Examples,
+  examplesOfFlow,
   firstSentence,
   isNonBlank,
   type OnboardingDirection,
@@ -63,7 +62,7 @@ import { type Confirm, personChannel, personOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { act } from '../runtime.ts'
 import { configProblems } from '../../live/config-problems.ts'
-import { EXAMPLES_FORM } from '../shared.ts'
+import { FLOW_FORM } from '../shared.ts'
 import { WAIT_SECONDS } from './wait.ts'
 
 const POLL_MS = 1000
@@ -86,37 +85,33 @@ const CONFIG_TEMPLATE = `write a file like this, then run the command again:
 ${ROLE_KEYS}`
 const ROLE_TEMPLATE = `write a file with the keys of one role, then run the command again:
 ${ROLE_KEYS.replaceAll('\n      ', '\n  ').replace(/^ {6}/, '  ')}`
-const EXAMPLES = EXAMPLES_FORM.replace(/^/gm, '  ')
+const FLOW = FLOW_FORM.replace(/^/gm, '  ')
 const DRAFT_TEMPLATE = `write a file like this, then run the command again:
   id: <a short id; a new direction takes it from its first draft>
   name: <a short name>
   from: [<the principles that ground it, such as Logos>]
   summary: <one or two plain sentences: what the direction asks, and why it matters>
-  flow:   # how it works, from the first act of an actor down to the output
-    - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, file: <where the project defines it>, line: <n>, uses: [<the ids that apply there, for a step that the direction governs: its id, standard ids, rule ids>] }
+${FLOW}
   says: <what the direction asks for>
   standards:
     - id: <standard id>
       says: <how the output looks>
       rules:
-        - { id: <rule id>, says: <one check>, checkedBy: <a role of ${DRAFT}> }
-${EXAMPLES}`
+        - { id: <rule id>, says: <one check>, checkedBy: <a role of ${DRAFT}> }`
 const COMPANY_TEMPLATE = `write a file like this, then run the command again (the words come from the company folder):
   checkedBy: <the role that checks each rule>
   rules: { <rule id>: <the role that checks this rule> }
-  flow:   # how it works in this project, from the first act of an actor down to the output
-    - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens>, file: <path>, line: <n>, uses: [<the ids that apply there>] }
-${EXAMPLES}`
+${FLOW}`
 const QUESTIONS_TEMPLATE = `write a file like this, then run the command again:
   questions:
     - says: <what the AI must know to draft the direction>
-      example: { step: <n>, fit: Follows | Breaks, output: { file: <path>, line: <n>, excerpt: <a short part of the file> } }   # as in a draft
+      example: { fit: Follows | Breaks, output: { file: <path>, line: <n>, excerpt: <a short part of the file> } }   # as in a draft
       options: [<option A>, <option B>]`
 // A draft of onboarding names no owner: readDirection checks the rest of the file with this one,
 // and the person who starts the store owns each direction.
 const OWNER = 'the person'
-const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'flow', 'says', 'standards', 'examples']
-const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'flow', 'examples']
+const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'flow', 'says', 'standards']
+const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'flow']
 
 const isRecord = (x: unknown): x is Readonly<Record<string, unknown>> =>
   typeof x === 'object' && x !== null && !Array.isArray(x)
@@ -216,7 +211,11 @@ const textsOf = (files: OnboardingFiles) =>
     const texts = new Map<string, string | null>()
     for (const f of files.directions) {
       const asked = f.stage._tag === 'Question' ? f.stage.open : answersIn(f.stage)
-      const examples = [...(draftIn(f.stage)?.examples ?? []), ...asked.map((q) => q.example)]
+      const draft = draftIn(f.stage)
+      const examples = [
+        ...(draft ? examplesOfFlow(draft.content.flow) : []),
+        ...asked.map((q) => q.example),
+      ]
       for (const { file } of examples.flatMap(spotsOf)) {
         if (!texts.has(file)) texts.set(file, yield* read.read(join(cwd, file)))
       }
@@ -327,7 +326,7 @@ const localDraft = (file: string, raw: Readonly<Record<string, unknown>>, curren
     }
     const id = yield* idOf(raw.id === undefined ? current.id : String(raw.id))
     const read = yield* readDirection(file, { ...raw, id, owner: OWNER }, [OWNER])
-    const draft: Omit<DirectionDraft, 'examples'> = {
+    const draft: DirectionDraft = {
       id,
       name: read.name,
       from: read.from,
@@ -382,7 +381,7 @@ const companyDraft = (
     const flow = yield* readFlow(file, raw.flow)
     const marks = usesProblem(id, flow, folder.standards)
     if (marks !== undefined) return yield* refuse(`${file}: ${marks}`, COMPANY_TEMPLATE)
-    const draft: Omit<DirectionDraft, 'examples'> = {
+    const draft: DirectionDraft = {
       id,
       name: folder.name,
       from: [],
@@ -421,12 +420,12 @@ const draft = (call: Call, id: string | undefined) =>
       current.asked._tag === 'Company'
         ? yield* companyDraft(file, raw, current, current.asked)
         : yield* localDraft(file, raw, current)
-    const examples: Examples = yield* readExamples(file, raw, words.flow)
+    const examples = examplesOfFlow(words.flow)
     yield* realExamples(file, examples)
     const [made = direction] = yield* hostAct(cwd, {
       _tag: 'Draft',
       direction,
-      draft: { ...words, examples },
+      draft: words,
       reopen: reopens(files, direction),
     })
     const state = yield* shownAs(cwd, made)
@@ -452,13 +451,13 @@ const ask = (call: Call, id: string | undefined) =>
       const read = Schema.decodeUnknownOption(Example)(q.example)
       if (read._tag === 'None') {
         return yield* refuse(
-          `${at}: example is { step, fit: Follows | Breaks, output: { file, line, ` +
+          `${at}: example is { fit: Follows | Breaks, output: { file, line, ` +
             'excerpt } or { written } }',
           QUESTIONS_TEMPLATE,
         )
       }
       const [a, b, ...more] = Array.isArray(q.options) ? q.options : []
-      if (typeof a !== 'string' || typeof b !== 'string' || more.length > 0) {
+      if (typeof a !== 'string' || !isNonBlank(a) || typeof b !== 'string' || !isNonBlank(b) || more.length > 0) {
         return yield* refuse(`${at}: options lists two options, A and B`, QUESTIONS_TEMPLATE)
       }
       questions.push({ says: q.says, example: read.value, options: [a, b] })

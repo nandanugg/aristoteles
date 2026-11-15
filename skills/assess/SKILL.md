@@ -290,7 +290,7 @@ piece as below. The roles go into the config draft, the directions into directio
 
 ## A direction draft
 
-A direction draft has exactly these keys: `id name from summary flow says standards examples`. It has
+A direction draft has exactly these keys: `id name from summary flow says standards`. It has
 no `owner` and no `approvedBy`: the person who starts the store owns each direction.
 
 ```yaml
@@ -300,7 +300,17 @@ from: [<one or two principles of the eleven that ground it: Logos, Pathos, Ethos
        Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
 summary: <one or two plain sentences: what the direction asks, and why it matters>
 flow:
-  - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, file: <where the project defines the step>, line: <n>, uses: [<for a step that the direction governs: the ids that apply there>] }
+  - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, place: { file: <where the project defines the step>, line: <n> } }
+  - from: <an actor>   # a step that the direction governs: it has uses and examples
+    to: <an actor, or the file that it acts on>
+    says: <what happens>
+    uses: [<the ids that apply there>]
+    examples:
+      - fit: <Follows or Breaks: the output follows the direction, or breaks it>
+        input: <only for a step that checks or decides: what it got, as an output below>
+        output: { file: <a real result>, line: <n>, excerpt: <a short part of it as it is now> }
+                # or { written: <the output in your words> } when the project has none
+      - { fit: <the other one>, output: ... }
 says: |
   <what the work is for, in any markdown; the whole idea in the first paragraph>
 standards:
@@ -314,12 +324,6 @@ standards:
         checkedBy: <a role of the config draft that reviews or approves the maker>
         says: |
           <one check, in its first sentence; reasons and examples under headers>
-examples:
-  - step: <the number of a marked step of the flow>
-    fit: <Follows or Breaks: the output follows the direction, or breaks it>
-    input: <only for a step that checks or decides: what it got, as an output below>
-    output: { file: <a real result>, line: <n>, excerpt: <a short part of it as it is now> }
-            # or { written: <the output in your words> } when the project has none
 ```
 
 Each standard follows from the words of its direction. Each rule is one check that a reviewer
@@ -357,16 +361,18 @@ summary, and the CLI prints it as numbered lines.
   (the page draws it as a box on its lifeline).
 - The first step is the act that starts the direction (often the person's). The last step makes
   or checks the output.
-- `file` and `line` name where the project defines the step: the line of the instruction, the
-  skill, the template, or the code. Leave them out when no file defines it.
+- `place` names where the project defines the step: the `file`, and the `line` of the
+  instruction, the skill, the template, or the code. A line needs its file. Leave `place` out when
+  no file defines the step.
 - Name each actor the same way in each step: a person, a role of the config draft, a program, or
   a file. The lifelines are the actors in the order that they first appear.
-- The file and line of the steps carry the sources, so leave out the words of where the direction
+- The place of the steps carries the sources, so leave out the words of where the direction
   comes from in `says`.
 - Mark each step that the direction governs with `uses`: the ids that apply there (the direction
-  id, standard ids, rule ids of this draft). The page colors a marked step and tags it with its
-  ids; the others are gray. A flow marks at least one step, and the command refuses an id that
-  is not in the draft.
+  id, standard ids, rule ids of this draft), and with its `examples`. A marked step has both, and
+  an unmarked step has neither. The page colors a marked step and tags it with its ids; the
+  others are gray. A flow marks at least one step, and the command refuses an id that is not in
+  the draft.
 
 A direction about how documents are written goes from the person's first act down to the
 document:
@@ -374,22 +380,23 @@ document:
 ```yaml
 flow:
   - { from: Person, to: architect, says: asks for a TSD of the export feature }
-  - { from: architect, to: writer, says: gives each section to a writer, file: CLAUDE.md, line: 12 }
-  - { from: writer, to: writer, says: reads the rule of one heading for each section, file: .claude/skills/writer/SKILL.md, line: 30 }
-  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, file: docs/templates/tsd.md, line: 1, uses: [tsd-writing, one-topic] }
-  - { from: linter, to: docs/tsd/export.md, says: checks that each section says one thing, file: scripts/lint-tsd.sh, line: 8, uses: [one-topic] }
+  - { from: architect, to: writer, says: gives each section to a writer, place: { file: CLAUDE.md, line: 12 } }
+  - { from: writer, to: writer, says: reads the rule of one heading for each section, place: { file: .claude/skills/writer/SKILL.md, line: 30 } }
+  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, place: { file: docs/templates/tsd.md, line: 1 }, uses: [...] }
+  - { from: linter, to: docs/tsd/export.md, says: checks that each section says one thing, place: { file: scripts/lint-tsd.sh, line: 8 }, uses: [...] }
 ```
 
 A direction about code is often short:
 
 ```yaml
 flow:
-  - { from: developer, to: src/export/config.go, says: reads each env var in one typed function, file: src/export/config.go, line: 9, uses: [typed-config] }
-  - { from: CI, to: src/export, says: fails the build on a direct os.Getenv, file: .golangci.yml, line: 22 }
+  - { from: developer, to: src/export/config.go, says: reads each env var in one typed function, place: { file: src/export/config.go, line: 9 }, uses: [...] }
+  - { from: CI, to: src/export, says: fails the build on a direct os.Getenv, place: { file: .golangci.yml, line: 22 } }
 ```
 
-**Examples.** For each marked step of the flow, give one output that follows the direction and
-one that breaks it (`step` is the number of the step). An example is about outputs only:
+**Examples.** Write them inside each marked step of the flow: at least one output that follows
+the direction and one that breaks it. They live in the step that they show, so a new flow brings
+its examples with it. An example is about outputs only:
 
 - A step that makes something (a writer, a coder, any role that outputs) gives its `output`.
 - A step that checks or decides (a reviewer, a linter, a decider) gives its `input` (what it got)
@@ -399,17 +406,29 @@ one that breaks it (`step` is the number of the step). An example is about outpu
   write it: `{ written: <the output in your words> }`; the page labels it "written by the host".
 
 ```yaml
-examples:
-  - { step: 4, fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
-  - { step: 4, fit: Breaks, output: { written: "## Design and rollout" } }
-  - step: 5
-    fit: Breaks
-    input: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
-    output: { written: "Accept: the section says one thing" }
+flow:
+  - from: writer
+    to: docs/tsd/export.md
+    says: fills the template one section at a time
+    uses: [tsd-writing, one-topic]
+    examples:
+      - { fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
+      - { fit: Breaks, output: { written: "## Design and rollout" } }
+  - from: linter
+    to: docs/tsd/export.md
+    says: checks that each section says one thing
+    uses: [one-topic]
+    examples:
+      - fit: Breaks
+        input: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
+        output: { written: "Accept: the section says one thing" }
+      - fit: Follows
+        input: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
+        output: { written: "Reject: the section says two things" }
 ```
 
 A break is information for the person to judge the direction; it makes no task. More or other
-examples come on request (a Revise); a change of examples makes no new version of the direction.
+examples come on request (a Revise with a new `flow`); that makes a new version of the direction.
 
 **Polish before you send.** Read the draft with each question of `work guide direction-review`,
 and fix it: the person reads it only after that polish.
@@ -424,7 +443,7 @@ exactly two options, A and B:
 ```yaml
 questions:
   - says: <what you must know to draft the direction>
-    example: { step: <n>, fit: Follows | Breaks, output: { file: <path>, line: <n>, excerpt: <a short part of the file> } }
+    example: { fit: Follows | Breaks, output: { file: <path>, line: <n>, excerpt: <a short part of the file> } }
     options: [<option A>, <option B>]
 ```
 
@@ -441,7 +460,7 @@ rules come from the folder at one commit: you do not write them. The summary is 
 sentence of the folder's words; you do not write it either. Your draft file has only
 `id` (optional), `checkedBy` (the role that checks each rule), `rules` (`{ <rule id>: <role> }`
 for a rule with another checker), `flow` (how the direction works in this project, its steps
-marked), and `examples`;
+marked, each with its examples);
 send it with
 `work onboard draft <id> --file=<it>`. Do not copy its words into a direction of the project;
 when the project breaks it, say so in the report. When the person has no company repo, point to
@@ -459,8 +478,8 @@ an event.
   `work direction new --file=<file> --by=assess`, with `--answers=<s ids>` for the suggestions
   that it answers. A standard that belongs under a direction with a version goes into
   `work direction revise <direction id> --file=<edit.yaml> --by=assess`. Its owner accepts it.
-- The flow (its steps marked) and the examples of a company draft, before its accept:
-  `work direction examples <draft> --file=<examples.yaml> --by=assess`.
+- The flow of a company draft (its steps marked, each with its examples), before its accept:
+  `work direction examples <draft> --file=<flow.yaml> --by=assess`.
 - A role or a direction that must change: `work adjust` (the `work` skill, part "Adjust the roles
   and the directions"); the person accepts each adjustment.
 - When the owner rejects a draft, `work waiting` shows the Reject and the command. Write a new

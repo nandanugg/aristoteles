@@ -37,10 +37,13 @@ const SEEN = '--evidence="the folder | each standard and rule reads as the compa
 // P10 rejected, onboarding 2026-11-14: a model gives the company draft of a new direction its flow
 // in this project and its examples before the owner accepts it, with work direction examples.
 const FLAGS_EXAMPLES = `flow:
-  - { from: writer, to: docs/tsd.md, says: adds the flag, uses: [feature-flags, upper-snake] }
-examples:
-  - { step: 1, fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
-  - { step: 1, fit: Breaks, output: { written: "const fast = process.env.FAST_EXPORT" } }
+  - from: writer
+    to: docs/tsd.md
+    says: adds the flag
+    uses: [feature-flags, upper-snake]
+    examples:
+      - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
+      - { fit: Breaks, output: { written: "const fast = process.env.FAST_EXPORT" } }
 `
 const addExamples = async (p, draft) => {
   p.write('examples.yaml', FLAGS_EXAMPLES)

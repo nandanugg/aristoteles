@@ -12,6 +12,8 @@ import {
   EscalationId,
   EvaluationId,
   EventRef,
+  NonBlank,
+  PositiveInt,
   ProblemId,
   QuestionId,
   RevisionId,
@@ -56,7 +58,7 @@ const Live = {
   ended: Schema.optionalKey(Schema.Boolean),
 }
 const TimeOrNone = Schema.Union([Time, Schema.Literal('')])
-const Attempt = Schema.Struct({ now: Schema.Number, max: Schema.NullOr(Schema.Number) })
+const Attempt = Schema.Struct({ now: Schema.Number, max: Schema.NullOr(PositiveInt) })
 
 // --- the decisions -------------------------------------------------------------------------
 
@@ -366,6 +368,19 @@ export const ResultView = Schema.Struct({
   at: Time,
   reviews: Schema.Array(ReviewOfResult),
 })
+const SpotView = Schema.Struct({
+  file: Text,
+  line: PositiveInt,
+  excerpt: Text,
+  current: Schema.Boolean,
+  around: Schema.Array(Schema.Struct({ line: Schema.Number, text: Text, mark: Schema.Boolean })),
+})
+const SampleView = Schema.Union([SpotView, Schema.Struct({ written: Text })])
+export const ExampleView = Schema.Struct({
+  fit: Schema.Literals(['Follows', 'Breaks']),
+  input: Schema.NullOr(SampleView),
+  output: SampleView,
+})
 const StandardsView = Schema.Array(
   Schema.Struct({
     id: Text,
@@ -378,9 +393,9 @@ const FlowView = Schema.Array(
     from: Text,
     to: Text,
     says: Text,
-    file: Schema.NullOr(Text),
-    line: Schema.NullOr(Schema.Number),
+    place: Schema.NullOr(Schema.Struct({ file: Text, line: Schema.NullOr(PositiveInt) })),
     uses: Schema.Array(Text),
+    examples: Schema.Array(ExampleView),
   }),
 )
 export const DirectionView = Schema.Struct({
@@ -411,20 +426,6 @@ export const TaskPanel = Schema.Struct({
 export const DiffView = Schema.Struct({ file: Schema.NullOr(Text), diff: Text })
 
 // GET /api/onboarding: the directions page, the agents page, and the gear's two entries.
-const SpotView = Schema.Struct({
-  file: Text,
-  line: Schema.Number,
-  excerpt: Text,
-  current: Schema.Boolean,
-  around: Schema.Array(Schema.Struct({ line: Schema.Number, text: Text, mark: Schema.Boolean })),
-})
-const SampleView = Schema.Union([SpotView, Schema.Struct({ written: Text })])
-export const ExampleView = Schema.Struct({
-  step: Schema.Number,
-  fit: Schema.Literals(['Follows', 'Breaks']),
-  input: Schema.NullOr(SampleView),
-  output: SampleView,
-})
 export const QuestionView = Schema.Struct({
   says: Text,
   example: ExampleView,
@@ -443,7 +444,6 @@ export const DirectionCard = Schema.Struct({
   says: Schema.NullOr(Text),
   standards: StandardsView,
   diff: Schema.NullOr(DraftChange),
-  examples: Schema.Array(ExampleView),
   questions: Schema.Array(QuestionView),
   request: Schema.NullOr(Text),
   reset: Schema.Boolean,
@@ -496,8 +496,8 @@ export const ServerMessage = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('term.size'),
     session: SessionId,
-    cols: Schema.Number,
-    rows: Schema.Number,
+    cols: PositiveInt,
+    rows: PositiveInt,
   }),
 ])
 export const PageMessage = Schema.Union([
@@ -506,8 +506,8 @@ export const PageMessage = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('term.resize'),
     session: SessionId,
-    cols: Schema.Number,
-    rows: Schema.Number,
+    cols: PositiveInt,
+    rows: PositiveInt,
   }),
 ])
 
@@ -562,19 +562,19 @@ export const PageAct = Schema.Union([
     draft: RevisionId,
     comment: Schema.optionalKey(Text),
   }),
-  Schema.Struct({ act: Schema.Literal('reject-draft'), draft: RevisionId, reason: Text }),
+  Schema.Struct({ act: Schema.Literal('reject-draft'), draft: RevisionId, reason: NonBlank }),
   Schema.Struct({ act: Schema.Literal('confirm'), forward: EventRef }),
   Schema.Struct({ act: Schema.Literal('answer'), question: QuestionId, text: Text }),
   Schema.Struct({ act: Schema.Literal('end'), run: RunId }),
-  Schema.Struct({ act: Schema.Literal('reject-task'), task: TaskId, reason: Text }),
+  Schema.Struct({ act: Schema.Literal('reject-task'), task: TaskId, reason: NonBlank }),
   Schema.Struct({ act: Schema.Literal('settings'), settings: SettingsChange }),
   Schema.Struct({ act: Schema.Literal('accept-words'), draft: EventRef }),
-  Schema.Struct({ act: Schema.Literal('reject-words'), draft: EventRef, reason: Text }),
+  Schema.Struct({ act: Schema.Literal('reject-words'), draft: EventRef, reason: NonBlank }),
   // The person decides a drafted adjustment (ruling 14).
   Schema.Struct({ act: Schema.Literal('accept-adjustment'), draft: EventRef }),
-  Schema.Struct({ act: Schema.Literal('reject-adjustment'), draft: EventRef, reason: Text }),
+  Schema.Struct({ act: Schema.Literal('reject-adjustment'), draft: EventRef, reason: NonBlank }),
   // The text box of the gear (P7).
-  Schema.Struct({ act: Schema.Literal('suggest'), about: SuggestionTarget, says: Text }),
+  Schema.Struct({ act: Schema.Literal('suggest'), about: SuggestionTarget, says: NonBlank }),
   Schema.Struct({ act: Schema.Literal('assign'), task: TaskId, role: RoleName }),
   Schema.Struct({ act: Schema.Literal('resolve'), escalation: EscalationId, text: Text }),
   Schema.Struct({
@@ -585,7 +585,7 @@ export const PageAct = Schema.Union([
   Schema.Struct({
     act: Schema.Literal('reject-evaluation'),
     evaluation: EvaluationId,
-    reason: Text,
+    reason: NonBlank,
   }),
 ])
 export type PageAct = typeof PageAct.Type

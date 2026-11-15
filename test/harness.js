@@ -79,42 +79,47 @@ export const FLOW_FILES = {
 }
 // How the TSD direction works, from the person's first act down to the document: five steps, one
 // of them an act of the writer on its own. The direction governs two: the writer makes the
-// document (step 4), the linter checks it (step 5); each uses the ids that apply there.
+// document (step 4), the linter checks it (step 5); each uses the ids that apply there, and shows
+// an output that follows and one that breaks (Nanda, 2026-11-15): the writer's output only, the
+// linter's input and output; real where the project has one, else written by the host.
 export const FLOW = `flow:
   - { from: Person, to: architect, says: asks for a TSD of the export }
-  - { from: architect, to: writer, says: gives each section to a writer, file: CLAUDE.md, line: 3 }
-  - { from: writer, to: writer, says: reads the rule of one heading for each section, file: .claude/skills/writer/SKILL.md, line: 3 }
-  - { from: writer, to: docs/tsd.md, says: fills the template one section at a time, file: docs/template.md, line: 3, uses: [tsd-writing, intro-story, repeatable] }
-  - { from: linter, to: docs/tsd.md, says: checks that each section says one thing, uses: [facts-not-proof, no-code-proof] }
-`
-// P10 rejected, onboarding 2026-11-14: a direction starts with its examples. Nanda, 2026-11-15:
-// an output that follows and one that breaks for each marked step: the writer's output only, the
-// linter's input and output; real where the project has one, else written by the host.
-export const EXAMPLES = `examples:
-  - step: 4
-    fit: Follows
-    output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" }
-  - step: 4
-    fit: Breaks
-    output: { written: "## Introduction and design, in one section" }
-  - step: 5
-    fit: Follows
-    input: { file: docs/tsd.md, line: 5, excerpt: TODO }
-    output: { written: "Reject: the Introduction holds no words yet" }
-  - step: 5
-    fit: Breaks
-    input: { file: docs/tsd.md, line: 5, excerpt: TODO }
-    output: { written: "Accept: the section says one thing" }
+  - { from: architect, to: writer, says: gives each section to a writer, place: { file: CLAUDE.md, line: 3 } }
+  - { from: writer, to: writer, says: reads the rule of one heading for each section, place: { file: .claude/skills/writer/SKILL.md, line: 3 } }
+  - from: writer
+    to: docs/tsd.md
+    says: fills the template one section at a time
+    place: { file: docs/template.md, line: 3 }
+    uses: [tsd-writing, intro-story, repeatable]
+    examples:
+      - fit: Follows
+        output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" }
+      - fit: Breaks
+        output: { written: "## Introduction and design, in one section" }
+  - from: linter
+    to: docs/tsd.md
+    says: checks that each section says one thing
+    uses: [facts-not-proof, no-code-proof]
+    examples:
+      - fit: Follows
+        input: { file: docs/tsd.md, line: 5, excerpt: TODO }
+        output: { written: "Reject: the Introduction holds no words yet" }
+      - fit: Breaks
+        input: { file: docs/tsd.md, line: 5, excerpt: TODO }
+        output: { written: "Accept: the section says one thing" }
 `
 // For the direction <id> of a test: a flow of one step that it governs, and an output there that
 // follows it and one that breaks it.
 export const markedOf = (id) => `flow:
-  - { from: writer, to: docs/tsd.md, says: writes one section, uses: [${id}] }
-examples:
-  - { step: 1, fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
-  - { step: 1, fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
+  - from: writer
+    to: docs/tsd.md
+    says: writes one section
+    uses: [${id}]
+    examples:
+      - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
+      - { fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
 `
-// The examples come before the standards, so that a test that appends a standard to the fixture
+// The flow comes before the standards, so that a test that appends a standard to the fixture
 // stays inside the standards. Nanda, 2026-11-15: a direction has a summary, before its words.
 export const DIRECTION = `id: tsd-writing
 name: TSD writing
@@ -122,7 +127,7 @@ owner: Nanda
 from: [Pathos, Logos]
 summary: A TSD lets its reader decide without a meeting, so each page stands alone.
 ${FLOW}says: The reader understands and decides from the page alone.
-${EXAMPLES}standards:
+standards:
   - id: facts-not-proof
     says: The body states facts; the proof stays in the agreed facts.
     rules:
@@ -151,12 +156,15 @@ name: One thing per section
 from: [Logos]
 summary: Each section of a TSD keeps to one topic, so a reader finds it fast.
 flow:
-  - { from: writer, to: docs/tsd.md, says: writes one section, uses: [one-thing, one-heading] }
+  - from: writer
+    to: docs/tsd.md
+    says: writes one section
+    uses: [one-thing, one-heading]
+    examples:
+      - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
+      - { fit: Follows, output: { file: docs/tsd.md, line: 7, excerpt: "## Design" } }
+      - { fit: Breaks, output: { written: "## Introduction and design, in one section" } }
 says: Each section says one thing.
-examples:
-  - { step: 1, fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
-  - { step: 1, fit: Follows, output: { file: docs/tsd.md, line: 7, excerpt: "## Design" } }
-  - { step: 1, fit: Breaks, output: { written: "## Introduction and design, in one section" } }
 standards:
   - id: one-heading
     says: A section has one heading.
@@ -166,7 +174,7 @@ standards:
 // The host's questions about a draft: each names an example and gives two options.
 export const ONBOARD_QUESTIONS = `questions:
   - says: Does a section of facts count as one thing?
-    example: { step: 1, fit: Follows, output: { file: docs/facts.md, line: 3, excerpt: "## Dedupe" } }
+    example: { fit: Follows, output: { file: docs/facts.md, line: 3, excerpt: "## Dedupe" } }
     options: ["each fact is one thing", "the facts together are one thing"]
 `
 
@@ -426,11 +434,14 @@ owner: Nanda
 summary: A fix counts only with a test that ran on it.
 flow:
   - { from: implementer, to: app/ok.txt, says: fixes the key }
-  - { from: gate, to: app/ok.txt, says: runs the suite on the fix, uses: [fixes, proven, suite-passes] }
+  - from: gate
+    to: app/ok.txt
+    says: runs the suite on the fix
+    uses: [fixes, proven, suite-passes]
+    examples:
+      - { fit: Follows, input: { file: app/ok.txt, line: 1, excerpt: ok }, output: { file: aristoteles.yaml, line: 43, excerpt: 'run: "test -f ok.txt"' } }
+      - { fit: Breaks, input: { file: app/ok.txt, line: 1, excerpt: ok }, output: { written: "Accept: the key is fixed, and no test ran on it." } }
 says: A fix is proven by a test that ran on it.
-examples:
-  - { step: 2, fit: Follows, input: { file: app/ok.txt, line: 1, excerpt: ok }, output: { file: aristoteles.yaml, line: 43, excerpt: 'run: "test -f ok.txt"' } }
-  - { step: 2, fit: Breaks, input: { file: app/ok.txt, line: 1, excerpt: ok }, output: { written: "Accept: the key is fixed, and no test ran on it." } }
 standards:
   - id: proven
     says: The suite passes on the fix.

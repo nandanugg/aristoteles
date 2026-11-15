@@ -487,7 +487,11 @@ describe('the summary of a direction', () => {
     )
     const arch = tokenIn(await out(p.nanda('assign t1 --role=architect')))
     ok(await p.agent(`brief ${arch}`))
-    const flow = (uses) => `flow:\n  - { from: writer, to: docs/tsd.md, says: writes the TSD, uses: [${uses}] }\n`
+    const flow = (uses) =>
+      'flow:\n  - from: writer\n    to: docs/tsd.md\n    says: writes the TSD\n' +
+      `    uses: [${uses}]\n    examples:\n` +
+      '      - { fit: Follows, output: { written: one section }  }\n' +
+      '      - { fit: Breaks, output: { written: two sections in one } }\n'
     p.write('ghost.yaml', flow('ghost'))
     expect((await p.agent(`direction revise ${arch} tsd-writing --file=ghost.yaml`)).err).toContain(
       'refused: flow step 1 uses "ghost", which is not tsd-writing or a standard or rule of it',

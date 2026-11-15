@@ -29,6 +29,7 @@ import type {
   EvaluationId,
   EventRef,
   NonBlank,
+  PositiveInt,
   ProblemId,
   QuestionId,
   RevisionId,
@@ -408,7 +409,7 @@ export interface TaskCard {
   readonly id: TaskId
   readonly name: Text
   readonly words: Text // the status line, with no attempt
-  readonly attempt: { readonly now: number; readonly max: number | null } | null
+  readonly attempt: { readonly now: number; readonly max: PositiveInt | null } | null
   readonly owner: Owner | null // the terminal that owns the task
   readonly badge: boolean
   readonly parent: TaskId | null
@@ -430,7 +431,7 @@ export interface WorkCard extends Live {
   readonly a: AssignmentId
   readonly role: Text
   readonly tier: 'sol' | 'terra' | 'luna' | 'program'
-  readonly attempt: { readonly now: number; readonly max: number | null }
+  readonly attempt: { readonly now: number; readonly max: PositiveInt | null }
   readonly session: SessionId | null
   readonly inside: AssignmentId | null
   readonly result: Text | null
@@ -542,8 +543,8 @@ export type ServerMessage =
   | {
       readonly type: 'term.size'
       readonly session: SessionId
-      readonly cols: number
-      readonly rows: number
+      readonly cols: PositiveInt
+      readonly rows: PositiveInt
     }
 export type PageMessage =
   | { readonly type: 'term.open' | 'term.close'; readonly session: SessionId }
@@ -551,8 +552,8 @@ export type PageMessage =
   | {
       readonly type: 'term.resize'
       readonly session: SessionId
-      readonly cols: number
-      readonly rows: number
+      readonly cols: PositiveInt
+      readonly rows: PositiveInt
     }
 
 // The person's acts on the page (POST /api/act); the answer is { out } or { error } (an error
@@ -568,26 +569,26 @@ export type PageAct =
     }
   | { readonly act: 'fixed'; readonly problem: ProblemId }
   | { readonly act: 'accept-draft'; readonly draft: RevisionId; readonly comment?: Text }
-  | { readonly act: 'reject-draft'; readonly draft: RevisionId; readonly reason: Text }
+  | { readonly act: 'reject-draft'; readonly draft: RevisionId; readonly reason: NonBlank }
   | { readonly act: 'confirm'; readonly forward: EventRef }
   // the person answers a question: the words of an option, or their own
   | { readonly act: 'answer'; readonly question: QuestionId; readonly text: Text }
   | { readonly act: 'end'; readonly run: RunId }
-  | { readonly act: 'reject-task'; readonly task: TaskId; readonly reason: Text }
+  | { readonly act: 'reject-task'; readonly task: TaskId; readonly reason: NonBlank }
   | { readonly act: 'settings'; readonly settings: Settings }
   // the person decides new words of a role (ruling 2026-11-14)
   | { readonly act: 'accept-words'; readonly draft: EventRef }
-  | { readonly act: 'reject-words'; readonly draft: EventRef; readonly reason: Text }
+  | { readonly act: 'reject-words'; readonly draft: EventRef; readonly reason: NonBlank }
   // the person decides a drafted adjustment (ruling 14)
   | { readonly act: 'accept-adjustment'; readonly draft: EventRef }
-  | { readonly act: 'reject-adjustment'; readonly draft: EventRef; readonly reason: Text }
+  | { readonly act: 'reject-adjustment'; readonly draft: EventRef; readonly reason: NonBlank }
   // the text box of the gear stores a suggestion: about a direction, a new one, or the roles (P7)
-  | { readonly act: 'suggest'; readonly about: SuggestionTarget; readonly says: Text }
+  | { readonly act: 'suggest'; readonly about: SuggestionTarget; readonly says: NonBlank }
   // the acts of the person's other items (P1): an assign, a resolve, an evaluation's decision
   | { readonly act: 'assign'; readonly task: TaskId; readonly role: RoleName }
   | { readonly act: 'resolve'; readonly escalation: EscalationId; readonly text: Text }
   | { readonly act: 'accept-evaluation'; readonly evaluation: EvaluationId; readonly text: Text }
-  | { readonly act: 'reject-evaluation'; readonly evaluation: EvaluationId; readonly reason: Text }
+  | { readonly act: 'reject-evaluation'; readonly evaluation: EvaluationId; readonly reason: NonBlank }
 export type SuggestionTarget =
   | { readonly _tag: 'NewDirection' }
   | { readonly _tag: 'Direction'; readonly direction: DirectionId }
@@ -625,29 +626,28 @@ export interface DirectionCard {
   // The words against the last draft, or the version against the one before it (Nanda,
   // 2026-11-15): with none before, every line comes. null: no draft yet.
   readonly diff: DraftChange | null
-  readonly examples: ReadonlyArray<ExampleView>
   readonly questions: ReadonlyArray<QuestionView>
   readonly request: Text | null // the words of a Revise that wait for the host
   // its file was in an older shape, so the host drafts it again (Nanda, 2026-11-15)
   readonly reset: boolean
 }
 // One step of the flow of a direction (Nanda, 2026-11-15): an actor acts on another actor or on a
-// file (from equal to to: an act on its own). file and line: where the project defines the step;
-// null: it names none. uses: the ids that apply at a step that the direction governs (the page
-// marks it); none: an unmarked step.
+// file (from equal to to: an act on its own). place: where the project defines the step, with the
+// line when it has one; null: it names none. uses: the ids that apply at a step that the direction
+// governs (the page marks it), and examples: what shows it followed and broken; both none: an
+// unmarked step.
 export interface FlowStepView {
   readonly from: Text
   readonly to: Text
   readonly says: Text
-  readonly file: Text | null
-  readonly line: number | null
+  readonly place: { readonly file: Text; readonly line: PositiveInt | null } | null
   readonly uses: ReadonlyArray<Text>
+  readonly examples: ReadonlyArray<ExampleView>
 }
 // An example (ruling 4; Nanda, 2026-11-15): an output of a marked step that follows or breaks
-// the direction (fit), with the input of a step that checks or decides. step: the number of the
-// step in the flow. A stale spot asks for other examples.
+// the direction (fit), with the input of a step that checks or decides. It sits in the step that
+// it shows. A stale spot asks for other examples.
 export interface ExampleView {
-  readonly step: number
   readonly fit: 'Follows' | 'Breaks'
   readonly input: SampleView | null
   readonly output: SampleView
@@ -660,7 +660,7 @@ export type SampleView = SpotView | { readonly written: Text }
 // does not read.
 export interface SpotView {
   readonly file: Text
-  readonly line: number
+  readonly line: PositiveInt
   readonly excerpt: Text
   readonly current: boolean
   readonly around: ReadonlyArray<CaseLine>

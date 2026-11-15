@@ -4,7 +4,7 @@
 // config draft (P4). Nothing here is stored as an event: the store starts with the result only.
 import { Schema } from 'effect'
 import { Principle } from './closed.ts'
-import { Example, Examples, FlowStep, type RoleFile, StandardFile } from './files.ts'
+import { Example, Flow, type RoleFile, StandardFile } from './files.ts'
 import { DirectionId, NonBlank, RoleName } from './ids.ts'
 import type { NonEmpty } from './model.ts'
 
@@ -15,7 +15,7 @@ const Text = Schema.String
 const QuestionFields = {
   says: NonBlank,
   example: Example,
-  options: Schema.Tuple([Text, Text]),
+  options: Schema.Tuple([NonBlank, NonBlank]),
 }
 export const AiQuestion = Schema.Struct(QuestionFields)
 export type AiQuestion = typeof AiQuestion.Type
@@ -25,11 +25,12 @@ export const AnsweredQuestion = Schema.Struct({
 })
 export type AnsweredQuestion = typeof AnsweredQuestion.Type
 
-// What a draft says: its summary and its flow (Nanda, 2026-11-15), its words, and its standards;
+// What a draft says: its summary and its flow with the examples of its marked steps (Nanda,
+// 2026-11-15), its words, and its standards;
 // each rule names the role that the AI proposes to check it.
 const Content = Schema.Struct({
   summary: NonBlank,
-  flow: Schema.Array(FlowStep),
+  flow: Flow,
   says: Text,
   standards: Schema.Array(StandardFile),
 })
@@ -41,13 +42,13 @@ const Previous = Schema.Struct({
   standards: Schema.Array(StandardFile),
 })
 export type Previous = typeof Previous.Type
-// The host's draft of a direction: its words, its examples, and what the last draft said.
+// The host's draft of a direction: its words (its flow holds its examples), and what the last
+// draft said.
 export const DraftOfFile = Schema.Struct({
   name: Text,
   from: Schema.Array(Principle),
   content: Content,
   previous: Schema.optionalKey(Previous),
-  examples: Examples,
 })
 export type DraftOfFile = typeof DraftOfFile.Type
 

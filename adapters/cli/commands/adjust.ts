@@ -19,7 +19,6 @@ import { textOf, wordsOf } from '../args.ts'
 import { agentCallerOf, authorOf, isPerson, personAuthor } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { act, peekWork } from '../runtime.ts'
-import { EXAMPLES_FORM } from '../shared.ts'
 
 const ROLE_FILE = `write the keys of the new role in a file, as a role of ${CONFIG} has them:
   tier: high | medium | low
@@ -29,8 +28,6 @@ const ROLE_FILE = `write the keys of the new role in a file, as a role of ${CONF
   acts: [{ do: <its work> }]
   persistence: { persistent: true | false, why: <one line> }
   icon: <a role icon, such as compass>`
-const EXAMPLES_FILE = `write the new examples in a file:
-${EXAMPLES_FORM.replace(/^/gm, '  ')}`
 const TIERS: ReadonlyArray<Tier> = ['low', 'medium', 'high']
 
 // The change of each draft form, from its words and flags.
@@ -63,12 +60,9 @@ const adjustmentOf = (call: Call): Effect.Effect<AdjustmentInput, ReturnType<typ
       }
       case 'retire':
         return { _tag: 'RetireDirection', direction: DirectionId.make(name) }
-      case 'examples':
-        if (file === undefined) return yield* refuse('examples needs --file=<examples.yaml>', EXAMPLES_FILE)
-        return { _tag: 'SetExamples', direction: DirectionId.make(name), file }
       default:
         return yield* refuse(
-          'use work adjust add-role|remove-role|tier|persistence|retire|examples, or show|accept|reject <event>',
+          'use work adjust add-role|remove-role|tier|persistence|retire, or show|accept|reject <event>',
           'work help lists the forms',
         )
     }

@@ -339,16 +339,18 @@ export const n14: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config:
 // (P12); an example fits Follows or Breaks, and it has an output, real or written (Nanda,
 // 2026-11-15); a subagent keeps its tier (P2).
 const aSpot = { file: 'docs/a.md', line: 1 as PositiveInt, excerpt: 'x' } as const
-const aCase = { step: 1 as PositiveInt, fit: 'Follows', output: aSpot } as const
+const aCase = { fit: 'Follows', output: aSpot } as const
+const word = 'w' as NonBlank
+const marked = <E>(examples: E) => [{ from: word, to: word, says: word, uses: [word] as [NonBlank], examples }]
 // @ts-expect-error O1: an agent role with no persistence
 export const o1: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { description: 'd', intro: 'i', responsibilities: [], acts: [], checks: [], icon: 'bot', kind: 'agent', tier: 'high' } } }, hashes: {}, texts: {}, directions: [] } }
 // @ts-expect-error O2: an icon outside the page's set
 export const o2: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { ...roleFile, icon: 'rocket', kind: 'agent', tier: 'high' } } }, hashes: {}, texts: {}, directions: [] } }
 // @ts-expect-error O3: an example that neither follows nor breaks
-export const o3: Event = { _tag: 'Revision', id: d, move: { _tag: 'ExamplesAdded', flow: [], examples: [aCase, aCase, { ...aCase, fit: 'Maybe' }] } }
-export const okO3b: Event = { _tag: 'Revision', id: d, move: { _tag: 'ExamplesAdded', flow: [], examples: [aCase, { ...aCase, output: { written: 'w' as NonBlank } }] } }
+export const o3: Event = { _tag: 'Revision', id: d, move: { _tag: 'ExamplesAdded', flow: marked([aCase, aCase, { ...aCase, fit: 'Maybe' }]) } }
+export const okO3b: Event = { _tag: 'Revision', id: d, move: { _tag: 'ExamplesAdded', flow: marked([aCase, { ...aCase, output: { written: word } }]) } }
 // @ts-expect-error O3b: an example with no output
-export const o3b: Event = { _tag: 'Revision', id: d, move: { _tag: 'ExamplesAdded', flow: [], examples: [aCase, { fit: 'Breaks', input: aSpot }] } }
+export const o3b: Event = { _tag: 'Revision', id: d, move: { _tag: 'ExamplesAdded', flow: marked([aCase, { fit: 'Breaks', input: aSpot }]) } }
 // @ts-expect-error O4: a subagent with no tier
 export const o4: Assignment = { ...asg, role: linter, _tag: 'Reviewer', runs: { _tag: 'Subagent' } }
 export const okO5: Recorded = { seq: 2, at: now, author: { _tag: 'Supervisor', name: 'Nanda' }, event: { _tag: 'Agent', id: 'p1' as AgentId, move: { _tag: 'Started', session: s1 } } }
@@ -376,7 +378,7 @@ export const s24c: Event = { _tag: 'Send', id: e12, move: { _tag: 'Dropped', why
 export const s25: Event = { _tag: 'Send', create: sentByAgent }
 export const s26a: Event = { _tag: 'Question', create: { _tag: 'Escalated', text: 'blocked' } }
 export const s26b: Event = { _tag: 'Question', create: { _tag: 'Asked', text: 'x', to: { _tag: 'Owner' }, options: ['yes', 'no'] } }
-export const s27: Event = { _tag: 'Revision', create: { _tag: 'Drafted', direction: { id: did, name: 'd2 name', owner: 'Nanda', from: ['Logos'], summary: 's', flow: [], says: 's', standards: [] }, examples: [aCase, aCase, aCase], answers: [], why: { _tag: 'NoneGiven' } } }
+export const s27: Event = { _tag: 'Revision', create: { _tag: 'Drafted', direction: { id: did, name: 'd2 name', owner: 'Nanda', from: ['Logos'], summary: 's', flow: [], says: 's', standards: [] }, answers: [], why: { _tag: 'NoneGiven' } } }
 export const s28: Event = { _tag: 'Role', id: role, move: { _tag: 'Fitted', hash: 'h', answers: [{ id: 1, yes: true, why: 'y' }] } }
 export const r21: Resolve = {
   id: v, by: nanda, under, when: now, at: 1,

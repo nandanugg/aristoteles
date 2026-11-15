@@ -10,7 +10,7 @@ import { FlowDiagram, whoOf } from './flow.ts'
 import { Markdown } from './markdown.ts'
 
 type Card = typeof DirectionCard.Type
-type ExampleData = Card['examples'][number]
+type ExampleData = Card['flow'][number]['examples'][number]
 type SampleData = ExampleData['output']
 type SpotData = Extract<SampleData, { file: string }>
 
@@ -55,17 +55,13 @@ export function ExampleBlock({ e }: { e: ExampleData }) {
 }
 
 // The examples by marked step, in the order of the flow.
-export function Examples({ card }: { card: Pick<Card, 'flow' | 'examples'> }) {
-  const { flow, examples } = card
-  if (!examples.length) return null
-  const groups = flow
-    .flatMap((s, i) => (s.uses.length ? [{ s, n: i + 1 }] : []))
-    .map(({ s, n }) => ({
-      head: `Step ${n} · ${whoOf(s)}`,
-      of: examples.filter((e) => e.step === n),
-    }))
+export function Examples({ card }: { card: Pick<Card, 'flow'> }) {
+  const groups = card.flow
+    .map((s, i) => ({ head: `Step ${i + 1} · ${whoOf(s)}`, of: s.examples }))
     .filter((g) => g.of.length)
-  return html`<div class="section-title">Examples (${examples.length})</div>
+  const count = groups.reduce((sum, g) => sum + g.of.length, 0)
+  if (!count) return null
+  return html`<div class="section-title">Examples (${count})</div>
     ${groups.map((g) => html`<section class="example-group" aria-label=${g.head}>
       <h3 class="example-step">${g.head}</h3>
       <ul class="examples">${g.of.map((e) => html`<${ExampleBlock} e=${e} />`)}</ul>

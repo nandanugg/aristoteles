@@ -19,7 +19,6 @@ import {
   create,
   currentVersion,
   type Event,
-  examplesMissing,
   isNonBlank,
   move,
   type OnboardedDirection,
@@ -42,7 +41,7 @@ import {
 } from '../services/index.ts'
 import { foldStep } from '../state/index.ts'
 import type { Refusal } from '../schema/errors.ts'
-import { DRAFT, readExamples } from './drafts.ts'
+import { DRAFT } from './drafts.ts'
 import {
   allowed,
   asWrite,
@@ -80,12 +79,6 @@ export const REFUSALS = {
         `the owner ${owner} of ${id} is not in the people of ${CONFIG}`,
         'Write',
         `name a person of ${CONFIG} as the owner of ${id}`,
-      ),
-    fewExamples: (id: string, missing: string) =>
-      no(
-        `${id}: ${missing}; a direction starts with its examples`,
-        'Write',
-        `give ${id} an output that follows it and one that breaks it, for each marked step`,
       ),
     notRole: (rule: string, direction: string, role: string) =>
       no(
@@ -158,7 +151,6 @@ export const REFUSALS = {
       no('a reject of new words needs a reason', 'Write', 'write why with --reason'),
   },
   DraftAdjustment: {
-    examples: DRAFT.examples,
     noWhy: (role: string) =>
       no(
         `the persistence of ${role} needs a reason`,
@@ -218,8 +210,8 @@ const startProblem = (
   }
   const ids = new Set<string>()
   const rules = new Map<string, string | undefined>()
-  for (const { direction: d, examples } of directions) {
-    const problem = directionProblem(config, d, examples, ids, rules)
+  for (const { direction: d } of directions) {
+    const problem = directionProblem(config, d, ids, rules)
     if (problem !== undefined) {
       return { refusal: problem, fix: { _tag: 'Direction', direction: d.id } }
     }
@@ -239,7 +231,6 @@ const isLead = (r: RoleFile): boolean =>
 const directionProblem = (
   config: ConfigFile,
   d: OnboardedDirection['direction'],
-  examples: OnboardedDirection['examples'],
   ids: Set<string>,
   rules: Map<string, string | undefined>,
 ): Refusal | undefined => {
@@ -247,8 +238,6 @@ const directionProblem = (
   if (ids.has(d.id)) return S.sameId(d.id)
   ids.add(d.id)
   if (!config.people.includes(d.owner)) return S.owner(d.id, d.owner)
-  const missing = examplesMissing(d.flow, examples)
-  if (missing !== undefined) return S.fewExamples(d.id, missing)
   if (d.maxStandards !== undefined && d.standards.length > d.maxStandards) {
     return S.tooMany(d.name, String(d.standards.length), String(d.maxStandards))
   }
@@ -678,7 +667,6 @@ const withAdjustment = (file: string, a: Adjustment): Edited => {
     case 'SetPersistence':
       return withRoleKeys(file, a.role, { persistence: a.persistence })
     case 'RetireDirection':
-    case 'SetExamples':
       return { text: file }
     default:
       break
@@ -705,13 +693,6 @@ const adjustmentOf = (
   Effect.gen(function* () {
     const cwd = d.moment.outside.cwd
     switch (input._tag) {
-      case 'SetExamples': {
-        const official = officialDirections(d.moment.work).find((x) => x.id === input.direction)
-        const flow = official === undefined ? [] : currentVersion(official).flow
-        const raw = yield* readYaml(cwd, input.file)
-        const examples = yield* readExamples(input.file, raw, flow)
-        return { _tag: 'SetExamples', direction: input.direction, examples }
-      }
       case 'SetPersistence': {
         const { role, persistent, why } = input
         if (!isNonBlank(why)) return yield* fail(R.DraftAdjustment.noWhy(role))

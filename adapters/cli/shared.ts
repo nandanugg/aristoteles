@@ -26,21 +26,27 @@ import {
 export const EVIDENCE_FORM =
   '--evidence="<rule id> | <where you read in the result> | <what you saw there>", one for each rule in your checks; with no rule: --evidence="<where you read> | <what you saw there>"'
 
-// The examples: key of a file, in each template that asks for examples (Nanda, 2026-11-15: an
-// example is an output of a marked step). A template indents it under its own first line.
-export const EXAMPLES_FORM = `examples:   # for each marked step of the flow, one that follows and one that breaks
-  - step: <n>   # a marked step of the flow (one with uses); none when the flow marks none
-    fit: Follows | Breaks   # the output follows the direction, or breaks it
-    input: { file: <path>, line: <n>, excerpt: <a short part of it> }   # only for a step that checks or decides
-    output: { file: <a real result>, line: <n>, excerpt: <a short part of it as it is now> }
-  - { step: <n>, fit: Breaks, output: { written: <the output in your words, when the project has none> } }`
+// The flow: key of a file, in each template that asks for a flow (Nanda, 2026-11-15: an example is
+// an output of a marked step, so it is written inside the step). A template indents it under its
+// own first line.
+export const FLOW_FORM = `flow:   # how it works, from the first act of an actor down to the output
+  - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, place: { file: <path>, line: <n> } }   # place: only where the project defines the step; line: only with its file
+  - from: <an actor>   # a step that the direction governs: mark it, with its examples
+    to: <an actor, or the file that it acts on>
+    says: <what happens>
+    uses: [<the ids that apply there: the direction's id, standard ids, rule ids>]
+    examples:   # at least one that follows the direction and one that breaks it
+      - fit: Follows | Breaks   # the output follows the direction, or breaks it
+        input: { file: <path>, line: <n>, excerpt: <a short part of it> }   # only for a step that checks or decides
+        output: { file: <a real result>, line: <n>, excerpt: <a short part of it as it is now> }
+      - { fit: Breaks, output: { written: <the output in your words, when the project has none> } }`
 
 // One evidence line: <rule id> | <where> | <what>, or <where> | <what> for what no rule names.
 export const evidenceOf = (
   values: ReadonlyArray<string | true>,
-): Effect.Effect<ReadonlyArray<typeof EvidenceData.Type>, Refused> =>
+): Effect.Effect<ReadonlyArray<typeof EvidenceData.Encoded>, Refused> =>
   Effect.gen(function* () {
-    const out: Array<typeof EvidenceData.Type> = []
+    const out: Array<typeof EvidenceData.Encoded> = []
     for (const v of values) {
       const parts = String(v)
         .split('|')

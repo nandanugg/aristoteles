@@ -83,12 +83,12 @@ describe('the store start of onboarding (Question 20, option A)', () => {
   test('the start with two directions is one event in one store write', async () => {
     const p = h.project()
     const tsd = Bun.YAML.parse(h.DIRECTION) as Record<string, unknown>
-    // Nanda, 2026-11-15: a direction has examples of the marked steps of its flow.
-    const { examples, ...file } = tsd
+    // Nanda, 2026-11-15: a direction has examples inside the marked steps of its flow.
+    const file = tsd
     const standards = (file.standards as ReadonlyArray<{ rules: ReadonlyArray<object> }>).map(
       (x) => ({ ...x, rules: x.rules.map((r) => ({ ...r, supersedes: [] })) }),
     )
-    const local = { direction: { ...file, standards }, examples, source: { _tag: 'Local' } }
+    const local = { direction: { ...file, standards }, source: { _tag: 'Local' } }
     const flags = {
       direction: {
         id: 'feature-flags',
@@ -101,7 +101,6 @@ describe('the store start of onboarding (Question 20, option A)', () => {
         says: 'Each critical change is flagged.',
         standards: [],
       },
-      examples,
       source: {
         _tag: 'External',
         repo: 'company-repo',
@@ -126,14 +125,10 @@ describe('the store start of onboarding (Question 20, option A)', () => {
   test('a refused start writes nothing', async () => {
     const p = h.project()
     const tsd = Bun.YAML.parse(h.DIRECTION) as Record<string, unknown>
-    const { examples: _, ...file } = tsd
-    const few = { direction: file, examples: [], source: { _tag: 'Local' } }
-    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [few] } }
+    const stranger = { direction: { ...tsd, owner: 'Dewi' }, source: { _tag: 'Local' } }
+    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [stranger] } }
     const error = failure(dispatchIn(p.dir, NANDA, input as never, later(p)))
-    expect(error?.message).toBe(
-      'tsd-writing: step 4 has no example that follows the direction; a direction starts with ' +
-        'its examples',
-    )
+    expect(error?.message).toBe('the owner Dewi of tsd-writing is not in the people of aristoteles.yaml')
     // No event: the dir has no store to open.
     expect(() => eventsOf(p.dir)).toThrow()
   }, 60000)

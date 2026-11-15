@@ -86,7 +86,7 @@ its state, `work onboard accept <id>`, `revise <id> --words=<words>`, `remove <i
 After the store starts, a change is an event that you accept. Say what to change in words
 (`work suggest roles --says=<words>`, or about a direction `work suggest <direction>
 --says=<words>`); the host or a high role drafts it with `work adjust` (add or remove a role,
-change a tier or a persistence, retire a direction, change examples), or with `work role draft` and
+change a tier or a persistence, retire a direction), or with `work role draft` and
 `work direction revise` for words. Each draft waits for you on the page: accept it, or reject it
 with your reason.
 

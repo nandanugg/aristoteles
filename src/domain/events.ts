@@ -21,9 +21,8 @@ import {
   ConfigFile,
   ContextFile,
   DirectionFile,
-  Examples,
   ExternalSource,
-  FlowStep,
+  Flow,
   PartFile,
   PersistenceFile,
   ReviseFile,
@@ -62,12 +61,18 @@ import {
 
 const Text = Schema.String
 const NonEmpty = Schema.NonEmptyArray
+// A whole number, none or more: the size of a file.
+const Count = Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)))
 
 // Evidence and points as the CLI writes them: a rule by its key in the official version of that
 // time (the fold finds its entry). null: the line or the point names no rule.
-export const EvidenceData = Schema.Struct({ rule: Schema.NullOr(Text), where: Text, what: Text })
+export const EvidenceData = Schema.Struct({
+  rule: Schema.NullOr(NonBlank),
+  where: NonBlank,
+  what: NonBlank,
+})
 export type EvidenceData = typeof EvidenceData.Type
-export const PointData = Schema.Struct({ text: NonBlank, breaks: Schema.NullOr(Text) })
+export const PointData = Schema.Struct({ text: NonBlank, breaks: Schema.NullOr(NonBlank) })
 export type PointData = typeof PointData.Type
 // A point of a Reject of a task: a task has no rule to break.
 export const TaskPointData = Schema.Struct({ text: NonBlank })
@@ -76,7 +81,7 @@ export type TaskPointData = typeof TaskPointData.Type
 // What a report made: a file or one section of it (its digest and its size), or a commit (its
 // tree as the digest, and its change as git patch-id names it, so that a rebase is the same work).
 export const ReportedWork = Schema.Union([
-  Schema.TaggedStruct('File', { digest: Text, size: Schema.Number }),
+  Schema.TaggedStruct('File', { digest: Text, size: Count }),
   Schema.TaggedStruct('Commit', { digest: Text, patch: Text }),
 ])
 export type ReportedWork = typeof ReportedWork.Type
@@ -175,11 +180,10 @@ const Failure = Schema.Literals(['ended', 'error', 'silent'])
 // --- the workflow, roles, runs, terminals and sends ---------------------------------------------
 
 // An accepted direction of onboarding, as the store start keeps it (Question 20, option A): its
-// file, its examples, and where it comes from, so that a company direction stays one and the
+// file (its flow holds its examples), and where it comes from, so that a company direction stays one and the
 // daily refresh follows it (P8).
 export const OnboardedDirection = Schema.Struct({
   direction: DirectionFile,
-  examples: Examples,
   source: Schema.Union([
     Schema.TaggedStruct('Local', {}),
     Schema.TaggedStruct('External', ExternalSource.fields),
@@ -238,7 +242,6 @@ export const Adjustment = Schema.Union([
   Schema.TaggedStruct('SetTier', { role: RoleName, tier: Tier }),
   Schema.TaggedStruct('SetPersistence', { role: RoleName, persistence: PersistenceFile }),
   Schema.TaggedStruct('RetireDirection', { direction: DirectionId }),
-  Schema.TaggedStruct('SetExamples', { direction: DirectionId, examples: Examples }),
 ])
 export type Adjustment = typeof Adjustment.Type
 export const AdjustmentMove = Schema.Union([
@@ -400,7 +403,7 @@ const HostWords = created(
     Schema.TaggedStruct('DraftWords', {
       on: RevisionId,
       text: NonBlank,
-      hope: Schema.NullOr(Text),
+      hope: Schema.NullOr(NonBlank),
     }),
     Schema.TaggedStruct('EndWords', { on: RunId, text: NonBlank }),
   ]),
@@ -499,7 +502,7 @@ const RejectOfEvaluation = Schema.TaggedStruct('Evaluation', {
   id: EvaluationId,
   reason: NonBlank,
 })
-const reason = Schema.NullOr(Text) // a comment; only words read it
+const reason = Schema.NullOr(NonBlank) // a comment; only words read it
 const accept = <S extends Schema.Top>(of: S) => Schema.TaggedStruct('Accept', { of, reason })
 const reject = <S extends Schema.Top>(of: S) => Schema.TaggedStruct('Reject', { of })
 // A Resolve ends one escalation (the CLI word: resolve) with an agreement or a direction in
@@ -605,12 +608,12 @@ export const Why = Schema.Union([
 // A draft (a Revision) of a direction: the whole of a new one (the CLI word: direction new), a
 // change of its current version (direction revise), or a commit of a company direction (the
 // daily refresh). Its state (waiting, vetoed, official) follows from the reviews. A new direction
-// starts with its examples (P10 rejected, onboarding 2026-11-14); a revise has none, since
-// examples make no new version (ruling 4). A company draft of a new direction gets its flow (of
-// this project, its steps marked) and its examples from a model before the accept (ExamplesAdded:
-// the latest counts).
+// starts with its flow, whose marked steps hold the examples; a revise that changes the flow
+// brings its examples with it. A company draft of a new direction gets its flow (of this
+// project, its steps marked, each with its examples) from a model before the accept
+// (ExamplesAdded: the latest counts).
 export const RevisionMove = Schema.Union([
-  Schema.TaggedStruct('ExamplesAdded', { flow: Schema.Array(FlowStep), examples: Examples }),
+  Schema.TaggedStruct('ExamplesAdded', { flow: Flow }),
 ])
 const Revision = Schema.Union([
   created(
@@ -618,7 +621,6 @@ const Revision = Schema.Union([
     Schema.Union([
       Schema.TaggedStruct('Drafted', {
         direction: DirectionFile,
-        examples: Examples,
         answers: Schema.Array(AnswerId),
         why: Why,
       }),
@@ -689,7 +691,7 @@ const Forward = Schema.Union([
   created(
     'Forward',
     Schema.TaggedStruct('Forwarded', {
-      person: Text,
+      person: NonBlank,
       quote: NonBlank,
       channel: Schema.Literals(['chat', 'github']),
       inner: ForwardedAct,
@@ -956,7 +958,7 @@ export const writtenBy = (author: Author, event: Event): boolean => {
 // refuses a pair of an author and an event that the table does not hold.
 export type Recorded = { [A in AuthorTag]: RecordedBy<A> }[AuthorTag]
 export const Recorded = Schema.Struct({
-  seq: Schema.Number,
+  seq: Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThan(0))),
   at: Time,
   author: Author,
   event: Event,

@@ -77,8 +77,8 @@ export interface WhyInput {
   readonly reason: string | null
   readonly words: Words | null
 }
-// An adjustment as a model drafts it (ruling 14): a new role and new examples name a file, which
-// the action reads and checks; the rest is typed.
+// An adjustment as a model drafts it (ruling 14): a new role names a file, which the action
+// reads and checks; the rest is typed.
 export type AdjustmentInput =
   | { readonly _tag: 'AddRole'; readonly role: RoleName; readonly file: FilePath }
   | { readonly _tag: 'RemoveRole'; readonly role: RoleName }
@@ -90,7 +90,6 @@ export type AdjustmentInput =
       readonly why: Words
     }
   | { readonly _tag: 'RetireDirection'; readonly direction: DirectionId }
-  | { readonly _tag: 'SetExamples'; readonly direction: DirectionId; readonly file: FilePath }
 // One --point of a reject, with the rule that it breaks (--breaks), as typed.
 export interface PointInput {
   readonly text: Words
@@ -160,13 +159,13 @@ export type ActionInput =
   // --- work, reviews, questions, notes ----------------------------------------------------------
   // madeFrom: the words of --made-from (P5 decides the decoded form; N4 reads git itself).
   | In<'Report', { readonly assignment: AssignmentId }, { readonly output: Words; readonly madeFrom: ReadonlyArray<Words> }>
-  | In<'Accept', { readonly of: AcceptOf }, { readonly evidence: ReadonlyArray<typeof EvidenceData.Type>; readonly reason: Words | null }>
+  | In<'Accept', { readonly of: AcceptOf }, { readonly evidence: ReadonlyArray<typeof EvidenceData.Encoded>; readonly reason: Words | null }>
   // points for a result or a task; reason for a draft or an evaluation (P5 decides the split).
   | In<'Reject', { readonly of: RejectOf }, { readonly points: ReadonlyArray<PointInput>; readonly reason: Words | null }>
   | In<'Recheck', { readonly result: ResultId }, { readonly reason: Words }>
   | In<'EscalateResult', { readonly result: ResultId }, { readonly reason: Words }>
   | In<'EscalateTask', { readonly task: TaskId }, { readonly reason: Words }> // a maker sends its task up
-  | In<'Resolve', { readonly escalation: EscalationId }, { readonly resolution: Words; readonly evidence: ReadonlyArray<typeof EvidenceData.Type> }>
+  | In<'Resolve', { readonly escalation: EscalationId }, { readonly resolution: Words; readonly evidence: ReadonlyArray<typeof EvidenceData.Encoded> }>
   | In<'Ask', { readonly to: 'Above' | 'Owner' }, { readonly text: Words; readonly options: ReadonlyArray<Words> }>
   | In<'Answer', { readonly question: QuestionId }, { readonly text: Words }>
   | In<'Note', { readonly task: TaskId }, { readonly kind: 'Message' | 'Finding'; readonly text: Words }>

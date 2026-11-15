@@ -16,7 +16,6 @@ import {
   type Draft,
   type Event,
   type EventRef,
-  type Example,
   type FlowStep,
   type Kind,
   kindOf,
@@ -179,11 +178,10 @@ const withSupersedes = (standards: unknown) =>
     ...x,
     rules: x.rules.map((r) => ({ ...r, supersedes: [] })),
   }))
-// The flow and the examples of the harness direction (P10 rejected, onboarding 2026-11-14;
-// Nanda, 2026-11-15: examples of the marked steps), for the other directions of these scenarios.
-const { flow: FLOW, examples: CASES } = Bun.YAML.parse(harness.DIRECTION) as {
+// The flow of the harness direction, the examples inside its marked steps (P10 rejected,
+// onboarding 2026-11-14; Nanda, 2026-11-15), for the other directions of these scenarios.
+const { flow: FLOW } = Bun.YAML.parse(harness.DIRECTION) as {
   readonly flow: ReadonlyArray<FlowStep>
-  readonly examples: ReadonlyArray<Example>
 }
 
 // The fold of the store of the dir gives the Work of the old replay.
@@ -406,7 +404,7 @@ describe('fold gives the Work of the old replay', () => {
     ok(await p.nanda('waiting'))
     // P10 rejected, onboarding 2026-11-14: the company draft of a new direction gets its flow and
     // its examples from a model before the accept (the command comes in a later wave).
-    const move = { _tag: 'ExamplesAdded', flow: FLOW, examples: CASES }
+    const move = { _tag: 'ExamplesAdded', flow: FLOW }
     const cases = { _tag: 'Revision', id: 'd2', move }
     await appendNow(p, HOST_RUN, cases as Event)
     const seen = '--evidence="the folder | each standard and rule reads as the company says"'
@@ -581,8 +579,8 @@ describe('fold gives the Work of the old replay', () => {
       commit: 'c'.repeat(40),
     }
     const directions = [
-      { direction: { ...file, standards: withSupersedes(file.standards) }, examples: CASES, source: { _tag: 'Local' } },
-      { direction: { ...flags, flow: FLOW }, examples: CASES, source: external },
+      { direction: { ...file, standards: withSupersedes(file.standards) }, source: { _tag: 'Local' } },
+      { direction: { ...flags, flow: FLOW }, source: external },
     ] as unknown as ReadonlyArray<OnboardedDirection>
     await startStore(p.dir, directions, p.now() as Time)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
@@ -599,7 +597,8 @@ describe('fold gives the Work of the old replay', () => {
       const d = work.directions.get(id as DirectionId)
       if (d?._tag !== 'Official') throw new Error(`${id} is not official`)
       expect(d.versions.map((v) => v.number)).toEqual([1] as never)
-      expect(d.examples).toEqual(CASES)
+      // The examples came with the flow of each version.
+      expect(d.versions[0].flow.flatMap((s) => s.examples ?? [])).toHaveLength(4)
       expect(d.source).toEqual(source)
       const draft = work.drafts.get(d.versions[0].revision as RevisionId)
       expect<unknown>(draft?.origin).toEqual({ _tag: 'Onboarded', event: 'e1' })
@@ -675,7 +674,6 @@ describe('fold gives the Work of the old replay', () => {
       icon: 'pen-tool',
     }
     const why = 'It writes every section of the project.'
-    const other = [...CASES].reverse()
     const w0 = fold(await eventsOf(p.dir))
     const kept = { hashes: w0.hashes, texts: w0.texts }
     const steps: ReadonlyArray<readonly [unknown, 'Accepted' | 'Rejected' | 'None']> = [
@@ -683,7 +681,6 @@ describe('fold gives the Work of the old replay', () => {
       [{ _tag: 'SetPersistence', role: 'writer', persistence: { persistent: true, why } }, 'Accepted'],
       [{ _tag: 'SetTier', role: 'editor', tier: 'low' }, 'None'],
       [{ _tag: 'SetTier', role: 'editor', tier: 'high' }, 'Accepted'],
-      [{ _tag: 'SetExamples', direction: 'tsd-writing', examples: other }, 'Accepted'],
       [{ _tag: 'RemoveRole', role: 'editor' }, 'Rejected'],
       [{ _tag: 'RetireDirection', direction: 'tsd-writing' }, 'Accepted'],
     ]
@@ -707,8 +704,6 @@ describe('fold gives the Work of the old replay', () => {
       _tag: 'Persistent',
       why,
     })
-    const tsd = work.directions.get('tsd-writing' as DirectionId)
-    expect(tsd?.examples).toEqual(other)
   }, 30000)
 
   // Every kind of event that a scenario above wrote; the kinds that none writes are listed, so a

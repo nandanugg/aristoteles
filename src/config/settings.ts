@@ -1,8 +1,9 @@
 // The settings of the UI live in aristoteles.yaml and are read from the file now (never stored).
 import { join } from 'node:path'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import type { OutsideFailed, Refused } from '../domain/errors.ts'
 import { type Settings, TerminalTier } from '../domain/files.ts'
+import { PositiveInt } from '../domain/ids.ts'
 import { Files } from '../services/outside.ts'
 import { CONFIG, DRAFT, fail, parseYaml, type Raw, refusing, SETTING_KEYS } from './core.ts'
 
@@ -33,7 +34,7 @@ const TIER_DEFAULTS = {
   retryInput: DEFAULT_RETRY,
 }
 
-const wholeNumber = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 1
+const wholeNumber = Schema.is(PositiveInt)
 
 // The settings of a parsed file, checked, with their defaults. Every tier has its commands
 // (ruling 10): a role of any tier can be persistent, and runs in a terminal of its own.

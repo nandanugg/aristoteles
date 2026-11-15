@@ -45,35 +45,43 @@ actor down to the output. The page draws it as a sequence diagram under the summ
 - Each step is one act: `from` acts, `to` is the actor or the file that it acts on, and `says` is
   what happens, in one plain line. A step from an actor to the same actor is an act on its own.
 - The first step starts the direction; the last step makes or checks the output.
-- `file` and `line` name where the project defines the step. They carry the sources, so the
-  words of the direction do not say where it comes from.
+- `place` names where the project defines the step: its `file`, and a `line` in that file. They
+  carry the sources, so the words of the direction do not say where it comes from.
 - Name each actor the same way in each step; the lifelines are the actors in the order that they
   first appear.
 - `uses` marks a step that the direction governs: the ids that apply there (the direction id,
-  standard ids, rule ids). A flow marks at least one step; the page colors the marked ones.
+  standard ids, rule ids), and its `examples` come with it (see Examples). A flow marks at least
+  one step; the page colors the marked ones.
 
 ```yaml
 flow:
   - { from: Person, to: architect, says: asks for a TSD of the export feature }
-  - { from: architect, to: writer, says: gives each section to a writer, file: CLAUDE.md, line: 12 }
-  - { from: writer, to: writer, says: reads the rule of one heading for each section, file: .claude/skills/writer/SKILL.md, line: 30 }
-  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, file: docs/templates/tsd.md, line: 1, uses: [tsd-writing, one-topic] }
+  - { from: architect, to: writer, says: gives each section to a writer, place: { file: CLAUDE.md, line: 12 } }
+  - { from: writer, to: writer, says: reads the rule of one heading for each section, place: { file: .claude/skills/writer/SKILL.md, line: 30 } }
+  - from: writer
+    to: docs/tsd/export.md
+    says: fills the template one section at a time
+    place: { file: docs/templates/tsd.md, line: 1 }
+    uses: [tsd-writing, one-topic]
+    examples:
+      - { fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
+      - { fit: Breaks, output: { written: "## Design and rollout" } }
 ```
 
-A revise may change the flow (`flow:` in the edit gives the whole new flow).
+A revise may change the flow (`flow:` in the edit gives the whole new flow, with the examples of
+its marked steps).
 
 ## Examples
 
-A direction has examples (`examples:` in its file): for each marked step of the flow, an output
-that follows the direction and one that breaks it (`step` is its number). A step that makes
-something gives its output; a step that checks or decides gives its input and its output. A
-sample is real (a file, a line, a short excerpt of the file as it is today; stale when the excerpt
+A marked step of the flow has its examples inside it (`examples:` under the step): an output that
+follows the direction and one that breaks it, at least one of each. A step that makes something
+gives its output; a step that checks or decides gives its input and its output. A sample is real (a file, a line, a short excerpt of the file as it is today; stale when the excerpt
 leaves the file) or, when the project has none, written: `{ written: <the output> }`.
 
 ```yaml
-examples:
-  - { step: 4, fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
-  - { step: 4, fit: Breaks, output: { written: "## Design and rollout" } }
+    examples:
+      - { fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
+      - { fit: Breaks, output: { written: "## Design and rollout" } }
 ```
 
 ## Write for contextual retrieval

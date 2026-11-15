@@ -6,6 +6,7 @@ import { currentOf, runOfTree, taskAt } from '../derived/reads.ts'
 import type { Refusal } from '../schema/errors.ts'
 import {
   create,
+  isNonBlank,
   type Event,
   move,
   RoleName,
@@ -311,10 +312,13 @@ const WriteHostWords: Action<'WriteHostWords'> = ({ by, input }) =>
       return [create('HostWords', { _tag: 'EndWords', on: on as never, text: words })]
     }
     const official = d.states.revisions.get(on as never)?._tag === 'Official'
-    if (official && hope !== null) return yield* fail(R.WriteHostWords.hopeOfOfficial(on))
-    if (!official && blank(hope)) return yield* fail(R.WriteHostWords.noHope(on))
     const draft = { _tag: 'DraftWords' as const, on: on as never, text: words }
-    return [create('HostWords', { ...draft, hope: official ? null : hope })]
+    if (official) {
+      if (hope !== null) return yield* fail(R.WriteHostWords.hopeOfOfficial(on))
+      return [create('HostWords', { ...draft, hope: null })]
+    }
+    if (hope === null || !isNonBlank(hope)) return yield* fail(R.WriteHostWords.noHope(on))
+    return [create('HostWords', { ...draft, hope })]
   })
 
 // --- terminals -----------------------------------------------------------------------------------

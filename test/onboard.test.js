@@ -76,10 +76,9 @@ describe('the whole onboarding at a terminal', () => {
         'flow:\n  1. writer -> docs/tsd.md: writes one section [uses one-thing, one-heading]\n' +
         'from: Logos\nsays: Each section says one thing.\n',
     )
-    // Nanda, 2026-11-15: a question names an example of a marked step (was: a case, a ladder).
+    // Nanda, 2026-11-15: a question names an example, with no step (was: a case, a ladder).
     expect(ok(await p.nanda('onboard show one-thing')).out).toContain(
       '  1. Does a section of facts count as one thing?\n' +
-        '    step 1 · writer -> docs/tsd.md\n' +
         '      Follows\n' +
         '        output · docs/facts.md:3 "## Dedupe"\n' +
         '     A: each fact is one thing\n     B: the facts together are one thing',
@@ -113,7 +112,7 @@ describe('the whole onboarding at a terminal', () => {
     const events = eventsOf(p)
     expect(events.map((e) => `${e.record}.${e.member}`)).toEqual(['Workflow.Defined'])
     const { directions } = JSON.parse(events[0].event).create
-    expect(directions.map((x) => [x.direction.id, x.direction.owner, x.examples.length, x.source._tag])).toEqual([
+    expect(directions.map((x) => [x.direction.id, x.direction.owner, x.direction.flow.flatMap((f) => f.examples ?? []).length, x.source._tag])).toEqual([
       ['one-thing', 'Nanda', 3, 'Local'],
       ['tsd-writing', 'Nanda', 4, 'Local'],
     ])
@@ -145,10 +144,14 @@ const companyRepo = async () => {
 // this project, the steps that it governs marked, and the examples of those steps.
 const COMPANY_DRAFT = `checkedBy: linter
 flow:
-  - { from: writer, to: docs/tsd.md, says: puts each change under a flag, file: docs/tsd.md, line: 7, uses: [feature-flags, upper-snake] }
-examples:
-  - { step: 1, fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
-  - { step: 1, fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
+  - from: writer
+    to: docs/tsd.md
+    says: puts each change under a flag
+    place: { file: docs/tsd.md, line: 7 }
+    uses: [feature-flags, upper-snake]
+    examples:
+      - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
+      - { fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
 `
 const withCompany = async () => {
   const company = await companyRepo()
@@ -176,8 +179,12 @@ describe('a company direction in onboarding (ruling 6)', () => {
     expect(directions[0].direction.summary).toBe('Each critical change is under a flag.')
     expect(directions[0].direction.flow).toEqual([
       {
-        from: 'writer', to: 'docs/tsd.md', says: 'puts each change under a flag', file: 'docs/tsd.md', line: 7,
+        from: 'writer', to: 'docs/tsd.md', says: 'puts each change under a flag', place: { file: 'docs/tsd.md', line: 7 },
         uses: ['feature-flags', 'upper-snake'],
+        examples: [
+          { fit: 'Follows', output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' } },
+          { fit: 'Breaks', output: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO' } },
+        ],
       },
     ])
     expect(directions[0].source).toEqual({
@@ -250,9 +257,12 @@ describe('what onboarding refuses', () => {
     expect((await p.agent('onboard draft tsd-writing --file=stale.yaml')).err).toContain(
       'refused: stale.yaml: example 3: "DONE" is not in docs/tsd.md',
     )
-    p.write('few.yaml', ONBOARD_DIRECTION.replace(/ {2}- step: 5\n {4}fit: Breaks\n(.*\n){2}/, ''))
+    p.write('few.yaml', ONBOARD_DIRECTION.replace(/ {6}- fit: Breaks\n {8}input: .*\n {8}output: \{ written: "Accept.*\n/, ''))
     expect((await p.agent('onboard draft tsd-writing --file=few.yaml')).err).toContain(
-      'refused: few.yaml: step 5 has no example that breaks the direction',
+      'refused: few.yaml: flow: ',
+    )
+    expect((await p.agent('onboard draft tsd-writing --file=few.yaml')).err).toContain(
+      'the step has no example that breaks the direction',
     )
   })
 
@@ -299,14 +309,14 @@ describe('what onboarding refuses', () => {
       '      input · docs/tsd.md:5 "TODO" · stale\n',
     )
     expect(ok(await p.agent('onboard status')).out).toContain('found in the project · 4 examples, 2 stale')
-    const unmarked = ONBOARD_DIRECTION.replaceAll(/, uses: \[.*\] \}/g, ' }')
+    const unmarked = ONBOARD_DIRECTION.replaceAll(/ {4}uses: .*\n {4}examples:\n( {6}.*\n)+/g, '')
     p.write('unmarked.yaml', unmarked)
     expect((await p.agent('onboard draft tsd-writing --file=unmarked.yaml')).err).toContain(
-      'refused: unmarked.yaml: no flow step has uses: mark each step that the direction governs with its ids',
+      'no flow step has uses: mark each step that the direction governs',
     )
     p.write('bad.yaml', ONBOARD_DIRECTION.replace('says: asks for a TSD of the export', 'says: " "'))
     expect((await p.agent('onboard draft tsd-writing --file=bad.yaml')).err).toContain(
-      'refused: bad.yaml: flow step 1 needs from, to and says: who acts, on whom or on what file, and what happens',
+      'refused: bad.yaml: flow: a step needs from, to and says',
     )
   })
 

@@ -2,7 +2,7 @@
 // old engine's tests, through the actions over a scenario store of the harness. Each
 // invalid input gets the old engine's words and a real choice; a valid one makes its event.
 import { beforeAll, describe, expect, test } from 'bun:test'
-import { Effect, Exit } from 'effect'
+import { Exit } from 'effect'
 import { type Derived, waitingFor } from '../derived/index.ts'
 import type { Author, Time } from '../schema/index.ts'
 import {
@@ -19,7 +19,6 @@ import {
   refused,
   workOf,
 } from './fixture.test.ts'
-import { readExamples } from './drafts.ts'
 import type { ActionInput, Refusal } from './types.ts'
 
 const NO_WHY = { reason: null, words: null }
@@ -46,16 +45,19 @@ name: Reels
 owner: Nanda
 summary: A reel shows one flow, so a person follows it at once.
 flow:
-  - { from: writer, to: docs/tsd.md, says: writes the reel, uses: [reels, one-flow] }
+  - from: writer
+    to: docs/tsd.md
+    says: writes the reel
+    uses: [reels, one-flow]
+    examples:
+      - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
+      - { fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
 says: A reel shows one flow.
 standards:
   - id: one-flow
     says: One flow per reel.
     rules:
       - { id: one-flow-only, says: "The reel shows one flow", checkedBy: section-lead }
-examples:
-  - { step: 1, fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
-  - { step: 1, fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
 `
 
 // The reported scenario, with a Reject of r1 by the lead (a point with no rule, and one that
@@ -216,7 +218,8 @@ describe('a draft of a direction', () => {
   })
 
   test('a new direction keeps its limit of standards, and a rule id of another', () => {
-    const flow = 'flow: [{ from: a, to: b, says: c, uses: [big] }]'
+    const e = '[{ fit: Follows, output: { written: x } }, { fit: Breaks, output: { written: y } }]'
+    const flow = `flow: [{ from: a, to: b, says: c, uses: [big], examples: ${e} }]`
     const big = `id: big\nname: Big\nowner: Nanda\nsummary: Big.\n${flow}\nsays: Big.\nmaxStandards: 1\nstandards:
   - { id: one, says: One. }
   - { id: two, says: Two. }
@@ -322,9 +325,9 @@ describe('an import of a company commit', () => {
     // the accept.
     const [second] = write(REFRESH, importOf(2))
     const output = '{ file: docs/tsd.md, line: 5, excerpt: TODO }'
-    const examples = ['Follows', 'Breaks'].map((fit) => `  - { step: 1, fit: ${fit}, output: ${output} }`)
-    const flow = 'flow:\n  - { from: writer, to: docs/tsd.md, says: writes, uses: [acme] }\n'
-    p.write('cases.yaml', `${flow}examples:\n${examples.join('\n')}\n`)
+    const examples = ['Follows', 'Breaks'].map((fit) => `      - { fit: ${fit}, output: ${output} }`)
+    const step = '  - from: writer\n    to: docs/tsd.md\n    says: writes\n    uses: [acme]\n'
+    p.write('cases.yaml', `flow:\n${step}    examples:\n${examples.join('\n')}\n`)
     const cases = { _tag: 'AddExamples', target: { draft: second }, content: { file: 'cases.yaml' } }
     write(HOST_RUN, cases as ActionInput)
     write(NANDA, review(String(second), true))
@@ -403,75 +406,5 @@ describe('a forward of the person', () => {
       'Nanda could not ask a2 now: a2 (writer) is finished, so it answers no question; ask an ' +
         'open assignment',
     )
-  })
-})
-
-// Nanda, 2026-11-15: an example is an output of a marked step of the flow that follows the
-// direction or breaks it, with its input for a step that checks or decides; a sample is a real
-// place of the project, or the host's words.
-describe('the examples of a file', () => {
-  const output = { file: 'docs/tsd.md', line: 7, excerpt: '## Design' }
-  const written = { written: 'Design and introduction in one section' }
-  const step = (n: number, uses?: ReadonlyArray<string>) => ({
-    from: 'writer',
-    to: `step ${n}`,
-    says: 'writes',
-    ...(uses ? { uses } : {}),
-  })
-  // Steps 2 and 3 are marked: the writer makes the document, the linter checks it.
-  type Flow = Parameters<typeof readExamples>[2]
-  const flow = [step(1), step(2, ['tsd']), step(3, ['r1'])] as unknown as Flow
-  const both = (n: number, more: object = {}) => [
-    { step: n, fit: 'Follows', output, ...more },
-    { step: n, fit: 'Breaks', output: written, ...more },
-  ]
-  const read = (examples: ReadonlyArray<unknown>, f: Flow = flow, key = 'examples') =>
-    Effect.runSyncExit(readExamples('c.yaml', { [key]: examples }, f))
-  const refusal = (examples: ReadonlyArray<unknown>, f: Flow = flow) =>
-    Effect.runSync(Effect.flip(readExamples('c.yaml', { examples }, f))).message
-
-  test('each marked step has one that follows and one that breaks; input and words read', () => {
-    const all = [...both(2), ...both(3, { input: output })]
-    const exit = read(all)
-    expect(Exit.isSuccess(exit) ? exit.value : null).toEqual(all as never)
-    // The new shape is the only one: a cases: key reads as no examples.
-    expect(refusal([])).toBe('c.yaml: step 2 has no example that follows the direction')
-    expect(Exit.isSuccess(read(all, flow, 'cases'))).toBe(false)
-    expect(refusal(both(2))).toBe('c.yaml: step 3 has no example that follows the direction')
-    expect(refusal([...both(2), ...both(3).slice(0, 1)])).toBe(
-      'c.yaml: step 3 has no example that breaks the direction',
-    )
-  })
-
-  test('each example names a marked step, and a flow that marks none has no example', () => {
-    expect(refusal([...both(1), ...both(2), ...both(3)])).toBe(
-      'c.yaml: example 1: step is the number of a marked step of the flow (one with uses)',
-    )
-    expect(refusal([{ fit: 'Follows', output }, ...both(2), ...both(3)])).toBe(
-      'c.yaml: example 1: step is the number of a marked step of the flow (one with uses)',
-    )
-    expect(refusal([], [step(1)] as unknown as Flow)).toBe(
-      'c.yaml: its flow marks no step that the direction governs',
-    )
-  })
-
-  test('each sample is a real place or the host\'s words', () => {
-    const [follows, breaks] = both(2)
-    const rest = both(3)
-    expect(refusal([{ ...follows, output: undefined }, breaks, ...rest])).toBe(
-      'c.yaml: example 1: output is { file, line, excerpt } of the project, or { written: <words> }',
-    )
-    expect(refusal([follows, { ...breaks, output: { written: ' ' } }, ...rest])).toBe(
-      'c.yaml: example 2: output: written is words',
-    )
-    expect(refusal([{ ...follows, input: { ...output, line: 0 } }, breaks, ...rest])).toBe(
-      'c.yaml: example 1: input: line is a whole number of 1 or more',
-    )
-    // An old case (a ladder, or its short form) is no example.
-    for (const old of [{ fit: 'Follows', via: [], output }, { ...output, fit: 'Follows' }]) {
-      expect(refusal([old, breaks, ...rest])).toBe(
-        'c.yaml: example 1: step is the number of a marked step of the flow (one with uses)',
-      )
-    }
   })
 })

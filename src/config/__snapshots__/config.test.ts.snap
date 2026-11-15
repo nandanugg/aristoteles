@@ -1071,6 +1071,20 @@ exports[`readDirection a minimal direction 1`] = `
   "ok": {
     "flow": [
       {
+        "examples": [
+          {
+            "fit": "Follows",
+            "output": {
+              "written": "a",
+            },
+          },
+          {
+            "fit": "Breaks",
+            "output": {
+              "written": "b",
+            },
+          },
+        ],
         "from": "writer",
         "says": "writes",
         "to": "doc",
@@ -1097,6 +1111,20 @@ exports[`readDirection a full direction 1`] = `
     "approvedBy": "checker",
     "flow": [
       {
+        "examples": [
+          {
+            "fit": "Follows",
+            "output": {
+              "written": "a",
+            },
+          },
+          {
+            "fit": "Breaks",
+            "output": {
+              "written": "b",
+            },
+          },
+        ],
         "from": "writer",
         "says": "writes",
         "to": "doc",

@@ -36,16 +36,15 @@ import type { ActionInput } from './types.ts'
 
 const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
 const SUPERVISOR: Author = { _tag: 'Supervisor', name: 'Nanda' }
-// Nanda, 2026-11-15: a direction starts with examples (was: 3 cases): for each marked step of its
+// Nanda, 2026-11-15: a direction starts with examples (was: 3 cases): in each marked step of its
 // flow, one that follows it and one that breaks it.
 const OUTPUT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
 const EXAMPLES = [
-  { step: 1, fit: 'Follows', output: OUTPUT },
-  { step: 1, fit: 'Breaks', output: { written: 'Introduction: see ABC-2964.' } },
+  { fit: 'Follows', output: OUTPUT },
+  { fit: 'Breaks', output: { written: 'Introduction: see ABC-2964.' } },
 ]
-const FLAGS_FLOW = 'flow:\n  - { from: writer, to: docs/tsd.md, says: adds a flag, uses: [flags] }\n'
-const EXAMPLES_YAML = (examples: ReadonlyArray<object>) =>
-  `examples:\n${examples.map((e) => `  - ${JSON.stringify(e)}\n`).join('')}`
+const FLAGS_STEP = { from: 'writer', to: 'docs/tsd.md', says: 'adds a flag', uses: ['flags'] }
+const FLAGS_FLOW = JSON.stringify({ flow: [{ ...FLAGS_STEP, examples: EXAMPLES }] })
 const later = (p: Project, minutes = 1) =>
   new Date(Date.parse(p.now()) + minutes * 60000).toISOString() as Time
 // One dispatch that must store its event, a minute after the last act; the clock of the CLI
@@ -66,27 +65,29 @@ describe('the examples of a new direction (P10 rejected, onboarding 2026-11-14)'
     const p = h.project()
     ok(await p.nanda('init'))
     const marked = h.DIRECTION
-    p.write('one-step.yaml', marked.replace(/ {2}- step: 5\n(.*\n){3}/g, ''))
+    // The flow is read by its Schema: a marked step with one example only is refused.
+    p.write('one-step.yaml', marked.replace(/ {6}- fit: Breaks\n {8}input: .*\n {8}output: \{ written: "Accept.*\n/, ''))
     expect((await p.agent('direction new --file=one-step.yaml --by=assess')).err).toContain(
-      'one-step.yaml: step 5 has no example that follows the direction',
+      'the step has no example that breaks the direction',
     )
     p.write('ghost.yaml', marked.replace('uses: [facts-not-proof, no-code-proof]', 'uses: [ghost]'))
     expect((await p.agent('direction new --file=ghost.yaml --by=assess')).err).toContain(
       'ghost.yaml: flow step 5 uses "ghost", which is not tsd-writing or a standard or rule of it',
     )
-    p.write('no-flow.yaml', marked.replace(/flow:\n( {2}- .*\n)+/, ''))
+    p.write('no-flow.yaml', marked.replace(/flow:\n( {2}.*\n)+/, ''))
     expect((await p.agent('direction new --file=no-flow.yaml --by=assess')).err).toContain(
       'no-flow.yaml: flow is required',
     )
     p.write('marked.yaml', marked)
     ok(await p.agent('direction new --file=marked.yaml --by=assess'))
     const draft = workOf(p.dir).drafts.get('d1' as RevisionId)
-    const examples = draft?._tag === 'New' ? draft.examples : []
-    expect(examples.map((e) => [e.step, e.fit, e.input !== undefined])).toEqual([
-      [4, 'Follows', false],
-      [4, 'Breaks', false],
-      [5, 'Follows', true],
-      [5, 'Breaks', true],
+    // The examples are in the marked steps that they show.
+    expect(draft?.flow.map((s) => (s.examples ?? []).map((e) => [e.fit, e.input !== undefined]))).toEqual([
+      [],
+      [],
+      [],
+      [['Follows', false], ['Breaks', false]],
+      [['Follows', true], ['Breaks', true]],
     ] as never)
     expect(draft?.flow.map((s) => s.uses ?? [])).toEqual([
       [],
@@ -117,11 +118,10 @@ describe('the examples of a new direction (P10 rejected, onboarding 2026-11-14)'
     }
     // Nanda, 2026-11-15: an example is an output that follows or breaks it (was: 3 cases).
     expect(refused(act(derivedIn(p), NANDA, accept)).message).toBe(
-      'd2 drafts the new direction Flags, and its flow marks no step that the direction ' +
-        'governs; a direction starts with an output that follows it and one that breaks it, ' +
-        'for each marked step of its flow',
+      'd2 drafts the new direction Flags, and its flow marks no step; a direction starts with ' +
+        'a flow whose marked steps each have an output that follows it and one that breaks it',
     )
-    p.write('cases.yaml', `${FLAGS_FLOW}${EXAMPLES_YAML(EXAMPLES)}`)
+    p.write('cases.yaml', FLAGS_FLOW)
     const file = 'cases.yaml'
     const add: ActionInput = { _tag: 'AddExamples', target: { draft: d2 }, content: { file } }
     expect(refused(act(derivedIn(p), NANDA, add)).message).toBe(
@@ -131,7 +131,8 @@ describe('the examples of a new direction (P10 rejected, onboarding 2026-11-14)'
     stored(p, NANDA, accept)
     const flags = workOf(p.dir).directions.get('flags' as DirectionId)
     expect(flags?._tag).toBe('Official')
-    expect(flags?.examples).toEqual(EXAMPLES as never)
+    const flow = flags?._tag === 'Official' ? flags.versions[0].flow : []
+    expect(flow).toEqual([{ ...FLAGS_STEP, examples: EXAMPLES }] as never)
   }, 60000)
 })
 

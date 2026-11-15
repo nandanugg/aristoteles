@@ -1,8 +1,10 @@
 // The terminal of a real agent, piped from its tmux window. The person types here.
 import type { FitAddon as XFitAddon } from '@xterm/addon-fit'
 import type { Terminal as XTerminal } from '@xterm/xterm'
+import { Schema } from 'effect'
 import { html } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
+import { PositiveInt } from '../../../src/domain/ids.ts'
 import type { TerminalRef } from '../../../src/domain/ui-model.ts'
 import { socket } from './api.ts'
 import { ICONS, icon } from './icons.ts'
@@ -163,8 +165,8 @@ export function Terminal({ terminal }: { terminal: TerminalRef | null }) {
   const fitBox = () => {
     const fills = opened.current?.fill()
     if (fills === undefined || !(fills.cols > 0 && fills.rows > 0)) return
-    const cols = Math.max(80, fills.cols)
-    const rows = Math.max(24, fills.rows)
+    const cols = Schema.decodeUnknownSync(PositiveInt)(Math.max(80, fills.cols))
+    const rows = Schema.decodeUnknownSync(PositiveInt)(Math.max(24, fills.rows))
     socket.send({ type: 'term.resize', session: terminal.session, cols, rows })
   }
   const words = terminal.live ? 'runs' : terminal.ended ? 'ended' : 'closed'

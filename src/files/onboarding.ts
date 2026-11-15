@@ -34,7 +34,6 @@ import {
   type ConfigFile,
   checkerProblem,
   type Example,
-  type Examples,
   type FlowStep,
   type RoleFile,
   type StandardFile,
@@ -300,7 +299,6 @@ export const onboardedOf = (
     says: draft.content.says,
     standards: draft.content.standards,
   },
-  examples: draft.examples,
   source,
 })
 
@@ -325,12 +323,11 @@ export interface DirectionDraft {
   readonly flow: ReadonlyArray<FlowStep>
   readonly says: string
   readonly standards: ReadonlyArray<StandardFile>
-  readonly examples: Examples
 }
 export interface QuestionDraft {
   readonly says: NonBlank
   readonly example: Example
-  readonly options: readonly [string, string]
+  readonly options: readonly [NonBlank, NonBlank]
 }
 // The CLI checks each file that the host names (its keys, real examples) before the act.
 // A Draft with reopen: the store start names this accepted direction, so the host drafts it again,
@@ -525,7 +522,6 @@ const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft, reope
       ...(last && {
         previous: { summary: last.summary, says: last.says, standards: last.standards },
       }),
-      examples: draft.examples,
     }
     const stage: OnboardingDirection['stage'] =
       file.stage._tag === 'Question'
@@ -757,7 +753,7 @@ export const personAct = (
 // --- the store start (BUILD.md 1c) ----------------------------------------------------------------
 
 export interface Start {
-  // The accepted directions, each with its examples and where it comes from.
+  // The accepted directions, each with where it comes from.
   readonly directions: ReadonlyArray<OnboardedDirection>
   // The store is refused: aristoteles.yaml and aristoteles.lock as they were; the files stay.
   readonly restore: Effect.Effect<void, OutsideFailed>

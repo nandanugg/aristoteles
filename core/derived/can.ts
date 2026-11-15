@@ -12,7 +12,7 @@ import {
   type By,
   type DeciderLeaf,
   type EventRef,
-  examplesMissing,
+  isMarked,
   human,
   type NonBlank,
   type TaskId,
@@ -710,18 +710,18 @@ const reviewEvaluation = (c: Ctx, id: string): CanAct => {
   return MAY
 }
 
-// A direction starts with its examples (P10 rejected, onboarding 2026-11-14): the accept of a
-// new direction whose draft misses some waits until a model adds them.
+// A direction starts with its flow and the examples of its marked steps (P10 rejected, onboarding
+// 2026-11-14): the accept of a new direction whose draft has no marked step waits until a model
+// adds them.
 const draftExamples = (c: Ctx, id: string): CanAct => {
   const x = c.w.drafts.get(id as never)
-  const missing = x?._tag === 'New' ? examplesMissing(x.flow, x.examples) : undefined
-  if (x === undefined || missing === undefined) return MAY
+  if (x === undefined || x._tag !== 'New' || x.flow.some(isMarked)) return MAY
   const name = directionAt(c.w, x.of).name
   return no(
-    `${id} drafts the new direction ${name}, and ${missing}; a direction starts with an ` +
-      'output that follows it and one that breaks it, for each marked step of its flow',
+    `${id} drafts the new direction ${name}, and its flow marks no step; a direction starts with ` +
+      'a flow whose marked steps each have an output that follows it and one that breaks it',
     'Wait',
-    `a model adds its flow and examples first: work direction examples ${id} --file=<examples.yaml>`,
+    `a model adds its flow and examples first: work direction examples ${id} --file=<flow.yaml>`,
   )
 }
 const acceptOf: Check<'Accept'> = (c, { target: { of } }) =>

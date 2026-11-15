@@ -29,7 +29,7 @@ import {
   type By,
   type Direction,
   type DirectionId,
-  currentVersion,
+  isMarked,
   type EventRef,
   type EvaluationId,
   type Example,
@@ -218,8 +218,8 @@ export const flowLines = (
 ): ReadonlyArray<string> => {
   if (flow.length === 0) return []
   const step = (s: FlowStep, i: number) => {
-    const line = s.line === undefined ? '' : `:${s.line}`
-    const place = s.file === undefined ? '' : ` (${s.file}${line})`
+    const line = s.place?.line === undefined ? '' : `:${s.place.line}`
+    const place = s.place === undefined ? '' : ` (${s.place.file}${line})`
     const uses = s.uses ? ` [uses ${s.uses.join(', ')}]` : ''
     return `  ${i + 1}. ${whoOfStep(s)}: ${s.says}${place}${uses}`
   }
@@ -528,13 +528,12 @@ export const renderAssignment = (d: Derived, id: AssignmentId): ReadonlyArray<st
 
 // --- the examples of a direction, and an adjustment (onboarding) --------------------------------
 
-// The examples by the marked step of the flow (Nanda, 2026-11-15): each with its fit, its input
-// when it has one, and its output; a real sample with its place and its excerpt, stale when the
-// excerpt is no longer in its file, and the host's own words as written by the host. textOf gives the text of a file now (null: no such file); with
-// none, no state shows.
-export const exampleLines = (
-  examples: ReadonlyArray<Example>,
-  flow: ReadonlyArray<FlowStep>,
+// One example (Nanda, 2026-11-15): its fit, its input when it has one, and its output; a real
+// sample with its place and its excerpt, stale when the excerpt is no longer in its file, and the
+// host's own words as written by the host. textOf gives the text of a file now (null: no such
+// file); with none, no state shows.
+export const exampleOneLines = (
+  e: Example,
   textOf?: (file: string) => string | null,
 ): ReadonlyArray<string> => {
   const stale = (s: Spot) => textOf !== undefined && !spotCurrent(textOf(s.file), s)
@@ -542,16 +541,22 @@ export const exampleLines = (
     isSpot(s)
       ? `      ${name} · ${s.file}:${s.line} "${short(s.excerpt, 80)}"${stale(s) ? ' · stale' : ''}`
       : `      ${name} · written by the host: "${short(s.written, 80)}"`
-  const lines = (e: Example) => [
+  return [
     `    ${e.fit}`,
     ...(e.input ? [sample('input', e.input)] : []),
     sample('output', e.output),
   ]
-  return flow.flatMap((s, i) => {
-    const of = examples.filter((e) => e.step === i + 1)
-    return s.uses && of.length ? [`  step ${i + 1} · ${whoOfStep(s)}`, ...of.flatMap(lines)] : []
-  })
 }
+// The examples of a flow, under the marked step that each shows.
+export const exampleLines = (
+  flow: ReadonlyArray<FlowStep>,
+  textOf?: (file: string) => string | null,
+): ReadonlyArray<string> =>
+  flow.flatMap((s, i) =>
+    isMarked(s)
+      ? [`  step ${i + 1} · ${whoOfStep(s)}`, ...s.examples.flatMap((e) => exampleOneLines(e, textOf))]
+      : [],
+  )
 
 // What an adjustment changes, in one line.
 export const adjustmentWords = (a: Adjustment): string => {
@@ -574,8 +579,6 @@ export const adjustmentWords = (a: Adjustment): string => {
       )
     case 'RetireDirection':
       return `retire the direction ${a.direction}`
-    case 'SetExamples':
-      return `give ${a.direction} ${a.examples.length} new examples`
   }
 }
 
@@ -596,17 +599,12 @@ const adjustmentState = (d: Derived, ref: EventRef): string => {
   }
 }
 
-// work adjust show <event>: its head line, then what it holds (a new role, new examples).
+// work adjust show <event>: its head line, then what it holds (a new role).
 export const renderAdjustment = (d: Derived, ref: EventRef): ReadonlyArray<string> | undefined => {
   const x = adjustmentDraftAt(d.moment.work, ref)
   if (x === undefined) return undefined
   const a = x.adjustment
   const head = `${ref} ${adjustmentWords(a)}, drafted by ${drafterWords(x.by)} · ${adjustmentState(d, ref)}`
   if (a._tag === 'AddRole') return [head, ...JSON.stringify(a.file, null, 2).split('\n')]
-  if (a._tag === 'SetExamples') {
-    const official = d.moment.work.directions.get(a.direction)
-    const flow = official?._tag === 'Official' ? currentVersion(official).flow : []
-    return [head, ...exampleLines(a.examples, flow)]
-  }
   return [head]
 }

@@ -135,12 +135,12 @@ export const checkerProblem = (
 export const TierLimits = Schema.Struct({
   Assignment: Schema.optionalKey(
     Schema.Struct({
-      briefChars: Schema.optionalKey(Schema.Number),
-      attempts: Schema.optionalKey(Schema.Number),
+      briefChars: Schema.optionalKey(PositiveInt),
+      attempts: Schema.optionalKey(PositiveInt),
     }),
   ),
-  Review: Schema.optionalKey(Schema.Struct({ rules: Schema.optionalKey(Schema.Number) })),
-  Result: Schema.optionalKey(Schema.Struct({ size: Schema.optionalKey(Schema.Number) })),
+  Review: Schema.optionalKey(Schema.Struct({ rules: Schema.optionalKey(PositiveInt) })),
+  Result: Schema.optionalKey(Schema.Struct({ size: Schema.optionalKey(PositiveInt) })),
 })
 export type TierLimits = typeof TierLimits.Type
 
@@ -178,7 +178,7 @@ export const TierSettings = Schema.Struct({
   skills: Schema.optionalKey(Schema.String),
   errors: Schema.Array(Schema.String),
   prompts: Schema.Array(Schema.String),
-  silentMinutes: Schema.Number,
+  silentMinutes: PositiveInt,
   retryInput: Schema.String,
 })
 export type TierSettings = typeof TierSettings.Type
@@ -188,10 +188,10 @@ export const Settings = Schema.Struct({
     terra: Schema.optionalKey(TierSettings),
     luna: Schema.optionalKey(TierSettings),
   }),
-  retryMinutes: Schema.Number,
-  hostWaitMinutes: Schema.Number,
+  retryMinutes: PositiveInt,
+  hostWaitMinutes: PositiveInt,
   // How long an outside source that an agent read stays fresh (core/derived).
-  outsideSourceHours: Schema.Number,
+  outsideSourceHours: PositiveInt,
   sound: Schema.Boolean,
   theme: Schema.Literals(['light', 'dark']),
 })
@@ -266,16 +266,23 @@ export type Sample = typeof Sample.Type
 export const isSpot = (s: Sample): s is Spot => 'file' in s
 
 // page: Example. An output of a marked step of the flow that follows the direction or breaks it
-// (Nanda, 2026-11-15): step is the number of the step in the flow; a step that checks or decides
-// gives the input that it got too. A break is information only: it makes no task (ruling 17).
+// (Nanda, 2026-11-15); a step that checks or decides gives the input that it got too. A break is
+// information only: it makes no task (ruling 17).
 export const Example = Schema.Struct({
-  step: PositiveInt,
   fit: Fit,
   input: Schema.optionalKey(Sample),
   output: Sample,
 })
 export type Example = typeof Example.Type
-export const Examples = Schema.Array(Example)
+// The examples of a marked step: at least one that follows the direction and one that breaks it.
+export const Examples = Schema.Array(Example).pipe(
+  Schema.check(
+    Schema.makeFilter((xs: ReadonlyArray<Example>) => {
+      const lacks = (['Follows', 'Breaks'] as const).find((fit) => !xs.some((e) => e.fit === fit))
+      return lacks === undefined || `the step has no example that ${lacks.toLowerCase()} the direction`
+    }),
+  ),
+)
 export type Examples = typeof Examples.Type
 // The real places of an example, the input first.
 export const spotsOf = (e: Example): ReadonlyArray<Spot> =>
@@ -283,20 +290,43 @@ export const spotsOf = (e: Example): ReadonlyArray<Spot> =>
 
 // One step of the flow of a direction (Nanda, 2026-11-15: a direction has a flow): an actor does
 // something to another actor, or to a file that it acts on (from equal to to: an act on its own).
-// file and line: where the project defines the step, when it does. uses: the ids that apply at a
-// step that the direction governs (the direction, its standards, its rules); the page marks it.
-export const FlowStep = Schema.Struct({
-  from: NonBlank,
-  to: NonBlank,
-  says: NonBlank,
-  file: Schema.optionalKey(NonBlank),
-  line: Schema.optionalKey(PositiveInt),
-  uses: Schema.optionalKey(Schema.NonEmptyArray(NonBlank)),
+// place: where the project defines the step, when it does; a line needs its file. A marked step
+// is one that the direction governs: uses are the ids that apply there (the direction, its
+// standards, its rules), and its examples show it followed and broken. An unmarked step has
+// neither.
+const Place = Schema.Struct({ file: NonBlank, line: Schema.optionalKey(PositiveInt) })
+const StepAt = { from: NonBlank, to: NonBlank, says: NonBlank, place: Schema.optionalKey(Place) }
+const Marked = Schema.Struct({
+  ...StepAt,
+  uses: Schema.NonEmptyArray(NonBlank),
+  examples: Examples,
 })
+const Unmarked = Schema.Struct({
+  ...StepAt,
+  uses: Schema.optionalKey(Schema.Never),
+  examples: Schema.optionalKey(Schema.Never),
+})
+export const FlowStep = Schema.Union([Marked, Unmarked])
 export type FlowStep = typeof FlowStep.Type
+export type MarkedStep = typeof Marked.Type
+export const isMarked = (s: FlowStep): s is MarkedStep => s.uses !== undefined
+
+// A flow marks at least one step: the direction governs something.
+export const Flow = Schema.Array(FlowStep).pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (flow: ReadonlyArray<FlowStep>) =>
+        flow.some(isMarked) || 'no flow step has uses: mark each step that the direction governs',
+    ),
+  ),
+)
+export type Flow = typeof Flow.Type
+// The examples of a flow, in the order of its steps.
+export const examplesOfFlow = (flow: ReadonlyArray<FlowStep>): ReadonlyArray<Example> =>
+  flow.flatMap((s) => (isMarked(s) ? s.examples : []))
 
 // What is wrong with the marks of a flow, for a draft: each id of uses is the direction, or a
-// standard or a rule of it, and the flow marks at least one step.
+// standard or a rule of it.
 export const usesProblem = (
   id: string,
   flow: ReadonlyArray<FlowStep>,
@@ -308,26 +338,6 @@ export const usesProblem = (
     if (other !== undefined) {
       return `flow step ${i + 1} uses "${other}", which is not ${id} or a standard or rule of it`
     }
-  }
-  if (!flow.some((s) => s.uses)) {
-    return 'no flow step has uses: mark each step that the direction governs with its ids'
-  }
-  return undefined
-}
-
-// What the examples of a draft miss (Nanda, 2026-11-15): each marked step has an output that
-// follows the direction and one that breaks it, and a flow with no marked step has none to show.
-export const examplesMissing = (
-  flow: ReadonlyArray<FlowStep>,
-  examples: ReadonlyArray<Example>,
-): string | undefined => {
-  const lacks = (of: ReadonlyArray<Example>) =>
-    (['Follows', 'Breaks'] as const).filter((fit) => !of.some((e) => e.fit === fit))
-  const marked = flow.flatMap((s, i) => (s.uses ? [i + 1] : []))
-  if (marked.length === 0) return 'its flow marks no step that the direction governs'
-  for (const n of marked) {
-    const [fit] = lacks(examples.filter((e) => e.step === n))
-    if (fit) return `step ${n} has no example that ${fit.toLowerCase()} the direction`
   }
   return undefined
 }
@@ -343,9 +353,9 @@ export const DirectionFile = Schema.Struct({
   owner: Schema.String,
   from: Schema.Array(Principle),
   summary: NonBlank,
-  flow: Schema.Array(FlowStep),
+  flow: Flow,
   says: Schema.String,
-  maxStandards: Schema.optionalKey(Schema.Number),
+  maxStandards: Schema.optionalKey(PositiveInt),
   standards: Schema.Array(StandardFile),
   approvedBy: Schema.optionalKey(DeciderFile),
 })
@@ -354,12 +364,20 @@ export type DirectionFile = typeof DirectionFile.Type
 // A revise file: the change of a direction from its current version.
 export const ReviseFile = Schema.Struct({
   summary: Schema.optionalKey(NonBlank),
-  flow: Schema.optionalKey(Schema.Array(FlowStep)),
+  flow: Schema.optionalKey(Flow),
   says: Schema.optionalKey(Schema.String),
   add: Schema.optionalKey(Schema.Array(StandardFile)),
   remove: Schema.optionalKey(Schema.Array(Key)),
   replace: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Key, with: StandardFile }))),
-})
+}).pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (r: object) =>
+        Object.keys(r).length > 0 ||
+        'a revise changes nothing: give a summary, a flow, the words, or standards to add, remove or replace',
+    ),
+  ),
+)
 export type ReviseFile = typeof ReviseFile.Type
 
 // page: Revision.source (was CompanySource). A commit of a company direction: its repo and

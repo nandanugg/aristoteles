@@ -13,6 +13,8 @@ import {
   type Event,
   Example,
   type EventRef,
+  Flow,
+  FlowStep,
   OnboardingDirection,
   type RevisionId,
   type Time,
@@ -107,9 +109,10 @@ const PARTS =
 
 // Nanda, 2026-11-15: an example is an output of a marked step, real or written by the host.
 const SPOT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
-const CASE = { step: 1, fit: 'Follows', output: SPOT } as unknown as Example
-const BREAKS = { step: 1, fit: 'Breaks', output: { written: 'Intro: see PR 42.' } } as unknown as Example
-const FLOW = [{ from: 'writer', to: 'docs/tsd.md', says: 'writes', uses: ['tsd-writing'] }]
+const CASE = { fit: 'Follows', output: SPOT } as unknown as Example
+const BREAKS = { fit: 'Breaks', output: { written: 'Intro: see PR 42.' } } as unknown as Example
+const STEP = { from: 'writer', to: 'docs/tsd.md', says: 'writes' }
+const FLOW = [{ ...STEP, uses: ['tsd-writing'], examples: [CASE, BREAKS] }]
 // The text of one file; any other file is not there.
 const only = (file: string, text: string) => (f: string) => (f === file ? text : null)
 
@@ -143,33 +146,69 @@ describe('exampleStateOf', () => {
 })
 
 describe('Example', () => {
-  test('an example reads and writes as it is: its step, its input, its output', () => {
-    const example = { step: 2, fit: 'Breaks', input: SPOT, output: { written: 'Intro: see PR 42.' } }
+  test('an example reads and writes as it is: its input, its output', () => {
+    const example = { fit: 'Breaks', input: SPOT, output: { written: 'Intro: see PR 42.' } }
     const read = Schema.decodeUnknownSync(Example)(example)
     expect(read).toEqual(example as never)
     expect(Schema.encodeSync(Example)(read)).toEqual(example as never)
   })
-  test('the new shape is the only one: no step, no output, or blank words do not read', () => {
-    const rung = { name: 'Instruction', ...SPOT }
+  test('no output, or blank words, do not read', () => {
     for (const old of [
-      { fit: 'Follows', via: [rung], output: SPOT },
       { ...SPOT, fit: 'Follows' },
-      { fit: 'Follows', output: SPOT },
-      { step: 1, fit: 'Follows' },
-      { step: 1, fit: 'Follows', output: { written: ' ' } },
+      { fit: 'Follows' },
+      { fit: 'Follows', output: { written: ' ' } },
     ]) {
       expect(() => Schema.decodeUnknownSync(Example)(old)).toThrow()
     }
   })
+})
+
+// Nanda, 2026-11-15 (the owner's ruling: make illegal states unrepresentable): an example lives in
+// the marked step that it shows, so it cannot name a step that is gone or that is not marked.
+describe('the flow holds its examples', () => {
+  const flow = Schema.decodeUnknownSync(Flow)
+  const step = Schema.decodeUnknownSync(FlowStep)
+  const marked = { ...STEP, uses: ['d'], examples: [CASE, BREAKS] }
+  test('a marked step has uses and examples with one that follows and one that breaks', () => {
+    expect(flow([STEP, marked])).toEqual([STEP, marked] as never)
+    expect(() => step({ ...marked, examples: [CASE] })).toThrow('no example that breaks')
+    expect(() => step({ ...marked, examples: [BREAKS] })).toThrow('no example that follows')
+    expect(() => step({ ...marked, examples: [] })).toThrow()
+  })
+  test('uses without examples, or examples without uses, do not read', () => {
+    expect(() => step({ ...STEP, uses: ['d'] })).toThrow()
+    expect(() => step({ ...STEP, examples: [CASE, BREAKS] })).toThrow()
+    expect(() => step({ ...marked, uses: [] })).toThrow()
+  })
+  test('a flow that marks no step does not read', () => {
+    expect(() => flow([STEP, STEP])).toThrow('no flow step has uses')
+    expect(() => flow([])).toThrow('no flow step has uses')
+  })
+  test('a line needs its file', () => {
+    const place = { file: 'docs/t.md', line: 3 }
+    expect(step({ ...STEP, place })).toEqual({ ...STEP, place } as never)
+    expect(step({ ...STEP, place: { file: 'docs/t.md' } })).toEqual({
+      ...STEP,
+      place: { file: 'docs/t.md' },
+    } as never)
+    expect(() => step({ ...STEP, line: 12 })).not.toThrow()
+    expect(() => step({ ...STEP, place: { line: 12 } })).toThrow()
+    expect(() => step({ ...STEP, place: { file: 'docs/t.md', line: 0 } })).toThrow()
+  })
   test('a stored event of an older shape does not decode: the store refuses to read it', () => {
     const direction = { id: 'd', name: 'D', owner: 'Nanda', from: [], summary: 'S.', says: 'S.', standards: [] }
-    const old = { _tag: 'Drafted', direction, cases: [{ ...SPOT, fit: 'Follows' }], answers: [], why: { _tag: 'NoneGiven' } }
+    const old = {
+      _tag: 'Drafted',
+      direction: { ...direction, flow: [{ ...STEP, uses: ['d'] }] },
+      examples: [CASE, BREAKS],
+      answers: [],
+      why: { _tag: 'NoneGiven' },
+    }
     const row = { seq: 1, at: '2026-10-25T09:00:00.000Z', author: HOST_RUN, event: { _tag: 'Revision', create: old } }
     expect(() => decodeRecorded(row)).toThrow()
-    const flow = [{ from: 'w', to: 'd', says: 's', uses: ['d'] }]
-    const now = { ...old, direction: { ...direction, flow }, cases: undefined, examples: [CASE, BREAKS] }
-    const { cases: _, ...current } = now
-    expect(decodeRecorded({ ...row, event: { _tag: 'Revision', create: current } }).seq).toBe(1)
+    const { examples: _, ...rest } = old
+    const now = { ...rest, direction: { ...direction, flow: [marked] } }
+    expect(decodeRecorded({ ...row, event: { _tag: 'Revision', create: now } }).seq).toBe(1)
   })
 })
 
@@ -179,7 +218,6 @@ describe('onboardingStateOf', () => {
     name: 'TSD writing',
     from: ['Pathos'],
     content: { summary: 'S.', flow: FLOW, says: 'The reader decides.', standards: [] },
-    examples: [CASE, BREAKS],
   }
   const file = (stage: object) =>
     Schema.decodeUnknownSync(OnboardingDirection)({
@@ -362,19 +400,18 @@ describe('what reaches the host from no project', () => {
     // Nanda, 2026-11-15: an example is an output of a marked step (was: 3 cases, as ladders).
     expect(ok(await p.agent(`next ${host}`)).out).toContain(
       [
-        `${draft.id} drafts the new direction "Flags", and its flow marks no step that the ` +
-          'direction governs; write its flow in this project, each step that it governs with ' +
-          'uses, and examples: for each marked step an output that follows the direction and ' +
-          'one that breaks it, with its input for a step that checks or decides; a real place ' +
-          'of the project (file, line, a short excerpt in the file) when it has one, else the ' +
-          'output in your words (written)',
-        `  work direction examples ${host} ${draft.id} --file=<flow and examples.yaml>`,
+        `${draft.id} drafts the new direction "Flags", and its flow marks no step; write its ` +
+          'flow in this project, each step that it governs with uses, and examples: for each ' +
+          'marked step an output that follows the direction and one that breaks it, with its ' +
+          'input for a step that checks or decides; a real place of the project (file, line, a ' +
+          'short excerpt in the file) when it has one, else the output in your words (written)',
+        `  work direction examples ${host} ${draft.id} --file=<flow.yaml>`,
       ].join('\n'),
     )
     // With a flow that marks a step, and one that follows and one that breaks there, the accept
     // is the person's again, and the host has no step.
-    const flow = [{ from: 'writer', to: 'flags.ts', says: 'adds a flag', uses: ['flags'] }]
-    const move = { _tag: 'ExamplesAdded', flow, examples: [CASE, BREAKS] }
+    const flow = [{ from: 'writer', to: 'flags.ts', says: 'adds a flag', uses: ['flags'], examples: [CASE, BREAKS] }]
+    const move = { _tag: 'ExamplesAdded', flow }
     const added = { _tag: 'Revision', id: draft.id, move } as unknown as Event
     await append(p, HOST_RUN, added)
     const after = derivedOf(p)

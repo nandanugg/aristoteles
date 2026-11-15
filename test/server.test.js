@@ -254,28 +254,38 @@ describe('the onboarding pages', () => {
     expect(tsd.flow.map((f) => f.uses)).toEqual([
       [], [], [], ['tsd-writing', 'intro-story', 'repeatable'], ['facts-not-proof', 'no-code-proof'],
     ])
-    // Ruling 4: each example by its step, a real sample with its place and whether its excerpt is
+    // Ruling 4: each example in its step, a real sample with its place and whether its excerpt is
     // in its file now, the host's words as they are (Nanda, 2026-11-15).
+    expect(tsd.flow.map((f) => f.examples.length)).toEqual([0, 0, 0, 2, 2])
     const sample = (x) => (x === null || 'written' in x ? x : (({ around: _, ...s }) => s)(x))
-    expect(tsd.examples.map((e) => ({ ...e, input: sample(e.input), output: sample(e.output) }))).toEqual([
-      { step: 4, fit: 'Follows', input: null, output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', current: true } },
-      { step: 4, fit: 'Breaks', input: null, output: { written: '## Introduction and design, in one section' } },
+    const examples = tsd.flow.flatMap((f) => f.examples)
+    expect(examples.map((e) => ({ ...e, input: sample(e.input), output: sample(e.output) }))).toEqual([
+      { fit: 'Follows', input: null, output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', current: true } },
+      { fit: 'Breaks', input: null, output: { written: '## Introduction and design, in one section' } },
       {
-        step: 5, fit: 'Follows', input: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', current: true },
+        fit: 'Follows', input: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', current: true },
         output: { written: 'Reject: the Introduction holds no words yet' },
       },
       {
-        step: 5, fit: 'Breaks', input: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', current: true },
+        fit: 'Breaks', input: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', current: true },
         output: { written: 'Accept: the section says one thing' },
       },
     ])
+    // A step names its place as one value: its file with a line, or none.
+    expect(tsd.flow.map((f) => f.place)).toEqual([
+      null,
+      { file: 'CLAUDE.md', line: 3 },
+      { file: '.claude/skills/writer/SKILL.md', line: 3 },
+      { file: 'docs/template.md', line: 3 },
+      null,
+    ])
     // Nanda, 2026-11-15: each real sample carries the code around it (3 lines above and below, as
     // far as the file goes), its own line marked; a TODO in two places is the one nearest its line.
-    expect(tsd.examples[0].output.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' ')).toBe('1 2 3* 4 5 6')
-    expect(tsd.examples[2].input.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' ')).toBe('2 3 4 5* 6 7 8')
+    expect(examples[0].output.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' ')).toBe('1 2 3* 4 5 6')
+    expect(examples[2].input.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' ')).toBe('2 3 4 5* 6 7 8')
     const text = readFileSync(join(p.dir, 'docs/tsd.md'), 'utf8')
     p.write('docs/tsd.md', text.replaceAll('TODO', 'Done'))
-    expect((await get('/api/onboarding')).directions[1].examples[2].input.current).toBe(false)
+    expect((await get('/api/onboarding')).directions[1].flow.flatMap((f) => f.examples)[2].input.current).toBe(false)
     p.write('docs/tsd.md', text)
     // Nanda, 2026-11-15: the words against the last draft; a first draft has none, so every line
     // comes: the summary, the words, each standard with each rule and its checker.
@@ -322,7 +332,6 @@ describe('the onboarding pages', () => {
       says: 'Does a section of facts count as one thing?',
       // Nanda, 2026-11-15: the example of a question carries the code around it too.
       example: {
-        step: 1,
         fit: 'Follows',
         input: null,
         output: {
@@ -398,7 +407,7 @@ describe('the onboarding pages', () => {
     // After the start, the same view reads the store (the gear), and onboarding is over.
     const view = await get('/api/onboarding')
     expect(view.stage).toBe('store')
-    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.examples.length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 4]])
+    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.flow.flatMap((f) => f.examples).length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 4]])
     // Nanda, 2026-11-15: in the gear, a version against the one before it; the first has none.
     expect(view.directions[0].diff.direction).toBe('tsd-writing@1, the first version: every line is new')
     expect(view.roles.map((r) => [r.role, r.state, r.toggle])).toEqual(ROLES.map((r) => [r, 'current', false]))

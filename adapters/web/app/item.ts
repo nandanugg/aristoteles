@@ -7,6 +7,7 @@ import { useRef, useState } from 'preact/hooks'
 import {
   EvaluationId,
   EventRef,
+  NonBlank,
   ProblemId,
   QuestionId,
   RevisionId,
@@ -84,6 +85,8 @@ export function Item({ item, inbox = false }: { item: Decision; inbox?: boolean 
   }
   const kind = kindOf(item)
   const has = (tag: Act['_tag']) => item.acts.some((a) => a._tag === tag)
+  // A reject needs words: its button is off while the comment is blank.
+  const reason = () => Schema.decodeUnknownSync(NonBlank)(comment)
   // Each act decodes the id of the decision into its branded type; a bad id is shown as a refusal.
   const fixed = () => post({ act: 'fixed', problem: Schema.decodeUnknownSync(ProblemId)(item.id) })
   const acceptDraft = () =>
@@ -92,19 +95,19 @@ export function Item({ item, inbox = false }: { item: Decision; inbox?: boolean 
     post({
       act: 'reject-draft',
       draft: Schema.decodeUnknownSync(RevisionId)(item.id),
-      reason: comment,
+      reason: reason(),
     })
   const confirm = () =>
     post({ act: 'confirm', forward: Schema.decodeUnknownSync(EventRef)(item.id) })
   const acceptEnd = () => post({ act: 'end', run: Schema.decodeUnknownSync(RunId)(item.id) })
   const rejectTask = () =>
-    post({ act: 'reject-task', task: Schema.decodeUnknownSync(TaskId)(item.task), reason: comment })
+    post({ act: 'reject-task', task: Schema.decodeUnknownSync(TaskId)(item.task), reason: reason() })
   const words = Schema.decodeUnknownSync(EventRef)
   const acceptWords = () => post({ act: 'accept-words', draft: words(item.id) })
-  const rejectWords = () => post({ act: 'reject-words', draft: words(item.id), reason: comment })
+  const rejectWords = () => post({ act: 'reject-words', draft: words(item.id), reason: reason() })
   const acceptAdjustment = () => post({ act: 'accept-adjustment', draft: words(item.id) })
   const rejectAdjustment = () =>
-    post({ act: 'reject-adjustment', draft: words(item.id), reason: comment })
+    post({ act: 'reject-adjustment', draft: words(item.id), reason: reason() })
   // The person's answer counts at once: an option's words, or their own.
   const answer = (text: string) => () =>
     post({ act: 'answer', question: Schema.decodeUnknownSync(QuestionId)(item.id), text })
@@ -112,7 +115,7 @@ export function Item({ item, inbox = false }: { item: Decision; inbox?: boolean 
   const acceptEvaluation = () =>
     post({ act: 'accept-evaluation', evaluation: evaluation(), text: comment })
   const rejectEvaluation = () =>
-    post({ act: 'reject-evaluation', evaluation: evaluation(), reason: comment })
+    post({ act: 'reject-evaluation', evaluation: evaluation(), reason: reason() })
   // The acts of any other item: an assign, a suggestion in words, a resolve.
   const gives = actsOf(item, 'Give')
   const suggests = actsOf(item, 'Suggest')
@@ -121,7 +124,7 @@ export function Item({ item, inbox = false }: { item: Decision; inbox?: boolean 
   const assign = (a: (typeof gives)[number]) => () =>
     post({ act: 'assign', task: a.task, role: Schema.decodeUnknownSync(RoleName)(a.role) })
   const suggest = (a: (typeof suggests)[number]) => () =>
-    post({ act: 'suggest', about: a.about, says: comment })
+    post({ act: 'suggest', about: a.about, says: Schema.decodeUnknownSync(NonBlank)(comment) })
   const resolve = (a: (typeof resolves)[number]) => () =>
     post({ act: 'resolve', escalation: a.escalation, text: comment })
   // A decision takes one comment: a reject needs it, an accept does not.

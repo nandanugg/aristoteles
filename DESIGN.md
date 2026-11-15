@@ -1065,12 +1065,13 @@ revises, or removes it. The agents page opens when every direction is accepted o
 page act has a `work onboard` twin at a terminal. The host's commands: `config`, `role`, `found`,
 `draft`, `ask`, `company`, `status`, `show`, `wait`.
 
-**Examples** (rulings 4, 17; Nanda, 2026-11-15; they replace the cases). For each marked step of
-the flow, a direction has an output that follows it and one that breaks it: `{ step, fit, input,
-output }`. A step that makes something gives its output; a step that checks or decides gives its
+**Examples** (rulings 4, 17; Nanda, 2026-11-15; they replace the cases). Each marked step of the
+flow (a step with `uses`) holds its examples: at least one output that follows the direction and
+one that breaks it, `{ fit, input, output }`. An unmarked step has neither `uses` nor examples, so
+an example cannot name a step that is gone. A step that makes something gives its output; a step that checks or decides gives its
 input and its output. A sample is real (a file, a line, a short excerpt; stale when the excerpt
-leaves the file) or written by the host when the project has none. A change of examples makes no
-new version. A break is information for the person; it makes no task. A question has an example
+leaves the file) or written by the host when the project has none. The examples are
+part of the flow, so a new flow brings its own and makes a new version. A break is information for the person; it makes no task. A question has an example
 and two options, A and B. The page shows the examples by marked step.
 
 **The review of a direction** (Nanda, 2026-11-15). The page shows, in order: the name and state,

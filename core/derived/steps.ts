@@ -4,7 +4,7 @@
 // The bookkeeping steps of D14 are gone: no finish of a child of an ended task, no finish in an
 // ended task, no finish of a child after an accept (C1, I2).
 import type { Intent } from '../schema/actions.ts'
-import { examplesMissing } from '../schema/index.ts'
+import { isMarked } from '../schema/index.ts'
 import type {
   Assignment,
   AssignmentId,
@@ -289,7 +289,7 @@ const dirSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   if (!dirDrafters(d).includes(a.id)) return []
   const steps: Array<Candidate> = []
   for (const x of w.drafts.values()) {
-    if (x._tag !== 'New' || examplesMissing(x.flow, x.examples) === undefined) continue
+    if (x._tag !== 'New' || x.flow.some(isMarked)) continue
     if (d.states.revisions.get(x.id)?._tag !== 'Waiting') continue
     const what: StepWhat = { _tag: 'AddExamples', draft: x.id, direction: x.of }
     steps.push(act(what, { _tag: 'AddExamples', target: { draft: x.id } }))

@@ -30,7 +30,7 @@ import type {
   Stop as StopSchema,
   Why as WhySchema,
 } from './events.ts'
-import type { ContextKey, Example, FlowStep, Snapshot } from './files.ts'
+import type { ContextKey, FlowStep, Snapshot } from './files.ts'
 import type {
   AgentId,
   AnswerId,
@@ -64,7 +64,7 @@ import type {
 export type Text = string
 export type { NonBlank }
 export type NonEmpty<A> = readonly [A, ...A[]]
-export type { Example, Level, Principle, Reason, Snapshot, Tier }
+export type { Level, Principle, Reason, Snapshot, Tier }
 
 // A map with at least one key. Only a smart constructor makes one (context.ts whereOf).
 declare const nonEmptyMap: unique symbol
@@ -162,12 +162,11 @@ export type RevisionOrigin =
     }
 
 // page: Revision<T>. A draft of T: a new one, or a change of a version. Its reviews point to it
-// (Review.of); it is official when a version has it as its revision. A new one holds the examples
-// that its accept gives the direction (P10 rejected, onboarding 2026-11-14): none yet for a
-// company draft until a model adds them; a change holds none (ruling 4).
+// (Review.of); it is official when a version has it as its revision. The examples are in the
+// steps of its flow: a company draft of a new direction has no flow until a model adds it.
 export type Revision<T extends Versioned> = ContentOf<T> &
   (
-    | { readonly _tag: 'New'; readonly examples: ReadonlyArray<Example> } // page: no base; version 1
+    | { readonly _tag: 'New' } // page: no base; version 1
     | { readonly _tag: 'Change'; readonly base: VersionId } // the version that it changes
   ) & {
     readonly id: RevisionId // not on the page: d3
@@ -312,9 +311,6 @@ interface DirectionBase {
   readonly source:
     | { readonly _tag: 'Local' }
     | { readonly _tag: 'External'; readonly repo: Text; readonly path: Text }
-  // Its examples (ruling 4; Nanda, 2026-11-15): outputs that follow it or break it, none while it
-  // is drafted (its draft holds them). A change of examples makes no new version.
-  readonly examples: ReadonlyArray<Example>
 }
 export type OfficialDirection = Extract<Direction, { readonly _tag: 'Official' }>
 

@@ -7,13 +7,18 @@ import { exampleStateOf, onboardingStateOf } from '../../core/derived/index.ts'
 import type {
   AiQuestion,
   AnsweredQuestion,
-  FlowStep,
   OnboardingDirection,
   OnboardingRole,
 } from '../../core/schema/index.ts'
-import { answersIn, draftIn, Refused, resetWords } from '../../core/schema/index.ts'
+import {
+  answersIn,
+  draftIn,
+  examplesOfFlow,
+  Refused,
+  resetWords,
+} from '../../core/schema/index.ts'
 import { DRAFT, type OnboardingFiles } from '../../core/services/index.ts'
-import { exampleLines, flowLines } from './show.ts'
+import { exampleLines, exampleOneLines, flowLines } from './show.ts'
 import { short } from './common.ts'
 
 type TextOf = (file: string) => string | null
@@ -123,8 +128,9 @@ export const startRefusal = (state: StartState): Refused | undefined => {
 }
 
 const staleCount = (file: OnboardingDirection, textOf: TextOf): string => {
-  const examples = draftIn(file.stage)?.examples
-  if (examples === undefined) return ''
+  const draft = draftIn(file.stage)
+  if (draft === undefined) return ''
+  const examples = examplesOfFlow(draft.content.flow)
   const stale = examples.filter((e) => exampleStateOf(textOf, e)._tag === 'Stale').length
   return ` · ${countOf(examples.length, 'example')}${stale ? `, ${stale} stale` : ''}`
 }
@@ -236,11 +242,10 @@ export const onboardStatus = (files: OnboardingFiles, textOf: TextOf): ReadonlyA
 const questionLines = (
   q: AiQuestion | AnsweredQuestion,
   i: number,
-  flow: ReadonlyArray<FlowStep>,
   textOf: TextOf,
 ): ReadonlyArray<string> => [
   `  ${i + 1}. ${q.says}`,
-  ...exampleLines([q.example], flow, textOf).map((l) => `  ${l}`),
+  ...exampleOneLines(q.example, textOf).map((l) => `  ${l}`),
   `     A: ${q.options[0]}`,
   `     B: ${q.options[1]}`,
   ...('chosen' in q ? [`     answer: ${q.chosen}`] : []),
@@ -258,7 +263,7 @@ export const onboardShowDirection = (
   }
   const draft = draftIn(file.stage)
   if (draft) {
-    const { name, from, content, examples } = draft
+    const { name, from, content } = draft
     lines.push(
       `name: ${name}`,
       `summary: ${content.summary}`,
@@ -270,15 +275,14 @@ export const onboardShowDirection = (
       lines.push(`- ${s.id}: ${s.says}`)
       for (const r of s.rules) lines.push(`    - ${r.id} (${r.checkedBy ?? 'no checker'}): ${r.says}`)
     }
-    lines.push('examples:', ...exampleLines(examples, content.flow, textOf))
+    lines.push('examples:', ...exampleLines(content.flow, textOf))
   } else {
     lines.push('no draft yet')
   }
   const { stage } = file
   const questions = stage._tag === 'Question' ? stage.open : answersIn(stage)
   if (questions.length > 0) {
-    const flow = draft?.content.flow ?? []
-    lines.push('questions:', ...questions.flatMap((q, i) => questionLines(q, i, flow, textOf)))
+    lines.push('questions:', ...questions.flatMap((q, i) => questionLines(q, i, textOf)))
   }
   if (stage._tag === 'Revising') lines.push(`revise: ${stage.words}`)
   return lines

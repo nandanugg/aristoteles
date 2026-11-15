@@ -22,8 +22,8 @@ const NAME_CHAR = 7.2 // about the width of one letter of a head name
 const cut = (text: string, room: number): string =>
   text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`
 
-const placeOf = (s: Step): string =>
-  s.file === null ? '' : `${s.file}${s.line === null ? '' : `:${s.line}`}`
+const placeOf = (p: NonNullable<Step['place']>): string =>
+  `${p.file}${p.line === null ? '' : `:${p.line}`}`
 export const whoOf = (s: Pick<Step, 'from' | 'to'>): string =>
   s.from === s.to ? s.from : `${s.from} → ${s.to}`
 // marked: the step uses ids; gray: another step does and this one does not.
@@ -116,8 +116,8 @@ export function FlowDiagram({ id, flow }: { id: string; flow: ReadonlyArray<Step
       </svg>
     </div>
     <ol class="flow-steps">${flow.map((s) => html`<li class=${markOf(s, any)}>
-      <span class="flow-who">${whoOf(s)}</span>: ${s.says}${s.file === null ? '' : ' '}${
-        s.file === null ? '' : html`<code class="where">${placeOf(s)}</code>`}${
+      <span class="flow-who">${whoOf(s)}</span>: ${s.says}${s.place === null ? '' : ' '}${
+        s.place === null ? '' : html`<code class="where">${placeOf(s.place)}</code>`}${
         s.uses.length ? html` <span class="uses-tag">${s.uses.join(' · ')}</span>` : ''}
     </li>`)}</ol>
   </figure>`

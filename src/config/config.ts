@@ -2,13 +2,14 @@
 // refuses with the old words ("<file>: <problem>"). Parsing is Bun.YAML; reading is the Files
 // service. The settings of the UI are in settings.ts.
 import { basename, join, posix } from 'node:path'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import type { Refused } from '../domain/errors.ts'
 import {
   CONTEXT_KEYS,
   type ConfigFile,
   type DeciderFile,
-  type DirectionFile,
+  DirectionFile,
+  Flow,
   type FlowStep,
   type RoleFile,
   type TaskFile,
@@ -16,6 +17,7 @@ import {
   type Workspace,
 } from '../domain/files.ts'
 import { oneOf, PRINCIPLES, ROLE_ICONS } from '../domain/closed.ts'
+import { PositiveInt } from '../domain/ids.ts'
 import { refuse } from '../domain/errors.ts'
 import { Files } from '../services/outside.ts'
 import {
@@ -212,7 +214,7 @@ const readLimits = (raw: Raw): ConfigFile['limits'] => {
         if (!keys.includes(key)) {
           fail(CONFIG, `limits.${tier}.${part}.${key} is not a limit of ${part} (${keys.join(', ')})`)
         }
-        if (!(Number.isInteger(value) && value >= 1)) {
+        if (!Schema.is(PositiveInt)(value)) {
           fail(CONFIG, `limits.${tier}.${part}.${key} is a whole number of 1 or more`)
         }
       }
@@ -457,40 +459,24 @@ export const readApprovedBy = (
   })
 
 // The flow: key of a draft (Nanda, 2026-11-15: a direction has a flow): the steps from the first act
-// of an actor down to the output, each { from, to, says }, with the file and line where the
-// project defines it when it does, and uses: the ids that apply at a step that the direction
-// governs.
-const isWords = (x: unknown): x is string => typeof x === 'string' && x.trim() !== ''
+// of an actor down to the output, each { from, to, says }, with its place where the project
+// defines it, and a step that the direction governs marked with uses and its examples. The Schema
+// is the rule; a refusal says where it stopped.
+const decodeFlow = Schema.decodeUnknownSync(Flow)
+const decodeDirection = Schema.decodeUnknownSync(DirectionFile)
 const flowOf = (file: string, value: unknown): ReadonlyArray<FlowStep> => {
   if (!Array.isArray(value)) {
     const steps = 'the steps from the first act down to the output'
-    fail(file, `flow is required: ${steps}, each step that the direction governs with uses`)
+    fail(file, `flow is required: ${steps}, each step that the direction governs with uses and examples`)
   }
-  return (value as ReadonlyArray<Raw>).map((step, i) => {
-    const at = `flow step ${i + 1}`
-    if (!isWords(step?.from) || !isWords(step?.to) || !isWords(step?.says)) {
-      fail(file, `${at} needs from, to and says: who acts, on whom or on what file, and what happens`)
-    }
-    if (step.file !== undefined && !isWords(step.file)) fail(file, `${at}: file is a path`)
-    if (step.line !== undefined) {
-      if (step.file === undefined) fail(file, `${at}: a line needs its file`)
-      if (!Number.isInteger(step.line) || step.line < 1) {
-        fail(file, `${at}: line is a whole number of 1 or more`)
-      }
-    }
-    const uses = step.uses
-    if (uses !== undefined && !(Array.isArray(uses) && uses.length && uses.every(isWords))) {
-      fail(file, `${at}: uses lists the ids that apply there, such as [<direction id>, s1, r2]`)
-    }
-    return {
-      from: step.from,
-      to: step.to,
-      says: step.says,
-      ...(step.file !== undefined ? { file: step.file } : {}),
-      ...(step.line !== undefined ? { line: step.line } : {}),
-      ...(uses !== undefined ? { uses } : {}),
-    } as FlowStep
-  })
+  try {
+    return decodeFlow(value)
+  } catch (e) {
+    const hint =
+      'a step needs from, to and says; a step that the direction governs needs uses and examples ' +
+      'together (one that follows the direction, one that breaks it)'
+    return fail(file, `flow: ${hint}; ${(e as Error).message.replace(/\s*\n\s*/g, ' ')}`)
+  }
 }
 // The flow of a company draft, which readDirection does not read.
 export const readFlow = (file: string, value: unknown): Effect.Effect<ReadonlyArray<FlowStep>, Refused> =>
@@ -567,7 +553,7 @@ export const readDirection = (
     const flow = flowOf(file, d.flow)
     const marks = usesProblem(d.id, flow, standards)
     if (marks !== undefined) fail(file, marks)
-    return {
+    const read = {
       id: d.id,
       name: d.name,
       owner: d.owner,
@@ -578,7 +564,12 @@ export const readDirection = (
       ...(d.maxStandards !== undefined ? { maxStandards: d.maxStandards } : {}),
       standards,
       ...(d.approvedBy !== undefined ? { approvedBy: d.approvedBy } : {}),
-    } as unknown as DirectionFile
+    }
+    try {
+      return decodeDirection(read)
+    } catch (e) {
+      return fail(file, (e as Error).message.replace(/\s*\n\s*/g, ' '))
+    }
   })
 
 export const TASK_TEMPLATE = `name: <a short name>

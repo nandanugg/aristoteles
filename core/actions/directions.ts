@@ -1,6 +1,6 @@
 // The actions of directions, suggestions, permissions and forwards. The content checks of a draft
 // are in drafts.ts.
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import type { Derived } from '../derived/index.ts'
 import { currentOf, draftAt, labelOf, ruleAt, standardAt, within } from '../derived/reads.ts'
 import type { ActionInput, InputOf, WhyInput } from '../schema/actions.ts'
@@ -13,11 +13,12 @@ import {
   type DirectionFile,
   type Event,
   type ForwardedAct,
+  isNonBlank,
   lookup,
   move,
   oneOf,
   REASONS,
-  type ReviseFile,
+  ReviseFile,
   type Why,
   type Work,
   usesProblem,
@@ -31,7 +32,6 @@ import {
   checkImported,
   checkRevised,
   DRAFT,
-  readExamples,
   reviseAnswersFound,
 } from './drafts.ts'
 import { PERSON_ACTS } from './reviews.ts'
@@ -88,7 +88,7 @@ export const REFUSALS = {
     badFile: (file: string, what: string) => no(`${file}: ${what}`, 'Write', `correct ${file}`),
   },
   ImportCompany: { ...DRAFT },
-  AddExamples: { examples: DRAFT.examples, uses: DRAFT.uses },
+  AddExamples: { uses: DRAFT.uses },
   Suggest: {
     noWords: () =>
       no('a suggestion says something: give its words', 'Write', 'write what you suggest'),
@@ -168,6 +168,16 @@ export const whyOf = (input: WhyInput): Effect.Effect<Why, Refusal> => {
 type Raw = Record<string, unknown>
 const list = (value: unknown): ReadonlyArray<Raw> =>
   Array.isArray(value) ? (value as ReadonlyArray<Raw>) : []
+// A revise as the typed event holds it: the Schema refuses what changes nothing.
+const decodeRevise = Schema.decodeUnknownSync(ReviseFile)
+const reviseOf = (file: string, built: unknown): Effect.Effect<ReviseFile, Refusal> => {
+  try {
+    return Effect.succeed(decodeRevise(built))
+  } catch (e) {
+    const what = (e as Error).message.replace(/\s*\n\s*/g, ' ')
+    return fail(R.ReviseDirection.badFile(file, what))
+  }
+}
 // A revise file as the typed event holds it: each rule has its supersedes; a missing key is absent.
 const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refusal> =>
   Effect.gen(function* () {
@@ -221,14 +231,14 @@ const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refus
       const w = yield* standardOf(r.with as Raw, `the standard of replace ${i + 1}`)
       replace.push({ id: r.id, with: w })
     }
-    return {
+    return yield* reviseOf(file, {
       ...(e.summary !== undefined ? { summary: e.summary as string } : {}),
       ...(flow !== undefined ? { flow } : {}),
       ...(e.says !== undefined ? { says: e.says as string } : {}),
       ...(e.add !== undefined ? { add } : {}),
       ...(e.remove !== undefined ? { remove: list(e.remove).map(String) } : {}),
       ...(e.replace !== undefined ? { replace } : {}),
-    } as unknown as ReviseFile
+    })
   })
 
 // A where is a map of the closed context keys, each to a text or a list of texts (the words of
@@ -257,7 +267,7 @@ const whereProblem = (standard: string, where: unknown): string | undefined => {
 
 // N8 (I8): a whole direction drafted again on a direction with a version is its revise, as an
 // import is: a standard with other words is replaced, a new one added, a gone one removed.
-const asRevise = (w: Work, file: DirectionFile): ReviseFile => {
+const asRevise = (w: Work, file: DirectionFile, name: string): Effect.Effect<ReviseFile, Refusal> => {
   const now = currentOf(w, file.id as never)
   const was = now.standards.map((e) => standardAt(w, e))
   const shape = (s: {
@@ -294,14 +304,14 @@ const asRevise = (w: Work, file: DirectionFile): ReviseFile => {
     .map((s) => ({ id: s.id, with: standard(s) }))
   const remove = was.filter((y) => !file.standards.some((s) => s.id === y.id)).map((y) => y.id)
   const flow = file.flow
-  return {
+  return reviseOf(name, {
     ...(file.summary !== now.summary ? { summary: file.summary } : {}),
     ...(JSON.stringify(flow) !== JSON.stringify(now.flow) ? { flow } : {}),
     ...(file.says !== now.says ? { says: file.says } : {}),
     ...(add.length ? { add } : {}),
     ...(remove.length ? { remove } : {}),
     ...(replace.length ? { replace } : {}),
-  } as unknown as ReviseFile
+  })
 }
 
 // The approvedBy of a file says what the direction's says: the owner (none named), or the same
@@ -351,7 +361,7 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
       }
       yield* allowed(d, by, revise)
       yield* reviseAnswersFound(w, by, answers)
-      const revised = { direction: existing.id, edit: asRevise(w, base), answers, why }
+      const revised = { direction: existing.id, edit: yield* asRevise(w, base, file), answers, why }
       yield* checkRevised(d, by, revised)
       return [create('Revision', { _tag: 'Revised', ...revised })]
     }
@@ -359,9 +369,7 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
     const direction = approvedBy === undefined ? base : { ...base, approvedBy }
     const drafted = { direction, answers, why }
     yield* checkDrafted(d, by, drafted)
-    // A new direction starts with its examples (P10 rejected, onboarding 2026-11-14).
-    const examples = yield* readExamples(file, raw, direction.flow)
-    return [create('Revision', { _tag: 'Drafted', direction, examples, answers, why })]
+    return [create('Revision', { _tag: 'Drafted', direction, answers, why })]
   })
 
 const ReviseDirection: Action<'ReviseDirection'> = ({ by, input }) =>
@@ -388,8 +396,9 @@ const ImportCompany: Action<'ImportCompany'> = ({ by, input }) =>
     return [create('Revision', { _tag: 'Imported', ...imported })]
   })
 
-// A model gives a company draft of a new direction its flow in this project, its steps marked, and
-// its examples before the accept (P10 rejected, onboarding 2026-11-14); the latest counts.
+// A model gives a company draft of a new direction its flow in this project: its steps marked,
+// each with its examples, before the accept (P10 rejected, onboarding 2026-11-14); the latest
+// counts.
 const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
@@ -406,8 +415,7 @@ const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
     })
     const marks = usesProblem(x.of, flow, standards)
     if (marks !== undefined) return yield* Effect.fail(DRAFT.uses(`${file}: ${marks}`))
-    const examples = yield* readExamples(file, raw, flow)
-    return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow, examples })]
+    return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow })]
   })
 
 // --- suggestions and permissions -----------------------------------------------------------------
@@ -566,7 +574,9 @@ const Forward: Action<'Forward'> = ({ by, input }) =>
     const { act } = input.target
     const { person, quote, channel } = input.content
     const a = agentOf(w, by)
-    if (!w.config.people.includes(person)) return yield* fail(R.Forward.notPerson(person))
+    if (!isNonBlank(person) || !w.config.people.includes(person)) {
+      return yield* fail(R.Forward.notPerson(person))
+    }
     if (blank(quote)) return yield* fail(R.Forward.noQuote())
     const target = innerTarget(w, act)
     if (a !== undefined && target.task !== undefined && !within(w, target.task as never, a.task)) {

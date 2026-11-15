@@ -12,7 +12,6 @@ import type {
   Assignment,
   By,
   Direction,
-  Example,
   Meta,
   NonBlank,
   NonEmpty,
@@ -245,7 +244,6 @@ export const adjustRoles = (config: ConfigFile, adjustment: Adjustment): ConfigF
       break
     }
     case 'RetireDirection':
-    case 'SetExamples':
       return config
   }
   return { ...config, roles }
@@ -254,30 +252,19 @@ export const adjustRoles = (config: ConfigFile, adjustment: Adjustment): ConfigF
 // --- Direction ---------------------------------------------------------------------------------
 
 // The accept that meets the deciders of a draft makes its version official: a new direction
-// becomes official with it and takes the examples of the draft; an official one adds it as its
-// current version and keeps its examples (ruling 4: examples make no new version).
-export const makeOfficial = (
-  d: Direction,
-  version: Version<Direction>,
-  examples: ReadonlyArray<Example>,
-): OfficialDirection =>
+// becomes official with it; an official one adds it as its current version.
+export const makeOfficial = (d: Direction, version: Version<Direction>): OfficialDirection =>
   d._tag === 'NewDirection'
-    ? { ...d, _tag: 'Official', versions: [version], examples }
+    ? { ...d, _tag: 'Official', versions: [version] }
     : { ...d, versions: [...d.versions, version] as NonEmpty<Version<Direction>> }
 
-// Adjustment.Accepted of SetExamples: other examples of an official direction, with no new version.
-export const setExamples = (d: OfficialDirection, examples: ReadonlyArray<Example>): OfficialDirection => ({
-  ...d,
-  examples,
-})
-
-// Revision.ExamplesAdded: a model gives a company draft of a new direction its flow and its examples
-// before the accept (P10 rejected, onboarding 2026-11-14). The latest counts.
+// Revision.ExamplesAdded: a model gives a company draft of a new direction its flow, the marked
+// steps with their examples, before the accept (P10 rejected, onboarding 2026-11-14). The latest
+// counts.
 export const addExamples = (
   x: Extract<Revision<Direction>, { readonly _tag: 'New' }>,
   flow: ReadonlyArray<FlowStep>,
-  examples: ReadonlyArray<Example>,
-): Extract<Revision<Direction>, { readonly _tag: 'New' }> => ({ ...x, flow, examples })
+): Extract<Revision<Direction>, { readonly _tag: 'New' }> => ({ ...x, flow })
 
 // --- the UI: runs, task drafts, problems, sends ----------------------------------------------
 
@@ -410,7 +397,7 @@ export const MOVES = {
   'Role.WordsRejected': null,
   'Agent.Started': startAgent,
   // The state of an adjustment follows from the log (core/derived); its accept changes the config
-  // or a direction through adjustRoles and setExamples.
+  // or a direction through adjustRoles.
   'Adjustment.Accepted': null,
   'Adjustment.Rejected': null,
   'Revision.ExamplesAdded': addExamples,

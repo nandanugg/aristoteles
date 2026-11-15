@@ -182,7 +182,7 @@ const roleInUse = (d: Derived, role: RoleName): string | undefined => {
 // undefined: it fits the work.
 export const adjustmentProblem = (d: Derived, a: Adjustment): Refusal | undefined => {
   const w = d.moment.work
-  if (a._tag === 'RetireDirection' || a._tag === 'SetExamples') {
+  if (a._tag === 'RetireDirection') {
     const state = d.states.directions.get(a.direction)
     if (state === undefined) return no(`there is no direction ${a.direction}`, 'name a direction')
     if (state._tag === 'Retired') {

@@ -25,6 +25,7 @@ import {
   type DeciderLeaf,
   type Deciders,
   type Direction,
+  type PositiveInt,
   type DirectionId,
   type EscalationId,
   type Evaluation,
@@ -92,7 +93,7 @@ export const ruleAt = (w: Work, e: RuleEntry): Rule => need(w.rules, e, 'rule')
 
 // A task's end is a fact of its record; the TaskState of an ended task is Closed or Replaced.
 export const isOpenTask = (t: Task): boolean => t.end._tag === 'NotEnded'
-export const maxOf = (limit: Limit): number | undefined =>
+export const maxOf = (limit: Limit): PositiveInt | undefined =>
   limit._tag === 'AtMost' ? limit.max : undefined
 const atOrBefore = (a: Time, b: Time): boolean => Date.parse(a) <= Date.parse(b)
 

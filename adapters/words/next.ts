@@ -12,7 +12,6 @@ import {
   type AssignmentId,
   type DirectionId,
   type EvaluationId,
-  examplesMissing,
   type Standard,
   type Stop,
   type Suggestion,
@@ -203,20 +202,18 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       )
     }
     // P10 rejected: the person sees how a new direction shows in the output before the accept,
-    // so its draft holds an example that follows it and one that breaks it, for each marked step
-    // of its flow (ruling 4; Nanda, 2026-11-15).
+    // so its flow marks its steps, each with an example that follows it and one that breaks it
+    // (ruling 4; Nanda, 2026-11-15).
     case 'AddExamples': {
-      const x = w.drafts.get(s.draft)
-      const missing = x?._tag === 'New' ? examplesMissing(x.flow, x.examples) : undefined
       const name = w.directions.get(s.direction)?.name ?? s.direction
       return step(
-        `${s.draft} drafts the new direction "${name}", and ${missing ?? 'it misses examples'}; ` +
+        `${s.draft} drafts the new direction "${name}", and its flow marks no step; ` +
           'write its flow in this project, each step that it governs with uses, and examples: ' +
           'for each marked step an output that follows the direction and one that breaks it, ' +
           'with its input for a step that checks or decides; a real place of the project (file, ' +
           'line, a short excerpt in the file) when it has one, else the output in your words ' +
           '(written)',
-        `work direction examples ${token} ${s.draft} --file=<flow and examples.yaml>`,
+        `work direction examples ${token} ${s.draft} --file=<flow.yaml>`,
       )
     }
     case 'PutOnBase': {
