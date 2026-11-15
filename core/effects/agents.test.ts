@@ -134,7 +134,8 @@ describe('the persistent agents', () => {
 
   // Metis, 2026-11-15: the AI CLI failed before it ever ran, so no conversation exists; a resume
   // shows the session picker of Claude Code. Until the terminal has run once (its wait took an
-  // assignment), a restart launches it again with its first prompt.
+  // assignment), a restart launches it again with its first prompt, in a new conversation: an AI
+  // CLI that started one and then crashed refuses its id as in use. A resume names the last one.
   test('a terminal that ended before it ever ran restarts with its launch command', async () => {
     const { p, fake, w, hostToken } = await hosted()
     await p.agent(`assign ${hostToken} t1 --role=section-lead`)
@@ -146,20 +147,22 @@ describe('the persistent agents', () => {
     later(31_000)
     await w.tick()
     expect(restarts()).toHaveLength(1)
-    expect(restarts()[0]).toStartWith(`resume ${session}: fake start ${cliSession(session)} `)
+    const launch = (n: number) => `resume ${session}: fake start ${cliSession(`${session}.${n}`)} `
+    expect(restarts()[0]).toStartWith(launch(2))
     expect(restarts()[0]).toContain('work wait --by=p1')
     // The person's Resume reads the same: a launch.
     fake.end(session)
     await w.person(resumeSession(sid(session), 'terra'))
     expect(restarts()).toHaveLength(2)
-    expect(restarts()[1]).toStartWith(`resume ${session}: fake start ${cliSession(session)} `)
+    expect(restarts()[1]).toStartWith(launch(3))
     // Once it ran, a restart resumes its conversation.
     await p.inSession('wait --by=p1 --seconds=1', session)
     fake.end(session)
     later(31_000)
     await w.tick()
     expect(restarts()).toHaveLength(3)
-    expect(restarts()[2]).toStartWith(`resume ${session}: fake resumed ${cliSession(session)} `)
+    const resumed = cliSession(`${session}.3`)
+    expect(restarts()[2]).toStartWith(`resume ${session}: fake resumed ${resumed} `)
   })
 
   // Nanda, 2026-11-15: the host hears at once of an agent that failed while it waited for work.

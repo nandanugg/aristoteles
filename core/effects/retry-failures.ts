@@ -41,7 +41,7 @@ import {
   to,
 } from './acting.ts'
 import { clean, DEFAULT_RETRY, fill, hostPromptSays, hostStuckSays } from './lines.ts'
-import { lastActOf, retriesOf, tierOf, timeOf } from './terminals.ts'
+import { conversationOf, lastActOf, retriesOf, tierOf, timeOf } from './terminals.ts'
 import { type Memory, Supervision, type WorkEffect } from './types.ts'
 
 // An error shows on the screen until it scrolls away: it counts only when the tool is this quiet.
@@ -199,7 +199,8 @@ const watch = (r: Round, x: ToWatch) =>
     yield* see(sid, { _tag: 'Retrying', why: kind, tries: attempt, lastTry: timeOf(r.now) })
     if (retry === null) return
     const template = ran ? (t?.resume ?? t?.launch) : t?.launch
-    const command = fill(template ?? '', { session: sid, model: t?.model, prompt })
+    const session = conversationOf(w, sid, !ran)
+    const command = fill(template ?? '', { session, model: t?.model, prompt })
     const restart = Effect.gen(function* () {
       if (!reading.ended) yield* pump.stop(sid)
       yield* pump.resume(sid, { command, env: {}, cols: 160, rows: 48 })

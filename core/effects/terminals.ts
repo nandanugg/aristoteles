@@ -162,3 +162,18 @@ export const retriesOf = (
   const last = tries.at(-1)
   return { tries: tries.length, lastTry: last === undefined ? 0 : msOf(last.at) }
 }
+
+// The conversation of the AI CLI that a command of a terminal names ({session}). Each launch
+// starts a new one: an AI CLI that started a conversation and crashed before its first wait
+// refuses that id as in use. The store keeps the launches (the Start send, and each Retry given
+// to the launch command); the first names the session itself, launch n names <session>.n. A
+// launch names the next one, a resume the last.
+export const conversationOf = (w: Work, sid: SessionId, launch: boolean): string => {
+  const launches = w.sends.filter((s) => {
+    const r = s.from._tag === 'Supervisor' ? s.from.reason : undefined
+    if (r?._tag === 'Start') return r.to.session === sid
+    return r?._tag === 'Retry' && r.via._tag === 'LaunchArgument' && r.to.session === sid
+  }).length
+  const n = launch ? launches + 1 : launches
+  return n <= 1 ? sid : `${sid}.${n}`
+}

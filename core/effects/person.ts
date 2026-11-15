@@ -31,16 +31,19 @@ import {
 import { Now, Pump, Tokens } from '../services/index.ts'
 import {
   act,
+  delivered,
   dropped,
   latest,
   personOnPage,
   sendLine,
+  sendStart,
   stateIn,
   terminalsOf,
   tiersNow,
+  to,
 } from './acting.ts'
 import { DEFAULT_RETRY, fill, problemRetryLine } from './lines.ts'
-import { agentOfSession } from './terminals.ts'
+import { agentOfSession, conversationOf } from './terminals.ts'
 import type { Acted } from './types.ts'
 
 // The words of a choice are never blank here: each one is a literal of this file.
@@ -86,9 +89,14 @@ export const resumeSession = (sid: SessionId, tier: TerminalTier) =>
     // An agent's terminal that never ran has no conversation: its launch, with its first prompt.
     const ran = agent === undefined || ranOnce(w, sid)
     const words = ran ? (t?.retryInput ?? DEFAULT_RETRY) : (t?.start ?? '')
-    const values = { session: sid, model: t?.model, prompt: fill(words, { agent: owner }) }
+    const session = conversationOf(w, sid, !ran)
+    const values = { session, model: t?.model, prompt: fill(words, { agent: owner }) }
     const command = fill((ran ? (t?.resume ?? t?.launch) : t?.launch) ?? '', values)
+    // A launch is stored as a Start, so that the next command names its conversation.
+    const start = { _tag: 'Start', to: to(sid), via: { _tag: 'LaunchArgument' } } as const
+    const send = ran ? null : yield* sendStart(start)
     yield* (yield* Pump).resume(sid, { command, env: {}, cols: 160, rows: 48 })
+    if (send !== null) yield* delivered(send)
     yield* act({ by, input })
   })
 

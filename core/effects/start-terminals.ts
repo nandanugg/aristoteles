@@ -9,18 +9,18 @@ import { SessionId, type Settings, type TerminalTier } from '../schema/index.ts'
 import { Pump, Tokens } from '../services/index.ts'
 import { delivered, dropped, logLine, sendStart, step, supervise, tiersNow, to } from './acting.ts'
 import { fill } from './lines.ts'
-import { tierOf } from './terminals.ts'
+import { conversationOf, tierOf } from './terminals.ts'
 import type { WorkEffect } from './types.ts'
 
 type TierSettings = NonNullable<Settings['tiers'][TerminalTier]>
 
 // Starts a terminal: the launch command of the tier, with the first prompt as its argument. The
 // stored Start send keeps the record of it, never its words.
-const launch = (t: TierSettings, sid: SessionId, words: string) =>
+const launch = (t: TierSettings, sid: SessionId, session: string, words: string) =>
   Effect.gen(function* () {
     const pump = yield* Pump
     const send = yield* sendStart({ _tag: 'Start', to: to(sid), via: { _tag: 'LaunchArgument' } })
-    const command = fill(t.launch ?? '', { session: sid, model: t.model, prompt: words })
+    const command = fill(t.launch ?? '', { session, model: t.model, prompt: words })
     const started = yield* Effect.result(
       pump.start(sid, { command, env: {}, cols: 160, rows: 48 }),
     )
@@ -50,7 +50,8 @@ const startAgent = (d: Derived, x: ToStart) =>
         content: { session: sid },
       })
     }
-    yield* launch(t, sid, fill(t.start, { agent: x.agent }))
+    const session = conversationOf(d.moment.work, sid, true)
+    yield* launch(t, sid, session, fill(t.start, { agent: x.agent }))
     yield* logLine(`${x.agent}: started in ${sid}`)
   })
 
