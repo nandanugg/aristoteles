@@ -20,7 +20,7 @@ import {
   stopTask,
   taskAt,
 } from '../../core/derived/reads.ts'
-import { type Derived, nextFor } from '../../core/derived/index.ts'
+import { type Derived, nextFor, waitingFor } from '../../core/derived/index.ts'
 import { fileTurn, highAbove, RANK, tierOfA } from '../../core/derived/steps.ts'
 import {
   type Assignment,
@@ -40,6 +40,7 @@ import { blockerLines, taskLines } from './blockers.ts'
 import { briefWords, checkerOf, latestResult, short, stateWord, who } from './common.ts'
 import { nextLines } from './next.ts'
 import { attemptWords } from './shared.ts'
+import { shortenWords } from './intents.ts'
 
 // The token that measures a brief (the length of a real token).
 const MEASURE_TOKEN = 'a0.00000000000000000000000000'
@@ -456,11 +457,21 @@ const renderBrief = (d: Derived, id: AssignmentId, token: string, ready: boolean
     const head = lines.slice(0, cwd ? 3 : 2)
     const high = highAbove(d, a)
     const who = high === undefined ? task.owner.name : high.id
+    // B1: the ways are the step of the one who shortens it, each passed canAct.
+    const step =
+      high === undefined
+        ? waitingFor(d, { _tag: 'Everyone' }).find(
+            (i) => i._tag === 'BriefOver' && i.assignment === id,
+          )?.step
+        : nextFor(d, { _tag: 'Agent', assignment: high.id }).find(
+            (s) => s.what._tag === 'ShortenOrSplit' && s.what.assignment === id,
+          )
+    const ways = step === undefined ? `waits for ${task.id}` : shortenWords(step, task.id, true)
     return [
       ...head,
       '',
       `Your brief has ${state.size} characters; the limit of the ${tier} tier is ${state.limit}. ` +
-        `${who} shortens the directions of ${task.id}, or splits ${task.id}.`,
+        `${who} ${ways}.`,
       'Run no work command for this task. STOP: your parent gives you this token again.',
     ].join('\n')
   }

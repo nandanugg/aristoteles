@@ -282,7 +282,7 @@ describe('programs run on each report', () => {
 
 describe('limits and config', () => {
   // Ruling 10.9: a brief over its limit is a state of the assignment, not a refusal of the assign;
-  // the low agent waits, and the level above (here the owner) shortens or splits.
+  // the low agent waits, and the level above (here the owner) shortens or remakes (t1 has a section: one unit, B1).
   test('a brief over the tier limit prints only that the agent waits', async () => {
     const { WORK_YAML } = await import('./harness.js')
     // Ruling 2026-11-14 (brief limits leave room for the guide): its own small limit.
@@ -295,9 +295,9 @@ describe('limits and config', () => {
     ok(await p.agent(`brief ${lead}`))
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
     const brief = ok(await p.agent(`brief ${writer}`)).out
-    expect(brief).toContain('the limit of the low tier is 900. Nanda shortens the directions of t1, or splits t1.')
+    expect(brief).toContain('the limit of the low tier is 900. Nanda shortens the directions of t1, or remakes t1.')
     expect(brief).not.toContain('RULES')
-    expect(ok(await p.nanda('waiting')).out).toContain('shorten the directions of t1, or split t1')
+    expect(ok(await p.nanda('waiting')).out).toContain('shorten the directions of t1, or remake t1')
   })
 
   test('a hand edit of aristoteles.yaml stops every write until the person applies it', async () => {

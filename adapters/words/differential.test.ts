@@ -82,6 +82,13 @@ const noticeLinesOf = (d: Derived, a: AssignmentId, token: string): ReadonlyArra
     (l) => `  ${l}`,
   )
 
+// P3: the old command lines of a Wait step. The linter's unit is done, so it may not accept; a
+// maker does not free itself.
+const P3_REFUSED: Readonly<Record<string, string>> = {
+  'rejectedOnce a3': '  work review a0.TOKEN r2 accept --evidence="<rule id> | <where> | <what>"',
+  'codeStarted a2': '  work free a0.TOKEN a2',
+}
+
 describe('next', () => {
   test('nextLines writes the old lines of each step, but for D14 and C1', () => {
     const seen: Array<string> = []
@@ -100,12 +107,21 @@ describe('next', () => {
         }
         if (was.d14) seen.push(`${s.name}: D14: ${a.id}`)
         const now = nextLines(d, steps, TOKEN)
+        // P3: a Wait prints no command; the old lines printed these, which canAct refuses.
+        const refused = P3_REFUSED[`${s.name} ${a.id}`]
+        if (refused !== undefined) {
+          expect(now).toEqual(was.lines.filter((l) => l !== refused))
+          seen.push(`${s.name}: P3: ${a.id}`)
+          continue
+        }
         expect([s.name, a.id, now]).toEqual([s.name, a.id, was.lines])
         compared += now.length
       }
     }
     expect(compared).toBeGreaterThan(5)
     expect(seen).toContain('accepted: D14: a1')
+    expect(seen).toContain('rejectedOnce: P3: a3')
+    expect(seen).toContain('codeStarted: P3: a2')
   })
 })
 
@@ -135,6 +151,19 @@ describe('waiting', () => {
           expect([s.name, name, now]).toEqual([s.name, name, rows])
           continue
         }
+        // P1, P3: the host of t1 drafts the change of v2.1, so the person's step is a Wait, and the
+        // row prints no suggest and no split.
+        if (s.name === 'uiRun') {
+          expect(added).toEqual(['v2.1 needs a change of tsd-writing; a high role drafts it'])
+          expect(removed).toEqual([
+            'v2.1 needs a change of tsd-writing; a high role drafts it, or you suggest it',
+            '    work suggest tsd-writing --says="<the change>"',
+            'v2.1 can also be answered by your split of t1',
+            '    work task split t1 --file=<parts.yaml> --review=v2.1',
+          ])
+          seen.push(`${s.name}: P3: v2.1`)
+          continue
+        }
         // C2: the question of an ended task is Irrelevant, so no row waits for its answerer.
         expect(added).toEqual([])
         expect(removed).toEqual([
@@ -157,10 +186,15 @@ describe('waiting', () => {
         'start it again',
       '    when it is fixed: work problem sp1 --fixed',
     ])
-    // No scenario ends a project; the row of an end reads only its run and its top task.
+    // No scenario ends a project; the row of an end reads its run, its top task, and its step.
     const [problem] = items.filter((i) => i._tag === 'Problem')
     if (problem === undefined) throw new Error('no problem in uiRun')
-    const end = { ...problem, _tag: 'RunEnd', run: 'h1', top: 't1' } as unknown as WaitingItem
+    const intents = [
+      { _tag: 'EndRun', target: { run: 'h1' } },
+      { _tag: 'Reject', target: { of: { _tag: 'Task', id: 't1' } } },
+    ]
+    const step = { ...problem.step, _tag: 'Do', intents }
+    const end = { ...problem, _tag: 'RunEnd', run: 'h1', top: 't1', step } as unknown as WaitingItem
     expect(waitingLines(ui.d, [end], null)).toEqual([
       'h1 ends: the agent that leads t1 The Introduction accepted its result',
       '    work run done h1, or work review t1 reject --point="<your reason>"',

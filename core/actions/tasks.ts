@@ -35,7 +35,6 @@ import {
   remakeDataOf,
   type RoleName,
   type Snapshot,
-  sectionOf,
   type TaskData,
   taskDataOf,
   type TaskId,
@@ -98,12 +97,6 @@ export const REFUSALS = {
   SplitTask: {
     notParts: (file: string) =>
       no(`${file} must be a list of parts`, 'Write', `write the parts as a list in ${file}`),
-    ownSection: (task: string, section: string) =>
-      no(
-        `${task} has the section ${section}, so it is one unit of work; it is not split`,
-        'Pick',
-        `run ${task} with a medium role, or remake it with no section`,
-      ),
     badPart: (message: string, file: string) =>
       no(message, 'Write', `correct the parts in ${file}`),
     sharedFile: (message: string, task: string) =>
@@ -379,8 +372,6 @@ const checkParts = (d: Derived, task: TaskId, raw: unknown, file: string) =>
     if (t === undefined) return yield* Effect.die('canAct names the task')
     if (!Array.isArray(raw) || raw.length === 0) return yield* fail(R.SplitTask.notParts(file))
     const bad = (message: string) => fail(R.SplitTask.badPart(message, file))
-    const ownSection = sectionOf(t.descriptionAi.context) ?? undefined
-    if (ownSection) return yield* fail(R.SplitTask.ownSection(task, ownSection))
     const used = new Set<string>(
       directionIdsOf(w, task).flatMap((id) => {
         const x = w.directions.get(id)
@@ -470,7 +461,7 @@ const checkParts = (d: Derived, task: TaskId, raw: unknown, file: string) =>
     }
     // In one document file, every part has its own section, and no section lies inside another.
     const partSection = (p: Record<string, unknown>): string | undefined =>
-      ((p.context ?? {}) as Record<string, string | undefined>).section ?? ownSection
+      ((p.context ?? {}) as Record<string, string | undefined>).section
     const filesOf = (p: Record<string, unknown>): ReadonlyArray<string> =>
       ((p.workspace ?? own) as ReadonlyArray<{ readonly path: string }>).map((x) => x.path)
     for (const f of new Set(parts.flatMap(filesOf))) {

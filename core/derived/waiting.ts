@@ -9,6 +9,8 @@ import type {
   AssignmentId,
   Author,
   Direction,
+  PointId,
+  RejectId,
   Revision,
   RoleName,
   Task,
@@ -33,6 +35,8 @@ import {
   evaluationWaits,
   itemsOf,
   latestResultOf,
+  mayChange,
+  oneUnit,
   refOf,
   resultAt,
   stopAnswered,
@@ -445,8 +449,9 @@ const reviseAgain = (d: Derived, x: Revision<Direction>): ReadonlyArray<Intent> 
 }
 
 // An open high assignment of the tree of a task that may act (its own brief fits): it answers the
-// task's stops and change points, so the person only waits.
-const highActs = (d: Derived, task: TaskId): boolean => {
+// task's stops and change points, so the person only waits. remakes: it must also have a change
+// act on the task, as a remake needs one.
+const highActs = (d: Derived, task: TaskId, remakes = false): boolean => {
   const w = d.moment.work
   return [...w.assignments.values()].some((x) => {
     const state = d.states.assignments.get(x.id)?._tag
@@ -454,10 +459,16 @@ const highActs = (d: Derived, task: TaskId): boolean => {
       state !== 'Ended' &&
       state !== 'BriefOver' &&
       tierOfAssignment(w, x) === 'high' &&
-      within(w, task, x.task)
+      within(w, task, x.task) &&
+      (!remakes || mayChange(w, x.id, task, d.moment.at))
     )
   })
 }
+// The change of a task that its owner makes: a split, or a remake of one unit of work (B1).
+const changeOf = (w: Work, t: Task, answers: RejectId | PointId | null): Intent =>
+  oneUnit(w, t)
+    ? { _tag: 'RemakeTask', target: { task: t.id, answers } }
+    : { _tag: 'SplitTask', target: { task: t.id, answers } }
 
 // The points that only a direction change, a split or a remake answers.
 const changeItems = (d: Derived): ReadonlyArray<WaitingItem> => {
@@ -492,26 +503,12 @@ const changeItems = (d: Derived): ReadonlyArray<WaitingItem> => {
     seen.add(point)
     const item = itemsOf(w, t.id).find((i) => i.id === point) ?? undefined
     const own = item === undefined || taskOfTarget(w, item.of) === t.id
-    const parts = [...w.tasks.values()].some(
-      (p) => p.serves._tag === 'Serves' && p.serves.task === t.id && openTasks.includes(p),
-    )
-    const oneUnit = parts || t.descriptionAi.context.section._tag === 'Section'
-    const answers = point as never
-    const change: ReadonlyArray<Intent> = own
-      ? [
-          oneUnit
-            ? { _tag: 'RemakeTask', target: { task: t.id, answers } }
-            : { _tag: 'SplitTask', target: { task: t.id, answers } },
-        ]
-      : []
-    const suggest: ReadonlyArray<Intent> = directionIdsOf(w, t.id)
+    const change: ReadonlyArray<Intent> = own ? [changeOf(w, t, point as never)] : []
+    const suggests: ReadonlyArray<Intent> = directionIdsOf(w, t.id)
       .filter((x) => openDrafts(d, x).length === 0)
-      .map((direction) => ({
-        _tag: 'Suggest',
-        target: { about: { _tag: 'Direction', direction } },
-      }))
+      .map((direction) => suggest({ _tag: 'Direction', direction }))
     // A high role of the tree drafts the change (steps.ts): the person waits, as for a stop.
-    const intents = highActs(d, t.id) ? [] : [...change, ...suggest]
+    const intents = highActs(d, t.id) ? [] : [...change, ...suggests]
     const bare: Bare = {
       _tag: 'ChangePoint',
       task: t.id,
@@ -552,9 +549,10 @@ const stopItems = (d: Derived): ReadonlyArray<WaitingItem> => {
         ) || directionIdsOf(w, t.id).some((x) => openDrafts(d, x).length > 0)
       if (!e || changing) continue
       const directions = directionIdsOf(w, t.id)
-      const intents: ReadonlyArray<Intent> = highOpen
+      const remake = e.level === 'task' || directions.length === 0
+      const intents: ReadonlyArray<Intent> = (remake ? highActs(d, t.id, true) : highOpen)
         ? []
-        : e.level === 'task' || directions.length === 0
+        : remake
           ? [{ _tag: 'RemakeTask', target: { task: t.id, answers: null } }]
           : directions.map((direction) => ({
               _tag: 'Suggest',
@@ -781,7 +779,8 @@ const idleItems = (d: Derived): ReadonlyArray<WaitingItem> => {
 }
 
 // Ruling 10.9: a brief over its limit with no high role above it that may act: the owner of its
-// task suggests shorter words for a local direction (a high role writes them), or splits the task.
+// task suggests shorter words for a local direction (a high role writes them), or splits the task
+// (remakes one unit of work, B1).
 const briefItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   const w = d.moment.work
   return [...w.assignments.values()].flatMap((x): ReadonlyArray<WaitingItem> => {
@@ -799,8 +798,7 @@ const briefItems = (d: Derived): ReadonlyArray<WaitingItem> => {
     const shorten = directionIdsOf(w, t.id)
       .filter((x) => w.directions.get(x)?.source._tag === 'Local' && !openDrafts(d, x).length)
       .map((direction) => suggest({ _tag: 'Direction', direction }))
-    const split: Intent = { _tag: 'SplitTask', target: { task: t.id, answers: null } }
-    return [{ ...bare, step: stepOf(d, bare, [...shorten, split]) } as WaitingItem]
+    return [{ ...bare, step: stepOf(d, bare, [...shorten, changeOf(w, t, null)]) } as WaitingItem]
   })
 }
 

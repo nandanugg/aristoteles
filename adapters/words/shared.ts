@@ -3,7 +3,6 @@
 // state they read comes from Derived.
 import {
   directionAt,
-  directionIdsOf,
   draftAt,
   itemAt,
   ruleAt,
@@ -30,6 +29,7 @@ import type {
   Work,
 } from '../../core/schema/index.ts'
 import { short, who } from './common.ts'
+import { assignOf } from './intents.ts'
 
 // The name of a leaf of a draft: a role, a person, or the owner who accepts too (S2).
 const draftLeafName = (leaf: DraftLeaf): string =>
@@ -156,20 +156,14 @@ export const reviseAgainOf = (
       const text = `its reviser ${next.finished} is finished; ${y?.id} (${y?.role}) ${again}`
       return { text, step: null }
     }
+    // The assign is the step of the vetoed draft's item: a role that canAct gives (P3).
     case 'NewRole': {
-      const top = [...work.tasks.values()].find((t) => {
-        const s = d.states.tasks.get(t.id)
-        return (
-          s !== undefined &&
-          s._tag !== 'Closed' &&
-          s._tag !== 'Replaced' &&
-          t.serves._tag === 'TopTask' &&
-          directionIdsOf(work, t.id).includes(x.of)
-        )
-      })
+      const item = waitingFor(d, { _tag: 'Everyone' }).find(
+        (i) => i._tag === 'DraftVetoed' && i.draft === draft,
+      )
       return {
         text: `its reviser ${next.finished} is finished; a new ${next.role} ${again}`,
-        step: `work assign ${top ? top.id : '<task>'} --role=${next.role}`,
+        step: (item && assignOf(item.step)) ?? null,
       }
     }
   }
@@ -196,12 +190,10 @@ export const suggestionMover = (d: Derived, id: SuggestionId, command = true): s
     const names = item.drafters.map((a) => `${a} (${w.assignments.get(a)?.role})`)
     return `${names.join(' or ')} drafts it`
   }
-  const gives = item.step._tag === 'Do' ? item.step.intents : []
-  const [one] = gives
-  if (one?._tag === 'Give') {
-    const roles = gives.flatMap((i) => (i._tag === 'Give' ? [i.target.role] : []))
-    const assign = command ? `: work assign ${one.target.task} --role=${roles.join('|')}` : ''
-    return `no agent can draft it now; give a high role work, and it drafts it${assign}`
+  const assign = assignOf(item.step)
+  if (assign !== undefined) {
+    const words = 'no agent can draft it now; give a high role work, and it drafts it'
+    return command ? `${words}: ${assign}` : words
   }
   return 'no agent can draft it now; start a project in your AI CLI, and its host drafts it'
 }

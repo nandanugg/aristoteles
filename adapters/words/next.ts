@@ -19,6 +19,7 @@ import {
   type Work,
 } from '../../core/schema/index.ts'
 import { clean } from '../../core/effects/lines.ts'
+import { assignOf, orOf, remakeOf, reviseOf, shortenWords, splitOf } from './intents.ts'
 import { an, clock, optionLines, short, stateWord, who } from './common.ts'
 import {
   aboutId,
@@ -28,8 +29,16 @@ import {
 } from './shared.ts'
 
 // A step: its words, and its command when it has one.
-const step = (what: string, command?: string): ReadonlyArray<string> =>
+const lines = (what: string, command?: string): ReadonlyArray<string> =>
   command === undefined ? [what] : [what, `  ${command}`]
+// The Waits whose command is no act of the actor: a read, a subagent's brief, a test of a fix.
+const WAIT_COMMANDS: ReadonlySet<StepWhat['_tag']> = new Set<StepWhat['_tag']>([
+  'GiveMakerCommand',
+  'GiveCheckerCommand',
+  'TestProblem',
+  'Answered',
+  'Resolved',
+])
 
 const nameOf = (w: Work, task: TaskId): string => w.tasks.get(task)?.name ?? task
 
@@ -107,8 +116,13 @@ const stopWords = (w: Work, stop: Stop): string => {
   return `${who(w, first.by)} rejected ${first.of.id} (${sid}): "${short(first.reason ?? '', 100)}"`
 }
 
-const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> => {
+// P3: a command that acts prints only the intents of the step (each passed canAct); a Wait
+// prints none.
+const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string> => {
   const w = d.moment.work
+  const s: StepWhat = at.what
+  const acts = at._tag === 'Do' || WAIT_COMMANDS.has(s._tag)
+  const step = (what: string, command?: string) => lines(what, acts ? command : undefined)
   switch (s._tag) {
     case 'ReadSource':
       return step(
@@ -121,7 +135,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       return [
         `answer ${s.question}: ${short(q?.text ?? '', 200)}`,
         ...optionLines(q?.options ?? []).map((l) => `  ${l}`),
-        `  work answer ${token} ${s.question} --text="<the answer>"${pick}`,
+        ...(acts ? [`  work answer ${token} ${s.question} --text="<the answer>"${pick}`] : []),
       ]
     }
     case 'Resolve':
@@ -269,8 +283,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       return step(
         `${s.task}: ${asksWords(w, s.evaluation)}; ${what}, then a new maker starts`,
         s._tag === 'RemakeAsEvaluated'
-          ? `work task remake ${token} ${s.task} --file=<task.yaml> --reason="as ${eid} says"` +
-              (s.oneUnit ? '' : `, or work task split ${token} ${s.task} --file=<parts.yaml>`)
+          ? orOf(remakeOf(at, `as ${eid} says`, token), splitOf(at, token))
           : `work escalate ${token} --reason="${s.task} needs the remake that ${eid} asks for"`,
       )
     }
@@ -278,7 +291,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       return step(
         `${s.task}: ${asksWords(w, s.evaluation)}; draft that change, then a new maker starts ` +
           'when its deciders accept it',
-        `work direction revise ${token} ${s.directions.join('|')} --file=<edit.yaml>`,
+        reviseOf(at, token),
       )
     case 'ReviseForReturnedTask':
     case 'EscalateForReturnedTask':
@@ -288,7 +301,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
         `${s.point} returns ${s.task}: "${reasonOf(w, s.point)}"; a direction change, or ` +
           `${taskAt(w, s.task).owner.name}'s own split or remake, answers it`,
         s._tag === 'ReviseForReturnedTask'
-          ? `work direction revise ${token} ${s.directions.join('|')} --file=<edit.yaml>`
+          ? reviseOf(at, token)
           : `work escalate ${token} --reason="${s.point} needs a direction change or a split ` +
             `of ${s.task}"`,
       )
@@ -308,18 +321,15 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       return step(
         `run ${s.task} with a medium role (its section ${sectionOfTask(w, s.task)} is one ` +
           'unit, so it is not split)',
-        `work assign ${token} ${s.task} --role=${s.roles.join('|')}`,
+        assignOf(at, token),
       )
     case 'SplitFirst':
       return step(
         `split ${s.task} first, then give each part to a medium role`,
-        `work task split ${token} ${s.task} --file=<parts.yaml>`,
+        splitOf(at, token),
       )
     case 'RunWithMedium':
-      return step(
-        `run ${s.task} ${nameOf(w, s.task)} with a medium role`,
-        `work assign ${token} ${s.task} --role=${s.roles.join('|')}`,
-      )
+      return step(`run ${s.task} ${nameOf(w, s.task)} with a medium role`, assignOf(at, token))
     case 'ChangeWaitsForDraft':
       return step(
         `${s.point} needs a direction change${s.first ? ' first' : ''}; ${s.drafts.join(', ')} ` +
@@ -331,8 +341,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       return step(
         `${s.point} needs a direction change${s.first ? ' first' : ''}: "${reasonOf(w, s.point)}"`,
         s._tag === 'ReviseForPoint'
-          ? `work direction revise ${token} ${s.directions.join('|')} --file=<edit.yaml> ` +
-              `--answers=${s.point}`
+          ? reviseOf(at, token, ` --answers=${s.point}`)
           : `work escalate ${token} --result=${s.result} ` +
             `--reason="${s.point} needs a direction change"`,
       )
@@ -368,10 +377,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       ]
     }
     case 'AssignMaker':
-      return step(
-        `make ${s.task} ${nameOf(w, s.task)}`,
-        `work assign ${token} ${s.task} --role=${s.roles.join('|')}`,
-      )
+      return step(`make ${s.task} ${nameOf(w, s.task)}`, assignOf(at, token))
     case 'NoMakerRole':
       return step(
         `${s.task} needs a new result, and no lower role makes it`,
@@ -413,10 +419,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
         `work escalate ${token} --result=${s.result} --reason="${s.result} needs ${s.role}"`,
       )
     case 'AssignChecker':
-      return step(
-        `check ${s.result} with ${s.role}`,
-        `work assign ${token} ${s.task} --role=${s.role}`,
-      )
+      return step(`check ${s.result} with ${s.role}`, assignOf(at, token))
     case 'Decide': {
       const output = w.results.get(s.result)?.output ?? ''
       return step(
@@ -430,7 +433,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
     case 'AssignDecider':
       return step(
         `${s.result} waits for the accept of ${an(s.role)}, and no ${s.role} works on ${s.task}`,
-        `work assign ${token} ${s.task} --role=${s.role}`,
+        assignOf(at, token),
       )
     case 'DeciderByPerson': {
       const name = leafName(s.leaf)
@@ -445,7 +448,7 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
     case 'BriefOverWaits':
       return step(
         `${s.assignment} waits: its brief has ${s.size} characters, and the limit of its tier ` +
-          `is ${s.limit}; a high role shortens the directions of ${s.task}, or splits ${s.task}` +
+          `is ${s.limit}; the role above it, or the owner of ${s.task}, shortens it` +
           waitsOn(s.drafts),
       )
     // Ruling 10.10: the person reads the host's words beside the draft.
@@ -511,12 +514,10 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       )
     case 'ShortenOrSplit':
       return step(
-        `shorten the directions of ${s.task}, or split ${s.task}: the brief of ${s.assignment} ` +
+        `${shortenWords(at, s.task)}: the brief of ${s.assignment} ` +
           `has ${s.size} characters, and the limit of its tier is ${s.limit}` +
           waitsOn(s.drafts),
-        (s.directions.length > 0
-          ? `work direction revise ${token} ${s.directions.join('|')} --file=<edit.yaml>, or `
-          : '') + `work task split ${token} ${s.task} --file=<parts.yaml>`,
+        orOf(reviseOf(at, token), splitOf(at, token), remakeOf(at, '<the shorter scope>', token)),
       )
   }
 }
@@ -537,4 +538,4 @@ export const nextLines = (
   d: Derived,
   steps: ReadonlyArray<NextStep>,
   token: string,
-): ReadonlyArray<string> => steps.flatMap((s) => linesOf(d, s.what, token))
+): ReadonlyArray<string> => steps.flatMap((s) => linesOf(d, s, token))

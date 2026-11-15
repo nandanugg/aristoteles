@@ -2,7 +2,8 @@
 // of a dir, reads the outside (no terminals), derives at the time given, and for every open actor
 // (each assignment that is not Ended, and each person of the config) checks canAct for every intent
 // of every Do step of nextFor. It returns one line per violation: `<actor> <step tag>: <refusal>`.
-// test/harness.js calls it after each run() that exits 0 when WORK_CHECK_NEXT=1.
+// test/harness.js calls it after each run() that exits 0 when WORK_CHECK_NEXT=1. P3: it checks
+// the commands that the words print too (printed.ts).
 import { Effect, Layer, Schema } from 'effect'
 import { canAct, derive, type Derived, nextFor } from '../../core/derived/index.ts'
 import { type Author, Time } from '../../core/schema/index.ts'
@@ -16,6 +17,7 @@ import {
 import { loadWork, momentOf } from '../../core/state/index.ts'
 import { ReadingsLive } from '../live/index.ts'
 import { withBriefMeasure } from '../words/index.ts'
+import { printedViolations } from './printed.ts'
 
 type Vars = Readonly<Record<string, string | undefined>>
 
@@ -56,7 +58,8 @@ const check = (dir: string, at: Time) =>
     const people = (yield* readConfig(dir)).config.people
     // The measure of a brief as the CLI reads it, so a BriefOver state is checked too (10.9).
     const outside = withBriefMeasure(moment.outside, at)
-    return violationsOf(derive({ ...moment, outside }), people)
+    const d = derive({ ...moment, outside })
+    return [...violationsOf(d, people), ...printedViolations(d, people)]
   }).pipe(Effect.scoped)
 
 export const checkNextCanAct = (

@@ -19,6 +19,7 @@ import {
   type Answerer,
   type Assignment,
   applies,
+  sectionOf,
   type AssignmentId,
   type Blocker,
   type By,
@@ -424,6 +425,10 @@ export const within = (w: Work, task: TaskId, root: TaskId): boolean => {
 }
 export const partsOf = (w: Work, task: TaskId): ReadonlyArray<Task> =>
   [...w.tasks.values()].filter((t) => t.serves._tag === 'Serves' && t.serves.task === task)
+// One unit of work (B1): a task with a section, or with open parts. It is remade, not split:
+// canAct's split refuses it, so every step that offers a split reads this one predicate.
+export const oneUnit = (w: Work, t: Task): boolean =>
+  sectionOf(t.descriptionAi.context) !== null || partsOf(w, t.id).some(isOpenTask)
 // The top of a task's tree as it was opened: the task that serves no other.
 export const rootOf = (w: Work, task: TaskId): TaskId => {
   let t = task

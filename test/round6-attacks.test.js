@@ -152,7 +152,7 @@ describe('B6 split: the parts of a task with a section', () => {
     p.write('parts.yaml', '- { name: Problem, text: Write the problem. }\n- { name: Impact, text: Write the impact on the merchant. }\n')
     const split = await p.agent(`task split ${arch} t1 --file=parts.yaml`)
     expect(split.err).toContain('t1 has the section introduction, so it is one unit of work; it is not split')
-    expect(split.err).toContain('run t1 with a medium role')
+    expect(split.err).toContain('run t1 as one unit, or remake it')
     ok(await p.agent(`assign ${arch} t1 --role=section-lead`))
   })
 })

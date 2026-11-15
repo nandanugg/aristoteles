@@ -750,7 +750,7 @@ const serve = async (p, path) => {
   try {
     await page.waitForSelector('.item.step')
     expect(await page.textContent('.item.step .item-head strong')).toBe('A brief over its limit')
-    expect(await page.textContent('.item.step .item-raw code')).toBe('work task split t1 --file=<parts.yaml>')
+    expect(await page.textContent('.item.step .item-raw code')).toBe('work task remake t1 --file=<task.yaml> --reason="<why>"')
     expect(await page.isDisabled('text=Suggest for TSD writing')).toBe(true)
     await page.fill('.item.step textarea', 'Keep the directions of t1 short')
     await cardShot(page, 'brief-over')

@@ -10,14 +10,11 @@
 // an ended task is Irrelevant), C3 (a problem), C6 (an irrelevant forward), S2 (a draft that
 // waits for the owner too), S6 (an outdated draft is no vetoed row), D14 (a maker that is
 // OutOfTries holds no file turn, so no row says that the person finishes it).
+// P3: a row prints only the intents of its item's step (intents.ts), each passed canAct: no role
+// list, decider order or option of its own. A Wait prints no command.
 import { whoOf } from '../../core/schema/index.ts'
-import type {
-  Direction,
-  DirectionId,
-  Task,
-  TaskId,
-  Work,
-} from '../../core/schema/index.ts'
+import type { Direction, DirectionId, TaskId, Work } from '../../core/schema/index.ts'
+import { openDrafts } from '../../core/derived/drafts.ts'
 import {
   claimOf,
   directionIdsOf,
@@ -30,11 +27,9 @@ import {
   stopAnswered,
   stopTask,
   taskAt,
-  taskOfTarget,
   usedBy,
   isDo,
 } from '../../core/derived/reads.ts'
-import { openDrafts } from '../../core/derived/drafts.ts'
 import {
   adjustmentDraftAt,
   SURFACES,
@@ -42,7 +37,6 @@ import {
   roleWordsDraftAt,
   type WaitingItem,
 } from '../../core/derived/index.ts'
-import { sectionOf } from '../../core/schema/index.ts'
 import { an, clock, describeInner, optionLines, short, stateWord, who } from './common.ts'
 import { drafterWords } from './role-words.ts'
 import { adjustmentWords } from './show.ts'
@@ -55,29 +49,22 @@ import {
   suggestionMover,
   tierOfRole,
 } from './shared.ts'
+import {
+  assignOf,
+  has,
+  orOf,
+  remakeOf,
+  shortenWords,
+  splitOf,
+  suggestedOf,
+  suggestOf,
+} from './intents.ts'
 
 type Of<K extends WaitingItem['_tag']> = Extract<WaitingItem, { readonly _tag: K }>
 
-const rolesOfTier = (w: Work, wanted: (tier: string | undefined) => boolean): string[] =>
-  [...w.workflow.roles.values()].filter((r) => wanted(tierOfRole(w, r.role))).map((r) => r.role)
-
-const topOf = (w: Work, t: Task): Task => {
-  let top = t
-  while (top.serves._tag === 'Serves') top = taskAt(w, top.serves.task)
-  return top
-}
-const taskEnded = (d: Derived, id: TaskId): boolean => {
-  const s = d.states.tasks.get(id)
-  return s === undefined || s._tag === 'Closed' || s._tag === 'Replaced'
-}
-// The open top task that follows a direction: where a person assigns a role that it needs.
-const topFollowing = (d: Derived, direction: DirectionId): Task | undefined =>
-  [...d.moment.work.tasks.values()].find(
-    (t) =>
-      !taskEnded(d, t.id) &&
-      t.serves._tag === 'TopTask' &&
-      directionIdsOf(d.moment.work, t.id).includes(direction),
-  )
+// A row: its words, then its command lines, each indented by four; a Wait has none.
+const row = (words: string, ...commands: ReadonlyArray<string | undefined>): string =>
+  [words, ...commands.filter((c) => c !== undefined).map((c) => `    ${c}`)].join('\n')
 
 // --- one row for each kind -----------------------------------------------------------------------
 
@@ -94,7 +81,7 @@ const questionRow = (d: Derived, item: Of<'Question'>): string => {
   return [
     `${q.id} for ${to}: ${short(q.text, 200)}`,
     ...optionLines(q.options).map((l) => `    ${l}`),
-    `    ${cmd} --text="..."${pick}`,
+    ...(has(item.step, 'Answer') ? [`    ${cmd} --text="..."${pick}`] : []),
   ].join('\n')
 }
 
@@ -106,10 +93,10 @@ const escalationRow = (d: Derived, item: Of<'Escalation'>): string => {
     throw new Error(`${item.escalation} is not an open escalation`)
   }
   const to = who(w, state.answerer)
-  return (
-    `${r.id} escalated on ${r.of} by ${who(w, r.by, r.id)} for ${to}: ${r.reason}\n` +
-    `    work resolve ${typeof state.answerer === 'string' ? `<${to} token> ` : ''}` +
-    `${r.id} --resolution="..."`
+  const token = typeof state.answerer === 'string' ? `<${to} token> ` : ''
+  return row(
+    `${r.id} escalated on ${r.of} by ${who(w, r.by, r.id)} for ${to}: ${r.reason}`,
+    has(item.step, 'Resolve') ? `work resolve ${token}${r.id} --resolution="..."` : undefined,
   )
 }
 
@@ -122,10 +109,11 @@ const forwardRow = (d: Derived, item: Of<'Forward'>): string => {
     throw new Error(`${item.forward} is not a confirmable forward`)
   }
   if (!('create' in e)) throw new Error(`${item.forward} is a confirm, not a forward`)
-  return (
+  return row(
     `${item.forward} forwarded by ${whoOf(logged.recorded.author).who} for ${e.create.person}: ` +
-    `${describeInner(forward.inner, w)}\n` +
-    `    their words: "${e.create.quote}"\n    work confirm ${item.forward}`
+      describeInner(forward.inner, w),
+    `their words: "${e.create.quote}"`,
+    has(item.step, 'Confirm') ? `work confirm ${item.forward}` : undefined,
   )
 }
 
@@ -151,10 +139,13 @@ const roleWordsDraftOf = (d: Derived, item: Of<'RoleWords'> | Of<'RoleWordsRejec
 }
 const roleWordsRow = (d: Derived, item: Of<'RoleWords'>): string => {
   const x = roleWordsDraftOf(d, item)
-  return (
-    `${item.draft} new words of ${item.role}, drafted by ${drafterWords(x.by)}\n` +
-    `    work role show ${item.draft}; work role accept ${item.draft}, ` +
-    `or reject ${item.draft} --reason="<why>"`
+  const decide = orOf(
+    has(item.step, 'AcceptRoleWords') ? `work role accept ${item.draft}` : undefined,
+    has(item.step, 'RejectRoleWords') ? `reject ${item.draft} --reason="<why>"` : undefined,
+  )
+  return row(
+    `${item.draft} new words of ${item.role}, drafted by ${drafterWords(x.by)}`,
+    `work role show ${item.draft}${decide ? `; ${decide}` : ''}`,
   )
 }
 const roleWordsRejectedRow = (d: Derived, item: Of<'RoleWordsRejected'>): string => {
@@ -164,8 +155,12 @@ const roleWordsRejectedRow = (d: Derived, item: Of<'RoleWordsRejected'>): string
   const draft = `work role draft ${item.role} --file=<words.yaml>`
   const again =
     item.for._tag === 'Assignment'
-      ? `its drafter ${item.for.assignment} drafts new words that answer it\n` +
-        `    work role draft <token> ${item.role} --file=<words.yaml>`
+      ? row(
+          `its drafter ${item.for.assignment} drafts new words that answer it`,
+          has(item.step, 'DraftRoleWords')
+            ? `work role draft <token> ${item.role} --file=<words.yaml>`
+            : undefined,
+        )
       : x.by._tag === 'ModelRun'
         ? `its drafter ${drafterWords(x.by)}, drafts new words that answer it\n` +
           `    ${draft} --by=${x.by.name}`
@@ -182,10 +177,14 @@ const adjustmentDraftOf = (d: Derived, item: Of<'Adjustment'> | Of<'AdjustmentRe
 }
 const adjustmentRow = (d: Derived, item: Of<'Adjustment'>): string => {
   const x = adjustmentDraftOf(d, item)
-  return (
-    `${item.draft} an adjustment: ${adjustmentWords(x.adjustment)}, drafted by ${drafterWords(x.by)}\n` +
-    `    work adjust show ${item.draft}; work adjust accept ${item.draft}, ` +
-    `or reject ${item.draft} --reason="<why>"`
+  const decide = orOf(
+    has(item.step, 'AcceptAdjustment') ? `work adjust accept ${item.draft}` : undefined,
+    has(item.step, 'RejectAdjustment') ? `reject ${item.draft} --reason="<why>"` : undefined,
+  )
+  return row(
+    `${item.draft} an adjustment: ${adjustmentWords(x.adjustment)}, drafted by ` +
+      drafterWords(x.by),
+    `work adjust show ${item.draft}${decide ? `; ${decide}` : ''}`,
   )
 }
 const adjustmentRejectedRow = (d: Derived, item: Of<'AdjustmentRejected'>): string => {
@@ -194,8 +193,10 @@ const adjustmentRejectedRow = (d: Derived, item: Of<'AdjustmentRejected'>): stri
   const reason = state?._tag === 'Rejected' ? state.reason : ''
   const again =
     item.for._tag === 'Assignment'
-      ? `its drafter ${item.for.assignment} drafts a new one that answers it\n` +
-        '    work adjust <token> <change>'
+      ? row(
+          `its drafter ${item.for.assignment} drafts a new one that answers it`,
+          has(item.step, 'DraftAdjustment') ? 'work adjust <token> <change>' : undefined,
+        )
       : x.by._tag === 'ModelRun'
         ? `its drafter ${drafterWords(x.by)}, drafts a new one that answers it\n` +
           `    work adjust <change> --by=${x.by.name}`
@@ -206,17 +207,17 @@ const adjustmentRejectedRow = (d: Derived, item: Of<'AdjustmentRejected'>): stri
   )
 }
 
-// A draft that waits for a role's accept first names that role, and the assign when no open
-// assignment of that role, outside the reviser's tree, can review it.
-const roleRow = (d: Derived, item: Of<'DraftForRole'>, direction: DirectionId): string => {
+// A draft that waits for a role's accept names that role, and the assign of its step when no
+// open assignment of that role, outside the reviser's tree, can review it. F5: it says nothing of
+// the person's turn; the person's own row says when the person decides.
+const roleRow = (item: Of<'DraftForRole'>): string => {
   const { draft, role } = item
   if (item.reviewer._tag === 'Reviewer') {
-    return `${draft} waits for the accept of ${item.reviewer.assignment} (${role}) before yours`
+    return `${draft} waits for the accept of ${item.reviewer.assignment} (${role})`
   }
-  const top = topFollowing(d, direction)
-  return (
-    `${draft} waits for the accept of ${an(role)} outside the tree of its reviser before yours\n` +
-    `    work assign ${top ? top.id : '<task>'} --role=${role}`
+  return row(
+    `${draft} waits for the accept of ${an(role)} outside the tree of its reviser`,
+    assignOf(item.step),
   )
 }
 
@@ -228,35 +229,40 @@ const personRow = (d: Derived, item: Of<'DraftForPerson'>, direction: DirectionI
     ? `; it answers ${x.answers.map((y) => answerText(w, y)).join('; ')}`
     : ''
   const reviews = itemsOf(w, x.id).map((r) => r.decision)
-  return (
+  const decide = orOf(
+    has(item.step, 'Accept') ? `work review ${x.id} accept [--reason="<a comment>"]` : undefined,
+    has(item.step, 'Reject') ? 'reject --reason="<why>"' : undefined,
+  )
+  return row(
     `${x.id} drafted for ${direction} by ${drafterOf(w, x)}${answers}; ` +
-    `reviews: ${reviews.join(', ') || 'none'}\n` +
-    `    work direction show ${x.id}; work review ${x.id} accept ` +
-    '[--reason="<a comment>"], or reject --reason="<why>"'
+      `reviews: ${reviews.join(', ') || 'none'}`,
+    `work direction show ${x.id}${decide ? `; ${decide}` : ''}`,
   )
 }
 
-const pointsRow = (direction: DirectionId, points: ReadonlyArray<string>): string =>
-  `${points.join(', ')} ${points.length > 1 ? 'need' : 'needs'} a change of ${direction}; ` +
-  `a high role drafts it, or you suggest it\n    work suggest ${direction} --says="<the change>"`
+// The points of a direction with no open draft; the suggest only when a step offers it (P1: a
+// high role of the tree drafts it, and the person waits).
+const pointsRow = (direction: DirectionId, points: ReadonlyArray<Of<'ChangePoint'>>): string => {
+  const ids = points.map((i) => i.point as string)
+  const yours = points.some((i) => suggestedOf(i.step).includes(direction))
+  return row(
+    `${ids.join(', ')} ${ids.length > 1 ? 'need' : 'needs'} a change of ${direction}; ` +
+      `a high role drafts it${yours ? ', or you suggest it' : ''}`,
+    yours ? `work suggest ${direction} --says="<the change>"` : undefined,
+  )
+}
 
-// A point with no rule on a task can also be answered by the owner's own split of it.
+// A point with no rule on a task can also be answered by the owner's own split of it, or by a
+// remake of one unit of work: the change that its step offers.
 const splitRow = (d: Derived, item: Of<'ChangePoint'>): string | undefined => {
-  const w = d.moment.work
-  const ref = itemAt(w, item.point)
-  const t = taskAt(w, item.task)
-  if (ref === undefined || taskOfTarget(w, ref.of) !== t.id) return undefined
-  // A task with parts, or with a section (one unit, not split), is remade instead.
-  const openParts =
-    [...w.tasks.values()].some(
-      (p) => p.serves._tag === 'Serves' && p.serves.task === t.id && !taskEnded(d, p.id),
-    ) || sectionOf(t.descriptionAi.context) !== null
-  return openParts
-    ? `${ref.id} can also be answered by your remake of ${t.id}\n` +
-        `    work task remake ${t.id} --file=<task.yaml> ` +
-        `--reason="<how the scope changed>" --review=${ref.id}`
-    : `${ref.id} can also be answered by your split of ${t.id}\n` +
-        `    work task split ${t.id} --file=<parts.yaml> --review=${ref.id}`
+  const t = taskAt(d.moment.work, item.task)
+  const split = splitOf(item.step)
+  const remake = remakeOf(item.step, '<how the scope changed>')
+  if (split === undefined && remake === undefined) return undefined
+  return row(
+    `${item.point} can also be answered by your ${split ? 'split' : 'remake'} of ${t.id}`,
+    split ?? remake,
+  )
 }
 
 // An evaluation that waits for the owner's accept.
@@ -265,13 +271,18 @@ const evaluationRow = (d: Derived, item: Of<'EvaluationForOwner'>): string => {
   const pending = w.evaluations.get(item.evaluation)
   if (pending === undefined) throw new Error(`the work has no evaluation ${item.evaluation}`)
   const t = stopTask(w, pending.answers)
-  return (
-    `${pending.id} evaluates ${t} at the level ${pending.level}, ` +
-    'and waits for your accept\n' +
-    `    work review ${pending.id} accept --evidence="<where you read> | <what you saw>", ` +
-    `or reject --reason="..." (read it in full: work evaluation show ${pending.id})\n` +
-    `    wrong: ${short(pending.wrong, 160)}\n    why: ${short(pending.why, 160)}` +
-    pending.improve.map((x) => `\n    improve: ${short(x, 160)}`).join('')
+  const decide = orOf(
+    has(item.step, 'Accept')
+      ? `work review ${pending.id} accept --evidence="<where you read> | <what you saw>"`
+      : undefined,
+    has(item.step, 'Reject') ? 'reject --reason="..."' : undefined,
+  )
+  return row(
+    `${pending.id} evaluates ${t} at the level ${pending.level}, and waits for your accept`,
+    `${decide ? `${decide} ` : ''}(read it in full: work evaluation show ${pending.id})`,
+    `wrong: ${short(pending.wrong, 160)}`,
+    `why: ${short(pending.why, 160)}`,
+    ...pending.improve.map((x) => `improve: ${short(x, 160)}`),
   )
 }
 
@@ -283,35 +294,35 @@ const changeOfEvaluationRow = (d: Derived, item: Of<'Stop'>): string | undefined
     .filter((x) => stopTask(w, x.answers) === t.id && evaluationCounts(w, x))
     .at(-1)
   if (e === undefined) return undefined
-  const directions = directionIdsOf(w, t.id)
-  return (
+  const suggest = suggestOf(item.step, '<the change>')
+  return row(
     `${t.id} ${t.name} waits for the change that ${e.id} asks for: ` +
-    `"${short(e.improve.join('; '), 160)}"\n` +
-    (e.level === 'task' || directions.length === 0
-      ? `    work task remake ${t.id} --file=<task.yaml> --reason="as ${e.id} says"`
-      : `    work suggest ${directions.join('|')} --says="<the change>"; ` +
-        'a high role drafts it, and you accept the draft')
+      `"${short(e.improve.join('; '), 160)}"`,
+    orOf(
+      remakeOf(item.step, `as ${e.id} says`),
+      suggest && `${suggest}; a high role drafts it, and you accept the draft`,
+    ),
   )
 }
 
 // The stops of one task that no evaluation was written for, and no high role works on it.
 const unwrittenRow = (w: Work, task: TaskId, stops: ReadonlyArray<Of<'Stop'>>): string => {
   const t = taskAt(w, task)
-  const highRoles = rolesOfTier(w, (tier) => tier === 'high')
-  const top = topOf(w, t)
-  return (
+  const evaluate = stops
+    .filter((s) => has(s.step, 'Evaluate'))
+    .map(
+      (s) =>
+        `work evaluate ${stopIdOf(s.stop)} ` +
+        '--wrong="<what is wrong>" --why="<why it cannot be done as asked>" ' +
+        '--improve="<one change>" --level=task|standard|direction|principle',
+    )
+    .join(', then ')
+  const assign = stops[0] === undefined ? undefined : assignOf(stops[0].step)
+  return row(
     `${t.id} ${t.name} waits for ` +
-    (stops.length > 1 ? `${stops.length} evaluations, one for each stop` : 'an evaluation') +
-    ', and no high role works on it\n' +
-    `    work assign ${top.id} --role=${highRoles.join('|')}, or evaluate it yourself: ` +
-    stops
-      .map(
-        (s) =>
-          `work evaluate ${stopIdOf(s.stop)} ` +
-          '--wrong="<what is wrong>" --why="<why it cannot be done as asked>" ' +
-          '--improve="<one change>" --level=task|standard|direction|principle',
-      )
-      .join(', then ')
+      (stops.length > 1 ? `${stops.length} evaluations, one for each stop` : 'an evaluation') +
+      ', and no high role works on it',
+    orOf(assign, evaluate && (assign ? `evaluate it yourself: ${evaluate}` : evaluate)),
   )
 }
 
@@ -341,14 +352,11 @@ const suggestionRow = (d: Derived, item: Of<'Suggestion'>): string => {
       'request; the refresh brings the new commit in'
     )
   }
-  const top = topFollowing(d, direction.id)
-  const highRoles = rolesOfTier(w, (tier) => tier === 'high')
-  return (
+  return row(
     `${y.id} suggests about ${aboutId(w, y.about)}: "${short(y.says, 120)}" ` +
-    `(${who(w, y.by)}); no high role works on a task that follows ${direction.id}\n` +
-    (top
-      ? `    work assign ${top.id} --role=${highRoles.join('|')}`
-      : `    no open task follows ${direction.id}; a high role starts on a task that names it`)
+      `(${who(w, y.by)}); no high role works on a task that follows ${direction.id}`,
+    assignOf(item.step) ??
+      `you may give no high role a task that follows ${direction.id} now`,
   )
 }
 
@@ -358,20 +366,13 @@ const deciderRow = (d: Derived, item: Of<'DecideResult'>): string => {
   if (item.leaf._tag !== 'Role') throw new Error(`${item.result} waits for a person, not a role`)
   const role = item.leaf.role
   const t = taskAt(w, resultAt(w, item.result).task)
-  const top = topOf(w, t)
   // The person gives work only to medium and high roles: a low decider comes from a lead,
-  // whose own next prints the assign.
-  if (tierOfRole(w, role) === 'low') {
-    const leads = rolesOfTier(w, (tier) => tier !== undefined && tier !== 'low')
-    return (
-      `${item.result} waits for the accept of ${an(role)}, ` +
-      `and no lead works on ${t.id} to give it its work\n` +
-      `    work assign ${top.id} --role=${leads.join('|')}`
-    )
-  }
-  return (
-    `${item.result} waits for the accept of ${an(role)}, and no ${role} works on ${t.id}\n` +
-    `    work assign ${top.id} --role=${role}`
+  // whose own next prints the assign. The step names the roles that the person may give.
+  const low = tierOfRole(w, role) === 'low'
+  return row(
+    `${item.result} waits for the accept of ${an(role)}, ` +
+      (low ? `and no lead works on ${t.id} to give it its work` : `and no ${role} works on ${t.id}`),
+    assignOf(item.step),
   )
 }
 
@@ -391,10 +392,9 @@ const idleAssignmentRow = (d: Derived, item: Of<'IdleAssignment'>): string => {
 const idleTaskRow = (d: Derived, item: Of<'IdleTask'>): string => {
   const w = d.moment.work
   const t = taskAt(w, item.task)
-  const leads = rolesOfTier(w, (tier) => tier !== undefined && tier !== 'low')
-  return (
-    `${t.id} ${t.name} is ${stateWord(d, t.id)}, and no open assignment works on it\n` +
-    `    work assign ${t.id} --role=${leads.join('|') || '<role>'}`
+  return row(
+    `${t.id} ${t.name} is ${stateWord(d, t.id)}, and no open assignment works on it`,
+    assignOf(item.step),
   )
 }
 
@@ -416,17 +416,21 @@ const problemRow = (d: Derived, item: Of<'Problem'>): string => {
   if (p === undefined) throw new Error(`the work has no problem ${item.problem}`)
   const r = p.recordedBy
   const by = r._tag === 'Host' ? `the host ${r.assignment}` : r.name
-  return (
+  return row(
     `${p.id} stops ${p.stopped} ${taskAt(w, p.stopped).name} (recorded by ${by}): ` +
-    `${short(p.says, 200)}\n    when it is fixed: work problem ${p.id} --fixed`
+      short(p.says, 200),
+    has(item.step, 'FixProblem') ? `when it is fixed: work problem ${p.id} --fixed` : undefined,
   )
 }
 
 const endRow = (d: Derived, item: Of<'RunEnd'>): string => {
   const t = taskAt(d.moment.work, item.top)
-  return (
-    `${item.run} ends: the agent that leads ${t.id} ${t.name} accepted its result\n` +
-    `    work run done ${item.run}, or work review ${t.id} reject --point="<your reason>"`
+  return row(
+    `${item.run} ends: the agent that leads ${t.id} ${t.name} accepted its result`,
+    orOf(
+      has(item.step, 'EndRun') ? `work run done ${item.run}` : undefined,
+      has(item.step, 'Reject') ? `work review ${t.id} reject --point="<your reason>"` : undefined,
+    ),
   )
 }
 
@@ -437,14 +441,14 @@ const briefOverRow = (d: Derived, item: Of<'BriefOver'>): string => {
   const a = w.assignments.get(item.assignment)
   if (s?._tag !== 'BriefOver' || a === undefined) throw new Error(`${item.assignment} fits`)
   const t = taskAt(w, item.task)
-  const directions = directionIdsOf(w, t.id)
-  return (
+  return row(
     `${a.id} (${a.role} on ${t.id}) waits: its brief has ${s.size} characters, and the limit ` +
-    `of its tier is ${s.limit}; shorten the directions of ${t.id}, or split ${t.id}\n` +
-    (directions.length > 0
-      ? `    work suggest ${directions.join('|')} --says="<the shorter words>", or `
-      : '    ') +
-    `work task split ${t.id} --file=<parts.yaml>`
+      `of its tier is ${s.limit}; ${shortenWords(item.step, t.id)}`,
+    orOf(
+      suggestOf(item.step, '<the shorter words>'),
+      splitOf(item.step),
+      remakeOf(item.step, '<the shorter scope>'),
+    ),
   )
 }
 
@@ -476,19 +480,16 @@ export const waitingRows = (d: Derived, all: ReadonlyArray<WaitingItem>): Readon
       const draft = w.drafts.get(id)
       if (draft === undefined || draft.of !== direction.id) continue
       for (const i of of('DraftForRole').filter((x) => x.draft === draft.id)) {
-        rows.push(roleRow(d, i, direction.id))
+        rows.push(roleRow(i))
       }
-      // The old row waits for the roles first: a draft with a role leaf has no person row.
+      // F5: a person who may decide now has an item, so the row shows, whatever the roles wait.
       const person = of('DraftForPerson').find((x) => x.draft === draft.id)
-      const roleFirst = of('DraftForRole').some((x) => x.draft === draft.id)
-      if (person !== undefined && !roleFirst && !shown.has(draft.id)) {
+      if (person !== undefined && !shown.has(draft.id)) {
         shown.add(draft.id)
         rows.push(personRow(d, person, direction.id))
       }
     }
-    const here = points
-      .filter((i) => directionIdsOf(w, i.task).includes(direction.id))
-      .map((i) => i.point as string)
+    const here = points.filter((i) => directionIdsOf(w, i.task).includes(direction.id))
     if (here.length > 0 && openDrafts(d, direction.id).length === 0) {
       rows.push(pointsRow(direction.id, here))
     }

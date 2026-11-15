@@ -46,6 +46,7 @@ import {
   unresolvedEscalationItems,
   within,
   workStop,
+  oneUnit as isOneUnit,
   tierOfAssignment,
 } from './reads.ts'
 import { rolesSuggestionsWaiting } from './adjustments.ts'
@@ -240,7 +241,8 @@ const briefOver = (d: Derived, x: Assignment): Candidate | undefined => {
   }
   return wait(what)
 }
-// The high role shortens the directions of the task (B2: only local ones), or splits the task.
+// The high role shortens the directions of the task (B2: only local ones), or splits the task
+// (remakes one unit of work).
 const shortenSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   const w = d.moment.work
   return [...w.assignments.values()].flatMap((x): ReadonlyArray<Candidate> => {
@@ -256,8 +258,13 @@ const shortenSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
       directions,
       drafts: openDraftsOfTask(d, x.task),
     }
-    const split: Intent = { _tag: 'SplitTask', target: { task: x.task, answers: null } }
-    return [act(what, ...revise(directions), split)]
+    const t = w.tasks.get(x.task)
+    // B1: one unit of work is remade, not split.
+    const change: Intent =
+      t !== undefined && isOneUnit(w, t)
+        ? { _tag: 'RemakeTask', target: { task: x.task, answers: null } }
+        : { _tag: 'SplitTask', target: { task: x.task, answers: null } }
+    return [act(what, ...revise(directions), change)]
   })
 }
 
@@ -666,12 +673,12 @@ const evaluationSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Cand
   // B2: a task whose directions are all company directions gets its change through a remake.
   const local = localDirections(w, t.id)
   if (e?.level === 'task' || local.length === 0) {
-    const oneUnit = sectionOf(t) !== null
+    const oneUnit = isOneUnit(w, t)
     if (mayChange(w, a.id, t.id, d.moment.at)) {
       const remake: Intent = { _tag: 'RemakeTask', target: { task: t.id, answers: null } }
       const split: Intent = { _tag: 'SplitTask', target: { task: t.id, answers: null } }
       const what: StepWhat = { _tag: 'RemakeAsEvaluated', task: t.id, evaluation, oneUnit }
-      return [oneUnit ? act(what, remake) : act(what, remake, split)]
+      return [act(what, remake, split)]
     }
     const what: StepWhat = { _tag: 'EscalateForRemake', task: t.id, evaluation, oneUnit }
     return [escalatedTask(d, a) ? wait(what) : act(what, escalateTask(a))]

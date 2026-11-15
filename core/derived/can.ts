@@ -15,6 +15,7 @@ import {
   isMarked,
   human,
   type NonBlank,
+  sectionOf,
   type TaskId,
   type Work,
 } from '../schema/index.ts'
@@ -57,7 +58,7 @@ import {
   mayChange,
   mayGive,
   neederOf,
-  partsOf,
+  oneUnit,
   personRejectItems,
   rootOf,
   roleNameOf,
@@ -1072,12 +1073,19 @@ const split: Check<'SplitTask'> = (c, { target: { task, answers } }) =>
       if (t === undefined) return MAY
       if (!isOpenTask(t))
         return no(`${task} is closed; a closed task takes no parts`, 'Pick', 'split an open task')
-      if (partsOf(w, task).some(isOpenTask)) {
-        return no(
-          `${task} already has parts; split a part, or remake ${task}`,
-          'Pick',
-          `split a part of ${task}`,
-        )
+      if (oneUnit(w, t)) {
+        const section = sectionOf(t.descriptionAi.context)
+        return section !== null
+          ? no(
+              `${task} has the section ${section}, so it is one unit of work; it is not split`,
+              'Pick',
+              `run ${task} as one unit, or remake it`,
+            )
+          : no(
+              `${task} already has parts; split a part, or remake ${task}`,
+              'Pick',
+              `split a part of ${task}`,
+            )
       }
       const waits = c.by !== undefined && !isPerson(w, c.by) && evaluationWaitsRef(w, task)
       if (waits) {

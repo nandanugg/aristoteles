@@ -73,7 +73,7 @@ describe('D1: an evaluation for the owner', () => {
 })
 
 describe('BriefOver: a brief over its limit with no high role above it', () => {
-  test('shows on its task: suggest shorter words, or split at a terminal', async () => {
+  test('shows on its task: suggest shorter words, or remake at a terminal (t1 has a section: one unit, B1)', async () => {
     const small = WORK_YAML.replace('briefChars: 6000', 'briefChars: 900')
     const p = project({ 'aristoteles.yaml': small })
     gitPerson(p)
@@ -88,7 +88,7 @@ describe('BriefOver: a brief over its limit with no high role above it', () => {
     expect(over).toMatchObject({ title: 'A brief over its limit' })
     expect(over.acts).toEqual([
       { _tag: 'Suggest', about: { _tag: 'Direction', direction: 'tsd-writing' }, name: 'TSD writing' },
-      { _tag: 'AtTerminal', line: 'work task split t1 --file=<parts.yaml>' },
+      { _tag: 'AtTerminal', line: 'work task remake t1 --file=<task.yaml> --reason="<why>"' },
     ])
     const said = await act(p, 'suggest', {
       about: { _tag: 'Direction', direction: 'tsd-writing' },
@@ -124,7 +124,7 @@ describe('D5: a draft that waits for the accept of a role with no possible revie
     expect(given.out).toStartWith('a3 · section-lead on t1;')
     // a3 reviews it now: the person waits, and the card is gone.
     expect((await inbox(p)).find((d) => d.id === 'd2')).toBeUndefined()
-    expect(ok(await p.nanda('waiting')).out).toContain('d2 waits for the accept of a3 (section-lead) before yours')
+    expect(ok(await p.nanda('waiting')).out).toContain('d2 waits for the accept of a3 (section-lead)')
   })
 })
 
