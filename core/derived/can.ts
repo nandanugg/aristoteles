@@ -263,6 +263,14 @@ const give: Check<'Give'> = (c, { target: { task, role } }) => {
         `tell ${above} what the work needs (work ask)`,
       )
     }
+    // A maker does not choose who reviews its own result.
+    if (!makes && isDo(w, parent.role) && parent.task === task) {
+      return no(
+        `${parent.id} makes ${task}; a maker does not choose who reviews its result`,
+        'Escalate',
+        `${upTo(parent)} assigns the reviewers`,
+      )
+    }
     if (!within(w, task, parent.task)) {
       return no(
         `${task} is outside the task tree of ${parent.task}`,
@@ -280,6 +288,16 @@ const give: Check<'Give'> = (c, { target: { task, role } }) => {
     }
     const claim = needClaim(c, parent)
     if (claim._tag === 'MayNot') return claim
+  }
+  // One checker of a role on a task at a time: two of one role could disagree on one rule.
+  const checks = rulesOf(w, task).some(
+    (x) => x.checkedBy._tag === 'Role' && x.checkedBy.role === role,
+  )
+  const same = [...w.assignments.values()].find(
+    (a) => a.task === task && a.role === role && d.states.assignments.get(a.id)?._tag !== 'Ended',
+  )
+  if (!makes && checks && same) {
+    return no(`${same.id} of ${role} reviews ${task} already`, 'Pick', `${same.id} checks it`)
   }
   if (makes) {
     const open = [...w.assignments.values()].find((a) => {

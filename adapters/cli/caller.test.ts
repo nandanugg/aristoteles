@@ -287,7 +287,7 @@ describe('the claim, as canAct refuses an agent act', () => {
       message: 'your unit is done; this assignment has no open brief',
       next: 'STOP: your parent continues, and gives you this token again if there is more',
     })
-    const second = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
+    const second = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     expect(refusalOf((await p.agent(`assign ${second} t1 --role=writer`)).err).message).toBe(
       'you have no brief in this attempt',
     )
@@ -304,7 +304,7 @@ describe('the claim, as canAct refuses an agent act', () => {
 
   test('an assignment that the person gave tells the person', async () => {
     const { p } = await harness.started()
-    const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
+    const lead = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.nanda('finish a2'))
     expect(refusalOf((await p.agent(`brief ${lead}`)).err)).toEqual({
       message: 'a2 is finished',

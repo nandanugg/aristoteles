@@ -550,9 +550,19 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
       within(w, t.id, x.task),
   )
   const lead = running.find((x) => isAbove(w, a.id, x)) ?? running[0]
+  const changed = result !== undefined && d.moment.outside.changed.has(result.id)
+  const fix = items.some(
+    (i) =>
+      (i._tag === 'Reject' && (itemAt(w, i.ref)?.breaks !== undefined || answered(w, i.ref))) ||
+      i._tag === 'Unchanged' ||
+      i._tag === 'Recheck',
+  )
   if (lead) {
     steps.push(wait({ _tag: 'LeadRuns', lead: lead.id, task: t.id }))
     if (result) {
+      // A checker that this assignment gave is its subagent to start.
+      const checks = !changed && !fix ? checkRolesOf(w, items) : []
+      steps.push(...checkerSteps(d, a, t, result.id, checks, true))
       steps.push(...changeSteps(d, a, t, result.id, items, false))
       steps.push(...deciderSteps(d, a, result.id, items))
     }
@@ -574,13 +584,6 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
     const what: StepWhat = { _tag: 'RunWithLead', task: t.id, roles: subLeads }
     return [...steps, act(what, ...giveEach(t.id, subLeads))]
   }
-  const changed = result !== undefined && d.moment.outside.changed.has(result.id)
-  const fix = items.some(
-    (i) =>
-      (i._tag === 'Reject' && (itemAt(w, i.ref)?.breaks !== undefined || answered(w, i.ref))) ||
-      i._tag === 'Unchanged' ||
-      i._tag === 'Recheck',
-  )
   if (!result || changed || fix) {
     if (result) steps.push(...changePointSteps(d, a, t, result.id, items, true))
     const makers = lower
@@ -589,21 +592,29 @@ const taskSteps = (d: Derived, a: Assignment, t: Task): ReadonlyArray<Candidate>
     steps.push(makerStep(d, a, t, result !== undefined, makers))
     return steps
   }
-  // The work is unchanged after a direction change: the rules of the changed standards are
-  // checked again by their own checkers.
-  const again = items.flatMap((i) => (i._tag === 'OldVersion' ? i.rules : []))
   if (items.some((i) => i._tag === 'OldVersion')) {
     steps.push(wait({ _tag: 'CheckAgainUnderNewVersion', result: result.id }))
   }
+  // The maker of the result does not choose its checkers, nor decide it. A role that leads
+  // nothing checks only its own rules: the lead of the task sees to the other checkers.
+  const maker = isDo(w, a.role) && a.task === t.id
+  const leader = leads(roleOfA(w, a))
+  const roles = checkRolesOf(w, items).filter((r) => leader || r === a.role)
+  if (!maker) steps.push(...checkerSteps(d, a, t, result.id, roles, false))
+  steps.push(...changeSteps(d, a, t, result.id, items, false))
+  if (!maker) steps.push(...deciderSteps(d, a, result.id, items))
+  return steps
+}
+// The roles that check the rules of a result that lack evidence; after a direction change that
+// left the work unchanged, the rules of the changed standards too.
+const checkRolesOf = (w: Work, items: ReadonlyArray<Blocker>): ReadonlyArray<RoleName> => {
+  const again = items.flatMap((i) => (i._tag === 'OldVersion' ? i.rules : []))
   const rules = [...items.flatMap((i) => (i._tag === 'Evidence' ? [i.ref] : [])), ...again]
   const roles = rules.flatMap((e) => {
     const checkedBy = w.rules.get(e)?.checkedBy
     return checkedBy?._tag === 'Role' ? [checkedBy.role] : []
   })
-  steps.push(...checkerSteps(d, a, t, result.id, [...new Set(roles)]))
-  steps.push(...changeSteps(d, a, t, result.id, items, false))
-  steps.push(...deciderSteps(d, a, result.id, items))
-  return steps
+  return [...new Set(roles)]
 }
 // The open points of the Rejects of a task itself.
 const taskRejects = (w: Work, task: TaskId): ReadonlyArray<PointId> =>
@@ -752,6 +763,13 @@ const makerStep = (
   const maker = [...w.assignments.values()].find((x) => x.task === t.id && makesNow(d, x))
   const waits = maker && fileTurn(d, maker.id)
   if (maker && waits) return wait({ _tag: 'MakerWaitsForFile', maker: maker.id, ...waits })
+  // The maker itself never waits on itself: it reads its brief, or reports what it made.
+  if (maker?.id === a.id) {
+    const self = { assignment: a.id }
+    return claimedSince(w, a.id) === undefined
+      ? act({ _tag: 'BriefToMake', task: t.id, redo }, { _tag: 'Brief', target: self })
+      : act({ _tag: 'ReportWork', maker: a.id, task: t.id }, { _tag: 'Report', target: self })
+  }
   if (maker && claimedSince(w, maker.id) !== undefined) {
     const what: StepWhat = { _tag: 'MakerWorking', maker: maker.id, task: t.id }
     return act(what, { _tag: 'Free', target: { assignment: maker.id } })
@@ -766,48 +784,63 @@ const makerStep = (
   return escalatedTask(d, a) ? wait(what) : act(what, escalateTask(a))
 }
 
-// The checker of each role that checks a rule of the result.
+// The checker of each role that checks a rule of the result: one open checker of a role on a task
+// (can.ts). ownOnly: only the checkers that this assignment gave.
 const checkerSteps = (
   d: Derived,
   a: Assignment,
   t: Task,
   result: ResultId,
   roles: ReadonlyArray<RoleName>,
+  ownOnly: boolean,
 ): ReadonlyArray<Candidate> => {
   const w = d.moment.work
-  return roles.map((role): Candidate => {
-    const r = w.workflow.roles.get(role)
-    if (r?._tag === 'Program') {
-      const what: StepWhat = { _tag: 'ProgramChecksNextReport', role, task: t.id, result }
-      return act(what, { _tag: 'Recheck', target: { result } })
-    }
+  return roles.flatMap((role): ReadonlyArray<Candidate> => {
     const checker = [...w.assignments.values()].find(
-      (x) => x.task === t.id && !ended(d, x.id) && x.role === role && parentId(x) === a.id,
+      (x) => x.task === t.id && !ended(d, x.id) && x.role === role,
     )
-    const of = { _tag: 'Result', id: result } as const
-    const over = checker === undefined ? undefined : briefOver(d, checker)
-    if (over !== undefined) return over
-    if (role === a.role) {
-      return act(
-        { _tag: 'CheckYourself', result },
-        { _tag: 'Accept', target: { of } },
-        { _tag: 'Reject', target: { of } },
-      )
-    }
-    if (checker && claimedSince(w, checker.id) !== undefined) {
-      const what: StepWhat = { _tag: 'CheckerWorking', checker: checker.id, result }
-      return act(what, { _tag: 'Free', target: { assignment: checker.id } })
-    }
-    if (checker) {
-      return wait({ _tag: 'GiveCheckerCommand', checker: checker.id, result, task: t.id })
-    }
-    if (r?._tag === 'Model' && !assignsOf(roleOfA(w, a)).includes(role)) {
-      const what: StepWhat = { _tag: 'CheckerNotAssigned', result, role }
-      const escalate: Intent = { _tag: 'EscalateResult', target: { result } }
-      return escalatedResult(d, a, result) ? wait(what) : act(what, escalate)
-    }
-    return act({ _tag: 'AssignChecker', result, role, task: t.id }, ...giveEach(t.id, [role]))
+    const own = checker !== undefined && parentId(checker) === a.id
+    return !ownOnly || own ? [checkerStep(d, a, t, result, role, checker)] : []
   })
+}
+const checkerStep = (
+  d: Derived,
+  a: Assignment,
+  t: Task,
+  result: ResultId,
+  role: RoleName,
+  checker: Assignment | undefined,
+): Candidate => {
+  const w = d.moment.work
+  const r = w.workflow.roles.get(role)
+  if (r?._tag === 'Program') {
+    const what: StepWhat = { _tag: 'ProgramChecksNextReport', role, task: t.id, result }
+    return act(what, { _tag: 'Recheck', target: { result } })
+  }
+  const of = { _tag: 'Result', id: result } as const
+  const over = checker === undefined ? undefined : briefOver(d, checker)
+  if (over !== undefined) return over
+  if (role === a.role) {
+    return act(
+      { _tag: 'CheckYourself', result },
+      { _tag: 'Accept', target: { of } },
+      { _tag: 'Reject', target: { of } },
+    )
+  }
+  if (checker && claimedSince(w, checker.id) !== undefined) {
+    const what: StepWhat = { _tag: 'CheckerWorking', checker: checker.id, result }
+    return act(what, { _tag: 'Free', target: { assignment: checker.id } })
+  }
+  if (checker) {
+    const ownChild = parentId(checker) === a.id
+    return wait({ _tag: 'GiveCheckerCommand', checker: checker.id, result, task: t.id, ownChild })
+  }
+  if (r?._tag === 'Model' && !assignsOf(roleOfA(w, a)).includes(role)) {
+    const what: StepWhat = { _tag: 'CheckerNotAssigned', result, role }
+    const escalate: Intent = { _tag: 'EscalateResult', target: { result } }
+    return escalatedResult(d, a, result) ? wait(what) : act(what, escalate)
+  }
+  return act({ _tag: 'AssignChecker', result, role, task: t.id }, ...giveEach(t.id, [role]))
 }
 
 // The decider decides when only its accept is left (B3: its turn of an Order); otherwise the step
@@ -919,6 +952,8 @@ const IDS: {
   EscalateForPoint: (s) => [s.point, s.result],
   MakerWaitsForFile: (s) => [s.maker, s.before],
   MakerWorking: (s) => [s.maker, s.task],
+  BriefToMake: (s) => [s.task],
+  ReportWork: (s) => [s.maker, s.task],
   GiveMakerCommand: (s) => [s.maker, s.task],
   AssignMaker: (s) => [s.task, ...s.roles],
   NoMakerRole: (s) => [s.task],

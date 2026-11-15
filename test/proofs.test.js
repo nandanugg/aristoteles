@@ -37,7 +37,9 @@ describe('planted faults: the checker brief', () => {
 describe('generated runs: next has a way on', () => {
   // seed 10: a high agent delegated a part to a lead it did not assign, and the lead it did
   // assign saw a checker of its parent that it could not start, so nothing moved the part.
-  test('next names only the caller\'s own lead, and a lead assigns its own checker', async () => {
+  // P9: one linter checks t2 at a time, so the lead does not assign a second one; the architect
+  // that gave the linter has the step to start it.
+  test('next names only the caller\'s own lead, and the giver of a checker starts it', async () => {
     const p = await fresh({ 'task.yaml': TSD_TASK })
     const other = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
     ok(await p.agent(`brief ${other}`))
@@ -54,8 +56,9 @@ describe('generated runs: next has a way on', () => {
     p.write('docs/tsd.md', '# TSD\n\n## Introduction\n\nTODO\n\n## Design\n\nOne file per merchant per day.\n')
     ok(await p.agent(`report ${writer} --output=docs/tsd.md#design`))
     const leadNext = ok(await p.agent(`next ${lead}`)).out
-    expect(leadNext).toContain(`work assign ${lead} t2 --role=linter`)
+    expect(leadNext).toContain('check r1: a2 starts a3, the subagent it gave')
     const archNext = ok(await p.agent(`next ${arch}`)).out
+    expect(archNext).toContain('check r1: give a new subagent the command of a3')
     expect(archNext).toContain('a4 (section-lead) runs t2')
     expect(archNext).not.toContain('a1 (section-lead) runs t2')
   })

@@ -52,9 +52,9 @@ describe('G2 a newer accepted result of a needed task with the same work reopens
     const again = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=writer`)).out)
     ok(await p.agent(`brief ${again}`))
     ok(await p.agent(`report ${again} --output=docs/tsd.md#design`))
-    const linter2 = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter2}`))
-    ok(await p.agent(`review ${linter2} r3 accept ${LINT('the design')}`))
+    // P9: one linter checks t2 at a time; the same one checks each new result.
+    ok(await p.agent(`brief ${linter}`))
+    ok(await p.agent(`review ${linter} r3 accept ${LINT('the design')}`))
     ok(await p.agent(`review ${lead} r3 accept --evidence="docs/tsd.md#design | the flag and the env var are named"`))
     expect(ok(await p.agent('task show t2')).out).toContain('r3 (docs/tsd.md#design) has no blockers; it is accepted.')
     // Correct: t2's accepted work is the same as before, so t3 still has the inputs that failed.

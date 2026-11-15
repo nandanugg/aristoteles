@@ -12,6 +12,7 @@ import {
   waitingFor,
 } from '../../core/derived/index.ts'
 import type { AssignmentId, Work } from '../../core/schema/index.ts'
+import { leads } from '../../core/derived/reads.ts'
 import { momentOf, pinned, SCENARIOS, type Scenario } from '../../core/derived/support.test.ts'
 import {
   briefOf,
@@ -82,11 +83,19 @@ const noticeLinesOf = (d: Derived, a: AssignmentId, token: string): ReadonlyArra
     (l) => `  ${l}`,
   )
 
-// P3: the old command lines of a Wait step. The linter's unit is done, so it may not accept; a
-// maker does not free itself.
+// P3: the old command lines of a Wait step. The linter's unit is done, so it may not accept.
 const P3_REFUSED: Readonly<Record<string, string>> = {
   'rejectedOnce a3': '  work review a0.TOKEN r2 accept --evidence="<rule id> | <where> | <what>"',
-  'codeStarted a2': '  work free a0.TOKEN a2',
+}
+// P9: a role that leads nothing checks only its own rules, so it no longer escalates for the
+// checkers of other roles (a step line and its command); a maker that holds its claim reports.
+const p9Lines = (w: Work, a: AssignmentId, at: string, lines: Lines): Lines => {
+  if (at === 'codeStarted a2') {
+    return ['make t1 as your brief says, then report it', '  work report a0.TOKEN --output=app@<commit>']
+  }
+  if (leads(w.workflow.roles.get(w.assignments.get(a)?.role ?? ('' as never)))) return lines
+  const other = (l: string | undefined) => l?.endsWith(', which your role does not assign') ?? false
+  return lines.filter((l, i) => !other(l) && !other(lines[i - 1]))
 }
 
 describe('next', () => {
@@ -108,20 +117,23 @@ describe('next', () => {
         if (was.d14) seen.push(`${s.name}: D14: ${a.id}`)
         const now = nextLines(d, steps, TOKEN)
         // P3: a Wait prints no command; the old lines printed these, which canAct refuses.
+        const lines = p9Lines(w, a.id, `${s.name} ${a.id}`, was.lines)
+        if (lines !== was.lines) seen.push(`${s.name}: P9: ${a.id}`)
         const refused = P3_REFUSED[`${s.name} ${a.id}`]
         if (refused !== undefined) {
-          expect(now).toEqual(was.lines.filter((l) => l !== refused))
+          expect(now).toEqual(lines.filter((l) => l !== refused))
           seen.push(`${s.name}: P3: ${a.id}`)
           continue
         }
-        expect([s.name, a.id, now]).toEqual([s.name, a.id, was.lines])
+        expect([s.name, a.id, now]).toEqual([s.name, a.id, lines])
         compared += now.length
       }
     }
     expect(compared).toBeGreaterThan(5)
     expect(seen).toContain('accepted: D14: a1')
     expect(seen).toContain('rejectedOnce: P3: a3')
-    expect(seen).toContain('codeStarted: P3: a2')
+    expect(seen).toContain('codeStarted: P9: a2')
+    expect(seen).toContain('reported: P9: a3')
   })
 })
 

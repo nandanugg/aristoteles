@@ -585,6 +585,9 @@ export type StepWhat =
       readonly before: AssignmentId
     }
   | { readonly _tag: 'MakerWorking'; readonly maker: AssignmentId; readonly task: TaskId }
+  // The maker's own steps: it reads its brief (again, to fix a reject), or reports its work.
+  | { readonly _tag: 'BriefToMake'; readonly task: TaskId; readonly redo: boolean }
+  | { readonly _tag: 'ReportWork'; readonly maker: AssignmentId; readonly task: TaskId }
   | {
       readonly _tag: 'GiveMakerCommand'
       readonly maker: AssignmentId
@@ -608,6 +611,8 @@ export type StepWhat =
       readonly checker: AssignmentId
       readonly result: ResultId
       readonly task: TaskId
+      // The actor gave the checker: it starts the subagent. Else the checker's parent does.
+      readonly ownChild: boolean
     }
   | { readonly _tag: 'CheckerNotAssigned'; readonly result: ResultId; readonly role: RoleName }
   | {

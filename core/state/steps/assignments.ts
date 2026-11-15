@@ -58,9 +58,14 @@ const endAssignment = (b: Build, id: AssignmentId, when: Time): void => {
   const exhaustion = { id: x, fault: fault.id as PointId, when, at: b.tick() }
   b.work = { ...b.work, exhaustions: put(b.work.exhaustions, x, exhaustion) }
 }
-// The claim of a role that assigns nothing ends with its one unit; a lead's lasts until finish.
+// A claim ends with its one unit for a role that assigns nothing, and for a subagent: a
+// subagent's run ends when it hands its unit back. A lead's claim in a terminal lasts until finish.
 export const endUnit = (b: Build, id: AssignmentId): void => {
-  if (leads(roleOfA(b.work, assignmentAt(b.work, id)))) return
+  const a = assignmentAt(b.work, id)
+  if (leads(roleOfA(b.work, a)) && a.runs._tag !== 'Subagent') return
+  freeClaim(b, id)
+}
+const freeClaim = (b: Build, id: AssignmentId): void => {
   const meta = b.work.meta.get(id)
   if (meta !== undefined) {
     b.work = { ...b.work, meta: put(b.work.meta, id, Moves.freeClaim(meta)) }
@@ -217,13 +222,11 @@ export const freed = (work: Work, e: EventOf<'Assignment.Freed'>, r: Seq): Stepp
 export const finish = (work: Work, e: EventOf<'Assignment.Finished'>, act: Act): Stepped =>
   built(work, (b) => {
     endAssignment(b, e.id, act.when)
-    const meta = b.work.meta.get(e.id)
-    if (meta !== undefined) {
-      b.work = { ...b.work, meta: put(b.work.meta, e.id, Moves.freeClaim(meta)) }
-    }
+    freeClaim(b, e.id)
   })
 
-// A maker's report: the result under the versions of its brief; a low maker's unit ends.
+// A maker's report: the result under the versions of its brief. It ends the maker's claim: the
+// maker works again only after a new brief, so a maker that stopped is never "working".
 export const report = (work: Work, e: EventOf<'Result.Result'>, act: Act): Stepped =>
   built(work, (b) => {
     const d = e.create
@@ -247,5 +250,5 @@ export const report = (work: Work, e: EventOf<'Result.Result'>, act: Act): Stepp
       resultFiles: put(b.work.resultFiles, id, d.files),
       after: d.after === null ? b.work.after : put(b.work.after, id, d.after),
     }
-    endUnit(b, by)
+    freeClaim(b, by)
   })

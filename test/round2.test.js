@@ -14,18 +14,20 @@ describe('identity', () => {
   })
 
   test('A3: a draft review comes from outside the reviser tree, and not from a low role', async () => {
-    const { p, lead } = await started()
+    const { p } = await started()
     ok(await p.nanda('grant --act=change --on=tsd-writing,t1 --to=architect --until=2026-10-26T00:00:00Z', 'grant'))
     const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${arch}`))
     p.write('edit.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
     ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
+    // P9: one section-lead checks t1 at a time, so the first one ends.
+    ok(await p.nanda('finish a1'))
     const child = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=section-lead`)).out)
     ok(await p.agent(`brief ${child}`))
     const inTree = await p.agent(`review ${child} d2 accept --evidence="edit.yaml | fine by me"`)
     expect(inTree.err)
       .toContain('d2 is your own draft, or a draft from above you; another actor reviews it')
-    const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
+    const writer = tokenIn(ok(await p.agent(`assign ${child} t1 --role=writer`)).out)
     ok(await p.agent(`brief ${writer}`))
     const low = await p.agent(`review ${writer} d2 accept --evidence="edit.yaml | ok"`)
     expect(low.err)
@@ -159,6 +161,8 @@ describe('what agents see', () => {
     const { p, lead } = await reported()
     ok(await p.agent(`review ${lead} r1 reject --point="too short for a reader"`))
     expect(ok(await p.agent(`brief ${lead}`)).out).toContain('work brief a1')
+    // P9: one linter checks t1 at a time, so the lead ends a3 before it assigns another.
+    ok(await p.agent(`finish ${lead} a3`))
     ok(await p.agent(`assign ${lead} t1 --role=linter`))
   })
 

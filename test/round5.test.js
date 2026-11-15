@@ -182,9 +182,9 @@ describe('a rule passes only with what it needs', () => {
     ok(await p.agent(`brief ${writer}`))
     p.write('docs/tsd.md', INTRO_V2)
     ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    const second = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-    ok(await p.agent(`brief ${second}`))
-    ok(await p.agent(`review ${second} r2 accept ${LINT('the introduction')}`))
+    // P9: one linter checks t1 at a time; the same one checks each new result.
+    ok(await p.agent(`brief ${linter}`))
+    ok(await p.agent(`review ${linter} r2 accept ${LINT('the introduction')}`))
     // A recheck reopens accepted work (with nothing changed outside, it would be a free try).
     ok(await p.agent(`review ${lead} r2 accept --evidence="repeatable | the introduction | a reviewer can repeat it"`))
     ok(await p.agent(`recheck ${lead} r2 --reason="the facts file moved"`))

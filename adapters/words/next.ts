@@ -19,6 +19,7 @@ import {
   type Work,
 } from '../../core/schema/index.ts'
 import { clean } from '../../core/effects/lines.ts'
+import { outputForm } from './brief.ts'
 import { assignOf, orOf, remakeOf, reviseOf, shortenWords, splitOf } from './intents.ts'
 import { an, clock, optionLines, short, stateWord, who } from './common.ts'
 import {
@@ -359,6 +360,18 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
           'if its subagent stopped:',
         `work free ${token} ${s.maker}`,
       )
+    case 'BriefToMake':
+      return step(
+        s.redo
+          ? `redo ${s.task}: read your brief again; it holds what the reviews found`
+          : `make ${s.task}: read your brief`,
+        `work brief ${token}`,
+      )
+    case 'ReportWork':
+      return step(
+        `make ${s.task} as your brief says, then report it`,
+        `work report ${token} --output=${outputForm(w, s.maker)}`,
+      )
     case 'GiveMakerCommand': {
       const agent = agentOf(w, s.maker)
       if (agent !== undefined) {
@@ -404,6 +417,10 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
     case 'GiveCheckerCommand': {
       const agent = agentOf(w, s.checker)
       if (agent !== undefined) return step(`check ${s.result}: ${inAgentWords(s.checker, agent)}`)
+      const parent = w.assignments.get(s.checker)?.parent
+      if (!s.ownChild && parent?._tag === 'Parent') {
+        return [`check ${s.result}: ${parent.id} starts ${s.checker}, the subagent it gave`]
+      }
       return [
         ...step(
           `check ${s.result}: give a new subagent the command of ${s.checker}; the same ` +

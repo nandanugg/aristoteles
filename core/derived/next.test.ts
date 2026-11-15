@@ -5,6 +5,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 import type { AssignmentId, Author, ResultId, TaskId, Time, Work } from '../schema/index.ts'
 import { canAct, type Derived, derive, isUnit, type NextStep, nextFor, stepKey } from './index.ts'
+import { leads } from './reads.ts'
 import { candidatesOf } from './steps.ts'
 import { momentOf, pinned, SCENARIOS, type Scenario } from './support.test.ts'
 
@@ -120,13 +121,29 @@ describe('nextFor equals the old work next, or D14 and C1 explain it', () => {
         if (kept.length !== was.tags.length) seen.push(`${s.name}: D14: ${a.id}`)
         // Ruling 10.1: the notices that the watcher typed before are steps now (notices.ts).
         const steps = now.filter((x) => !NOTICES.includes(x.what._tag))
-        expect([s.name, a.id, stepKey(steps)]).toEqual([s.name, a.id, was.key])
+        const key = p9Key(w, a.id, `${s.name} ${a.id}`, was.key)
+        if (key !== was.key) seen.push(`${s.name}: P9: ${a.id}`)
+        expect([s.name, a.id, stepKey(steps)]).toEqual([s.name, a.id, key])
       }
     }
     expect(seen.some((x) => x.startsWith('uiRunRemade: C1: a1 has no step'))).toBe(true)
     expect(seen).toContain('accepted: D14: a1')
+    expect(seen).toContain('reported: P9: a2')
+    expect(seen).toContain('codeStarted: P9: a2')
   })
 })
+
+// P9: a role that leads nothing checks only its own rules, so it no longer escalates for the
+// checkers of other roles; a maker that holds its claim reports, and never waits on itself.
+const p9Key = (w: Work, a: AssignmentId, at: string, key: string): string => {
+  if (at === 'codeStarted a2') return 'ReportWork a2 t1'
+  const role = w.workflow.roles.get(w.assignments.get(a)?.role ?? ('' as never))
+  if (leads(role)) return key
+  return key
+    .split('\n')
+    .filter((l) => !l.startsWith('CheckerNotAssigned '))
+    .join('\n')
+}
 
 describe('stepKey', () => {
   test('has the tag and the ids of each step, and no words, flags, revisions or times', () => {

@@ -44,9 +44,9 @@ describe('G11 a needed task got newer accepted work before the fault, and the ta
     ok(await p.agent(`brief ${again}`))
     p.write('docs/tsd.md', TSD(HANDLER, TYPED))
     ok(await p.agent(`report ${again} --output=docs/tsd.md#design`))
-    const linter2 = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter2}`))
-    ok(await p.agent(`review ${linter2} r3 accept ${LINT('the design')}`))
+    // P9: one linter checks t2 at a time; the same one checks each new result.
+    ok(await p.agent(`brief ${linter}`))
+    ok(await p.agent(`review ${linter} r3 accept ${LINT('the design')}`))
     ok(await p.agent(`review ${lead} r3 accept --evidence="docs/tsd.md#design | the typed function is named"`))
     expect(ok(await p.agent('blockers r2')).out).toContain('r2 was made before r3 of t2 (Flags and env)')
     // Now r2 (made on r1) is rejected: the last try of a4 ends on a fault, and the architect
