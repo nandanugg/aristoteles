@@ -13,6 +13,7 @@ import {
   REFUSALS,
   type RefusalsOf,
   STORE,
+  SECTION,
   WORKSPACE,
 } from './index.ts'
 import { type ActionInput, type ActionTag, type ChoiceKind, Refusal } from './types.ts'
@@ -129,6 +130,7 @@ describe('each refusal of each action has a choice', () => {
     expect(problemsOf(COMMON)).toEqual([])
     expect(problemsOf(STORE)).toEqual([])
     expect(problemsOf(WORKSPACE)).toEqual([])
+    expect(problemsOf(SECTION)).toEqual([])
   })
 
   test('REFUSALS has a row for each tag, and only those', () => {

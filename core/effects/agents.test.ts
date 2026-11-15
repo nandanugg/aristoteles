@@ -52,6 +52,7 @@ describe('the persistent agents', () => {
 
   test('two assignments of a role in a run start one terminal; one wait gives both', async () => {
     const { p, fake, w, host, hostToken } = await hosted()
+    p.write('docs/tsd.md', '# TSD\n\n## Introduction\n\n## Design\n')
     p.write('parts.yaml', PARTS)
     await p.agent(`task split ${hostToken} t1 --file=parts.yaml`)
     await p.agent(`assign ${hostToken} t2 --role=section-lead`)

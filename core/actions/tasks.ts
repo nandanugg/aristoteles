@@ -34,6 +34,7 @@ import {
   type PartFile,
   PositiveInt,
   remakeDataOf,
+  sectionOf,
   type RoleName,
   type Snapshot,
   type TaskData,
@@ -48,6 +49,7 @@ import {
   Files,
   readTask,
   roleHash,
+  type FileSection,
   sectionsOf,
   sha,
   snapshotOf,
@@ -103,7 +105,7 @@ export const REFUSALS = {
       no(
         message,
         'Write',
-        `give each part its own section (context: { section: <heading id> }), or run ${task} ` +
+        `give each part its own section (context: { section: <heading anchor> }), or run ${task} ` +
           'as one task',
       ),
     notReject: (id: string) =>
@@ -291,6 +293,57 @@ export const WORKSPACE = {
     ),
 } satisfies RefusalsOf
 
+export const pathsOf = (list: ReadonlyArray<{ readonly path: string }>) =>
+  list.map((x) => x.path)
+// A section of a task names a heading anchor (slug) of its file, as a report finds it. A file
+// that does not exist yet, a folder, or a file with no heading is not checked: the writer makes
+// the heading.
+export const checkSection = (
+  cwd: string,
+  section: string | null | undefined,
+  paths: ReadonlyArray<string>,
+): Effect.Effect<void, Refusal, Files> =>
+  Effect.gen(function* () {
+    if (!section) return
+    const files = yield* Files
+    const missed: Array<[string, ReadonlyArray<FileSection>]> = []
+    for (const path of paths) {
+      if ((yield* files.kind(join(cwd, path))) !== 'file') continue
+      const text = yield* files.read(join(cwd, path))
+      const heads = text === null ? [] : sectionsOf(text)
+      if (heads.some((h) => h.slug === section)) return
+      if (heads.length) missed.push([path, heads])
+    }
+    const [first] = missed
+    if (first === undefined) return
+    const [path, heads] = first
+    return yield* fail(SECTION.notAnchor(section, path, nearAnchors(section, heads).join(', ')))
+  })
+// The anchors close to a section: those that start with it or hold its words; else the
+// anchors of the top level (the least depth with more than one heading).
+const nearAnchors = (section: string, heads: ReadonlyArray<FileSection>) => {
+  const words = section.split('-').filter(Boolean)
+  const close = heads
+    .map((h) => h.slug)
+    .filter((a) => a.startsWith(section) || words.every((x) => a.split('-').includes(x)))
+  if (close.length) return close
+  const depth = (h: FileSection) =>
+    heads.filter((o) => o.start < h.start && h.start < o.end).length
+  const at = (n: number) => heads.filter((h) => depth(h) === n)
+  const levels = [...new Set(heads.map(depth))].sort((a, b) => a - b)
+  const top = levels.find((n) => at(n).length > 1)
+  return (top === undefined ? heads : at(top)).map((h) => h.slug)
+}
+export const SECTION = {
+  notAnchor: (section: string, file: string, anchors: string) =>
+    no(
+      `${file} has no heading anchor ${section}; a section is the anchor of a heading as ` +
+        `the file writes it (close: ${anchors})`,
+      'Write',
+      'use the anchor of the heading exactly as the section',
+    ),
+} satisfies RefusalsOf
+
 // The Reject (or one point of it) that a split or a remake answers.
 const answersARejection = (d: Derived, id: string | null, notReject: (id: string) => Refusal) =>
   Effect.gen(function* () {
@@ -333,6 +386,7 @@ const OpenTask: Action<'OpenTask'> = ({ by, input }) =>
     yield* checkRealNames(cwd, read.workspace)
     yield* checkCaseTwins(d, read.workspace)
     const task = yield* followNeeds(d, taskDataOf(read), R.OpenTask.closedNeed)
+    yield* checkSection(cwd, task.context.section, pathsOf(task.workspace))
     if (task.from !== null && !w.results.has(task.from)) {
       return yield* fail(R.OpenTask.noResult(task.from))
     }
@@ -480,6 +534,7 @@ const checkParts = (d: Derived, task: TaskId, raw: unknown, file: string) =>
           ),
         )
       }
+      for (const p of sharing) yield* checkSection(cwd, partSection(p), filesOf(p))
       const text = yield* files.read(join(cwd, f))
       const heads = text === null ? [] : sectionsOf(text)
       const span = (p: Record<string, unknown>) => heads.find((h) => h.slug === partSection(p))
@@ -600,6 +655,10 @@ const RemakeTask: Action<'RemakeTask'> = ({ by, input }) =>
       }
       const dropped = kept.find((n) => !frameNeeds.includes(n))
       if (dropped) return yield* fail(R.RemakeTask.agentDrops(task, dropped))
+    }
+    // A new section or workspace names a heading of its file; a kept one is as it was.
+    if (!sameContext || spaceKey(workspace) !== spaceKey(was.workspace)) {
+      yield* checkSection(cwd, sectionOf(context), pathsOf(workspace))
     }
     const same =
       data.text === was.text &&

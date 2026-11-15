@@ -72,6 +72,7 @@ describe('parts in one document file', () => {
     p.write('bare.yaml', '- { name: Story, text: Tell the story. }\n- { name: Cost, text: Say the cost. }\n')
     expect((await p.nanda('task split t1 --file=bare.yaml')).err)
       .toContain('the parts Story, Cost share docs/tsd.md, and Story, Cost have no section')
+    p.write('docs/tsd.md', '# TSD\n\n## Story\n\nTODO\n\n## Cost\n\nTODO\n')
     p.write('parts.yaml', '- { name: Story, text: Tell the story., context: { section: story } }\n' +
       '- { name: Cost, text: Say the cost., context: { section: cost } }\n')
     ok(await p.nanda('task split t1 --file=parts.yaml'))
@@ -84,6 +85,7 @@ describe('parts in one document file', () => {
       '  - id: short\n    says: Short.\n    rules:\n      - { id: short-lines, says: "Lines are short", checkedBy: linter }\n' +
       markedOf('plain')
     const p = await start({ 'directions/plain.yaml': plain, 'task.yaml': WHOLE.replace('[tsd-writing]', '[plain]') })
+    p.write('docs/tsd.md', '# TSD\n\n## Story\n\nTODO\n\n## Cost\n\nTODO\n')
     p.write('parts.yaml', '- { name: Story, text: Tell the story., context: { section: story } }\n' +
       '- { name: Cost, text: Say the cost., context: { section: cost } }\n')
     ok(await p.nanda('task split t1 --file=parts.yaml'))

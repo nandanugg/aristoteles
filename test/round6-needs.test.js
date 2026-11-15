@@ -34,6 +34,7 @@ describe('needs: a maker starts only when the tasks that its task needs are acce
   test('a part of a part that runs after Facts does not start before Facts is accepted', async () => {
     const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
     const arch = await architectOn(p, 't1')
+    p.write('docs/tsd.md', '# TSD\n\n## Facts\n\nTODO\n\n## Story\n\nTODO\n')
     p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { section: facts } }\n' +
       '- { name: Story, text: Write the story from the facts., after: [Facts], context: { section: story } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
@@ -58,6 +59,7 @@ describe('needs: a maker starts only when the tasks that its task needs are acce
   test('a remake keeps the wait of the part that it replaces', async () => {
     const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
     const arch = await architectOn(p, 't1')
+    p.write('docs/tsd.md', '# TSD\n\n## Facts\n\nTODO\n\n## Story\n\nTODO\n')
     p.write('parts.yaml', '- { name: Facts, text: Write the facts., context: { section: facts } }\n' +
       '- { name: Story, text: Write the story from the facts., after: [Facts], context: { section: story } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))

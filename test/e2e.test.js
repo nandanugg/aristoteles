@@ -245,6 +245,7 @@ describe('a split task joins its parts', () => {
     ok(await p.nanda('grant --act=change --on=t1 --to=architect --until=2026-10-26T00:00:00Z', 'grant'))
     const architect = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${architect}`))
+    p.write('docs/tsd.md', '# TSD\n\n## Problem\n\nTODO\n\n## Cost\n\nTODO\n')
     p.write('parts.yaml', '- { name: Problem, text: Write the problem paragraph., context: { section: problem } }\n' +
       '- { name: Cost, text: Write the cost paragraph., context: { section: cost } }\n')
     expect(ok(await p.agent(`task split ${architect} t1 --file=parts.yaml`)).out).toContain('t1 split into t2, t3')

@@ -33,7 +33,13 @@ export {
 } from '../../src/config/config.ts'
 export { mergeDraft, readSettings, readSettingsOf, writeSettings } from '../../src/config/settings.ts'
 export { CONFIG, DRAFT, parseYaml, sha } from '../../src/config/core.ts'
-export { checkOutput, sectionsInside, sectionsOf, snapshotOf } from '../../src/files/digest.ts'
+export {
+  checkOutput,
+  type FileSection,
+  sectionsInside,
+  sectionsOf,
+  snapshotOf,
+} from '../../src/files/digest.ts'
 export { LOCK, readLock, writeLock, fetchFolder, readFolder, localDate } from '../../src/files/company.ts'
 // The one writer of the onboarding files, before any store (BUILD.md 1b).
 export {

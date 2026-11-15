@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { changeDirection, evaluated, init, INTRO_V2, ok, project, reported, started, TASK_WHOLE, tokenIn, withWriter, WORK_YAML } from './harness.js'
 
 // One test for each round-5 finding that the prototype closes. The ids are those of
@@ -159,6 +161,32 @@ describe('a rule passes only with what it needs', () => {
       .toContain('the section data-model of docs/tsd.md lies inside the section design')
   })
 
+  // 2026-11-15: a part's section is the anchor of a heading of its file, as a report finds it.
+  test('R5-5b: a split section that is not a heading anchor of its file is refused', async () => {
+    const p = await fresh({ 'task.yaml': TSD_TASK })
+    const arch = await architect(p)
+    p.write('docs/tsd.md', '# TSD\n\n## Information Security & Threat Modelling\n\n' +
+      '## Task Breakdown (provisional)\n')
+    const parts = (a, b) => `- { name: Security, text: Write it., context: { section: ${a} } }\n` +
+      `- { name: Breakdown, text: Write it., context: { section: ${b} } }\n`
+    p.write('parts.yaml', parts('information-security', 'task-breakdown-provisional'))
+    const err = (await p.agent(`task split ${arch} t1 --file=parts.yaml`)).err
+    expect(err).toContain('docs/tsd.md has no heading anchor information-security')
+    expect(err).toContain('close: information-security-threat-modelling')
+    expect(err).toContain('use the anchor of the heading exactly')
+    p.write('parts.yaml', parts('information-security-threat-modelling', 'task-breakdown-provisional'))
+    expect(ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`)).out).toContain('t1 split into')
+  })
+
+  test('R5-5c: a section of a file that does not exist yet is not checked', async () => {
+    const p = await fresh({ 'task.yaml': TSD_TASK })
+    const arch = await architect(p)
+    rmSync(join(p.dir, 'docs/tsd.md'))
+    p.write('parts.yaml', '- { name: A, text: Write it., context: { section: any-heading } }\n' +
+      '- { name: B, text: Write it., context: { section: other-heading } }\n')
+    expect(ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`)).out).toContain('t1 split into')
+  })
+
   test('R5-6: untouched work is refused for a section form', async () => {
     const p = await fresh({ 'task.yaml': TSD_TASK })
     const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
@@ -297,6 +325,7 @@ describe('the record and the words', () => {
     const { p, linter } = await reported({ 'task.yaml': TASK_WHOLE })
     ok(await p.agent(`review ${linter} r1 reject --point="too much for one section; it needs two parts"`))
     const arch = await architect(p, 't1')
+    p.write('docs/tsd.md', '# TSD\n\n## Story\n\nTODO\n\n## Cost\n\nTODO\n')
     p.write('parts.yaml', '- { name: Story, text: Tell the story., context: { section: story } }\n- { name: Cost, text: Say the cost., context: { section: cost } }\n')
     ok(await p.agent(`task split ${arch} t1 --file=parts.yaml --review=v2`))
     expect(ok(await p.agent('log')).out).toContain('task.split t1 answering v2')

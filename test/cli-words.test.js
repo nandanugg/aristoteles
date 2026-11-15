@@ -293,6 +293,7 @@ describe('the context key section', () => {
     }
     ok(await opened('The Design', 'design'))
     expect(await out(p.agent(`brief ${tokenIn(await out(p.nanda('assign t2 --role=section-lead')))}`))).toContain('repeatable')
+    p.write('docs/tsd.md', '# TSD\n\n## Introduction\n\nTODO\n\n## Design\n\nTODO\n\n## Risks\n\nTODO\n')
     ok(await opened('The Risks', 'risks'))
     expect(await out(p.agent(`brief ${tokenIn(await out(p.nanda('assign t3 --role=section-lead')))}`))).not.toContain('repeatable')
     p.write('empty.yaml', DIRECTION.replace('id: tsd-writing', 'id: empty-where').replace('where: { section: introduction }', 'where: { section: [] }'))

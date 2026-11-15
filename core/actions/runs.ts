@@ -28,7 +28,7 @@ import {
   readText,
   type RefusalsOf,
 } from './support.ts'
-import { checkCaseTwins, checkRealNames, followNeeds } from './tasks.ts'
+import { checkCaseTwins, checkRealNames, checkSection, followNeeds, pathsOf } from './tasks.ts'
 import type { InputOf } from '../schema/actions.ts'
 import type { Action } from './types.ts'
 
@@ -271,6 +271,7 @@ const DraftTask: Action<'DraftTask'> = ({ by, input }) =>
       return yield* fail(R.DraftTask.disposable(role))
     }
     const task = yield* followNeeds(d, taskDataOf(read), R.DraftTask.closedNeed)
+    yield* checkSection(cwd, task.context.section, pathsOf(task.workspace))
     const drafted = { _tag: 'Drafted' as const, run: input.target.run, task, role: named.role }
     return [create('TaskDraft', drafted)]
   })

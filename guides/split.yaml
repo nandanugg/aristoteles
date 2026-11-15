@@ -13,7 +13,7 @@ commands:
   split:
     when: change
     run: work task split {you} <task> --file=<parts.yaml> [--review=<review id>]
-    rule: "Each part has its own text and fits the brief of the model that runs it; the task needs its parts, and its own result comes after them. Text parts that share a file each own a section of it, and their makers write the file one after the other, in the order of their assigns; code parts each make their own commit, and the task merges them. A part that uses the work of another part, or changes the same files, runs after it: give it after: [<the names of those parts>]; only parts that change different files run at the same time. The person's open point with no rule is theirs to split; escalate it."
+    rule: "Each part has its own text and fits the brief of the model that runs it; the task needs its parts, and its own result comes after them. Text parts that share a file each own a section of it (context: { section: <anchor> }, the slug of its heading as the file writes it, not a region id), and their makers write the file one after the other, in the order of their assigns; code parts each make their own commit, and the task merges them. A part that uses the work of another part, or changes the same files, runs after it: give it after: [<the names of those parts>]; only parts that change different files run at the same time. The person's open point with no rule is theirs to split; escalate it."
   assign:
     when: assign
     run: work assign {you} <task> --role=<{lower}> [--max-attempts=<n>]
