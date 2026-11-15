@@ -19,7 +19,7 @@ import type {
 import { canAct } from './can.ts'
 import { decisionTaskOf, hostOf, placementOf, taskOfAnswer } from './catalog.ts'
 import { adjustmentDrafts, rolesSuggestionsWaiting, subjectOf } from './adjustments.ts'
-import { openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
+import { hostDrafted, openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
 import { roleWordsDrafts } from './role-words.ts'
 import {
   answered,
@@ -284,7 +284,7 @@ const draftItems = (d: Derived): ReadonlyArray<WaitingItem> => {
         const name = leaf._tag === 'OwnerAccept' ? leaf.owner.name : leaf.name
         if (named.has(name)) continue
         named.add(name)
-        const hold = holdOf(d, x.id, placement, x.when, false)
+        const hold = holdOf(d, x.id, placement, x.when, hostDrafted(w, x))
         const of = { _tag: 'Revision', id: x.id } as const
         const item: Bare = {
           _tag: 'DraftForPerson',

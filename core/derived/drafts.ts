@@ -20,6 +20,19 @@ export const openDrafts = (
     (x) => x.of === direction && d.states.revisions.get(x.id)?._tag === 'Waiting',
   )
 
+// A host wrote the draft itself (the run of the host is its author): its why is the host's own
+// words, so it waits for no other words of a host. One rule for the page's hold (waiting.ts) and
+// the host's explain step (steps.ts): they must never disagree (Nanda, 2026-11-15).
+// The host writes as its run (--by=h1) or as the assignment that holds the run's session.
+export const hostDrafted = (w: Work, x: Revision<Direction>): boolean => {
+  if (x.origin._tag !== 'Written') return false
+  const by = x.origin.by
+  const runs = [...w.runs.values()]
+  if (typeof by === 'object') return runs.some((run) => run.id === by.name)
+  const sessions = [...w.sessions.values()].filter((s) => s.assignment === by)
+  return sessions.some((s) => runs.some((run) => run.session === s.session))
+}
+
 // A vetoed draft waits for a new draft, until a later draft answers the Reject or its reviser
 // writes a later draft. The reviser of an imported draft is the refresh: a later import of the
 // direction (ruling 10.4: the same commit again, or a newer one) is its new draft.

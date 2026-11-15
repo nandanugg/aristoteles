@@ -264,11 +264,12 @@ describe('ruling 10.10: the words of a direction draft go to the hosts', () => {
     ok(await p.run('task draft --file=top2.yaml --by=h2', OTHER_PANE))
     const opened2 = ok(await p.ui('task open td2')).out
     ok(await p.agent(`brief ${await solToken(p, opened2, 'h2', OTHER_PANE)}`)) // ruling 10.1
-    // A draft that answers nothing of a task: it comes from no project.
+    // A draft that answers nothing of a task: it comes from no project. A model run that is no
+    // host drafts it (a host's own draft carries its words: see the tests below).
     p.write('change.yaml', CHANGE)
     const out = ok(
       await p.agent(
-        `direction revise ${host1} tsd-writing --file=change.yaml --why="Correct the standard"`,
+        'direction revise tsd-writing --file=change.yaml --by=assess --why="Correct the standard"',
       ),
     ).out
     draft = out.match(/^(d\d+) drafted/m)?.[1] ?? ''
@@ -305,6 +306,40 @@ describe('ruling 10.10: the words of a direction draft go to the hosts', () => {
   })
 })
 
+// Nanda, 2026-11-15: a host told the person that its drafts wait on the page, and the page held
+// them for the host's own words. A draft that a host writes (as its run or as its assignment)
+// shows at once, and no host gets a step to explain it.
+describe("a host's own draft shows on the page at once", () => {
+  const shownAndExplained = async (by: (host: string) => string) => {
+    const p = h.project({ 'top.yaml': `${h.TASK_WHOLE}role: architect\n` })
+    await h.init(p)
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
+      ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    }
+    ok(await p.run('run start', h.HOST))
+    ok(await p.run('task draft --file=top.yaml --by=h1', h.HOST))
+    const host = await solToken(p, ok(await p.ui('task open td1')).out)
+    ok(await p.agent(`brief ${host}`))
+    p.write('change.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
+    const why = '--why="Shorten"'
+    ok(await p.run(`direction revise ${by(host)} --file=change.yaml ${why}`, h.HOST))
+    const d = derivedNow(p)
+    const [item] = waitingFor(d, { _tag: 'Person', name: 'Nanda' }).filter(
+      (i) => i._tag === 'DraftForPerson',
+    )
+    const steps = nextFor(d, agentOf('a1')).filter((s) => s.what._tag === 'ExplainDraft')
+    return { hold: item?.hold._tag, explains: steps.length }
+  }
+  test('drafted by the run of the host (--by=h1)', async () => {
+    const got = await shownAndExplained(() => 'tsd-writing --by=h1')
+    expect(got).toEqual({ hold: 'Shown', explains: 0 })
+  }, 60000)
+  test('drafted by the assignment that hosts the run', async () => {
+    const got = await shownAndExplained((host) => `${host} tsd-writing`)
+    expect(got).toEqual({ hold: 'Shown', explains: 0 })
+  }, 60000)
+})
+
 describe('ruling 10.10: a draft from one project goes to its host only', () => {
   test('it answers a point of t1: only the host of t1 explains it', async () => {
     const top = `${h.TASK_WHOLE}role: architect\n`
@@ -332,7 +367,7 @@ describe('ruling 10.10: a draft from one project goes to its host only', () => {
     const why = '--why="Correct the standard"'
     const out = ok(
       await p.agent(
-        `direction revise ${host1} tsd-writing --file=change.yaml --answers=${point} ${why}`,
+        `direction revise tsd-writing --file=change.yaml --by=assess --answers=${point} ${why}`,
       ),
     ).out
     const draft = out.match(/^(d\d+) drafted/m)?.[1] ?? ''

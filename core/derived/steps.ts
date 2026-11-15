@@ -51,6 +51,7 @@ import {
 } from './reads.ts'
 import { rolesSuggestionsWaiting } from './adjustments.ts'
 import { hostOf } from './catalog.ts'
+import { hostDrafted } from './drafts.ts'
 import type { Derived, Idle, NextFor, NextStep, Placement, StepKey, StepWhat } from './types.ts'
 import { isEndedTask } from './types.ts'
 import { openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
@@ -278,7 +279,7 @@ const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
     if (item._tag !== 'DraftForPerson' || seen.has(item.draft)) return []
     seen.add(item.draft)
     const draft = w.drafts.get(item.draft)
-    if (draft === undefined || w.hostWords.has(item.draft)) return []
+    if (draft === undefined || w.hostWords.has(item.draft) || hostDrafted(w, draft)) return []
     const dirWide = item.placement._tag === 'DirWide'
     const host = hostOf(d.moment, item.placement, d.states)
     const mine = dirWide

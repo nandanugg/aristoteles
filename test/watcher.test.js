@@ -205,7 +205,9 @@ describe('the watcher and the acts of the UI', () => {
     await watcher.tick()
     const lead = await until(() => [...Object.keys(pump.status())].find((sid) => sid !== host))
     p.write('cost.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs., rules: [ { id: names-cost, says: "The introduction names the cost", checkedBy: linter } ] }\n')
-    const draft = ok(await p.agent(`direction revise ${hostToken} tsd-writing --file=cost.yaml`)).out.match(/(d\d+) drafted/)[1]
+    // A model run that is no host drafts it, so the host explains it (a host's own draft
+    // carries its words: Nanda, 2026-11-15).
+    const draft = ok(await p.agent('direction revise tsd-writing --file=cost.yaml --by=assess --why="Correct the standard"')).out.match(/(d\d+) drafted/)[1]
     expect(ok(await p.agent(`next ${hostToken}`)).out).toContain(`explain ${draft}`)
     // The person's accept needs no evidence and no comment.
     const changed = await wokenBy(p, hostToken, async () => {
