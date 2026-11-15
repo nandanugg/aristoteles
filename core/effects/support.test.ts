@@ -127,6 +127,7 @@ export const fakePump = () => {
         terms.delete(sid)
       })
     },
+    forget: (sid) => Effect.sync(() => void calls.push(`forget ${sid}`)),
     status: Effect.sync(() =>
       Object.fromEntries(
         [...terms].map(([sid, t]) => [

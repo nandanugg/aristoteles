@@ -2,7 +2,7 @@
 // their own; the output of each comes through the control mode of tmux, into a ring buffer.
 // The tests use a fake AI tool (test/fake-agent.js) and a tmux socket of their own.
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createPump, unescapeOutput } from './code.js'
@@ -160,5 +160,29 @@ describe('the pump', () => {
     } finally {
       person.kill()
     }
+  }, 30000)
+
+  // The soak run of 2026-11-15: a stopped terminal kept its ring for ever, and tmux 3.8 left the
+  // socket file of each test server.
+  test('a stopped terminal keeps its output for a Resume; forget drops it at the end of a project', async () => {
+    const { pump, seen } = make()
+    pump.start('s-ring', `bun ${FAKE} start s-ring`)
+    await until(() => seen.get('s-ring')?.includes('fake agent start s-ring'))
+    pump.stop('s-ring')
+    expect(text(pump.snapshot('s-ring'))).toContain('fake agent start s-ring')
+    pump.forget('s-ring')
+    expect(text(pump.snapshot('s-ring'))).not.toContain('fake agent start s-ring')
+  }, 30000)
+
+  test('killServer ends the server and removes its socket file', async () => {
+    const { pump, seen } = make()
+    pump.start('s-sock', `bun ${FAKE} start s-sock`)
+    await until(() => seen.get('s-sock')?.includes('fake agent start s-sock'))
+    const r = Bun.spawnSync(['tmux', '-f', '/dev/null', '-L', pump.socket, 'display-message', '-p', '#{socket_path}'])
+    const socketFile = r.stdout.toString().trim()
+    expect(existsSync(socketFile)).toBe(true)
+    pumps.splice(pumps.indexOf(pump), 1)
+    pump.killServer()
+    expect(existsSync(socketFile)).toBe(false)
   }, 30000)
 })

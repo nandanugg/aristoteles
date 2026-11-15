@@ -11,6 +11,7 @@
 // adapters/web returns; pumpLayerOf makes the Pump service of core/services from any facade (a
 // test's fake too). The frozen WatcherOptions.pump is a facade, so the watcher needs this way.
 import { createHash } from 'node:crypto'
+import { rmSync } from 'node:fs'
 import { Effect, Layer } from 'effect'
 import { OutsideFailed } from '../../core/schema/index.ts'
 import type { TerminalReading } from '../../core/schema/outside.ts'
@@ -57,6 +58,8 @@ export interface TmuxPump {
   readonly input: (session: string, text: string) => void
   readonly resize: (session: string, cols: number, rows: number) => void
   readonly stop: (session: string) => void
+  // A terminal that will not come back (its project ended): the pump drops what it keeps of it.
+  readonly forget: (session: string) => void
   readonly snapshot: (session: string) => Uint8Array
   readonly status: () => Readonly<Record<string, TerminalStatus>>
   readonly tail: (session: string, lines?: number) => string
@@ -515,6 +518,11 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       tmuxNow('kill-window', '-t', target(sid))
       known.delete(sid)
     },
+    // The ring of a terminal that the person stopped stays, so that a Resume shows its old output;
+    // the end of a project frees it here.
+    forget(sid) {
+      rings.delete(sid)
+    },
     // The bytes to show a tab that opens: the ring buffer, or the screen of the pane after a
     // restart of the server; then the mouse modes of the pane now. A tool that turned them on
     // before the ring started (Claude scrolls its own view with the wheel) needs them in the
@@ -601,10 +609,13 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
         a.client = undefined
       }
     },
-    // For the tests: ends the tmux server of the socket.
+    // For the tests: ends the tmux server of the socket, and removes its socket file (tmux 3.8
+    // leaves it, so each test socket would stay in the tmux folder).
     killServer() {
       pump.close()
+      const socketFile = tmuxNow('display-message', '-p', '#{socket_path}').out.trim()
       tmuxNow('kill-server')
+      if (socketFile !== '') rmSync(socketFile, { force: true })
     },
     size(sid) {
       const a = adopted.get(sid)
@@ -634,7 +645,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
 // What the service needs of a facade: the frozen Pump and a test's fake both have it.
 export type PumpFacade = Pick<
   TmuxPump,
-  'start' | 'resume' | 'input' | 'stop' | 'status' | 'tail' | 'adopt' | 'release' | 'paneOf'
+  'start' | 'resume' | 'input' | 'stop' | 'forget' | 'status' | 'tail' | 'adopt' | 'release' | 'paneOf'
 >
 
 // The time (ms) of the person's last key in the tmux session of their own pane: the newest
@@ -674,6 +685,7 @@ export const pumpLayerOf = (facade: PumpFacade): Layer.Layer<Pump> =>
     input: (session, text) => attempt(() => facade.input(session, text)),
     enter: (session) => attempt(() => facade.input(session, '\r')),
     stop: (session) => attempt(() => facade.stop(session)),
+    forget: (session) => Effect.sync(() => facade.forget(session)),
     status: Effect.sync((): Readonly<Record<string, TerminalReading>> => facade.status()),
     tail: (session, lines) =>
       attempt(() => facade.tail(session, lines)).pipe(Effect.orElseSucceed(() => '')),

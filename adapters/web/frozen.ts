@@ -43,6 +43,8 @@ export interface Pump {
   readonly input: (session: string, text: string) => void
   readonly resize: (session: string, cols: number, rows: number) => void
   readonly stop: (session: string) => void
+  // A terminal that will not come back (its project ended): the pump drops what it keeps of it.
+  readonly forget: (session: string) => void
   readonly snapshot: (session: string) => Uint8Array
   readonly status: () => Readonly<Record<string, TerminalStatus>>
   readonly tail: (session: string, lines?: number) => string

@@ -27,6 +27,7 @@ export const CloseEnded: WorkEffect<'CloseEnded'> = {
         if (now - reading.lastOutput < timing.outputWindow) continue
         const close = Effect.gen(function* () {
           yield* pump.stop(x.session)
+          yield* pump.forget(x.session)
           yield* logLine(`${idOf(x)}: its work ended, so its terminal closed`)
           yield* supervise<'ReportTerminal'>({
             _tag: 'ReportTerminal',

@@ -29,6 +29,8 @@ export class Pump extends Context.Service<
     readonly input: (session: SessionId, text: string) => Effect.Effect<void, OutsideFailed>
     readonly enter: (session: SessionId) => Effect.Effect<void, OutsideFailed>
     readonly stop: (session: SessionId) => Effect.Effect<void, OutsideFailed>
+    // A terminal that will not come back (its project ended): drop what the pump keeps of it.
+    readonly forget: (session: SessionId) => Effect.Effect<void>
     readonly status: Effect.Effect<Readonly<Record<string, TerminalReading>>>
     readonly tail: (session: SessionId, lines: number) => Effect.Effect<string>
     readonly adopt: (session: SessionId, socket: string, pane: string) => Effect.Effect<void>
