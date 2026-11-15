@@ -147,6 +147,18 @@ export const LADDER_CASES = `cases:
 `
 // A direction file with the cases above in place of its own.
 export const withLadders = (direction) => direction.replace(/cases:\n( {2}- .*\n)+/, LADDER_CASES)
+// Nanda, 2026-11-15: a direction has a flow. How the TSD direction works in the project of
+// LADDER_FILES, from the person's first act down to the document: five steps, one of them an act
+// of the writer on its own.
+export const FLOW = `flow:
+  - { from: Person, to: architect, says: asks for a TSD of the export }
+  - { from: architect, to: writer, says: gives each section to a writer, file: CLAUDE.md, line: 3 }
+  - { from: writer, to: writer, says: reads the rule of one heading for each section, file: .claude/skills/writer/SKILL.md, line: 3 }
+  - { from: writer, to: docs/tsd.md, says: fills the template one section at a time, file: docs/template.md, line: 3 }
+  - { from: linter, to: docs/tsd.md, says: checks that each section says one thing }
+`
+// A direction file with the flow above, after its summary.
+export const withFlow = (direction) => direction.replace('\nsays: ', `\n${FLOW}says: `)
 
 // The host's questions about a draft: each names a case and gives two options.
 export const ONBOARD_QUESTIONS = `questions:

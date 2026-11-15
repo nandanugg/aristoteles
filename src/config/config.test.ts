@@ -312,6 +312,29 @@ describe('readDirection', () => {
     })
   })
 
+  // Nanda, 2026-11-15: a direction has a flow: the steps from the first act down to the output,
+  // each with where the project defines it when it does; a step from an actor to itself is an act
+  // on its own. A file with no flow reads with none.
+  test('the flow of a direction reads, and a step with no words or a line with no file is refused', async () => {
+    const flow = [
+      { from: 'Person', to: 'architect', says: 'asks for a TSD' },
+      { from: 'writer', to: 'writer', says: 'fills the template', file: 'docs/t.md', line: 3 },
+    ]
+    expect(await runNew(next.readDirection('d.yaml', direction({ flow }), people))).toMatchObject({
+      ok: { flow },
+    })
+    expect(((await runNew(next.readDirection('d.yaml', direction({}), people))) as Obj).ok.flow).toBeUndefined()
+    const bare = direction({ flow: [{ from: 'Person', to: 'architect' }] })
+    expect(await runNew(next.readDirection('d.yaml', bare, people))).toEqual({
+      refused:
+        'd.yaml: flow step 1 needs from, to and says: who acts, on whom or on what file, and what happens',
+    })
+    const lineOnly = direction({ flow: [{ from: 'a', to: 'b', says: 'c', line: 4 }] })
+    expect(await runNew(next.readDirection('d.yaml', lineOnly, people))).toEqual({
+      refused: 'd.yaml: flow step 1: a line needs its file',
+    })
+  })
+
   // A where is a filter over the closed context keys.
   test.each([
     ['an unknown key', { stage: 'y' }, 'd.yaml: standard s: where key "stage" is not one of system, field, language, repo, section, audience'],

@@ -4,7 +4,7 @@
 // config draft (P4). Nothing here is stored as an event: the store starts with the result only.
 import { Schema, SchemaGetter } from 'effect'
 import { Principle } from './closed.ts'
-import { CaseFile, CasesFile, firstSentence, RoleFile, StandardFile } from './files.ts'
+import { CaseFile, CasesFile, firstSentence, FlowStep, RoleFile, StandardFile } from './files.ts'
 import { DirectionId, NonBlank, RoleName } from './ids.ts'
 import type { NonEmpty } from './model.ts'
 
@@ -30,19 +30,26 @@ export const AiQuestion = Schema.Struct({
 })
 export type AiQuestion = typeof AiQuestion.Type
 
-// What a draft says: its summary (Nanda, 2026-11-15), its words, and its standards; each rule names
-// the role that the AI proposes to check it. The file of an onboarding that started before the
-// summary has none: there, the summary is the first sentence of says.
+// What a draft says: its summary and its flow (Nanda, 2026-11-15), its words, and its standards;
+// each rule names the role that the AI proposes to check it. The file of an onboarding that
+// started before them has neither: there, the summary is the first sentence of says, and the flow
+// is none.
 const Content = Schema.Struct({
   summary: NonBlank,
+  flow: Schema.Array(FlowStep),
   says: Text,
   standards: Schema.Array(StandardFile),
 })
-const ContentFile = Schema.Struct({ ...Content.fields, summary: Schema.optionalKey(NonBlank) })
+const ContentFile = Schema.Struct({
+  ...Content.fields,
+  summary: Schema.optionalKey(NonBlank),
+  flow: Schema.optionalKey(Schema.Array(FlowStep)),
+})
 const DraftContent = Schema.toEncoded(ContentFile).pipe(
   Schema.decodeTo(Content, {
     decode: SchemaGetter.transform((c) => ({
       summary: c.summary ?? firstSentence(c.says),
+      flow: c.flow ?? [],
       says: c.says,
       standards: c.standards,
     })),

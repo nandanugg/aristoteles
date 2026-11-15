@@ -318,8 +318,9 @@ const open = async () => {
   // state, the question form, Revise, Remove and approve all; then the agents page, its grid and
   // the window of a role; approve all roles starts the store. Then the gear: three tiers with a
   // model, the entries of the directions and the agents (robot icon), and the sixth decision.
-  const { LADDER_FILES, ONBOARD_CONFIG, ONBOARD_DIRECTION, ONBOARD_NEW, ONBOARD_QUESTIONS, git, onboardingProject, withLadders } =
-    await import('../harness.js')
+  const {
+    LADDER_FILES, ONBOARD_CONFIG, ONBOARD_DIRECTION, ONBOARD_NEW, ONBOARD_QUESTIONS, git, onboardingProject, withFlow, withLadders,
+  } = await import('../harness.js')
   const p = onboardingProject(LADDER_FILES)
   // The page stores the start at the real time, so the CLI acts after it use the real clock too.
   p.realTime()
@@ -330,8 +331,10 @@ const open = async () => {
   ok(await p.agent('onboard found tsd-writing'))
   // Nanda, 2026-11-15: the words of a direction are markdown, and the page shows them so.
   // Nanda, 2026-11-15: a case is a ladder to an output (a 3-rung, a 1-rung, and a short case).
-  p.write('tsd.yaml', withLadders(ONBOARD_DIRECTION).replace('says: The reader understands and decides from the page alone.\n',
-    'says: |\n  The reader understands and decides from the page alone.\n\n  ## Where it comes from\n' +
+  // Nanda, 2026-11-15: a direction has a flow, which takes the place of the "Where it comes from"
+  // words (the heading of the words is another one now).
+  p.write('tsd.yaml', withFlow(withLadders(ONBOARD_DIRECTION)).replace('says: The reader understands and decides from the page alone.\n',
+    'says: |\n  The reader understands and decides from the page alone.\n\n  ## What a page holds\n' +
     '  The `docs/tsd.md` file, **every** section of it:\n\n  - the introduction\n  - the design\n'))
   ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
   ok(await p.agent('onboard found code-proof'))
@@ -376,9 +379,10 @@ const open = async () => {
     // text, and a case on one line).
     expect(await page.locator('.direction-page .level-tag').allTextContents()).toEqual(
       ['Direction', 'Standard', 'Rule', 'Rule', 'Standard', 'Rule'])
-    expect(await page.textContent('.direction-page .level-direction h3')).toBe('Where it comes from')
-    expect(await page.locator('.direction-page .level-direction li').allTextContents()).toEqual(['the introduction', 'the design'])
-    expect(await page.textContent('.direction-page .level-direction code')).toBe('docs/tsd.md')
+    // Nanda, 2026-11-15: a direction has a flow; the words are in .md, beside the flow.
+    expect(await page.textContent('.direction-page .level-direction h3')).toBe('What a page holds')
+    expect(await page.locator('.direction-page .level-direction .md li').allTextContents()).toEqual(['the introduction', 'the design'])
+    expect(await page.textContent('.direction-page .level-direction .md code')).toBe('docs/tsd.md')
     expect(await page.textContent('.direction-page .level-direction')).not.toContain('##')
     expect(await page.textContent('.direction-page .level-rule .level-head')).toBe('Ruleno-code-proofchecked by linter')
     // Nanda, 2026-11-15: a direction has a summary; it shows at the top of the direction, before
@@ -390,6 +394,31 @@ const open = async () => {
       return summary.compareDocumentPosition(document.querySelector('.direction-page .level-direction .md')) &
         Node.DOCUMENT_POSITION_FOLLOWING
     })).toBeTruthy()
+    // Nanda, 2026-11-15: a direction has a flow: a sequence diagram right under the summary, with
+    // a lifeline for each actor in the order that it first appears, a numbered arrow for each step
+    // from one actor to the next, a box for an act on its own, and the steps in words under it.
+    expect(await page.evaluate(() =>
+      document.querySelector('.direction-page .direction-summary').nextElementSibling.className)).toBe('flow')
+    expect(await page.locator('.direction-page .flow-life text').allTextContents()).toEqual(
+      ['Person', 'architect', 'writer', 'docs/tsd.md', 'linter'])
+    expect(await page.locator('.direction-page .flow-arrow text').allTextContents()).toEqual([
+      '1 asks for a TSD of the export', '2 gives each section to a writer',
+      '4 fills the template one section at a time', '5 checks that each section says one thing'])
+    expect(await page.locator('.direction-page .flow-arrow line[marker-end]').count()).toBe(4)
+    expect(await page.textContent('.direction-page .flow-act text')).toBe('3 reads the rule of one heading for each section')
+    expect(await page.locator('.direction-page .flow-steps li').allTextContents()).toEqual([
+      'Person → architect: asks for a TSD of the export',
+      'architect → writer: gives each section to a writer CLAUDE.md:3',
+      'writer: reads the rule of one heading for each section .claude/skills/writer/SKILL.md:3',
+      'writer → docs/tsd.md: fills the template one section at a time docs/template.md:3',
+      'linter → docs/tsd.md: checks that each section says one thing'])
+    // On a phone, the diagram scrolls inside its own box, and the page does not scroll sideways.
+    await page.setViewportSize({ width: 375, height: 812 })
+    expect(await page.evaluate(() => {
+      const box = document.querySelector('.direction-page .flow-scroll')
+      return { scrolls: box.scrollWidth > box.clientWidth, page: document.documentElement.scrollWidth <= innerWidth }
+    })).toEqual({ scrolls: true, page: true })
+    await page.setViewportSize({ width: 1440, height: 900 })
     expect(await page.locator('.direction-page .case').count()).toBe(3)
     // Nanda, 2026-11-15: each case is a small vertical ladder: the direction at the top, each
     // named rung with its code, the output at the bottom in the color of its fit (was: one block).
@@ -497,7 +526,9 @@ const open = async () => {
     await page.waitForSelector('.gear .direction-list')
     expect(await page.locator('.gear .direction-item .title').allTextContents()).toEqual(['One thing per section', 'TSD writing'])
     await page.click('.gear .direction-item:has-text("TSD writing")')
-    expect(await page.textContent('.gear .level-direction h3')).toBe('Where it comes from')
+    // Nanda, 2026-11-15: a direction has a flow; the store keeps it, and the gear draws it.
+    expect(await page.textContent('.gear .level-direction h3')).toBe('What a page holds')
+    expect(await page.locator('.gear .flow-life').count()).toBe(5)
     expect(await page.textContent('.gear .direction-summary')).toBe(
       'A TSD lets its reader decide without a meeting, so each page stands alone.')
     expect(await page.locator('.gear .case').count()).toBe(3)

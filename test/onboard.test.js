@@ -16,6 +16,7 @@ import {
   ONBOARD_NEW,
   ONBOARD_QUESTIONS,
   onboardingProject,
+  withFlow,
   withLadders,
 } from './harness.js'
 
@@ -140,7 +141,11 @@ const companyRepo = async () => {
   git(dir, 'commit', '-q', '-m', 'feature flags')
   return { dir, folder, commit: git(dir, 'rev-parse', 'HEAD') }
 }
+// Nanda, 2026-11-15: a direction has a flow; the host writes the flow of a company direction in
+// this project.
 const COMPANY_DRAFT = `checkedBy: linter
+flow:
+  - { from: writer, to: docs/tsd.md, says: puts each change under a flag, file: docs/tsd.md, line: 7 }
 cases:
   - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
   - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
@@ -170,6 +175,9 @@ describe('a company direction in onboarding (ruling 6)', () => {
     // Nanda, 2026-11-15: a direction has a summary. The host writes no words of a company
     // direction: its summary is the first sentence of the folder's words, under the heading.
     expect(directions[0].direction.summary).toBe('Each critical change is under a flag.')
+    expect(directions[0].direction.flow).toEqual([
+      { from: 'writer', to: 'docs/tsd.md', says: 'puts each change under a flag', file: 'docs/tsd.md', line: 7 },
+    ])
     expect(directions[0].source).toEqual({
       _tag: 'External', repo: company.dir, path: company.folder, ref: { _tag: 'DefaultBranch' }, commit: company.commit,
     })
@@ -276,6 +284,30 @@ describe('what onboarding refuses', () => {
         '    Output · docs/tsd.md:5 "TODO"\n',
     )
     expect(ok(await p.agent('onboard status')).out).toContain('found in the project · 3 cases, 2 stale')
+  })
+
+  // Nanda, 2026-11-15: a direction has a flow, from the first act down to the output.
+  test('a draft with a flow: show prints its steps after the summary, an act on its own once', async () => {
+    const p = onboardingProject(LADDER_FILES)
+    p.write('draft.yaml', ONBOARD_CONFIG)
+    ok(await p.agent('onboard config --file=draft.yaml'))
+    ok(await p.agent('onboard found tsd-writing'))
+    p.write('tsd.yaml', withFlow(ONBOARD_DIRECTION))
+    ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+    expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain(
+      'summary: A TSD lets its reader decide without a meeting, so each page stands alone.\n' +
+        'flow:\n' +
+        '  1. Person -> architect: asks for a TSD of the export\n' +
+        '  2. architect -> writer: gives each section to a writer (CLAUDE.md:3)\n' +
+        '  3. writer: reads the rule of one heading for each section (.claude/skills/writer/SKILL.md:3)\n' +
+        '  4. writer -> docs/tsd.md: fills the template one section at a time (docs/template.md:3)\n' +
+        '  5. linter -> docs/tsd.md: checks that each section says one thing\n' +
+        'from: Pathos, Logos\n',
+    )
+    p.write('bad.yaml', withFlow(ONBOARD_DIRECTION).replace('says: asks for a TSD of the export', 'says: " "'))
+    expect((await p.agent('onboard draft tsd-writing --file=bad.yaml')).err).toContain(
+      'refused: bad.yaml: flow step 1 needs from, to and says: who acts, on whom or on what file, and what happens',
+    )
   })
 
   test('work init refuses while onboarding files exist', async () => {

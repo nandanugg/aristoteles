@@ -54,8 +54,12 @@ const draftOf = (id: string): DirectionDraft =>
     id,
     name: 'Small changes',
     from: ['Logos'],
-    // Nanda, 2026-11-15: a direction has a summary.
+    // Nanda, 2026-11-15: a direction has a summary, and a flow (one act on its own here).
     summary: 'A change does one thing, so a reviewer reads one reason.',
+    flow: [
+      { from: 'Person', to: 'writer', says: 'asks for a change' },
+      { from: 'writer', to: 'writer', says: 'names one reason', file: 'docs/tsd.md', line: 3 },
+    ],
     says: 'A change does one thing.',
     standards: [
       {
@@ -153,6 +157,8 @@ describe('the acts', () => {
     await host(dir, { _tag: 'Found', direction: 'small-changes' })
     await host(dir, { _tag: 'Draft', direction: 'small-changes', draft: draftOf('small-changes') })
     const drafted = await fileOf(dir, 'small-changes')
+    // Nanda, 2026-11-15: a direction has a flow; the file holds it as the host wrote it.
+    expect(drafted.draft.content.flow).toEqual(draftOf('small-changes').flow)
     // The person's revise: the request and the accept, never the draft.
     await nanda(dir, { act: 'revise', direction: 'small-changes', words: 'name the reviewer' })
     const revised = await fileOf(dir, 'small-changes')
@@ -212,6 +218,8 @@ describe('the acts', () => {
     const read = (await fileOf(dir, 'small-changes')).draft
     expect(read.cases).toEqual([ladder, ladder, ladder])
     expect(read.content.summary).toBe('A change does one thing.')
+    // Nanda, 2026-11-15: a direction has a flow; an older file has none.
+    expect(read.content.flow).toEqual([])
     await nanda(dir, { act: 'accept', direction: 'small-changes' })
     const text = readFileSync(join(dir, ASSESS, 'small-changes.yaml'), 'utf8')
     const written = (Bun.YAML.parse(text) as Obj).draft

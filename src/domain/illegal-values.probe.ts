@@ -122,7 +122,7 @@ export const ok7c: Event = { _tag: 'Question', create: asked }
 export const p7c: Event = { _tag: 'Question', create: { ...asked, text: '' } }
 
 const why = { _tag: 'Given', reason: 'Shorten', words: null } as const
-const revBase = { _tag: 'New', id: d, of: did, answers: [rej], when: now, at: 1, summary: 's', says: 's', standards: [], cases: [] } as const
+const revBase = { _tag: 'New', id: d, of: did, answers: [rej], when: now, at: 1, summary: 's', flow: [], says: 's', standards: [], cases: [] } as const
 export const ok8: Revision<Direction> = { ...revBase, origin: { _tag: 'Written', by: a }, why }
 // @ts-expect-error 8a: a person as the reviser
 export const p8a: Revision<Direction> = { ...revBase, origin: { _tag: 'Written', by: nanda }, why }
@@ -130,7 +130,7 @@ export const p8a: Revision<Direction> = { ...revBase, origin: { _tag: 'Written',
 export const p8b: Revision<Direction> = { ...revBase, origin: { _tag: 'Written', by: a }, why: { ...why, reason: 'typo' } }
 
 const dirBase = { id: did, name: 'x', owner: nanda, maxStandards: { _tag: 'Unlimited' }, approvedBy: { _tag: 'Owner' }, source: { _tag: 'Local' }, cases: [] } as const
-const version1: Version<Direction> = { of: did, number: 1 as PositiveInt, revision: d, when: now, summary: 's', says: 's', standards: [] }
+const version1: Version<Direction> = { of: did, number: 1 as PositiveInt, revision: d, when: now, summary: 's', flow: [], says: 's', standards: [] }
 export const ok10: Direction = { ...dirBase, from: ['Logos'], _tag: 'Official', versions: [version1] }
 // @ts-expect-error 10a: a principle that does not exist
 export const p10a: Direction = { ...dirBase, from: ['Logoss'], _tag: 'Official', versions: [version1] }
@@ -242,7 +242,7 @@ export const pA10a: Send = { id: e12, from: supervisorTell, keys: { _tag: 'Enter
 // @ts-expect-error A10b: a tell about a prompt with its own destination
 export const pA10b: Send = { id: e12, from: { ...supervisorTell, reason: { _tag: 'AgentAtPrompt', prompt: e12, to } }, keys: { _tag: 'Enter' }, state: { _tag: 'Pending' }, at: now }
 
-const change = { _tag: 'Change', base: vid, id: d, of: did, answers: [], why: { _tag: 'NoneGiven' }, when: now, at: 1, summary: 's', says: 's', standards: [] } as const
+const change = { _tag: 'Change', base: vid, id: d, of: did, answers: [], why: { _tag: 'NoneGiven' }, when: now, at: 1, summary: 's', flow: [], says: 's', standards: [] } as const
 export const okA11: Revision<Direction> = { ...change, origin: { _tag: 'Imported', commit: '9f2c1ab', ref: { _tag: 'DefaultBranch' } } }
 // @ts-expect-error A11: an import with a reviser
 export const pA11: Revision<Direction> = { ...change, origin: { _tag: 'Imported', commit: '9f2c1ab', ref: { _tag: 'DefaultBranch' }, by: agent } }
@@ -375,7 +375,7 @@ export const s24c: Event = { _tag: 'Send', id: e12, move: { _tag: 'Dropped', why
 export const s25: Event = { _tag: 'Send', create: sentByAgent }
 export const s26a: Event = { _tag: 'Question', create: { _tag: 'Escalated', text: 'blocked' } }
 export const s26b: Event = { _tag: 'Question', create: { _tag: 'Asked', text: 'x', to: { _tag: 'Owner' } } }
-export const s27: Event = { _tag: 'Revision', create: { _tag: 'Drafted', direction: { id: did, name: 'd2 name', owner: 'Nanda', from: ['Logos'], summary: 's', says: 's', standards: [] }, cases: [aCase, aCase, aCase], answers: [], why: { _tag: 'NoneGiven' } } }
+export const s27: Event = { _tag: 'Revision', create: { _tag: 'Drafted', direction: { id: did, name: 'd2 name', owner: 'Nanda', from: ['Logos'], summary: 's', flow: [], says: 's', standards: [] }, cases: [aCase, aCase, aCase], answers: [], why: { _tag: 'NoneGiven' } } }
 export const s28: Event = { _tag: 'Role', id: role, move: { _tag: 'Fitted', hash: 'h', answers: [{ id: 1, yes: true, why: 'y' }] } }
 export const r21: Resolve = {
   id: v, by: nanda, under, when: now, at: 1,

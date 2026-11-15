@@ -134,7 +134,8 @@ const linesOf = (work: Work, dir: string): ReadonlyArray<string> => {
 // 2026-11-14: directions and drafts hold their cases, and the company scenario gives d2 its cases
 // in one more event. The last three scenarios are new. Nanda, 2026-11-15: a case is a ladder to
 // an output, and a direction has a summary: the cases are ladders, and each draft and each
-// version holds its summary.
+// version holds its summary. Nanda, 2026-11-15: a direction has a flow: each draft and each version
+// holds its flow (none in these scenarios).
 const PINS = `${import.meta.dir}/fold.pins.txt`
 const pinnedLines = (name: string): ReadonlyArray<string> => {
   const text = readFileSync(PINS, 'utf8')

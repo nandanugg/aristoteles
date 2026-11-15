@@ -38,6 +38,7 @@ import {
   type Revision,
   replacesOf,
   type RevisionId,
+  type FlowStep,
   type Rule,
   type Spot,
   type StandardEntry,
@@ -73,9 +74,10 @@ const quoteOf = (work: Work, id: string): string | undefined => forwardedOf(work
 const ruleKey = (work: Work, entry: string): string => ruleAt(work, entry as never).id
 const byName = (by: By): string => (typeof by === 'string' ? by : by.name)
 
-// What a draft or a version holds: its summary, its words and its standards.
+// What a draft or a version holds: its summary, its flow, its words and its standards.
 interface Words {
   readonly summary: string
+  readonly flow: ReadonlyArray<FlowStep>
   readonly says: string
   readonly standards: ReadonlyArray<StandardEntry>
 }
@@ -201,10 +203,28 @@ const whereWords = (s: { readonly where: Parameters<typeof whereRecord>[0] }): s
 
 // What a version or a draft says, with what it changes from its base: + new, ~ replaced,
 // - removed.
-// The summary comes first (Nanda, 2026-11-15: a direction has a summary).
+// The flow of a direction (Nanda, 2026-11-15: a direction has a flow), one numbered line for each
+// step: who acts, on whom or on what file, what happens, and where the project defines it. An act
+// of one actor on its own names the actor once. No step: no line.
+export const flowLines = (
+  flow: ReadonlyArray<FlowStep>,
+  head = 'flow:',
+): ReadonlyArray<string> => {
+  if (flow.length === 0) return []
+  const step = (s: FlowStep, i: number) => {
+    const who = s.from === s.to ? s.from : `${s.from} -> ${s.to}`
+    const line = s.line === undefined ? '' : `:${s.line}`
+    const place = s.file === undefined ? '' : ` (${s.file}${line})`
+    return `  ${i + 1}. ${who}: ${s.says}${place}`
+  }
+  return [head, ...flow.map(step)]
+}
+
+// The summary comes first (Nanda, 2026-11-15: a direction has a summary), then the flow.
 const contentLines = (work: Work, v: Words, base: Words | undefined): ReadonlyArray<string> => {
   const lines: Array<string> = [
     `summary: ${v.summary}`,
+    ...flowLines(v.flow),
     ...(String(v.says).includes('\n')
       ? [
           'says:',
@@ -239,6 +259,9 @@ const contentLines = (work: Work, v: Words, base: Words | undefined): ReadonlyAr
     lines.push(`- ${s.id}: ${indented(s.says, '    ')}`)
   }
   if (base && v.summary !== base.summary) lines.push(`summary was: ${base.summary}`)
+  if (base && JSON.stringify(v.flow) !== JSON.stringify(base.flow)) {
+    lines.push(...(base.flow.length ? flowLines(base.flow, 'flow was:') : ['flow was: none']))
+  }
   if (base && v.says !== base.says) lines.push(`says was: ${indented(base.says, '  ')}`)
   return lines
 }

@@ -313,12 +313,22 @@ const StandardsView = Schema.Array(
     rules: Schema.Array(Schema.Struct({ id: Text, says: Text, checkedBy: Schema.NullOr(Text) })),
   }),
 )
+const FlowView = Schema.Array(
+  Schema.Struct({
+    from: Text,
+    to: Text,
+    says: Text,
+    file: Schema.NullOr(Text),
+    line: Schema.NullOr(Schema.Number),
+  }),
+)
 export const DirectionView = Schema.Struct({
   id: Text,
   name: Text,
   owner: Text,
   version: Text,
   summary: Text,
+  flow: FlowView,
   says: Text,
   standards: StandardsView,
   changed: Schema.Array(Schema.Struct({ id: Text, at: Time })),
@@ -366,6 +376,7 @@ export const DirectionCard = Schema.Struct({
   principle: Schema.NullOr(Text),
   example: Schema.NullOr(Text),
   summary: Schema.NullOr(Text),
+  flow: FlowView,
   says: Schema.NullOr(Text),
   standards: StandardsView,
   cases: Schema.Array(CaseView),

@@ -9,7 +9,7 @@ import type {
   OnboardingRole,
 } from '../../core/schema/index.ts'
 import type { OnboardingFiles } from '../../core/services/index.ts'
-import { caseLines } from './show.ts'
+import { caseLines, flowLines } from './show.ts'
 import { short } from './common.ts'
 
 type TextOf = (file: string) => string | null
@@ -189,6 +189,7 @@ export const onboardShowDirection = (
     lines.push(
       `name: ${name}`,
       `summary: ${content.summary}`,
+      ...flowLines(content.flow),
       `from: ${from.join(', ') || 'none'}`,
       `says: ${content.says}`,
     )

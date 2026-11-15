@@ -9,6 +9,7 @@ import {
   type ConfigFile,
   type DeciderFile,
   type DirectionFile,
+  type FlowStep,
   type RoleFile,
   type TaskFile,
   type Workspace,
@@ -454,6 +455,37 @@ export const readApprovedBy = (
     return approvedBy
   })
 
+// The flow: key of a draft (Nanda, 2026-11-15: a direction has a flow): the steps from the first act
+// of an actor down to the output, each { from, to, says }, with the file and line where the
+// project defines it when it does.
+const isWords = (x: unknown): x is string => typeof x === 'string' && x.trim() !== ''
+const flowOf = (file: string, value: unknown): ReadonlyArray<FlowStep> => {
+  if (!Array.isArray(value)) fail(file, 'flow lists the steps, from the first act down to the output')
+  return (value as ReadonlyArray<Raw>).map((step, i) => {
+    const at = `flow step ${i + 1}`
+    if (!isWords(step?.from) || !isWords(step?.to) || !isWords(step?.says)) {
+      fail(file, `${at} needs from, to and says: who acts, on whom or on what file, and what happens`)
+    }
+    if (step.file !== undefined && !isWords(step.file)) fail(file, `${at}: file is a path`)
+    if (step.line !== undefined) {
+      if (step.file === undefined) fail(file, `${at}: a line needs its file`)
+      if (!Number.isInteger(step.line) || step.line < 1) {
+        fail(file, `${at}: line is a whole number of 1 or more`)
+      }
+    }
+    return {
+      from: step.from,
+      to: step.to,
+      says: step.says,
+      ...(step.file !== undefined ? { file: step.file } : {}),
+      ...(step.line !== undefined ? { line: step.line } : {}),
+    } as FlowStep
+  })
+}
+// The flow of a company draft, which readDirection does not read.
+export const readFlow = (file: string, value: unknown): Effect.Effect<ReadonlyArray<FlowStep>, Refused> =>
+  refusing(() => flowOf(file, value))
+
 export const readDirection = (
   file: string,
   raw: unknown,
@@ -528,6 +560,7 @@ export const readDirection = (
       owner: d.owner,
       from,
       summary: d.summary,
+      ...(d.flow !== undefined ? { flow: flowOf(file, d.flow) } : {}),
       says: d.says,
       ...(d.maxStandards !== undefined ? { maxStandards: d.maxStandards } : {}),
       standards,

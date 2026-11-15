@@ -13,6 +13,7 @@ import {
   type EventOf,
   type EventRef,
   firstSentence,
+  type FlowStep,
   human,
   type Human,
   type Limit,
@@ -186,6 +187,7 @@ const fresh = (
     readonly approvedBy: Deciders | undefined
     readonly source: Direction['source']
     readonly summary: string
+    readonly flow: ReadonlyArray<FlowStep>
     readonly says: string
     readonly add: ReadonlyArray<Standard>
   },
@@ -214,6 +216,7 @@ const fresh = (
     id: x.id,
     of: input.id,
     summary: input.summary,
+    flow: input.flow,
     says: input.says,
     standards,
     origin: input.origin,
@@ -226,13 +229,14 @@ const fresh = (
   return { direction, revision, scratch }
 }
 
-// The current version, with the edit; a summary or words that the edit does not give stay.
+// The current version, with the edit; a summary, a flow or words that the edit does not give stay.
 const revised = (
   w: Work,
   x: DraftOf,
   input: DraftFields & {
     readonly direction: Direction
     readonly summary: string | undefined
+    readonly flow: ReadonlyArray<FlowStep> | undefined
     readonly says: string | undefined
     readonly edit: Edit
   },
@@ -248,6 +252,7 @@ const revised = (
     id: x.id,
     of: d.id,
     summary: input.summary ?? current.summary,
+    flow: input.flow ?? current.flow,
     says: input.says ?? base.says,
     standards,
     origin: input.origin,
@@ -297,6 +302,7 @@ const planDrafted = (
     approvedBy,
     source: { _tag: 'Local' } as const,
     summary: d.summary,
+    flow: d.flow ?? [],
     says: d.says,
     add,
     answerIds: data.answers,
@@ -332,6 +338,7 @@ export const onboarded = (b: Build, od: OnboardedDirection, event: EventRef, whe
     approvedBy,
     source,
     summary: d.summary,
+    flow: d.flow ?? [],
     says: d.says,
     add,
     answerIds: [],
@@ -371,6 +378,7 @@ const planRevised = (
   const input = {
     direction: official,
     summary: edit.summary,
+    flow: edit.flow,
     says: edit.says,
     edit: { add, remove: edit.remove ?? [], replace },
     answerIds: openAnswerIds(w, data.answers),
@@ -404,7 +412,8 @@ const planImported = (
   const scratch = scratchOf()
   const origin: RevisionOrigin = { _tag: 'Imported', commit: source.commit, ref: source.ref }
   const why: Why = { _tag: 'NoneGiven' }
-  // A company folder has no summary: its words are the company's (Nanda, 2026-11-15).
+  // A company folder has no summary: its words are the company's (Nanda, 2026-11-15). It has no
+  // flow either: a new one has none, and a change keeps the flow of the current version.
   const summary = firstSentence(folder.says)
   if (official === undefined) {
     const add = files.map((s) => buildStandard(w, s, undefined, entryIn(x.id, s.id), scratch))
@@ -417,6 +426,7 @@ const planImported = (
       approvedBy: undefined,
       source: { _tag: 'External', repo: source.repo, path: source.path } as const,
       summary,
+      flow: [],
       says: folder.says,
       add,
       answerIds: [],
@@ -437,7 +447,16 @@ const planImported = (
       .map((s) => [s.id, s] as const),
     remove: was.filter((y) => !made.some((s) => s.id === y.id)).map((y) => y.id),
   }
-  const input = { direction: official, summary, says: folder.says, edit, answerIds: [], why, origin }
+  const input = {
+    direction: official,
+    summary,
+    flow: undefined,
+    says: folder.says,
+    edit,
+    answerIds: [],
+    why,
+    origin,
+  }
   return revised(w, x, input, scratch)
 }
 
@@ -497,6 +516,7 @@ export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
     of: d.id,
     number: ((from?.number ?? 0) + 1) as PositiveInt,
     summary: x.summary,
+    flow: x.flow,
     says: x.says,
     standards: x.standards,
     revision: draft,

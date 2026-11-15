@@ -364,6 +364,25 @@ button { font: inherit; color: inherit; }
 .level-rule { border: 1px solid var(--luna-line); border-left: 4px solid var(--luna); background: var(--surface-2); padding: 8px 12px; margin-left: 4px; }
 .level-standard > .md + .level-rule { margin-top: 10px; }
 .checker { color: var(--muted); }
+/* The flow of a direction (app/flow.ts): a sequence diagram that scrolls in its own box, and the
+   steps in words under it. A label keeps a ring of the page color, so a lifeline under it does
+   not cut it. */
+.flow { margin: 0 0 12px; }
+.flow-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.flow-svg { display: block; font: 12px var(--sans); }
+.flow-svg text { fill: var(--text); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.flow-life line { stroke: var(--line-strong); stroke-dasharray: 4 3; }
+.flow-life rect { fill: var(--terra-tint); stroke: var(--terra-line); }
+.flow-life text { font-weight: 600; stroke: var(--terra-tint); }
+.flow-arrow line { stroke: var(--text); stroke-width: 1.4; }
+.flow-svg marker path { fill: var(--text); }
+.flow-act rect { fill: var(--sol-tint); stroke: var(--sol-line); }
+.flow-act text { stroke: var(--sol-tint); }
+.flow-svg .flow-n { font-weight: 700; fill: var(--sol); }
+.flow-steps { margin: 8px 0 0; padding-left: 24px; font-size: 13px; }
+.flow-steps li + li { margin-top: 2px; }
+.flow-who { font-weight: 600; }
+.flow-steps .where { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 /* The summary of a direction, before its words: what it asks and why, for a first reading. */
 .direction-summary { max-width: 80ch; margin: 0 0 10px; padding: 8px 12px; font-size: 15px; font-weight: 600; line-height: 1.45; background: var(--sol-tint); border-radius: 8px; }
 

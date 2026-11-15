@@ -292,15 +292,30 @@ export const Cases = Schema.Array(Case).check(Schema.isMinLength(MIN_CASES))
 export type Cases = typeof Cases.Type
 export const CasesFile = Schema.Array(CaseFile).check(Schema.isMinLength(MIN_CASES))
 
+// One step of the flow of a direction (Nanda, 2026-11-15: a direction has a flow): an actor does
+// something to another actor, or to a file that it acts on (from equal to to: an act on its own).
+// file and line: where the project defines the step, when it does.
+export const FlowStep = Schema.Struct({
+  from: NonBlank,
+  to: NonBlank,
+  says: NonBlank,
+  file: Schema.optionalKey(NonBlank),
+  line: Schema.optionalKey(PositiveInt),
+})
+export type FlowStep = typeof FlowStep.Type
+
 // A direction file after readDirection and readApprovedBy. summary: one or two plain sentences
 // that say what the direction asks and why it matters, for a person who reads it the first time
-// (Nanda, 2026-11-15); the page and the CLI show it before the words.
+// (Nanda, 2026-11-15); the page and the CLI show it before the words. flow: how the direction
+// works, from the first act of an actor down to the output; optional for now, and none when left
+// out (Nanda, 2026-11-15).
 export const DirectionFile = Schema.Struct({
   id: DirectionId,
   name: Schema.String,
   owner: Schema.String,
   from: Schema.Array(Principle),
   summary: NonBlank,
+  flow: Schema.optionalKey(Schema.Array(FlowStep)),
   says: Schema.String,
   maxStandards: Schema.optionalKey(Schema.Number),
   standards: Schema.Array(StandardFile),
@@ -311,6 +326,7 @@ export type DirectionFile = typeof DirectionFile.Type
 // A revise file: the change of a direction from its current version.
 export const ReviseFile = Schema.Struct({
   summary: Schema.optionalKey(NonBlank),
+  flow: Schema.optionalKey(Schema.Array(FlowStep)),
   says: Schema.optionalKey(Schema.String),
   add: Schema.optionalKey(Schema.Array(StandardFile)),
   remove: Schema.optionalKey(Schema.Array(Key)),

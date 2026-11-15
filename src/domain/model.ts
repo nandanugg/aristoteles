@@ -30,7 +30,7 @@ import type {
   Stop as StopSchema,
   Why as WhySchema,
 } from './events.ts'
-import type { Case, ContextKey, Snapshot } from './files.ts'
+import type { Case, ContextKey, FlowStep, Snapshot } from './files.ts'
 import type {
   AgentId,
   AnswerId,
@@ -126,6 +126,8 @@ export type ContentOf<T extends Versioned> = T extends Direction ? DirectionCont
 // 2026-11-15); a revise may change it.
 export interface DirectionContent {
   readonly summary: Text
+  // How it works, from the first act down to the output (Nanda, 2026-11-15); none: no diagram.
+  readonly flow: ReadonlyArray<FlowStep>
   readonly says: Text
   readonly standards: ReadonlyArray<StandardEntry>
 }

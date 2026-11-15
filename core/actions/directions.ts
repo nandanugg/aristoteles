@@ -22,7 +22,7 @@ import {
   type Work,
   whereRecord,
 } from '../schema/index.ts'
-import { readApprovedBy, readDirection } from '../services/index.ts'
+import { readApprovedBy, readDirection, readFlow } from '../services/index.ts'
 import { decidersOf } from '../state/decisions.ts'
 import {
   answersFound,
@@ -207,6 +207,11 @@ const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refus
     if (e.summary !== undefined && !(typeof e.summary === 'string' && e.summary.trim())) {
       return yield* bad('summary is one or two plain sentences: what the direction asks, and why')
     }
+    // A new flow takes the place of the old one (Nanda, 2026-11-15: a direction has a flow).
+    const flow =
+      e.flow === undefined
+        ? undefined
+        : yield* readFlow(file, e.flow).pipe(Effect.mapError(asWrite(file)))
     const add = []
     for (const [i, s] of list(e.add).entries()) add.push(yield* standardOf(s, `standard ${i + 1}`))
     const replace = []
@@ -217,6 +222,7 @@ const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refus
     }
     return {
       ...(e.summary !== undefined ? { summary: e.summary as string } : {}),
+      ...(flow !== undefined ? { flow } : {}),
       ...(e.says !== undefined ? { says: e.says as string } : {}),
       ...(e.add !== undefined ? { add } : {}),
       ...(e.remove !== undefined ? { remove: list(e.remove).map(String) } : {}),
@@ -286,8 +292,10 @@ const asRevise = (w: Work, file: DirectionFile): ReviseFile => {
     .filter((s) => was.some((y) => y.id === s.id && shapeOf(y) !== shape(s)))
     .map((s) => ({ id: s.id, with: standard(s) }))
   const remove = was.filter((y) => !file.standards.some((s) => s.id === y.id)).map((y) => y.id)
+  const flow = file.flow ?? []
   return {
     ...(file.summary !== now.summary ? { summary: file.summary } : {}),
+    ...(JSON.stringify(flow) !== JSON.stringify(now.flow) ? { flow } : {}),
     ...(file.says !== now.says ? { says: file.says } : {}),
     ...(add.length ? { add } : {}),
     ...(remove.length ? { remove } : {}),

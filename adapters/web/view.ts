@@ -59,6 +59,8 @@ import {
   type DirectionView,
   type DirView,
   type DraftChange,
+  type FlowStep,
+  type FlowStepView,
   type OnboardingDirection,
   type OnboardingView,
   type Owner,
@@ -719,6 +721,14 @@ export const projectView = (d: Derived, id: string, ctx: ViewContext): ProjectVi
 // The directions of a top task: each one with its version now, its standards and rules, the
 // versions made during the project, and the drafts that wait.
 // The standards of a version, each rule with the role that checks it.
+// A step of the flow of a direction for the page: no file or line is null (Nanda, 2026-11-15).
+const flowStepView = (s: FlowStep): FlowStepView => ({
+  from: s.from,
+  to: s.to,
+  says: s.says,
+  file: s.file ?? null,
+  line: s.line ?? null,
+})
 const standardsOf = (w: Work, v: Version<Direction>): DirectionView['standards'] =>
   v.standards.map((entry) => {
     const s = standardAt(w, entry)
@@ -748,6 +758,7 @@ const directionsView = (d: Derived, task: Task): ReadonlyArray<DirectionView> =>
         owner: dir.owner.name,
         version: versionIdOf(v),
         summary: v.summary,
+        flow: v.flow.map(flowStepView),
         says: v.says,
         standards: standardsOf(w, v),
         changed:
@@ -1068,6 +1079,7 @@ const onboardingDirectionCard = (
     principle: asked._tag === 'New' ? asked.principle : null,
     example: asked._tag === 'New' ? asked.example : null,
     summary: drafted?.content.summary ?? null,
+    flow: (drafted?.content.flow ?? []).map(flowStepView),
     says: drafted?.content.says ?? null,
     standards: (drafted?.content.standards ?? []).map((st) => ({
       id: st.id,
@@ -1153,6 +1165,7 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
         principle: null,
         example: null,
         summary: v.summary,
+        flow: v.flow.map(flowStepView),
         says: v.says,
         standards: standardsOf(w, v),
         cases: x.cases.map(caseOf),

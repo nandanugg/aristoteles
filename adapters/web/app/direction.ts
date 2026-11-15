@@ -4,6 +4,7 @@
 // code around it. The directions page and the gear's directions entry show it.
 import { html } from 'htm/preact'
 import type { DirectionCard } from '../contract.ts'
+import { FlowDiagram } from './flow.ts'
 import { Markdown } from './markdown.ts'
 
 type Card = typeof DirectionCard.Type
@@ -60,14 +61,15 @@ export function Cases({ cases }: { cases: ReadonlyArray<CaseData> }) {
 }
 
 // The words of a direction, by level: the direction, then each standard with its rules inside.
-// The summary comes first, before the words (Nanda, 2026-11-15). The panel of a task shows its
-// directions with it too.
-type Words = Pick<Card, 'summary' | 'says' | 'standards'>
+// The summary comes first, then the flow as a sequence diagram, then the words (Nanda,
+// 2026-11-15). The panel of a task shows its directions with it too.
+type Words = Pick<Card, 'id' | 'summary' | 'flow' | 'says' | 'standards'>
 export function DirectionText({ card }: { card: Words }) {
   return html`<div class="direction-text">
     ${card.says ? html`<section class="level level-direction" aria-label="Direction">
       <div class="level-head"><span class="level-tag direction">Direction</span></div>
       ${card.summary ? html`<p class="direction-summary">${card.summary}</p>` : ''}
+      <${FlowDiagram} id=${card.id} flow=${card.flow} />
       <${Markdown} text=${card.says} />
     </section>` : ''}
     ${card.standards.map((s) => html`<section class="level level-standard"

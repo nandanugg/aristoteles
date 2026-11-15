@@ -41,6 +41,7 @@ import {
   type RoleNotes,
   readConfig,
   readDirection,
+  readFlow,
   readOnboarding,
   refusing,
 } from '../../../core/services/index.ts'
@@ -87,6 +88,8 @@ const DRAFT_TEMPLATE = `write a file like this, then run the command again:
   name: <a short name>
   from: [<the principles that ground it, such as Logos>]
   summary: <one or two plain sentences: what the direction asks, and why it matters>
+  flow:   # how it works, from the first act of an actor down to the output
+    - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, file: <where the project defines it>, line: <n> }
   says: <what the direction asks for>
   standards:
     - id: <standard id>
@@ -97,6 +100,8 @@ ${CASES}`
 const COMPANY_TEMPLATE = `write a file like this, then run the command again (the words come from the company folder):
   checkedBy: <the role that checks each rule>
   rules: { <rule id>: <the role that checks this rule> }
+  flow:   # how it works in this project, from the first act of an actor down to the output
+    - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens>, file: <path>, line: <n> }
 ${CASES}`
 const QUESTIONS_TEMPLATE = `write a file like this, then run the command again:
   questions:
@@ -106,8 +111,8 @@ const QUESTIONS_TEMPLATE = `write a file like this, then run the command again:
 // A draft of onboarding names no owner: readDirection checks the rest of the file with this one,
 // and the person who starts the store owns each direction.
 const OWNER = 'the person'
-const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'says', 'standards', 'cases']
-const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'cases']
+const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'flow', 'says', 'standards', 'cases']
+const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'flow', 'cases']
 
 const isRecord = (x: unknown): x is Readonly<Record<string, unknown>> =>
   typeof x === 'object' && x !== null && !Array.isArray(x)
@@ -318,6 +323,7 @@ const localDraft = (file: string, raw: Readonly<Record<string, unknown>>, curren
       name: read.name,
       from: read.from,
       summary: read.summary,
+      flow: read.flow ?? [],
       says: read.says,
       standards: read.standards,
     }
@@ -363,11 +369,14 @@ const companyDraft = (
         'ask the owner of the company repo to write what the direction asks in direction.md',
       )
     }
+    // The flow is of this project, so the host writes it (Nanda, 2026-11-15).
+    const flow = raw.flow === undefined ? [] : yield* readFlow(file, raw.flow)
     const draft: Omit<DirectionDraft, 'cases'> = {
       id,
       name: folder.name,
       from: [],
       summary,
+      flow,
       says: folder.says,
       standards: folder.standards.map((s) => ({
         id: s.id,

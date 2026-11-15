@@ -469,6 +469,7 @@ export interface DirectionView {
   readonly owner: Text
   readonly version: Text // tsd-writing@2
   readonly summary: Text // the page shows it before the words (Nanda, 2026-11-15)
+  readonly flow: ReadonlyArray<FlowStepView> // a sequence diagram under the summary; none: no diagram
   readonly says: Text
   readonly standards: ReadonlyArray<{
     readonly id: Text
@@ -569,11 +570,22 @@ export interface DirectionCard {
   readonly principle: Text | null // the words of the person who added it (ruling 5)
   readonly example: Text | null
   readonly summary: Text | null // shown before the words (Nanda, 2026-11-15); null: no draft yet
+  readonly flow: ReadonlyArray<FlowStepView> // none: no diagram
   readonly says: Text | null // null: no draft yet
   readonly standards: DirectionView['standards'] // each rule names the role that checks it
   readonly cases: ReadonlyArray<CaseView>
   readonly questions: ReadonlyArray<QuestionView>
   readonly request: Text | null // the words of a Revise that wait for the host
+}
+// One step of the flow of a direction (Nanda, 2026-11-15): an actor acts on another actor or on a
+// file (from equal to to: an act on its own). file and line: where the project defines the step;
+// null: it names none.
+export interface FlowStepView {
+  readonly from: Text
+  readonly to: Text
+  readonly says: Text
+  readonly file: Text | null
+  readonly line: number | null
 }
 // A case (ruling 4) as its ladder (Nanda, 2026-11-15): the named rungs from the direction down,
 // then the output, a real result that follows or breaks the direction (fit). A case with a stale

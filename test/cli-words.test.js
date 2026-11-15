@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 import {
   DIRECTION,
+  FLOW,
   HOST,
   init,
   ok,
@@ -474,6 +475,27 @@ describe('the summary of a direction', () => {
     ok(await p.nanda('review d2 accept --evidence="the draft, its summary | it names the cost"', 'accept'))
     expect(await out(p.nanda('direction show tsd-writing'))).toContain(
       'summary: A TSD shows its reader the cost of each choice.\n',
+    )
+  })
+
+  // Nanda, 2026-11-15: a direction has a flow. A revise gives it one; direction show prints it
+  // after the summary, and the draft shows the flow that it had before.
+  test('a revise gives a direction a flow; direction show prints its numbered steps', async () => {
+    const { p } = await started()
+    const arch = tokenIn(await out(p.nanda('assign t1 --role=architect')))
+    ok(await p.agent(`brief ${arch}`))
+    p.write('edit.yaml', FLOW)
+    ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
+    const draft = await out(p.nanda('direction show d2'))
+    expect(draft).toContain('  5. linter -> docs/tsd.md: checks that each section says one thing\n')
+    expect(draft).toContain('\nflow was: none')
+    ok(await p.nanda('review d2 accept --evidence="the draft, its flow | it shows the steps"', 'accept'))
+    expect(await out(p.nanda('direction show tsd-writing'))).toContain(
+      'summary: A TSD lets its reader decide without a meeting, so each page stands alone.\n' +
+        'flow:\n' +
+        '  1. Person -> architect: asks for a TSD of the export\n' +
+        '  2. architect -> writer: gives each section to a writer (CLAUDE.md:3)\n' +
+        '  3. writer: reads the rule of one heading for each section (.claude/skills/writer/SKILL.md:3)\n',
     )
   })
 })

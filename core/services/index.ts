@@ -26,6 +26,7 @@ export {
   readApprovedBy,
   readConfig,
   readDirection,
+  readFlow,
   readTask,
   restoreConfig,
   roleHash,

@@ -34,6 +34,7 @@ import {
   type Cases,
   type CompanyFolder,
   checkerProblem,
+  type FlowStep,
   type RoleFile,
   type StandardFile,
 } from '../domain/files.ts'
@@ -278,6 +279,7 @@ export interface DirectionDraft {
   readonly name: string
   readonly from: ReadonlyArray<Principle>
   readonly summary: NonBlank
+  readonly flow: ReadonlyArray<FlowStep>
   readonly says: string
   readonly standards: ReadonlyArray<StandardFile>
   readonly cases: Cases
@@ -461,7 +463,12 @@ const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft) =>
         _tag: 'Drafted',
         name: draft.name,
         from: draft.from,
-        content: { summary: draft.summary, says: draft.says, standards: draft.standards },
+        content: {
+          summary: draft.summary,
+          flow: draft.flow,
+          says: draft.says,
+          standards: draft.standards,
+        },
         cases: draft.cases,
       },
       questions: file.questions.filter((q) => q.answer._tag === 'Open'),
@@ -755,6 +762,7 @@ export const prepareStart = (
           owner: person,
           from: drafted.from,
           summary: drafted.content.summary,
+          flow: drafted.content.flow,
           says: drafted.content.says,
           standards: drafted.content.standards,
         },
