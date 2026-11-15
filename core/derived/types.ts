@@ -350,7 +350,7 @@ export type DraftAuthor =
 // no project (ruling 10.10).
 export type Explainer =
   | { readonly _tag: 'Host'; readonly assignment: AssignmentId }
-  | { readonly _tag: 'AnyLiveHost'; readonly hosts: NonEmpty<AssignmentId> }
+  | { readonly _tag: 'AnyActiveHost'; readonly hosts: NonEmpty<AssignmentId> }
   | { readonly _tag: 'None' }
 // Who writes the next draft after a decider's Reject: its writer; the hosts of a model run's
 // draft (its explainer); an open high role that follows the direction when the writer is

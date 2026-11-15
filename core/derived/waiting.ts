@@ -20,7 +20,7 @@ import { canAct } from './can.ts'
 import { decisionTaskOf, hostOf, placementOf, taskOfAnswer } from './catalog.ts'
 import { adjustmentDrafts, rolesSuggestionsWaiting, subjectOf } from './adjustments.ts'
 import { newDirectionsToDraft, openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
-import { authorAssignment, authorOf, dirDrafters, liveHosts, redrafterOf } from './authors.ts'
+import { authorAssignment, authorOf, activeHosts, dirDrafters, redrafterOf } from './authors.ts'
 import { roleWordsDrafts } from './role-words.ts'
 import {
   answered,
@@ -157,7 +157,7 @@ const holdOf = (d: Derived, id: string, placement: Placement, at: Time, raw: boo
   const words = m.work.hostWords.get(id as never)
   const hosted =
     placement._tag === 'DirWide'
-      ? liveHosts(d).length > 0
+      ? activeHosts(d).length > 0
       : hostOf(m, placement, d.states)._tag === 'Host'
   const late = Date.parse(m.at) - Date.parse(at) >= waitMs
   if (raw || words !== undefined || !hosted || late) return { _tag: 'Shown' }

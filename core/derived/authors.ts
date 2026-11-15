@@ -26,13 +26,6 @@ export const authorOf = (w: Work, x: Revision<Direction>): DraftAuthor => {
 export const authorAssignment = (a: DraftAuthor): AssignmentId | undefined =>
   a._tag === 'Assignment' || a._tag === 'Host' ? a.assignment : undefined
 
-// A host is active when its run is open and its terminal is live. The CLI reads no terminals:
-// there the host that asks (work next, work wait) is the one that runs, so it counts as live.
-const terminalLive = (d: Derived, session: string): boolean => {
-  const terminals = d.moment.outside.terminals
-  const reading = terminals[session]
-  return reading === undefined ? Object.keys(terminals).length === 0 : reading.live
-}
 // The hosts of the open runs (the Sol of each run's top task now), with their sessions.
 const hosts = (d: Derived) => {
   const w = d.moment.work
@@ -45,16 +38,18 @@ const hosts = (d: Derived) => {
     return host._tag === 'Host' ? [host] : []
   })
 }
-// Ruling 10.10: the active hosts (an open run, a live terminal).
-export const liveHosts = (d: Derived): ReadonlyArray<AssignmentId> =>
-  hosts(d).flatMap((h) => (terminalLive(d, h.session) ? [h.assignment] : []))
+// Ruling 10.10: the active hosts, the hosts of the open runs (F7). No reading of a pane: the CLI
+// reads none, the page reads the pump, and both must derive the same steps and holds. A host whose
+// pane died keeps its steps until it runs again, as the host of a project does.
+export const activeHosts = (d: Derived): ReadonlyArray<AssignmentId> =>
+  hosts(d).map((h) => h.assignment)
 
 // Who drafts what no task follows (P1): a new direction, the examples of a company draft, the
 // adjustment that words about the roles ask for. The active hosts, else every open high agent
 // that may act (a brief over its limit waits).
 export const dirDrafters = (d: Derived): ReadonlyArray<AssignmentId> => {
-  const live = liveHosts(d)
-  if (live.length > 0) return live
+  const active = activeHosts(d)
+  if (active.length > 0) return active
   const w = d.moment.work
   return [...w.assignments.values()].flatMap((a) => {
     const s = d.states.assignments.get(a.id)?._tag
@@ -71,11 +66,11 @@ export const explainerOf = (d: Derived, decision: string): Explainer => {
     const host = hostOf(d.moment, placement, d.states)
     return host._tag === 'Host' ? { _tag: 'Host', assignment: host.assignment } : { _tag: 'None' }
   }
-  const [one, ...rest] = liveHosts(d)
-  return one === undefined ? { _tag: 'None' } : { _tag: 'AnyLiveHost', hosts: [one, ...rest] }
+  const [one, ...rest] = activeHosts(d)
+  return one === undefined ? { _tag: 'None' } : { _tag: 'AnyActiveHost', hosts: [one, ...rest] }
 }
 export const explains = (e: Explainer, a: AssignmentId): boolean =>
-  e._tag === 'Host' ? e.assignment === a : e._tag === 'AnyLiveHost' && e.hosts.includes(a)
+  e._tag === 'Host' ? e.assignment === a : e._tag === 'AnyActiveHost' && e.hosts.includes(a)
 
 // Who writes the next draft after a decider's Reject. A model run has ended: the explainer of
 // the draft revises it; with no host, the person runs the model again or says it in words.
@@ -90,7 +85,7 @@ export const redrafterOf = (d: Derived, x: Revision<Direction>): Redrafter => {
   if (writer === undefined) {
     const e = explainerOf(d, x.id)
     if (e._tag === 'Host') return { _tag: 'Hosts', hosts: [e.assignment] }
-    return e._tag === 'AnyLiveHost' ? { _tag: 'Hosts', hosts: e.hosts } : { _tag: 'Person' }
+    return e._tag === 'AnyActiveHost' ? { _tag: 'Hosts', hosts: e.hosts } : { _tag: 'Person' }
   }
   const open = (a: AssignmentId) => d.states.assignments.get(a)?._tag !== 'Ended'
   if (open(writer)) return { _tag: 'Writer', assignment: writer }

@@ -316,14 +316,25 @@ describe('ruling 10.10: the words of a direction draft go to the hosts', () => {
     expect(item?.hold._tag).toBe('HeldForHost')
   })
 
-  test('an inactive host gets it when it is active again', () => {
+  // F7: the CLI reads no terminals and the page reads the pump; both derive the same hosts. A host
+  // of an open run is active: a dead pane changes no step and no hold (it keeps its step until
+  // it runs again; the page shows the draft after hostWaitMinutes).
+  test('the CLI and the page derive the same hosts, whatever the panes read', () => {
     const w = workOf(p.dir)
     const session = (run: string) => w.runs.get(id(run))?.session ?? ''
     const reading = (live: boolean) => ({ live, ended: !live, exit: null, lastOutput: 0 })
-    const terminals = { [session('h1')]: reading(true), [session('h2')]: reading(false) }
-    const d = derivedOf(w, p.now() as Time, p.dir, { terminals })
-    expect(explains(d, 'a1')).toEqual([`Do ${draft} true`])
-    expect(explains(d, 'a2')).toEqual([])
+    const page = { [session('h1')]: reading(true), [session('h2')]: reading(false) }
+    const seen = (terminals: Record<string, ReturnType<typeof reading>>) => {
+      const d = derivedOf(w, p.now() as Time, p.dir, { terminals })
+      const [item] = waitingFor(d, { _tag: 'Person', name: 'Nanda' }).filter(
+        (i) => i._tag === 'DraftForPerson',
+      )
+      return { a1: explains(d, 'a1'), a2: explains(d, 'a2'), hold: item?.hold._tag }
+    }
+    const both = { a1: [`Do ${draft} true`], a2: [`Do ${draft} true`], hold: 'HeldForHost' as const }
+    expect(seen({})).toEqual(both)
+    expect(seen(page)).toEqual(both)
+    expect(seen({ [session('h1')]: reading(false), [session('h2')]: reading(false) })).toEqual(both)
   })
 
   test('the first host that writes the words ends the step for the others', async () => {
