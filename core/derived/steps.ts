@@ -105,6 +105,15 @@ export const assignable = (w: Work, a: Assignment) =>
   })
 const sectionOf = (t: Task): string | null =>
   t.descriptionAi.context.section._tag === 'Section' ? t.descriptionAi.context.section.id : null
+// A working claim is freed only when its holder stopped: a persistent agent is revived by the
+// watcher (P8), so nobody frees it; a subagent's claim may be freed once it is older than the
+// silent time (live, 2026-11-15: a lead was asked every minute to free a writer that worked).
+const FREE_AFTER_MS = 10 * 60_000
+const mayFree = (d: Derived, x: Assignment): boolean => {
+  if (x.runs._tag === 'Agent' || x.runs._tag === 'Host') return false
+  const since = claimedSince(d.moment.work, x.id)
+  return since !== undefined && Date.parse(d.moment.at) - Date.parse(since) >= FREE_AFTER_MS
+}
 // How many briefs an assignment read: each one starts a new attempt.
 const briefsOf = (w: Work, a: AssignmentId): number => w.meta.get(a)?.briefs ?? 0
 // The last assignment of one of the roles on a task, open or ended.
@@ -795,7 +804,9 @@ const makerStep = (
   }
   if (maker && claimedSince(w, maker.id) !== undefined) {
     const what: StepWhat = { _tag: 'MakerWorking', maker: maker.id, task: t.id, briefs }
-    return act(what, { _tag: 'Free', target: { assignment: maker.id } })
+    return mayFree(d, maker)
+      ? act(what, { _tag: 'Free', target: { assignment: maker.id } })
+      : wait(what)
   }
   if (maker) {
     const ownChild = parentId(maker) === a.id
@@ -870,7 +881,9 @@ const checkerStep = (
   const briefs = checker === undefined ? 0 : briefsOf(w, checker.id)
   if (checker && claimedSince(w, checker.id) !== undefined) {
     const what: StepWhat = { _tag: 'CheckerWorking', checker: checker.id, result, briefs }
-    return act(what, { _tag: 'Free', target: { assignment: checker.id } })
+    return mayFree(d, checker)
+      ? act(what, { _tag: 'Free', target: { assignment: checker.id } })
+      : wait(what)
   }
   if (checker) {
     const ownChild = parentId(checker) === a.id

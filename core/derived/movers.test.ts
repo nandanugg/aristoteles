@@ -134,6 +134,16 @@ describe('a decider with an old snapshot reads its brief again', () => {
   }, 30000)
 })
 
+// Live, 2026-11-15: the lead of a working writer had a ready step to free it, shown again each
+// minute; a claim is freed only when its holder stopped.
+describe('a working claim is freed only when its holder stopped', () => {
+  test('while the writer works, its lead waits', async () => {
+    const s = await harness.withWriter()
+    ok(await s.p.agent(`brief ${s.writer}`))
+    expect(tags(nextFor(derivedOf(s), agent('a1')))).toContain('Wait MakerWorking')
+  }, 30000)
+})
+
 describe('the reviewers of a result', () => {
   test('a maker may not assign a reviewer of its own result', async () => {
     const s = await writerReported()

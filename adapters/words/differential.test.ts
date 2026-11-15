@@ -90,7 +90,10 @@ const P3_REFUSED: Readonly<Record<string, string>> = {
 }
 // P9: a role that leads nothing checks only its own rules, so it no longer escalates for the
 // checkers of other roles (a step line and its command); a maker that holds its claim reports.
-const p9Lines = (w: Work, a: AssignmentId, at: string, old: Lines): Lines => {
+const p9Lines = (w: Work, a: AssignmentId, at: string, pinned: Lines): Lines => {
+  // A working claim is freed only when its holder stopped: the free of a working maker or
+  // checker is a wait now, which prints no command.
+  const old = pinned.filter((l) => !/^ {2}work free a0\.TOKEN a\d+$/.test(l))
   // A checker whose claim ended with its last review reads its brief again before it checks.
   const free = claimedSince(w, a) === undefined
   const i = free ? old.findIndex((l) => /^check r\d+ yourself$/.test(l)) : -1
@@ -262,7 +265,11 @@ describe('brief', () => {
         if (removed.length === 0 && added.length === 0) continue // only the lines of 10.1
         expect(added).toEqual([])
         expect(removed.length).toBeGreaterThan(0)
-        for (const line of removed) expect(line).toMatch(/^ {2}finish a\d+$|^ {4}work finish /)
+        // 2026-11-15: a working claim is freed only when its holder stopped, so the free of a
+        // maker that works is a wait now, and prints no command.
+        for (const line of removed) {
+          expect(line).toMatch(/^ {2}finish a\d+$|^ {4}work finish |^ {4}work free a0\.TOKEN a\d+$/)
+        }
         seen.push(`${s.name}: D14: ${a.id}`)
       }
     }
@@ -380,7 +387,9 @@ describe('the views of a question, an assignment and a task', () => {
         const notices = noticeLinesOf(d, a.id, `${a.id}.<token>`)
         const { removed, added } = changed(lines[0]?.split('\n') ?? [], brief.split('\n'))
         expect(added.filter((l) => !notices.includes(l))).toEqual([])
-        for (const line of removed) expect(line).toMatch(/^ {2}finish a\d+$|^ {4}work finish /)
+        for (const line of removed) {
+          expect(line).toMatch(/^ {2}finish a\d+$|^ {4}work finish |^ {4}work free a\d+\.<token> a\d+$/)
+        }
         expect(lines.slice(1)).toEqual(['', '(read-only: no snapshot, no claim)'])
       }
       for (const t of w.tasks.values()) {
