@@ -407,6 +407,16 @@ const brief: Check<'Brief'> = (c, { target: { assignment } }) => {
     return no(`${a.id} is finished`, 'Escalate', `do no more work for it; tell ${upTo(a)}`)
   }
   const claim = w.meta.get(a.id)?.claim
+  // A terminal (a persistent agent) holds its own claim: a second brief would count a new
+  // attempt, so it reads the brief again read-only (live, 2026-11-15: the writer was told that
+  // another subagent held its claim, and stopped).
+  if (claim !== undefined && claim._tag !== 'Free' && a.runs._tag === 'Agent') {
+    return no(
+      `you hold ${a.id} since ${claim.since.slice(11, 16)}; your brief is read already`,
+      'Pick',
+      `read it again with work assignment show ${a.id}, then do its steps`,
+    )
+  }
   if (claim !== undefined && claim._tag !== 'Free' && unitA(w, a)) {
     return no(
       `${a.id} is claimed since ${claim.since.slice(11, 16)} by another subagent`,

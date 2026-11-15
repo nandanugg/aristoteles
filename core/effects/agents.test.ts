@@ -103,6 +103,10 @@ describe('the persistent agents', () => {
     const brief = String(await p.agent(`brief ${leadToken}`))
     expect(brief).toContain('Never end your turn without a running work wait')
     expect(brief).not.toContain('STOP')
+    // A second brief would count a new attempt: it names the read-only view, not a stranger.
+    const twice = await p.agent(`brief ${leadToken}`).then(String, (e: unknown) => String(e))
+    expect(twice).toContain('work assignment show a2')
+    expect(twice).not.toContain('another subagent')
     await p.agent(`finish ${hostToken} a2`)
     expect(agentState(p.dir)).toEqual({ _tag: 'Between' })
     // Silent and not in work wait, past its silent minutes: Between, so no restart and no close.
