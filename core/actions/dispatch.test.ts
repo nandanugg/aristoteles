@@ -83,7 +83,10 @@ describe('the store start of onboarding (Question 20, option A)', () => {
   test('the start with two directions is one event in one store write', async () => {
     const p = h.project()
     const tsd = Bun.YAML.parse(h.DIRECTION) as Record<string, unknown>
-    const { cases, ...file } = tsd
+    const { cases: flat, ...file } = tsd
+    // Nanda, 2026-11-15: a case is a ladder to an output; the flat cases of the fixture are
+    // ladders with no rung.
+    const cases = (flat as ReadonlyArray<{ fit: string }>).map(({ fit, ...output }) => ({ fit, via: [], output }))
     const standards = (file.standards as ReadonlyArray<{ rules: ReadonlyArray<object> }>).map(
       (x) => ({ ...x, rules: x.rules.map((r) => ({ ...r, supersedes: [] })) }),
     )
@@ -94,6 +97,8 @@ describe('the store start of onboarding (Question 20, option A)', () => {
         name: 'Feature flags',
         owner: 'Nanda',
         from: [],
+        // Nanda, 2026-11-15: a direction has a summary.
+        summary: 'A critical change is flagged, so it can be turned off.',
         says: 'Each critical change is flagged.',
         standards: [],
       },
