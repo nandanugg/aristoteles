@@ -780,6 +780,141 @@ const serve = async (p, path) => {
     s.stop()
   }
 }
+// P8 (Nanda, 2026-11-15): screenshots at 1440x900 and 375x812, into P8_SHOTS when it is set.
+const p8Shot = async (page, name) => {
+  if (!process.env.P8_SHOTS) return
+  const size = page.viewportSize()
+  for (const [width, height, kind] of [[1440, 900, 'wide'], [375, 812, 'phone']]) {
+    await page.setViewportSize({ width, height })
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: join(process.env.P8_SHOTS, `${name}-${kind}.png`) })
+  }
+  await page.setViewportSize(size)
+}
+// The dir view shows no task and no terminal (P8, ruling 3).
+const noTaskView = async (page) => {
+  for (const sel of ['.card.task', '.panel', '.talk-term', '.xterm', '.rows']) {
+    expect(await page.locator(sel).count()).toBe(0)
+  }
+}
+{
+  // P8, ruling 3: the directions page before the store shows the AI's status in a toast, and no
+  // task or terminal.
+  const { ONBOARD_CONFIG, ONBOARD_DIRECTION, git, onboardingProject } = await import('../harness.js')
+  const p = onboardingProject()
+  p.realTime()
+  git(p.dir, 'init', '-q')
+  git(p.dir, 'config', 'user.name', 'Nanda')
+  p.write('draft.yaml', ONBOARD_CONFIG)
+  ok(await p.agent('onboard config --file=draft.yaml'))
+  ok(await p.agent('onboard found tsd-writing'))
+  p.write('tsd.yaml', ONBOARD_DIRECTION)
+  ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+  ok(await p.agent('status set --kind=thinking --text="Reading docs/ for the next direction" --by=host'))
+  const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') } })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  try {
+    await page.goto(s.url)
+    await page.waitForSelector('.direction-list')
+    await page.waitForSelector('.ai-toast')
+    expect(await page.textContent('.ai-toast strong')).toBe('Thinking')
+    expect(await page.textContent('.ai-toast .ai-text')).toBe('Reading docs/ for the next direction')
+    await noTaskView(page)
+    // A new status reaches the open page (the server's check of the files).
+    ok(await p.agent('status set --kind=feedback --text="Your words on TSD writing" --by=host'))
+    await page.waitForFunction(() => document.querySelector('.ai-toast strong')?.textContent === 'Wants to apply your feedback', null, { timeout: 8000 })
+    await p8Shot(page, 'directions-toast')
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+    s.stop()
+  }
+}
+{
+  // P8, ruling 3: after the store, the gear's directions entry is the dir view: the host's question
+  // to the person is the toast; a click on a choice answers it at once, and the status is back.
+  const { HOST, TASK_WHOLE, git, init, project, solToken } = await import('../harness.js')
+  const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
+  git(p.dir, 'init', '-q')
+  git(p.dir, 'config', 'user.name', 'Nanda')
+  await init(p)
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  ok(await p.run('run start', HOST))
+  ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
+  const host = await solToken(p, ok(await p.ui('task open td1')).out)
+  ok(await p.run(`brief ${host}`, HOST))
+  ok(await p.agent('status set --kind=waiting --text="A question on TSD writing" --by=h1'))
+  ok(await p.agent(`ask ${host} --to=owner --text="May a rule name a ticket?" --option="Never" --option="Only in the design"`))
+  // The page's clock is the harness's, as the status has it.
+  const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }, clock: () => p.now() })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  try {
+    await page.goto(s.url)
+    await page.waitForSelector('.project-row')
+    await page.click('[aria-label="Settings"]')
+    await page.waitForSelector('.gear')
+    // The settings tab is no dir view: no toast.
+    expect(await page.locator('.ai-toast').count()).toBe(0)
+    await page.click('.gear .tab >> text=Directions')
+    await page.waitForSelector('.ai-toast.asks .item.question')
+    expect(await page.textContent('.ai-toast .item.question .prose')).toBe('May a rule name a ticket?')
+    expect(await page.locator('.ai-toast .item-options button').allTextContents()).toEqual(['Never', 'Only in the design'])
+    expect(await page.locator('.ai-toast textarea').count()).toBe(1)
+    await noTaskView(page)
+    await p8Shot(page, 'gear-question-toast')
+    await page.click('.ai-toast .item-options >> text=Only in the design')
+    await page.waitForSelector('.ai-toast .item.question', { state: 'detached' })
+    expect(await page.textContent('.ai-toast strong')).toBe('Waits for you')
+    expect(ok(await p.ui('question show q1')).out).toEndWith('answer: Only in the design')
+    await page.click('.gear .tab >> text=Agents')
+    await page.waitForSelector('.ai-toast')
+    await noTaskView(page)
+    await p8Shot(page, 'gear-agents-toast')
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+    s.stop()
+  }
+}
+{
+  // P8, ruling 4: a page never runs old code against a newer server. The server sends its build on
+  // the socket's open; a server of a new commit on the same port reloads the open page.
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { git, init, project } = await import('../harness.js')
+  const p = project()
+  await init(p)
+  const code = mkdtempSync(join(tmpdir(), 'ar-code-'))
+  git(code, 'init', '-q')
+  git(code, 'commit', '-q', '--allow-empty', '-m', 'one')
+  const env = { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db'), ARISTOTELES_CODE: code }
+  let s = startServer({ dir: p.dir, env })
+  const port = s.port
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  try {
+    await page.goto(s.url)
+    await page.waitForSelector('.canvas')
+    await page.waitForTimeout(500)
+    await page.evaluate(() => { window.oldCode = true })
+    // The same build again: the page stays.
+    s.stop()
+    s = startServer({ dir: p.dir, env, port })
+    await page.waitForTimeout(2500)
+    expect(await page.evaluate(() => window.oldCode)).toBe(true)
+    // A new commit: the page reloads itself.
+    s.stop()
+    git(code, 'commit', '-q', '--allow-empty', '-m', 'two')
+    s = startServer({ dir: p.dir, env, port })
+    await page.waitForFunction(() => window.oldCode === undefined, null, { timeout: 10000 })
+  } finally {
+    await page.close()
+    s.stop()
+  }
+}
 await browser.close()
 console.log('the page check passed')
 process.exit(0)
