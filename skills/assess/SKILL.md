@@ -50,9 +50,11 @@ again. The store starts at the end, with only the accepted result.
 7. **Wait for the person:** `work onboard wait` blocks until something waits for you, 540 seconds
    at most. When your AI CLI cannot run a command that long, or you cannot run it in the
    background (so that the person can still talk to you), loop a short wait: `work onboard wait
-   --seconds=60`, and run it again each time it prints `nothing waits for the host yet`. It
-   returns when something waits for you, and prints each direction and role with its state, each
-   request, and the command that answers it:
+   --seconds=60`, and run it again each time it prints `nothing waits for the host yet`. A wait
+   that returns with nothing new is no news: run the next wait without a message to the person.
+   Write to the person only when something changed, or when the person asks. It returns when
+   something waits for you, and prints each direction and role with its state, each request, and
+   the command that answers it:
    - a direction to draft, or to draft again after a Revise (the words of the person): do step 5
      again, with the same id;
    - answers that the person submitted: draft the direction again with them;
