@@ -133,6 +133,13 @@ describe('the pump', () => {
       expect(pump.paneOf('host-1')).toEqual({ socket: person.socket, pane: person.pane })
       // Ruling 2026-11-14 (fixed-size terminals): the pane streams only while a page shows it.
       pump.show('host-1')
+      // The stream starts when its control client is attached; output of the moment before shows
+      // on a page only when the tool draws again (pump.ts hostFrame). The fake agent answers once,
+      // so the test types after the attach.
+      const controlClients = () =>
+        Bun.spawnSync(['tmux', '-f', '/dev/null', '-S', person.socket, 'list-clients', '-F', '#{client_control_mode}'])
+          .stdout.toString().split('\n').filter((l) => l.trim() === '1').length
+      await until(() => controlClients() > 0)
       pump.input('host-1', 'hello\r')
       await until(() => seen.get('host-1')?.includes('you said: hello'))
       expect(text(pump.snapshot('host-1'))).toContain('you said: hello')
