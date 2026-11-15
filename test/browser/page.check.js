@@ -48,13 +48,14 @@ const open = async () => {
     const { p, s, page, errors, linter, icons } = await open()
     try {
       // The sidebar starts folded (Nanda, 2026-11-15); the button at the top left opens it.
-      expect(await page.locator('.crumb').count()).toBe(0)
+      expect(await page.isVisible('.crumb')).toBe(false)
       expect(await page.getAttribute('.fold', 'aria-expanded')).toBe('false')
       await page.click('.fold')
       expect(await page.getAttribute('.fold', 'aria-expanded')).toBe('true')
+      await page.waitForSelector('.crumb', { state: 'visible' })
       expect(await page.textContent('.crumb')).toBe('report-export/ The Introduction')
       await page.click('.fold')
-      await page.waitForSelector('.crumb', { state: 'detached' })
+      await page.waitForSelector('.crumb', { state: 'hidden' })
       expect(await page.textContent('.card.task .task-title')).toBe('t1The Introduction')
       expect(await page.textContent('.card.task .now')).toBe('in review')
       expect(await page.textContent('.card.task .tags')).toBe('Terra · a1')

@@ -87,20 +87,34 @@ button { font: inherit; color: inherit; }
 /* The page never scrolls: the sidebar, the canvas and the panel each scroll on their own. */
 .layout { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); height: 100vh; overflow: hidden; }
 
-/* The sidebar: dir / project, the projects, New project, and the gear at the bottom left. */
+/* The sidebar: the fold button and dir / project, the projects, and the gear at the bottom left.
+   Folded (the default) it is a thin strip with the two buttons; the width moves between the two. */
 .sidebar {
-  display: flex; flex-direction: column; gap: 4px; padding: 14px; background: var(--surface);
-  border-right: 1px solid var(--line); min-height: 0; overflow: auto; width: 252px;
+  --sidebar-open: 252px; --sidebar-folded: 48px;
+  display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--surface);
+  border-right: 1px solid var(--line); min-height: 0; overflow: hidden auto; width: var(--sidebar-open);
+  transition: width 0.22s ease;
 }
-/* Folded (the default): only the fold button at the top left and the gear at the bottom. */
-.sidebar.folded { width: 72px; align-items: center; }
-.fold { position: relative; flex: none; }
-.crumb .fold { margin: -4px 0 -8px -6px; }
+.sidebar.folded { width: var(--sidebar-folded); overflow: hidden; }
+/* The parts beside the buttons keep the open width, so their text does not wrap while it moves. */
+.sidebar-head, .sidebar-list { width: calc(var(--sidebar-open) - 12px); flex: none; }
+.sidebar-head { display: flex; align-items: center; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.sidebar .icon-button { width: 36px; height: 36px; flex: none; }
+.crumb, .sidebar-list { transition: opacity 0.16s ease 0.06s, visibility 0s; }
+.sidebar.folded .crumb, .sidebar.folded .sidebar-list {
+  opacity: 0; visibility: hidden; transition: opacity 0.1s ease, visibility 0s linear 0.22s;
+}
+.sidebar.folded .sidebar-head { border-bottom-color: transparent; }
+.fold { position: relative; }
+.badge-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--reject); }
+.crumb { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .crumb > svg { flex: none; }
-.badge-dot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--reject); }
-.crumb { display: flex; align-items: center; gap: 8px; padding: 4px 6px 12px; border-bottom: 1px solid var(--line); margin-bottom: 8px; min-width: 0; }
 .crumb strong { font-weight: 600; white-space: nowrap; flex: none; }
 .crumb span { color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sidebar-list { display: flex; flex-direction: column; gap: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .crumb, .sidebar-list, .sidebar.folded .crumb, .sidebar.folded .sidebar-list { transition: none; }
+}
 .project {
   display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px; border-radius: 8px;
   color: var(--text); text-decoration: none; border: 0; background: transparent; width: 100%; text-align: left; cursor: pointer;
@@ -282,10 +296,15 @@ button { font: inherit; color: inherit; }
 .person-line { color: var(--reject); font-size: 13px; margin: 0 0 16px; max-width: 720px; }
 
 @media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
-  .sidebar { border-right: 0; border-bottom: 1px solid var(--line); width: auto; }
-  .sidebar.folded { width: auto; flex-direction: row; justify-content: space-between; padding: 6px 14px; }
-  .sidebar.folded .sidebar-foot { margin-top: 0; }
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; height: auto; min-height: 100vh; }
+  /* A top bar: the gear sits at the right of the fold button's row; the list folds in height. */
+  .sidebar, .sidebar.folded { border-right: 0; border-bottom: 1px solid var(--line); width: auto; position: relative; overflow: visible; transition: none; }
+  .sidebar-head, .sidebar-list { width: auto; }
+  .sidebar-head { padding-right: 44px; }
+  .sidebar-list { max-height: 60vh; overflow: auto; transition: max-height 0.22s ease, opacity 0.16s ease; }
+  .sidebar.folded .sidebar-list { max-height: 0; }
+  .sidebar.folded .sidebar-head { padding-bottom: 0; margin-bottom: 0; }
+  .sidebar-foot { position: absolute; top: 6px; right: 6px; margin: 0; }
   .panel { width: 100%; position: fixed; inset: 0; z-index: 5; }
 }
 

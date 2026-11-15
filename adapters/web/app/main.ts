@@ -100,21 +100,18 @@ function Sidebar({ dir, project, open, onToggle, onSettings }: SidebarProps) {
   const current = dir.projects.find((p) => p.id === project)
   const crumbTail = current ? html`<span>/ ${current.title}</span>` : ''
   const needsYou = !open && dir.projects.some((p) => p.badge)
-  const foot = html`<div class="sidebar-foot">
-    <button class="icon-button" aria-label="Settings"
-      onClick=${onSettings}>${icon(ICONS.gear, 20)}</button>
-  </div>`
-  const toggle = html`<button class="icon-button fold" aria-expanded=${open}
-    aria-label=${open ? 'Hide the projects' : 'Show the projects'}
-    onClick=${onToggle}>${icon(ICONS.panel, 20)}${needsYou
-      ? html`<span class="badge-dot" aria-hidden="true"></span>` : ''}</button>`
-  if (!open) {
-    return html`<nav class="sidebar folded" aria-label="Projects of this dir">${toggle}${foot}</nav>`
-  }
-  return html`<nav class="sidebar" aria-label="Projects of this dir">
-    <div class="crumb">${toggle}${icon(ICONS.folder)}<a class="crumb-dir" href="/"
-      onClick=${follow}><strong>${dir.name}</strong></a>${crumbTail}</div>
-    ${dir.projects.map((p) => html`
+  // One shape for both states, so the width can move between them; folded, the parts beside the
+  // buttons are hidden (they take no focus).
+  return html`<nav class=${open ? 'sidebar' : 'sidebar folded'} aria-label="Projects of this dir">
+    <div class="sidebar-head">
+      <button class="icon-button fold" aria-expanded=${open}
+        aria-label=${open ? 'Hide the projects' : 'Show the projects'}
+        onClick=${onToggle}>${icon(ICONS.panel, 18)}${needsYou
+          ? html`<span class="badge-dot" aria-hidden="true"></span>` : ''}</button>
+      <div class="crumb">${icon(ICONS.folder)}<a class="crumb-dir" href="/"
+        onClick=${follow}><strong>${dir.name}</strong></a>${crumbTail}</div>
+    </div>
+    <div class="sidebar-list">${dir.projects.map((p) => html`
       <a class="project" href=${`/${p.id}`} onClick=${follow}
         aria-current=${p.id === project ? 'page' : undefined}>
         ${p.state === 'done' ? icon(ICONS.check, 14) : dot(p.state === 'closed' ? 'closed' : 'run')}
@@ -122,8 +119,11 @@ function Sidebar({ dir, project, open, onToggle, onSettings }: SidebarProps) {
         ${p.badge ? html`<span class="badge" role="img"
           aria-label="Needs you">!</span>` : html`<span
           class="state">${STATE_WORDS[p.state] ?? p.state}</span>`}
-      </a>`)}
-    ${foot}
+      </a>`)}</div>
+    <div class="sidebar-foot">
+      <button class="icon-button" aria-label="Settings"
+        onClick=${onSettings}>${icon(ICONS.gear, 18)}</button>
+    </div>
   </nav>`
 }
 
