@@ -1038,6 +1038,11 @@ ids.
   words (`work run continue <run> --quote=`). The pump copies that one pane (`capture-pane`) and
   types into it (`send-keys`); it never starts, resizes, stops, or restarts it, and the watcher
   never restarts a host.
+- Ruling 10.10, as changed (Nanda, 2026-11-15, F7): a direction change from no project goes to
+  every ACTIVE host, and an active host is the host of an open run, whatever its pane shows. The
+  CLI reads no panes and the page reads the pump; both must derive the same steps and holds. A
+  host whose pane died keeps its "explain dN" step until it runs again; the page shows the draft
+  after `hostWaitMinutes`, and an open page hears of it at that time (the next clock edge).
 
 ## 13. Onboarding (2026-11-14)
 
