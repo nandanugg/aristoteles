@@ -16,13 +16,20 @@ import {
   decidesResults,
   directionIdsOf,
   holdsA,
+  isRejectItem,
+  itemAt,
   leads,
   mayChange,
   modelOfAssignment,
+  resultAt,
+  reviewItems,
+  roleOf,
   rulesOf,
+  sameActor,
   stopTask,
   taskAt,
   unitA,
+  type Item,
 } from '../../core/derived/reads.ts'
 import { type Derived, nextFor, waitingFor } from '../../core/derived/index.ts'
 import { assignable, fileTurn, splitterAbove } from '../../core/derived/steps.ts'
@@ -328,13 +335,19 @@ const answerLines = (d: Derived, a: Assignment): ReadonlyArray<string> => {
       ]
     })
 }
-// The escalations of this assignment that a resolve closed: who resolved each, and the words. An
-// open one is a line of OPEN already; its resolution takes the same place, so the agent that
-// escalated reads the answer where it reads what to do next, and does not escalate again.
-const resolvedLines = (w: Work, a: Assignment): ReadonlyArray<string> =>
+// The escalations of this assignment that a resolve closed, on the result that it works on now:
+// who resolved each, and the words. An open one is a line of OPEN already; its resolution takes
+// the same place, so the agent that escalated reads the answer where it reads what to do next,
+// and does not escalate again. A resolution on an older result answered that result; it stays in
+// the record (work result show), not in the brief (owner, 2026-11-15: one fact, one reader).
+const resolvedLines = (
+  w: Work,
+  a: Assignment,
+  now: ResultId | undefined,
+): ReadonlyArray<string> =>
   [...w.reviews.values()].flatMap((v) => {
     const e = v._tag === 'Resolve' ? w.reviews.get(v.escalation) : undefined
-    if (v._tag !== 'Resolve' || e?._tag !== 'Escalate' || e.by !== a.id) return []
+    if (v._tag !== 'Resolve' || e?._tag !== 'Escalate' || e.by !== a.id || e.of !== now) return []
     const full = v.resolution.length > 200 ? ` (in full: work result show ${e.of})` : ''
     return [
       `${e.id} escalated on ${e.of}: "${short(e.reason, 100)}" (resolved by ${who(w, v.by, v.id)})`,
@@ -362,6 +375,38 @@ const isDecider = (item: Blocker): boolean =>
   item._tag === 'DeciderWaits' ||
   item._tag === 'DeciderAnyApprover'
 
+// A point on an older result that its reviewer reviewed again: the same reviewer (the same agent,
+// or another agent of its role) rejected a newer result of the task after it. That later Reject
+// is the reviewer's whole reading of newer work, so the old point is closed for the brief, though
+// no evidence answers it yet and work blockers still lists it. A checker reads the points of the
+// latest round, not each round before it; a maker on a redo reads the points it must answer
+// (owner, 2026-11-15: a judge's brief grew past its limit with each round on one task).
+const sameReviewer = (w: Work, x: Item, y: Item): boolean => {
+  if (sameActor(w, x.by, y.by)) return true
+  const [rx, ry] = [roleOf(w, x.by), roleOf(w, y.by)]
+  return rx !== undefined && rx.role === ry?.role
+}
+const reviewedAgain = (w: Work, point: Item): boolean => {
+  if (point.of._tag !== 'Result') return false
+  const was = resultAt(w, point.of.id)
+  return reviewItems(w).some((later) => {
+    if (!isRejectItem(later) || later.of._tag !== 'Result' || later.at <= point.at) return false
+    const newer = resultAt(w, later.of.id)
+    return newer.task === was.task && newer.at > was.at && sameReviewer(w, later, point)
+  })
+}
+// The points of a blocker that bear on the result now (for a checker or a maker of one unit).
+const openPoints = (w: Work, item: Blocker): Blocker =>
+  item._tag === 'Evidence'
+    ? {
+        ...item,
+        rejects: item.rejects.filter((id) => {
+          const point = itemAt(w, id)
+          return point === undefined || !reviewedAgain(w, point)
+        }),
+      }
+    : item
+
 // The open items of one result, with ids. A maker of one unit sees what to fix; a checker of one
 // unit only its own checks; a lead sees everything.
 const resultItems = (d: Derived, result: ResultId, a: Assignment): ReadonlyArray<string> => {
@@ -387,7 +432,8 @@ const resultItems = (d: Derived, result: ResultId, a: Assignment): ReadonlyArray
       `${result} was built on ${stale.source}@${stale.was}; ${stale.source} is now at ${stale.now}`,
     )
   }
-  for (const item of blockersOfResult(w, result).filter(wanted)) {
+  const items = blockersOfResult(w, result).map((x) => (low ? openPoints(w, x) : x))
+  for (const item of items.filter(wanted)) {
     lines.push(...blockerLines(d, result, item))
   }
   return lines
@@ -569,7 +615,7 @@ const renderBrief = (d: Derived, id: AssignmentId, token: string, ready: boolean
   if (answers.length) lines.push(...block('ANSWERS', answers))
   const notes = checker ? [] : noteLines(w, a)
   if (notes.length) lines.push(...block('NOTES', notes))
-  const open = [...resolvedLines(w, a), ...openItems(d, task, a)]
+  const open = [...resolvedLines(w, a, result?.id), ...openItems(d, task, a)]
   if (open.length) {
     const more = open.length - 6
     const rest = more > 0 ? [`(${more} more: work blockers ${latestResult(w, task.id)?.id})`] : []
