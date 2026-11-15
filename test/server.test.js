@@ -396,7 +396,9 @@ describe('the onboarding pages', () => {
     expect(view.roles.map((r) => [r.role, r.state, r.toggle])).toEqual(ROLES.map((r) => [r, 'current', false]))
     expect((await onboard({ act: 'add-direction', principle: 'one more' })).error).toBe('the store of this dir has started, so onboarding is over; a change now is an adjustment')
     // P7: the text box of the gear stores a suggestion about the roles.
-    expect((await act({ act: 'suggest', about: { _tag: 'Roles' }, says: 'add an editor' })).out).toBe('s1: a suggestion about the roles; an adjustment of a role answers it.')
+    // P1 (D3): the answer names who drafts it; here no agent can yet.
+    expect((await act({ act: 'suggest', about: { _tag: 'Roles' }, says: 'add an editor' })).out).toBe('s1: a suggestion about the roles; an adjustment of a role answers it. ' +
+      'Next: no agent can draft it now; start a project in your AI CLI, and its host drafts it.')
     // BUILD.md 1c: the store start replaced the page act accept-roles.
     expect((await act({ act: 'accept-roles' })).error).toBe('there is no act "accept-roles"')
   })

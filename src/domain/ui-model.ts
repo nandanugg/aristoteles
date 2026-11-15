@@ -25,6 +25,8 @@ import type {
   AgentId,
   AssignmentId,
   DirectionId,
+  EscalationId,
+  EvaluationId,
   EventRef,
   NonBlank,
   ProblemId,
@@ -304,13 +306,39 @@ export type Decision = DecisionBase &
     // a question to the person (id: q..): text is the question; the person picks an option or
     // writes the answer, and it counts at once. asker: who asked, as "writer (a3)".
     | { readonly _tag: 'Question'; readonly asker: Text; readonly options: ReadonlyArray<Text> }
+    // an evaluation that counts after the owner's accept (id: ev..; P1, 2026-11-15)
+    | {
+        readonly _tag: 'Evaluation'
+        readonly level: Text
+        readonly wrong: Text
+        readonly why: Text
+        readonly improve: ReadonlyArray<Text>
+      }
+    // any other item that waits for the person (P1, 2026-11-15): title names its kind, text says
+    // what waits, and its acts are the ones that move it (id: the item's id).
+    | { readonly _tag: 'Step'; readonly title: Text }
   )
+// An act of a decision: each one is an intent of the item's step that passed canAct, so the page
+// offers no act that is refused (P1). Accept, Reject, Confirm, Answer and FixProblem act on the
+// decision's own record; AtTerminal is an act that needs a file, with its command.
+export type DecisionAct =
+  | { readonly _tag: 'Accept' }
+  | { readonly _tag: 'Reject' }
+  | { readonly _tag: 'Confirm' }
+  | { readonly _tag: 'Answer' }
+  | { readonly _tag: 'FixProblem' }
+  | { readonly _tag: 'Resolve'; readonly escalation: EscalationId }
+  | { readonly _tag: 'Give'; readonly task: TaskId; readonly role: Text }
+  | { readonly _tag: 'Suggest'; readonly about: SuggestionTarget; readonly name: Text }
+  | { readonly _tag: 'AtTerminal'; readonly line: Text }
 interface DecisionBase {
   readonly id: Text
   readonly task: TaskId | null // the task where it shows; null: every top task of the dir
   readonly text: Text // the fixed sentence of its kind
   readonly words: Text | null // the host's words, when written
   readonly at: Time
+  readonly acts: ReadonlyArray<DecisionAct> // none: it waits for others, as waits says
+  readonly waits: Text | null // what it waits for, when the person cannot move it now
   // It shows when its host wrote its words, when no host holds its tree, or when the host wrote
   // nothing for hostWaitMinutes; a problem that the person's UI recorded shows at once.
   readonly shown:
@@ -347,6 +375,8 @@ export interface DirView {
   readonly initialized: boolean // the dir has a store
   readonly startPrompt: Text // the person pastes it into their AI CLI in the dir: that session is the host
   readonly projects: ReadonlyArray<ProjectSummary> // the newest first
+  // The decisions that no open task shows (P1, F3): of no task, or of a task that ended.
+  readonly inbox: ReadonlyArray<Decision>
 }
 
 // A project: a run, or a top task that no run holds (opened at a terminal).
@@ -551,6 +581,11 @@ export type PageAct =
   | { readonly act: 'reject-adjustment'; readonly draft: EventRef; readonly reason: Text }
   // the text box of the gear stores a suggestion: about a direction, a new one, or the roles (P7)
   | { readonly act: 'suggest'; readonly about: SuggestionTarget; readonly says: Text }
+  // the acts of the person's other items (P1): an assign, a resolve, an evaluation's decision
+  | { readonly act: 'assign'; readonly task: TaskId; readonly role: RoleName }
+  | { readonly act: 'resolve'; readonly escalation: EscalationId; readonly text: Text }
+  | { readonly act: 'accept-evaluation'; readonly evaluation: EvaluationId; readonly text: Text }
+  | { readonly act: 'reject-evaluation'; readonly evaluation: EvaluationId; readonly reason: Text }
 export type SuggestionTarget =
   | { readonly _tag: 'NewDirection' }
   | { readonly _tag: 'Direction'; readonly direction: DirectionId }

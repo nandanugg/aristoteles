@@ -19,7 +19,9 @@ import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, Subscriptio
 import { dispatch } from '../../core/actions/index.ts'
 import { type Derived, derive } from '../../core/derived/index.ts'
 import {
+  type AssignmentId,
   type Author,
+  type SuggestionId,
   OnboardingAct,
   StoreDamaged,
   type Time,
@@ -49,6 +51,7 @@ import { momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
 import { readingsLive } from '../live/readings.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { withBriefMeasure } from '../words/index.ts'
+import { suggestionMover } from '../words/shared.ts'
 import { type ActionAct, callOf, wordsOf } from './acts.ts'
 import { PAGE_FILES, pageBundle } from './bundle.ts'
 import {
@@ -319,17 +322,50 @@ export function startServer(options: ServerOptions): ServerHandle {
     throw new Error(messageOf(Cause.squash(exit.cause)))
   }
   const failed = (error: unknown) => json(refusalOf(error), 400)
-  const actAs = async (act: ActionAct): Promise<Response> => {
+  // Whoever git names must be a person of this work, as at the CLI.
+  const member = async (): Promise<Person | Response> => {
     const by = await asPerson()
     if (!by) return json({ error: NO_PERSON }, 400)
-    // Whoever git names must be a person of this work, as at the CLI.
     const people = readState()?.config.people ?? []
     if (!people.includes(by.name)) {
       return json({ error: `${by.name} (git user.name) is not in the people of ${CONFIG}` }, 400)
     }
+    return by
+  }
+  const actAs = async (act: ActionAct): Promise<Response> => {
+    const by = await member()
+    if (by instanceof Response) return by
     try {
       const done = await dispatched(callOf(act, by))
-      return json({ out: wordsOf(act, done.created) })
+      const out = wordsOf(act, done.created)
+      // P1 (D3): a suggestion names the one that drafts its answer.
+      const d = act.act === 'suggest' ? readDerived() : undefined
+      const id = done.created[0] as SuggestionId
+      return json({ out: d ? `${out} Next: ${suggestionMover(d, id, false)}.` : out })
+    } catch (error) {
+      return failed(error)
+    }
+  }
+
+  // The person's assign on the page (P1): a terminal of the project starts the agent of a run; an
+  // agent of no run starts in the person's AI CLI with its token.
+  const assign = async (b: Extract<PageAct, { readonly act: 'assign' }>): Promise<Response> => {
+    const by = await member()
+    if (by instanceof Response) return by
+    const secret = tokenSecret()
+    const content = { maxAttempts: null, secret }
+    try {
+      const done = await dispatched({
+        by,
+        input: { _tag: 'Give', target: { task: b.task, role: b.role }, content },
+      })
+      const a = readState()?.assignments.get(done.created[0] as AssignmentId)
+      if (a === undefined) return json({ out: `${b.role} assigned on ${b.task}.` })
+      const where =
+        a.runs._tag === 'Agent' || a.runs._tag === 'Host'
+          ? 'its terminal starts here'
+          : `start it in your AI CLI: work brief ${a.id}.${secret}`
+      return json({ out: `${a.id} · ${a.role} on ${a.task}; ${where}.` })
     } catch (error) {
       return failed(error)
     }
@@ -410,7 +446,12 @@ export function startServer(options: ServerOptions): ServerHandle {
       case 'accept-adjustment':
       case 'reject-adjustment':
       case 'suggest':
+      case 'resolve':
+      case 'accept-evaluation':
+      case 'reject-evaluation':
         return actAs(b)
+      case 'assign':
+        return assign(b)
       case 'settings':
         runSync(writeSettings(dir, b.settings))
         send({ type: 'changed' })

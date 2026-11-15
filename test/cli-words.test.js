@@ -421,13 +421,16 @@ describe('the fixes of the skills round', () => {
     expect(r.err).not.toContain('check the ids with work status')
   })
 
-  test('a suggestion for a new direction says work direction new in its next line', async () => {
+  // P1 (D3): the next line names the one that drafts it; here no high role works yet.
+  test('the next line of a suggestion names who drafts it', async () => {
     const { p } = await started()
-    const next = 'next: a high role answers it with a draft: work direction'
-    const none = await out(p.nanda('suggest --says="a direction for the HLD"'))
-    expect(none).toContain(`${next} new <token> --file=<direction.yaml> --answers=s1`)
-    const about = await out(p.nanda('suggest tsd-writing --says="say the cost first"'))
-    expect(about).toContain(`${next} revise <token> <direction> --file=<edit.yaml> --answers=s2`)
+    const next = 'next: no agent can draft it now; give a high role work, and it drafts it: ' +
+      'work assign t1 --role=architect'
+    expect(await out(p.nanda('suggest --says="a direction for the HLD"'))).toContain(next)
+    expect(await out(p.nanda('suggest tsd-writing --says="say the cost first"'))).toContain(next)
+    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
+    ok(await p.agent(`brief ${arch}`))
+    expect(await out(p.nanda('suggest --says="a direction for the API"'))).toContain('next: a2 (architect) drafts it')
   })
 })
 

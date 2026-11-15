@@ -22,6 +22,9 @@ export type ActionAct = Extract<
       | 'accept-adjustment'
       | 'reject-adjustment'
       | 'suggest'
+      | 'resolve'
+      | 'accept-evaluation'
+      | 'reject-evaluation'
   }
 >
 
@@ -91,6 +94,36 @@ export const callOf = (act: ActionAct, by: Author): ActionCall => {
         by,
         input: { _tag: 'Suggest', target: { about: act.about }, content: { says: act.says } },
       }
+    case 'resolve':
+      return {
+        by,
+        input: {
+          _tag: 'Resolve',
+          target: { escalation: act.escalation },
+          content: { resolution: act.text, evidence: [] },
+        },
+      }
+    // An accept of an evaluation says what the person read in it (P1, D1).
+    case 'accept-evaluation': {
+      const evidence = [{ rule: null, where: `evaluation ${act.evaluation}`, what: act.text }]
+      return {
+        by,
+        input: {
+          _tag: 'Accept',
+          target: { of: { _tag: 'Evaluation', id: act.evaluation } },
+          content: { evidence, reason: null },
+        },
+      }
+    }
+    case 'reject-evaluation':
+      return {
+        by,
+        input: {
+          _tag: 'Reject',
+          target: { of: { _tag: 'Evaluation', id: act.evaluation } },
+          content: { points: [], reason: act.reason },
+        },
+      }
   }
 }
 
@@ -126,5 +159,11 @@ export const wordsOf = (act: ActionAct, created: ReadonlyArray<CreatedId>): stri
       return act.about._tag === 'Roles'
         ? `${created.join(', ')}: a suggestion about the roles; an adjustment of a role answers it.`
         : `${created.join(', ')}: a suggestion; a draft of a direction answers it.`
+    case 'resolve':
+      return `${act.escalation} resolved.`
+    case 'accept-evaluation':
+      return `${act.evaluation} accepted; it counts now.`
+    case 'reject-evaluation':
+      return `${act.evaluation} rejected.`
   }
 }

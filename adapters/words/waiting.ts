@@ -46,7 +46,15 @@ import { sectionOf } from '../../core/schema/index.ts'
 import { an, clock, describeInner, optionLines, short, stateWord, who } from './common.ts'
 import { drafterWords } from './role-words.ts'
 import { adjustmentWords } from './show.ts'
-import { aboutId, answerText, drafterOf, reviseAgainOf, stopIdOf, tierOfRole } from './shared.ts'
+import {
+  aboutId,
+  answerText,
+  drafterOf,
+  reviseAgainOf,
+  stopIdOf,
+  suggestionMover,
+  tierOfRole,
+} from './shared.ts'
 
 type Of<K extends WaitingItem['_tag']> = Extract<WaitingItem, { readonly _tag: K }>
 
@@ -311,19 +319,17 @@ const suggestionRow = (d: Derived, item: Of<'Suggestion'>): string => {
   const w = d.moment.work
   const y = w.suggestions.get(item.suggestion)
   if (y === undefined) throw new Error(`the work has no suggestion ${item.suggestion}`)
-  // A suggestion that asks for a new direction: no task follows it, so a model run outside any
-  // task drafts it (the skill that reads an app), and its owner accepts it. Each person sees it.
-  // The roles (P7): the host drafts the adjustment that the words ask for.
-  if (item.about._tag === 'Roles') {
-    const said = `"${short(y.says, 120)}" (${who(w, y.by)})`
-    return `${y.id} says about the roles: ${said}; the host drafts it`
-  }
-  if (item.about._tag === 'NewDirection') {
-    return (
-      `${y.id} asks for a new direction: "${short(y.says, 120)}" ` +
-      `(${who(w, y.by)}); a model drafts it\n` +
-      `    work direction new --file=<direction.yaml> --by=<model> --answers=${y.id}`
-    )
+  // The roles (P7) and a new direction: no task follows them, so the drafters of dirDrafters
+  // answer them (P1); each person sees a new direction. With no drafter, a model run (the skill
+  // that reads an app) may still draft a new direction.
+  if (item.about._tag !== 'Direction') {
+    const roles = item.about._tag === 'Roles'
+    const asks = roles ? 'says about the roles' : 'asks for a new direction'
+    const run =
+      roles || item.drafters.length > 0
+        ? ''
+        : `\n    work direction new --file=<direction.yaml> --by=<model> --answers=${y.id}`
+    return `${y.id} ${asks}: "${short(y.says, 120)}" (${who(w, y.by)}); ${suggestionMover(d, y.id)}${run}`
   }
   const direction = w.directions.get(item.about.direction) as Direction
   // A company direction changes in its repo, with a pull request; the person says OK first.

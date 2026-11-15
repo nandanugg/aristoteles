@@ -99,19 +99,23 @@ interface SidebarProps {
 function Sidebar({ dir, project, open, onToggle, onSettings }: SidebarProps) {
   const current = dir.projects.find((p) => p.id === project)
   const crumbTail = current ? html`<span>/ ${current.title}</span>` : ''
-  const needsYou = !open && dir.projects.some((p) => p.badge)
+  const waiting = dir.inbox.filter(needsYou)
+  const dotted = !open && (dir.projects.some((p) => p.badge) || waiting.length > 0)
   // One shape for both states, so the width can move between them; folded, the parts beside the
   // buttons are hidden (they take no focus).
   return html`<nav class=${open ? 'sidebar' : 'sidebar folded'} aria-label="Projects of this dir">
     <div class="sidebar-head">
       <button class="icon-button fold" aria-expanded=${open}
         aria-label=${open ? 'Hide the projects' : 'Show the projects'}
-        onClick=${onToggle}>${icon(ICONS.panel, 18)}${needsYou
+        onClick=${onToggle}>${icon(ICONS.panel, 18)}${dotted
           ? html`<span class="badge-dot" aria-hidden="true"></span>` : ''}</button>
       <div class="crumb">${icon(ICONS.folder)}<a class="crumb-dir" href="/"
         onClick=${follow}><strong>${dir.name}</strong></a>${crumbTail}</div>
     </div>
-    <div class="sidebar-list">${dir.projects.map((p) => html`
+    <div class="sidebar-list">${waiting.length ? html`<a class="project inbox-link" href="/"
+        onClick=${follow}><span class="title">Waits for you</span>
+        <span class="badge" role="img" aria-label="Needs you">${waiting.length}</span></a>` : ''}
+      ${dir.projects.map((p) => html`
       <a class="project" href=${`/${p.id}`} onClick=${follow}
         aria-current=${p.id === project ? 'page' : undefined}>
         ${p.state === 'done' ? icon(ICONS.check, 14) : dot(p.state === 'closed' ? 'closed' : 'run')}
@@ -462,15 +466,26 @@ function FirstStart({ dir }: { dir: DirData }) {
   </div>`
 }
 
+// A decision that needs the person now: shown, with an act.
+const needsYou = (d: DirData['inbox'][number]) => d.shown._tag === 'Shown' && d.acts.length > 0
+// The inbox of the dir (P1, F3): the decisions that no open task shows, above the projects.
+function Inbox({ dir }: { dir: DirData }) {
+  if (!dir.inbox.length) return ''
+  return html`<section class="inbox" aria-label="Waits for you">
+    <h2>Waits for you</h2>
+    ${dir.inbox.map((d) => html`<${Item} key=${d.id} item=${d} inbox=${true} />`)}
+  </section>`
+}
+
 // The projects of a dir with a store (Nanda, 2026-11-15): / lists them, the newest first, each
 // with its name and state, and the person opens one.
 function Projects({ dir }: { dir: DirData }) {
   if (!dir.projects.length) {
-    return html`<div class="empty"><h2>No project yet</h2>
+    return html`<${Inbox} dir=${dir} /><div class="empty"><h2>No project yet</h2>
       <p>A project starts in your AI CLI: trigger the aristoteles skill there, and that session is
         the host. Its terminal shows here.</p></div>`
   }
-  return html`<div class="projects-page">
+  return html`<${Inbox} dir=${dir} /><div class="projects-page">
     <div class="canvas-head"><h1>Projects of ${dir.name}</h1></div>
     <ul class="project-list">${dir.projects.map((p) => html`<li><a class="project-row"
       href=${`/${p.id}`} onClick=${follow}>
@@ -538,8 +553,7 @@ function App() {
   const badges = useRef<string | null>(null)
   useEffect(() => {
     if (!dir) return
-    const now = dir.projects
-      .filter((p) => p.badge)
+    const now = [...dir.projects.filter((p) => p.badge), ...dir.inbox.filter(needsYou)]
       .map((p) => p.id)
       .join(',')
     if (badges.current !== null && dir.sound && now && now !== badges.current) chime()

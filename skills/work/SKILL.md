@@ -97,7 +97,10 @@ talk with the person, then you run its top task.
    `work wait` of the old token gives you the command of the new Sol.
 4. **Everything else is yours.** Only these decisions reach the person: a system problem, a
    direction problem, the end of the project, their words that you relayed as an act, new words
-   of a role, an adjustment, and a question that you ask them. You do everything else:
+   of a role, an adjustment, and a question that you ask them. The page also shows the person
+   anything that only the person can move (an evaluation that waits for the owner's accept, a
+   draft with no reviewer, a brief over its limit with no high role above it); you never relay
+   those. You do everything else:
    - ask the person only with `work ask <token> --to=owner --text="..."` (for a choice, one
      `--option="..."` per answer, two or more). The page shows it, the person answers there,
      and `work wait` returns with the answer. After the talk of step 1, never ask the person

@@ -51,13 +51,18 @@ import {
 import { rolesSuggestionsWaiting } from './adjustments.ts'
 import type { Derived, Idle, NextFor, NextStep, StepKey, StepWhat } from './types.ts'
 import { isEndedTask } from './types.ts'
-import { openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
+import {
+  newDirectionsToDraft,
+  openDrafts,
+  suggestionsToDraft,
+  waitsForNewDraft,
+} from './drafts.ts'
 import {
   authorAssignment,
   authorOf,
+  dirDrafters,
   explainerOf,
   explains,
-  liveHosts,
   redrafterOf,
   redrafters,
 } from './authors.ts'
@@ -204,13 +209,15 @@ export const waitersOf = (d: Derived, x: AssignmentId): ReadonlyArray<Assignment
 
 // --- a brief over its limit (ruling 10.9) --------------------------------------------------------
 
-// The nearest high assignment above x that is not Ended; none: the owner of its task decides.
+// The nearest high assignment above x that may act (not Ended, its own brief fits); none: the
+// owner of its task decides.
 export const highAbove = (d: Derived, x: Assignment): Assignment | undefined => {
   const w = d.moment.work
   for (let y = parentId(x); y !== undefined;) {
     const up = w.assignments.get(y)
     if (up === undefined) return undefined
-    if (!ended(d, up.id) && tierOfAssignment(w, up) === 'high') return up
+    const waits = d.states.assignments.get(up.id)?._tag === 'BriefOver'
+    if (!ended(d, up.id) && !waits && tierOfAssignment(w, up) === 'high') return up
     y = parentId(up)
   }
   return undefined
@@ -273,19 +280,23 @@ const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   })
 }
 
-// What reaches an active host from no project (onboarding): a company draft of a new direction
-// that misses examples, which the host adds before the person's accept (P10 rejected,
-// onboarding 2026-11-14); the person's words about the roles, which the host drafts as an
-// adjustment (P7).
-const onboardingSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
+// What no task follows (P1): a company draft of a new direction that misses examples, which a
+// model adds before the person's accept (P10 rejected, onboarding 2026-11-14); a suggestion for a
+// new direction, which it drafts; the person's words about the roles, which it drafts as an
+// adjustment (P7). Each goes to the drafters of dirDrafters.
+const dirSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   const w = d.moment.work
-  if (!liveHosts(d).includes(a.id)) return []
+  if (!dirDrafters(d).includes(a.id)) return []
   const steps: Array<Candidate> = []
   for (const x of w.drafts.values()) {
     if (x._tag !== 'New' || examplesMissing(x.flow, x.examples) === undefined) continue
     if (d.states.revisions.get(x.id)?._tag !== 'Waiting') continue
     const what: StepWhat = { _tag: 'AddExamples', draft: x.id, direction: x.of }
     steps.push(act(what, { _tag: 'AddExamples', target: { draft: x.id } }))
+  }
+  for (const y of newDirectionsToDraft(d)) {
+    const what: StepWhat = { _tag: 'DraftNewDirection', suggestion: y.id }
+    steps.push(act(what, { _tag: 'DraftDirection', target: {} }))
   }
   for (const y of rolesSuggestionsWaiting(w)) {
     const what: StepWhat = { _tag: 'AnswerRolesSuggestion', suggestion: y.id }
@@ -318,7 +329,7 @@ export const candidatesOf = (d: Derived, id: AssignmentId): ReadonlyArray<Candid
   if (over !== undefined) return steps
   steps.push(...shortenSteps(d, a))
   steps.push(...explainSteps(d, a))
-  steps.push(...onboardingSteps(d, a))
+  steps.push(...dirSteps(d, a))
   // A result made from an old input: its maker makes it again, at the turn of its decider (B3).
   for (const t of w.tasks.values()) {
     if (!within(w, t.id, a.task) || !taskOpen(d, t.id)) continue
@@ -878,6 +889,7 @@ const IDS: {
   ReviseRejectedDraft: (s) => [s.draft, s.reject],
   AnswerSuggestion: (s) => [s.suggestion, s.direction],
   AnswerRolesSuggestion: (s) => [s.suggestion],
+  DraftNewDirection: (s) => [s.suggestion],
   AddExamples: (s) => [s.draft],
   PutOnBase: (s) => [s.task, s.result],
   FinishAcceptedTask: (s) => [s.task],

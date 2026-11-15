@@ -20,6 +20,7 @@ import {
   type NonBlank,
   type RevisionId,
   RoleName,
+  type SuggestionId,
   refuse,
   Time,
   type VersionId,
@@ -40,6 +41,7 @@ import {
   renderPiece,
   whyLines,
 } from '../../words/index.ts'
+import { suggestionMover } from '../../words/shared.ts'
 import { type Args, textOf, wordsOf } from '../args.ts'
 import { authorOf, callerOf, isPerson, personAuthor, agentCallerOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
@@ -354,19 +356,18 @@ const suggest: Command = (call) =>
       target: { about: target },
       content: { says: wordsOf(call.args.one('says')) },
     })
-    const sid = done.created[0]
+    const sid = done.created[0] as SuggestionId
+    // P1: the next line names the one that really answers it.
+    const next = `next: ${suggestionMover(yield* derivedAfter(done.work), sid)}`
     if (target._tag === 'Roles') {
       return [
         `${sid}: a suggestion about the roles; it stays open until an adjustment of a role answers it.`,
-        'next: a high role answers it with an adjustment: work adjust <token> <change>',
+        next,
       ]
     }
-    const draft = about
-      ? `work direction revise <token> <direction> --file=<edit.yaml> --answers=${sid}`
-      : `work direction new <token> --file=<direction.yaml> --answers=${sid}`
     return [
       `${sid}: a suggestion ${about ? `about ${about}` : 'for a new direction'}; it stays open until an official draft answers it.`,
-      `next: a high role answers it with a draft: ${draft}`,
+      next,
     ]
   })
 

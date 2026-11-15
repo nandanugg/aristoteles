@@ -15,6 +15,8 @@ import {
   adjustmentDraftAt,
   roleWordsDraftAt,
   onPage,
+  type PersonKind,
+  SURFACES,
   tierOfAssignment,
   waitingFor,
   type WaitingItem,
@@ -58,6 +60,7 @@ import {
   type DirView,
   type DraftChange,
   type Example,
+  examplesMissing,
   type ExampleView,
   type FlowStep,
   type FlowStepView,
@@ -94,6 +97,7 @@ import {
   whoOf,
 } from '../../core/schema/index.ts'
 import { type OnboardingFiles, pathOf } from '../../core/services/index.ts'
+import { an } from '../words/common.ts'
 import {
   adjustmentWords,
   describeInner,
@@ -103,6 +107,9 @@ import {
   touchedIds,
 } from '../words/index.ts'
 import type { TerminalStatus } from './frozen.ts'
+import { actsOf, examplesWait, stepCardOf } from './cards.ts'
+import { canAct } from '../../core/derived/can.ts'
+import { idOf } from '../../core/derived/waiting.ts'
 
 // What a view reads besides Derived: the dir, the settings now, the status of each terminal
 // (empty without tmux), and the person of the page (git user.name).
@@ -326,138 +333,174 @@ const draftChange = (w: Work, x: Revision<Direction>): DraftChange => {
   }
 }
 
-// One item that SURFACES shows on the page, as the decision of the wire. Each of the kinds
-// has its fixed sentence; the host's words come from the Work (the latest counts).
+type Of<K extends WaitingItem['_tag']> = Extract<WaitingItem, { readonly _tag: K }>
+type Base = Pick<Decision, 'task' | 'at' | 'acts' | 'waits'>
+// The card of each kind that the person may move (P1): the mapped type asks for one of each
+// PersonKind, of the decision kind that SURFACES names for it. Each has its fixed sentence; the
+// host's words come from the Work (the latest counts).
+type Card<K extends PersonKind> = (
+  d: Derived,
+  item: Of<K>,
+  base: Base,
+) => Extract<Decision, { readonly _tag: (typeof SURFACES)[K]['page'] }> | undefined
+const shownNow = { _tag: 'Shown' } as const
+const step = <K extends PersonKind>(d: Derived, item: Of<K>, base: Base) =>
+  stepCardOf(d, item as never, { id: idOf(item), words: null, shown: shownNow, ...base })
+const CARDS: { readonly [K in PersonKind]: Card<K> } = {
+  Problem: (d, item, base) => {
+    const w = workOf(d)
+    const p = w.problems.get(item.problem)
+    if (p === undefined) return undefined
+    // The host told its own problem, so its text is its words.
+    const own = p.recordedBy._tag === 'Host' ? p.says : null
+    const words = w.hostWords.get(item.problem)?.text ?? own
+    const { says: text, stopped } = p
+    return { _tag: 'System', id: p.id, text, stopped, words, shown: item.hold, ...base }
+  },
+  DraftForPerson: (d, item, base) => {
+    const w = workOf(d)
+    const x = w.drafts.get(item.draft)
+    if (x === undefined) return undefined
+    const words = w.hostWords.get(x.id)
+    // D2: an Accept that canAct refuses is no act; the card says what the draft waits for.
+    const name = item.for._tag === 'Person' ? item.for.name : ''
+    const of = { _tag: 'Revision', id: x.id } as const
+    const accept = canAct(d, { _tag: 'Person', name, channel: 'ui' }, {
+      _tag: 'Accept',
+      target: { of },
+    })
+    const missing = x._tag === 'New' && examplesMissing(x.flow, x.examples) !== undefined
+    const waits = accept._tag === 'May' ? null : missing ? examplesWait(d) : accept.refusal.message
+    return {
+      _tag: 'Direction',
+      id: x.id,
+      text: `A change to the direction "${directionAt(w, x.of).name}" waits for your decision.`,
+      direction: x.of,
+      change: draftChange(w, x),
+      why: x.why,
+      hope: words?._tag === 'DraftWords' ? words.hope : null,
+      words: words?.text ?? null,
+      shown: item.hold,
+      ...base,
+      waits,
+    }
+  },
+  Forward: (d, item, base) => {
+    const w = workOf(d)
+    const logged = w.events.find((l) => `e${l.recorded.seq}` === item.forward)
+    const stored = logged?.recorded.event
+    const forward = w.forwards.get(item.forward)
+    if (logged === undefined || stored?._tag !== 'Forward') return undefined
+    if (!('create' in stored)) return undefined
+    if (forward?._tag !== 'Confirmable') return undefined
+    return {
+      _tag: 'Confirm',
+      id: item.forward,
+      text:
+        `${whoOf(logged.recorded.author).who} relayed your words as this act: ` +
+        `${describeInner(forward.inner, w)}. It counts when you confirm it.`,
+      quote: stored.create.quote,
+      words: null,
+      shown: item.hold,
+      ...base,
+    }
+  },
+  RunEnd: (d, item, base) => {
+    const w = workOf(d)
+    return {
+      _tag: 'End',
+      id: item.run,
+      text:
+        `The agent that leads "${taskAt(w, item.top).name}" accepted its result. ` +
+        'Accept the end of the project, or reject the result with your reason.',
+      words: w.hostWords.get(item.run)?.text ?? null,
+      shown: item.hold,
+      ...base,
+    }
+  },
+  // New words of a role (ruling 2026-11-14): no host writes words about them.
+  RoleWords: (d, item, base) => {
+    const x = roleWordsDraftAt(workOf(d), item.draft)
+    if (x === undefined) return undefined
+    return {
+      _tag: 'RoleWords',
+      id: item.draft,
+      text:
+        `New words of the role "${x.role}", drafted by ${drafterWords(x.by)}, ` +
+        'wait for your decision.',
+      role: x.role,
+      lines: roleWordsChange(workOf(d), x),
+      words: null,
+      shown: item.hold,
+      ...base,
+    }
+  },
+  // A drafted adjustment (ruling 14): no host writes words about it.
+  Adjustment: (d, item, base) => {
+    const x = adjustmentDraftAt(workOf(d), item.draft)
+    if (x === undefined) return undefined
+    return {
+      _tag: 'Adjustment',
+      id: item.draft,
+      text:
+        `An adjustment, drafted by ${drafterWords(x.by)}, waits for your decision: ` +
+        `${adjustmentWords(x.adjustment)}.`,
+      adjustment: x.adjustment,
+      words: null,
+      shown: item.hold,
+      ...base,
+    }
+  },
+  // A question to the person counts at once: no host holds it, and the asker's words are it.
+  Question: (d, item, base) => {
+    const w = workOf(d)
+    const q = w.questions.get(item.question)
+    if (q === undefined) return undefined
+    const asker =
+      typeof q.from === 'string' ? `${assignmentAt(w, q.from).role} (${q.from})` : q.from.name
+    const { id, text, options } = q
+    return { _tag: 'Question', id, text, asker, options, words: null, shown: shownNow, ...base }
+  },
+  // D1: an evaluation at the level of a direction or a principle counts after the owner's accept.
+  EvaluationForOwner: (d, item, base) => {
+    const e = workOf(d).evaluations.get(item.evaluation)
+    if (e === undefined) return undefined
+    const { id, level, wrong, why, improve } = e
+    return {
+      _tag: 'Evaluation',
+      id,
+      text: `${id} says what went wrong, and that ${an(level)} changes. It counts when you accept it.`,
+      ...{ level, wrong, why, improve },
+      words: null,
+      shown: shownNow,
+      ...base,
+    }
+  },
+  Escalation: step,
+  DraftForRole: step,
+  DraftVetoed: step,
+  RoleWordsRejected: step,
+  AdjustmentRejected: step,
+  ChangePoint: step,
+  Stop: step,
+  Suggestion: step,
+  DecideResult: step,
+  IdleTask: step,
+  BriefOver: step,
+}
 const decisionOf = (d: Derived, item: WaitingItem): Decision | undefined => {
-  const w = workOf(d)
-  const shared = {
+  if (SURFACES[item._tag].mover !== 'Person') return undefined
+  const base: Base = {
     task: item.placement._tag === 'OnTask' ? item.placement.task : null,
     at: item.at,
+    acts: actsOf(d, item),
+    waits: null,
   }
-  switch (item._tag) {
-    case 'Problem': {
-      const p = w.problems.get(item.problem)
-      if (p === undefined) return undefined
-      // The host told its own problem, so its text is its words.
-      const own = p.recordedBy._tag === 'Host' ? p.says : null
-      const words = w.hostWords.get(item.problem)?.text ?? own
-      return {
-        _tag: 'System',
-        id: p.id,
-        text: p.says,
-        stopped: p.stopped,
-        words,
-        shown: item.hold,
-        ...shared,
-      }
-    }
-    case 'DraftForPerson': {
-      const x = w.drafts.get(item.draft)
-      if (x === undefined) return undefined
-      const words = w.hostWords.get(x.id)
-      return {
-        _tag: 'Direction',
-        id: x.id,
-        text: `A change to the direction "${directionAt(w, x.of).name}" waits for your decision.`,
-        direction: x.of,
-        change: draftChange(w, x),
-        why: x.why,
-        hope: words?._tag === 'DraftWords' ? words.hope : null,
-        words: words?.text ?? null,
-        shown: item.hold,
-        ...shared,
-      }
-    }
-    case 'Forward': {
-      const logged = w.events.find((l) => `e${l.recorded.seq}` === item.forward)
-      const stored = logged?.recorded.event
-      const forward = w.forwards.get(item.forward)
-      if (logged === undefined || stored?._tag !== 'Forward') return undefined
-      if (!('create' in stored)) return undefined
-      if (forward?._tag !== 'Confirmable') return undefined
-      return {
-        _tag: 'Confirm',
-        id: item.forward,
-        text:
-          `${whoOf(logged.recorded.author).who} relayed your words as this act: ` +
-          `${describeInner(forward.inner, w)}. It counts when you confirm it.`,
-        quote: stored.create.quote,
-        words: null,
-        shown: item.hold,
-        ...shared,
-      }
-    }
-    case 'RunEnd': {
-      const words = w.hostWords.get(item.run)
-      return {
-        _tag: 'End',
-        id: item.run,
-        text:
-          `The agent that leads "${taskAt(w, item.top).name}" accepted its result. ` +
-          'Accept the end of the project, or reject the result with your reason.',
-        words: words?.text ?? null,
-        shown: item.hold,
-        ...shared,
-      }
-    }
-    // New words of a role (ruling 2026-11-14): no host writes words about them.
-    case 'RoleWords': {
-      const x = roleWordsDraftAt(w, item.draft)
-      if (x === undefined) return undefined
-      return {
-        _tag: 'RoleWords',
-        id: item.draft,
-        text:
-          `New words of the role "${x.role}", drafted by ${drafterWords(x.by)}, ` +
-          'wait for your decision.',
-        role: x.role,
-        lines: roleWordsChange(w, x),
-        words: null,
-        shown: item.hold,
-        ...shared,
-      }
-    }
-    // A drafted adjustment (ruling 14): no host writes words about it.
-    case 'Adjustment': {
-      const x = adjustmentDraftAt(w, item.draft)
-      if (x === undefined) return undefined
-      return {
-        _tag: 'Adjustment',
-        id: item.draft,
-        text:
-          `An adjustment, drafted by ${drafterWords(x.by)}, waits for your decision: ` +
-          `${adjustmentWords(x.adjustment)}.`,
-        adjustment: x.adjustment,
-        words: null,
-        shown: item.hold,
-        ...shared,
-      }
-    }
-    // A question to the person counts at once: no host holds it, and the asker's words are it.
-    case 'Question': {
-      const q = w.questions.get(item.question)
-      if (q === undefined) return undefined
-      const asker =
-        typeof q.from === 'string' ? `${assignmentAt(w, q.from).role} (${q.from})` : q.from.name
-      return {
-        _tag: 'Question',
-        id: q.id,
-        text: q.text,
-        asker,
-        options: q.options,
-        words: null,
-        shown: { _tag: 'Shown' },
-        ...shared,
-      }
-    }
-    // SURFACES shows no other kind on the page.
-    default:
-      return undefined
-  }
+  return (CARDS[item._tag as PersonKind] as Card<PersonKind>)(d, item as Of<PersonKind>, base)
 }
 
-// The items that reach the person on the page: every item of waitingFor that SURFACES shows
-// there, each one also while it waits for the host's words (shownOn keeps the shown ones).
+// The items that reach the person on the page: every item of waitingFor that the person may
+// move, each one also while it waits for the host's words (shownOn keeps the shown ones).
 export const decisionsOf = (d: Derived, person: string): ReadonlyArray<Decision> => {
   // B7, ruling 10.8: the person of git user.name sees only their own items, with no fallback: a
   // name that is no person of this work (none set, or a machine's global name) sees none.
@@ -466,13 +509,19 @@ export const decisionsOf = (d: Derived, person: string): ReadonlyArray<Decision>
     .filter(onPage)
     .flatMap((item) => decisionOf(d, item) ?? [])
 }
-// The items on a task. An item with no task belongs to the dir: it shows on every top task.
-const itemsOn = (items: ReadonlyArray<Decision>, task: Task) => {
-  const isTop = task.serves._tag === 'TopTask'
-  return items.filter((i) => i.task === task.id || (i.task === null && isTop))
+// Where a decision shows (P1, F3): an item of a task, on the panel of its task while that task is
+// open; an item of no task, in the inbox of the dir and on each open top task; an item of a task
+// that ended, in the inbox. A shown one with an act needs the person.
+const onOpenTask = (d: Derived, i: Decision): boolean => i.task !== null && taskOpen(d, i.task)
+const needsYou = (i: Decision): boolean => i.shown._tag === 'Shown' && i.acts.length > 0
+const itemsOn = (d: Derived, items: ReadonlyArray<Decision>, task: Task) => {
+  const top = task.serves._tag === 'TopTask' && taskOpen(d, task.id)
+  return items.filter((i) => (i.task === null ? top : onOpenTask(d, i) && i.task === task.id))
 }
-const shownOn = (items: ReadonlyArray<Decision>, task: Task) =>
-  itemsOn(items, task).filter((i) => i.shown._tag === 'Shown')
+const shownOn = (d: Derived, items: ReadonlyArray<Decision>, task: Task) =>
+  itemsOn(d, items, task).filter((i) => i.shown._tag === 'Shown')
+export const inboxOf = (d: Derived, person: string): ReadonlyArray<Decision> =>
+  decisionsOf(d, person).filter((i) => i.shown._tag === 'Shown' && !onOpenTask(d, i))
 
 // --- the projects of the dir ----------------------------------------------------------------
 
@@ -514,12 +563,14 @@ export const projectsOf = (d: Derived, ctx: ViewContext): ReadonlyArray<ProjectS
         top: now,
       }
     })
-  // A project has a badge when an item shows on a task of its tree.
-  const shown = decisionsOf(d, ctx.person).filter((i) => i.shown._tag === 'Shown')
+  // A project has a badge when an item that its open tasks show needs the person.
+  const needs = decisionsOf(d, ctx.person).filter(needsYou)
   return [...runs, ...tasks]
     .map((p) => {
       const ids = new Set<string>(p.top ? treeOf(w, p.top) : [])
-      return { ...p, badge: shown.some((i) => (i.task ? ids.has(i.task) : Boolean(p.top))) }
+      const open = p.top !== null && taskOpen(d, p.top)
+      const shows = (i: Decision) => (i.task === null ? open : onOpenTask(d, i) && ids.has(i.task))
+      return { ...p, badge: needs.some(shows) }
     })
     .sort((a, b) => String(b.at).localeCompare(String(a.at)))
 }
@@ -700,7 +751,7 @@ const taskCard = (
     words: taskWords(d, task.id).replace(/ \(attempt [^)]*\)$/, ''),
     attempt: maker && limited ? attemptCard(d, maker) : null,
     owner: owner ? withLive(ctx, owner) : null,
-    badge: shownOn(items, task).length > 0,
+    badge: shownOn(d, items, task).some(needsYou),
     parent: task.serves._tag === 'Serves' ? task.serves.task : null,
   }
 }
@@ -719,7 +770,7 @@ export const projectView = (d: Derived, id: string, ctx: ViewContext): ProjectVi
     if (!taskOpen(d, task.id)) return []
     const below = partsOf(w, task.id).flatMap((part) => walk(part, depth + 1))
     const card = taskCard(d, task, items, ctx)
-    const waits = itemsOn(items, task).length > 0
+    const waits = itemsOn(d, items, task).length > 0
     if (taskIsAccepted(d, task.id) && !waits && !below.length) return []
     return [{ depth, task: card, work: workCards(d, task.id, ctx) }, ...below]
   }
@@ -843,7 +894,7 @@ export const taskPanel = (d: Derived, id: string, ctx: ViewContext): TaskPanel |
     text: task.descriptionAi.text,
     words: taskWords(d, task.id),
     top: task.serves._tag === 'TopTask',
-    decisions: shownOn(decisionsOf(d, ctx.person), task),
+    decisions: shownOn(d, decisionsOf(d, ctx.person), task),
     terminal,
     directions: task.serves._tag === 'TopTask' ? directionsView(d, task) : null,
     results: resultViews,
@@ -1304,4 +1355,5 @@ export const dirView = (
   initialized: d !== undefined,
   startPrompt: dir.startPrompt,
   projects: d ? projectsOf(d, ctx) : [],
+  inbox: d ? inboxOf(d, ctx.person) : [],
 })

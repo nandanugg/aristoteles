@@ -191,6 +191,17 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
           '--persistent=<true|false> --why="<one line>"',
       )
     }
+    // The person asks in words for a direction that does not exist yet (P1); a high model drafts
+    // it, and its owner accepts it.
+    case 'DraftNewDirection': {
+      const y = w.suggestions.get(s.suggestion)
+      if (y === undefined) throw new Error(`the work has no suggestion ${s.suggestion}`)
+      return step(
+        `${s.suggestion} asks for a new direction: "${short(y.says, 120)}" (${who(w, y.by)}); ` +
+          'draft it, with its flow and its examples',
+        `work direction new ${token} --file=<direction.yaml> --answers=${s.suggestion}`,
+      )
+    }
     // P10 rejected: the person sees how a new direction shows in the output before the accept,
     // so its draft holds an example that follows it and one that breaks it, for each marked step
     // of its flow (ruling 4; Nanda, 2026-11-15).

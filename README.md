@@ -152,8 +152,10 @@ over ssh) only prints the addresses.
   result shows that a direction can be read in two ways, or is wrong), the end of a project, your words that an agent relayed as an act (you confirm it),
   new words of a role, an adjustment (a drafted change of a role or a direction after the
   store starts), and a question that an agent asks you (pick an option or write the answer; it
-  counts at once). The host handles the rest, and writes its words on each decision
-  first. After the first talk, every question to you comes on the page, not in the terminal.
+  counts at once). Anything else that only you can move shows too, with the acts that move it
+  (an evaluation for your accept, a draft that needs a reviewer, a brief over its limit, a task
+  with no agent). What belongs to no open task waits on the projects page, under "Waits for
+  you". The host handles the rest, and writes its words on each decision first. After the first talk, every question to you comes on the page, not in the terminal.
 - **The settings** (the gear) are in `aristoteles.yaml`: the command of each tier, for example
   `claude --model opus --session-id {session} {prompt}`, its resume command, the words of an
   error and of a prompt, and the theme.

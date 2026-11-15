@@ -14,6 +14,7 @@ import {
   type Derived,
   type DraftAuthor,
   type DraftLeaf,
+  waitingFor,
 } from '../../core/derived/index.ts'
 import { leafName } from '../../core/derived/deciders.ts'
 import { draftWaitsFor } from '../../core/derived/reads.ts'
@@ -25,6 +26,7 @@ import type {
   RevisionId,
   Stop,
   Suggestion,
+  SuggestionId,
   Work,
 } from '../../core/schema/index.ts'
 import { short, who } from './common.ts'
@@ -176,3 +178,30 @@ export const reviseAgainOf = (
 const runOf = (a: DraftAuthor): string => (a._tag === 'Host' ? a.run : '')
 // The next line after a vetoed draft.
 export const reviseAgain = (d: Derived, draft: RevisionId): string => reviseAgainOf(d, draft).text
+
+// Who answers a suggestion, read from its waiting item (P1): the agents that draft it, the
+// person's assign of a high role, or that nothing can yet. With no item, a high role that follows
+// its direction drafts it. command: the assign as a command (the page has a button for it).
+export const suggestionMover = (d: Derived, id: SuggestionId, command = true): string => {
+  const w = d.moment.work
+  const item = waitingFor(d, { _tag: 'Everyone' }).find(
+    (i) => i._tag === 'Suggestion' && i.suggestion === id,
+  )
+  if (item?._tag !== 'Suggestion') return 'a high role that follows its direction drafts it'
+  const about = item.about._tag === 'Direction' ? w.directions.get(item.about.direction) : undefined
+  if (about?.source._tag === 'External') {
+    return `${about.id} changes in ${about.source.repo}, with a pull request`
+  }
+  if (item.drafters.length > 0) {
+    const names = item.drafters.map((a) => `${a} (${w.assignments.get(a)?.role})`)
+    return `${names.join(' or ')} drafts it`
+  }
+  const gives = item.step._tag === 'Do' ? item.step.intents : []
+  const [one] = gives
+  if (one?._tag === 'Give') {
+    const roles = gives.flatMap((i) => (i._tag === 'Give' ? [i.target.role] : []))
+    const assign = command ? `: work assign ${one.target.task} --role=${roles.join('|')}` : ''
+    return `no agent can draft it now; give a high role work, and it drafts it${assign}`
+  }
+  return 'no agent can draft it now; start a project in your AI CLI, and its host drafts it'
+}

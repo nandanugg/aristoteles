@@ -9,10 +9,13 @@ import {
   AgentId,
   AssignmentId,
   DirectionId,
+  EscalationId,
+  EvaluationId,
   EventRef,
   ProblemId,
   QuestionId,
   RevisionId,
+  RoleName,
   RunId,
   SessionId,
   Settings,
@@ -57,6 +60,25 @@ const Attempt = Schema.Struct({ now: Schema.Number, max: Schema.NullOr(Schema.Nu
 
 // --- the decisions -------------------------------------------------------------------------
 
+// What a suggestion of the gear is about.
+export const SuggestionTarget = Schema.Union([
+  Schema.TaggedStruct('NewDirection', {}),
+  Schema.TaggedStruct('Direction', { direction: DirectionId }),
+  Schema.TaggedStruct('Roles', {}),
+])
+
+// An act of a decision: an intent of its item's step that passed canAct (P1).
+const DecisionAct = Schema.Union([
+  Schema.TaggedStruct('Accept', {}),
+  Schema.TaggedStruct('Reject', {}),
+  Schema.TaggedStruct('Confirm', {}),
+  Schema.TaggedStruct('Answer', {}),
+  Schema.TaggedStruct('FixProblem', {}),
+  Schema.TaggedStruct('Resolve', { escalation: EscalationId }),
+  Schema.TaggedStruct('Give', { task: TaskId, role: Text }),
+  Schema.TaggedStruct('Suggest', { about: SuggestionTarget, name: Text }),
+  Schema.TaggedStruct('AtTerminal', { line: Text }),
+])
 const DraftChange = Schema.Struct({ direction: Text, lines: Schema.Array(Text) })
 const Shown = Schema.Union([
   Schema.TaggedStruct('Shown', {}),
@@ -69,7 +91,10 @@ const DecisionBase = {
   words: Schema.NullOr(Text),
   at: Time,
   shown: Shown,
+  acts: Schema.Array(DecisionAct),
+  waits: Schema.NullOr(Text),
 }
+const EvaluationFields = { level: Text, wrong: Text, why: Text, improve: Schema.Array(Text) }
 const DecisionDomain = Schema.Union([
   Schema.TaggedStruct('System', { ...DecisionBase, stopped: TaskId }),
   Schema.TaggedStruct('Direction', {
@@ -87,6 +112,8 @@ const DecisionDomain = Schema.Union([
   Schema.TaggedStruct('Adjustment', { ...DecisionBase, adjustment: AdjustmentSchema }),
   // A question to the person: the text is the question.
   Schema.TaggedStruct('Question', { ...DecisionBase, asker: Text, options: Schema.Array(Text) }),
+  Schema.TaggedStruct('Evaluation', { ...DecisionBase, ...EvaluationFields }),
+  Schema.TaggedStruct('Step', { ...DecisionBase, title: Text }),
 ])
 type DecisionEncoded = typeof DecisionDomain.Encoded
 
@@ -98,6 +125,8 @@ const WireBase = {
   hope: Schema.NullOr(Text),
   at: Text,
   shown: Schema.Boolean,
+  acts: Schema.Array(Schema.toEncoded(DecisionAct)),
+  waits: Schema.NullOr(Text),
 }
 const DecisionWire = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('system'), ...WireBase, stopped: Text }),
@@ -127,6 +156,8 @@ const DecisionWire = Schema.Union([
     asker: Text,
     options: Schema.Array(Text),
   }),
+  Schema.Struct({ kind: Schema.Literal('evaluation'), ...WireBase, ...EvaluationFields }),
+  Schema.Struct({ kind: Schema.Literal('step'), ...WireBase, title: Text }),
 ])
 type DecisionWireType = typeof DecisionWire.Type
 
@@ -138,6 +169,8 @@ const toWire = (d: DecisionEncoded): DecisionWireType => {
     words: d.words,
     at: d.at,
     shown: d.shown._tag === 'Shown',
+    acts: d.acts,
+    waits: d.waits,
   }
   switch (d._tag) {
     case 'System':
@@ -161,6 +194,12 @@ const toWire = (d: DecisionEncoded): DecisionWireType => {
       return { kind: 'adjustment', ...base, hope: null, adjustment: d.adjustment }
     case 'Question':
       return { kind: 'question', ...base, hope: null, asker: d.asker, options: d.options }
+    case 'Evaluation': {
+      const { level, wrong, why, improve } = d
+      return { kind: 'evaluation', ...base, hope: null, level, wrong, why, improve }
+    }
+    case 'Step':
+      return { kind: 'step', ...base, hope: null, title: d.title }
   }
 }
 
@@ -170,7 +209,8 @@ const fromWire = (w: DecisionWireType): DecisionEncoded => {
   const shown = w.shown
     ? ({ _tag: 'Shown' } as const)
     : ({ _tag: 'HeldForHost', until: w.at } as const)
-  const base = { id: w.id, task: w.task, text: w.text, words: w.words, at: w.at, shown }
+  const { id, task, text, words, at, acts, waits } = w
+  const base = { id, task, text, words, at, shown, acts, waits }
   switch (w.kind) {
     case 'system':
       return { _tag: 'System', ...base, stopped: w.stopped }
@@ -193,6 +233,12 @@ const fromWire = (w: DecisionWireType): DecisionEncoded => {
       return { _tag: 'Adjustment', ...base, adjustment: w.adjustment }
     case 'question':
       return { _tag: 'Question', ...base, asker: w.asker, options: w.options }
+    case 'evaluation': {
+      const { level, wrong, why, improve } = w
+      return { _tag: 'Evaluation', ...base, level, wrong, why, improve }
+    }
+    case 'step':
+      return { _tag: 'Step', ...base, title: w.title }
   }
 }
 
@@ -295,6 +341,7 @@ export const DirView = Schema.Struct({
   initialized: Schema.Boolean,
   startPrompt: Text,
   projects: Schema.Array(ProjectSummary),
+  inbox: Schema.Array(Decision),
 })
 
 const ReviewOfResult = Schema.Struct({
@@ -492,12 +539,6 @@ export const SettingsChange = Schema.Struct({
 })
 export type SettingsChange = typeof SettingsChange.Type
 
-// What a suggestion of the gear is about.
-export const SuggestionTarget = Schema.Union([
-  Schema.TaggedStruct('NewDirection', {}),
-  Schema.TaggedStruct('Direction', { direction: DirectionId }),
-  Schema.TaggedStruct('Roles', {}),
-])
 export const PageAct = Schema.Union([
   Schema.Struct({ act: Schema.Literal('open'), draft: TaskDraftId }),
   Schema.Struct({
@@ -530,6 +571,18 @@ export const PageAct = Schema.Union([
   Schema.Struct({ act: Schema.Literal('reject-adjustment'), draft: EventRef, reason: Text }),
   // The text box of the gear (P7).
   Schema.Struct({ act: Schema.Literal('suggest'), about: SuggestionTarget, says: Text }),
+  Schema.Struct({ act: Schema.Literal('assign'), task: TaskId, role: RoleName }),
+  Schema.Struct({ act: Schema.Literal('resolve'), escalation: EscalationId, text: Text }),
+  Schema.Struct({
+    act: Schema.Literal('accept-evaluation'),
+    evaluation: EvaluationId,
+    text: Text,
+  }),
+  Schema.Struct({
+    act: Schema.Literal('reject-evaluation'),
+    evaluation: EvaluationId,
+    reason: Text,
+  }),
 ])
 export type PageAct = typeof PageAct.Type
 export const ACTS = [
@@ -550,6 +603,10 @@ export const ACTS = [
   'accept-adjustment',
   'reject-adjustment',
   'suggest',
+  'assign',
+  'resolve',
+  'accept-evaluation',
+  'reject-evaluation',
 ] as const
 
 // The answer of an act: { out } (and { run, session } for a new project), or { error }.

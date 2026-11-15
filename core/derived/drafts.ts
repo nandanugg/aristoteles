@@ -60,6 +60,12 @@ export const drafted = (d: Derived, id: SuggestionId): boolean =>
     )
   })
 
+// The suggestions for a new direction that no draft answers yet.
+export const newDirectionsToDraft = (d: Derived): ReadonlyArray<Suggestion> =>
+  [...d.moment.work.suggestions.values()].filter(
+    (y) => y.about._tag === 'NewDirection' && !drafted(d, y.id),
+  )
+
 // The official direction that a suggestion is about: the direction, or the holder of its
 // standard or rule in the current version.
 export const holderOf = (w: Work, about: Suggestion['about']): Direction | undefined => {

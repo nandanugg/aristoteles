@@ -40,7 +40,8 @@ describe('a new direction', () => {
   test('a suggestion for a new direction shows to the person until a draft answers it', async () => {
     const p = await fresh()
     ok(await p.nanda('suggest --says="a direction for TSD writing: the reader decides from the page alone"'))
-    expect(ok(await p.nanda('waiting')).out).toContain('s1 asks for a new direction: "a direction for TSD writing: the reader decides from the page alone" (Nanda); a model drafts it\n' +
+    expect(ok(await p.nanda('waiting')).out).toContain('s1 asks for a new direction: "a direction for TSD writing: the reader decides from the page alone" (Nanda); ' +
+      'no agent can draft it now; start a project in your AI CLI, and its host drafts it\n' +
       '    work direction new --file=<direction.yaml> --by=<model> --answers=s1')
     expect(ok(await p.agent('direction new --file=directions/tsd-writing.yaml --by=assess --answers=s1')).out).toContain('answering s1')
     expect(ok(await p.nanda('waiting')).out).not.toContain('s1 asks for a new direction')

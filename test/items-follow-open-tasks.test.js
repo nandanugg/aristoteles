@@ -61,7 +61,8 @@ describe('an item that waits for the person shows on an open task', () => {
     ok(await p.agent(`direction revise ${host} tsd-writing --file=costs.yaml --answers=${vid}`))
     expect(await summary(p, 't1')).toEqual([['direction', 'd2', 't1']])
     ok(await remake(p, host))
-    expect(await summary(p, 't2')).toEqual([['direction', 'd2', 't2']])
+    // P1: no agent works on t2 after the remake, so its card asks the person to assign one.
+    expect(await summary(p, 't2')).toEqual([['direction', 'd2', 't2'], ['step', 't2', 't2']])
   }, 20000)
 
   test('a draft on an old version stops: the page drops it, and no accept counts for it', async () => {

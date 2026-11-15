@@ -1,13 +1,16 @@
-// A decision of the person (the panel of a task, and the adjustments of the gear): its words,
-// its change, and its buttons.
+// A decision of the person (the panel of a task, the inbox of the dir, and the adjustments of the
+// gear): its words, its change, and its buttons. The buttons are the decision's acts only: each
+// one passed canAct, so the page offers nothing that is refused (P1).
 import { Schema } from 'effect'
 import { html } from 'htm/preact'
 import { useRef, useState } from 'preact/hooks'
 import {
+  EvaluationId,
   EventRef,
   ProblemId,
   QuestionId,
   RevisionId,
+  RoleName,
   RunId,
   TaskId,
 } from '../../../src/domain/ids.ts'
@@ -29,6 +32,8 @@ const KIND = {
   roleWords: 'New words of a role',
   adjustment: 'An adjustment',
   question: 'A question for you',
+  evaluation: 'An evaluation for you',
+  step: 'Waits for you',
 }
 const kindOf = (item: Decision): keyof typeof KIND => {
   switch (item._tag) {
@@ -46,9 +51,18 @@ const kindOf = (item: Decision): keyof typeof KIND => {
       return 'adjustment'
     case 'Question':
       return 'question'
+    case 'Evaluation':
+      return 'evaluation'
+    case 'Step':
+      return 'step'
   }
 }
-export function Item({ item }: { item: Decision }) {
+type Act = Decision['acts'][number]
+const actsOf = <T extends Act['_tag']>(item: Decision, tag: T) =>
+  item.acts.filter((a): a is Extract<Act, { readonly _tag: T }> => a._tag === tag)
+
+// inbox: the decision shows in the inbox of the dir, so it names its task.
+export function Item({ item, inbox = false }: { item: Decision; inbox?: boolean }) {
   const [comment, setComment] = useState('')
   const [error, setError] = useState<string | null>(null)
   const busy = useRef(false)
@@ -69,6 +83,7 @@ export function Item({ item }: { item: Decision }) {
     }
   }
   const kind = kindOf(item)
+  const has = (tag: Act['_tag']) => item.acts.some((a) => a._tag === tag)
   // Each act decodes the id of the decision into its branded type; a bad id is shown as a refusal.
   const fixed = () => post({ act: 'fixed', problem: Schema.decodeUnknownSync(ProblemId)(item.id) })
   const acceptDraft = () =>
@@ -93,9 +108,26 @@ export function Item({ item }: { item: Decision }) {
   // The person's answer counts at once: an option's words, or their own.
   const answer = (text: string) => () =>
     post({ act: 'answer', question: Schema.decodeUnknownSync(QuestionId)(item.id), text })
+  const evaluation = () => Schema.decodeUnknownSync(EvaluationId)(item.id)
+  const acceptEvaluation = () =>
+    post({ act: 'accept-evaluation', evaluation: evaluation(), text: comment })
+  const rejectEvaluation = () =>
+    post({ act: 'reject-evaluation', evaluation: evaluation(), reason: comment })
+  // The acts of any other item: an assign, a suggestion in words, a resolve.
+  const gives = actsOf(item, 'Give')
+  const suggests = actsOf(item, 'Suggest')
+  const resolves = actsOf(item, 'Resolve')
+  const terminal = actsOf(item, 'AtTerminal')
+  const assign = (a: (typeof gives)[number]) => () =>
+    post({ act: 'assign', task: a.task, role: Schema.decodeUnknownSync(RoleName)(a.role) })
+  const suggest = (a: (typeof suggests)[number]) => () =>
+    post({ act: 'suggest', about: a.about, says: comment })
+  const resolve = (a: (typeof resolves)[number]) => () =>
+    post({ act: 'resolve', escalation: a.escalation, text: comment })
   // A decision takes one comment: a reject needs it, an accept does not.
   const decides =
-    kind === 'direction' || kind === 'end' || kind === 'roleWords' || kind === 'adjustment'
+    (kind === 'direction' || kind === 'end' || kind === 'roleWords' || kind === 'adjustment') &&
+    (has('Accept') || has('Reject'))
   const noComment = !comment.trim()
   // New words of a role read as a change too: each word of now, then its drafted word.
   const change =
@@ -107,52 +139,84 @@ export function Item({ item }: { item: Decision }) {
   const hope = item._tag === 'Direction' ? item.hope : null
   const quote = item._tag === 'Confirm' ? item.quote : null
   const asked = item._tag === 'Question' ? item : null
+  const evaluated = item._tag === 'Evaluation' ? item : null
   const own = asked?.options.length ? 'Or your own answer' : 'Your answer'
-  return html`<div class=${`item ${kind}`} role="region" aria-label=${KIND[kind]}>
+  // The words of the one text box: what it is for, by the acts that read it.
+  const field = asked
+    ? own
+    : evaluated
+      ? 'What you read in it (an accept and a reject need it)'
+      : decides
+        ? 'Your comment (a reject needs one)'
+        : resolves.length
+          ? 'Your resolution'
+          : suggests.length
+            ? 'What you want, in your words'
+            : null
+  const title = item._tag === 'Step' ? item.title : KIND[kind]
+  return html`<div class=${`item ${kind}`} role="region" aria-label=${title}>
     <div class="item-head"><span class="badge" aria-hidden="true">${asked ? '?' : '!'}</span>
-      <strong>${KIND[kind]}</strong></div>
+      <strong>${title}</strong>
+      ${inbox && item.task ? html`<span class="item-task">${item.task}</span>` : ''}</div>
     ${asked ? html`<div class="item-raw">${asked.asker} asks:</div>` : ''}
     <div class="prose">${item.words ?? item.text}</div>
     ${change ? html`<${Change} change=${change} />` : ''}
     ${hope ? html`<div class="prose">${hope}</div>` : ''}
     ${quote ? html`<blockquote class="prose">${quote}</blockquote>` : ''}
+    ${evaluated ? html`<dl class="item-evaluation">
+      <dt>What is wrong</dt><dd>${evaluated.wrong}</dd>
+      <dt>Why</dt><dd>${evaluated.why}</dd>
+      <dt>What to change</dt>${evaluated.improve.map((x) => html`<dd>${x}</dd>`)}
+    </dl>` : ''}
     ${item.words ? html`<div class="item-raw">${item.text}</div>` : ''}
-    ${decides ? html`<label class="field"><span>Your comment (a reject needs one)</span>
+    ${item.waits ? html`<div class="item-waits">${item.waits}</div>` : ''}
+    ${asked?.options.length ? html`<div class="item-options">
+      ${asked.options.map((o) => html`<button class="btn"
+        onClick=${run(answer(o))}>${o}</button>`)}</div>` : ''}
+    ${field ? html`<label class="field"><span>${field}</span>
       <textarea rows="2" value=${comment}
         onInput=${(e: Event) => setComment((e.currentTarget as HTMLTextAreaElement).value)}
       ></textarea></label>` : ''}
-    ${asked ? html`
-      ${asked.options.length ? html`<div class="item-options">
-        ${asked.options.map((o) => html`<button class="btn"
-          onClick=${run(answer(o))}>${o}</button>`)}</div>` : ''}
-      <label class="field"><span>${own}</span>
-        <textarea rows="2" value=${comment}
-          onInput=${(e: Event) => setComment((e.currentTarget as HTMLTextAreaElement).value)}
-        ></textarea></label>` : ''}
     ${error ? html`<div class="error" role="alert">Refused: ${error}</div>` : ''}
     <div class="item-actions">
-      ${kind === 'system' ? html`<button class="btn primary"
+      ${has('FixProblem') ? html`<button class="btn primary"
         onClick=${run(fixed)}>Fixed</button>` : ''}
       ${kind === 'direction' ? html`
-        <button class="btn primary" onClick=${run(acceptDraft)}>Accept the change</button>
-        <button class="btn" disabled=${noComment}
-          onClick=${run(rejectDraft)}>Reject the change</button>` : ''}
-      ${kind === 'confirm' ? html`<button class="btn primary"
+        ${has('Accept') ? html`<button class="btn primary"
+          onClick=${run(acceptDraft)}>Accept the change</button>` : ''}
+        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
+          onClick=${run(rejectDraft)}>Reject the change</button>` : ''}` : ''}
+      ${has('Confirm') ? html`<button class="btn primary"
         onClick=${run(confirm)}>Confirm</button>` : ''}
       ${kind === 'end' ? html`
-        <button class="btn primary" onClick=${run(acceptEnd)}>Accept the end</button>
-        <button class="btn" disabled=${noComment}
-          onClick=${run(rejectTask)}>Reject the result</button>` : ''}
+        ${has('Accept') ? html`<button class="btn primary"
+          onClick=${run(acceptEnd)}>Accept the end</button>` : ''}
+        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
+          onClick=${run(rejectTask)}>Reject the result</button>` : ''}` : ''}
       ${kind === 'roleWords' ? html`
-        <button class="btn primary" onClick=${run(acceptWords)}>Accept the words</button>
-        <button class="btn" disabled=${noComment}
-          onClick=${run(rejectWords)}>Reject the words</button>` : ''}
-      ${asked ? html`<button class="btn primary" disabled=${noComment}
+        ${has('Accept') ? html`<button class="btn primary"
+          onClick=${run(acceptWords)}>Accept the words</button>` : ''}
+        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
+          onClick=${run(rejectWords)}>Reject the words</button>` : ''}` : ''}
+      ${asked && has('Answer') ? html`<button class="btn primary" disabled=${noComment}
         onClick=${run(answer(comment))}>Answer</button>` : ''}
       ${kind === 'adjustment' ? html`
-        <button class="btn primary" onClick=${run(acceptAdjustment)}>Accept</button>
-        <button class="btn" disabled=${noComment}
-          onClick=${run(rejectAdjustment)}>Reject</button>` : ''}
+        ${has('Accept') ? html`<button class="btn primary"
+          onClick=${run(acceptAdjustment)}>Accept</button>` : ''}
+        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
+          onClick=${run(rejectAdjustment)}>Reject</button>` : ''}` : ''}
+      ${evaluated ? html`
+        ${has('Accept') ? html`<button class="btn primary" disabled=${noComment}
+          onClick=${run(acceptEvaluation)}>Accept the evaluation</button>` : ''}
+        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
+          onClick=${run(rejectEvaluation)}>Reject the evaluation</button>` : ''}` : ''}
+      ${resolves.map((a) => html`<button class="btn primary" disabled=${noComment}
+        onClick=${run(resolve(a))}>Resolve</button>`)}
+      ${suggests.map((a) => html`<button class="btn" disabled=${noComment}
+        onClick=${run(suggest(a))}>Suggest for ${a.name}</button>`)}
+      ${gives.map((a) => html`<button class="btn primary"
+        onClick=${run(assign(a))}>Assign ${a.role} to ${a.task}</button>`)}
     </div>
+    ${terminal.map((a) => html`<div class="item-raw">Or at a terminal: <code>${a.line}</code></div>`)}
   </div>`
 }

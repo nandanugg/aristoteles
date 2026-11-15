@@ -49,6 +49,19 @@ const hosts = (d: Derived) => {
 export const liveHosts = (d: Derived): ReadonlyArray<AssignmentId> =>
   hosts(d).flatMap((h) => (terminalLive(d, h.session) ? [h.assignment] : []))
 
+// Who drafts what no task follows (P1): a new direction, the examples of a company draft, the
+// adjustment that words about the roles ask for. The active hosts, else every open high agent
+// that may act (a brief over its limit waits).
+export const dirDrafters = (d: Derived): ReadonlyArray<AssignmentId> => {
+  const live = liveHosts(d)
+  if (live.length > 0) return live
+  const w = d.moment.work
+  return [...w.assignments.values()].flatMap((a) => {
+    const s = d.states.assignments.get(a.id)?._tag
+    return s !== 'Ended' && s !== 'BriefOver' && tierOfAssignment(w, a) === 'high' ? [a.id] : []
+  })
+}
+
 // The host of a decision's project writes its words; a decision of no project, any active host.
 export const explainerOf = (d: Derived, decision: string): Explainer => {
   const task = decisionTaskOf(d.moment.work, decision)

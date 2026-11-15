@@ -176,6 +176,7 @@ export type {
   AgentSession,
   AgentState,
   Decision,
+  DecisionAct,
   DraftChange,
   DropReason,
   Failure,

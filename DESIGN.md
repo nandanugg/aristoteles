@@ -1014,7 +1014,11 @@ ids.
   that reach the person (`waitingFor`). A question to the person is one of them (Nanda,
   2026-11-15): it shows on the asker's task with its options and a text box, and the answer on
   the page is the person's Answer at once (no forward, no confirm). A question to an agent
-  never shows there.
+  never shows there. P1 (2026-11-15): `SURFACES` says who moves each kind; a kind the person
+  may move has a card (the `Surface` type has no `'None'` for it, and `waiting.ts` gives a
+  person intents only for such a kind). `adapters/web/cards.ts` makes the Step cards; each act
+  of a card is an intent of its item's step that passed canAct. A decision of no task, or of a
+  task that ended, is in the inbox of the dir (`DirView.inbox`).
 - `adapters/web/server.ts`: the locks of the page (it listens on every interface with no key; the
   Host header names 127.0.0.1, localhost or an address of the machine, with the port; a websocket
   and a POST also need the page's own origin),

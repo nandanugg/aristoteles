@@ -174,7 +174,8 @@ describe('ruling 10.9: a brief over its limit is a derived state', () => {
   // Ruling 2026-11-14 (brief limits leave room for the guide): the size rose with the limit.
   const over = (who: string) => (_w: Work, a: AssignmentId) => (a === who ? 7000 : 0)
 
-  test('no high role above: the writer and its lead wait; the owner splits', async () => {
+  // P1: the owner may also suggest shorter words for the task's local direction.
+  test('no high role above: the writer and its lead wait; the owner shortens or splits', async () => {
     const s = await h.withWriter()
     const d = derivedOf(workOf(s.p.dir), s.p.now() as Time, s.p.dir, { measure: over('a2') })
     const state = { _tag: 'BriefOver', size: 7000, limit: 6000 } as const
@@ -193,7 +194,10 @@ describe('ruling 10.9: a brief over its limit is a derived state', () => {
     expect(item?.step).toEqual({
       _tag: 'Do',
       what: { _tag: 'PersonDecides', kind: 'BriefOver', id: 'a2' },
-      intents: [{ _tag: 'SplitTask', target: { task: id('t1'), answers: null } }],
+      intents: [
+        { _tag: 'Suggest', target: { about: { _tag: 'Direction', direction: id('tsd-writing') } } },
+        { _tag: 'SplitTask', target: { task: id('t1'), answers: null } },
+      ],
     })
   }, 60000)
 

@@ -482,10 +482,12 @@ export type StepWhat =
       readonly suggestion: SuggestionId
       readonly direction: DirectionId
     }
-  // The person's words about the roles (P7): the host drafts the adjustment that they ask for.
+  // What no task follows goes to the active host, else to every open high agent (P1,
+  // authors.ts dirDrafters): the person's words about the roles (P7), which it drafts as an
+  // adjustment; a suggestion for a new direction, which it drafts; a company draft of a new
+  // direction that waits for its examples, which it adds before the person's accept.
   | { readonly _tag: 'AnswerRolesSuggestion'; readonly suggestion: SuggestionId }
-  // A company draft of a new direction waits for its examples (P10 rejected, onboarding
-  // 2026-11-14): the host adds them before the person's accept.
+  | { readonly _tag: 'DraftNewDirection'; readonly suggestion: SuggestionId }
   | { readonly _tag: 'AddExamples'; readonly draft: RevisionId; readonly direction: DirectionId }
   | {
       readonly _tag: 'PutOnBase'
@@ -765,6 +767,8 @@ export type WaitingItem = WaitingBase &
           | { readonly _tag: 'Direction'; readonly direction: DirectionId }
           | { readonly _tag: 'NewDirection' }
           | { readonly _tag: 'Roles' }
+        // The agents that draft its answer (authors.ts dirDrafters); none: the person's step.
+        readonly drafters: ReadonlyArray<AssignmentId>
       }
     | { readonly _tag: 'DecideResult'; readonly result: ResultId; readonly leaf: DeciderLeaf }
     // A maker that waits for a file that another maker holds (one maker per file at a time).
@@ -788,41 +792,49 @@ export type WaitingItem = WaitingBase &
     | { readonly _tag: 'BriefOver'; readonly assignment: AssignmentId; readonly task: TaskId }
   )
 
-// Which renderer shows each kind. cli: `work waiting` (ruling 10.6: one list, so the system
-// problems and the ends too). page: the kind of decision of the page (ui-model Decision), or None.
-export interface Surface {
-  readonly cli: boolean
-  readonly page: Decision['_tag'] | 'None'
-}
+// Who moves an item of each kind, and where the person sees it (P1, 2026-11-15). cli: `work
+// waiting` (ruling 10.6: every kind). A kind that the person may move has a page card: the type
+// has no 'None' for it, and waiting.ts gives a Do step to a person only on such a kind. Only a
+// kind that always waits on other makers stays off the page.
+export type Surface =
+  | { readonly cli: boolean; readonly mover: 'Person'; readonly page: Decision['_tag'] }
+  | { readonly cli: boolean; readonly mover: 'Others'; readonly page: 'None' }
 export const SURFACES = {
-  Question: { cli: true, page: 'Question' }, // only one to a person (onPage)
-  Escalation: { cli: true, page: 'None' },
-  Forward: { cli: true, page: 'Confirm' },
-  DraftForPerson: { cli: true, page: 'Direction' },
-  DraftForRole: { cli: true, page: 'None' },
-  DraftVetoed: { cli: true, page: 'None' },
-  RoleWords: { cli: true, page: 'RoleWords' },
-  RoleWordsRejected: { cli: true, page: 'None' },
-  Adjustment: { cli: true, page: 'Adjustment' },
-  AdjustmentRejected: { cli: true, page: 'None' },
-  ChangePoint: { cli: true, page: 'None' },
-  Stop: { cli: true, page: 'None' },
-  EvaluationForOwner: { cli: true, page: 'None' },
-  Suggestion: { cli: true, page: 'None' },
-  DecideResult: { cli: true, page: 'None' },
-  IdleAssignment: { cli: true, page: 'None' },
-  IdleTask: { cli: true, page: 'None' },
-  OutsideNeed: { cli: true, page: 'None' },
-  Problem: { cli: true, page: 'System' },
-  RunEnd: { cli: true, page: 'End' },
-  BriefOver: { cli: true, page: 'None' },
+  Question: { cli: true, mover: 'Person', page: 'Question' }, // only one to a person (onPage)
+  Escalation: { cli: true, mover: 'Person', page: 'Step' },
+  Forward: { cli: true, mover: 'Person', page: 'Confirm' },
+  DraftForPerson: { cli: true, mover: 'Person', page: 'Direction' },
+  DraftForRole: { cli: true, mover: 'Person', page: 'Step' },
+  DraftVetoed: { cli: true, mover: 'Person', page: 'Step' },
+  RoleWords: { cli: true, mover: 'Person', page: 'RoleWords' },
+  RoleWordsRejected: { cli: true, mover: 'Person', page: 'Step' },
+  Adjustment: { cli: true, mover: 'Person', page: 'Adjustment' },
+  AdjustmentRejected: { cli: true, mover: 'Person', page: 'Step' },
+  ChangePoint: { cli: true, mover: 'Person', page: 'Step' },
+  Stop: { cli: true, mover: 'Person', page: 'Step' },
+  EvaluationForOwner: { cli: true, mover: 'Person', page: 'Evaluation' },
+  Suggestion: { cli: true, mover: 'Person', page: 'Step' },
+  DecideResult: { cli: true, mover: 'Person', page: 'Step' },
+  IdleAssignment: { cli: true, mover: 'Others', page: 'None' },
+  IdleTask: { cli: true, mover: 'Person', page: 'Step' },
+  OutsideNeed: { cli: true, mover: 'Others', page: 'None' },
+  Problem: { cli: true, mover: 'Person', page: 'System' },
+  RunEnd: { cli: true, mover: 'Person', page: 'End' },
+  BriefOver: { cli: true, mover: 'Person', page: 'Step' },
 } as const satisfies { readonly [K in WaitingItem['_tag']]: Surface } & {
   readonly [K in WaitingKind]: Surface
 }
-// An item reaches the person on the page when its kind shows there and it waits for a person
-// (a question to an agent stays off the page).
+// The kinds that the person may move: only these get a Do step for a person (waiting.ts).
+export type PersonKind = {
+  readonly [K in WaitingKind]: (typeof SURFACES)[K]['mover'] extends 'Person' ? K : never
+}[WaitingKind]
+// An item reaches the person on the page when the person may move its kind and it waits for a
+// person (a question to an agent stays off the page). A Step card shows only while the person can
+// act: its pure wait is the step of another actor, and `work waiting` names it.
 export const onPage = (item: WaitingItem): boolean =>
-  SURFACES[item._tag].page !== 'None' && item.for._tag === 'Person'
+  SURFACES[item._tag].mover === 'Person' &&
+  item.for._tag === 'Person' &&
+  (item.step._tag === 'Do' || SURFACES[item._tag].page !== 'Step')
 
 // =================================================================================================
 // The three cross-cutting functions

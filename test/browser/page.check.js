@@ -620,6 +620,118 @@ const open = async () => {
     s.stop()
   }
 }
+// P1 (2026-11-15): every item that the person moves has a card. P1_SHOTS=<folder>: screenshots
+// of each new card at a wide and a phone width.
+const cardShot = async (page, name) => {
+  if (!process.env.P1_SHOTS) return
+  await page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()))
+  for (const [width, height, kind] of [[1440, 900, 'wide'], [375, 812, 'phone']]) {
+    await page.setViewportSize({ width, height })
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: join(process.env.P1_SHOTS, `${name}-${kind}.png`), fullPage: kind === 'phone' })
+  }
+  await page.setViewportSize({ width: 1440, height: 900 })
+}
+// A page of the person Nanda (git user.name) on the server of a project.
+const serve = async (p, path) => {
+  const { git } = await import('../harness.js')
+  git(p.dir, 'init', '-q')
+  git(p.dir, 'config', 'user.name', 'Nanda')
+  const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') } })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  await page.goto(`${s.url}${path}`)
+  return { s, page, errors }
+}
+{
+  // F3: a decision of no task, with the only project closed: the inbox of / shows it, the
+  // project has no badge, and the accept there ends it
+  const { init, project } = await import('../harness.js')
+  const p = project()
+  await init(p)
+  ok(await p.nanda('task open --file=task.yaml'))
+  ok(await p.nanda('task close t1 --reason="Not needed"'))
+  p.write('change.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
+  ok(await p.agent('direction revise tsd-writing --file=change.yaml --by=assess --why="Shorten"'))
+  const { s, page, errors } = await serve(p, '')
+  try {
+    await page.waitForSelector('.inbox .item.direction')
+    expect(await page.textContent('.inbox h2')).toBe('Waits for you')
+    expect(await page.locator('.project-row .badge').count()).toBe(0)
+    await page.click('.fold')
+    expect(await page.textContent('.inbox-link')).toContain('Waits for you')
+    await page.click('.fold')
+    await cardShot(page, 'inbox')
+    await page.click('.inbox .item-actions >> text=Accept the change')
+    await page.waitForSelector('.inbox', { state: 'detached' })
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+    s.stop()
+  }
+}
+{
+  // D1: an evaluation for the owner shows on its task; its accept needs what the person read
+  const { TASK_WHOLE, started } = await import('../harness.js')
+  const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
+  const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).out)
+  ok(await p.agent(`brief ${writer}`))
+  p.write('docs/tsd.md', INTRO_V1)
+  ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
+  const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
+  ok(await p.agent(`brief ${linter}`))
+  ok(await p.agent(`review ${linter} r1 reject --point="cites a ticket id" --breaks=no-ticket-ids`))
+  ok(await p.nanda('grant --act=change --on=tsd-writing,t1 --to=architect --until=2026-12-31T00:00:00Z', 'grant'))
+  const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
+  ok(await p.agent(`brief ${arch}`))
+  ok(await p.agent(`evaluate ${arch} t1 --wrong="r1 cites the ticket ABC-2964" --why="the direction counts ticket ids as facts" --improve="say that a ticket id is no fact" --level=direction`))
+  const { s, page, errors } = await serve(p, 't1/t1')
+  try {
+    await page.waitForSelector('.item.evaluation')
+    expect(await page.locator('.item.evaluation dd').allTextContents()).toEqual([
+      'r1 cites the ticket ABC-2964', 'the direction counts ticket ids as facts', 'say that a ticket id is no fact'])
+    expect(await page.isDisabled('text=Accept the evaluation')).toBe(true)
+    await page.fill('.item.evaluation textarea', 'a ticket id tells no fact to the reader')
+    await cardShot(page, 'evaluation')
+    await page.click('text=Accept the evaluation')
+    await page.waitForSelector('.item.evaluation', { state: 'detached' })
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+    s.stop()
+  }
+}
+{
+  // BriefOver: a brief over its limit with no high role above it shows on its task: the person
+  // suggests shorter words, or splits the task at a terminal
+  const { WORK_YAML, init, project } = await import('../harness.js')
+  const p = project({ 'aristoteles.yaml': WORK_YAML.replace('briefChars: 6000', 'briefChars: 900') })
+  await init(p)
+  for (const role of ['section-lead', 'writer']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  ok(await p.nanda('task open --file=task.yaml'))
+  const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
+  ok(await p.agent(`brief ${lead}`))
+  const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
+  ok(await p.agent(`brief ${writer}`))
+  const { s, page, errors } = await serve(p, 't1/t1')
+  try {
+    await page.waitForSelector('.item.step')
+    expect(await page.textContent('.item.step .item-head strong')).toBe('A brief over its limit')
+    expect(await page.textContent('.item.step .item-raw code')).toBe('work task split t1 --file=<parts.yaml>')
+    expect(await page.isDisabled('text=Suggest for TSD writing')).toBe(true)
+    await page.fill('.item.step textarea', 'Keep the directions of t1 short')
+    await cardShot(page, 'brief-over')
+    await page.click('text=Suggest for TSD writing')
+    // No high role works on t1: the suggestion asks for the assign of one.
+    await page.waitForSelector('.item.step >> text=Assign architect to t1')
+    await cardShot(page, 'suggestion')
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+    s.stop()
+  }
+}
 await browser.close()
 console.log('the page check passed')
 process.exit(0)

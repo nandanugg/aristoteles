@@ -6,6 +6,7 @@ import type { Work } from '../schema/index.ts'
 import { type Derived, derive, onPage, SURFACES, type WaitingItem, waitingFor } from './index.ts'
 import { momentOf, pinned, SCENARIOS, type Scenario } from './support.test.ts'
 import { idOf } from './waiting.ts'
+import { decisionsOf } from '../../adapters/web/view.ts'
 
 const pin = pinned(`${import.meta.dir}/waiting.pins.json`)
 
@@ -55,6 +56,12 @@ describe('the page decisions are the page kinds of waitingFor', () => {
         } else expect([s.name, x]).toEqual([s.name, 'an old decision that is gone'])
       }
       for (const y of now) {
+        // P1 (2026-11-15): an evaluation for the owner, and each other item that the person
+        // moves, are page kinds now.
+        if (y[0] === 'Step' || y[0] === 'Evaluation') {
+          seen.push(`${s.name}: P1: ${y[0]} ${y[1]}`)
+          continue
+        }
         expect([s.name, old.some((x) => JSON.stringify(x) === JSON.stringify(y)), y]).toEqual([
           s.name,
           true,
@@ -63,6 +70,36 @@ describe('the page decisions are the page kinds of waitingFor', () => {
       }
     }
     expect(seen).toContain('uiRunRemade: C3: sp1')
+    expect(seen).toContain('escalated: P1: Step v2')
+  })
+})
+
+// P1 (2026-11-15): who moves an item and where the person sees it agree. Each item whose step the
+// person may run has a card on the page with those acts; a kind that waits on others has none.
+describe('every item that the person moves has its place on the page', () => {
+  test('a Do step of a person is a decision of decisionsOf, with an act for each intent', () => {
+    const checked = new Set<string>()
+    for (const { d } of built) {
+      for (const item of waitingFor(d, EVERYONE)) {
+        if (item.for._tag !== 'Person') continue
+        if (SURFACES[item._tag].mover === 'Others') {
+          expect([item._tag, item.step._tag]).toEqual([item._tag, 'Wait'])
+          continue
+        }
+        if (item.step._tag !== 'Do') continue
+        const card = decisionsOf(d, item.for.name).find((x) => x.id === idOf(item))
+        expect([item._tag, card?._tag as string]).toEqual([item._tag, SURFACES[item._tag].page])
+        expect(card?.acts.length).toBe(item.step.intents.length)
+        checked.add(item._tag)
+      }
+    }
+    expect([...checked].sort()).toEqual([
+      'DraftForPerson',
+      'Escalation',
+      'Forward',
+      'IdleTask',
+      'Problem',
+    ])
   })
 })
 
