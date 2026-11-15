@@ -10,6 +10,7 @@ import {
   type AssignmentId,
   type Author,
   type Case,
+  CaseFile,
   type DirectionId,
   type Event,
   type EventRef,
@@ -104,30 +105,59 @@ const PARTS =
   '- { name: Flags, text: Write the flags., context: { section: design } }\n' +
   '- { name: Handler, text: Write the handler., context: { section: introduction } }\n'
 
-const CASE = {
-  file: 'docs/tsd.md',
-  line: 3,
-  excerpt: '## Introduction',
-  fit: 'Follows',
-} as unknown as Case
+// Nanda, 2026-11-15: a case is a ladder to an output. A file may hold the short form of a ladder
+// with no rungs (SHORT_CASE); it reads as CASE.
+const SPOT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
+const CASE = { fit: 'Follows', via: [], output: SPOT } as unknown as Case
+const SHORT_CASE = { ...SPOT, fit: 'Follows' }
+// The text of one file; any other file is not there.
+const only = (file: string, text: string) => (f: string) => (f === file ? text : null)
 
 // --- pure states --------------------------------------------------------------------------------
 
 describe('caseStateOf', () => {
   test('a case is Current while its file holds the excerpt, and Stale when it is gone', () => {
-    expect(caseStateOf('# TSD\n\n## Introduction\n', CASE)).toEqual({ _tag: 'Current' })
+    const tsd = (text: string) => only('docs/tsd.md', text)
+    expect(caseStateOf(tsd('# TSD\n\n## Introduction\n'), CASE)).toEqual({ _tag: 'Current' })
     // The excerpt counts trimmed, and the line is only where the page points.
-    const spaced = { ...CASE, excerpt: '  ## Introduction  ', line: 99 } as unknown as Case
-    expect(caseStateOf('## Introduction', spaced)).toEqual({ _tag: 'Current' })
-    expect(caseStateOf('# TSD\n\n## Design\n', CASE)).toEqual({ _tag: 'Stale' })
-    expect(caseStateOf(null, CASE)).toEqual({ _tag: 'Stale' })
+    const output = { ...SPOT, excerpt: '  ## Introduction  ', line: 99 }
+    const spaced = { ...CASE, output } as unknown as Case
+    expect(caseStateOf(tsd('## Introduction'), spaced)).toEqual({ _tag: 'Current' })
+    expect(caseStateOf(tsd('# TSD\n\n## Design\n'), CASE)).toEqual({ _tag: 'Stale' })
+    expect(caseStateOf(() => null, CASE)).toEqual({ _tag: 'Stale' })
+  })
+  test('a case is Stale when the excerpt of one rung is gone, though its output holds', () => {
+    const rung = { name: 'Instruction', file: 'CLAUDE.md', line: 4, excerpt: 'One idea a section.' }
+    const ladder = { ...CASE, via: [rung] } as unknown as Case
+    const texts: Record<string, string> = {
+      'docs/tsd.md': '## Introduction\n',
+      'CLAUDE.md': '# Rules\n\nOne idea a section.\n',
+    }
+    expect(caseStateOf((f) => texts[f] ?? null, ladder)).toEqual({ _tag: 'Current' })
+    const moved: Record<string, string> = { ...texts, 'CLAUDE.md': '# Rules\n\nTwo ideas are fine.\n' }
+    expect(caseStateOf((f) => moved[f] ?? null, ladder)).toEqual({ _tag: 'Stale' })
+  })
+})
+
+describe('CaseFile', () => {
+  test('a file holds a case as a ladder or in the short form; both read as the ladder', () => {
+    const rung = { name: 'Writer skill', file: 'skills/w.md', line: 2, excerpt: 'One heading.' }
+    const ladder = { fit: 'Breaks', via: [rung], output: SPOT } as unknown as Case
+    const read = Schema.decodeUnknownSync(Schema.Array(CaseFile))([ladder, SHORT_CASE])
+    expect(read).toEqual([ladder, CASE])
+    // A file is written in the ladder form only.
+    expect(Schema.encodeSync(Schema.Array(CaseFile))(read)).toEqual([ladder, CASE])
+  })
+  test('a ladder ends at an output: a case with rungs and no output does not read', () => {
+    const rung = { name: 'Instruction', file: 'CLAUDE.md', line: 4, excerpt: 'One idea.' }
+    expect(() => Schema.decodeUnknownSync(CaseFile)({ fit: 'Follows', via: [rung] })).toThrow()
   })
 })
 
 describe('onboardingStateOf', () => {
   const question = (answer: object) => ({
     says: 'Is the facts file the source?',
-    case: CASE,
+    case: SHORT_CASE,
     options: ['yes', 'no'],
     answer,
   })
@@ -140,7 +170,7 @@ describe('onboardingStateOf', () => {
         name: 'TSD writing',
         from: ['Pathos'],
         content: { says: 'The reader decides from the page.', standards: [] },
-        cases: [CASE, CASE, CASE],
+        cases: [SHORT_CASE, SHORT_CASE, SHORT_CASE],
       },
       questions: [],
       request: { _tag: 'None' },
@@ -170,7 +200,7 @@ describe('onboardingStateOf', () => {
   })
   test('a drafted direction holds 3 cases or more (P10 rejected, onboarding 2026-11-14)', () => {
     const few = { _tag: 'Drafted', name: 'x', from: [], content: { says: 's', standards: [] } }
-    expect(() => file({ draft: { ...few, cases: [CASE, CASE] } })).toThrow()
+    expect(() => file({ draft: { ...few, cases: [SHORT_CASE, SHORT_CASE] } })).toThrow()
   })
 })
 
@@ -302,11 +332,13 @@ describe('what reaches the host from no project', () => {
       [{ _tag: 'AddCases', target: { draft: draft.id as RevisionId } }],
     ] as never)
     // The words of the step: how many cases the draft has, and what a real case is (ruling 4).
+    // Nanda, 2026-11-15: a case is a ladder to an output (was: a file, a line, an excerpt).
     expect(ok(await p.agent(`next ${host}`)).out).toContain(
       [
         `${draft.id} drafts the new direction "Flags" with 0 cases, and its accept needs 3; add ` +
-          'real cases from the code: a file, a line, a short excerpt that is in the file, and ' +
-          'whether the code follows or breaks the direction',
+          'real cases: each a ladder from the direction down to a real output of the project, ' +
+          'each rung named, each place a file, a line and a short excerpt that is in the file, ' +
+          'and whether the output follows or breaks the direction',
         `  work direction cases ${host} ${draft.id} --file=<cases.yaml>`,
       ].join('\n'),
     )

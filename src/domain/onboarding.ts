@@ -4,7 +4,7 @@
 // config draft (P4). Nothing here is stored as an event: the store starts with the result only.
 import { Schema } from 'effect'
 import { Principle } from './closed.ts'
-import { Case, Cases, RoleFile, StandardFile } from './files.ts'
+import { CaseFile, CasesFile, RoleFile, StandardFile } from './files.ts'
 import { DirectionId, NonBlank, RoleName } from './ids.ts'
 import type { NonEmpty } from './model.ts'
 
@@ -18,10 +18,10 @@ const Request = Schema.Union([
 ])
 
 // page: AiQuestion. What the AI must know to draft a direction: it names a case, and gives the
-// options A and B (ruling 5).
+// options A and B (ruling 5). The files of onboarding hold a case in either form (CaseFile).
 export const AiQuestion = Schema.Struct({
   says: NonBlank,
-  case: Case,
+  case: CaseFile,
   options: Schema.Tuple([Text, Text]),
   answer: Schema.Union([
     Schema.TaggedStruct('Open', {}),
@@ -46,7 +46,7 @@ export const OnboardingDirection = Schema.Struct({
       from: Schema.Array(Principle),
       // What it says, and its standards; each rule names the role that the AI proposes to check it.
       content: Schema.Struct({ says: Text, standards: Schema.Array(StandardFile) }),
-      cases: Cases,
+      cases: CasesFile,
     }),
   ]),
   questions: Schema.Array(AiQuestion),

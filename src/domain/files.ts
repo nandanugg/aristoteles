@@ -1,7 +1,7 @@
 // The files that a person or a model writes, as config.ts reads them: aristoteles.yaml (the
 // mechanism and the settings), a task file, a direction file, a company folder. Their parsed
 // forms are stored inside events, so each one is a Schema.
-import { Schema } from 'effect'
+import { Schema, SchemaGetter } from 'effect'
 import { Principle, RoleIcon, Tier } from './closed.ts'
 import { DirectionId, NonBlank, PositiveInt, ResultId, RoleName, TaskId } from './ids.ts'
 
@@ -254,20 +254,44 @@ export const StandardFile = Schema.Struct({
 })
 export type StandardFile = typeof StandardFile.Type
 
-// page: Case. Real code of the project that follows a direction or breaks it (ruling 4): a file,
-// the line the page points to, and a short excerpt. A break is information only: it makes no
-// task (ruling 17).
-export const Case = Schema.Struct({
-  file: Schema.String,
-  line: PositiveInt,
-  excerpt: NonBlank,
-  fit: Schema.Literals(['Follows', 'Breaks']),
-})
+// One place in a file of the project: the file, the line the page points to, and a short excerpt.
+export const Spot = Schema.Struct({ file: Schema.String, line: PositiveInt, excerpt: NonBlank })
+export type Spot = typeof Spot.Type
+// A step of a case between the direction and the output, named by the host (Instruction, Writer
+// skill, Validator, Template).
+export const Rung = Schema.Struct({ name: NonBlank, ...Spot.fields })
+export type Rung = typeof Rung.Type
+const Fit = Schema.Literals(['Follows', 'Breaks'])
+
+// page: Case. A ladder from the direction down to a real output of the project (Nanda,
+// 2026-11-15): the rungs from top to bottom (none for a direction about code), then the output,
+// a result and never an instruction (a document, code, a test fixture, a golden file). The fit
+// is about the output: it follows the direction or breaks it (ruling 4). A break is information
+// only: it makes no task (ruling 17).
+export const Case = Schema.Struct({ fit: Fit, via: Schema.Array(Rung), output: Spot })
 export type Case = typeof Case.Type
+// Every place of a case, from the top rung down to the output.
+export const spotsOf = (c: Case): ReadonlyArray<Spot> => [...c.via, c.output]
+// A case as a file writes it: the ladder, or the short form { file, line, excerpt, fit } of a
+// ladder with no rungs (a direction about code, and the files of an onboarding that started
+// before the ladder), whose place is its output.
+// The two forms are read as written, and Case checks the ladder that they make.
+const ShortCase = Schema.Struct({ ...Spot.fields, fit: Fit })
+export const CaseFile = Schema.Union([Schema.toEncoded(Case), Schema.toEncoded(ShortCase)]).pipe(
+  Schema.decodeTo(Case, {
+    decode: SchemaGetter.transform((c) =>
+      'output' in c
+        ? c
+        : { fit: c.fit, via: [], output: { file: c.file, line: c.line, excerpt: c.excerpt } },
+    ),
+    encode: SchemaGetter.transform((c) => c),
+  }),
+)
 // A direction starts with at least 3 cases (P10 rejected, onboarding 2026-11-14).
 export const MIN_CASES = 3
 export const Cases = Schema.Array(Case).check(Schema.isMinLength(MIN_CASES))
 export type Cases = typeof Cases.Type
+export const CasesFile = Schema.Array(CaseFile).check(Schema.isMinLength(MIN_CASES))
 
 // A direction file after readDirection and readApprovedBy.
 export const DirectionFile = Schema.Struct({

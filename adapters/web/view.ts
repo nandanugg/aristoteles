@@ -8,8 +8,8 @@ import { join } from 'node:path'
 import {
   attemptOf,
   blockersOf,
-  caseStateOf,
   onboardingStateOf,
+  spotCurrent,
   type Derived,
   isEndedTask,
   adjustmentDraftAt,
@@ -73,6 +73,8 @@ import {
   type RunId,
   type RunState,
   type Settings,
+  type Spot,
+  type SpotView,
   type Standard,
   type Task,
   type TaskCard,
@@ -986,16 +988,16 @@ const filesOf = (d: Derived, task: TaskId, ctx: ViewContext) => {
 // lines above and below. A long line is cut, so a minified file stays small on the page.
 const AROUND = 3
 const LINE_CHARS = 240
-const aroundOf = (text: string | null, c: Case): CaseView['around'] => {
+const aroundOf = (text: string | null, s: Spot): SpotView['around'] => {
   if (text === null) return []
   // A last line end starts no line of its own.
   const lines = text.replace(/\n$/, '').split('\n')
-  const first = c.excerpt.trim().split('\n')[0]?.trim() ?? ''
+  const first = s.excerpt.trim().split('\n')[0]?.trim() ?? ''
   const holds = lines.flatMap((l, n) => (first && l.includes(first) ? [n] : []))
-  const at = holds.sort((a, b) => Math.abs(a + 1 - c.line) - Math.abs(b + 1 - c.line))[0]
-  const start = at ?? c.line - 1
+  const at = holds.sort((a, b) => Math.abs(a + 1 - s.line) - Math.abs(b + 1 - s.line))[0]
+  const start = at ?? s.line - 1
   if (start < 0 || start >= lines.length) return []
-  const end = at === undefined ? start : start + c.excerpt.trim().split('\n').length - 1
+  const end = at === undefined ? start : start + s.excerpt.trim().split('\n').length - 1
   const from = Math.max(0, start - AROUND)
   const to = Math.min(lines.length - 1, end + AROUND)
   return lines.slice(from, to + 1).map((l, k) => ({
@@ -1005,7 +1007,7 @@ const aroundOf = (text: string | null, c: Case): CaseView['around'] => {
   }))
 }
 
-// A case is current while its excerpt is in its file (ruling 4): each file is read once a view.
+// Each spot of a case with its state and its code (ruling 4): each file is read once a view.
 const caseReader = (dir: string) => {
   const texts = new Map<string, string | null>()
   const textOf = (file: string): string | null => {
@@ -1018,13 +1020,17 @@ const caseReader = (dir: string) => {
     }
     return texts.get(file) ?? null
   }
+  const spotOf = (s: Spot): SpotView => ({
+    file: s.file,
+    line: s.line,
+    excerpt: s.excerpt,
+    current: spotCurrent(textOf(s.file), s),
+    around: aroundOf(textOf(s.file), s),
+  })
   return (c: Case): CaseView => ({
-    file: c.file,
-    line: c.line,
-    excerpt: c.excerpt,
     fit: c.fit,
-    current: caseStateOf(textOf(c.file), c)._tag === 'Current',
-    around: aroundOf(textOf(c.file), c),
+    via: c.via.map((r) => ({ name: r.name, ...spotOf(r) })),
+    output: spotOf(c.output),
   })
 }
 

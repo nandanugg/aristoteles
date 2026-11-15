@@ -177,10 +177,11 @@ const withSupersedes = (standards: unknown) =>
     rules: x.rules.map((r) => ({ ...r, supersedes: [] })),
   }))
 // Three cases each (P10 rejected, onboarding 2026-11-14), of the files of the harness project.
+// Nanda, 2026-11-15: a case is a ladder to an output; these have no rungs.
 const CASES: ReadonlyArray<Case> = [
-  { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice for one merchant.', fit: 'Follows' },
-  { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', fit: 'Follows' },
-  { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', fit: 'Breaks' },
+  { fit: 'Follows', via: [], output: { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice for one merchant.' } },
+  { fit: 'Follows', via: [], output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' } },
+  { fit: 'Breaks', via: [], output: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO' } },
 ] as unknown as ReadonlyArray<Case>
 
 // The fold of the store of the dir gives the Work of the old replay.

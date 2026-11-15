@@ -573,18 +573,27 @@ export interface DirectionCard {
   readonly questions: ReadonlyArray<QuestionView>
   readonly request: Text | null // the words of a Revise that wait for the host
 }
-// A case (ruling 4): real code that follows or breaks the direction. current: its excerpt is in
-// its file now; a stale case asks for other cases. around: the real code, so the person sees the
-// case in place (Nanda, 2026-11-15): 3 lines above and 3 below the lines of the excerpt (or its
-// line, when the excerpt is gone), the lines of the excerpt marked; none when the file does not
-// read.
+// A case (ruling 4) as its ladder (Nanda, 2026-11-15): the named rungs from the direction down,
+// then the output, a real result that follows or breaks the direction (fit). A case with a stale
+// spot asks for other cases.
 export interface CaseView {
+  readonly fit: 'Follows' | 'Breaks'
+  readonly via: ReadonlyArray<RungView>
+  readonly output: SpotView
+}
+// One place of a case. current: its excerpt is in its file now. around: the real code, so the
+// person sees the place (Nanda, 2026-11-15): 3 lines above and 3 below the lines of the excerpt
+// (or its line, when the excerpt is gone), the lines of the excerpt marked; none when the file
+// does not read.
+export interface SpotView {
   readonly file: Text
   readonly line: number
   readonly excerpt: Text
-  readonly fit: 'Follows' | 'Breaks'
   readonly current: boolean
   readonly around: ReadonlyArray<CaseLine>
+}
+export interface RungView extends SpotView {
+  readonly name: Text // the host's name of the rung: Instruction, Writer skill, Validator
 }
 export interface CaseLine {
   readonly line: number

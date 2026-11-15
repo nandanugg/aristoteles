@@ -2,7 +2,7 @@
 // answers that it names, and the commit of a company import. The checks run in the old order, and
 // the first problem is the refusal, with a real choice. Who drafts, a company direction and a
 // direction with no version are canAct's.
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import type { Derived } from '../derived/index.ts'
 import {
   directionAt,
@@ -24,8 +24,8 @@ import type { Refusal } from '../schema/errors.ts'
 import {
   type AnswerId,
   type Author,
-  type Case,
   type Cases,
+  CasesFile,
   checkerProblem,
   create,
   type Direction,
@@ -35,7 +35,6 @@ import {
   type Limit,
   lookup,
   MIN_CASES,
-  type PositiveInt,
   type Recorded,
   type Revision,
   type RoleName,
@@ -230,8 +229,10 @@ export const DRAFT = {
     no(
       `${file}: ${what}`,
       'Write',
-      `write in ${file} at least ${MIN_CASES} cases: real code that follows the direction or ` +
-        'breaks it, each { file, line, excerpt, fit: Follows | Breaks }',
+      `write in ${file} at least ${MIN_CASES} cases, each a ladder from the direction down to ` +
+        'a real output that follows it or breaks it: { fit: Follows | Breaks, via: [{ name, ' +
+        'file, line, excerpt }], output: { file, line, excerpt } }, or { file, line, excerpt, ' +
+        'fit } for an output with no rungs',
     ),
   // --- a company commit ---
   localId: (id: string) =>
@@ -264,34 +265,56 @@ const failIf = (r: Refusal | undefined): Effect.Effect<void, Refusal> =>
 
 // --- the cases of a file ------------------------------------------------------------------------
 
-// The cases: key of a file (a direction file, or a cases file): at least 3, each a file, a line, a
-// short excerpt, and whether the code follows the direction or breaks it (ruling 4). The excerpt
-// is not read here: whether it is still in its file is a derived state that the words show.
+// The cases: key of a file (a direction file, or a cases file): at least 3, each a ladder from the
+// direction down to a real output (Nanda, 2026-11-15): the rungs, each with its name, then the
+// output, and whether the output follows the direction or breaks it (ruling 4). The short form
+// { file, line, excerpt, fit } is a ladder with no rungs; CaseFile reads both forms. The excerpts
+// are not read here: whether each is still in its file is a derived state that the words show.
+type Raw = Readonly<Record<string, unknown>>
+const isRaw = (x: unknown): x is Raw => typeof x === 'object' && x !== null && !Array.isArray(x)
+const spotProblem = (s: Raw, at: string): string | undefined => {
+  const line = s.line
+  if (typeof s.file !== 'string' || !isNonBlank(s.file)) return `${at} needs a file`
+  if (typeof line !== 'number' || !Number.isInteger(line) || line < 1) {
+    return `${at}: line is a whole number of 1 or more`
+  }
+  if (typeof s.excerpt !== 'string' || !isNonBlank(s.excerpt)) return `${at} needs an excerpt`
+  return undefined
+}
+const caseProblem = (c: Raw, at: string): string | undefined => {
+  if (c.fit !== 'Follows' && c.fit !== 'Breaks') return `${at}: fit is Follows or Breaks`
+  if (!('via' in c) && !('output' in c)) return spotProblem(c, at)
+  if (!Array.isArray(c.via)) {
+    return `${at}: via lists the rungs from the direction down to the output (via: [] for none)`
+  }
+  for (const [k, r] of c.via.entries()) {
+    const rung = `${at}: rung ${k + 1}`
+    if (!isRaw(r) || typeof r.name !== 'string' || !isNonBlank(r.name)) {
+      return `${rung} needs a name, such as Instruction or Writer skill`
+    }
+    const problem = spotProblem(r, rung)
+    if (problem !== undefined) return problem
+  }
+  if (!isRaw(c.output)) {
+    return (
+      `${at} needs an output: the real result at the bottom of the ladder (a document, code, a ` +
+      'test fixture), { file, line, excerpt }'
+    )
+  }
+  return spotProblem(c.output, `${at}: output`)
+}
 export const readCases = (file: string, raw: unknown): Effect.Effect<Cases, Refusal> => {
-  const value = raw !== null && typeof raw === 'object' ? (raw as { cases?: unknown }).cases : null
-  const cases: ReadonlyArray<Record<string, unknown>> = Array.isArray(value) ? value : []
+  const value = isRaw(raw) ? raw.cases : null
+  const cases: ReadonlyArray<unknown> = Array.isArray(value) ? value : []
   if (cases.length < MIN_CASES) {
     return fail(DRAFT.cases(file, `cases lists ${cases.length}`))
   }
-  const read: Array<Case> = []
   for (const [i, c] of cases.entries()) {
-    const at = `case ${i + 1}`
-    const line = c?.line
-    if (typeof c?.file !== 'string' || !isNonBlank(c.file)) {
-      return fail(DRAFT.cases(file, `${at} needs a file`))
-    }
-    if (typeof line !== 'number' || !Number.isInteger(line) || line < 1) {
-      return fail(DRAFT.cases(file, `${at}: line is a whole number of 1 or more`))
-    }
-    if (typeof c.excerpt !== 'string' || !isNonBlank(c.excerpt)) {
-      return fail(DRAFT.cases(file, `${at} needs an excerpt`))
-    }
-    if (c.fit !== 'Follows' && c.fit !== 'Breaks') {
-      return fail(DRAFT.cases(file, `${at}: fit is Follows or Breaks`))
-    }
-    read.push({ file: c.file, line: line as PositiveInt, excerpt: c.excerpt, fit: c.fit })
+    const problem = isRaw(c) ? caseProblem(c, `case ${i + 1}`) : `case ${i + 1} gives no keys`
+    if (problem !== undefined) return fail(DRAFT.cases(file, problem))
   }
-  return Effect.succeed(read as unknown as Cases)
+  // The checks above refuse each case that CaseFile refuses, so the decode does not throw.
+  return Effect.sync(() => Schema.decodeUnknownSync(CasesFile)(cases))
 }
 
 // --- the answers ---------------------------------------------------------------------------------

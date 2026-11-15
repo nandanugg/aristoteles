@@ -339,13 +339,17 @@ export const TaskPanel = Schema.Struct({
 export const DiffView = Schema.Struct({ file: Schema.NullOr(Text), diff: Text })
 
 // GET /api/onboarding: the directions page, the agents page, and the gear's two entries.
-export const CaseView = Schema.Struct({
+const SpotView = Schema.Struct({
   file: Text,
   line: Schema.Number,
   excerpt: Text,
-  fit: Schema.Literals(['Follows', 'Breaks']),
   current: Schema.Boolean,
   around: Schema.Array(Schema.Struct({ line: Schema.Number, text: Text, mark: Schema.Boolean })),
+})
+export const CaseView = Schema.Struct({
+  fit: Schema.Literals(['Follows', 'Breaks']),
+  via: Schema.Array(Schema.Struct({ name: Text, ...SpotView.fields })),
+  output: SpotView,
 })
 export const QuestionView = Schema.Struct({
   says: Text,

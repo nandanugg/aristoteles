@@ -714,7 +714,8 @@ const draftCases = (c: Ctx, id: string): CanAct => {
   const name = directionAt(c.w, x.of).name
   return no(
     `${id} drafts the new direction ${name} with ${x.cases.length} cases; a direction starts ` +
-      `with at least ${MIN_CASES} cases: real code that follows it or breaks it`,
+      `with at least ${MIN_CASES} cases: ladders down to a real output that follows it or ` +
+      'breaks it',
     'Wait',
     `a model adds its cases first: work direction cases ${id} --file=<cases.yaml>`,
   )

@@ -2,7 +2,7 @@
 // old engine's tests, through the actions over a scenario store of the harness. Each
 // invalid input gets the old engine's words and a real choice; a valid one makes its event.
 import { beforeAll, describe, expect, test } from 'bun:test'
-import { Exit } from 'effect'
+import { Effect, Exit } from 'effect'
 import { type Derived, waitingFor } from '../derived/index.ts'
 import type { Author, Time } from '../schema/index.ts'
 import {
@@ -19,6 +19,7 @@ import {
   refused,
   workOf,
 } from './fixture.test.ts'
+import { readCases } from './drafts.ts'
 import type { ActionInput, Refusal } from './types.ts'
 
 const NO_WHY = { reason: null, words: null }
@@ -392,6 +393,52 @@ describe('a forward of the person', () => {
     expect(refusedWith(d, lead, ask)).toBe(
       'Nanda could not ask a2 now: a2 (writer) is finished, so it answers no question; ask an ' +
         'open assignment',
+    )
+  })
+})
+
+// Nanda, 2026-11-15: a case is a ladder to an output. The cases: key of a file holds ladders,
+// or the short form of a ladder with no rungs; each place is a file, a line and an excerpt.
+describe('the cases of a file', () => {
+  const output = { file: 'docs/tsd.md', line: 7, excerpt: '## Design' }
+  const rungs = [
+    { name: 'Instruction', file: 'CLAUDE.md', line: 3, excerpt: 'One idea a section.' },
+    { name: 'Writer skill', file: 'skills/writer/SKILL.md', line: 9, excerpt: 'One heading.' },
+  ]
+  const ladder = { fit: 'Follows', via: rungs, output }
+  const short = { ...output, fit: 'Breaks' }
+  const read = (cases: ReadonlyArray<unknown>) => Effect.runSyncExit(readCases('c.yaml', { cases }))
+  const refusal = (cases: ReadonlyArray<unknown>) =>
+    Effect.runSync(Effect.flip(readCases('c.yaml', { cases }))).message
+
+  test('a ladder and the short form both read as the ladder', () => {
+    const exit = read([ladder, short, { ...ladder, via: [] }])
+    expect(Exit.isSuccess(exit) ? exit.value : null).toEqual([
+      ladder,
+      { fit: 'Breaks', via: [], output },
+      { fit: 'Follows', via: [], output },
+    ] as never)
+  })
+
+  test('the output is required, each rung has a name, and each place is real words', () => {
+    const noOutput = { fit: 'Follows', via: rungs }
+    expect(refusal([ladder, ladder, noOutput])).toBe(
+      'c.yaml: case 3 needs an output: the real result at the bottom of the ladder (a document, ' +
+        'code, a test fixture), { file, line, excerpt }',
+    )
+    const unnamed = { ...ladder, via: [{ ...rungs[0], name: ' ' }] }
+    expect(refusal([unnamed, ladder, ladder])).toBe(
+      'c.yaml: case 1: rung 1 needs a name, such as Instruction or Writer skill',
+    )
+    const noFile = { ...ladder, via: [rungs[0], { ...rungs[1], file: '' }] }
+    expect(refusal([ladder, noFile, ladder])).toBe('c.yaml: case 2: rung 2 needs a file')
+    const badLine = { ...ladder, output: { ...output, line: 0 } }
+    expect(refusal([ladder, ladder, badLine])).toBe(
+      'c.yaml: case 3: output: line is a whole number of 1 or more',
+    )
+    const noVia = { fit: 'Follows', output }
+    expect(refusal([noVia, ladder, ladder])).toBe(
+      'c.yaml: case 1: via lists the rungs from the direction down to the output (via: [] for none)',
     )
   })
 })

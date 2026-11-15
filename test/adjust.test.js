@@ -89,13 +89,14 @@ describe('an adjustment of a direction', () => {
     const { p } = await started()
     p.write('cases.yaml', `cases:\n${CASE}${CASE}${CASE}`)
     const cases = drafted(ok(await p.agent('adjust cases tsd-writing --file=cases.yaml --by=host')).out)
+    // Nanda, 2026-11-15: a case is a ladder to an output, one line for each rung (was: one line).
     expect(ok(await p.nanda(`adjust show ${cases}`)).out).toContain(
       `${cases} give tsd-writing 3 new cases, drafted by host, a model run outside any task · waits for the accept of Nanda\n` +
-        '  Follows docs/facts.md:5 "The export ran twice for one merchant."',
+        '  Follows\n    Output · docs/facts.md:5 "The export ran twice for one merchant."\n  Follows\n',
     )
     expect(ok(await p.nanda(`adjust accept ${cases}`, 'accept')).out).toContain(`${cases} is accepted: give tsd-writing 3 new cases.`)
     expect(ok(await p.nanda('direction show tsd-writing')).out).toContain(
-      'cases:\n  Follows docs/facts.md:5 "The export ran twice for one merchant." · current\n  Follows docs/facts.md:5',
+      'cases:\n  Follows · current\n    Output · docs/facts.md:5 "The export ran twice for one merchant."\n  Follows · current\n',
     )
     const retire = drafted(ok(await p.agent('adjust retire tsd-writing --by=host')).out)
     expect(ok(await p.nanda(`adjust reject ${retire} --reason="the task still follows it"`)).out).toContain(

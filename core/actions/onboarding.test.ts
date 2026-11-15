@@ -37,6 +37,8 @@ import type { ActionInput } from './types.ts'
 const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
 const SUPERVISOR: Author = { _tag: 'Supervisor', name: 'Nanda' }
 const A_CASE = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', fit: 'Follows' }
+// Nanda, 2026-11-15: a case is a ladder to an output; the short form A_CASE stores as this.
+const A_LADDER = { fit: 'Follows', via: [], output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' } }
 const CASES_YAML = (n: number) =>
   `cases:\n${Array.from({ length: n }, () => `  - ${JSON.stringify(A_CASE)}\n`).join('')}`
 const later = (p: Project, minutes = 1) =>
@@ -84,9 +86,10 @@ describe('the cases of a new direction (P10 rejected, onboarding 2026-11-14)', (
       target: { of: { _tag: 'Revision', id: d2 } },
       content: { evidence: [], reason: null },
     }
+    // Nanda, 2026-11-15: a case is a ladder to an output (was: real code).
     expect(refused(act(derivedIn(p), NANDA, accept)).message).toBe(
       'd2 drafts the new direction Flags with 0 cases; a direction starts with at least 3 ' +
-        'cases: real code that follows it or breaks it',
+        'cases: ladders down to a real output that follows it or breaks it',
     )
     p.write('cases.yaml', CASES_YAML(3))
     const file = 'cases.yaml'
@@ -98,7 +101,7 @@ describe('the cases of a new direction (P10 rejected, onboarding 2026-11-14)', (
     stored(p, NANDA, accept)
     const flags = workOf(p.dir).directions.get('flags' as DirectionId)
     expect(flags?._tag).toBe('Official')
-    expect(flags?.cases).toEqual([A_CASE, A_CASE, A_CASE] as never)
+    expect(flags?.cases).toEqual([A_LADDER, A_LADDER, A_LADDER] as never)
   }, 60000)
 })
 

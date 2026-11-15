@@ -2,7 +2,7 @@
 // role, its state, and the command that answers it), `work onboard show` (one of them in full), and
 // what `work onboard wait` waits for. They read the onboarding files only; the adapter reads the
 // text of each case's file (textOf), so a stale case shows.
-import { onboardingStateOf } from '../../core/derived/index.ts'
+import { caseStateOf, onboardingStateOf } from '../../core/derived/index.ts'
 import type {
   AiQuestion,
   OnboardingDirection,
@@ -61,9 +61,9 @@ export const waitsForHost = (files: OnboardingFiles): boolean =>
 
 const staleCount = (file: OnboardingDirection, textOf: TextOf): string => {
   if (file.draft._tag !== 'Drafted') return ''
-  const lines = caseLines(file.draft.cases, textOf)
-  const stale = lines.filter((l) => l.endsWith('· stale')).length
-  return ` · ${countOf(lines.length, 'case')}${stale ? `, ${stale} stale` : ''}`
+  const { cases } = file.draft
+  const stale = cases.filter((c) => caseStateOf(textOf, c)._tag === 'Stale').length
+  return ` · ${countOf(cases.length, 'case')}${stale ? `, ${stale} stale` : ''}`
 }
 
 // The line of a direction and the command that answers it.

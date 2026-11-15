@@ -19,6 +19,7 @@ import { textOf, wordsOf } from '../args.ts'
 import { agentCallerOf, authorOf, isPerson, personAuthor } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { act, peekWork } from '../runtime.ts'
+import { CASES_FORM } from '../shared.ts'
 
 const ROLE_FILE = `write the keys of the new role in a file, as a role of ${CONFIG} has them:
   tier: high | medium | low
@@ -29,8 +30,7 @@ const ROLE_FILE = `write the keys of the new role in a file, as a role of ${CONF
   persistence: { persistent: true | false, why: <one line> }
   icon: <a role icon, such as compass>`
 const CASES_FILE = `write the new cases in a file:
-  cases:   # 3 or more: real code that follows the direction or breaks it
-    - { file: <path>, line: <n>, excerpt: <a short part of the file as it is now>, fit: Follows }`
+${CASES_FORM.replace(/^/gm, '  ')}`
 const TIERS: ReadonlyArray<Tier> = ['low', 'medium', 'high']
 
 // The change of each draft form, from its words and flags.

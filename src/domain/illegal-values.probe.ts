@@ -335,14 +335,19 @@ export const n14: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config:
 // N15 (a closed terminal closed again) is part of the UI proposal, open with the owner.
 
 // Onboarding: an agent role names its persistence and its icon; a program has no persistence
-// (P12); a case fits Follows or Breaks; a subagent keeps its tier (P2).
-const aCase = { file: 'docs/a.md', line: 1 as PositiveInt, excerpt: 'x', fit: 'Follows' } as const
+// (P12); a case fits Follows or Breaks, and its ladder ends at an output (Nanda, 2026-11-15); a
+// subagent keeps its tier (P2).
+const aSpot = { file: 'docs/a.md', line: 1 as PositiveInt, excerpt: 'x' } as const
+const aCase = { fit: 'Follows', via: [{ name: 'Instruction', ...aSpot }], output: aSpot } as const
 // @ts-expect-error O1: an agent role with no persistence
 export const o1: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { description: 'd', intro: 'i', responsibilities: [], acts: [], checks: [], icon: 'bot', kind: 'agent', tier: 'high' } } }, hashes: {}, texts: {}, directions: [] } }
 // @ts-expect-error O2: an icon outside the page's set
 export const o2: Event = { _tag: 'Workflow', create: { _tag: 'Defined', config: { ...defined, roles: { writer: { ...roleFile, icon: 'rocket', kind: 'agent', tier: 'high' } } }, hashes: {}, texts: {}, directions: [] } }
 // @ts-expect-error O3: a case that neither follows nor breaks
 export const o3: Event = { _tag: 'Revision', id: d, move: { _tag: 'CasesAdded', cases: [aCase, aCase, { ...aCase, fit: 'Maybe' }] } }
+export const okO3b: Event = { _tag: 'Revision', id: d, move: { _tag: 'CasesAdded', cases: [aCase, aCase, { ...aCase, via: [] }] } }
+// @ts-expect-error O3b: a ladder with no output
+export const o3b: Event = { _tag: 'Revision', id: d, move: { _tag: 'CasesAdded', cases: [aCase, aCase, { fit: 'Breaks', via: aCase.via }] } }
 // @ts-expect-error O4: a subagent with no tier
 export const o4: Assignment = { ...asg, role: linter, _tag: 'Reviewer', runs: { _tag: 'Subagent' } }
 export const okO5: Recorded = { seq: 2, at: now, author: { _tag: 'Supervisor', name: 'Nanda' }, event: { _tag: 'Agent', id: 'p1' as AgentId, move: { _tag: 'Started', session: s1 } } }

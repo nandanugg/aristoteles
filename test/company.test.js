@@ -65,7 +65,8 @@ describe('a company direction', () => {
     expect(ok(await p.nanda('direction show d2#one-read#example')).out).toContain('d2 · rule one-read · Example\n## Example')
     await addCases(p, 'd2')
     // P10 rejected, onboarding 2026-11-14: the draft shows its cases, each with its state.
-    expect(ok(await p.nanda('direction show d2')).out).toContain('cases:\n  Follows docs/tsd.md:3 "## Introduction" · current')
+    // Nanda, 2026-11-15: a case is a ladder to an output, one line for each rung.
+    expect(ok(await p.nanda('direction show d2')).out).toContain('cases:\n  Follows · current\n    Output · docs/tsd.md:3 "## Introduction"\n')
     const accept = ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept')).out
     expect(accept).toContain('d2 is official: feature-flags@1.')
     expect(accept).toContain(`feature-flags follows ${first.slice(0, 7)} of ${company.dir} now (aristoteles.lock).`)
@@ -73,7 +74,7 @@ describe('a company direction', () => {
     expect(ok(await p.agent('direction show feature-flags#one-read#example')).out).toContain('if flags.Enabled("FF_REPORTS_FAST_EXPORT") {')
     // Ruling 4, onboarding 2026-11-14: a case is stale when its excerpt is no longer in its file.
     p.write('docs/tsd.md', '# TSD\n\nTODO\n')
-    expect(ok(await p.agent('direction show feature-flags')).out).toContain('cases:\n  Follows docs/tsd.md:3 "## Introduction" · stale')
+    expect(ok(await p.agent('direction show feature-flags')).out).toContain('cases:\n  Follows · stale\n    Output · docs/tsd.md:3 "## Introduction" · stale\n')
     const db = new Database(join(p.dir, '.work', 'aristoteles.db'), { readonly: true })
     expect(db.query("SELECT source FROM version WHERE id = 'feature-flags@1'").get().source).toBe(`${company.dir} directions/feature-flags@${first}`)
     db.close()

@@ -6,9 +6,10 @@
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { readCases } from '../../../core/actions/drafts.ts'
-import { caseStateOf, onboardingStateOf } from '../../../core/derived/index.ts'
+import { onboardingStateOf, spotCurrent } from '../../../core/derived/index.ts'
 import {
-  Case,
+  type Case,
+  CaseFile,
   type Cases,
   DirectionId,
   isNonBlank,
@@ -16,6 +17,7 @@ import {
   Refused,
   refuse,
   RoleName,
+  spotsOf,
 } from '../../../core/schema/index.ts'
 import {
   CONFIG,
@@ -55,6 +57,7 @@ import { type Confirm, personChannel, personOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { act } from '../runtime.ts'
 import { configProblems } from '../../live/config-problems.ts'
+import { CASES_FORM } from '../shared.ts'
 import { WAIT_SECONDS } from './wait.ts'
 
 const POLL_MS = 1000
@@ -77,8 +80,7 @@ const CONFIG_TEMPLATE = `write a file like this, then run the command again:
 ${ROLE_KEYS}`
 const ROLE_TEMPLATE = `write a file with the keys of one role, then run the command again:
 ${ROLE_KEYS.replaceAll('\n      ', '\n  ').replace(/^ {6}/, '  ')}`
-const CASES = `  cases:   # 3 or more: real code that follows the direction or breaks it
-    - { file: <path>, line: <n>, excerpt: <a short part of the file as it is now>, fit: Follows }`
+const CASES = CASES_FORM.replace(/^/gm, '  ')
 const DRAFT_TEMPLATE = `write a file like this, then run the command again:
   id: <a short id; a new direction takes it from its first draft>
   name: <a short name>
@@ -97,7 +99,7 @@ ${CASES}`
 const QUESTIONS_TEMPLATE = `write a file like this, then run the command again:
   questions:
     - says: <what the AI must know to draft the direction>
-      case: { file: <path>, line: <n>, excerpt: <a short part of the file>, fit: Follows | Breaks }
+      case: { file: <path>, line: <n>, excerpt: <a short part of the file>, fit: Follows | Breaks }   # or a ladder, as in a draft
       options: [<option A>, <option B>]`
 // A draft of onboarding names no owner: readDirection checks the rest of the file with this one,
 // and the person who starts the store owns each direction.
@@ -177,18 +179,24 @@ const checkDraft = (file: string, raw: Readonly<Record<string, unknown>>) =>
     }
   })
 
-// A case is real now: its excerpt is in its file (caseStateOf).
-const realCases = (file: string, cases: ReadonlyArray<typeof Case.Type>) =>
+// A case is real now: the excerpt of each rung and of the output is in its file (Nanda,
+// 2026-11-15: a case is a ladder to an output).
+const realCases = (file: string, cases: ReadonlyArray<Case>) =>
   Effect.gen(function* () {
     const { cwd } = yield* Dir
     const files = yield* Files
     for (const [i, c] of cases.entries()) {
-      const text = yield* files.read(join(cwd, c.file))
-      if (caseStateOf(text, c)._tag === 'Stale') {
-        return yield* refuse(
-          `${file}: case ${i + 1}: "${short(c.excerpt, 80)}" is not in ${c.file}`,
-          'a case is real: its excerpt is a short part of its file as it is now',
-        )
+      const spots = [
+        ...c.via.map((r, k) => ({ at: `, rung ${k + 1} (${r.name})`, spot: r })),
+        { at: '', spot: c.output },
+      ]
+      for (const { at, spot } of spots) {
+        if (!spotCurrent(yield* files.read(join(cwd, spot.file)), spot)) {
+          return yield* refuse(
+            `${file}: case ${i + 1}${at}: "${short(spot.excerpt, 80)}" is not in ${spot.file}`,
+            'a case is real: each excerpt is a short part of its file as it is now',
+          )
+        }
       }
     }
   })
@@ -204,8 +212,8 @@ const textsOf = (files: OnboardingFiles) =>
         ...(f.draft._tag === 'Drafted' ? f.draft.cases : []),
         ...f.questions.map((q) => q.case),
       ]
-      for (const c of cases) {
-        if (!texts.has(c.file)) texts.set(c.file, yield* read.read(join(cwd, c.file)))
+      for (const { file } of cases.flatMap(spotsOf)) {
+        if (!texts.has(file)) texts.set(file, yield* read.read(join(cwd, file)))
       }
     }
     return (file: string) => texts.get(file) ?? null
@@ -407,14 +415,19 @@ const ask = (call: Call, id: string | undefined) =>
       if (!isRecord(q) || typeof q.says !== 'string' || !isNonBlank(q.says)) {
         return yield* refuse(`${at} needs says: what the AI must know`, QUESTIONS_TEMPLATE)
       }
-      if (!Schema.is(Case)(q.case)) {
-        return yield* refuse(`${at}: case is { file, line, excerpt, fit: Follows | Breaks }`, QUESTIONS_TEMPLATE)
+      const read = Schema.decodeUnknownOption(CaseFile)(q.case)
+      if (read._tag === 'None') {
+        return yield* refuse(
+          `${at}: case is { file, line, excerpt, fit: Follows | Breaks }, or a ladder ` +
+            '{ fit, via: [{ name, file, line, excerpt }], output: { file, line, excerpt } }',
+          QUESTIONS_TEMPLATE,
+        )
       }
       const [a, b, ...more] = Array.isArray(q.options) ? q.options : []
       if (typeof a !== 'string' || typeof b !== 'string' || more.length > 0) {
         return yield* refuse(`${at}: options lists two options, A and B`, QUESTIONS_TEMPLATE)
       }
-      questions.push({ says: q.says, case: q.case, options: [a, b] })
+      questions.push({ says: q.says, case: read.value, options: [a, b] })
     }
     yield* realCases(file, questions.map((q) => q.case))
     const { cwd } = yield* Dir

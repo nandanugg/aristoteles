@@ -120,6 +120,31 @@ standards:
     rules:
       - { id: one-topic, says: "The section stays on its heading", checkedBy: linter }
 `
+// Nanda, 2026-11-15: a case is a ladder from the direction down to a real output. The files of a
+// project whose instructions reach a real document (an instruction, the skill of the writer, the
+// template that it fills), and three cases: a 3-rung ladder, a 1-rung ladder, and the short form
+// of an output with no rungs.
+export const LADDER_FILES = {
+  'CLAUDE.md': '# How we write\n\nEach TSD section says one thing.\n',
+  '.claude/skills/writer/SKILL.md': '# Writer\n\nWrite one heading for each section.\n',
+  'docs/template.md': '# TSD\n\n## Introduction\n\n## Design\n',
+}
+export const LADDER_CASES = `cases:
+  - fit: Follows
+    via:
+      - { name: Instruction, file: CLAUDE.md, line: 3, excerpt: Each TSD section says one thing. }
+      - { name: Writer skill, file: .claude/skills/writer/SKILL.md, line: 3, excerpt: Write one heading for each section. }
+      - { name: Template, file: docs/template.md, line: 3, excerpt: "## Introduction" }
+    output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" }
+  - fit: Breaks
+    via:
+      - { name: Instruction, file: CLAUDE.md, line: 3, excerpt: Each TSD section says one thing. }
+    output: { file: docs/tsd.md, line: 5, excerpt: TODO }
+  - { file: docs/facts.md, line: 5, excerpt: The export ran twice for one merchant., fit: Follows }
+`
+// A direction file with the cases above in place of its own.
+export const withLadders = (direction) => direction.replace(/cases:\n( {2}- .*\n)+/, LADDER_CASES)
+
 // The host's questions about a draft: each names a case and gives two options.
 export const ONBOARD_QUESTIONS = `questions:
   - says: Does a section of facts count as one thing?

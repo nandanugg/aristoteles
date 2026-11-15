@@ -9,12 +9,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   git,
+  LADDER_FILES,
   ok,
   ONBOARD_CONFIG,
   ONBOARD_DIRECTION,
   ONBOARD_NEW,
   ONBOARD_QUESTIONS,
   onboardingProject,
+  withLadders,
 } from './harness.js'
 
 const ROLES = ['architect', 'section-lead', 'writer', 'linter']
@@ -66,9 +68,11 @@ describe('the whole onboarding at a terminal', () => {
       '  one-thing · Question · One thing per section · asked for by the person: "A section says one thing" · 3 cases\n' +
         '    1 question for the person: work onboard show one-thing; work onboard answer one-thing --options=A',
     )
+    // Nanda, 2026-11-15: a case is a ladder to an output, one line for each rung (was: one line).
     expect(ok(await p.nanda('onboard show one-thing')).out).toContain(
       '  1. Does a section of facts count as one thing?\n' +
-        '    Follows docs/facts.md:3 "## Dedupe" · current\n' +
+        '    Follows · current\n' +
+        '      Output · docs/facts.md:3 "## Dedupe"\n' +
         '     A: each fact is one thing\n     B: the facts together are one thing',
     )
     // Nanda, 2026-11-15: a reply names the direction and what each answer chose (was: the letters).
@@ -214,6 +218,42 @@ describe('what onboarding refuses', () => {
     )
     p.write('few.yaml', ONBOARD_DIRECTION.replace(/ {2}- \{ file: docs\/tsd.md, line: 5.*\n/, ''))
     expect((await p.agent('onboard draft tsd-writing --file=few.yaml')).err).toContain('refused: few.yaml: cases lists 2')
+  })
+
+  // Nanda, 2026-11-15: a case is a ladder from the direction down to a real output.
+  test('a draft of ladders: show gives one line for each rung, and a stale rung is refused', async () => {
+    const p = onboardingProject(LADDER_FILES)
+    p.write('draft.yaml', ONBOARD_CONFIG)
+    ok(await p.agent('onboard config --file=draft.yaml'))
+    ok(await p.agent('onboard found tsd-writing'))
+    const ladders = withLadders(ONBOARD_DIRECTION)
+    p.write('stale.yaml', ladders.replace('excerpt: Write one heading for each section.', 'excerpt: Write two headings.'))
+    expect((await p.agent('onboard draft tsd-writing --file=stale.yaml')).err).toContain(
+      'refused: stale.yaml: case 1, rung 2 (Writer skill): "Write two headings." is not in .claude/skills/writer/SKILL.md',
+    )
+    p.write('tsd.yaml', ladders)
+    ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+    expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain(
+      'cases:\n' +
+        '  Follows · current\n' +
+        '    Instruction · CLAUDE.md:3 "Each TSD section says one thing."\n' +
+        '    Writer skill · .claude/skills/writer/SKILL.md:3 "Write one heading for each section."\n' +
+        '    Template · docs/template.md:3 "## Introduction"\n' +
+        '    Output · docs/tsd.md:3 "## Introduction"\n' +
+        '  Breaks · current\n' +
+        '    Instruction · CLAUDE.md:3 "Each TSD section says one thing."\n' +
+        '    Output · docs/tsd.md:5 "TODO"\n' +
+        '  Follows · current\n' +
+        '    Output · docs/facts.md:5 "The export ran twice for one merchant."',
+    )
+    // The excerpt of a rung leaves its file: each case with that rung is stale, and its line says so.
+    p.write('CLAUDE.md', '# How we write\n\nA section may say two things.\n')
+    expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain(
+      '  Breaks · stale\n' +
+        '    Instruction · CLAUDE.md:3 "Each TSD section says one thing." · stale\n' +
+        '    Output · docs/tsd.md:5 "TODO"\n',
+    )
+    expect(ok(await p.agent('onboard status')).out).toContain('found in the project · 3 cases, 2 stale')
   })
 
   test('work init refuses while onboarding files exist', async () => {

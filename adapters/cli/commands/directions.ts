@@ -26,6 +26,7 @@ import {
   whoOf,
   type RejectId,
   type PermissionId,
+  spotsOf,
 } from '../../../core/schema/index.ts'
 import { Dir, Files, Now } from '../../../core/services/index.ts'
 import {
@@ -44,7 +45,14 @@ import type { Call, Command, Commands } from '../command.ts'
 import { lookupKind } from '../lookups.ts'
 import { followCommit } from '../refresh.ts'
 import { act, derivedAfter, peekWork, readWork } from '../runtime.ts'
-import { afterVersion, EVIDENCE_FORM, evidenceOf, pointsOf, versionMadeBy } from '../shared.ts'
+import {
+  afterVersion,
+  CASES_FORM,
+  EVIDENCE_FORM,
+  evidenceOf,
+  pointsOf,
+  versionMadeBy,
+} from '../shared.ts'
 
 
 // The file of a new direction: the whole direction (guides/writing.md).
@@ -64,8 +72,7 @@ const DIRECTION_TEMPLATE = `write a file like this, then run the command again:
         - { id: <rule id>, says: <one check>, checkedBy: <role> }`
 
 const CASES_TEMPLATE = `write a file like this, then run the command again:
-  cases:   # 3 or more: real code that follows the direction or breaks it
-    - { file: <path>, line: <n>, excerpt: <a short part of the file as it is now>, fit: Follows }`
+${CASES_FORM.replace(/^/gm, '  ')}`
 
 const REVISE_TEMPLATE =
   'write a file like this (any of the keys), then run the revise again:\n' +
@@ -74,15 +81,15 @@ const REVISE_TEMPLATE =
   '  remove: [<standard id>]\n  says: <a new spirit needs the accept of the owner>'
 
 // The cases of a direction or of a new draft, each with its state (ruling 4): the adapter reads the
-// text of each file now, so a case whose excerpt left its file shows stale.
+// text of each file of a ladder now, so a case with an excerpt that left its file shows stale.
 const casesOf = (cases: ReadonlyArray<Case>) =>
   Effect.gen(function* () {
     if (cases.length === 0) return []
     const { cwd } = yield* Dir
     const files = yield* Files
     const texts = new Map<string, string | null>()
-    for (const c of cases) {
-      if (!texts.has(c.file)) texts.set(c.file, yield* files.read(join(cwd, c.file)))
+    for (const { file } of cases.flatMap(spotsOf)) {
+      if (!texts.has(file)) texts.set(file, yield* files.read(join(cwd, file)))
     }
     return ['cases:', ...caseLines(cases, (file) => texts.get(file) ?? null)]
   })

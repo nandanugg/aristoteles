@@ -26,6 +26,15 @@ import {
 export const EVIDENCE_FORM =
   '--evidence="<rule id> | <where you read in the result> | <what you saw there>", one for each rule in your checks; with no rule: --evidence="<where you read> | <what you saw there>"'
 
+// The cases: key of a file, in each template that asks for cases (Nanda, 2026-11-15: a case is a
+// ladder to an output). A template indents it under its own first line.
+export const CASES_FORM = `cases:   # 3 or more, each a ladder from the direction down to a real output
+  - fit: Follows | Breaks   # the output follows the direction, or breaks it
+    via:   # the rungs from top to bottom, each named; none for a direction about code
+      - { name: <a short name, such as Instruction>, file: <path>, line: <n>, excerpt: <a short part of the file as it is now> }
+    output: { file: <a real result: a document, code, a test fixture>, line: <n>, excerpt: <a short part of it> }
+  - { file: <path>, line: <n>, excerpt: <a short part of a real result>, fit: Follows }   # an output with no rungs`
+
 // One evidence line: <rule id> | <where> | <what>, or <where> | <what> for what no rule names.
 export const evidenceOf = (
   values: ReadonlyArray<string | true>,

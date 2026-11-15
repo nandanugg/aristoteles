@@ -318,9 +318,9 @@ const open = async () => {
   // state, the question form, Revise, Remove and approve all; then the agents page, its grid and
   // the window of a role; approve all roles starts the store. Then the gear: three tiers with a
   // model, the entries of the directions and the agents (robot icon), and the sixth decision.
-  const { ONBOARD_CONFIG, ONBOARD_DIRECTION, ONBOARD_NEW, ONBOARD_QUESTIONS, git, onboardingProject } =
+  const { LADDER_FILES, ONBOARD_CONFIG, ONBOARD_DIRECTION, ONBOARD_NEW, ONBOARD_QUESTIONS, git, onboardingProject, withLadders } =
     await import('../harness.js')
-  const p = onboardingProject()
+  const p = onboardingProject(LADDER_FILES)
   // The page stores the start at the real time, so the CLI acts after it use the real clock too.
   p.realTime()
   git(p.dir, 'init', '-q')
@@ -329,7 +329,8 @@ const open = async () => {
   ok(await p.agent('onboard config --file=draft.yaml'))
   ok(await p.agent('onboard found tsd-writing'))
   // Nanda, 2026-11-15: the words of a direction are markdown, and the page shows them so.
-  p.write('tsd.yaml', ONBOARD_DIRECTION.replace('says: The reader understands and decides from the page alone.\n',
+  // Nanda, 2026-11-15: a case is a ladder to an output (a 3-rung, a 1-rung, and a short case).
+  p.write('tsd.yaml', withLadders(ONBOARD_DIRECTION).replace('says: The reader understands and decides from the page alone.\n',
     'says: |\n  The reader understands and decides from the page alone.\n\n  ## Where it comes from\n' +
     '  The `docs/tsd.md` file, **every** section of it:\n\n  - the introduction\n  - the design\n'))
   ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
@@ -381,10 +382,26 @@ const open = async () => {
     expect(await page.textContent('.direction-page .level-direction')).not.toContain('##')
     expect(await page.textContent('.direction-page .level-rule .level-head')).toBe('Ruleno-code-proofchecked by linter')
     expect(await page.locator('.direction-page .case').count()).toBe(3)
-    expect(await page.textContent('.direction-page .case .case-head')).toBe('Followsdocs/facts.md:5')
-    expect(await page.locator('.direction-page .case >> nth=0 >> .line').allTextContents()).toEqual(
+    // Nanda, 2026-11-15: each case is a small vertical ladder: the direction at the top, each
+    // named rung with its code, the output at the bottom in the color of its fit (was: one block).
+    const ladder = (n) => `.direction-page .case >> nth=${n}`
+    expect(await page.locator(`${ladder(0)} >> .rung-name`).allTextContents()).toEqual(['Instruction', 'Writer skill', 'Template'])
+    expect(await page.locator(`${ladder(0)} >> .rung`).count()).toBe(5)
+    expect(await page.textContent(`${ladder(0)} >> .rung.top`)).toBe('Direction')
+    expect(await page.textContent(`${ladder(0)} >> .rung.via >> nth=1 >> .rung-head`)).toBe('Writer skill.claude/skills/writer/SKILL.md:3')
+    expect(await page.textContent(`${ladder(0)} >> .rung.via >> nth=1 >> .line.mark mark`)).toBe('Write one heading for each section.')
+    expect(await page.textContent(`${ladder(0)} >> .rung.output .rung-head`)).toBe('Output · Followsdocs/tsd.md:3')
+    expect(await page.locator(`${ladder(1)} >> .rung-name`).allTextContents()).toEqual(['Instruction'])
+    expect(await page.textContent(`${ladder(1)} >> .rung.output .rung-head`)).toBe('Output · Breaksdocs/tsd.md:5')
+    expect(await page.evaluate(() => {
+      const dot = document.querySelectorAll('.direction-page .case')[1].querySelector('.rung.output')
+      const tag = dot.querySelector('.fit-tag')
+      return getComputedStyle(dot, '::before').backgroundColor === getComputedStyle(tag).color
+    })).toBe(true)
+    expect(await page.locator(`${ladder(2)} >> .rung`).count()).toBe(2)
+    expect(await page.locator(`${ladder(2)} >> .line`).allTextContents()).toEqual(
       ['2 ', '3## Dedupe', '4 ', '5The export ran twice for one merchant.'])
-    expect(await page.textContent('.direction-page .case >> nth=0 >> .line.mark mark')).toBe('The export ran twice for one merchant.')
+    expect(await page.textContent(`${ladder(2)} >> .line.mark mark`)).toBe('The export ran twice for one merchant.')
     // Nanda, 2026-11-15: the page fills the main area, and the list stays in view when the page
     // scrolls.
     await page.setViewportSize({ width: 1440, height: 600 })

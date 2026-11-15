@@ -22,7 +22,7 @@ import {
   versionAt,
 } from '../../core/derived/reads.ts'
 import { sameWords } from '../../core/state/versions.ts'
-import { adjustmentDraftAt, caseStateOf, type Derived } from '../../core/derived/index.ts'
+import { adjustmentDraftAt, caseStateOf, type Derived, spotCurrent } from '../../core/derived/index.ts'
 import {
   type Adjustment,
   type AssignmentId,
@@ -39,6 +39,7 @@ import {
   replacesOf,
   type RevisionId,
   type Rule,
+  type Spot,
   type StandardEntry,
   type TaskId,
   type Version,
@@ -491,16 +492,25 @@ export const renderAssignment = (d: Derived, id: AssignmentId): ReadonlyArray<st
 
 // --- the cases of a direction, and an adjustment (onboarding) -----------------------------------
 
-// One line for each case (ruling 4): its fit, where it is, its excerpt, and its state. A case is
-// stale when its excerpt is no longer in its file; textOf gives the text of a file now (null: no
-// such file), which the adapter reads.
+// A case as its ladder (Nanda, 2026-11-15): a head line, then one indented line for each rung
+// from the top, and the output last, each with its name, its place and its excerpt. mark gives
+// the end of a line.
+const ladderLines = (c: Case, head: string, mark: (s: Spot) => string): ReadonlyArray<string> => {
+  const line = (name: string, s: Spot) =>
+    `    ${name} · ${s.file}:${s.line} "${short(s.excerpt, 80)}"${mark(s)}`
+  return [head, ...c.via.map((r) => line(r.name, r)), line('Output', c.output)]
+}
+// Each case with its state (ruling 4): stale when the excerpt of a rung or of the output is no
+// longer in its file, and that line says so. textOf gives the text of a file now (null: no such
+// file), which the adapter reads.
 export const caseLines = (
   cases: ReadonlyArray<Case>,
   textOf: (file: string) => string | null,
 ): ReadonlyArray<string> =>
-  cases.map((c) => {
-    const state = caseStateOf(textOf(c.file), c)._tag === 'Current' ? 'current' : 'stale'
-    return `  ${c.fit} ${c.file}:${c.line} "${short(c.excerpt, 80)}" · ${state}`
+  cases.flatMap((c) => {
+    const state = caseStateOf(textOf, c)._tag === 'Current' ? 'current' : 'stale'
+    const mark = (s: Spot) => (spotCurrent(textOf(s.file), s) ? '' : ' · stale')
+    return ladderLines(c, `  ${c.fit} · ${state}`, mark)
   })
 
 // What an adjustment changes, in one line.
@@ -554,10 +564,7 @@ export const renderAdjustment = (d: Derived, ref: EventRef): ReadonlyArray<strin
   const head = `${ref} ${adjustmentWords(a)}, drafted by ${drafterWords(x.by)} · ${adjustmentState(d, ref)}`
   if (a._tag === 'AddRole') return [head, ...JSON.stringify(a.file, null, 2).split('\n')]
   if (a._tag === 'SetCases') {
-    return [
-      head,
-      ...a.cases.map((c) => `  ${c.fit} ${c.file}:${c.line} "${short(c.excerpt, 80)}"`),
-    ]
+    return [head, ...a.cases.flatMap((c) => ladderLines(c, `  ${c.fit}`, () => ''))]
   }
   return [head]
 }

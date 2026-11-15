@@ -67,7 +67,9 @@ export type {
 // --- the files that people write ----------------------------------------------------------------
 export {
   Case,
+  CaseFile,
   Cases,
+  CasesFile,
   checkerProblem,
   CompanyCheckers,
   CompanyFolder,
@@ -81,8 +83,11 @@ export {
   PersistenceFile,
   ReviseFile,
   RoleFile,
+  Rung,
   Settings,
   Snapshot,
+  Spot,
+  spotsOf,
   TaskFile,
   TerminalTier,
 } from '../../src/domain/files.ts'
@@ -210,6 +215,7 @@ export type {
   ResultView,
   ReviewCard,
   RoleCard,
+  SpotView,
   SuggestionTarget,
   TaskCard,
   TaskDraftView,

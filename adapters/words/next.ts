@@ -195,8 +195,9 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
       const name = w.directions.get(s.direction)?.name ?? s.direction
       return step(
         `${s.draft} drafts the new direction "${name}" with ${has} cases, and its accept ` +
-          `needs ${MIN_CASES}; add real cases from the code: a file, a line, a short excerpt ` +
-          'that is in the file, and whether the code follows or breaks the direction',
+          `needs ${MIN_CASES}; add real cases: each a ladder from the direction down to a real ` +
+          'output of the project, each rung named, each place a file, a line and a short ' +
+          'excerpt that is in the file, and whether the output follows or breaks the direction',
         `work direction cases ${token} ${s.draft} --file=<cases.yaml>`,
       )
     }
