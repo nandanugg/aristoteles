@@ -278,14 +278,15 @@ piece as below. The roles go into the config draft, the directions into directio
 
 ## A direction draft
 
-A direction draft has exactly these keys: `id name from says standards cases`. It has no `owner`
-and no `approvedBy`: the person who starts the store owns each direction.
+A direction draft has exactly these keys: `id name from summary says standards cases`. It has no
+`owner` and no `approvedBy`: the person who starts the store owns each direction.
 
 ```yaml
 id: <direction id, lower case with dashes>
 name: <a short name>
 from: [<one or two principles of the eleven that ground it: Logos, Pathos, Ethos, Mythos,
        Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
+summary: <one or two plain sentences: what the direction asks, and why it matters>
 says: |
   <what the work is for, in any markdown; the whole idea in the first paragraph>
 standards:
@@ -300,7 +301,10 @@ standards:
         says: |
           <one check, in its first sentence; reasons and examples under headers>
 cases:
-  - { file: <path>, line: <n>, excerpt: <a short part of the file as it is now>, fit: Follows }
+  - fit: <Follows or Breaks: the output follows the direction, or breaks it>
+    via:
+      - { name: <a short name of the rung>, file: <path>, line: <n>, excerpt: <a short part of the file as it is now> }
+    output: { file: <a real result>, line: <n>, excerpt: <a short part of it as it is now> }
 ```
 
 Each standard follows from the words of its direction. Each rule is one check that a reviewer
@@ -315,17 +319,59 @@ project.
 the question of each. A direction grounds in the one or two whose question it answers. Name a
 doubt in your report.
 
-**Cases.** Give at least 3 real cases for each direction. A case is a file, a line, a short
-excerpt, and a fit: `Follows` for code that follows the direction, `Breaks` for code that breaks
-it. Give both kinds when the code has both. Each case is real now: its excerpt is a short part
-of its file as it is today, and the command refuses a case that is not. A break is information
-for the person to judge the direction; it makes no task. More or other cases come on request
-(a Revise); a change of cases makes no new version of the direction.
+**The summary.** One or two plain sentences that say what the direction asks and why it matters,
+for a person who reads the direction the first time. The page and the CLI show it first, before
+the words. Use plain words: no ids, no file paths, no names of rules. The command refuses a draft
+with no summary.
 
-A case must stay in a file: a file, a line, and an excerpt of it. Some directions have no such
-file (for example "a commit message says why": a commit message is not in a file of the dir).
-Look for files that show it: docs, templates, config, scripts, hooks. When no file shows a
-direction, drop it: do not draft it, and do not name it in your summary or anywhere else.
+**Cases.** Give at least 3 real cases for each direction. A case is a ladder from the direction
+down to a real output of the project, so that the person can follow the direction to a result:
+
+- The **output** is the bottom of the ladder: a result of the work, never an instruction. A
+  document, code, a test fixture, or a golden file is an output. A line that only says the rule
+  again is not.
+- Each **rung** is a step between the direction and the output, from the top down: a place that
+  passes the direction on, for example the instruction that says it, the skill of the writer that
+  does it, and the template that the writer fills.
+- Each place is a file, a line, and a short excerpt of the file as it is today. The command
+  refuses a case with an excerpt that is not in its file now, at a rung or at the output.
+- `fit` is about the output: `Follows` when the output follows the direction, `Breaks` when it
+  breaks it. Give both kinds when the project has both.
+
+Name each rung with a short name that says what the place is. Common names: `Instruction` (a line
+of CLAUDE.md, AGENTS.md, or a guide), `Writer skill` (a line of a skill), `Validator` (a check or a
+script that tests the output), `Template` (a file that a writer fills). Use another short name
+when none fits.
+
+A direction about how instructions are written goes from the instruction, through the skill that
+uses it, down to a real document:
+
+```yaml
+  - fit: Follows
+    via:
+      - { name: Instruction, file: CLAUDE.md, line: 12, excerpt: Each section of a TSD says one thing. }
+      - { name: Writer skill, file: .claude/skills/writer/SKILL.md, line: 30, excerpt: Write one heading for each section. }
+    output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
+```
+
+A direction about code needs no rung: the code is the output. `via: []` says so, and the short
+form `{ file, line, excerpt, fit }` is the same case:
+
+```yaml
+  - fit: Breaks
+    via: []
+    output: { file: src/export/handler.go, line: 41, excerpt: os.Getenv("EXPORT_LIMIT") }
+  - { file: src/export/config.go, line: 9, excerpt: func Limit() int, fit: Follows }
+```
+
+A break is information for the person to judge the direction; it makes no task. More or other
+cases come on request (a Revise); a change of cases makes no new version of the direction.
+
+**A direction with no output gets no case.** Every ladder ends at a real output in a file of the
+dir. Some directions have none (for example "a commit message says why": a commit message is not
+in a file of the dir). Look for files that show a result: docs, code, test fixtures, golden files,
+generated files. When no file shows a result of a direction, drop it: do not draft it, and do not
+name it in your report or anywhere else.
 
 **Polish before you send.** Read the draft with each question of `work guide direction-review`,
 and fix it: the person reads it only after that polish.
@@ -344,6 +390,8 @@ questions:
     options: [<option A>, <option B>]
 ```
 
+The case of a question can be a ladder too, as in a draft.
+
 Ask only what the files cannot answer. The person submits one answer for each question
 (`work onboard answer <id> --options=A,B`, or the page). `work onboard wait` then returns, and
 you draft the direction again with the answers; that clears the questions.
@@ -353,7 +401,8 @@ you draft the direction again with the answers; that clears the questions.
 A company direction is a folder of a git repo that other projects follow. The person asks for it
 on the page (add a company direction) or in the chat; then `work onboard company <id>
 --repo=<repo> --path=<folder>` makes it, and it shows Loading. The text, the standards, and the
-rules come from the folder at one commit: you do not write them. Your draft file has only
+rules come from the folder at one commit: you do not write them. The summary is the first
+sentence of the folder's words; you do not write it either. Your draft file has only
 `id` (optional), `checkedBy` (the role that checks each rule), `rules` (`{ <rule id>: <role> }`
 for a rule with another checker), and `cases`; send it with
 `work onboard draft <id> --file=<it>`. Do not copy its words into a direction of the project;
@@ -385,7 +434,7 @@ an event.
 
 End with one list for the person:
 
-- each direction: its id, one sentence of what it asks for, and the evidence (where you saw it);
+- each direction: its id, its summary, and the evidence (the outputs of its cases);
 - each role that you drafted: its tier, its persistence and why, and where the project has it;
 - for an app with its own harness: each piece of the harness and where it went (a role, a rule,
   a key of the config, or outside the work, with the command that the person runs);

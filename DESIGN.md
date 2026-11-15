@@ -1052,10 +1052,19 @@ revises, or removes it. The agents page opens when every direction is accepted o
 page act has a `work onboard` twin at a terminal. The host's commands: `config`, `role`, `found`,
 `draft`, `ask`, `company`, `status`, `show`, `wait`.
 
-**Cases** (rulings 4, 17). A direction has at least 3 real cases: a file, a line, a short excerpt,
-and a fit of `Follows` or `Breaks`. A case is stale when its excerpt is no longer in its file. A
-change of cases makes no new version. A break is information for the person; it makes no task.
-A question has a case and two options, A and B.
+**Cases** (rulings 4, 17; Nanda, 2026-11-15). A direction has at least 3 real cases. A case is a
+ladder from the direction down to a real output: named rungs from the top (`Instruction`, `Writer
+skill`, `Template`; none for a direction about code), then the output, a result and never an
+instruction. Each place is a file, a line, and a short excerpt; the fit (`Follows` or `Breaks`) is
+about the output. A file may hold the short form `{ file, line, excerpt, fit }`, a ladder with no
+rungs. A case is stale when the excerpt of a rung or of the output is no longer in its file. A
+direction with no output in the project gets no case: the host drops it. A change of cases makes no
+new version. A break is information for the person; it makes no task. A question has a case and
+two options, A and B. The page draws each case as a small vertical ladder.
+
+**Summary** (Nanda, 2026-11-15). Each direction starts with one or two plain sentences that say what
+it asks and why it matters. It is part of each version, so a revise may change it. A company
+direction takes the first sentence of its folder's words.
 
 **Roles** (rulings 7, 8, 9, 15, 16). Tier and persistence are apart. A role says
 `persistence: { persistent, why }` and an `icon`. Only a persistent role gets a terminal of its own,

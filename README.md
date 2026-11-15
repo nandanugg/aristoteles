@@ -57,8 +57,11 @@ the store until the end:
 1. The host reads the dir and drafts the people, the roles (each with a one-line summary, and the
    place where the project has it already), and the commands of its own CLI for each tier. It
    opens the page (`work start --detach`).
-2. The host drafts each direction with its standards, its rules, and at least 3 real cases: code
-   that follows the direction, and code that breaks it. You open any ready direction on the page.
+2. The host drafts each direction with a summary (one or two plain sentences), its standards, its
+   rules, and at least 3 real cases. A case is a ladder from the direction down to a real output
+   of the project (a document, code, a test fixture) that follows the direction or breaks it: for
+   example an instruction, then the skill that uses it, then a document that the skill wrote. You
+   open any ready direction on the page.
    Accept it; or write what to change and press Revise; or remove it. When the host needs an
    answer, it asks a question with a case and two options, A and B. You can add a direction (the
    principle, and an example if you have one) or a company direction. A company direction is a

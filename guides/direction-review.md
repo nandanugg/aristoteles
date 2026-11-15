@@ -24,6 +24,10 @@ evidence only when each answer is good. Else reject with one reason in this form
 8. **Checkable.** Can a reviewer check each rule on one result, and give evidence for it?
 9. **Fit.** Does each standard follow from the words of its direction? Does each rule check its
    standard?
+10. **Summary.** Does the summary say in one or two plain sentences what the direction asks and
+    why it matters, for a person who reads it the first time?
+11. **Cases.** Does each case end at a real output (a document, code, a test fixture), and not at
+    an instruction? Does each rung have a short name, in order from the direction down?
 
 ## The evidence of an accept
 

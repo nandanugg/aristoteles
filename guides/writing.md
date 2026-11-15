@@ -29,6 +29,49 @@ is enough for the model that reads only that piece.
   - Topoi: how can a later task find past lessons, and see if they changed?
   - Aporia: which questions are not answered, and which decisions need the answers?
 
+## The summary
+
+A direction starts with a summary (`summary:` in its file): one or two plain sentences that say
+what the direction asks and why it matters, for a person who reads it the first time. The page and
+`work direction show` show it before the words. Use plain words: no ids, no file paths, no names
+of rules. A draft with no summary is refused. A revise may change it (`summary:` in the edit).
+
+## Cases
+
+A new direction has at least 3 cases (`cases:` in its file). A case is a ladder from the direction
+down to a real output of the project, so that the person can follow the direction to a result.
+
+- The output is the bottom of the ladder: a result of the work, never an instruction. A document,
+  code, a test fixture, or a golden file is an output. A line that only says the rule again is
+  not.
+- Each rung is a step between the direction and the output, from the top down: a place that
+  passes the direction on. Give each rung a short name that says what the place is: Instruction,
+  Writer skill, Validator, Template, or another short name.
+- Each place is a file, a line, and a short excerpt of the file as it is today. A case is stale
+  when the excerpt of a rung or of the output is no longer in its file.
+- `fit` is about the output: `Follows` or `Breaks`.
+
+A direction about how instructions are written goes down to a real document:
+
+```yaml
+cases:
+  - fit: Follows
+    via:
+      - { name: Instruction, file: CLAUDE.md, line: 12, excerpt: Each section of a TSD says one thing. }
+      - { name: Writer skill, file: .claude/skills/writer/SKILL.md, line: 30, excerpt: Write one heading for each section. }
+    output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
+```
+
+A direction about code needs no rung; the short form `{ file, line, excerpt, fit }` is a case with
+`via: []`:
+
+```yaml
+  - { file: src/export/handler.go, line: 41, excerpt: os.Getenv("EXPORT_LIMIT"), fit: Breaks }
+```
+
+A direction that no file of the project shows a result of gets no case: do not draft it, and do
+not name it anywhere.
+
 ## Write for contextual retrieval
 
 - The first paragraph of an entry says the whole entry. A brief shows only that paragraph and
