@@ -346,12 +346,28 @@ const ask: Command = (call) =>
   Effect.gen(function* () {
     const { by } = yield* agentOfCall(call)
     const to = textOf(call.args.one('to')) === 'owner' ? 'Owner' : 'Above'
+    const options = call.args.all('option').map(wordsOf)
     const done = yield* act(by, {
       _tag: 'Ask',
       target: { to },
-      content: { text: wordsOf(call.args.one('text')) },
+      content: { text: wordsOf(call.args.one('text')), options },
     })
     return [`${firstCreated(done.created)} asked; the task waits for the answer.`]
+  })
+
+// --option=<n> answers with the words of option n.
+const answerText = (options: ReadonlyArray<string>, call: Call) =>
+  Effect.gen(function* () {
+    const n = call.args.one('option')
+    if (n === undefined) return wordsOf(call.args.one('text'))
+    if (call.args.one('text') !== undefined) {
+      return yield* refuse('an answer is --text or --option, not both')
+    }
+    const picked = options[Number(n) - 1]
+    if (/^\d+$/.test(String(n)) && picked !== undefined) return picked
+    const range = options.length === 0 ? 'this question has no options' : `1 to ${options.length}`
+    const why = `--option is the number of an option: ${range}`
+    return yield* refuse(why, 'answer with --text="..."')
   })
 
 const answer: Command = (call) =>
@@ -360,10 +376,11 @@ const answer: Command = (call) =>
     const caller = yield* callerOf(work, call.token)
     const word = String(call.args.positional[0])
     const { question } = yield* lookupKind('Question', ['q'], work, word)
+    const text = yield* answerText(question.options, call)
     yield* act(authorOf(caller), {
       _tag: 'Answer',
       target: { question: question.id as QuestionId },
-      content: { text: wordsOf(call.args.one('text')) },
+      content: { text },
     })
     return [`${word} answered; the asker's next brief shows the answer.`]
   })

@@ -49,6 +49,20 @@ describe('the wait loop', () => {
     })
   })
 
+  // Owner, 2026-11-15: the person answers on the page, and the asker's work wait returns.
+  test("the person's answer changes the step key of the asker", async () => {
+    const { p, hostToken } = await hosted()
+    await p.agent(`ask ${hostToken} --to=owner --text="Which merchant?" --option=m-17 --option=m-18`)
+    const keyNow = async () => {
+      const d = await Effect.runPromise(look.pipe(Effect.provide(services(p))))
+      return d === null ? null : stepsOf(d, a('a1')).key
+    }
+    const before = await keyNow()
+    await p.ui('answer q1 --option=2')
+    expect(p.work().questions.get('q1' as never)?.status).toMatchObject({ answer: 'm-18' })
+    expect(await keyNow()).not.toBe(before)
+  })
+
   test('ready work that the last wait printed does not end it: the time does', async () => {
     const { p } = await hosted()
     const first = await waited(p, a('a1'))

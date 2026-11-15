@@ -65,6 +65,9 @@ export const who = (work: Work, by: By, record?: string): string => {
 
 // "a" or "an", as the word starts.
 export const an = (word: string): string => (/^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`)
+// The options of a question, by their numbers (work answer --option=<n>).
+export const optionLines = (options: ReadonlyArray<string>): ReadonlyArray<string> =>
+  options.map((o, i) => `${i + 1}. ${o}`)
 export const short = (text: string, n = 120): string =>
   text.length > n ? `${text.slice(0, n - 3)}...` : text
 // Words of any markdown, on lines that keep the indent of the view.

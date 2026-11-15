@@ -14,7 +14,7 @@
 import { Effect } from 'effect'
 import {
   type Derived,
-  SURFACES,
+  onPage,
   type ToWatch,
   terminalsToWatch,
   waitingFor,
@@ -218,7 +218,7 @@ export const RetryFailures: WorkEffect<'RetryFailures'> = {
         status: yield* (yield* Pump).status,
         tiers: yield* tiersNow,
         // The page decisions: the person must act in the tree of each.
-        items: waitingFor(d, { _tag: 'Everyone' }).filter((i) => SURFACES[i._tag].page !== 'None'),
+        items: waitingFor(d, { _tag: 'Everyone' }).filter(onPage),
         now: yield* nowMs,
       }
       for (const x of all) yield* step(`session ${x.session}`, watch(round, x))

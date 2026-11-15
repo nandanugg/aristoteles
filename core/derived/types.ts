@@ -762,7 +762,7 @@ export interface Surface {
   readonly page: Decision['_tag'] | 'None'
 }
 export const SURFACES = {
-  Question: { cli: true, page: 'None' },
+  Question: { cli: true, page: 'Question' }, // only one to a person (onPage)
   Escalation: { cli: true, page: 'None' },
   Forward: { cli: true, page: 'Confirm' },
   DraftForPerson: { cli: true, page: 'Direction' },
@@ -786,6 +786,10 @@ export const SURFACES = {
 } as const satisfies { readonly [K in WaitingItem['_tag']]: Surface } & {
   readonly [K in WaitingKind]: Surface
 }
+// An item reaches the person on the page when its kind shows there and it waits for a person
+// (a question to an agent stays off the page).
+export const onPage = (item: WaitingItem): boolean =>
+  SURFACES[item._tag].page !== 'None' && item.for._tag === 'Person'
 
 // =================================================================================================
 // The three cross-cutting functions

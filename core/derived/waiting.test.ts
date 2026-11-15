@@ -3,7 +3,7 @@
 // waiting.pins.json at the switch, 2026-11-14), or a finding explains the difference.
 import { beforeAll, describe, expect, test } from 'bun:test'
 import type { Work } from '../schema/index.ts'
-import { type Derived, derive, SURFACES, type WaitingItem, waitingFor } from './index.ts'
+import { type Derived, derive, onPage, SURFACES, type WaitingItem, waitingFor } from './index.ts'
 import { momentOf, pinned, SCENARIOS, type Scenario } from './support.test.ts'
 import { idOf } from './waiting.ts'
 
@@ -34,7 +34,7 @@ describe('the page decisions are the page kinds of waitingFor', () => {
     for (const { s, w, d } of built) {
       const old = pin<ReadonlyArray<ReadonlyArray<string | null>>>(s, 'decisionsOf')
       const now = waitingFor(d, EVERYONE)
-        .filter((i) => SURFACES[i._tag].page !== 'None')
+        .filter(onPage)
         .map((i) => [
           SURFACES[i._tag].page,
           idOf(i),

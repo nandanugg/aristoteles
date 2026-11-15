@@ -28,6 +28,7 @@ import type {
   EventRef,
   NonBlank,
   ProblemId,
+  QuestionId,
   RevisionId,
   RoleName,
   RunId,
@@ -300,6 +301,9 @@ export type Decision = DecisionBase &
     | { readonly _tag: 'RoleWords'; readonly role: Text; readonly lines: ReadonlyArray<Text> }
     // a drafted adjustment of a role or a direction (id: e..; ruling 14)
     | { readonly _tag: 'Adjustment'; readonly adjustment: Adjustment }
+    // a question to the person (id: q..): text is the question; the person picks an option or
+    // writes the answer, and it counts at once. asker: who asked, as "writer (a3)".
+    | { readonly _tag: 'Question'; readonly asker: Text; readonly options: ReadonlyArray<Text> }
   )
 interface DecisionBase {
   readonly id: Text
@@ -534,6 +538,8 @@ export type PageAct =
   | { readonly act: 'accept-draft'; readonly draft: RevisionId; readonly comment?: Text }
   | { readonly act: 'reject-draft'; readonly draft: RevisionId; readonly reason: Text }
   | { readonly act: 'confirm'; readonly forward: EventRef }
+  // the person answers a question: the words of an option, or their own
+  | { readonly act: 'answer'; readonly question: QuestionId; readonly text: Text }
   | { readonly act: 'end'; readonly run: RunId }
   | { readonly act: 'reject-task'; readonly task: TaskId; readonly reason: Text }
   | { readonly act: 'settings'; readonly settings: Settings }

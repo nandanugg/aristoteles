@@ -271,7 +271,7 @@ const inputOf = (w: Work, r: Recorded, dir: string): Read => {
       })
     case 'Question.Asked': {
       const to = (c?.to as unknown as { _tag: string })._tag
-      return input({ _tag: 'Ask', target: { to }, content: { text: c?.text } })
+      return input({ _tag: 'Ask', target: { to }, content: { text: c?.text, options: c?.options } })
     }
     case 'Question.Escalated': {
       const a = r.author._tag === 'Agent' ? w.assignments.get(r.author.assignment) : undefined

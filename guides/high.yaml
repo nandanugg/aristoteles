@@ -49,8 +49,8 @@ commands:
     rule: "One --point for each problem, with the rule that it breaks; a Reject uses an attempt of the maker (a fault). A point that no rule covers needs a direction change: escalate it to the person with work escalate {you} --result={result} --reason=\"<the point>\". When the person resolves it, accept or reject the result; a point with no rule in your Reject then waits for your draft that changes the direction (work direction revise --answers=<the point>)."
   ask:
     when: any
-    run: work ask {you} --text="<the context first, then the question>" [--to=owner]
-    rule: "Ask the person (--to=owner) only for a fact that no direction, rule, or guide gives, and that stops the work. Never ask the person about a limit, or about a choice that a rule or a guide settles: decide it. You forward the person's answer, and the person confirms it."
+    run: work ask {you} --text="<the context first, then the question>" [--to=owner [--option="<an answer>" ...]]
+    rule: "Ask the person (--to=owner) only for a fact that no direction, rule, or guide gives, and that stops the work. Never ask the person about a limit, or about a choice that a rule or a guide settles: decide it. For a choice, add one --option per answer. The person answers on the page, and work wait returns with it; never ask with your AI CLI's own question tool."
   answer:
     when: any
     run: work answer {you} <question> --text="<the answer>"

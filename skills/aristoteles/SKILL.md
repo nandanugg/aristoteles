@@ -57,10 +57,15 @@ works for aristoteles; any other session of the dir still uses the old files of 
    session has no limit on the depth of subagents, so tell each subagent that you start: it
    starts no subagent; when its work needs more agents, it hands the need back with `work ask`.
    Do not start the terminal of a persistent agent yourself: the UI starts it.
-9. **When the person does not answer,** do not poll and do not ask again. Say what waits for
-   them, with the command that shows it (`work waiting`), and run `work wait`. When the AI CLI
-   ends, the person triggers a host again, and continues the project there.
-10. **After the store starts, a change is an adjustment.** A role or a direction of the project
+9. **Ask the person on the page.** After the first talk (before the top task exists), never ask
+   the person with your AI CLI's own question tool (such as AskUserQuestion): ask with
+   `work ask <token> --to=owner --text="..."`, and one `--option="..."` per answer for a choice.
+   The person answers on the page, and `work wait` returns with the answer. Never ask the person
+   about a limit.
+10. **When the person does not answer,** do not poll and do not ask again. Say what waits for
+    them, with the command that shows it (`work waiting`), and run `work wait`. When the AI CLI
+    ends, the person triggers a host again, and continues the project there.
+11. **After the store starts, a change is an adjustment.** A role or a direction of the project
     changes in aristoteles. The person says it in words (`work suggest roles --says="<the
     change>"`, or `work suggest <direction> --says="<the change>"`), and you draft it (the
     `work` skill, part "Adjust the roles and the directions"). The person accepts it on the

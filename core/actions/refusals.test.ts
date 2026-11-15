@@ -192,7 +192,7 @@ describe('a sample of real refusals, each with a real choice', () => {
         },
       ],
       [NANDA, { _tag: 'OpenTask', target: {}, content: { file: 'missing.yaml' } }],
-      [agent(lead), { _tag: 'Ask', target: { to: 'Above' }, content: { text: '' } }],
+      [agent(lead), { _tag: 'Ask', target: { to: 'Above' }, content: { text: '', options: [] } }],
       [
         agent(writer),
         {

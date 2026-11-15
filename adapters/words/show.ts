@@ -61,6 +61,7 @@ import {
   headersOf,
   indented,
   latestResult,
+  optionLines,
   short,
   stateWord,
   who,
@@ -472,6 +473,7 @@ export const renderQuestion = (d: Derived, id: QuestionId): ReadonlyArray<string
   return [
     `${id} asked by ${byName(q.from)}, for ${byName(q.answerBy)}:`,
     q.text,
+    ...optionLines(q.options),
     '',
     state?._tag === 'Answered' ? `answer: ${state.answer}` : 'no answer yet',
   ]

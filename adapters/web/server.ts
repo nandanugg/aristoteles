@@ -402,6 +402,7 @@ export function startServer(options: ServerOptions): ServerHandle {
       case 'accept-draft':
       case 'reject-draft':
       case 'confirm':
+      case 'answer':
       case 'end':
       case 'reject-task':
       case 'accept-words':

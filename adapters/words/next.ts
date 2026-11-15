@@ -20,7 +20,7 @@ import {
   type Work,
 } from '../../core/schema/index.ts'
 import { clean } from '../../core/effects/lines.ts'
-import { an, clock, short, stateWord, who } from './common.ts'
+import { an, clock, optionLines, short, stateWord, who } from './common.ts'
 import {
   aboutId,
   attemptWords,
@@ -116,11 +116,15 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
         `read ${s.source} again: ${s.source}@${s.revision} was read at ${s.seenAt}, more than ` +
           `${s.hours} hours ago; then run work source ${token} ${s.source}@<its revision now>`,
       )
-    case 'Answer':
-      return step(
-        `answer ${s.question}: ${short(w.questions.get(s.question)?.text ?? '', 200)}`,
-        `work answer ${token} ${s.question} --text="<the answer>"`,
-      )
+    case 'Answer': {
+      const q = w.questions.get(s.question)
+      const pick = q?.options.length ? ' or --option=<n>' : ''
+      return [
+        `answer ${s.question}: ${short(q?.text ?? '', 200)}`,
+        ...optionLines(q?.options ?? []).map((l) => `  ${l}`),
+        `  work answer ${token} ${s.question} --text="<the answer>"${pick}`,
+      ]
+    }
     case 'Resolve':
       return step(
         `resolve ${s.escalation} on ${s.result}: ${reasonOf(w, s.escalation)}`,

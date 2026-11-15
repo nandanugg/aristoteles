@@ -167,7 +167,7 @@ export type ActionInput =
   | In<'EscalateResult', { readonly result: ResultId }, { readonly reason: Words }>
   | In<'EscalateTask', { readonly task: TaskId }, { readonly reason: Words }> // a maker sends its task up
   | In<'Resolve', { readonly escalation: EscalationId }, { readonly resolution: Words; readonly evidence: ReadonlyArray<typeof EvidenceData.Type> }>
-  | In<'Ask', { readonly to: 'Above' | 'Owner' }, { readonly text: Words }>
+  | In<'Ask', { readonly to: 'Above' | 'Owner' }, { readonly text: Words; readonly options: ReadonlyArray<Words> }>
   | In<'Answer', { readonly question: QuestionId }, { readonly text: Words }>
   | In<'Note', { readonly task: TaskId }, { readonly kind: 'Message' | 'Finding'; readonly text: Words }>
   | In<'Evaluate', { readonly stop: typeof Stop.Type }, { readonly wrong: Words; readonly why: Words; readonly improve: NonEmpty<Words>; readonly level: Level }>

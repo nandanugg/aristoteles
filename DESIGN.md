@@ -483,8 +483,8 @@ tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 | `work resolve <you> <v> --resolution=<text> [--evidence=...]` | the assignment that an escalation names, or a decider; never the one that escalated. A resolve accepts and rejects nothing: the deciders then review the result as usual |
 | `work recheck <you> <r> --reason=<what changed outside>` | medium or high that decides; asks the maker for a new result |
 | `work escalate <you> --reason=<text> [--result=<r>]` | anyone with an open assignment; goes to the parent (or the owner); with `--result`, the result waits for the resolve |
-| `work ask <you> --text=<context first, then the question> [--to=parent\|owner]` | anyone; a low role asks only its parent |
-| `work answer <you> <q> --text=<text>` | the assignment that the question names |
+| `work ask <you> --text=<context first, then the question> [--to=parent\|owner] [--option=<words> ...]` | anyone; a low role asks only its parent; the host asks only the owner; `--option` (two or more) only with `--to=owner` |
+| `work answer <you> <q> --text=<text>\|--option=<n>` | the assignment that the question names |
 | `work note <you> finding\|message --text=<text>` | anyone |
 | `work suggest <you> [<rule\|standard\|direction>] --says=<the words>` | anyone, the person too; with nothing to be about, it asks for a new direction |
 | `work direction revise <you> <direction> --file=<edit.yaml> [--answers=<v, v.n, or s ids>] [--why=<why>]` | high only (the person suggests); makes a draft `d1`; after a Reject of a draft, the next draft answers it |
@@ -506,7 +506,7 @@ task; a high agent splits), `work assign <t> --role=`, `work suggest` (the perso
 a high role writes the draft), `work review <d> accept|reject`, `work review <ev> accept|reject`
 (an evaluation of the owner's task), `work evaluate <stop>`,
 `work grant --act=approve|review|change --on=<ids> --to=<role> --until=<time>`,
-`work revoke <x>`, `work confirm <event>`, `work answer <q> --text=`,
+`work revoke <x>`, `work confirm <event>`, `work answer <q> --text=|--option=<n>`,
 `work review <r|t> reject ...` (a result only after its deciders accept it), `work resolve <v> --resolution=`,
 `work task split|close`,
 `work free|finish <a>`, `work role fit <role> --answers=<file>`.
@@ -1011,7 +1011,10 @@ ids.
 - `adapters/web/view.ts` builds what the page shows from the fold and the derived states: the
   projects (runs, and top tasks opened at a terminal), the canvas in layout A (task, work and
   review cards; only the latest attempt), the panel of a task, the diff by file, and the decisions
-  that reach the person (`waitingFor`).
+  that reach the person (`waitingFor`). A question to the person is one of them (Nanda,
+  2026-11-15): it shows on the asker's task with its options and a text box, and the answer on
+  the page is the person's Answer at once (no forward, no confirm). A question to an agent
+  never shows there.
 - `adapters/web/server.ts`: the locks of the page (it listens on every interface with no key; the
   Host header names 127.0.0.1, localhost or an address of the machine, with the port; a websocket
   and a POST also need the page's own origin),

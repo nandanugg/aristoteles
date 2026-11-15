@@ -328,6 +328,43 @@ const open = async () => {
   }
 }
 {
+  // a question to the person (owner, 2026-11-15): the card shows the question, one button per
+  // option, and a text box; a click on an option answers it at once, and the card goes away
+  const { HOST, TASK_WHOLE, git, init, project, solToken } = await import('../harness.js')
+  const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
+  git(p.dir, 'init', '-q')
+  git(p.dir, 'config', 'user.name', 'Nanda')
+  await init(p)
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  ok(await p.run('run start', HOST))
+  ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
+  const host = await solToken(p, ok(await p.ui('task open td1')).out)
+  ok(await p.run(`brief ${host}`, HOST))
+  ok(await p.agent(`ask ${host} --to=owner --text="Which merchant does the export name?" --option=m-17 --option=m-18`))
+  const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') } })
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  try {
+    await page.goto(`${s.url}h1`)
+    await page.click('.card.task')
+    await page.waitForSelector('.item.question')
+    expect(await page.textContent('.item.question .prose')).toBe('Which merchant does the export name?')
+    expect(await page.textContent('.item.question .item-raw')).toBe('architect (a1) asks:')
+    expect(await page.locator('.item.question .item-options button').allTextContents()).toEqual(['m-17', 'm-18'])
+    expect(await page.isDisabled('.item.question .item-actions >> text=Answer')).toBe(true)
+    await page.fill('.item.question textarea', 'neither')
+    expect(await page.isDisabled('.item.question .item-actions >> text=Answer')).toBe(false)
+    await page.click('.item.question .item-options >> text=m-18')
+    await page.waitForSelector('.item.question', { state: 'detached' })
+    expect(ok(await p.ui('question show q1')).out).toEndWith('answer: m-18')
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+    s.stop()
+  }
+}
+{
   // Onboarding (rulings 1 to 6, 11, 15, onboarding 2026-11-14): the directions page with each
   // state, the question form, Revise, Remove and approve all; then the agents page, its grid and
   // the window of a role; approve all roles starts the store. Then the gear: three tiers with a

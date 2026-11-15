@@ -14,7 +14,7 @@ import {
   isEndedTask,
   adjustmentDraftAt,
   roleWordsDraftAt,
-  SURFACES,
+  onPage,
   tierOfAssignment,
   waitingFor,
   type WaitingItem,
@@ -326,7 +326,7 @@ const draftChange = (w: Work, x: Revision<Direction>): DraftChange => {
   }
 }
 
-// One item that SURFACES shows on the page, as the decision of the wire. Each of the four kinds
+// One item that SURFACES shows on the page, as the decision of the wire. Each of the kinds
 // has its fixed sentence; the host's words come from the Work (the latest counts).
 const decisionOf = (d: Derived, item: WaitingItem): Decision | undefined => {
   const w = workOf(d)
@@ -433,6 +433,23 @@ const decisionOf = (d: Derived, item: WaitingItem): Decision | undefined => {
         ...shared,
       }
     }
+    // A question to the person counts at once: no host holds it, and the asker's words are it.
+    case 'Question': {
+      const q = w.questions.get(item.question)
+      if (q === undefined) return undefined
+      const asker =
+        typeof q.from === 'string' ? `${assignmentAt(w, q.from).role} (${q.from})` : q.from.name
+      return {
+        _tag: 'Question',
+        id: q.id,
+        text: q.text,
+        asker,
+        options: q.options,
+        words: null,
+        shown: { _tag: 'Shown' },
+        ...shared,
+      }
+    }
     // SURFACES shows no other kind on the page.
     default:
       return undefined
@@ -446,7 +463,7 @@ export const decisionsOf = (d: Derived, person: string): ReadonlyArray<Decision>
   // name that is no person of this work (none set, or a machine's global name) sees none.
   const who: WaitingWho = { _tag: 'Person', name: person }
   return waitingFor(d, who)
-    .filter((item) => SURFACES[item._tag].page !== 'None')
+    .filter(onPage)
     .flatMap((item) => decisionOf(d, item) ?? [])
 }
 // The items on a task. An item with no task belongs to the dir: it shows on every top task.

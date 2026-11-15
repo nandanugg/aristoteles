@@ -316,6 +316,9 @@ button { font: inherit; color: inherit; }
 .btn.small { min-height: 30px; padding: 0 10px; font-size: 13px; margin-left: auto; }
 .item { margin: 0 18px 12px; border: 1px solid var(--reject); background: var(--reject-tint); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .item.end { border-color: var(--accept); background: var(--accept-tint); }
+.item.question { border-color: var(--terra-line); background: var(--terra-tint); }
+.item-options { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.item-options .btn { text-align: left; min-height: 36px; padding: 6px 12px; white-space: normal; }
 .item-head { display: flex; align-items: center; gap: 8px; }
 .item-raw { font-size: 12px; color: var(--faint); }
 .item blockquote { margin: 0; padding-left: 10px; border-left: 3px solid var(--line-strong); }

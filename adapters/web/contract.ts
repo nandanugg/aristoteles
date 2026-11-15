@@ -11,6 +11,7 @@ import {
   DirectionId,
   EventRef,
   ProblemId,
+  QuestionId,
   RevisionId,
   RunId,
   SessionId,
@@ -84,6 +85,8 @@ const DecisionDomain = Schema.Union([
   Schema.TaggedStruct('RoleWords', { ...DecisionBase, role: Text, lines: Schema.Array(Text) }),
   // A drafted adjustment (ruling 14).
   Schema.TaggedStruct('Adjustment', { ...DecisionBase, adjustment: AdjustmentSchema }),
+  // A question to the person: the text is the question.
+  Schema.TaggedStruct('Question', { ...DecisionBase, asker: Text, options: Schema.Array(Text) }),
 ])
 type DecisionEncoded = typeof DecisionDomain.Encoded
 
@@ -118,6 +121,12 @@ const DecisionWire = Schema.Union([
     ...WireBase,
     adjustment: Schema.toEncoded(AdjustmentSchema),
   }),
+  Schema.Struct({
+    kind: Schema.Literal('question'),
+    ...WireBase,
+    asker: Text,
+    options: Schema.Array(Text),
+  }),
 ])
 type DecisionWireType = typeof DecisionWire.Type
 
@@ -150,6 +159,8 @@ const toWire = (d: DecisionEncoded): DecisionWireType => {
       return { kind: 'roleWords', ...base, hope: null, role: d.role, lines: d.lines }
     case 'Adjustment':
       return { kind: 'adjustment', ...base, hope: null, adjustment: d.adjustment }
+    case 'Question':
+      return { kind: 'question', ...base, hope: null, asker: d.asker, options: d.options }
   }
 }
 
@@ -180,6 +191,8 @@ const fromWire = (w: DecisionWireType): DecisionEncoded => {
       return { _tag: 'RoleWords', ...base, role: w.role, lines: w.lines }
     case 'adjustment':
       return { _tag: 'Adjustment', ...base, adjustment: w.adjustment }
+    case 'question':
+      return { _tag: 'Question', ...base, asker: w.asker, options: w.options }
   }
 }
 
@@ -506,6 +519,7 @@ export const PageAct = Schema.Union([
   }),
   Schema.Struct({ act: Schema.Literal('reject-draft'), draft: RevisionId, reason: Text }),
   Schema.Struct({ act: Schema.Literal('confirm'), forward: EventRef }),
+  Schema.Struct({ act: Schema.Literal('answer'), question: QuestionId, text: Text }),
   Schema.Struct({ act: Schema.Literal('end'), run: RunId }),
   Schema.Struct({ act: Schema.Literal('reject-task'), task: TaskId, reason: Text }),
   Schema.Struct({ act: Schema.Literal('settings'), settings: SettingsChange }),
@@ -527,6 +541,7 @@ export const ACTS = [
   'accept-draft',
   'reject-draft',
   'confirm',
+  'answer',
   'end',
   'reject-task',
   'settings',

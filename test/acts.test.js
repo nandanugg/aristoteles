@@ -60,14 +60,17 @@ describe('the acts of the UI', () => {
     ok(await p.agent(`task split ${sol} t1 --file=parts.yaml`))
   })
 
-  test('a question of a model goes to the host; the host itself does not ask the person', async () => {
+  // Owner, 2026-11-15: the host asks the person only with --to=owner (the page shows it).
+  test('a question of a model goes to the host; the host asks the person only with --to=owner', async () => {
     const { p, host } = await hosted()
     const lead = await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out) // 10.1
     ok(await p.agent(`brief ${lead}`))
     ok(await p.agent(`ask ${lead} --text="Is the retry part of the export?" --to=owner`))
     expect(ok(await p.agent('question show q1')).out).toStartWith('q1 asked by a2, for a1:')
-    expect((await p.agent(`ask ${host} --text="Is the retry part of the export?" --to=owner`)).err)
+    expect((await p.agent(`ask ${host} --text="Is the retry part of the export?"`)).err)
       .toContain('you are the host of this project: answer it from the directions')
+    ok(await p.agent(`ask ${host} --text="Is the retry part of the export?" --to=owner`))
+    expect(ok(await p.agent('question show q2')).out).toStartWith('q2 asked by a1, for Nanda:')
   })
 
   test('a system problem goes on the parent of the task that it stops; the host\'s own text is its words', async () => {

@@ -151,6 +151,13 @@ export const REFUSALS = {
   },
   Ask: {
     noText: () => no('a question needs its text', 'Write', 'write the question'),
+    // A model answers in words; only the person picks from options.
+    optionsAbove: () =>
+      no('only a question to the person has options', 'Write', 'ask with --to=owner'),
+    oneOption: () =>
+      no('one option is no choice', 'Write', 'give two or more options, or none'),
+    badOption: () =>
+      no('each option has its own words, once', 'Write', 'write each option once'),
   },
   Answer: {
     noText: () => no('an answer needs its text', 'Write', 'write the answer'),
@@ -468,10 +475,17 @@ const resolved: Action<'Resolve'> = ({ by, input }) =>
 const Ask: Action<'Ask'> = ({ by, input }) =>
   Effect.gen(function* () {
     yield* allowed(yield* current, by, input)
-    const { text } = input.content
+    const { text, options } = input.content
     if (blank(text)) return yield* fail(R.Ask.noText())
-    const to = input.target.to === 'Owner' ? { _tag: 'Owner' as const } : { _tag: 'Above' as const }
-    return [create('Question', { _tag: 'Asked', text: text as never, to })]
+    const owner = input.target.to === 'Owner'
+    if (options.length > 0 && !owner) return yield* fail(R.Ask.optionsAbove())
+    if (options.length === 1) return yield* fail(R.Ask.oneOption())
+    if (options.some(blank) || new Set(options).size < options.length) {
+      return yield* fail(R.Ask.badOption())
+    }
+    const to = owner ? { _tag: 'Owner' as const } : { _tag: 'Above' as const }
+    const asked = { _tag: 'Asked' as const, text: text as never, to, options: options as never }
+    return [create('Question', asked)]
   })
 
 // N12 (C2): an answer to a question whose task ended makes no event.

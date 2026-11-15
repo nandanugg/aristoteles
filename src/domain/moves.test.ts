@@ -43,6 +43,7 @@ const open: Question & { readonly status: { readonly _tag: 'Open' } } = {
   _tag: 'Question',
   id: q1,
   text: 'which merchant?',
+  options: [],
   stops: 't1' as TaskId,
   answerBy: nanda,
   from: 'a2' as AssignmentId,

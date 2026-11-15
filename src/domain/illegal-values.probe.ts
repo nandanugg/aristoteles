@@ -111,13 +111,13 @@ export const ok6: Assignment = { ...asg, role, _tag: 'Maker', maxAttempts: { _ta
 // @ts-expect-error 6: a limit that is no positive whole number
 export const p6: Assignment = { ...asg, role, _tag: 'Maker', maxAttempts: { _tag: 'AtMost', max: -2.5 } }
 
-const qBase = { _tag: 'Question', id: q1, text: 'which section?', stops: t, answerBy: a, from: a, status: { _tag: 'Open' }, when: now } as const
+const qBase = { _tag: 'Question', id: q1, text: 'which section?', options: [], stops: t, answerBy: a, from: a, status: { _tag: 'Open' }, when: now } as const
 export const ok7: Question = qBase
 // @ts-expect-error 7a: answerBy an agent run
 export const p7a: Question = { ...qBase, answerBy: agent }
 // @ts-expect-error 7b: stops nothing
 export const p7b: Question = { ...qBase, stops: [] }
-const asked = { _tag: 'Asked', text: 'which section?', to: { _tag: 'Above' } } as const
+const asked = { _tag: 'Asked', text: 'which section?', to: { _tag: 'Above' }, options: [] } as const
 export const ok7c: Event = { _tag: 'Question', create: asked }
 // @ts-expect-error 7c: a blank question
 export const p7c: Event = { _tag: 'Question', create: { ...asked, text: '' } }
@@ -203,7 +203,7 @@ export const p23a = answerQuestion(answered, 'again', a, now)
 
 export const okA1: Event = { _tag: 'Note', create: { _tag: 'Message', about: t, text: 'x' } }
 // @ts-expect-error A1: a Question as a Note creation
-export const pA1: Event = { _tag: 'Note', create: { _tag: 'Question', text: 'which section?', stops: t, answerBy: a, from: a7, status: { _tag: 'Answered', answer: 'Design', by: a, when: now } } }
+export const pA1: Event = { _tag: 'Note', create: { _tag: 'Question', text: 'which section?', options: [], stops: t, answerBy: a, from: a7, status: { _tag: 'Answered', answer: 'Design', by: a, when: now } } }
 // @ts-expect-error A1b: a Lesson as a Note creation
 export const pA1b: Event = { _tag: 'Note', create: { _tag: 'Lesson', text: 'x', rule: vid } }
 
@@ -375,7 +375,7 @@ export const s24b: Event = { _tag: 'Send', id: e12, move: { _tag: 'Dropped', why
 export const s24c: Event = { _tag: 'Send', id: e12, move: { _tag: 'Dropped', why: { _tag: 'Merged', into: e12 } } }
 export const s25: Event = { _tag: 'Send', create: sentByAgent }
 export const s26a: Event = { _tag: 'Question', create: { _tag: 'Escalated', text: 'blocked' } }
-export const s26b: Event = { _tag: 'Question', create: { _tag: 'Asked', text: 'x', to: { _tag: 'Owner' } } }
+export const s26b: Event = { _tag: 'Question', create: { _tag: 'Asked', text: 'x', to: { _tag: 'Owner' }, options: ['yes', 'no'] } }
 export const s27: Event = { _tag: 'Revision', create: { _tag: 'Drafted', direction: { id: did, name: 'd2 name', owner: 'Nanda', from: ['Logos'], summary: 's', flow: [], says: 's', standards: [] }, examples: [aCase, aCase, aCase], answers: [], why: { _tag: 'NoneGiven' } } }
 export const s28: Event = { _tag: 'Role', id: role, move: { _tag: 'Fitted', hash: 'h', answers: [{ id: 1, yes: true, why: 'y' }] } }
 export const r21: Resolve = {

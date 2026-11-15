@@ -14,6 +14,7 @@ export type ActionAct = Extract<
       | 'accept-draft'
       | 'reject-draft'
       | 'confirm'
+      | 'answer'
       | 'end'
       | 'reject-task'
       | 'accept-words'
@@ -46,6 +47,12 @@ export const callOf = (act: ActionAct, by: Author): ActionCall => {
       }
     case 'confirm':
       return { by, input: { _tag: 'Confirm', target: { forward: act.forward }, content: {} } }
+    // The person's answer counts at once (no forward, no confirm).
+    case 'answer':
+      return {
+        by,
+        input: { _tag: 'Answer', target: { question: act.question }, content: { text: act.text } },
+      }
     case 'end':
       return { by, input: { _tag: 'EndRun', target: { run: act.run }, content: {} } }
     case 'reject-task':
@@ -99,6 +106,8 @@ export const wordsOf = (act: ActionAct, created: ReadonlyArray<CreatedId>): stri
       return `${act.draft} rejected${made(created)}.`
     case 'confirm':
       return `${act.forward} confirmed${made(created)}.`
+    case 'answer':
+      return `${act.question} answered.`
     case 'end':
       return `${act.run} is done.`
     case 'reject-task':

@@ -373,7 +373,7 @@ describe('a forward of the person', () => {
     content: { person: 'Nanda', quote: 'as Nanda said', channel: 'chat' },
   })
 
-  test('an answer that is not the person\'s: ask the owner, then forward the answer', () => {
+  test('an answer that is not the person\'s: ask the owner on the page', () => {
     const answer = { _tag: 'Question', id: 'q1', move: { _tag: 'Answered', text: 'M-104' } }
     const r = realChoice(refused(act(d, lead, forward(answer))))
     expect(r.message).toStartWith('Nanda could not answer q1 now: ')

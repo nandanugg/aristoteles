@@ -122,8 +122,8 @@ YOUR TURN
               Asks the maker for a new result. Use it when work next says a result is made from an old revision of a source, or to reopen an accepted part that must change.
   dreview     work review a1.<token> <draft> accept --evidence="<where you read in the draft> | <what you saw>", or reject --reason="<why>"
               Read it first with work direction show <draft>, and ask each question of work guide direction-review. Never review a draft that you or an assignment above you wrote.
-  ask         work ask a1.<token> --text="<the context first, then the question>" [--to=owner]
-              Ask your parent. Ask the person (--to=owner) only for a fact that no direction, rule, or guide gives, and that stops the work; never about a limit or a choice that a rule settles. The top agent forwards the person's answer, and the person confirms it.
+  ask         work ask a1.<token> --text="<the context first, then the question>" [--to=owner [--option="<an answer>" ...]]
+              Ask your parent. Ask the person (--to=owner) only for a fact that no direction, rule, or guide gives, and that stops the work; never about a limit or a choice that a rule settles. For a choice, add one --option per answer. The person answers on the page, and work wait returns with it; never ask with your AI CLI's own question tool.
   answer      work answer a1.<token> <question> --text="<the answer>"
               Answer only questions that name you; work waiting --for=a1 lists them.
   resolve     work resolve a1.<token> <escalation> --resolution="<the agreement, or the direction, in words>"

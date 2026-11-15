@@ -147,12 +147,13 @@ over ssh) only prints the addresses.
   you can open and type into, from its first assignment to the end of the project; the UI starts
   it, and it takes its work with `work wait --by=<agent>`. A role that is not persistent runs as
   a subagent inside the terminal that gives it the work. Only a terminal starts subagents.
-- **Only six kinds of decision need you**, each with a badge: a system problem (something the
+- **Only seven kinds of decision need you**, each with a badge: a system problem (something the
   work needs does not work, such as a cluster or an account limit), a direction problem (a
   result shows that a direction can be read in two ways, or is wrong), the end of a project, your words that an agent relayed as an act (you confirm it),
-  new words of a role, and an adjustment (a drafted change of a role or a direction after the
-  store starts). The host handles the rest, and writes its words on each decision
-  first.
+  new words of a role, an adjustment (a drafted change of a role or a direction after the
+  store starts), and a question that an agent asks you (pick an option or write the answer; it
+  counts at once). The host handles the rest, and writes its words on each decision
+  first. After the first talk, every question to you comes on the page, not in the terminal.
 - **The settings** (the gear) are in `aristoteles.yaml`: the command of each tier, for example
   `claude --model opus --session-id {session} {prompt}`, its resume command, the words of an
   error and of a prompt, and the theme.

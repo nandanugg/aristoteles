@@ -850,15 +850,15 @@ const ask: Check<'Ask'> = (c, { target: { to } }) => {
   if (tierOfAssignment(c.w, a) === 'low' && to === 'Owner') {
     return no('a low role asks its parent', 'Pick', 'ask your parent')
   }
-  // The host answers from the directions; it asks nobody above it.
+  // The host answers from the directions; only the person is above it (--to=owner, the page).
   const host = hostOf(c.d.moment, { _tag: 'OnTask', task: a.task }, c.d.states)
   const above = a.parent._tag === 'Parent' && to === 'Above'
-  if (host._tag === 'Host' && host.assignment === a.id && !above) {
+  if (host._tag === 'Host' && host.assignment === a.id && !above && to !== 'Owner') {
     return no(
       'you are the host of this project: answer it from the directions; when a direction reads ' +
         'two ways, draft its change (work direction revise), and the person accepts it',
       'Write',
-      'answer it from the directions, or draft the change of the direction',
+      'answer it from the directions, or ask the person a fact with --to=owner',
     )
   }
   return MAY

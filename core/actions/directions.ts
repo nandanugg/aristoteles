@@ -129,8 +129,8 @@ export const REFUSALS = {
       no(
         `that question is not ${who}'s`,
         'Pick',
-        `to bring ${who}'s fact to the work, ask it yourself (work ask --to=owner), then forward ` +
-          `${who}'s answer to your question`,
+        `to bring ${who}'s fact to the work, ask it yourself (work ask --to=owner); ` +
+          `${who} answers it on the page`,
       ),
     askEnded: (label: string) =>
       no(
@@ -580,7 +580,7 @@ const Forward: Action<'Forward'> = ({ by, input }) =>
     }
     const asPerson: Author = { _tag: 'Person', name: person, channel: 'ui' }
     const what = `${forwardWord(act)} ${target.id}`
-    // An answer that the person could not give is asked of the owner, then forwarded.
+    // An answer that the person could not give is asked of the owner, on the page.
     const choiceOf = (r: Refusal) =>
       forwardWord(act) === 'answer' ? R.Forward.notTheirs(person).choice.words : r.choice.words
     yield* personCould(d, asPerson, act).pipe(

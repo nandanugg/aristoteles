@@ -519,9 +519,17 @@ const Review = created('Review', ReviewWritten)
 // Who an agent's question goes to, first: Above, the nearest open assignment above, else the
 // owner, and in a project of the UI the host in the owner's place (work ask); Owner, the owner
 // (--to=owner). Its answerer is derived: it moves up as the one it went to finishes.
+// options: the answers to pick from (none: a free question; else two or more, each once).
+export const Options = Schema.Array(NonBlank).pipe(
+  Schema.check(
+    Schema.makeFilter((xs) => xs.length !== 1 || 'one option is no choice: give two or more'),
+    Schema.isUnique(),
+  ),
+)
 const Asked = Schema.TaggedStruct('Asked', {
   text: NonBlank,
   to: Schema.Union([Schema.TaggedStruct('Above', {}), Schema.TaggedStruct('Owner', {})]),
+  options: Options,
 })
 // The person's question to an agent: only forwarded (the old person.ask, only in a forward).
 const AskedOfAgent = Schema.TaggedStruct('Asked', {

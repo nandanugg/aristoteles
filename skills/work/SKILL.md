@@ -95,9 +95,13 @@ talk with the person, then you run its top task.
    `work brief <token>`. From then on you are the Sol of the top task, that brief tells you what
    to do, and you wait with `work wait <token>`. When the person remakes the top task, the
    `work wait` of the old token gives you the command of the new Sol.
-4. **Everything else is yours.** Only five kinds of decision reach the person: a system
-   problem, a direction problem, the end of the project, their words that you relayed as an
-   act, and new words of a role. You do everything else:
+4. **Everything else is yours.** Only these decisions reach the person: a system problem, a
+   direction problem, the end of the project, their words that you relayed as an act, new words
+   of a role, an adjustment, and a question that you ask them. You do everything else:
+   - ask the person only with `work ask <token> --to=owner --text="..."` (for a choice, one
+     `--option="..."` per answer, two or more). The page shows it, the person answers there,
+     and `work wait` returns with the answer. After the talk of step 1, never ask the person
+     with your AI CLI's own question tool (such as AskUserQuestion).
    - a question of a model comes to you: answer it from the directions (`work answer <token>
      <q> --text=...`). When it shows that a direction can be read in two ways, draft the change
      of the direction (`work direction revise`). Polish it first with each question of
@@ -222,23 +226,23 @@ The person runs commands with no token, at a terminal. An agent never runs a per
 
 - When the person says a decision in the conversation, the top agent (medium or high, with
   no parent) records it with their exact words:
-  `work forward <token> <person> reject|ask|comment|answer|accept|resolve <id> --quote="<words>"`.
+  `work forward <token> <person> reject|ask|comment|accept|resolve <id> --quote="<words>"`.
   An accept of a draft (`d<n>`) gives `--evidence` too: where the person read, and what they
   saw.
 - A forwarded reject, question, or comment counts at once, because it only stops work or
-  informs. A forwarded answer, accept, or resolve moves work forward, so it waits until the
-  person confirms it: with the Confirm button on the page, or with `work confirm <event>` at a
+  informs. A forwarded accept or resolve moves work forward, so it waits until the person
+  confirms it: with the Confirm button on the page, or with `work confirm <event>` at a
   terminal; both show them the act. The person accepts no result: a lead decides it, and the
   person rejects a result only after its deciders accept it.
 - An escalation to the person waits for the person's resolve: `work resolve <escalation>
   --resolution="..."` at a terminal, or their words in the conversation, forwarded as
   `work forward <token> <person> resolve <escalation> --quote="<words>"` and confirmed.
 - To bring a fact from the person to the work, ask with `work ask <token> --to=owner
-  --text="..."`, then forward the person's answer to that question; they confirm it. The CLI
-  refuses a forward that the person could not do now, and says why. Ask the person only for a
-  fact that no direction, rule, or guide gives, and that stops the work. Never ask the person
-  about a limit (`work guide limits`), or about a choice that a rule or a guide settles: decide
-  it.
+  --text="..."` (with `--option="..."` for each choice). The person answers on the page (or
+  `work answer <q>` at a terminal); it counts at once, and your `work wait` returns with it.
+  Never ask with your AI CLI's own question tool. Ask the person only for a fact that no
+  direction, rule, or guide gives, and that stops the work. Never ask the person about a limit
+  (`work guide limits`), or about a choice that a rule or a guide settles: decide it.
 - A permission (`work grant`, `work revoke`), a confirm, and a config change are the person's
   alone. Ask; do not do them.
 

@@ -43,7 +43,7 @@ import {
   type WaitingItem,
 } from '../../core/derived/index.ts'
 import { sectionOf } from '../../core/schema/index.ts'
-import { an, clock, describeInner, short, stateWord, who } from './common.ts'
+import { an, clock, describeInner, optionLines, short, stateWord, who } from './common.ts'
 import { drafterWords } from './role-words.ts'
 import { adjustmentWords } from './show.ts'
 import { aboutId, answerText, drafterOf, reviseAgainOf, stopIdOf, tierOfRole } from './shared.ts'
@@ -82,7 +82,12 @@ const questionRow = (d: Derived, item: Of<'Question'>): string => {
   const to = who(w, answerer)
   const cmd =
     typeof answerer === 'string' ? `work answer <${to} token> ${q.id}` : `work answer ${q.id}`
-  return `${q.id} for ${to}: ${short(q.text, 200)}\n    ${cmd} --text="..."`
+  const pick = q.options.length > 0 ? ' or --option=<n>' : ''
+  return [
+    `${q.id} for ${to}: ${short(q.text, 200)}`,
+    ...optionLines(q.options).map((l) => `    ${l}`),
+    `    ${cmd} --text="..."${pick}`,
+  ].join('\n')
 }
 
 const escalationRow = (d: Derived, item: Of<'Escalation'>): string => {

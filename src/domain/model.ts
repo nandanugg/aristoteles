@@ -737,6 +737,7 @@ export interface Question {
   readonly _tag: 'Question'
   readonly id: QuestionId // not on the page
   readonly text: NonBlank
+  readonly options: ReadonlyArray<NonBlank> // the answers to pick from; none: a free question
   readonly stops: TaskId // only this task waits for the answer (every writer sets its own)
   // The first one that it went to; who answers it now is derived (core/derived).
   readonly answerBy: Answerer

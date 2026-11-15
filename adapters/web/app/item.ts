@@ -3,7 +3,14 @@
 import { Schema } from 'effect'
 import { html } from 'htm/preact'
 import { useRef, useState } from 'preact/hooks'
-import { EventRef, ProblemId, RevisionId, RunId, TaskId } from '../../../src/domain/ids.ts'
+import {
+  EventRef,
+  ProblemId,
+  QuestionId,
+  RevisionId,
+  RunId,
+  TaskId,
+} from '../../../src/domain/ids.ts'
 import type { Decision } from '../contract.ts'
 import type { ActOut } from './api.ts'
 import { post, toast } from './api.ts'
@@ -21,6 +28,7 @@ const KIND = {
   confirm: 'Your words, relayed',
   roleWords: 'New words of a role',
   adjustment: 'An adjustment',
+  question: 'A question for you',
 }
 const kindOf = (item: Decision): keyof typeof KIND => {
   switch (item._tag) {
@@ -36,6 +44,8 @@ const kindOf = (item: Decision): keyof typeof KIND => {
       return 'roleWords'
     case 'Adjustment':
       return 'adjustment'
+    case 'Question':
+      return 'question'
   }
 }
 export function Item({ item }: { item: Decision }) {
@@ -80,6 +90,9 @@ export function Item({ item }: { item: Decision }) {
   const acceptAdjustment = () => post({ act: 'accept-adjustment', draft: words(item.id) })
   const rejectAdjustment = () =>
     post({ act: 'reject-adjustment', draft: words(item.id), reason: comment })
+  // The person's answer counts at once: an option's words, or their own.
+  const answer = (text: string) => () =>
+    post({ act: 'answer', question: Schema.decodeUnknownSync(QuestionId)(item.id), text })
   // A decision takes one comment: a reject needs it, an accept does not.
   const decides =
     kind === 'direction' || kind === 'end' || kind === 'roleWords' || kind === 'adjustment'
@@ -93,9 +106,12 @@ export function Item({ item }: { item: Decision }) {
         : null
   const hope = item._tag === 'Direction' ? item.hope : null
   const quote = item._tag === 'Confirm' ? item.quote : null
+  const asked = item._tag === 'Question' ? item : null
+  const own = asked?.options.length ? 'Or your own answer' : 'Your answer'
   return html`<div class=${`item ${kind}`} role="region" aria-label=${KIND[kind]}>
-    <div class="item-head"><span class="badge" aria-hidden="true">!</span>
+    <div class="item-head"><span class="badge" aria-hidden="true">${asked ? '?' : '!'}</span>
       <strong>${KIND[kind]}</strong></div>
+    ${asked ? html`<div class="item-raw">${asked.asker} asks:</div>` : ''}
     <div class="prose">${item.words ?? item.text}</div>
     ${change ? html`<${Change} change=${change} />` : ''}
     ${hope ? html`<div class="prose">${hope}</div>` : ''}
@@ -105,6 +121,14 @@ export function Item({ item }: { item: Decision }) {
       <textarea rows="2" value=${comment}
         onInput=${(e: Event) => setComment((e.currentTarget as HTMLTextAreaElement).value)}
       ></textarea></label>` : ''}
+    ${asked ? html`
+      ${asked.options.length ? html`<div class="item-options">
+        ${asked.options.map((o) => html`<button class="btn"
+          onClick=${run(answer(o))}>${o}</button>`)}</div>` : ''}
+      <label class="field"><span>${own}</span>
+        <textarea rows="2" value=${comment}
+          onInput=${(e: Event) => setComment((e.currentTarget as HTMLTextAreaElement).value)}
+        ></textarea></label>` : ''}
     ${error ? html`<div class="error" role="alert">Refused: ${error}</div>` : ''}
     <div class="item-actions">
       ${kind === 'system' ? html`<button class="btn primary"
@@ -123,6 +147,8 @@ export function Item({ item }: { item: Decision }) {
         <button class="btn primary" onClick=${run(acceptWords)}>Accept the words</button>
         <button class="btn" disabled=${noComment}
           onClick=${run(rejectWords)}>Reject the words</button>` : ''}
+      ${asked ? html`<button class="btn primary" disabled=${noComment}
+        onClick=${run(answer(comment))}>Answer</button>` : ''}
       ${kind === 'adjustment' ? html`
         <button class="btn primary" onClick=${run(acceptAdjustment)}>Accept</button>
         <button class="btn" disabled=${noComment}
