@@ -364,6 +364,8 @@ button { font: inherit; color: inherit; }
 .level-rule { border: 1px solid var(--luna-line); border-left: 4px solid var(--luna); background: var(--surface-2); padding: 8px 12px; margin-left: 4px; }
 .level-standard > .md + .level-rule { margin-top: 10px; }
 .checker { color: var(--muted); }
+/* The summary of a direction, before its words: what it asks and why, for a first reading. */
+.direction-summary { max-width: 80ch; margin: 0 0 10px; padding: 8px 12px; font-size: 15px; font-weight: 600; line-height: 1.45; background: var(--sol-tint); border-radius: 8px; }
 
 /* A case: a ladder from the direction down to its output (Follows or Breaks), each place with the
    real code around it and its lines marked. A line on the left joins the steps; each has a dot. */

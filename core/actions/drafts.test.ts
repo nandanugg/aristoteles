@@ -40,9 +40,11 @@ const RULE_REPEATABLE = 'A reviewer can repeat the problem without the design'
 // A model run outside any task: the host that adds the cases of a company draft.
 const HOST_RUN = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' } as Author
 // P10 rejected, onboarding 2026-11-14: a new direction starts with its cases.
+// Nanda, 2026-11-15: a direction has a summary.
 const REELS = `id: reels
 name: Reels
 owner: Nanda
+summary: A reel shows one flow, so a person follows it at once.
 says: A reel shows one flow.
 standards:
   - id: one-flow
@@ -213,7 +215,7 @@ describe('a draft of a direction', () => {
   })
 
   test('a new direction keeps its limit of standards, and a rule id of another', () => {
-    const big = `id: big\nname: Big\nowner: Nanda\nsays: Big.\nmaxStandards: 1\nstandards:
+    const big = `id: big\nname: Big\nowner: Nanda\nsummary: Big.\nsays: Big.\nmaxStandards: 1\nstandards:
   - { id: one, says: One. }
   - { id: two, says: Two. }
 `

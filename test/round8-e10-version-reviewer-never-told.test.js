@@ -9,9 +9,11 @@ import { DIRECTION, init, ok, project, tokenIn } from
   './harness.js'
 
 // P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
+// Nanda, 2026-11-15: a direction has a summary.
 const STYLE = `id: page-style
 name: Page style
 owner: Nanda
+summary: Every page reads the same way.
 says: Pages read the same way.
 cases:
   - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }

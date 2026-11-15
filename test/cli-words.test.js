@@ -355,6 +355,8 @@ describe('the fixes of the skills round', () => {
     p.write(
       'hld.yaml',
       'id: hld-writing\nname: HLD writing\nowner: Nanda\nfrom: [Logos]\n' +
+        // Nanda, 2026-11-15: a direction has a summary.
+        'summary: An HLD shows the whole system on one page.\n' +
         'says: The reader sees the whole system on one page.\nstandards:\n  - id: one-page\n' +
         '    says: Keep it to one page.\n    rules:\n' +
         '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n' +
@@ -374,6 +376,8 @@ describe('the fixes of the skills round', () => {
     p.write(
       'hld.yaml',
       'id: hld-writing\nname: HLD writing\nowner: Nanda\nfrom: [Logos]\n' +
+        // Nanda, 2026-11-15: a direction has a summary.
+        'summary: An HLD shows the whole system on one page.\n' +
         'says: The reader sees the whole system on one page.\nstandards:\n  - id: one-page\n' +
         '    says: Keep it to one page.\n    rules:\n' +
         '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n' +
@@ -448,6 +452,31 @@ const hostedRun = async ({ settings = '', roles = WORK_YAML } = {}) => {
   return { p, opened, host }
 }
 const PROMPT = (a) => `  Use the work skill. In <project>, run: work brief ${a}.`
+
+// Nanda, 2026-11-15: a direction has a summary: one or two plain sentences for a person who reads
+// it the first time. It shows before the words, and a revise may change it.
+describe('the summary of a direction', () => {
+  test('direction show gives the summary first; a revise changes it, and the draft shows the old one', async () => {
+    const { p } = await started()
+    expect(await out(p.nanda('direction show tsd-writing'))).toContain(
+      'summary: A TSD lets its reader decide without a meeting, so each page stands alone.\n' +
+        'says: The reader understands and decides from the page alone.\n',
+    )
+    const arch = tokenIn(await out(p.nanda('assign t1 --role=architect')))
+    ok(await p.agent(`brief ${arch}`))
+    p.write('edit.yaml', 'summary: A TSD shows its reader the cost of each choice.\n')
+    ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
+    const draft = await out(p.nanda('direction show d2'))
+    expect(draft).toContain('summary: A TSD shows its reader the cost of each choice.\n')
+    expect(draft).toContain(
+      'summary was: A TSD lets its reader decide without a meeting, so each page stands alone.',
+    )
+    ok(await p.nanda('review d2 accept --evidence="the draft, its summary | it names the cost"', 'accept'))
+    expect(await out(p.nanda('direction show tsd-writing'))).toContain(
+      'summary: A TSD shows its reader the cost of each choice.\n',
+    )
+  })
+})
 
 describe('the work assign words, by where the assignment runs', () => {
   test('Host: the host gets its token from work wait', async () => {

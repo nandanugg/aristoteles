@@ -381,6 +381,15 @@ const open = async () => {
     expect(await page.textContent('.direction-page .level-direction code')).toBe('docs/tsd.md')
     expect(await page.textContent('.direction-page .level-direction')).not.toContain('##')
     expect(await page.textContent('.direction-page .level-rule .level-head')).toBe('Ruleno-code-proofchecked by linter')
+    // Nanda, 2026-11-15: a direction has a summary; it shows at the top of the direction, before
+    // its words.
+    expect(await page.textContent('.direction-page .level-direction .direction-summary')).toBe(
+      'A TSD lets its reader decide without a meeting, so each page stands alone.')
+    expect(await page.evaluate(() => {
+      const summary = document.querySelector('.direction-page .direction-summary')
+      return summary.compareDocumentPosition(document.querySelector('.direction-page .level-direction .md')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    })).toBeTruthy()
     expect(await page.locator('.direction-page .case').count()).toBe(3)
     // Nanda, 2026-11-15: each case is a small vertical ladder: the direction at the top, each
     // named rung with its code, the output at the bottom in the color of its fit (was: one block).
@@ -489,6 +498,8 @@ const open = async () => {
     expect(await page.locator('.gear .direction-item .title').allTextContents()).toEqual(['One thing per section', 'TSD writing'])
     await page.click('.gear .direction-item:has-text("TSD writing")')
     expect(await page.textContent('.gear .level-direction h3')).toBe('Where it comes from')
+    expect(await page.textContent('.gear .direction-summary')).toBe(
+      'A TSD lets its reader decide without a meeting, so each page stands alone.')
     expect(await page.locator('.gear .case').count()).toBe(3)
     await shot(page, 'gear-directions')
     await page.fill('.gear .suggest textarea', 'say who reads the TSD')

@@ -72,11 +72,13 @@ roles:
 
 // P10 rejected, onboarding 2026-11-14: a direction starts with at least 3 cases, real code of the
 // fixture's files that follows it or breaks it. The cases come before the standards, so that a
-// test that appends a standard to the fixture stays inside the standards.
+// test that appends a standard to the fixture stays inside the standards. Nanda, 2026-11-15: a
+// direction has a summary, before its words.
 export const DIRECTION = `id: tsd-writing
 name: TSD writing
 owner: Nanda
 from: [Pathos, Logos]
+summary: A TSD lets its reader decide without a meeting, so each page stands alone.
 says: The reader understands and decides from the page alone.
 cases:
   - { file: docs/facts.md, line: 5, excerpt: The export ran twice for one merchant., fit: Follows }
@@ -109,6 +111,7 @@ export const ONBOARD_DIRECTION = DIRECTION.replace('owner: Nanda\n', '')
 export const ONBOARD_NEW = `id: one-thing
 name: One thing per section
 from: [Logos]
+summary: Each section of a TSD keeps to one topic, so a reader finds it fast.
 says: Each section says one thing.
 cases:
   - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
@@ -405,6 +408,7 @@ roles:
 export const CODE_DIRECTION = `id: fixes
 name: Fixes
 owner: Nanda
+summary: A fix counts only with a test that ran on it.
 says: A fix is proven by a test that ran on it.
 cases:
   - { file: app/ok.txt, line: 1, excerpt: ok, fit: Follows }

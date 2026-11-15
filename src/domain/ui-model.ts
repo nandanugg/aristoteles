@@ -468,6 +468,7 @@ export interface DirectionView {
   readonly name: Text
   readonly owner: Text
   readonly version: Text // tsd-writing@2
+  readonly summary: Text // the page shows it before the words (Nanda, 2026-11-15)
   readonly says: Text
   readonly standards: ReadonlyArray<{
     readonly id: Text
@@ -567,6 +568,7 @@ export interface DirectionCard {
   readonly origin: Text // where it comes from, in one line
   readonly principle: Text | null // the words of the person who added it (ruling 5)
   readonly example: Text | null
+  readonly summary: Text | null // shown before the words (Nanda, 2026-11-15); null: no draft yet
   readonly says: Text | null // null: no draft yet
   readonly standards: DirectionView['standards'] // each rule names the role that checks it
   readonly cases: ReadonlyArray<CaseView>

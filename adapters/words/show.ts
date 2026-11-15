@@ -73,8 +73,9 @@ const quoteOf = (work: Work, id: string): string | undefined => forwardedOf(work
 const ruleKey = (work: Work, entry: string): string => ruleAt(work, entry as never).id
 const byName = (by: By): string => (typeof by === 'string' ? by : by.name)
 
-// What a draft or a version holds: its words and its standards.
+// What a draft or a version holds: its summary, its words and its standards.
 interface Words {
+  readonly summary: string
   readonly says: string
   readonly standards: ReadonlyArray<StandardEntry>
 }
@@ -200,16 +201,20 @@ const whereWords = (s: { readonly where: Parameters<typeof whereRecord>[0] }): s
 
 // What a version or a draft says, with what it changes from its base: + new, ~ replaced,
 // - removed.
+// The summary comes first (Nanda, 2026-11-15: a direction has a summary).
 const contentLines = (work: Work, v: Words, base: Words | undefined): ReadonlyArray<string> => {
-  const lines: Array<string> = String(v.says).includes('\n')
-    ? [
-        'says:',
-        ...String(v.says)
-          .trimEnd()
-          .split('\n')
-          .map((l) => (l ? `  ${l}` : '')),
-      ]
-    : [`says: ${v.says}`]
+  const lines: Array<string> = [
+    `summary: ${v.summary}`,
+    ...(String(v.says).includes('\n')
+      ? [
+          'says:',
+          ...String(v.says)
+            .trimEnd()
+            .split('\n')
+            .map((l) => (l ? `  ${l}` : '')),
+        ]
+      : [`says: ${v.says}`]),
+  ]
   const baseStandards = base ? base.standards.map((e) => standardAt(work, e)) : []
   const baseIds = baseStandards.map((s) => s.id)
   const baseRules = baseStandards.flatMap((s) => s.rules)
@@ -233,6 +238,7 @@ const contentLines = (work: Work, v: Words, base: Words | undefined): ReadonlyAr
   for (const s of baseStandards.filter((x) => !ids.includes(x.id))) {
     lines.push(`- ${s.id}: ${indented(s.says, '    ')}`)
   }
+  if (base && v.summary !== base.summary) lines.push(`summary was: ${base.summary}`)
   if (base && v.says !== base.says) lines.push(`says was: ${indented(base.says, '  ')}`)
   return lines
 }

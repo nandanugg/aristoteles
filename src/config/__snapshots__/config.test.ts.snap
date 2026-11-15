@@ -1065,6 +1065,7 @@ exports[`checkWorkspace a dot path with a slash 1`] = `
 }
 `;
 
+// Nanda, 2026-11-15: a direction has a summary.
 exports[`readDirection a minimal direction 1`] = `
 {
   "ok": {
@@ -1074,10 +1075,12 @@ exports[`readDirection a minimal direction 1`] = `
     "owner": "Nanda",
     "says": "S",
     "standards": [],
+    "summary": "U",
   },
 }
 `;
 
+// Nanda, 2026-11-15: a direction has a summary.
 exports[`readDirection a full direction 1`] = `
 {
   "ok": {
@@ -1115,6 +1118,7 @@ exports[`readDirection a full direction 1`] = `
         },
       },
     ],
+    "summary": "U",
   },
 }
 `;

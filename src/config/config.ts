@@ -464,6 +464,14 @@ export const readDirection = (
     for (const key of ['id', 'name', 'says', 'owner']) {
       if (typeof d[key] !== 'string' || !d[key].trim()) fail(file, `${key} is required`)
     }
+    // Nanda, 2026-11-15: each direction starts with a summary.
+    if (typeof d.summary !== 'string' || !d.summary.trim()) {
+      fail(
+        file,
+        'summary is required: one or two plain sentences that say what the direction asks and ' +
+          'why it matters, for a person who reads it the first time',
+      )
+    }
     if (!people.includes(d.owner)) fail(file, `owner ${d.owner} is not in people`)
     const standards = list(d.standards).map((s, i) => {
       if (typeof s?.id !== 'string' || typeof s?.says !== 'string') {
@@ -519,6 +527,7 @@ export const readDirection = (
       name: d.name,
       owner: d.owner,
       from,
+      summary: d.summary,
       says: d.says,
       ...(d.maxStandards !== undefined ? { maxStandards: d.maxStandards } : {}),
       standards,

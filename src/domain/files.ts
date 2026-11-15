@@ -293,12 +293,15 @@ export const Cases = Schema.Array(Case).check(Schema.isMinLength(MIN_CASES))
 export type Cases = typeof Cases.Type
 export const CasesFile = Schema.Array(CaseFile).check(Schema.isMinLength(MIN_CASES))
 
-// A direction file after readDirection and readApprovedBy.
+// A direction file after readDirection and readApprovedBy. summary: one or two plain sentences
+// that say what the direction asks and why it matters, for a person who reads it the first time
+// (Nanda, 2026-11-15); the page and the CLI show it before the words.
 export const DirectionFile = Schema.Struct({
   id: DirectionId,
   name: Schema.String,
   owner: Schema.String,
   from: Schema.Array(Principle),
+  summary: NonBlank,
   says: Schema.String,
   maxStandards: Schema.optionalKey(Schema.Number),
   standards: Schema.Array(StandardFile),
@@ -308,6 +311,7 @@ export type DirectionFile = typeof DirectionFile.Type
 
 // A revise file: the change of a direction from its current version.
 export const ReviseFile = Schema.Struct({
+  summary: Schema.optionalKey(NonBlank),
   says: Schema.optionalKey(Schema.String),
   add: Schema.optionalKey(Schema.Array(StandardFile)),
   remove: Schema.optionalKey(Schema.Array(Key)),
@@ -329,6 +333,19 @@ export const ExternalSource = Schema.Struct({
   commit: Schema.String,
 })
 export type ExternalSource = typeof ExternalSource.Type
+
+// The first sentence of the words of a direction, in its first paragraph that is no heading. It
+// stands in for a summary where none was written: a company folder has none (its words are the
+// company's), and neither has the file of an onboarding that started before the summary.
+export const firstSentence = (says: string): string => {
+  const words = says
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l))
+    .join('\n')
+  const paragraph = words.trim().split(/\n\s*\n/)[0]?.replace(/\s+/g, ' ') ?? ''
+  const end = paragraph.search(/[.!?](\s|$)/)
+  return end === -1 ? paragraph : paragraph.slice(0, end + 1)
+}
 
 // A company folder, as company.ts reads it at a commit.
 export const CompanyFolder = Schema.Struct({

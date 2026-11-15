@@ -267,7 +267,8 @@ const roles = async (): Promise<Obj> =>
   ((await runNew(next.readConfig(dirWith(yaml(good()))))) as Obj).ok.config.roles
 
 describe('readDirection', () => {
-  const direction = (o: Obj): Obj => ({ id: 'tsd', name: 'TSD', says: 'S', owner: 'Nanda', ...o })
+  // Nanda, 2026-11-15: a direction has a summary.
+  const direction = (o: Obj): Obj => ({ id: 'tsd', name: 'TSD', summary: 'U', says: 'S', owner: 'Nanda', ...o })
   const cases: Array<[string, Obj]> = [
     ['a minimal direction', direction({})],
     ['a full direction', direction({ from: ['Logos', 'Mnēmē'], maxStandards: 5, approvedBy: 'checker', standards: [{ id: 's1', says: 'a', where: { section: 'x' }, rules: [{ id: 'r1', says: 'b', checkedBy: 'checker', supersedes: ['r0'] }, { id: 'r2', says: 'c' }] }] })],
@@ -299,6 +300,15 @@ describe('readDirection', () => {
       refused:
         'd.yaml: from names "Logoss", which is not a principle; the principles are ' +
         'Logos, Pathos, Ethos, Mythos, Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia',
+    })
+  })
+
+  // Nanda, 2026-11-15: a direction has a summary; a draft with none is refused with what to write.
+  test.each([['no', undefined], ['a blank', '  ']])('%s summary is refused', async (_name, summary) => {
+    expect(await runNew(next.readDirection('d.yaml', direction({ summary }), people))).toEqual({
+      refused:
+        'd.yaml: summary is required: one or two plain sentences that say what the direction ' +
+        'asks and why it matters, for a person who reads it the first time',
     })
   })
 

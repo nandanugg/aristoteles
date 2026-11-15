@@ -132,7 +132,9 @@ const linesOf = (work: Work, dir: string): ReadonlyArray<string> => {
 // text, its hash and the fit hashes), each assignment where it runs (runs), and the page run has
 // the agent p1 (its line, its id in created, the agent counter). P10 rejected, onboarding
 // 2026-11-14: directions and drafts hold their cases, and the company scenario gives d2 its cases
-// in one more event. The last three scenarios are new.
+// in one more event. The last three scenarios are new. Nanda, 2026-11-15: a case is a ladder to
+// an output, and a direction has a summary: the cases are ladders, and each draft and each
+// version holds its summary.
 const PINS = `${import.meta.dir}/fold.pins.txt`
 const pinnedLines = (name: string): ReadonlyArray<string> => {
   const text = readFileSync(PINS, 'utf8')
@@ -559,6 +561,8 @@ describe('fold gives the Work of the old replay', () => {
       name: 'Feature flags',
       owner: 'Nanda',
       from: ['Oikos'],
+      // Nanda, 2026-11-15: a direction has a summary.
+      summary: 'A critical change is flagged, so it can be turned off.',
       says: 'Each critical change is flagged.',
       standards: [
         {

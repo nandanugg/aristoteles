@@ -61,6 +61,7 @@ const DIRECTION_TEMPLATE = `write a file like this, then run the command again:
   name: <a short name>
   owner: <a person of aristoteles.yaml; the owner accepts the first version>
   from: [<the principles that ground it: Logos, Pathos, Ethos, Mythos, Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
+  summary: <one or two plain sentences: what the direction asks, and why it matters>
   says: |
     <what the direction asks for, in any markdown>
   approvedBy: <optional; who accepts the next versions: roles, and the owner>
@@ -78,7 +79,8 @@ const REVISE_TEMPLATE =
   'write a file like this (any of the keys), then run the revise again:\n' +
   '  add:\n    - { id: <new standard id>, says: <the standard>, rules: [ { id: <new rule id>, says: <the rule>, checkedBy: <role> } ] }\n' +
   '  replace:\n    - { id: <standard id>, with: { id: <standard id>, says: <...>, rules: [ ... ] } }\n' +
-  '  remove: [<standard id>]\n  says: <a new spirit needs the accept of the owner>'
+  '  remove: [<standard id>]\n  says: <a new spirit needs the accept of the owner>\n' +
+  '  summary: <one or two plain sentences: what the direction asks, and why it matters>'
 
 // The cases of a direction or of a new draft, each with its state (ruling 4): the adapter reads the
 // text of each file of a ladder now, so a case with an excerpt that left its file shows stale.

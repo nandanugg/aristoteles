@@ -66,31 +66,36 @@ const staleCount = (file: OnboardingDirection, textOf: TextOf): string => {
   return ` · ${countOf(cases.length, 'case')}${stale ? `, ${stale} stale` : ''}`
 }
 
-// The line of a direction and the command that answers it.
+// The line of a direction, its summary once it has a draft (Nanda, 2026-11-15), and the command
+// that answers it.
 const directionLines = (file: OnboardingDirection, textOf: TextOf): ReadonlyArray<string> => {
   const id = file.id
   const state = onboardingStateOf(file)
   const name = file.draft._tag === 'Drafted' ? `${file.draft.name} · ` : ''
-  const head = `  ${id} · ${state._tag} · ${name}${where(file)}${staleCount(file, textOf)}`
+  const summary = file.draft._tag === 'Drafted' ? [file.draft.content.summary] : []
+  const head = [
+    `  ${id} · ${state._tag} · ${name}${where(file)}${staleCount(file, textOf)}`,
+    ...summary.map((words) => `    summary: ${short(words, 120)}`),
+  ]
   const host = hostWork(file)
   switch (state._tag) {
     case 'Accepted':
-      return [head]
+      return head
     case 'Question':
       return [
-        head,
+        ...head,
         `    ${countOf(state.open.length, 'question')} for the person: work onboard show ${id}; ` +
           `work onboard answer ${id} --options=${state.open.map(() => 'A').join(',')}`,
       ]
     case 'Ready':
       return [
-        head,
+        ...head,
         `    the person: work onboard show ${id}; work onboard accept ${id}, ` +
           `revise ${id} --words="<what to change>", or remove ${id}`,
       ]
     case 'Loading':
       return [
-        head,
+        ...head,
         `    ${host ?? 'the host drafts it'} (the host: work onboard draft ${id} --file=<direction.yaml>` +
           `${file.draft._tag === 'Drafted' ? `, or ask ${id} --file=<questions.yaml>` : ''})`,
       ]
@@ -181,7 +186,12 @@ export const onboardShowDirection = (
   }
   if (file.draft._tag === 'Drafted') {
     const { name, from, content, cases } = file.draft
-    lines.push(`name: ${name}`, `from: ${from.join(', ') || 'none'}`, `says: ${content.says}`)
+    lines.push(
+      `name: ${name}`,
+      `summary: ${content.summary}`,
+      `from: ${from.join(', ') || 'none'}`,
+      `says: ${content.says}`,
+    )
     for (const s of content.standards) {
       lines.push(`- ${s.id}: ${s.says}`)
       for (const r of s.rules) lines.push(`    - ${r.id} (${r.checkedBy ?? 'no checker'}): ${r.says}`)

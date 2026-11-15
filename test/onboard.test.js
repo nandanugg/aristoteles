@@ -64,9 +64,17 @@ describe('the whole onboarding at a terminal', () => {
     // The host asks with a case and two options; the person answers; the host's wait wakes.
     p.write('q.yaml', ONBOARD_QUESTIONS)
     ok(await p.agent('onboard ask one-thing --file=q.yaml'))
+    // Nanda, 2026-11-15: a direction has a summary; status shows it under the line of a draft.
     expect(ok(await p.agent('onboard status')).out).toContain(
       '  one-thing · Question · One thing per section · asked for by the person: "A section says one thing" · 3 cases\n' +
+        '    summary: Each section of a TSD keeps to one topic, so a reader finds it fast.\n' +
         '    1 question for the person: work onboard show one-thing; work onboard answer one-thing --options=A',
+    )
+    // The summary comes before the words of the direction.
+    expect(ok(await p.nanda('onboard show one-thing')).out).toContain(
+      'name: One thing per section\n' +
+        'summary: Each section of a TSD keeps to one topic, so a reader finds it fast.\n' +
+        'from: Logos\nsays: Each section says one thing.\n',
     )
     // Nanda, 2026-11-15: a case is a ladder to an output, one line for each rung (was: one line).
     expect(ok(await p.nanda('onboard show one-thing')).out).toContain(
@@ -159,6 +167,9 @@ describe('a company direction in onboarding (ruling 6)', () => {
     expect(directions[0].direction.standards[0].rules[0]).toEqual({
       id: 'upper-snake', says: 'The flag is FF_<FEATURE>.', checkedBy: 'linter', supersedes: [],
     })
+    // Nanda, 2026-11-15: a direction has a summary. The host writes no words of a company
+    // direction: its summary is the first sentence of the folder's words, under the heading.
+    expect(directions[0].direction.summary).toBe('Each critical change is under a flag.')
     expect(directions[0].source).toEqual({
       _tag: 'External', repo: company.dir, path: company.folder, ref: { _tag: 'DefaultBranch' }, commit: company.commit,
     })
@@ -207,6 +218,17 @@ describe('what onboarding refuses', () => {
     expect(exists(p, '.work/assess/tsd-writing.yaml')).toBe(true)
     expect(exists(p, 'aristoteles.draft.yaml')).toBe(true)
     expect(exists(p, '.work/onboarding.lock')).toBe(false)
+  })
+
+  // Nanda, 2026-11-15: a direction has a summary; a draft sent with none is refused with what to write.
+  test('a draft with no summary is refused, and the refusal says what to write', async () => {
+    const p = await drafted()
+    p.write('bare.yaml', ONBOARD_DIRECTION.replace(/summary: .*\n/, ''))
+    const r = await p.agent('onboard draft tsd-writing --file=bare.yaml')
+    expect(r.err).toContain(
+      'refused: bare.yaml: summary is required: one or two plain sentences that say what the ' +
+        'direction asks and why it matters, for a person who reads it the first time',
+    )
   })
 
   test('a draft refuses a case whose excerpt is not in its file, and fewer than 3 cases', async () => {

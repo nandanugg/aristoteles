@@ -12,6 +12,7 @@ import {
   CaseFile,
   type Cases,
   DirectionId,
+  firstSentence,
   isNonBlank,
   type OnboardingDirection,
   Refused,
@@ -85,6 +86,7 @@ const DRAFT_TEMPLATE = `write a file like this, then run the command again:
   id: <a short id; a new direction takes it from its first draft>
   name: <a short name>
   from: [<the principles that ground it, such as Logos>]
+  summary: <one or two plain sentences: what the direction asks, and why it matters>
   says: <what the direction asks for>
   standards:
     - id: <standard id>
@@ -104,7 +106,7 @@ const QUESTIONS_TEMPLATE = `write a file like this, then run the command again:
 // A draft of onboarding names no owner: readDirection checks the rest of the file with this one,
 // and the person who starts the store owns each direction.
 const OWNER = 'the person'
-const DRAFT_KEYS = ['id', 'name', 'from', 'says', 'standards', 'cases']
+const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'says', 'standards', 'cases']
 const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'cases']
 
 const isRecord = (x: unknown): x is Readonly<Record<string, unknown>> =>
@@ -315,6 +317,7 @@ const localDraft = (file: string, raw: Readonly<Record<string, unknown>>, curren
       id,
       name: read.name,
       from: read.from,
+      summary: read.summary,
       says: read.says,
       standards: read.standards,
     }
@@ -351,10 +354,20 @@ const companyDraft = (
     const id = yield* idOf(raw.id === undefined ? current.id : String(raw.id))
     const env = (yield* Env).vars
     const { folder } = yield* fetchFolder(env, { ...asked, owner: OWNER })
+    // The host writes no words of a company direction: its summary is the first sentence of the
+    // folder's words (Nanda, 2026-11-15).
+    const summary = firstSentence(folder.says)
+    if (!isNonBlank(summary)) {
+      return yield* refuse(
+        `the direction.md of ${asked.path} has no words under its heading, so it has no summary`,
+        'ask the owner of the company repo to write what the direction asks in direction.md',
+      )
+    }
     const draft: Omit<DirectionDraft, 'cases'> = {
       id,
       name: folder.name,
       from: [],
+      summary,
       says: folder.says,
       standards: folder.standards.map((s) => ({
         id: s.id,

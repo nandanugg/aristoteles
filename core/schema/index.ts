@@ -78,6 +78,7 @@ export {
   ContextKey,
   DirectionFile,
   ExternalSource,
+  firstSentence,
   MIN_CASES,
   PartFile,
   PersistenceFile,

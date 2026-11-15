@@ -79,7 +79,8 @@ describe('parts in one document file', () => {
 
   test('a part may name a section also when no standard of its directions has a section "when"', async () => {
     // P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
-    const plain = 'id: plain\nname: Plain\nowner: Nanda\nsays: Plain words.\nstandards:\n' +
+    // Nanda, 2026-11-15: a direction has a summary.
+    const plain = 'id: plain\nname: Plain\nowner: Nanda\nsummary: Plain words.\nsays: Plain words.\nstandards:\n' +
       '  - id: short\n    says: Short.\n    rules:\n      - { id: short-lines, says: "Lines are short", checkedBy: linter }\n' +
       'cases:\n' +
       '  - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }\n' +

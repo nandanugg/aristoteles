@@ -747,6 +747,7 @@ const directionsView = (d: Derived, task: Task): ReadonlyArray<DirectionView> =>
         name: dir.name,
         owner: dir.owner.name,
         version: versionIdOf(v),
+        summary: v.summary,
         says: v.says,
         standards: standardsOf(w, v),
         changed:
@@ -1066,6 +1067,7 @@ const onboardingDirectionCard = (
     origin: originOf(asked),
     principle: asked._tag === 'New' ? asked.principle : null,
     example: asked._tag === 'New' ? asked.example : null,
+    summary: drafted?.content.summary ?? null,
     says: drafted?.content.says ?? null,
     standards: (drafted?.content.standards ?? []).map((st) => ({
       id: st.id,
@@ -1150,6 +1152,7 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
         origin: `${versionIdOf(v)}, owner ${x.owner.name}${from}`,
         principle: null,
         example: null,
+        summary: v.summary,
         says: v.says,
         standards: standardsOf(w, v),
         cases: x.cases.map(caseOf),

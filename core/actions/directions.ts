@@ -204,6 +204,9 @@ const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refus
         }
       })
     if (e.says !== undefined && typeof e.says !== 'string') return yield* bad('says is words')
+    if (e.summary !== undefined && !(typeof e.summary === 'string' && e.summary.trim())) {
+      return yield* bad('summary is one or two plain sentences: what the direction asks, and why')
+    }
     const add = []
     for (const [i, s] of list(e.add).entries()) add.push(yield* standardOf(s, `standard ${i + 1}`))
     const replace = []
@@ -213,6 +216,7 @@ const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refus
       replace.push({ id: r.id, with: w })
     }
     return {
+      ...(e.summary !== undefined ? { summary: e.summary as string } : {}),
       ...(e.says !== undefined ? { says: e.says as string } : {}),
       ...(e.add !== undefined ? { add } : {}),
       ...(e.remove !== undefined ? { remove: list(e.remove).map(String) } : {}),
@@ -283,6 +287,7 @@ const asRevise = (w: Work, file: DirectionFile): ReviseFile => {
     .map((s) => ({ id: s.id, with: standard(s) }))
   const remove = was.filter((y) => !file.standards.some((s) => s.id === y.id)).map((y) => y.id)
   return {
+    ...(file.summary !== now.summary ? { summary: file.summary } : {}),
     ...(file.says !== now.says ? { says: file.says } : {}),
     ...(add.length ? { add } : {}),
     ...(remove.length ? { remove } : {}),

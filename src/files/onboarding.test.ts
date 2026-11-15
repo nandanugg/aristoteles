@@ -54,6 +54,8 @@ const draftOf = (id: string): DirectionDraft =>
     id,
     name: 'Small changes',
     from: ['Logos'],
+    // Nanda, 2026-11-15: a direction has a summary.
+    summary: 'A change does one thing, so a reviewer reads one reason.',
     says: 'A change does one thing.',
     standards: [
       {
@@ -184,10 +186,11 @@ describe('the acts', () => {
     expect(after?.accepted).toEqual(before?.accepted as never)
   })
 
-  // Nanda, 2026-11-15: a case is a ladder to an output. The file of an onboarding that started
-  // before holds each case in the short form; it reads as a ladder with no rungs, and the next
-  // write holds the ladder.
-  test('an older file reads its short cases as ladders, and is written back as ladders', async () => {
+  // Nanda, 2026-11-15: a case is a ladder to an output, and a direction has a summary. The file of
+  // an onboarding that started before holds each case in the short form and no summary: a case
+  // reads as a ladder with no rungs, the summary is the first sentence of says, and the next write
+  // holds both.
+  test('an older file reads: short cases as ladders, the summary from says; written back so', async () => {
     const dir = await withConfig()
     const short = { ...A_CASE.output, fit: 'Follows' }
     const old = {
@@ -197,7 +200,7 @@ describe('the acts', () => {
         _tag: 'Drafted',
         name: 'Small changes',
         from: ['Logos'],
-        content: { says: 'A change does one thing.', standards: [] },
+        content: { says: 'A change does one thing. It names its reason.', standards: [] },
         cases: [short, short, short],
       },
       questions: [],
@@ -206,10 +209,14 @@ describe('the acts', () => {
     }
     writeFileSync(join(dir, ASSESS, 'small-changes.yaml'), Bun.YAML.stringify(old, null, 2))
     const ladder = { fit: 'Follows', via: [], output: A_CASE.output }
-    expect((await fileOf(dir, 'small-changes')).draft.cases).toEqual([ladder, ladder, ladder])
+    const read = (await fileOf(dir, 'small-changes')).draft
+    expect(read.cases).toEqual([ladder, ladder, ladder])
+    expect(read.content.summary).toBe('A change does one thing.')
     await nanda(dir, { act: 'accept', direction: 'small-changes' })
     const text = readFileSync(join(dir, ASSESS, 'small-changes.yaml'), 'utf8')
-    expect((Bun.YAML.parse(text) as Obj).draft.cases).toEqual([ladder, ladder, ladder])
+    const written = (Bun.YAML.parse(text) as Obj).draft
+    expect(written.cases).toEqual([ladder, ladder, ladder])
+    expect(written.content.summary).toBe('A change does one thing.')
   })
 
   test('a New direction takes the id of its first draft', async () => {

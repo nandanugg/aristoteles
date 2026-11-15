@@ -2,9 +2,9 @@
 // person decides before any store exists (ruling 1: files first). One file of .work/assess holds
 // one direction; .work/assess/roles.yaml holds the onboarding state of each role, apart from the
 // config draft (P4). Nothing here is stored as an event: the store starts with the result only.
-import { Schema } from 'effect'
+import { Schema, SchemaGetter } from 'effect'
 import { Principle } from './closed.ts'
-import { CaseFile, CasesFile, RoleFile, StandardFile } from './files.ts'
+import { CaseFile, CasesFile, firstSentence, RoleFile, StandardFile } from './files.ts'
 import { DirectionId, NonBlank, RoleName } from './ids.ts'
 import type { NonEmpty } from './model.ts'
 
@@ -30,6 +30,26 @@ export const AiQuestion = Schema.Struct({
 })
 export type AiQuestion = typeof AiQuestion.Type
 
+// What a draft says: its summary (Nanda, 2026-11-15), its words, and its standards; each rule names
+// the role that the AI proposes to check it. The file of an onboarding that started before the
+// summary has none: there, the summary is the first sentence of says.
+const Content = Schema.Struct({
+  summary: NonBlank,
+  says: Text,
+  standards: Schema.Array(StandardFile),
+})
+const ContentFile = Schema.Struct({ ...Content.fields, summary: Schema.optionalKey(NonBlank) })
+const DraftContent = Schema.toEncoded(ContentFile).pipe(
+  Schema.decodeTo(Content, {
+    decode: SchemaGetter.transform((c) => ({
+      summary: c.summary ?? firstSentence(c.says),
+      says: c.says,
+      standards: c.standards,
+    })),
+    encode: SchemaGetter.transform((c) => c),
+  }),
+)
+
 // page: OnboardingDirection. One file of .work/assess: where the direction comes from, the
 // host's draft with its cases (3 or more, real), the questions, the person's request, the accept.
 export const OnboardingDirection = Schema.Struct({
@@ -44,8 +64,7 @@ export const OnboardingDirection = Schema.Struct({
     Schema.TaggedStruct('Drafted', {
       name: Text,
       from: Schema.Array(Principle),
-      // What it says, and its standards; each rule names the role that the AI proposes to check it.
-      content: Schema.Struct({ says: Text, standards: Schema.Array(StandardFile) }),
+      content: DraftContent,
       cases: CasesFile,
     }),
   ]),

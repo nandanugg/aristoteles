@@ -69,6 +69,8 @@ const official: Direction = {
       of: tsd,
       number: one,
       revision: d1,
+      // Nanda, 2026-11-15: a direction has a summary.
+      summary: 'The reader decides from the page.',
       says: 'The reader decides from the page.',
       standards: [standard],
       when: at(2),

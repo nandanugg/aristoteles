@@ -272,10 +272,12 @@ export interface RoleNotes {
   readonly found: OnboardingRoleState['found']
 }
 // A drafted direction, as the CLI reads the host's file (id: the real id of a New direction).
+// summary: the host's, or for a company direction the first sentence of its folder's words.
 export interface DirectionDraft {
   readonly id: DirectionId
   readonly name: string
   readonly from: ReadonlyArray<Principle>
+  readonly summary: NonBlank
   readonly says: string
   readonly standards: ReadonlyArray<StandardFile>
   readonly cases: Cases
@@ -459,7 +461,7 @@ const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft) =>
         _tag: 'Drafted',
         name: draft.name,
         from: draft.from,
-        content: { says: draft.says, standards: draft.standards },
+        content: { summary: draft.summary, says: draft.says, standards: draft.standards },
         cases: draft.cases,
       },
       questions: file.questions.filter((q) => q.answer._tag === 'Open'),
@@ -752,6 +754,7 @@ export const prepareStart = (
           name: drafted.name,
           owner: person,
           from: drafted.from,
+          summary: drafted.content.summary,
           says: drafted.content.says,
           standards: drafted.content.standards,
         },

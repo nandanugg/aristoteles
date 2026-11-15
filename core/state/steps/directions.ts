@@ -12,6 +12,7 @@ import {
   type DirectionId,
   type EventOf,
   type EventRef,
+  firstSentence,
   human,
   type Human,
   type Limit,
@@ -184,6 +185,7 @@ const fresh = (
     readonly maxStandards: Limit
     readonly approvedBy: Deciders | undefined
     readonly source: Direction['source']
+    readonly summary: string
     readonly says: string
     readonly add: ReadonlyArray<Standard>
   },
@@ -211,6 +213,7 @@ const fresh = (
     _tag: 'New',
     id: x.id,
     of: input.id,
+    summary: input.summary,
     says: input.says,
     standards,
     origin: input.origin,
@@ -223,25 +226,28 @@ const fresh = (
   return { direction, revision, scratch }
 }
 
-// The current version, with the edit.
+// The current version, with the edit; a summary or words that the edit does not give stay.
 const revised = (
   w: Work,
   x: DraftOf,
   input: DraftFields & {
     readonly direction: Direction
+    readonly summary: string | undefined
     readonly says: string | undefined
     readonly edit: Edit
   },
   scratch: Scratch,
 ): Planned => {
   const d = input.direction
-  const base = contentOf(currentOf(w, d.id))
+  const current = currentOf(w, d.id)
+  const base = contentOf(current)
   const standards = draftStandards(w, base.standards, input.edit, scratch, x.id)
   const revision: Revision<Direction> = {
     _tag: 'Change',
     base: versionId(d.id, base.number ?? 0),
     id: x.id,
     of: d.id,
+    summary: input.summary ?? current.summary,
     says: input.says ?? base.says,
     standards,
     origin: input.origin,
@@ -290,6 +296,7 @@ const planDrafted = (
     maxStandards: limitOf(d.maxStandards),
     approvedBy,
     source: { _tag: 'Local' } as const,
+    summary: d.summary,
     says: d.says,
     add,
     answerIds: data.answers,
@@ -324,6 +331,7 @@ export const onboarded = (b: Build, od: OnboardedDirection, event: EventRef, whe
     maxStandards: limitOf(d.maxStandards),
     approvedBy,
     source,
+    summary: d.summary,
     says: d.says,
     add,
     answerIds: [],
@@ -362,6 +370,7 @@ const planRevised = (
   )
   const input = {
     direction: official,
+    summary: edit.summary,
     says: edit.says,
     edit: { add, remove: edit.remove ?? [], replace },
     answerIds: openAnswerIds(w, data.answers),
@@ -395,6 +404,8 @@ const planImported = (
   const scratch = scratchOf()
   const origin: RevisionOrigin = { _tag: 'Imported', commit: source.commit, ref: source.ref }
   const why: Why = { _tag: 'NoneGiven' }
+  // A company folder has no summary: its words are the company's (Nanda, 2026-11-15).
+  const summary = firstSentence(folder.says)
   if (official === undefined) {
     const add = files.map((s) => buildStandard(w, s, undefined, entryIn(x.id, s.id), scratch))
     const input = {
@@ -405,6 +416,7 @@ const planImported = (
       maxStandards: { _tag: 'Unlimited' } as const,
       approvedBy: undefined,
       source: { _tag: 'External', repo: source.repo, path: source.path } as const,
+      summary,
       says: folder.says,
       add,
       answerIds: [],
@@ -425,7 +437,7 @@ const planImported = (
       .map((s) => [s.id, s] as const),
     remove: was.filter((y) => !made.some((s) => s.id === y.id)).map((y) => y.id),
   }
-  const input = { direction: official, says: folder.says, edit, answerIds: [], why, origin }
+  const input = { direction: official, summary, says: folder.says, edit, answerIds: [], why, origin }
   return revised(w, x, input, scratch)
 }
 
@@ -484,6 +496,7 @@ export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
   const version = {
     of: d.id,
     number: ((from?.number ?? 0) + 1) as PositiveInt,
+    summary: x.summary,
     says: x.says,
     standards: x.standards,
     revision: draft,

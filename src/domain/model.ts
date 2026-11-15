@@ -122,7 +122,10 @@ export type Versioned = Direction
 export type IdOf<T extends Versioned> = T['id']
 export type ContentOf<T extends Versioned> = T extends Direction ? DirectionContent : never
 // What a direction says in one version (the engine's shape: each version keeps its words).
+// summary: one or two plain sentences for a person who reads it the first time (Nanda,
+// 2026-11-15); a revise may change it.
 export interface DirectionContent {
+  readonly summary: Text
   readonly says: Text
   readonly standards: ReadonlyArray<StandardEntry>
 }
