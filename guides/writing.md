@@ -49,52 +49,32 @@ actor down to the output. The page draws it as a sequence diagram under the summ
   words of the direction do not say where it comes from.
 - Name each actor the same way in each step; the lifelines are the actors in the order that they
   first appear.
+- `uses` marks a step that the direction governs: the ids that apply there (the direction id,
+  standard ids, rule ids). A flow marks at least one step; the page colors the marked ones.
 
 ```yaml
 flow:
   - { from: Person, to: architect, says: asks for a TSD of the export feature }
   - { from: architect, to: writer, says: gives each section to a writer, file: CLAUDE.md, line: 12 }
   - { from: writer, to: writer, says: reads the rule of one heading for each section, file: .claude/skills/writer/SKILL.md, line: 30 }
-  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, file: docs/templates/tsd.md, line: 1 }
+  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, file: docs/templates/tsd.md, line: 1, uses: [tsd-writing, one-topic] }
 ```
 
 A revise may change the flow (`flow:` in the edit gives the whole new flow).
 
-## Cases
+## Examples
 
-A new direction has at least 3 cases (`cases:` in its file). A case is a ladder from the direction
-down to a real output of the project, so that the person can follow the direction to a result.
-
-- The output is the bottom of the ladder: a result of the work, never an instruction. A document,
-  code, a test fixture, or a golden file is an output. A line that only says the rule again is
-  not.
-- Each rung is a step between the direction and the output, from the top down: a place that
-  passes the direction on. Give each rung a short name that says what the place is: Instruction,
-  Writer skill, Validator, Template, or another short name.
-- Each place is a file, a line, and a short excerpt of the file as it is today. A case is stale
-  when the excerpt of a rung or of the output is no longer in its file.
-- `fit` is about the output: `Follows` or `Breaks`.
-
-A direction about how instructions are written goes down to a real document:
+A direction has examples (`examples:` in its file): for each marked step of the flow, an output
+that follows the direction and one that breaks it (`step` is its number). A step that makes
+something gives its output; a step that checks or decides gives its input and its output. A
+sample is real (a file, a line, a short excerpt of the file as it is today; stale when the excerpt
+leaves the file) or, when the project has none, written: `{ written: <the output> }`.
 
 ```yaml
-cases:
-  - fit: Follows
-    via:
-      - { name: Instruction, file: CLAUDE.md, line: 12, excerpt: Each section of a TSD says one thing. }
-      - { name: Writer skill, file: .claude/skills/writer/SKILL.md, line: 30, excerpt: Write one heading for each section. }
-    output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
+examples:
+  - { step: 4, fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
+  - { step: 4, fit: Breaks, output: { written: "## Design and rollout" } }
 ```
-
-A direction about code needs no rung; the short form `{ file, line, excerpt, fit }` is a case with
-`via: []`:
-
-```yaml
-  - { file: src/export/handler.go, line: 41, excerpt: os.Getenv("EXPORT_LIMIT"), fit: Breaks }
-```
-
-A direction that no file of the project shows a result of gets no case: do not draft it, and do
-not name it anywhere.
 
 ## Write for contextual retrieval
 

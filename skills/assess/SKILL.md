@@ -1,6 +1,6 @@
 ---
 name: assess
-description: Read a project (a repo of code or documents) and onboard it into aristoteles with the work CLI - draft its roles and its directions as files, with real cases, so that the person accepts or rejects each one on the page. Also drafts a new direction after the store exists. Use when the person asks to assess an app, to turn the agent harness of an app into aristoteles, to find or suggest the directions of an app, to onboard a dir, or when work waiting shows a suggestion that asks for a new direction.
+description: Read a project (a repo of code or documents) and onboard it into aristoteles with the work CLI - draft its roles and its directions as files, with real examples, so that the person accepts or rejects each one on the page. Also drafts a new direction after the store exists. Use when the person asks to assess an app, to turn the agent harness of an app into aristoteles, to find or suggest the directions of an app, to onboard a dir, or when work waiting shows a suggestion that asks for a new direction.
 ---
 
 # assess
@@ -280,7 +280,7 @@ piece as below. The roles go into the config draft, the directions into directio
 
 ## A direction draft
 
-A direction draft has exactly these keys: `id name from summary flow says standards cases`. It has
+A direction draft has exactly these keys: `id name from summary flow says standards examples`. It has
 no `owner` and no `approvedBy`: the person who starts the store owns each direction.
 
 ```yaml
@@ -290,7 +290,7 @@ from: [<one or two principles of the eleven that ground it: Logos, Pathos, Ethos
        Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
 summary: <one or two plain sentences: what the direction asks, and why it matters>
 flow:
-  - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, file: <where the project defines the step>, line: <n> }
+  - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, file: <where the project defines the step>, line: <n>, uses: [<for a step that the direction governs: the ids that apply there>] }
 says: |
   <what the work is for, in any markdown; the whole idea in the first paragraph>
 standards:
@@ -304,11 +304,12 @@ standards:
         checkedBy: <a role of the config draft that reviews or approves the maker>
         says: |
           <one check, in its first sentence; reasons and examples under headers>
-cases:
-  - fit: <Follows or Breaks: the output follows the direction, or breaks it>
-    via:
-      - { name: <a short name of the rung>, file: <path>, line: <n>, excerpt: <a short part of the file as it is now> }
+examples:
+  - step: <the number of a marked step of the flow>
+    fit: <Follows or Breaks: the output follows the direction, or breaks it>
+    input: <only for a step that checks or decides: what it got, as an output below>
     output: { file: <a real result>, line: <n>, excerpt: <a short part of it as it is now> }
+            # or { written: <the output in your words> } when the project has none
 ```
 
 Each standard follows from the words of its direction. Each rule is one check that a reviewer
@@ -343,6 +344,10 @@ summary, and the CLI prints it as numbered lines.
   a file. The lifelines are the actors in the order that they first appear.
 - The file and line of the steps carry the sources, so leave out the words of where the direction
   comes from in `says`.
+- Mark each step that the direction governs with `uses`: the ids that apply there (the direction
+  id, standard ids, rule ids of this draft). The page colors a marked step and tags it with its
+  ids; the others are gray. A flow marks at least one step, and the command refuses an id that
+  is not in the draft.
 
 A direction about how documents are written goes from the person's first act down to the
 document:
@@ -352,66 +357,40 @@ flow:
   - { from: Person, to: architect, says: asks for a TSD of the export feature }
   - { from: architect, to: writer, says: gives each section to a writer, file: CLAUDE.md, line: 12 }
   - { from: writer, to: writer, says: reads the rule of one heading for each section, file: .claude/skills/writer/SKILL.md, line: 30 }
-  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, file: docs/templates/tsd.md, line: 1 }
-  - { from: linter, to: docs/tsd/export.md, says: checks that each section says one thing, file: scripts/lint-tsd.sh, line: 8 }
+  - { from: writer, to: docs/tsd/export.md, says: fills the template one section at a time, file: docs/templates/tsd.md, line: 1, uses: [tsd-writing, one-topic] }
+  - { from: linter, to: docs/tsd/export.md, says: checks that each section says one thing, file: scripts/lint-tsd.sh, line: 8, uses: [one-topic] }
 ```
 
 A direction about code is often short:
 
 ```yaml
 flow:
-  - { from: developer, to: src/export/config.go, says: reads each env var in one typed function, file: src/export/config.go, line: 9 }
+  - { from: developer, to: src/export/config.go, says: reads each env var in one typed function, file: src/export/config.go, line: 9, uses: [typed-config] }
   - { from: CI, to: src/export, says: fails the build on a direct os.Getenv, file: .golangci.yml, line: 22 }
 ```
 
-**Cases.** Give at least 3 real cases for each direction. A case is a ladder from the direction
-down to a real output of the project, so that the person can follow the direction to a result:
+**Examples.** For each marked step of the flow, give one output that follows the direction and
+one that breaks it (`step` is the number of the step). An example is about outputs only:
 
-- The **output** is the bottom of the ladder: a result of the work, never an instruction. A
-  document, code, a test fixture, or a golden file is an output. A line that only says the rule
-  again is not.
-- Each **rung** is a step between the direction and the output, from the top down: a place that
-  passes the direction on, for example the instruction that says it, the skill of the writer that
-  does it, and the template that the writer fills.
-- Each place is a file, a line, and a short excerpt of the file as it is today. The command
-  refuses a case with an excerpt that is not in its file now, at a rung or at the output.
-- `fit` is about the output: `Follows` when the output follows the direction, `Breaks` when it
-  breaks it. Give both kinds when the project has both.
-
-Name each rung with a short name that says what the place is. Common names: `Instruction` (a line
-of CLAUDE.md, AGENTS.md, or a guide), `Writer skill` (a line of a skill), `Validator` (a check or a
-script that tests the output), `Template` (a file that a writer fills). Use another short name
-when none fits.
-
-A direction about how instructions are written goes from the instruction, through the skill that
-uses it, down to a real document:
+- A step that makes something (a writer, a coder, any role that outputs) gives its `output`.
+- A step that checks or decides (a reviewer, a linter, a decider) gives its `input` (what it got)
+  and its `output` (what it said).
+- A sample is real when the project has one: a file, a line, and a short excerpt of the file as it
+  is now (the command refuses an excerpt that is not in its file). When the project has none,
+  write it: `{ written: <the output in your words> }`; the page labels it "written by the host".
 
 ```yaml
-  - fit: Follows
-    via:
-      - { name: Instruction, file: CLAUDE.md, line: 12, excerpt: Each section of a TSD says one thing. }
-      - { name: Writer skill, file: .claude/skills/writer/SKILL.md, line: 30, excerpt: Write one heading for each section. }
-    output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
-```
-
-A direction about code needs no rung: the code is the output. `via: []` says so, and the short
-form `{ file, line, excerpt, fit }` is the same case:
-
-```yaml
-  - fit: Breaks
-    via: []
-    output: { file: src/export/handler.go, line: 41, excerpt: os.Getenv("EXPORT_LIMIT") }
-  - { file: src/export/config.go, line: 9, excerpt: func Limit() int, fit: Follows }
+examples:
+  - { step: 4, fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
+  - { step: 4, fit: Breaks, output: { written: "## Design and rollout" } }
+  - step: 5
+    fit: Breaks
+    input: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
+    output: { written: "Accept: the section says one thing" }
 ```
 
 A break is information for the person to judge the direction; it makes no task. More or other
-cases come on request (a Revise); a change of cases makes no new version of the direction.
-
-**A direction with no output gets no case.** Every ladder ends at a real output in a file of the
-dir. Some directions have none (for example "a commit message says why": a commit message is not
-in a file of the dir). Look for files that show a result: docs, code, test fixtures, golden files,
-generated files. When no file shows a result of a direction, drop it: do not draft it, and do not
-name it in your report or anywhere else.
+examples come on request (a Revise); a change of examples makes no new version of the direction.
 
 **Polish before you send.** Read the draft with each question of `work guide direction-review`,
 and fix it: the person reads it only after that polish.
@@ -420,17 +399,15 @@ and fix it: the person reads it only after that polish.
 
 When you cannot draft a direction without an answer, write
 `.work/drafts/<id>.questions.yaml` and send it with `work onboard ask <id> --file=<it>`; the
-direction shows Question. Each question says what you must know, names one real case, and gives
+direction shows Question. Each question says what you must know, names one example, and gives
 exactly two options, A and B:
 
 ```yaml
 questions:
   - says: <what you must know to draft the direction>
-    case: { file: <path>, line: <n>, excerpt: <a short part of the file>, fit: Follows | Breaks }
+    example: { step: <n>, fit: Follows | Breaks, output: { file: <path>, line: <n>, excerpt: <a short part of the file> } }
     options: [<option A>, <option B>]
 ```
-
-The case of a question can be a ladder too, as in a draft.
 
 Ask only what the files cannot answer. The person submits one answer for each question
 (`work onboard answer <id> --options=A,B`, or the page). `work onboard wait` then returns, and
@@ -444,7 +421,8 @@ on the page (add a company direction) or in the chat; then `work onboard company
 rules come from the folder at one commit: you do not write them. The summary is the first
 sentence of the folder's words; you do not write it either. Your draft file has only
 `id` (optional), `checkedBy` (the role that checks each rule), `rules` (`{ <rule id>: <role> }`
-for a rule with another checker), `flow` (how the direction works in this project), and `cases`;
+for a rule with another checker), `flow` (how the direction works in this project, its steps
+marked), and `examples`;
 send it with
 `work onboard draft <id> --file=<it>`. Do not copy its words into a direction of the project;
 when the project breaks it, say so in the report. When the person has no company repo, point to
@@ -462,8 +440,8 @@ an event.
   `work direction new --file=<file> --by=assess`, with `--answers=<s ids>` for the suggestions
   that it answers. A standard that belongs under a direction with a version goes into
   `work direction revise <direction id> --file=<edit.yaml> --by=assess`. Its owner accepts it.
-- The cases of a company draft, before its accept:
-  `work direction cases <draft> --file=<cases.yaml> --by=assess`.
+- The flow (its steps marked) and the examples of a company draft, before its accept:
+  `work direction examples <draft> --file=<examples.yaml> --by=assess`.
 - A role or a direction that must change: `work adjust` (the `work` skill, part "Adjust the roles
   and the directions"); the person accepts each adjustment.
 - When the owner rejects a draft, `work waiting` shows the Reject and the command. Write a new
@@ -475,7 +453,7 @@ an event.
 
 End with one list for the person:
 
-- each direction: its id, its summary, and the evidence (the outputs of its cases);
+- each direction: its id, its summary, and the evidence (the outputs of its examples);
 - each role that you drafted: its tier, its persistence and why, and where the project has it;
 - for an app with its own harness: each piece of the harness and where it went (a role, a rule,
   a key of the config, or outside the work, with the command that the person runs);

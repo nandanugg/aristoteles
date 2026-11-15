@@ -169,10 +169,10 @@ event that the person accepts (an adjustment). Work in progress keeps what it st
   - `work adjust <token> tier <role> --tier=low|medium|high`;
   - `work adjust <token> persistence <role> --persistent=true|false --why=<words>`;
   - `work adjust <token> retire <direction>`;
-  - `work adjust <token> cases <direction> --file=<cases.yaml>` (`cases:` with 3 or more real
-    cases, each a ladder from the direction down to a real output: `{ fit: Follows | Breaks,
-    via: [{ name, file, line, excerpt }], output: { file, line, excerpt } }`; `work guide
-    writing` gives an example).
+  - `work adjust <token> examples <direction> --file=<examples.yaml>` (`examples:` with, for
+    each marked step of its flow, an output that follows it and one that breaks it, and the input
+    of a step that checks or decides: `{ step, fit: Follows | Breaks, input, output }`, each
+    sample real `{ file, line, excerpt }` or `{ written }`; `work guide writing` gives an example).
   The high role that the host plays for a top task stays persistent.
 - The person shows and decides it: `work adjust show <event>`, `work adjust accept <event>`,
   `work adjust reject <event> --reason=<words>`, or on the page. A rejected adjustment shows its

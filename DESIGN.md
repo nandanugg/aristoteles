@@ -1053,15 +1053,21 @@ revises, or removes it. The agents page opens when every direction is accepted o
 page act has a `work onboard` twin at a terminal. The host's commands: `config`, `role`, `found`,
 `draft`, `ask`, `company`, `status`, `show`, `wait`.
 
-**Cases** (rulings 4, 17; Nanda, 2026-11-15). A direction has at least 3 real cases. A case is a
-ladder from the direction down to a real output: named rungs from the top (`Instruction`, `Writer
-skill`, `Template`; none for a direction about code), then the output, a result and never an
-instruction. Each place is a file, a line, and a short excerpt; the fit (`Follows` or `Breaks`) is
-about the output. A file may hold the short form `{ file, line, excerpt, fit }`, a ladder with no
-rungs. A case is stale when the excerpt of a rung or of the output is no longer in its file. A
-direction with no output in the project gets no case: the host drops it. A change of cases makes no
-new version. A break is information for the person; it makes no task. A question has a case and
-two options, A and B. The page draws each case as a small vertical ladder.
+**Examples** (rulings 4, 17; Nanda, 2026-11-15; they replace the cases). For each marked step of
+the flow, a direction has an output that follows it and one that breaks it: `{ step, fit, input,
+output }`. A step that makes something gives its output; a step that checks or decides gives its
+input and its output. A sample is real (a file, a line, a short excerpt; stale when the excerpt
+leaves the file) or written by the host when the project has none. A change of examples makes no
+new version. A break is information for the person; it makes no task. A question has an example
+and two options, A and B. The page shows the examples by marked step.
+
+**The review of a direction** (Nanda, 2026-11-15). The page shows, in order: the name and state,
+the summary, the flow with its marked steps, the change of the words (the summary, the words, each
+standard, each rule with its checker) against the last draft, or in the gear the version against
+the one before it (with none before, each line comes), then the examples. An onboarding file keeps
+the last draft (`previous`) when the host drafts over it. The new shape is the only one: an
+onboarding file in an older shape is reset (the host drafts it again, its accept cleared), and a
+store with events of an older shape does not read.
 
 **Summary** (Nanda, 2026-11-15). Each direction starts with one or two plain sentences that say what
 it asks and why it matters. It is part of each version, so a revise may change it. A company
@@ -1069,9 +1075,10 @@ direction takes the first sentence of its folder's words.
 
 **Flow** (Nanda, 2026-11-15). A direction has a flow: the steps of how it works in the project, from
 the first act of an actor down to the output. A step is `{ from, to, says }`, with the `file` and
-`line` where the project defines it; `from` equal to `to` is an act on its own. The lifelines are the
-actors in the order that they first appear. The flow is part of each version, so a revise may
-change it; a draft with no flow has none, and the page draws no diagram. The page draws it as a
+`line` where the project defines it, and `uses` (the ids of the direction, its standards and its
+rules that apply there) on a step that the direction governs; `from` equal to `to` is an act on its
+own. The lifelines are the actors in the order that they first appear. The flow is part of each
+version, so a revise may change it; a draft needs one, with a marked step. The page draws it as a
 sequence diagram under the summary, and the CLI prints it as numbered lines. It takes the place of
 the words that say where a direction comes from.
 

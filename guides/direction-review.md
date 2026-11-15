@@ -26,10 +26,12 @@ evidence only when each answer is good. Else reject with one reason in this form
    standard?
 10. **Summary.** Does the summary say in one or two plain sentences what the direction asks and
     why it matters, for a person who reads it the first time?
-11. **Cases.** Does each case end at a real output (a document, code, a test fixture), and not at
-    an instruction? Does each rung have a short name, in order from the direction down?
+11. **Examples.** Does each marked step have an output that follows and one that breaks? Is each
+    an output (a document, code, a verdict), not an instruction, with the input of a step that
+    checks or decides? Is each real where the project has one?
 12. **Flow.** Does the flow show how the direction works, from its first act down to the output?
-    Does each step name who acts, on whom or on what file, and where the project defines it?
+    Does each step name who acts, on whom or on what file, and where the project defines it? Does
+    `uses` mark each step that the direction governs, with the ids that apply there?
 
 ## The evidence of an accept
 

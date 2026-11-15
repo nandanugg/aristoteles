@@ -59,12 +59,13 @@ the store until the end:
    opens the page (`work start --detach`).
 2. The host drafts each direction with a summary (one or two plain sentences), a flow (how the
    direction works, from the first act of an actor down to the output; the page draws it as a
-   sequence diagram), its standards, its rules, and at least 3 real cases. A case is a ladder from
-   the direction down to a real output of the project (a document, code, a test fixture) that
-   follows the direction or breaks it: for example an instruction, then the skill that uses it,
-   then a document that the skill wrote. You open any ready direction on the page.
+   sequence diagram, the steps that the direction governs marked with the ids that apply there),
+   its standards, its rules, and its examples: for each marked step, an output that follows the
+   direction and one that breaks it (with the input of a step that checks or decides), real when
+   the project has one, else written by the host. You open any ready direction on the page: its
+   summary, its flow, what its words changed since the last draft, then its examples.
    Accept it; or write what to change and press Revise; or remove it. When the host needs an
-   answer, it asks a question with a case and two options, A and B. You can add a direction (the
+   answer, it asks a question with an example and two options, A and B. You can add a direction (the
    principle, and an example if you have one) or a company direction. A company direction is a
    folder of a git repo that other projects follow; for an example, see
    https://github.com/nandanugg/aristoteles-example-direction.
@@ -85,7 +86,7 @@ its state, `work onboard accept <id>`, `revise <id> --words=<words>`, `remove <i
 After the store starts, a change is an event that you accept. Say what to change in words
 (`work suggest roles --says=<words>`, or about a direction `work suggest <direction>
 --says=<words>`); the host or a high role drafts it with `work adjust` (add or remove a role,
-change a tier or a persistence, retire a direction, change cases), or with `work role draft` and
+change a tier or a persistence, retire a direction, change examples), or with `work role draft` and
 `work direction revise` for words. Each draft waits for you on the page: accept it, or reject it
 with your reason.
 
@@ -174,7 +175,7 @@ over ssh) only prints the addresses.
 - `skills/aristoteles`: the skill that the person triggers in their AI CLI; that session is the
   host. `work skill install` links it into a dir.
 - `skills/assess`: the skill that reads an app and onboards it: its roles and its directions,
-  with cases, as files (`work onboard`).
+  with examples, as files (`work onboard`).
 - `skills/role-fitness`: the skill that checks that a role in `aristoteles.yaml` fits its tier.
 
 ## Tests
