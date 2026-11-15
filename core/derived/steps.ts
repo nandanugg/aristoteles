@@ -51,6 +51,7 @@ import {
   holdsA,
   leads,
   roleOfA,
+  snapshotStale,
 } from './reads.ts'
 import { rolesSuggestionsWaiting } from './adjustments.ts'
 import type { Derived, Idle, NextFor, NextStep, StepKey, StepWhat } from './types.ts'
@@ -944,9 +945,34 @@ const deciderSteps = (
 // --- nextFor and stepKey -------------------------------------------------------------------------
 
 // A candidate as a step: its intents that pass canAct; none left, and it waits (D8).
+// An accept or a reject of a result counts only under the versions now: an agent whose snapshot
+// is older reads its brief again first (live, 2026-11-15: a lead accepted r8 four times under
+// the old version of a direction, and none counted).
+const staleJudgement = (
+  d: Derived,
+  actor: Parameters<NextFor>[1],
+  c: Candidate,
+): NextStep | undefined => {
+  if (actor._tag !== 'Agent') return undefined
+  const judged = c.intents.find(
+    (i) => (i._tag === 'Accept' || i._tag === 'Reject') && i.target.of._tag === 'Result',
+  )
+  if (judged === undefined) return undefined
+  const w = d.moment.work
+  const a = w.assignments.get(actor.assignment)
+  if (a === undefined || !snapshotStale(w, a)) return undefined
+  const brief: Intent = { _tag: 'Brief', target: { assignment: a.id } }
+  if (canAct(d, actor, brief)._tag !== 'May') return undefined
+  const result = (judged as { target: { of: { id: ResultId } } }).target.of.id
+  const versions = versionsNow(w, directionIdsOf(w, a.task))
+  return { _tag: 'Do', what: { _tag: 'BriefForVersion', result, versions }, intents: [brief] }
+}
+
 // An agent with no claim whose acts are all refused reads its brief first, so that its step is
 // never a wait that only its own brief would end.
 const stepOf = (d: Derived, actor: Parameters<NextFor>[1], c: Candidate): NextStep => {
+  const stale = staleJudgement(d, actor, c)
+  if (stale !== undefined) return stale
   const checked = c.intents.map((i) => ({ i, r: canAct(d, actor, i) }))
   const allowed = nonEmpty(checked.flatMap((x) => (x.r._tag === 'May' ? [x.i] : [])))
   if (allowed !== undefined) return { _tag: 'Do', what: c.what, intents: allowed }
@@ -1029,6 +1055,7 @@ const IDS: {
   CheckYourself: (s) => [s.result],
   BriefToCheck: (s) => [s.result],
   BriefFirst: (s) => [keyOfWhat(s.then), `${s.briefs}`],
+  BriefForVersion: (s) => [s.result, ...s.versions],
   CheckerWorking: (s) => [s.checker, s.result, `${s.briefs}`],
   GiveCheckerCommand: (s) => [s.checker, s.result, s.task, `${s.briefs}`],
   CheckerNotAssigned: (s) => [s.result, s.role],

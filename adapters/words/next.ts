@@ -410,6 +410,12 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
         ...then.map((l) => `  ${l}`),
       ]
     }
+    case 'BriefForVersion':
+      return step(
+        `judge ${s.result}: a direction changed (${s.versions.join(', ')}); read your brief ` +
+          'again first, or your accept or reject does not count',
+        `work brief ${token}`,
+      )
     case 'BriefToCheck':
       return step(`check ${s.result}: read your brief again first`, `work brief ${token}`)
     case 'CheckYourself':

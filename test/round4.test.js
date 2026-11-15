@@ -197,6 +197,11 @@ describe('advice', () => {
       { flags: '--why="Correct the standard"', direction: 'fixes', role: 'tech-lead', on: 'fixes,t1', fit: true })
     // Since round 5 (R5-F6), the new standard has no rule for the gate to check, so the gate
     // does not run again; a role that decides accepts r1 under the new version.
+    // Live, 2026-11-15: an accept counts only under the versions now, so the lead whose brief is
+    // older reads it again first, then decides r1.
+    const stale = ok(await p.agent(`next ${lead}`)).out
+    expect(stale).toContain('read your brief again first')
+    ok(await p.agent(`brief ${lead}`))
     const next = ok(await p.agent(`next ${lead}`)).out
     expect(next).not.toContain('--role=gate')
     expect(next).not.toContain('gate runs on the next report of t1')

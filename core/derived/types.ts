@@ -652,6 +652,9 @@ export type StepWhat =
   // An agent with no claim whose acts are refused reads its brief first; `then` is the step that it
   // leads to (live, 2026-11-15: a new lead's assign was refused, and its step was a wait).
   | { readonly _tag: 'BriefFirst'; readonly then: StepWhat; readonly briefs: number }
+  // A decider whose snapshot is older than the versions now reads its brief again: its accept
+  // would not count (live, 2026-11-15: a lead accepted r8 four times under the old version).
+  | { readonly _tag: 'BriefForVersion'; readonly result: ResultId; readonly versions: ReadonlyArray<string> }
   | {
       readonly _tag: 'CheckerWorking'
       readonly checker: AssignmentId

@@ -117,6 +117,23 @@ describe('an agent with no claim reads its brief first', () => {
   }, 30000)
 })
 
+// Live, 2026-11-15: a direction changed after the lead read its brief; its accepts of r8 were
+// made under the old version and never counted, while its step kept saying "decide r8".
+describe('a decider with an old snapshot reads its brief again', () => {
+  test('after a direction change, the decide step becomes a brief step', async () => {
+    const s = await harness.reported()
+    const ev =
+      '--evidence="no-code-proof | docs/tsd.md#introduction | I saw no file path and no commit hash" ' +
+      '--evidence="no-ticket-ids | docs/tsd.md#introduction | I saw no ticket id and no chat citation"'
+    ok(await s.p.agent(`review ${s.linter} r1 accept ${ev}`))
+    const yaml = 'add:\n  - { id: short, says: Keep it short. }\n'
+    await harness.changeDirection(s.p, yaml, { flags: '--why="Correct the standard"' })
+    expect(tags(nextFor(derivedOf(s), agent('a1')))).toContain('Do BriefForVersion')
+    ok(await s.p.agent(`brief ${s.lead}`))
+    expect(tags(nextFor(derivedOf(s), agent('a1')))).not.toContain('Do BriefForVersion')
+  }, 30000)
+})
+
 describe('the reviewers of a result', () => {
   test('a maker may not assign a reviewer of its own result', async () => {
     const s = await writerReported()

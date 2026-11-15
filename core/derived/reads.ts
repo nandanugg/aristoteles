@@ -526,6 +526,13 @@ export const decidingNow = (w: Work, r: ResultId): ReadonlyArray<Item> => {
       }),
   )
 }
+// The snapshot of an assignment (the versions at its last brief) says something else to its task
+// than the versions now: an accept made under it does not count, so it reads its brief again.
+export const snapshotStale = (w: Work, a: Assignment): boolean =>
+  directionIdsOf(w, a.task).some((d) => {
+    const n = a.under.get(d)
+    return n === undefined || !sameFor(w, contentAt(w, d, n), contentNow(w, d), a.task)
+  })
 export const decisionMet = (w: Work, r: ResultId, accepts: ReadonlyArray<Counted>): boolean => {
   const who = deciderOf(w, r)
   return who ? metAt(who, accepts, sameRole(w)) !== undefined : accepts.length > 0

@@ -89,6 +89,7 @@ import {
   directionIdsOf,
   reviewItems,
   type Item,
+  snapshotStale,
 } from './reads.ts'
 import {
   type CanAct,
@@ -410,7 +411,12 @@ const brief: Check<'Brief'> = (c, { target: { assignment } }) => {
   // A terminal (a persistent agent) holds its own claim: a second brief would count a new
   // attempt, so it reads the brief again read-only (live, 2026-11-15: the writer was told that
   // another subagent held its claim, and stopped).
-  if (claim !== undefined && claim._tag !== 'Free' && a.runs._tag === 'Agent') {
+  if (
+    claim !== undefined &&
+    claim._tag !== 'Free' &&
+    a.runs._tag === 'Agent' &&
+    !snapshotStale(w, a)
+  ) {
     return no(
       `you hold ${a.id} since ${claim.since.slice(11, 16)}; your brief is read already`,
       'Pick',
