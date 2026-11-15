@@ -3,31 +3,48 @@
 Read this before you write the roles of `aristoteles.yaml` or of its draft. Each fact is a check
 of work: a file that breaks one is refused, or the work stops later at that check.
 
+## The model and the acts of a role
+
+- Each agent role names its `model`: an entry of the `models` table, which holds the commands of
+  the model (launch, resume, ...) and its `limits`. A program runs no model.
+- Choose the model by the care that the work needs: a stronger model for a role that splits,
+  directs or decides results; a smaller one for a role that does one unit from its brief.
+- The `acts` of a role say what it may do. The work acts: `{ do: <work> }`,
+  `{ review: [roles] }`, `{ approve: [roles] }`, `{ change: [direction ids] }`. The acts of
+  authority:
+  - `{ assign: [roles] }`: the roles that it gives work to. A role with an assign act is a lead;
+    a role with none runs one unit at a time.
+  - `split`: it splits, remakes and closes tasks, evaluates a stop, shortens a brief, and hosts a
+    project (it drafts the top task).
+  - `direct`: it drafts and revises directions.
+  - `fit`: it fits roles: their words, their fitness, and an adjustment of a role.
+
 ## Who gives work to whom
 
-- A role gives work only to a role of a lower tier, and only in its own task tree.
+- A role gives work only to the roles of its assign act, and only in its own task tree.
 - A maker needs a decider: the role that assigns the maker, or a role above it, approves it.
-- A high role gets its work only from the person. On the page, Open gives the top task of a
-  draft to the high role of that draft. Any other high role needs `work assign` from the
-  person at a terminal.
-- The high role of a top task decides that task last. Then the end of the project goes to the
-  person.
+- The person gives work only to a lead. The role that splits gets its top task from the person:
+  on the page, Open gives the top task of a draft to the role of that draft. Any other top task
+  needs `work assign` from the person at a terminal.
+- The role that splits a top task decides that task last. Then the end of the project goes to
+  the person.
+- A direction draft is reviewed by a lead that its `approvedBy` names, and approved by its
+  owner.
 
 ## Persistence and icon
 
 - Each agent role says `persistence: { persistent: true | false, why: <one line> }` and an `icon`.
   A program role has an icon and no persistence.
-- Tier and persistence are apart. Only a persistent role gets a terminal of its own, for the
-  whole project; a role that is not persistent runs as a subagent of a terminal. Any tier can be
-  persistent.
-- The lead is persistent. The host plays the high role of each top task, and the host is a
-  terminal, so a dir needs at least one persistent high role. The store start is refused
-  without it.
+- Model and persistence are apart. Only a persistent role gets a terminal of its own, for the
+  whole project; a role that is not persistent runs as a subagent of a terminal. A role of any
+  model can be persistent.
+- The host plays the role that splits each top task, and the host is a terminal, so a dir needs
+  at least one persistent role that splits. The store start is refused without it.
 - Only a terminal starts subagents: the host, and a persistent agent. A subagent starts none; it
   tells the terminal above it what the work needs.
 - The words of a role give principles that work as criteria for its kind of work, so that the
   four acts (do, review, approve, change) have a standard: what a good unit is, what a reviewer
-  checks, what a lead approves, and what the high role changes.
+  checks, what a lead approves, and what the role that directs changes.
 
 ### Choose persistence with the Rumsfeld matrix
 
@@ -46,10 +63,10 @@ persistent, so that its terminal starts the subagents, or give the work to a per
 ## Fit
 
 - An agent role gets work (Open, or an assign) only when it has a fit record for its current
-  words: `work role fit <role>`, and the `role-fitness` skill. The person, a high agent
-  (`--as=<its token>`), or the host outside any task (`--by=<its name>`) records it. A program
+  words: `work role fit <role>`, and the `role-fitness` skill. The person, an agent that fits
+  roles (`--as=<its token>`), or the host outside any task (`--by=<its name>`) records it. A program
   role needs no record.
-- The static checks of fit: a low role has exactly one act; a role with a `do` act names its
+- The static checks of fit: a role with a `do` act names its
   `output`; no responsibility contains a vague verb (handle, ensure, look at, deal with, manage,
   take care, make sure, support), in any form ("handles", "managed"). Another word, such as
   "handler" or "management", passes.
@@ -66,11 +83,11 @@ persistent, so that its terminal starts the subagents, or give the work to a per
   of that rule. That checker must review or approve the maker of the result. So the checker of
   a rule with no `where` reviews each maker, also the maker of the top task (for example the
   maker that puts the parts together).
-- `limits.<tier>.Review.rules`: an assign is refused when more rules of the task name the role
+- `models.<model>.limits.Review.rules`: an assign is refused when more rules of the task name the role
   than this limit. `work role fit` counts each rule of the accepted directions that names the
   role. A limit applies only when `aristoteles.yaml` sets it.
 - When work passes a limit, `work guide limits` gives the action.
-- `limits.<tier>.Result.size` limits the lines of each result of a maker: all the lines of its
+- `models.<model>.limits.Result.size` limits the lines of each result of a maker: all the lines of its
   file, or of its section, also the lines that did not change, because one review checks all of
   it. A commit has no size limit. Leave it out for a maker of a large file or section.
 
@@ -97,14 +114,15 @@ persistent, so that its terminal starts the subagents, or give the work to a per
 
 ## The files of work in the dir
 
-- `aristoteles.draft.yaml`: the draft of the roles and the tiers (onboarding). The store start
+- `aristoteles.draft.yaml`: the draft of the roles and the models (onboarding). The store start
   removes it.
-- `aristoteles.yaml`: the people, the limits, the roles, and the tiers. Commit it.
+- `aristoteles.yaml`: the people, the models with their commands and limits, and the roles.
+  Commit it.
 - `.work/assess/`: the onboarding files, one for each direction and one for the roles. Only
   `work onboard` writes there, and the store start deletes the folder. The host keeps its own
   draft files in `.work/drafts/` and sends each one with `work onboard ... --file=`.
 - `.work/`: also the worktrees of the agents and the logs of the programs.
-- The links to the aristoteles skills in the `skills` folder of each tier (for example
+- The links to the aristoteles skills in the `skills` folder of each model (for example
   `.claude/skills/work`). Each one points into the aristoteles folder of this machine. The
   app's own skills in that folder stay as they are. `work skill install` links the
   `aristoteles` skill in `.claude/skills/aristoteles` and `.agents/skills/aristoteles`; the

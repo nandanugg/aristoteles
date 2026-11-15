@@ -1,22 +1,25 @@
 # Limits: the action when work passes one
 
-A limit keeps the work of a tier inside what its model does well. When work passes a limit, the
+A limit keeps the work of a role inside what its model does well. When work passes a limit, the
 CLI refuses the act and names the limit. Do the action of that limit below. Do not ask the
 person about a limit: the person accepts only the direction drafts and the evaluations that the
 action makes, as for any other change.
 
-A low (Luna) or medium (Terra) role that cannot do the action escalates it to its parent
-(`work escalate <token> --reason="<the limit, and the words of the refusal>"`). A high (Sol)
-role does it.
+A role that has not the act of the action escalates it to its parent
+(`work escalate <token> --reason="<the limit, and the words of the refusal>"`). A role that
+splits does it.
 
-## The limits of a tier (`limits.<tier>` in `aristoteles.yaml`)
+## The limits of a model (`models.<model>.limits` in `aristoteles.yaml`)
+
+Each role names its model, and the model's limits apply to it. A model with a larger context
+window takes a longer brief.
 
 ### `Assignment.attempts`: the tries of a maker
 
 - **It keeps:** a maker that fails again and again from more tries of the same work.
 - **When work passes it:** the last try of the maker ended on a fault. The brief of the maker
   says STOP.
-- **The action:** the high role evaluates the stop (`work next` shows the step): what is wrong,
+- **The action:** a role that splits evaluates the stop (`work next` shows the step): what is wrong,
   why, what to improve, and the level of the deepest cause. Then it makes the change at that
   level (`work next` gives each step):
   - `task`: remake the task;
@@ -48,10 +51,11 @@ role does it.
   Steps 1 to 3 are a change of the directions: draft it with `--why=Shorten`, and the owner
   accepts it on the page.
 
-  The brief counts the tier's own guide text too, and a shorter direction cannot change it.
-  So a limit needs room above that text. Start with 6000 for low, 12000 for medium, and
-  16000 for high: they leave about 4000 to 6000 characters for the directions, the task, and
-  its references.
+  The brief counts the guide text of the role too (a role that splits reads the longest one),
+  and a shorter direction cannot change it. So a limit needs room above that text. Start with
+  6000 for a model of roles that assign nothing, 12000 for leads, and 16000 for a role that
+  splits: they leave about 4000 to 6000 characters for the directions, the task, and its
+  references.
 
   Measure before and after: `work assign <task> --role=<role> --dry-run` prints the size.
 
@@ -87,7 +91,7 @@ role does it.
 
 Nobody acts on these by hand, and nobody asks the person about them:
 
-- A terminal that ends, shows error words, or is silent for `tiers.<tier>.silentMinutes`: the
+- A terminal that ends, shows error words, or is silent for `models.<model>.silentMinutes`: the
   UI tries it again 3 times, then tells the host. The host answers it, or records a system
   problem (`work problem`).
 - An open system problem: the UI tries it again each `retryMinutes`.
@@ -101,7 +105,7 @@ Nobody acts on these by hand, and nobody asks the person about them:
 ## A limit that only the person moves
 
 - A permission ends at its `--until` time. The person grants it again.
-- A change of the limits, of the acts or the tier of a role, or of a program's `timeout` in
+- A change of the limits, of the acts of a role, or of a program's `timeout` in
   `aristoteles.yaml` needs a new store (DESIGN.md, section 9). When the actions above do not
   bring work under a limit, the host records it as a system problem, with the change that it
   proposes.

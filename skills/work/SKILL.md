@@ -1,6 +1,6 @@
 ---
 name: work
-description: Do code or document work under review with the work CLI. Use when a parent gives you a command that starts with "work brief", when you give work to a subagent, or when the person asks you to set up a project, a task, or a role. The brief that the CLI prints tells each tier what to do next.
+description: Do code or document work under review with the work CLI. Use when a parent gives you a command that starts with "work brief", when you give work to a subagent, or when the person asks you to set up a project, a task, or a role. The brief that the CLI prints tells each agent what to do next.
 ---
 
 # work
@@ -19,15 +19,15 @@ overrides both.
 
 ## You got a command from your parent
 
-Run exactly that command. It is `work brief <token>`. The brief tells you your tier, your
+Run exactly that command. It is `work brief <token>`. The brief tells you your model, your
 role, the task, the rules, what is open, and the only commands that you may run. Read the
 brief, not this file, for anything about your task.
 
 - The token (`a7.k3f9q`) is your identity. Pass it first in every command. Do not show it
   to other agents, and do not use another token.
 - A refusal ends with a `next:` line. Do what it says. When the refusal names a flag or a word
-  that you left out, run the same command again with it. Else a low-tier agent never tries other
-  commands; it escalates. Do not run a refused command again unchanged.
+  that you left out, run the same command again with it. Else an agent whose role assigns nothing never
+  tries other commands; it escalates. Do not run a refused command again unchanged.
 - When work passes a limit (the attempts of a maker, the size of a brief or of a result, the
   rules of a review), do the action of that limit in `work guide limits`. Do not ask the person
   about a limit.
@@ -83,7 +83,7 @@ talk with the person, then you run its top task.
 
 1. **Talk.** Ask the person what they want, in their terminal (here). Read the directions
    (`work direction show <id>`, `work search <words>`) and the dir. Do not start any work yet.
-2. **Draft the top task.** Choose its role: run `work role list`, and take the high role whose
+2. **Draft the top task.** Choose its role: run `work role list`, and take the role that splits whose
    description names this kind of work; when two fit, ask the person which one. Draft only when
    you can say the top task in one sentence: its output, where the output goes, and when it is
    done. When you cannot, ask the person one question about the part that is missing. Write a
@@ -91,15 +91,15 @@ talk with the person, then you run its top task.
    `role: <role>`), then `work task draft --file=<file> --by=<your run>`. A project is large:
    for example a whole TSD.
 3. **Wait for the person to open it** on the page: run `work wait --by=<your run>` here, in your
-   own pane. It returns when the person opens the top task, with the command of its Sol:
-   `work brief <token>`. From then on you are the Sol of the top task, that brief tells you what
-   to do, and you wait with `work wait <token>`. When the person remakes the top task, the
-   `work wait` of the old token gives you the command of the new Sol.
+   own pane. It returns when the person opens the top task, with the command of its host
+   assignment: `work brief <token>`. From then on you are the host of the top task, that brief
+   tells you what to do, and you wait with `work wait <token>`. When the person remakes the top
+   task, the `work wait` of the old token gives you the command of the new assignment.
 4. **Everything else is yours.** Only these decisions reach the person: a system problem, a
    direction problem, the end of the project, their words that you relayed as an act, new words
    of a role, an adjustment, and a question that you ask them. The page also shows the person
    anything that only the person can move (an evaluation that waits for the owner's accept, a
-   draft with no reviewer, a brief over its limit with no high role above it); you never relay
+   draft with no reviewer, a brief over its limit with no role above it that splits); you never relay
    those. You do everything else:
    - ask the person only with `work ask <token> --to=owner --text="..."` (for a choice, one
      `--option="..."` per answer, two or more). The page shows it, the person answers there,
@@ -127,9 +127,9 @@ talk with the person, then you run its top task.
 
 ### Persistent agents and subagents
 
-Persistence and tier are apart. Each role says in `aristoteles.yaml` whether it is persistent.
+Model and persistence are apart. Each role says in `aristoteles.yaml` whether it is persistent.
 
-- A **persistent** role (any tier) runs as an agent in a terminal of its own, which the person
+- A **persistent** role (of any model) runs as an agent in a terminal of its own, which the person
   can inspect. Do not start it yourself: `work assign` prints that the assignment runs in its
   agent (`a2 runs in p1, the persistent <role> agent of h1`), and the UI starts the terminal when
   the agent has none. The agent gets the assignment through `work wait --by=p1`. Then run
@@ -148,13 +148,12 @@ Persistence and tier are apart. Each role says in `aristoteles.yaml` whether it 
    prompt, for example:
 
    ```
-   Start a subagent on <model> (the low model) with this prompt, and nothing else:
+   Start a subagent on <model> with this prompt, and nothing else:
      Use the work skill. In /path/to/project, run: work brief a7.<secret>
    ```
 
 2. Start that subagent on the model that the line names, with exactly that prompt. The model is
-   `tiers.<sol|terra|luna>.model` of the settings, else the class of the tier (high = Opus,
-   medium = Sonnet, low = Haiku). Keep the token: a later attempt of the same assignment uses
+   the one that the role names (`model:`), an entry of the `models` table. Keep the token: a later attempt of the same assignment uses
    the same command.
 3. When it stops, run `work next <your token>`. It lists the steps that are ready, with
    each command filled in (a redo, a checker to start, an escalation to resolve, an answer,
@@ -169,14 +168,14 @@ subagent.
 After the store starts, onboarding is over, and a change of the roles or of the directions is an
 event that the person accepts (an adjustment). Work in progress keeps what it started with.
 
-- A high agent (with its token), or the host outside any task (`--by=<your run>`), drafts one
+- An agent whose role fits roles (the `fit` act, with its token), or the host outside any task (`--by=<your run>`), drafts one
   change with `work adjust`:
   - `work adjust <token> add-role <role> --file=<role.yaml>` (the keys of one role, with its
     `persistence` and `icon`) and `work adjust <token> remove-role <role>`;
-  - `work adjust <token> tier <role> --tier=low|medium|high`;
+  - `work adjust <token> model <role> --model=<a name of the models table>`;
   - `work adjust <token> persistence <role> --persistent=true|false --why=<words>`;
   - `work adjust <token> retire <direction>`;
-  The high role that the host plays for a top task stays persistent.
+  The role that the host plays for a top task (it splits) stays persistent.
 - The person shows and decides it: `work adjust show <event>`, `work adjust accept <event>`,
   `work adjust reject <event> --reason=<words>`, or on the page. A rejected adjustment shows its
   reason in `work waiting`.
@@ -207,12 +206,12 @@ The instructions of the work are the directions in aristoteles and the roles in
 README, an agent prompt); nothing updates that copy. When the work shows that an instruction
 must change, change it only in aristoteles:
 
-- a direction, a standard, or a rule: the high role drafts the change
+- a direction, a standard, or a rule: a role that directs drafts the change
   (`work direction revise`), and its owner accepts it. A lower role escalates it. The host,
   outside any task, revises with `--by=<your run>`; it revises a direction that it did not
   draft too.
-- the words of a role (`description`, `intro`, `responsibilities`, `output`): the high role
-  drafts the new words (`work role draft <token> <role> --file=<words.yaml>`), and the person
+- the words of a role (`description`, `intro`, `responsibilities`, `output`): a role that fits
+  roles drafts the new words (`work role draft <token> <role> --file=<words.yaml>`), and the person
   accepts them or rejects them with a reason (`work waiting` shows the reason; draft again). A lower role escalates it. Never edit `aristoteles.yaml`: an edit
   stops every write until the person applies it.
 
@@ -223,7 +222,7 @@ example a task that writes the README) changes it as its task says.
 
 The person runs commands with no token, at a terminal. An agent never runs a person command.
 
-- When the person says a decision in the conversation, the top agent (medium or high, with
+- When the person says a decision in the conversation, the top agent (a lead, with
   no parent) records it with their exact words:
   `work forward <token> <person> reject|ask|comment|accept|resolve <id> --quote="<words>"`.
   An accept of a draft (`d<n>`) gives `--evidence` too: where the person read, and what they
@@ -252,10 +251,10 @@ The person runs commands with no token, at a terminal. An agent never runs a per
    checks each one on the page, and `work onboard approve-roles` starts the store. Then go to
    step 3. The steps 1 and 2 are the by-hand path; `work init` refuses while onboarding files
    exist.
-1. Write `aristoteles.yaml` (people, limits per tier, roles, and `decide` when a maker has more
-   than one decider). Each agent role also says `persistence: { persistent, why }` and an `icon`. `schema/aristoteles.schema.json` gives its form. Every agent role is low,
-   medium, or high; a program role (`kind: program`) runs a command on each report and has no
-   tier; the person plays no role. `aristoteles.yaml` names no directions.
+1. Write `aristoteles.yaml` (people, the models with their commands and limits, roles, and `decide` when a maker has more
+   than one decider). Each agent role also says `persistence: { persistent, why }` and an `icon`. `schema/aristoteles.schema.json` gives its form. Every agent role names its
+   model (an entry of the `models` table) and its acts; a program role (`kind: program`) runs a
+   command on each report and runs no model; the person plays no role. `aristoteles.yaml` names no directions.
    `outsideSourceHours` (72 by default) is how long a revision of a source outside git holds
    after an agent reads it; then `work next` asks an agent to read it again.
 2. `work init` stores it in aristoteles, the one SQLite file of this machine
@@ -270,7 +269,7 @@ The person runs commands with no token, at a terminal. An agent never runs a per
    person gives direction in words with `work suggest --says="..."`. A company direction comes
    from a git repo: name it in `aristoteles.lock`, and accept each new commit.
 5. `work task open --file=<task.yaml>` (`work task open` prints the template), then
-   `work assign <task> --role=<role>` and give the printed command to the top agent. A high
-   role splits, closes, or remakes a task only with a Change act on it:
+   `work assign <task> --role=<role>` and give the printed command to the top agent. A role
+   that splits splits, closes, or remakes a task only with a Change act on it:
    `work grant --act=change --on=<task> --to=<role> --until=<time>`. A top task that the
-   person opens on the page needs no grant: Open gives its Sol a Change act for 30 days.
+   person opens on the page needs no grant: Open gives its role a Change act for 30 days.

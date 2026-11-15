@@ -220,7 +220,7 @@ sentence is a limit of this run, not of the design. The log is in the session sc
 - 2 and 5: the NEEDS line says that the needed work is done, that a squash or a copy is refused,
   and "do only what your task asks beyond them, and what combines them" (`render.js`). The
   accept rules of the three guides say "what you saw in a sentence of words".
-- 3: the low report rule starts "If WORK IN names a verify command, run it first" (`guides/low.yaml`).
+- 3: the low report rule starts "If WORK IN names a verify command, run it first" (`guides/unit.yaml`).
 - 6: `work result show <result>` prints each review of a result with its evidence and points,
   then its blockers (`render.js` renderResult, `cli.js`); the high and medium guides list it.
 - 7: the high split rule says "Text parts that share a file each own a region of it; code parts

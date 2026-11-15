@@ -44,7 +44,7 @@ works for aristoteles; any other session of the dir still uses the old files of 
    - Continue a project: `work run continue <run> --quote="<the words of the person>"`, with
      the words that the person said to choose it. When those words name no one run, show the
      list again and ask which one. When the project has an open top task, the output gives you
-     the command of its Sol: run it. The window of the old host closes.
+     the command of its host assignment: run it. The window of the old host closes.
 7. From then on, follow the `work` skill, part "You are the host of a project". The UI types
    nothing into this terminal: when you have nothing to do, run `work wait --by=<your run>`
    (before the top task opens; your run is the project that `work run start` made, with an id

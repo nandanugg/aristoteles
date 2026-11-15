@@ -8,12 +8,14 @@ SQLite file that links each task to the version of the direction that it used.
 
 - **Direction**: what the work is for. **Standard**: how the output looks. **Rule**: one check
   that a reviewer does on one result. Each one is one entry in aristoteles, in free markdown.
-- **Roles** (`aristoteles.yaml`): the makers and the reviewers of a project, in three tiers (high,
-  medium, low; the settings and the page call them `sol`, `terra`, and `luna`). A model gets one
+- **Roles** (`aristoteles.yaml`): the makers and the reviewers of a project. Each role names its
+  model (an entry of the `models` table, with its commands and its limits) and its acts: what it
+  does, reviews, approves, and which roles it assigns; `split`, `direct` and `fit` give it the
+  authority to split tasks, draft directions, and fit roles. A model gets one
   command, `work brief <token>`, and the brief (the text that it prints: the role, the task, the
   rules, and the commands to run next) says what to do.
 - **Top task**: the whole job of one project, for example one TSD. The host drafts it with you,
-  and you open it on the page; a high role then splits it into parts for lower roles.
+  and you open it on the page; the role that splits then gives its parts to the roles it assigns.
 - **Company directions**: a git repo with one folder for each direction. A project names a
   folder in its `aristoteles.lock`. The first command of each day fetches the repo, and a new
   commit comes in as a draft that its owner accepts.
@@ -55,7 +57,7 @@ In a new dir, the host onboards the dir with you. Onboarding works on files, and
 the store until the end:
 
 1. The host reads the dir and drafts the people, the roles (each with a one-line summary, and the
-   place where the project has it already), and the commands of its own CLI for each tier. It
+   place where the project has it already), and the commands of its own CLI for each model. It
    opens the page (`work start --detach`).
 2. The host drafts each direction with a summary (one or two plain sentences), a flow (how the
    direction works, from the first act of an actor down to the output; the page draws it as a
@@ -85,8 +87,8 @@ its state, `work onboard accept <id>`, `revise <id> --words=<words>`, `remove <i
 
 After the store starts, a change is an event that you accept. Say what to change in words
 (`work suggest roles --says=<words>`, or about a direction `work suggest <direction>
---says=<words>`); the host or a high role drafts it with `work adjust` (add or remove a role,
-change a tier or a persistence, retire a direction), or with `work role draft` and
+--says=<words>`); the host or a role that fits roles drafts it with `work adjust` (add or remove a role,
+change a model or a persistence, retire a direction), or with `work role draft` and
 `work direction revise` for words. Each draft waits for you on the page: accept it, or reject it
 with your reason.
 
@@ -143,7 +145,7 @@ over ssh) only prints the addresses.
 
 - **A project is a talk** with the host, the AI CLI that you triggered: the page shows its
   terminal. Tell it what you want; it drafts the top task, and you open it with one click.
-- **Persistent agents and subagents.** A persistent role (any tier) runs in a real terminal that
+- **Persistent agents and subagents.** A persistent role (of any model) runs in a real terminal that
   you can open and type into, from its first assignment to the end of the project; the UI starts
   it, and it takes its work with `work wait --by=<agent>`. A role that is not persistent runs as
   a subagent inside the terminal that gives it the work. Only a terminal starts subagents.
@@ -156,7 +158,7 @@ over ssh) only prints the addresses.
   (an evaluation for your accept, a draft that needs a reviewer, a brief over its limit, a task
   with no agent). What belongs to no open task waits on the projects page, under "Waits for
   you". The host handles the rest, and writes its words on each decision first. After the first talk, every question to you comes on the page, not in the terminal.
-- **The settings** (the gear) are in `aristoteles.yaml`: the command of each tier, for example
+- **The settings** (the gear) are in `aristoteles.yaml`: the commands of each model, for example
   `claude --model opus --session-id {session} {prompt}`, its resume command, the words of an
   error and of a prompt, and the theme.
 - The terminals run in tmux on their own socket (`tmux -L aristoteles ls`), so they keep running
@@ -172,14 +174,15 @@ over ssh) only prints the addresses.
   it.
 - `work guide limits`: the action when work passes a limit, so that no agent asks the person
   about a limit.
-- `guides/high.yaml`, `medium.yaml`, `low.yaml`: the words of each tier in its brief. They count
-  in the size of the brief, so the limits of `aristoteles.yaml` leave room above them.
+- `guides/split.yaml`, `assign.yaml`, `unit.yaml`: the words of a brief, chosen by the acts of the
+  role (a role that splits, a lead, a role that assigns nothing). They count in the size of the
+  brief, so the limits of each model leave room above them.
 - `skills/work`: the skill that a model reads to do work under review.
 - `skills/aristoteles`: the skill that the person triggers in their AI CLI; that session is the
   host. `work skill install` links it into a dir.
 - `skills/assess`: the skill that reads an app and onboards it: its roles and its directions,
   with examples, as files (`work onboard`).
-- `skills/role-fitness`: the skill that checks that a role in `aristoteles.yaml` fits its tier.
+- `skills/role-fitness`: the skill that checks that a role in `aristoteles.yaml` fits its model and its acts.
 
 ## Tests
 

@@ -1,7 +1,8 @@
 # work — the CLI of the engine (draft 4)
 
-`work` runs the engine of the intelligent-work design as a command line, so that agents of
-three tiers and a person can do code and document work under review. A project moves to it
+`work` runs the engine of the intelligent-work design as a command line, so that agents, each
+of a role that names its model and its acts, and a person can do code and document work under
+review. A project moves to it
 only after it passes the thought tests, the end-to-end tests, the property tests, and the
 golden tests.
 
@@ -265,51 +266,82 @@ The tests of rounds 2 to 5 are in `test/round2.test.js` to `test/round5.test.js`
 findings of each round, with what was done, are in `thought-tests/round-2.md` to
 `round-5.md`. Round 1 was a thought test on paper; this section's round-1 line lists it.
 
+**Models, not tiers (owner, 2026-11-15).** "We only care about the model." The tier is gone as a
+structure: a role names its model (an entry of the `models` table, with its commands and its
+limits), and its acts say what it may do: `assign: [roles]` replaces the rank of tiers, and
+`split`, `direct` and `fit` replace the authority of a high role. The brief reads a guide chosen
+by the acts (`guides/split.yaml`, `assign.yaml`, `unit.yaml`). The level of care that a task
+needs stays as guidance in the skills: choose a stronger model for it.
+
 ## 1. The parts
 
 | Part | What it is | Where |
 |---|---|---|
 | Engine | the model: Workflow, Direction, Task, Assignment, Result, Review, Checkpoint, Note | the types in `src/domain/` (copied from the page, then extended); the fold, the states, the acts and the supervisor in `core/` |
 | Store | aristoteles (section 9.1): one SQLite file for every project of this machine; the act log that the engine replays, and a table for each record with its links | `~/.aristoteles/aristoteles.db`, or `ARISTOTELES_DB` |
-| Project config | roles with their tiers, people, limits, deciders; the company directions that the project follows | `aristoteles.yaml`, and `aristoteles.lock` |
+| Project config | people, the models (commands and limits), roles with their model and acts, deciders; the company directions that the project follows | `aristoteles.yaml`, and `aristoteles.lock` |
 | Guides | how to write a direction, and the questions of the review of a draft (`work guide <name>`) | `guides/*.md` |
-| Tier guides | for each tier: its introduction, and the guide of each command it may run | `guides/<tier>.yaml` (shipped with the CLI) |
+| Brief guides | the introduction of a brief, and the guide of each command it may run, chosen by the acts of the role: a role that splits, a lead, a role that assigns nothing | `guides/split.yaml`, `guides/assign.yaml`, `guides/unit.yaml` (shipped with the CLI) |
 | Fitness questions | the questions that `work role fit` prints | `guides/fitness.yaml` |
 | Skills | `aristoteles` (the host; `work skill install` links it into a dir), `work` (the front door), `role-fitness`, and `assess` (reads an app and onboards it: roles and directions as files) | `skills/` |
 
-## 2. Tiers
+## 2. Models and acts
 
-A tier is a model class. The person is above all tiers.
+Owner, 2026-11-15: "We only care about the model." A role names its model, and its acts say
+what it may do. There is no tier. The person is above all roles.
 
-| Tier | Model class | Does | Never does |
-|---|---|---|---|
-| person | a human, with no token, at a terminal (no role is played by a person) | owns tasks and directions; accepts drafts of directions and standards (not results); the spirit of a direction; permissions; config; confirms; criticises work; gives work only to medium and high roles | accepts each result; reviews a draft that they wrote |
-| high | Opus class | keeps the work on its directions: splits, closes, writes drafts of directions and (as a decider of approvedBy, or with a Change act) accepts the drafts of others, evaluates a mistake, assigns medium and low roles, escalates to the person | changes the spirit; reviews its own draft; does medium or low work |
-| medium | Sonnet class | runs one task: assigns low roles, decides each result of its makers, escalates to its parent | changes a direction; does a low unit itself |
-| low | Haiku class | executes one unit: one report, or one review of its checks; escalates when the brief is not enough | anything its brief does not list |
+- **The model** of a role is an entry of the `models` table of `aristoteles.yaml`: the commands
+  of its terminal (launch, resume, ...) and its limits. The launch and resume commands fill
+  `{model}` with the name of the entry. An assignment keeps the model of its role at its give
+  (ruling 13). Choose the model by the care that the work needs: a stronger model for a role
+  that splits, directs or decides results, a smaller one for a role that does one unit.
+- **The acts** of a role: the work acts `do`, `review`, `approve`, `change`; `assign: [roles]`,
+  the roles that it gives work to; and three acts of authority, each a word:
+  - `split`: splits, remakes and closes tasks; evaluates a stop; shortens a brief (the nearest
+    role above that holds it); drafts the top task and hosts the project; records a system
+    problem; sends input to the terminal of a child;
+  - `direct`: drafts and revises directions; writes the next draft of a direction it follows;
+  - `fit`: records role fitness, drafts the words of a role, drafts an adjustment.
 
-The tier of an agent comes from the role of its assignment. A program (a gate, a test run)
-is a role of kind `program`: it has no tier; the CLI runs it.
+| Who | Does | Never does |
+|---|---|---|
+| person | owns tasks and directions; accepts drafts of directions and standards (not results); the spirit of a direction; permissions; config; confirms; criticises work; gives work only to a lead | accepts each result; reviews a draft that they wrote |
+| a role that splits | keeps the work on its directions: splits, closes, evaluates a mistake, hosts a project, assigns the roles of its assign act, escalates to the person; with `direct` it drafts directions | changes the spirit; reviews its own draft |
+| a lead (an assign act) | runs one task: assigns the roles of its assign act, decides each result of its makers, reviews direction drafts that name it, escalates to its parent | changes a direction without `direct` |
+| a role that assigns nothing | executes one unit: one report, or one review of its checks; escalates when the brief is not enough | anything its brief does not list |
+
+A program (a gate, a test run) is a role of kind `program`: it runs no model and holds no act
+of authority; the CLI runs it.
 
 ## 3. Project config
 
 `aristoteles.yaml` (2026-11-11: it replaces `work.yaml`, and it is the one file of a dir). The
 name of a dir is its folder name, so the file has no `project:` key; the store keys a dir by the
-full path of its folder. The file also holds the settings of the UI (`tiers`, `retryMinutes`,
-`hostWaitMinutes`, `sound`, `theme`; see `plan/ui/PLAN.md`). Only the mechanism (people, limits,
-roles, decide) is stored at `work init`, so a change of a setting is not a change of the stored
-config. `schema/aristoteles.schema.json` is its schema.
+full path of its folder. The file also holds the settings of the UI (the commands of each
+model under `models`, `retryMinutes`, `hostWaitMinutes`, `sound`, `theme`; see
+`plan/ui/PLAN.md`). Only the mechanism (people, roles, decide, and the limits of each model) is
+stored at `work init`, so a change of a setting is not a change of the stored config. `schema/aristoteles.schema.json` is its schema.
 
 ```yaml
 people:                                    # the person is the git user.name, if listed here
   - name: Nanda
-limits:                                    # per tier, under the part that checks each limit
-  low:    { Assignment: { briefChars: 12000, attempts: 3 }, Review: { rules: 5 }, Result: { size: 400 } }
-  medium: { Assignment: { briefChars: 40000 }, Review: { rules: 12 }, Result: { size: 2000 } }
-  high:   { Assignment: { briefChars: 80000 }, Review: { rules: 20 } }
+models:                                    # by name: the commands of each, and its limits
+  opus:
+    launch: claude --model {model} --session-id {session} {prompt}
+    resume: claude --model {model} --resume {session} {prompt}
+    limits: { Assignment: { briefChars: 80000 }, Review: { rules: 20 } }
+  sonnet: { limits: { Assignment: { briefChars: 40000 }, Review: { rules: 12 }, Result: { size: 2000 } } }
+  haiku:  { limits: { Assignment: { briefChars: 12000, attempts: 3 }, Review: { rules: 5 }, Result: { size: 400 } } }
 roles:
+  architect:
+    model: opus
+    description: Keeps the TSD on its directions - splits it and drafts direction changes.
+    intro: You keep the TSD on its directions.
+    responsibilities:
+      - Split the TSD into sections with work task split.
+    acts: [{ approve: [section-lead, writer] }, { assign: [section-lead, writer, linter] }, split, direct, fit]
   writer:
-    tier: low
+    model: haiku
     description: Writes one TSD section from its brief.
     intro: You write one section under its heading. The brief gives the facts and the rules.
     responsibilities:
@@ -318,7 +350,7 @@ roles:
     output: "<file>#<section>"           # <file>, <repo>, <task id>, and context keys are filled in
     acts: [{ do: write one TSD section }]
   linter:
-    tier: low
+    model: haiku
     description: Checks one section against the rules in its checks.
     intro: For each rule in your checks, say where you looked and what you saw.
     responsibilities:
@@ -326,13 +358,13 @@ roles:
       - Reject with one --point for each rule that the section breaks.
     acts: [{ review: [writer] }]
   section-lead:
-    tier: medium
+    model: sonnet
     description: Runs one section - assigns the writer and the linter, and decides the section.
     intro: You run one section until its rules have evidence, or you escalate.
     responsibilities:
       - Assign the writer, then the linter on each result, with work assign.
       - Escalate with work escalate when a round ends.
-    acts: [{ approve: [writer] }]
+    acts: [{ approve: [writer] }, { assign: [writer, linter] }]
   spec-gate:
     kind: program
     run: "bun test"                        # words, no shell; {workspace.path} and {output} are filled in
@@ -344,7 +376,7 @@ roles:
 
 `aristoteles.yaml` names no directions: each one lives in aristoteles. A model drafts a new direction
 as a whole, with `work direction new [<token>] --file=<direction.yaml> [--by=<model run>]`: a
-high role with its token, or a model run outside any task (such as the `assess` skill). Its
+role that directs, with its token, or a model run outside any task (such as the `assess` skill). Its
 owner accepts the first version. The file of a new direction (each `says` is any markdown):
 
 ```yaml
@@ -403,13 +435,13 @@ that fails on correct work makes a careful agent escalate instead of report.
 - **An agent** acts only with its token. `work assign` prints the whole subagent prompt once:
   `Use the work skill. In <project folder>, run: work brief a7.<secret>`. The secret has 130
   bits, and the store keeps only its hash. Lists and logs show `a7` only.
-- **A claim.** `work brief <token>` claims the assignment. A low claim ends with its one
-  `report`, `review`, or `escalate`; a second low claim while one is open is refused ("STOP").
-  A medium or high claim lasts until `finish`, and the agent may read its brief again. A
+- **A claim.** `work brief <token>` claims the assignment. The claim of a role that assigns
+  nothing ends with its one `report`, `review`, or `escalate`; a second such claim while one is
+  open is refused ("STOP"). A lead's claim lasts until `finish`, and the agent may read its brief again. A
   report or a review needs a claim, so it always follows a brief (the snapshot). A parent
   frees a stopped child with `work free <you> <child>`; the person with `work free <a>`.
 - **A parent** sees a child's brief with `work assignment show a7` (read-only, no snapshot).
-- **A forward**: the top agent (medium or high, no parent, with a claim) records the person's
+- **A forward**: the top agent (a lead, no parent, with a claim) records the person's
   act on something in its own tree: `work forward <you> <person> <act> <id> --quote="<their
   exact words>" --channel=chat|github`. The CLI first applies the act as the person in a dry
   run, and refuses the forward when the person could not do it now. A reject, a question
@@ -460,7 +492,7 @@ tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 | `work status` | open assignments, claims, and their age |
 | `work task show <t>` / `work task tree <t>` | a task, its state, its parts, changed or rejected results |
 | `work direction show <id>[@<n>]\|<draft>[#<entry>[#<header>]]` | an official version (the draft that made it, and the open drafts), or a draft: its standards and rules, what it changes from its base, what it answers, its reviews, and whose accept it waits for ; with `#`, one standard, one rule, or the text under one header |
-| `work direction new [<token>] --file=<direction.yaml> [--by=<model run>] [--answers=]` | a model's draft of a new direction, as a whole; a high role, or a model run outside any task; the owner accepts version 1 |
+| `work direction new [<token>] --file=<direction.yaml> [--by=<model run>] [--answers=]` | a model's draft of a new direction, as a whole; a role that directs, or a model run outside any task; the owner accepts version 1 |
 | `work search <words>` | the words of directions, standards, rules, suggestions, and reasons in aristoteles, with the versions that hold them and the tasks that read them |
 | `work guide writing\|direction-review\|decision-words` | how to write a direction, the questions of the review of a draft, and how a host writes the words of a decision for the person |
 | `work evaluation show <ev>` | an evaluation: the stop that it answers, its level, what is wrong, why, what to improve, and its review |
@@ -468,42 +500,42 @@ tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 | `work log [--last=<n>]` | the history: who, on which channel, what, and the ids it made |
 | `work question show <q>` | a question and its answer in full |
 | `work result show <r>` | a result and each review of it: the evidence lines, the points, the escalations, then its blockers |
-| `work role list` / `work role show <role>` | roles (from the store), tiers, roles with no fit record |
-| `work role fit <role> [--answers=<file>] [--as=<you>] [--by=<model run>]` | the static checks and the fitness questions; with answers, records them (the person, a high role, or a model run outside any task) |
+| `work role list` / `work role show <role>` | roles (from the store), their models, roles with no fit record |
+| `work role fit <role> [--answers=<file>] [--as=<you>] [--by=<model run>]` | the static checks and the fitness questions; with answers, records them (the person, a role that fits roles, or a model run outside any task) |
 | `work config check` | `aristoteles.draft.yaml` as Accept the roles on the page would store it (merged into `aristoteles.yaml`), or else `aristoteles.yaml`: the read of the file, the git user in the people, and the static fit checks of each agent role; anyone may run it, and it writes nothing |
 
 **Acting (with a token)**
 
 | Command | Who |
 |---|---|
-| `work assign <you> <t> --role=<role> [--max-attempts=<n>] [--dry-run]` | high (medium and low roles), medium (low roles), the person (medium and high roles only); only in the caller's task tree; a reviewer checks the rules that name its role |
+| `work assign <you> <t> --role=<role> [--max-attempts=<n>] [--dry-run]` | a role, the roles of its assign act; the person, leads only; only in the caller's task tree; a reviewer checks the rules that name its role |
 | `work report <you> --output=<the form in your brief> [--made-from=<source>@<rev>\|<r>]` | a role with a Do act; the CLI computes digest and size and runs the programs; `--made-from` never names a git source |
-| `work review <you> <r\|t> accept --evidence="<rule id> \| <where> \| <what>" ...` | a role that reviews or approves the maker's role; a low checker only the result in its brief |
+| `work review <you> <r\|t> accept --evidence="<rule id> \| <where> \| <what>" ...` | a role that reviews or approves the maker's role; a checker of one unit only the result in its brief |
 | `work review <you> <r\|t> reject --point="<text>" [--breaks=<rule id>] ...` | the same; each `--breaks` belongs to the `--point` before it |
 | `work resolve <you> <v> --resolution=<text> [--evidence=...]` | the assignment that an escalation names, or a decider; never the one that escalated. A resolve accepts and rejects nothing: the deciders then review the result as usual |
-| `work recheck <you> <r> --reason=<what changed outside>` | medium or high that decides; asks the maker for a new result |
+| `work recheck <you> <r> --reason=<what changed outside>` | a lead that decides; asks the maker for a new result |
 | `work escalate <you> --reason=<text> [--result=<r>]` | anyone with an open assignment; goes to the parent (or the owner); with `--result`, the result waits for the resolve |
-| `work ask <you> --text=<context first, then the question> [--to=parent\|owner] [--option=<words> ...]` | anyone; a low role asks only its parent; the host asks only the owner; `--option` (two or more) only with `--to=owner` |
+| `work ask <you> --text=<context first, then the question> [--to=parent\|owner] [--option=<words> ...]` | anyone; a role that assigns nothing asks only its parent; the host asks only the owner; `--option` (two or more) only with `--to=owner` |
 | `work answer <you> <q> --text=<text>\|--option=<n>` | the assignment that the question names |
 | `work note <you> finding\|message --text=<text>` | anyone |
 | `work suggest <you> [<rule\|standard\|direction>] --says=<the words>` | anyone, the person too; with nothing to be about, it asks for a new direction |
-| `work direction revise <you> <direction> --file=<edit.yaml> [--answers=<v, v.n, or s ids>] [--why=<why>]` | high only (the person suggests); makes a draft `d1`; after a Reject of a draft, the next draft answers it |
-| `work review <you> <d> accept --evidence="<where in the draft> \| <what>" ...` / `reject --reason=<text>` | medium or high, not the reviser or an actor below it; the person accepts with an optional `--reason` and no evidence; the accept that meets `approvedBy` (none: the owner, or a role with a Change act) makes the draft official, and the new version is written to its file |
-| `work evaluate <you> <stop>\|<t> --wrong= --why= --improve= --level=` | the high role of the task's tree; it answers one stop (a task id names its first waiting stop) |
+| `work direction revise <you> <direction> --file=<edit.yaml> [--answers=<v, v.n, or s ids>] [--why=<why>]` | a role that directs (the person suggests); makes a draft `d1`; after a Reject of a draft, the next draft answers it |
+| `work review <you> <d> accept --evidence="<where in the draft> \| <what>" ...` / `reject --reason=<text>` | a lead, not the reviser or an actor below it; the person accepts with an optional `--reason` and no evidence; the accept that meets `approvedBy` (none: the owner, or a role with a Change act) makes the draft official, and the new version is written to its file |
+| `work evaluate <you> <stop>\|<t> --wrong= --why= --improve= --level=` | a role of the task's tree that splits; it answers one stop (a task id names its first waiting stop) |
 | `work grant <you> --act= --on= --to= --until=` / `work revoke <you> <x>` | an agent gives only an act that its assignment has; only the giver revokes |
-| `work task split <you> <t> --file=<parts.yaml> [--review=<v>]` | high with a Change act on the task (it covers its parts); a part can name the parts above it that it runs after (`after:`) |
+| `work task split <you> <t> --file=<parts.yaml> [--review=<v>]` | a role that splits, with a Change act on the task (it covers its parts); a part can name the parts above it that it runs after (`after:`) |
 | `work task close <you> <t> --reason=<text>` | the same |
 | `work finish <you> [<child a>]` | the agent, or its parent for a child; refused while the assignment has open children |
 | `work free <you> <child a>` | the parent of a child whose subagent stopped |
-| `work source <you> <source>@<revision>` | medium or high, for a source outside git; the CLI reads the base of each commit of a git source from git |
-| `work checkpoint <you> <t> --next=<text>` / `work resume <you> <t>` | medium, high |
+| `work source <you> <source>@<revision>` | a lead, for a source outside git; the CLI reads the base of each commit of a git source from git |
+| `work checkpoint <you> <t> --next=<text>` / `work resume <you> <t>` | a lead |
 | `work forward <you> <person> <act> <id> ... --quote=<words> --channel=<chat\|github>` | the top agent only; `<act>` is reject, ask, comment, answer, accept, or resolve (of an escalation, in the person's words) |
 
 **Person (no token)**
 
 `work init`, `work config apply|restore`, `work task open --file=` (only the person opens a
-task; a high agent splits), `work assign <t> --role=`, `work suggest` (the person does not revise;
-a high role writes the draft), `work review <d> accept|reject`, `work review <ev> accept|reject`
+task; a role that splits splits), `work assign <t> --role=` (a lead), `work suggest` (the person
+does not revise; a role that directs writes the draft), `work review <d> accept|reject`, `work review <ev> accept|reject`
 (an evaluation of the owner's task), `work evaluate <stop>`,
 `work grant --act=approve|review|change --on=<ids> --to=<role> --until=<time>`,
 `work revoke <x>`, `work confirm <event>`, `work answer <q> --text=|--option=<n>`,
@@ -514,11 +546,11 @@ a high role writes the draft), `work review <d> accept|reject`, `work review <ev
 ## 7. `work brief <you>`
 
 ```
-work brief a2 · writer (low) · t1 The Introduction · attempt 2 of 3
+work brief a2 · writer (haiku) · t1 The Introduction · attempt 2 of 3
 snapshot: tsd-writing@1
 dir: /path/to/the/dir (run every work command in this folder)
 
-YOU ARE  low tier. You execute one unit of work, report it, and stop.
+YOU ARE  You execute one unit of work, report it, and stop.
 ROLE     Writes one TSD section from its brief.
          - Write the section under its heading in the file that WORK IN names.
          - Report it with work report as docs/tsd.md#introduction.
@@ -541,24 +573,26 @@ YOUR TURN
 STOP after one report, one review, or one escalation. Do not run other work commands.
 ```
 
-- Only the commands whose act the role has appear in YOUR TURN (`guides/<tier>.yaml`, key
-  `when`: do, review, approve, change, directions, lower, top, any), with the token, the task,
+- The acts of the role choose the guide of its brief: `guides/split.yaml` for a role that
+  splits, `guides/assign.yaml` for a lead, `guides/unit.yaml` for a role that assigns nothing.
+  Only the commands whose act the role has appear in YOUR TURN (key `when`: do, review,
+  approve, change, assign, top, split, direct, any), with the token, the task,
   the result, the output form, and one `--evidence` for each rule that the reader checks.
-- A low checker sees CHECKS and `REVIEW r12 by a8 (writer): <output>`; medium and high see
+- A checker of one unit sees CHECKS and `REVIEW r12 by a8 (writer): <output>`; a lead sees
   every RULE of the task.
-- OPEN is cut to what the reader acts on: a low maker sees the points to fix, a low checker
-  its own checks, medium and high every item. At most six lines, then
+- OPEN is cut to what the reader acts on: a maker of one unit sees the points to fix, a checker
+  of one unit its own checks, a lead every item. At most six lines, then
   `(n more: work blockers <r>)`. A result that changed after its report shows here too.
-- ANSWERS shows the last three answers: a low maker the answers to its own questions, medium
-  and high the answers of the task, a low checker none. Each answer is cut at 200 characters
+- ANSWERS shows the last three answers: a maker of one unit the answers to its own questions, a
+  lead the answers of the task, a checker of one unit none. Each answer is cut at 200 characters
   (`work question show <q>` prints it). NOTES shows the person's last two comments.
 - WORK IN also names each program that runs on the maker's reports.
 - STOP names the act: "after one report or one escalation" for a maker, "after one review or one
-  escalation" for a checker; medium and high also stop when only the person can act.
+  escalation" for a checker; a lead also stops when only the person can act.
 - A split task's brief shows PARTS with their accepted results, and the output is the whole
   workspace file.
-- A medium or high brief adds READY: the steps of `work next`, with commands filled in.
-- The CLI measures the printed brief at `assign` and at each `work brief`. Over the tier's
+- A lead's brief adds READY: the steps of `work next`, with commands filled in.
+- The CLI measures the printed brief at `assign` and at each `work brief`. Over the model's
   `briefChars`, `assign` is refused ("split the task"), and `brief` prints only the escalation
   command, with the largest part named.
 
@@ -585,8 +619,8 @@ STOP after one report, one review, or one escalation. Do not run other work comm
   decider `work recheck`, and the maker reports again with that work. A need of another task
   tree shows in `next` and in `waiting`.
 - **Changed work.** `work review`, a forwarded accept, and a confirm refuse when the digest
-  changed after the report (a resolve with no evidence is not refused). A low checker is told
-  to escalate and stop. `blockers`, `task tree`, and briefs show "changed after it was reported".
+  changed after the report (a resolve with no evidence is not refused). A checker of one unit is
+  told to escalate and stop. `blockers`, `task tree`, and briefs show "changed after it was reported".
 - **Reject points.** A Reject has points (`--point`). A point with `--breaks` closes when a
   later, changed result has evidence for that rule, or for the rule that stands for it now: the
   rule with its id and new words, or a rule that supersedes it (Nanda, 2026-11-13). Evidence on
@@ -594,7 +628,7 @@ STOP after one report, one review, or one escalation. Do not run other work comm
   (`--answers=v4.2`). A recheck is a Reject that any later result answers.
 - **Evidence** is one line per rule: `<rule id> | <where you looked> | <what you saw>`. From
   an agent, `where` names the result's file, repo, or section, and `what` has at least three
-  words. A low checker gives evidence for each of its checks and only those. Evidence counts
+  words. A checker of one unit gives evidence for each of its checks and only those. Evidence counts
   only from the rule's checker (a role, a program, a person, or a decider when no checker is
   named). The CLI cannot judge whether the words are true; the decider and the person do.
 - **The decider decides** (Nanda, 2026-10-28). Every result also needs an accept by a role
@@ -611,7 +645,7 @@ STOP after one report, one review, or one escalation. Do not run other work comm
 - **Who reviews.** Anyone escalates. An Accept or a Reject comes from a role that covers the
   maker, a role that decides, or a role with a Change act. The person, as the owner, reads a
   result at any time, accepts none, and criticises it with a Reject only after its deciders
-  accept it ("Terra must see it first"). No rule is checked by a person (`checkedBy: Human`
+  accept it ("the lead must see it first"). No rule is checked by a person (`checkedBy: Human`
   is refused): the person approves directions and standards, and a person's criticism goes back
   to them. Every accept gives evidence; a line names a rule, or names none
   (`--evidence="<where in the result> | <what you read there>"`). The decider's accept counts
@@ -627,7 +661,8 @@ STOP after one report, one review, or one escalation. Do not run other work comm
   person rejected the task or one of its results. Until an evaluation of the task made after the
   event exists, no new maker starts, and nothing answers the person's Reject (no change, split,
   remake, or redo counts for it). The evaluation is one record on the task, written by an open
-  high assignment whose tree holds the task (every workflow has a high role), or by the person:
+  assignment that splits and whose tree holds the task (every workflow has a role that splits),
+  or by the person:
   what is wrong (the results and the rules that they break), why the task cannot be done as
   asked, what to improve so that it can continue, and the level of the deepest cause: `task`
   (its text, its split, its needs, its brief), `standard` (a standard or a rule), `direction`,
@@ -663,7 +698,7 @@ STOP after one report, one review, or one escalation. Do not run other work comm
   only after the latest Reject of its task. Standards compare by what they say. A result is an
   attempt until its deciders decide it (a gate's or a reviewer's accept is not a decision), or a
   recheck or a criticism ends it; a new maker of a task ends the makers before it. approvedBy
-  names only medium or high roles and the owner. A question to a finished assignment is refused.
+  names only leads and the owner. A question to a finished assignment is refused.
   For code: a commit needs a base that it shares history with; its work is its patch against its
   merge base (`git patch-id`); a commit that is another task's work is refused. A task with a
   section is not split, and the sections of parts do not nest. Flags are checked for each act.
@@ -674,7 +709,7 @@ STOP after one report, one review, or one escalation. Do not run other work comm
   changes the same files, needs it and runs after it, so a new commit on main is work that
   this task does not need. A `--made-from` that names a git source is refused, and so is
   `work source` for one. `work source` records a source outside git, such as a page version,
-  and only a medium or high agent runs it. `work resume` lists each result made from a source
+  and only a lead runs it. `work resume` lists each result made from a source
   that changed since the checkpoint, with the `work recheck` command.
 - **Work that changes the same files** (Nanda, 2026-11-07). For a commit, the CLI compares the
   files that it changes against its merge base with the files that the latest commit of each
@@ -725,11 +760,12 @@ or the file that `ARISTOTELES_DB` names (each test uses its own). A project is t
   deciders), `aristoteles.lock` (company directions), `guides/`, `skills/`. `work init` and `work
   config apply` store `aristoteles.yaml` as an act; each write compares its hash and refuses on a change;
   `work config restore` writes it back; `config apply` changes only the words of roles. Any
-  other change (acts, tiers, new roles, limits) needs a new store in the prototype. `init`
+  other change (acts, new roles, limits) needs a new store in the prototype; another model or
+  another persistence is an adjustment. `init`
   refuses an unknown limit key, and a `directions` key.
 - A role is assigned only when it has a fit record for the hash of its current words.
 - **Directions.** A model drafts a new direction as a whole (`work direction new`); its owner
-  accepts version 1. A high role revises it (`work direction revise`). A task names only a
+  accepts version 1. A role that directs revises it (`work direction revise`). A task names only a
   direction with a version. The checks of `approvedBy` and of a program's rules run at the
   draft.
 - **Words and pieces.** The words of a direction, a standard, and a rule are any markdown. The
@@ -861,7 +897,8 @@ first". A third attack round runs first, on the round-7 fixes and the file queue
 Nanda, later on 2026-11-08, on mistakes: evaluate, not decide (section 8, "Evaluation"). An
 evaluation starts when one maker used all its tries on faults, the high model writes it, the
 human evaluates a change of a direction or a principle, and the human's critique also starts one.
-Every workflow has the three tiers ("from sol, to terra, and then to luna"). When the cause lies
+Every workflow has the three tiers ("from sol, to terra, and then to luna"; superseded on
+2026-11-15: there is no tier, and every workflow has a role that splits). When the cause lies
 in accepted work of another task, a standard change sends that work a check, and it is made again
 only if the check fails. Rounds were never a ruling; they are removed. Derived while building it
 (Nanda can change them): the next maker starts only when its inputs differ from those that failed
@@ -873,7 +910,8 @@ when it is written.
 Derived while fixing round 9 (Nanda can change them):
 - The person's criticism of a result, once evaluated and answered by a direction version, is
   checked again under that version and made again only when a check finds a fault (the ruling of
-  2026-10-29). Every workflow has the three tiers; init refuses one that misses a tier. A part
+  2026-10-29). Every workflow has the three tiers; init refuses one that misses a tier (superseded on 2026-11-15:
+  init refuses a workflow with no role that splits). A part
   with a section that runs after another part reports its own section; only a task with no section
   that needs other tasks reports the whole file.
 - A task is not accepted while it waits for an evaluation, or while a Reject of it waits for a
@@ -943,13 +981,13 @@ so the config file still holds version 1.
 
 Derived on 2026-11-09 (Nanda can change them):
 - A draft that answers the Reject of another draft must propose something else than that draft.
-- When the reviser of a rejected draft is finished, an open high role of a tree that follows the
+- When the reviser of a rejected draft is finished, an open role that directs, of a tree that follows the
   direction revises; with none, the person assigns a new run of the reviser's role.
 
 On 2026-11-10: a suggestion about a direction is answered only by a change of what the direction
 says, as built ("I can't write standard if the direction didn't say so"): a new standard needs
-the words of its direction first. An open suggestion shows in the `work next` of each high role
-of a tree that follows its direction, with the revise command; with no such role, it shows in the
+the words of its direction first. An open suggestion shows in the `work next` of each role that
+directs, of a tree that follows its direction, with the revise command; with no such role, it shows in the
 owner's `work waiting` with the assign. A suggestion that asks for a new direction has no task,
 so it shows in neither. A grant covers each act by the time of that act; a task that started
 inside the grant gets nothing more. The first draft of a direction: a task with no direction is
@@ -1095,11 +1133,11 @@ version, so a revise may change it; a draft needs one, with a marked step. The p
 sequence diagram under the summary, and the CLI prints it as numbered lines. It takes the place of
 the words that say where a direction comes from.
 
-**Roles** (rulings 7, 8, 9, 15, 16). Tier and persistence are apart. A role says
+**Roles** (rulings 7, 8, 9, 15, 16). Model and persistence are apart. A role says
 `persistence: { persistent, why }` and an `icon`. Only a persistent role gets a terminal of its own,
 from its first assignment to the end of the project; a role that is not persistent runs as a
-subagent of a terminal. The lead is persistent: the host plays the high role of each top task, and
-the host is a terminal. Only a terminal starts subagents; a subagent that needs more agents tells
+subagent of a terminal. The host plays the role that splits each top task, and the host is a
+terminal, so that role is persistent. Only a terminal starts subagents; a subagent that needs more agents tells
 the terminal above it, and the launch command of a persistent agent limits nested subagents
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` for Claude Code). The four acts (do, review, approve,
 change) are the standard workflow, and the words of each role give principles that work as
@@ -1113,6 +1151,6 @@ unknowns disposable unless needed again and again. No type holds it, and no page
 stays for the first contact, because nothing has installed the skill yet.
 
 **After the store** (rulings 13, 14). A change of a role or a direction is an adjustment: a draft
-(`work adjust`: add or remove a role, change a tier or a persistence, retire a direction, change
+(`work adjust`: add or remove a role, change a model or a persistence, retire a direction, change
 cases) that the person accepts on the page or with `work adjust accept <event>`. Work in progress
 keeps what it started with. The person says what to change in words with `work suggest roles`.

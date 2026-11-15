@@ -7,7 +7,7 @@ one read.
 ## The rules
 
 1. **No ids and no words of the tool.** Do not write an id (d2, t3, r2, a3, v5, q1, sp1, h1) or
-   the name of a record, a rule or a role (standard, rule id, section-lead, Luna, brief, result,
+   the name of a record, a rule or a role (standard, rule id, section-lead, haiku, brief, result,
    escalation). Name each thing by what it is: "the Design part of the TSD", "the writer of the
    Design", "the reviewer of each part". A file name is good when the person knows the file.
 2. **Short sentences, common words.** One idea in each sentence, in the active voice.
