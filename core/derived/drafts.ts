@@ -9,7 +9,8 @@ import type {
   SuggestionId,
   Work,
 } from '../schema/index.ts'
-import type { Derived } from './types.ts'
+import { authorOf } from './authors.ts'
+import type { Derived, DraftAuthor } from './types.ts'
 
 // The drafts of a direction that wait for their deciders.
 export const openDrafts = (
@@ -20,17 +21,18 @@ export const openDrafts = (
     (x) => x.of === direction && d.states.revisions.get(x.id)?._tag === 'Waiting',
   )
 
-// A host wrote the draft itself (the run of the host is its author): its why is the host's own
-// words, so it waits for no other words of a host. One rule for the page's hold (waiting.ts) and
-// the host's explain step (steps.ts): they must never disagree (Nanda, 2026-11-15).
-// The host writes as its run (--by=h1) or as the assignment that holds the run's session.
-export const hostDrafted = (w: Work, x: Revision<Direction>): boolean => {
-  if (x.origin._tag !== 'Written') return false
-  const by = x.origin.by
-  const runs = [...w.runs.values()]
-  if (typeof by === 'object') return runs.some((run) => run.id === by.name)
-  const sessions = [...w.sessions.values()].filter((s) => s.assignment === by)
-  return sessions.some((s) => runs.some((run) => run.session === s.session))
+// One key for one author: a host is its run, however it wrote.
+const keyOf = (a: DraftAuthor): string => {
+  switch (a._tag) {
+    case 'Assignment':
+      return `a:${a.assignment}`
+    case 'Host':
+      return `h:${a.run}`
+    case 'ModelRun':
+      return `m:${a.name}@${a.run}`
+    default:
+      return a._tag
+  }
 }
 
 // A vetoed draft waits for a new draft, until a later draft answers the Reject or its reviser
@@ -39,15 +41,8 @@ export const hostDrafted = (w: Work, x: Revision<Direction>): boolean => {
 export const waitsForNewDraft = (d: Derived, x: Revision<Direction>): boolean => {
   const state = d.states.revisions.get(x.id)
   const veto = state?._tag === 'Vetoed' ? state.by : undefined
-  const sameReviser = (y: Revision<Direction>) => {
-    if (x.origin._tag !== 'Written') return y.origin._tag === x.origin._tag
-    return (
-      y.origin._tag === 'Written' &&
-      (typeof x.origin.by === 'string' || typeof y.origin.by === 'string'
-        ? x.origin.by === y.origin.by
-        : x.origin.by.run === y.origin.by.run && x.origin.by.name === y.origin.by.name)
-    )
-  }
+  const author = keyOf(authorOf(d.moment.work, x))
+  const sameReviser = (y: Revision<Direction>) => keyOf(authorOf(d.moment.work, y)) === author
   return [...d.moment.work.drafts.values()].every(
     (y) =>
       !(veto !== undefined && y.answers.includes(veto)) &&

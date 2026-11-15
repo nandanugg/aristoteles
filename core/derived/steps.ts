@@ -25,7 +25,6 @@ import { leafName, turnOf } from './deciders.ts'
 import {
   answered,
   blockersOfResult,
-  currentTask,
   deciderOf,
   decidesNow,
   decidesResults,
@@ -38,7 +37,6 @@ import {
   itemAt,
   latestResultOf,
   mayChange,
-  openedTopOf,
   reviewsOf,
   sameRole,
   stopAnswered,
@@ -51,10 +49,18 @@ import {
   tierOfAssignment,
 } from './reads.ts'
 import { rolesSuggestionsWaiting } from './adjustments.ts'
-import { hostOf } from './catalog.ts'
-import type { Derived, Idle, NextFor, NextStep, Placement, StepKey, StepWhat } from './types.ts'
+import type { Derived, Idle, NextFor, NextStep, StepKey, StepWhat } from './types.ts'
 import { isEndedTask } from './types.ts'
-import { hostDrafted, openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
+import { openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
+import {
+  authorAssignment,
+  authorOf,
+  explainerOf,
+  explains,
+  liveHosts,
+  redrafterOf,
+  redrafters,
+} from './authors.ts'
 import { noticesOf } from './notices.ts'
 import { waitingFor } from './waiting.ts'
 
@@ -250,49 +256,18 @@ const shortenSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
 
 // --- the words of a draft for the person (ruling 10.10) -----------------------------------------
 
-// A host is active when its run is open and its terminal is live. The CLI reads no terminals:
-// there the host that asks (work next, work wait) is the one that runs, so it counts as live.
-const terminalLive = (d: Derived, session: string): boolean => {
-  const terminals = d.moment.outside.terminals
-  const reading = terminals[session]
-  return reading === undefined ? Object.keys(terminals).length === 0 : reading.live
-}
-// The sessions of the open runs that agent a hosts (the Sol of the run's top task now).
-const hostedSessions = (d: Derived, a: AssignmentId): ReadonlyArray<string> => {
-  const w = d.moment.work
-  return [...w.runs.values()].flatMap((run) => {
-    const state = d.states.runs.get(run.id)?._tag
-    const opened = openedTopOf(w, run.id)
-    if (opened === undefined || state === 'Done' || state === 'Closed') return []
-    const top: Placement = { _tag: 'OnTask', task: currentTask(w, opened) }
-    const host = hostOf(d.moment, top, d.states)
-    return host._tag === 'Host' && host.assignment === a ? [host.session] : []
-  })
-}
-// Ruling 10.10: some host is active (its run is open and its terminal is live), so a draft from
-// no project waits for the words of one of them, as an item of a project waits for its host.
-export const activeHostExists = (d: Derived): boolean =>
-  [...d.moment.work.assignments.keys()].some((a) =>
-    hostedSessions(d, a).some((s) => terminalLive(d, s)),
-  )
 // Each draft that waits for a person and has no words of a host yet: the host of its project
 // writes them; a draft from no project goes to every active host, and the first words end it.
 const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   const w = d.moment.work
-  const sessions = hostedSessions(d, a.id)
-  if (sessions.length === 0) return []
   const seen = new Set<string>()
   return waitingFor(d, { _tag: 'Everyone' }).flatMap((item): ReadonlyArray<Candidate> => {
     if (item._tag !== 'DraftForPerson' || seen.has(item.draft)) return []
     seen.add(item.draft)
     const draft = w.drafts.get(item.draft)
-    if (draft === undefined || w.hostWords.has(item.draft) || hostDrafted(w, draft)) return []
+    if (draft === undefined || w.hostWords.has(item.draft)) return []
+    if (authorOf(w, draft)._tag === 'Host' || !explains(explainerOf(d, draft.id), a.id)) return []
     const dirWide = item.placement._tag === 'DirWide'
-    const host = hostOf(d.moment, item.placement, d.states)
-    const mine = dirWide
-      ? sessions.some((s) => terminalLive(d, s))
-      : host._tag === 'Host' && host.assignment === a.id
-    if (!mine) return []
     const what: StepWhat = { _tag: 'ExplainDraft', draft: draft.id, direction: draft.of, dirWide }
     return [act(what, { _tag: 'WriteHostWords', target: { on: draft.id } })]
   })
@@ -304,7 +279,7 @@ const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
 // adjustment (P7).
 const onboardingSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   const w = d.moment.work
-  if (!hostedSessions(d, a.id).some((s) => terminalLive(d, s))) return []
+  if (!liveHosts(d).includes(a.id)) return []
   const steps: Array<Candidate> = []
   for (const x of w.drafts.values()) {
     if (x._tag !== 'New' || examplesMissing(x.flow, x.examples) === undefined) continue
@@ -428,7 +403,7 @@ const draftSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
   for (const x of own.flatMap((o) => openDrafts(d, o.id))) {
     const state = d.states.revisions.get(x.id)
     if (state?._tag !== 'Waiting') continue
-    const reviser = reviserOf(w, x.id)
+    const reviser = authorAssignment(authorOf(w, x))
     const reviserTree = reviser !== undefined && (reviser === a.id || isAbove(w, reviser, a))
     const mine = state.waitsFor.some((leaf) =>
       leaf._tag === 'Role'
@@ -445,15 +420,11 @@ const draftSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
       ),
     )
   }
-  // A vetoed draft (S6: built on the current version): its reviser revises again; when the
-  // reviser ended, a high role of a tree that follows the direction does.
+  // A vetoed draft (S6: built on the current version): its redrafter revises it again.
   for (const x of w.drafts.values()) {
     const state = d.states.revisions.get(x.id)
-    if (state?._tag !== 'Vetoed' || x._tag !== 'Change') continue
-    const reviser = reviserOf(w, x.id)
-    const done = reviser !== undefined && ended(d, reviser)
-    const mine = reviser === a.id || (done && followsDirection(d, a, x.of))
-    if (!mine || !high || !waitsForNewDraft(d, x)) continue
+    if (state?._tag !== 'Vetoed' || x._tag !== 'Change' || !high) continue
+    if (!redrafters(redrafterOf(d, x)).includes(a.id) || !waitsForNewDraft(d, x)) continue
     const what: StepWhat = { _tag: 'ReviseRejectedDraft', draft: x.id, reject: state.by }
     steps.push(act(what, ...revise([x.of])))
   }
@@ -464,10 +435,6 @@ const draftSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
     steps.push(act(what, ...revise([direction])))
   }
   return steps
-}
-const reviserOf = (w: Work, draft: string): AssignmentId | undefined => {
-  const origin = w.drafts.get(draft as never)?.origin
-  return origin?._tag === 'Written' && typeof origin.by === 'string' ? origin.by : undefined
 }
 
 // The top assignment puts accepted code on its base; then it finishes (D14: its children are

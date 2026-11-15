@@ -12,7 +12,8 @@ import type {
   TaskId,
   Work,
 } from '../schema/index.ts'
-import { decisionTaskOf, hostOf, placementOf } from './catalog.ts'
+import { explainerOf } from './authors.ts'
+import { hostOf, placementOf } from './catalog.ts'
 import { currentTask, openedTopOf, refOf } from './reads.ts'
 import type { Derived, StepWhat } from './types.ts'
 import { waitingFor } from './waiting.ts'
@@ -152,20 +153,24 @@ const childNotices = (d: Derived, host: AssignmentId, f: Facts): ReadonlyArray<N
   return out
 }
 
+// The host of the decision's project writes its words (an end or a problem has a project).
+const hostExplains = (d: Derived, decision: string, host: AssignmentId): boolean => {
+  const e = explainerOf(d, decision)
+  return e._tag === 'Host' && e.assignment === host
+}
 // The ends that the page holds for this host's words, and its own open problems.
 const hostNotices = (d: Derived, host: AssignmentId): ReadonlyArray<NoticeWhat> => {
   const w = d.moment.work
   const out: Array<NoticeWhat> = []
   for (const item of waitingFor(d, { _tag: 'Everyone' })) {
     if (item._tag !== 'RunEnd' || item.hold._tag !== 'HeldForHost') continue
-    if (item.placement._tag !== 'OnTask') continue
-    if (hostAssignmentOf(d, item.placement.task) !== host) continue
+    if (!hostExplains(d, item.run, host)) continue
     out.push({ _tag: 'WriteEndWords', run: item.run })
   }
   for (const [id, state] of d.states.problems) {
     const p = w.problems.get(id)
     if (state._tag !== 'Open' || p === undefined || p.recordedBy._tag !== 'Host') continue
-    if (hostAssignmentOf(d, decisionTaskOf(w, id) ?? p.stopped) !== host) continue
+    if (!hostExplains(d, id, host)) continue
     const asks = w.sends.filter(
       (s) =>
         s.from._tag === 'Supervisor' &&

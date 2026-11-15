@@ -19,7 +19,8 @@ import type {
 import { canAct } from './can.ts'
 import { decisionTaskOf, hostOf, placementOf, taskOfAnswer } from './catalog.ts'
 import { adjustmentDrafts, rolesSuggestionsWaiting, subjectOf } from './adjustments.ts'
-import { hostDrafted, openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
+import { openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
+import { authorAssignment, authorOf, liveHosts, redrafterOf } from './authors.ts'
 import { roleWordsDrafts } from './role-words.ts'
 import {
   answered,
@@ -43,7 +44,7 @@ import {
   workStop,
   tierOfAssignment,
 } from './reads.ts'
-import { activeHostExists, fileTurn, followsDirection, highAbove } from './steps.ts'
+import { fileTurn, followsDirection, highAbove } from './steps.ts'
 import {
   type Derived,
   type Hold,
@@ -144,7 +145,7 @@ const holdOf = (d: Derived, id: string, placement: Placement, at: Time, raw: boo
   const words = m.work.hostWords.get(id as never)
   const hosted =
     placement._tag === 'DirWide'
-      ? activeHostExists(d)
+      ? liveHosts(d).length > 0
       : hostOf(m, placement, d.states)._tag === 'Host'
   const late = Date.parse(m.at) - Date.parse(at) >= waitMs
   if (raw || words !== undefined || !hosted || late) return { _tag: 'Shown' }
@@ -284,7 +285,7 @@ const draftItems = (d: Derived): ReadonlyArray<WaitingItem> => {
         const name = leaf._tag === 'OwnerAccept' ? leaf.owner.name : leaf.name
         if (named.has(name)) continue
         named.add(name)
-        const hold = holdOf(d, x.id, placement, x.when, hostDrafted(w, x))
+        const hold = holdOf(d, x.id, placement, x.when, authorOf(w, x)._tag === 'Host')
         const of = { _tag: 'Revision', id: x.id } as const
         const item: Bare = {
           _tag: 'DraftForPerson',
@@ -383,7 +384,7 @@ const reviewerOf = (
   role: RoleName,
 ): AssignmentId | undefined => {
   const w = d.moment.work
-  const reviser = x.origin._tag === 'Written' ? x.origin.by : undefined
+  const reviser = authorAssignment(authorOf(w, x))
   const inTree = (id: AssignmentId) => {
     for (let z: AssignmentId | undefined = id; z !== undefined;) {
       if (z === reviser) return true
@@ -401,19 +402,15 @@ const reviewerOf = (
       !itemsOf(w, x.id).some((r) => r.by === y.id),
   )?.id
 }
-// After a decider's veto: its reviser revises again; a finished reviser's role is assigned anew.
+// After a decider's veto: an agent writes the next draft, so the person waits; a finished
+// writer's role is assigned anew; with no agent, the person says the change in words.
 const reviseAgain = (d: Derived, x: Revision<Direction>): ReadonlyArray<Intent> => {
   const w = d.moment.work
-  if (x.origin._tag !== 'Written' || typeof x.origin.by !== 'string') return []
-  const reviser = w.assignments.get(x.origin.by)
-  if (reviser === undefined || d.states.assignments.get(reviser.id)?._tag !== 'Ended') return []
-  const next = [...w.assignments.values()].some(
-    (y) =>
-      d.states.assignments.get(y.id)?._tag !== 'Ended' &&
-      tierOfAssignment(w, y) === 'high' &&
-      followsDirection(d, y, x.of),
-  )
-  if (next) return []
+  const next = redrafterOf(d, x)
+  if (next._tag === 'Person') {
+    return [{ _tag: 'Suggest', target: { about: { _tag: 'Direction', direction: x.of } } }]
+  }
+  if (next._tag !== 'NewRole') return []
   const top = [...w.tasks.values()].find(
     (t) =>
       d.states.tasks.get(t.id) !== undefined &&
@@ -421,7 +418,7 @@ const reviseAgain = (d: Derived, x: Revision<Direction>): ReadonlyArray<Intent> 
       t.serves._tag === 'TopTask' &&
       directionIdsOf(w, t.id).includes(x.of),
   )
-  return top === undefined ? [] : give(top.id, [reviser.role])
+  return top === undefined ? [] : give(top.id, [next.role])
 }
 
 // The points that only a direction change, a split or a remake answers.

@@ -19,7 +19,8 @@ import {
   type Work,
 } from '../schema/index.ts'
 import { adjustmentDraftAt, adjustmentProblem } from './adjustments.ts'
-import { decisionTaskOf, hostOf, personOfForward, placementOf } from './catalog.ts'
+import { authorAssignment, authorOf, explainerOf, explains } from './authors.ts'
+import { hostOf, personOfForward } from './catalog.ts'
 import { metAt, turnOf, waitsForWords, leavesOf } from './deciders.ts'
 import {
   actorOf,
@@ -86,6 +87,7 @@ import {
   type CanAct,
   type CanActOf,
   type Derived,
+  type DraftAuthor,
   type DraftLeaf,
   isEndedTask,
 } from './types.ts'
@@ -556,6 +558,15 @@ const lowReview = (c: Ctx, what: string): CanAct => {
     : MAY
 }
 
+// A draft by the actor, or by an assignment above it: a host is its run and its assignment.
+const ownDraft = (w: Work, by: By, author: DraftAuthor): boolean => {
+  const writer = authorAssignment(author)
+  if (writer !== undefined && (sameActor(w, by, writer) || below(w, by, writer))) return true
+  if (typeof by === 'string' || by._tag !== 'Agent') return false
+  if (author._tag === 'Host') return by.name === author.run
+  if (author._tag !== 'ModelRun') return false
+  return sameActor(w, by, { _tag: 'Agent', name: author.name, run: author.run })
+}
 // The checks of a review of a draft, and S2, S7: the owner's own accept, a twin rule id.
 const reviewDraft = (c: Ctx, id: string, accept: boolean): CanAct => {
   const { w, d } = c
@@ -613,14 +624,7 @@ const reviewDraft = (c: Ctx, id: string, accept: boolean): CanAct => {
     default:
       break
   }
-  // An onboarded draft is official at the store start, so no review reaches it.
-  const reviser: By =
-    draft.origin._tag === 'Written'
-      ? draft.origin.by
-      : draft.origin._tag === 'Imported'
-        ? { _tag: 'Agent', name: 'refresh', run: draft.origin.commit }
-        : { _tag: 'Agent', name: 'onboarding', run: draft.origin.event }
-  if (sameActor(w, by, reviser) || below(w, by, reviser)) {
+  if (ownDraft(w, by, authorOf(w, draft))) {
     return no(
       `${id} is your own draft, or a draft from above you; another actor reviews it`,
       'Pick',
@@ -1362,14 +1366,8 @@ const fixProblem: Check<'FixProblem'> = (c, { target: { problem } }) => {
 const DIR_WORDS = 'only the host of a project writes the words of a decision'
 const hostWords: Check<'WriteHostWords'> = (c, { target: { on } }) => {
   const a = agentOf(c)
-  if (a === undefined) return MAY
-  const task = decisionTaskOf(c.w, on) ?? a.task
-  const host = hostOf(c.d.moment, placementOf(c.d.moment, task, c.d.states), c.d.states)
-  const own = hostOf(c.d.moment, { _tag: 'OnTask', task: a.task }, c.d.states)
-  const isHost =
-    (host._tag === 'Host' && host.assignment === a.id) ||
-    (own._tag === 'Host' && own.assignment === a.id)
-  return isHost ? MAY : no(DIR_WORDS, 'Escalate', 'the host of the project writes them')
+  if (a === undefined || explains(explainerOf(c.d, on), a.id)) return MAY
+  return no(DIR_WORDS, 'Escalate', 'the host of the project writes them')
 }
 const startSession: Check<'StartSession'> = (c, { target: { assignment } }) => {
   const a = c.w.assignments.get(assignment)

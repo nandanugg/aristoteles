@@ -9,10 +9,15 @@ import {
   ruleAt,
   standardAt,
 } from '../../core/derived/reads.ts'
-import { attemptOf, type Derived, type DraftLeaf } from '../../core/derived/index.ts'
+import {
+  attemptOf,
+  type Derived,
+  type DraftAuthor,
+  type DraftLeaf,
+} from '../../core/derived/index.ts'
 import { leafName } from '../../core/derived/deciders.ts'
 import { draftWaitsFor } from '../../core/derived/reads.ts'
-import { followsDirection, tierOfA } from '../../core/derived/steps.ts'
+import { authorOf, redrafterOf } from '../../core/derived/authors.ts'
 import type {
   AssignmentId,
   Direction,
@@ -93,69 +98,81 @@ export const answerText = (work: Work, id: string): string => {
   )
 }
 
-// What follows the Reject of a decider: its reviser revises again; when the reviser is
-// finished, an open high role of a tree that follows the direction; else a new one that the
-// person assigns. text is the words; step is the command that follows, when there is one.
+// What follows the Reject of a decider (redrafterOf): who writes the next draft, in words. text
+// is the words; step is the command that follows, when there is one.
 export const reviseAgainOf = (
   d: Derived,
   draft: RevisionId,
 ): { readonly text: string; readonly step: string | null } => {
   const work = d.moment.work
-  const open = (id: AssignmentId): boolean => d.states.assignments.get(id)?._tag !== 'Ended'
   const x = draftAt(work, draft)
-  // An onboarded draft is official at the store start: no Reject reaches it.
-  if (x.origin._tag === 'Onboarded') return { text: `${draft} is official`, step: null }
-  // A company direction changes in its repo: the project stays on its accepted commit.
-  if (x.origin._tag === 'Imported') {
-    const source = directionAt(work, x.of).source
-    const where = source._tag === 'External' ? `${source.repo} (${source.path})` : ''
-    return {
-      text: `${x.of} stays on its accepted commit; it changes in ${where}, with a pull request`,
-      step: null,
+  const author = authorOf(work, x)
+  const next = redrafterOf(d, x)
+  const writer =
+    author._tag === 'Host'
+      ? `its writer, the host ${author.assignment ?? author.run},`
+      : author._tag === 'ModelRun'
+        ? `its writer ${author.name}, a model run outside any task,`
+        : 'its reviser'
+  const again = 'revises the current version'
+  switch (next._tag) {
+    // An onboarded draft is official at the store start: no Reject reaches it.
+    case 'Official':
+      return { text: `${draft} is official`, step: null }
+    // A company direction changes in its repo: the project stays on its accepted commit.
+    case 'Repo': {
+      const source = directionAt(work, x.of).source
+      const where = source._tag === 'External' ? `${source.repo} (${source.path})` : ''
+      return {
+        text: `${x.of} stays on its accepted commit; it changes in ${where}, with a pull request`,
+        step: null,
+      }
     }
-  }
-  const by = x.origin.by
-  // A model run outside any task (the skill that reads an app) is run again; it answers the Reject
-  // with the same kind of draft: a whole new direction, or a revise of the current version.
-  if (typeof by !== 'string') {
-    const state = d.states.revisions.get(draft)
-    const vetoed = state?._tag === 'Vetoed' ? state.by : undefined
-    return {
-      text:
-        `its writer ${who(work, by)}, a model run outside any task, ` +
-        'writes a new draft that answers it',
-      step:
-        x._tag === 'Change'
-          ? `work direction revise ${x.of} --file=<edit.yaml> --by=${by.name} --answers=${vetoed}`
-          : `work direction new --file=<direction.yaml> --by=${by.name} --answers=${vetoed}`,
+    case 'Writer':
+      return { text: `${writer} ${again} again`, step: null }
+    case 'Hosts': {
+      const [one, ...more] = next.hosts
+      const hosts = more.length ? `an active host (${next.hosts.join(', ')})` : `the host ${one}`
+      return { text: `${writer} has ended; ${hosts} ${again}`, step: null }
     }
-  }
-  const reviser = work.assignments.get(by)
-  if (reviser === undefined) throw new Error(`the work has no assignment ${by}`)
-  // C1: an assignment of an ended task is Ended too, which the old end of an assignment missed.
-  if (open(reviser.id)) return { text: 'its reviser revises the current version again', step: null }
-  const finished = `its reviser ${by} is finished`
-  const next = [...work.assignments.values()].find(
-    (y) => open(y.id) && tierOfA(work, y) === 'high' && followsDirection(d, y, x.of),
-  )
-  if (next) {
-    const text = `${finished}; ${next.id} (${next.role}) revises the current version`
-    return { text, step: null }
-  }
-  const top = [...work.tasks.values()].find((t) => {
-    const s = d.states.tasks.get(t.id)
-    return (
-      s !== undefined &&
-      s._tag !== 'Closed' &&
-      s._tag !== 'Replaced' &&
-      t.serves._tag === 'TopTask' &&
-      directionIdsOf(work, t.id).includes(x.of)
-    )
-  })
-  return {
-    text: `${finished}; a new ${reviser.role} revises the current version`,
-    step: `work assign ${top ? top.id : '<task>'} --role=${reviser.role}`,
+    // No agent writes it: the person runs the model again (the skill that reads an app), and it
+    // answers the Reject with the same kind of draft: a whole new direction, or a revise.
+    case 'Person': {
+      const by = `--by=${author._tag === 'ModelRun' ? author.name : runOf(author)}`
+      const state = d.states.revisions.get(draft)
+      const answers = `--answers=${state?._tag === 'Vetoed' ? state.by : undefined}`
+      return {
+        text: `${writer} writes a new draft that answers it`,
+        step:
+          x._tag === 'Change'
+            ? `work direction revise ${x.of} --file=<edit.yaml> ${by} ${answers}`
+            : `work direction new --file=<direction.yaml> ${by} ${answers}`,
+      }
+    }
+    case 'Follower': {
+      const y = work.assignments.get(next.followers[0])
+      const text = `its reviser ${next.finished} is finished; ${y?.id} (${y?.role}) ${again}`
+      return { text, step: null }
+    }
+    case 'NewRole': {
+      const top = [...work.tasks.values()].find((t) => {
+        const s = d.states.tasks.get(t.id)
+        return (
+          s !== undefined &&
+          s._tag !== 'Closed' &&
+          s._tag !== 'Replaced' &&
+          t.serves._tag === 'TopTask' &&
+          directionIdsOf(work, t.id).includes(x.of)
+        )
+      })
+      return {
+        text: `its reviser ${next.finished} is finished; a new ${next.role} ${again}`,
+        step: `work assign ${top ? top.id : '<task>'} --role=${next.role}`,
+      }
+    }
   }
 }
+// The run of a host's draft, for --by.
+const runOf = (a: DraftAuthor): string => (a._tag === 'Host' ? a.run : '')
 // The next line after a vetoed draft.
 export const reviseAgain = (d: Derived, draft: RevisionId): string => reviseAgainOf(d, draft).text

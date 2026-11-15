@@ -336,6 +336,39 @@ export type HostOf = (
   },
 ) => HostOfTree
 
+// --- 18b. Who writes a draft and its words (authors.ts: one reader each) ------------------------
+// The author of a draft, read from its stored origin. A host writes as its run (--by=h1) or as
+// the assignment that holds the run's session: both are Host, so a ModelRun is never a host.
+// Host.assignment is the assignment that holds the run's session; none before the top task.
+export type DraftAuthor =
+  | { readonly _tag: 'Assignment'; readonly assignment: AssignmentId }
+  | { readonly _tag: 'Host'; readonly run: RunId; readonly assignment: AssignmentId | undefined }
+  | { readonly _tag: 'ModelRun'; readonly name: string; readonly run: string }
+  | { readonly _tag: 'Imported' }
+  | { readonly _tag: 'Onboarded' }
+// Who writes the words of a decision: the host of its project, or any active host when it has
+// no project (ruling 10.10).
+export type Explainer =
+  | { readonly _tag: 'Host'; readonly assignment: AssignmentId }
+  | { readonly _tag: 'AnyLiveHost'; readonly hosts: NonEmpty<AssignmentId> }
+  | { readonly _tag: 'None' }
+// Who writes the next draft after a decider's Reject: its writer; the hosts of a model run's
+// draft (its explainer); an open high role that follows the direction when the writer is
+// finished; a new role that the person assigns; else the person (the model run again, or words).
+// A company draft changes in its repo; an onboarded one is official.
+export type Redrafter =
+  | { readonly _tag: 'Writer'; readonly assignment: AssignmentId }
+  | { readonly _tag: 'Hosts'; readonly hosts: NonEmpty<AssignmentId> }
+  | {
+      readonly _tag: 'Follower'
+      readonly finished: AssignmentId
+      readonly followers: NonEmpty<AssignmentId>
+    }
+  | { readonly _tag: 'NewRole'; readonly finished: AssignmentId; readonly role: RoleName }
+  | { readonly _tag: 'Person' }
+  | { readonly _tag: 'Repo' }
+  | { readonly _tag: 'Official' }
+
 // --- 19. SendState (NEW, a derived type beside the stored ui-model.ts SendState): C5 ------------
 // An irrelevant send is never typed. No event marks it (R2: the drop reasons stay as they are).
 export type SendIrrelevant =
