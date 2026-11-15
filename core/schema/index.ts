@@ -66,10 +66,6 @@ export type {
 
 // --- the files that people write ----------------------------------------------------------------
 export {
-  Case,
-  CaseFile,
-  Cases,
-  CasesFile,
   checkerProblem,
   CompanyCheckers,
   CompanyFolder,
@@ -77,18 +73,24 @@ export {
   CONTEXT_KEYS,
   ContextKey,
   DirectionFile,
+  Example,
+  Examples,
+  examplesMissing,
   ExternalSource,
   firstSentence,
   FlowStep,
-  MIN_CASES,
   PartFile,
   PersistenceFile,
   ReviseFile,
   RoleFile,
   Settings,
   Snapshot,
+  isSpot,
+  Sample,
   Spot,
   spotsOf,
+  StandardFile,
+  usesProblem,
   TaskFile,
   TerminalTier,
 } from '../../src/domain/files.ts'
@@ -203,11 +205,11 @@ export type {
 // against these.
 export type {
   CanvasRow,
-  CaseView,
   DiffView,
   DirectionCard,
   DirectionView,
   DirView,
+  ExampleView,
   FlowStepView,
   OnboardingView,
   Owner,
@@ -251,6 +253,7 @@ export {
   OnboardingAct,
   OnboardingDirection,
   OnboardingRoleState,
+  resetWords,
 } from '../../src/domain/onboarding.ts'
 export type { OnboardingDirectionState, OnboardingRole } from '../../src/domain/onboarding.ts'
 export * from '../../src/domain/context.ts'

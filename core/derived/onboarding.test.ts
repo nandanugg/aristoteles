@@ -1,5 +1,5 @@
 // The derived states of onboarding (BUILD.md section 3, W1): a persistent agent, a drafted
-// adjustment, a retired direction, a case, a direction of onboarding; and what waitingFor and
+// adjustment, a retired direction, an example, a direction of onboarding; and what waitingFor and
 // nextFor make of them. The stores come from the harness (temp dirs); an event that a later
 // wave's command writes is appended as the store appends any checked event.
 import { describe, expect, test } from 'bun:test'
@@ -9,20 +9,20 @@ import {
   type AgentId,
   type AssignmentId,
   type Author,
-  type Case,
-  CaseFile,
   type DirectionId,
   type Event,
+  Example,
   type EventRef,
   OnboardingDirection,
   type RevisionId,
   type Time,
 } from '../schema/index.ts'
+import { decodeRecorded } from '../../src/domain/events.ts'
 import { Env, Store, StoreLive } from '../services/index.ts'
 import {
   agentStateOf,
-  caseStateOf,
   derive,
+  exampleStateOf,
   nextFor,
   onboardingStateOf,
   waitingFor,
@@ -105,59 +105,78 @@ const PARTS =
   '- { name: Flags, text: Write the flags., context: { section: design } }\n' +
   '- { name: Handler, text: Write the handler., context: { section: introduction } }\n'
 
-// Nanda, 2026-11-15: a case is a ladder to an output. A file may hold the short form of a ladder
-// with no rungs (SHORT_CASE); it reads as CASE.
+// Nanda, 2026-11-15: an example is an output of a marked step, real or written by the host.
 const SPOT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
-const CASE = { fit: 'Follows', via: [], output: SPOT } as unknown as Case
-const SHORT_CASE = { ...SPOT, fit: 'Follows' }
+const CASE = { step: 1, fit: 'Follows', output: SPOT } as unknown as Example
+const BREAKS = { step: 1, fit: 'Breaks', output: { written: 'Intro: see PR 42.' } } as unknown as Example
+const FLOW = [{ from: 'writer', to: 'docs/tsd.md', says: 'writes', uses: ['tsd-writing'] }]
 // The text of one file; any other file is not there.
 const only = (file: string, text: string) => (f: string) => (f === file ? text : null)
 
 // --- pure states --------------------------------------------------------------------------------
 
-describe('caseStateOf', () => {
-  test('a case is Current while its file holds the excerpt, and Stale when it is gone', () => {
+describe('exampleStateOf', () => {
+  test('an example is Current while its file holds the excerpt, and Stale when it is gone', () => {
     const tsd = (text: string) => only('docs/tsd.md', text)
-    expect(caseStateOf(tsd('# TSD\n\n## Introduction\n'), CASE)).toEqual({ _tag: 'Current' })
+    expect(exampleStateOf(tsd('# TSD\n\n## Introduction\n'), CASE)).toEqual({ _tag: 'Current' })
     // The excerpt counts trimmed, and the line is only where the page points.
     const output = { ...SPOT, excerpt: '  ## Introduction  ', line: 99 }
-    const spaced = { ...CASE, output } as unknown as Case
-    expect(caseStateOf(tsd('## Introduction'), spaced)).toEqual({ _tag: 'Current' })
-    expect(caseStateOf(tsd('# TSD\n\n## Design\n'), CASE)).toEqual({ _tag: 'Stale' })
-    expect(caseStateOf(() => null, CASE)).toEqual({ _tag: 'Stale' })
+    const spaced = { ...CASE, output } as unknown as Example
+    expect(exampleStateOf(tsd('## Introduction'), spaced)).toEqual({ _tag: 'Current' })
+    expect(exampleStateOf(tsd('# TSD\n\n## Design\n'), CASE)).toEqual({ _tag: 'Stale' })
+    expect(exampleStateOf(() => null, CASE)).toEqual({ _tag: 'Stale' })
   })
-  test('a case is Stale when the excerpt of one rung is gone, though its output holds', () => {
-    const rung = { name: 'Instruction', file: 'CLAUDE.md', line: 4, excerpt: 'One idea a section.' }
-    const ladder = { ...CASE, via: [rung] } as unknown as Case
+  test('Stale when the excerpt of its input is gone, though its output holds', () => {
+    const input = { file: 'CLAUDE.md', line: 4, excerpt: 'One idea a section.' }
+    const checked = { ...CASE, input } as unknown as Example
     const texts: Record<string, string> = {
       'docs/tsd.md': '## Introduction\n',
       'CLAUDE.md': '# Rules\n\nOne idea a section.\n',
     }
-    expect(caseStateOf((f) => texts[f] ?? null, ladder)).toEqual({ _tag: 'Current' })
-    const moved: Record<string, string> = { ...texts, 'CLAUDE.md': '# Rules\n\nTwo ideas are fine.\n' }
-    expect(caseStateOf((f) => moved[f] ?? null, ladder)).toEqual({ _tag: 'Stale' })
+    expect(exampleStateOf((f) => texts[f] ?? null, checked)).toEqual({ _tag: 'Current' })
+    const moved: Record<string, string> = { ...texts, 'CLAUDE.md': '# Rules\n\nTwo ideas.\n' }
+    expect(exampleStateOf((f) => moved[f] ?? null, checked)).toEqual({ _tag: 'Stale' })
+  })
+  test('the words of the host name no file, so they are never stale', () => {
+    expect(exampleStateOf(() => null, BREAKS)).toEqual({ _tag: 'Current' })
   })
 })
 
-describe('CaseFile', () => {
-  test('a file holds a case as a ladder or in the short form; both read as the ladder', () => {
-    const rung = { name: 'Writer skill', file: 'skills/w.md', line: 2, excerpt: 'One heading.' }
-    const ladder = { fit: 'Breaks', via: [rung], output: SPOT } as unknown as Case
-    const read = Schema.decodeUnknownSync(Schema.Array(CaseFile))([ladder, SHORT_CASE])
-    expect(read).toEqual([ladder, CASE])
-    // A file is written in the ladder form only.
-    expect(Schema.encodeSync(Schema.Array(CaseFile))(read)).toEqual([ladder, CASE])
+describe('Example', () => {
+  test('an example reads and writes as it is: its step, its input, its output', () => {
+    const example = { step: 2, fit: 'Breaks', input: SPOT, output: { written: 'Intro: see PR 42.' } }
+    const read = Schema.decodeUnknownSync(Example)(example)
+    expect(read).toEqual(example as never)
+    expect(Schema.encodeSync(Example)(read)).toEqual(example as never)
   })
-  test('a ladder ends at an output: a case with rungs and no output does not read', () => {
-    const rung = { name: 'Instruction', file: 'CLAUDE.md', line: 4, excerpt: 'One idea.' }
-    expect(() => Schema.decodeUnknownSync(CaseFile)({ fit: 'Follows', via: [rung] })).toThrow()
+  test('the new shape is the only one: no step, no output, or blank words do not read', () => {
+    const rung = { name: 'Instruction', ...SPOT }
+    for (const old of [
+      { fit: 'Follows', via: [rung], output: SPOT },
+      { ...SPOT, fit: 'Follows' },
+      { fit: 'Follows', output: SPOT },
+      { step: 1, fit: 'Follows' },
+      { step: 1, fit: 'Follows', output: { written: ' ' } },
+    ]) {
+      expect(() => Schema.decodeUnknownSync(Example)(old)).toThrow()
+    }
+  })
+  test('a stored event of an older shape does not decode: the store refuses to read it', () => {
+    const direction = { id: 'd', name: 'D', owner: 'Nanda', from: [], summary: 'S.', says: 'S.', standards: [] }
+    const old = { _tag: 'Drafted', direction, cases: [{ ...SPOT, fit: 'Follows' }], answers: [], why: { _tag: 'NoneGiven' } }
+    const row = { seq: 1, at: '2026-10-25T09:00:00.000Z', author: HOST_RUN, event: { _tag: 'Revision', create: old } }
+    expect(() => decodeRecorded(row)).toThrow()
+    const flow = [{ from: 'w', to: 'd', says: 's', uses: ['d'] }]
+    const now = { ...old, direction: { ...direction, flow }, cases: undefined, examples: [CASE, BREAKS] }
+    const { cases: _, ...current } = now
+    expect(decodeRecorded({ ...row, event: { _tag: 'Revision', create: current } }).seq).toBe(1)
   })
 })
 
 describe('onboardingStateOf', () => {
   const question = (answer: object) => ({
     says: 'Is the facts file the source?',
-    case: SHORT_CASE,
+    example: CASE,
     options: ['yes', 'no'],
     answer,
   })
@@ -169,8 +188,8 @@ describe('onboardingStateOf', () => {
         _tag: 'Drafted',
         name: 'TSD writing',
         from: ['Pathos'],
-        content: { says: 'The reader decides from the page.', standards: [] },
-        cases: [SHORT_CASE, SHORT_CASE, SHORT_CASE],
+        content: { summary: 'S.', flow: FLOW, says: 'The reader decides.', standards: [] },
+        examples: [CASE, BREAKS],
       },
       questions: [],
       request: { _tag: 'None' },
@@ -198,9 +217,8 @@ describe('onboardingStateOf', () => {
       _tag: 'Accepted',
     })
   })
-  test('a drafted direction holds 3 cases or more (P10 rejected, onboarding 2026-11-14)', () => {
-    const few = { _tag: 'Drafted', name: 'x', from: [], content: { says: 's', standards: [] } }
-    expect(() => file({ draft: { ...few, cases: [SHORT_CASE, SHORT_CASE] } })).toThrow()
+  test('Loading for a file that the reader reset: the host drafts it again', () => {
+    expect(onboardingStateOf(file({ draft: { _tag: 'Reset' } }))).toEqual({ _tag: 'Loading' })
   })
 })
 
@@ -306,7 +324,7 @@ describe('what reaches the host from no project', () => {
     expect(nextFor(later, a1).some((s) => s.what._tag === 'AnswerRolesSuggestion')).toBe(false)
   }, 60000)
 
-  test('a company draft with few cases: the person rejects only, the host adds them', async () => {
+  test('a company draft with no examples: the person rejects only, the host adds them', async () => {
     const { p, host } = await hosted()
     const source = {
       repo: 'company-repo',
@@ -327,24 +345,28 @@ describe('what reaches the host from no project', () => {
     const step = person?.step
     expect(step?._tag === 'Do' ? step.intents.map((i) => i._tag) : []).toEqual(['Reject'])
     const a1 = { _tag: 'Agent', assignment: tokenIn(`work brief ${host}`).split('.')[0] } as Author
-    const adds = nextFor(d, a1).filter((s) => s.what._tag === 'AddCases')
+    const adds = nextFor(d, a1).filter((s) => s.what._tag === 'AddExamples')
     expect(adds.map((s) => (s._tag === 'Do' ? s.intents : []))).toEqual([
-      [{ _tag: 'AddCases', target: { draft: draft.id as RevisionId } }],
+      [{ _tag: 'AddExamples', target: { draft: draft.id as RevisionId } }],
     ] as never)
-    // The words of the step: how many cases the draft has, and what a real case is (ruling 4).
-    // Nanda, 2026-11-15: a case is a ladder to an output (was: a file, a line, an excerpt).
+    // The words of the step: what the draft misses, and what an example is (ruling 4).
+    // Nanda, 2026-11-15: an example is an output of a marked step (was: 3 cases, as ladders).
     expect(ok(await p.agent(`next ${host}`)).out).toContain(
       [
-        `${draft.id} drafts the new direction "Flags" with 0 cases, and its accept needs 3; add ` +
-          'real cases: each a ladder from the direction down to a real output of the project, ' +
-          'each rung named, each place a file, a line and a short excerpt that is in the file, ' +
-          'and whether the output follows or breaks the direction',
-        `  work direction cases ${host} ${draft.id} --file=<cases.yaml>`,
+        `${draft.id} drafts the new direction "Flags", and its flow marks no step that the ` +
+          'direction governs; write its flow in this project, each step that it governs with ' +
+          'uses, and examples: for each marked step an output that follows the direction and ' +
+          'one that breaks it, with its input for a step that checks or decides; a real place ' +
+          'of the project (file, line, a short excerpt in the file) when it has one, else the ' +
+          'output in your words (written)',
+        `  work direction examples ${host} ${draft.id} --file=<flow and examples.yaml>`,
       ].join('\n'),
     )
-    // With its cases, the accept is the person's again, and the host has no step.
-    const cases = [CASE, CASE, CASE]
-    const added = { _tag: 'Revision', id: draft.id, move: { _tag: 'CasesAdded', cases } } as Event
+    // With a flow that marks a step, and one that follows and one that breaks there, the accept
+    // is the person's again, and the host has no step.
+    const flow = [{ from: 'writer', to: 'flags.ts', says: 'adds a flag', uses: ['flags'] }]
+    const move = { _tag: 'ExamplesAdded', flow, examples: [CASE, BREAKS] }
+    const added = { _tag: 'Revision', id: draft.id, move } as unknown as Event
     await append(p, HOST_RUN, added)
     const after = derivedOf(p)
     const again = waitingFor(after, { _tag: 'Person', name: 'Nanda' }).find(
@@ -354,6 +376,6 @@ describe('what reaches the host from no project', () => {
       'Accept',
       'Reject',
     ])
-    expect(nextFor(after, a1).some((s) => s.what._tag === 'AddCases')).toBe(false)
+    expect(nextFor(after, a1).some((s) => s.what._tag === 'AddExamples')).toBe(false)
   }, 60000)
 })

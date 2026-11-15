@@ -77,7 +77,7 @@ export interface WhyInput {
   readonly reason: string | null
   readonly words: Words | null
 }
-// An adjustment as a model drafts it (ruling 14): a new role and other cases name a file, which
+// An adjustment as a model drafts it (ruling 14): a new role and new examples name a file, which
 // the action reads and checks; the rest is typed.
 export type AdjustmentInput =
   | { readonly _tag: 'AddRole'; readonly role: RoleName; readonly file: FilePath }
@@ -90,7 +90,7 @@ export type AdjustmentInput =
       readonly why: Words
     }
   | { readonly _tag: 'RetireDirection'; readonly direction: DirectionId }
-  | { readonly _tag: 'SetCases'; readonly direction: DirectionId; readonly file: FilePath }
+  | { readonly _tag: 'SetExamples'; readonly direction: DirectionId; readonly file: FilePath }
 // One --point of a reject, with the rule that it breaks (--breaks), as typed.
 export interface PointInput {
   readonly text: Words
@@ -177,9 +177,9 @@ export type ActionInput =
   | In<'DraftDirection', None, { readonly file: FilePath; readonly answers: ReadonlyArray<AnswerId>; readonly why: WhyInput }>
   | In<'ReviseDirection', { readonly direction: DirectionId }, { readonly file: FilePath; readonly answers: ReadonlyArray<AnswerId>; readonly why: WhyInput }>
   | In<'ImportCompany', { readonly direction: DirectionId }, { readonly source: typeof ExternalSource.Type; readonly folder: typeof CompanyFolder.Type; readonly owner: string; readonly checkers: typeof CompanyCheckers.Type }>
-  // A model gives a company draft of a new direction its cases; the file holds cases: (P10
-  // rejected, onboarding 2026-11-14).
-  | In<'AddCases', { readonly draft: RevisionId }, { readonly file: FilePath }>
+  // A model gives a company draft of a new direction its flow and its examples; the file holds
+  // flow: and examples: (P10 rejected, onboarding 2026-11-14).
+  | In<'AddExamples', { readonly draft: RevisionId }, { readonly file: FilePath }>
   | In<'Suggest', { readonly about: SuggestAbout }, { readonly says: Words }>
   | In<'Grant', { readonly act: GrantedAct; readonly to: RoleName }, { readonly until: Time }>
   | In<'Revoke', { readonly permission: PermissionId }, None>

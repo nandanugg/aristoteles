@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'bun:test'
-import { CODE_TASK, codeStarted, git, init, INTRO_V2, ok, project, reported, tokenIn, withWriter } from './harness.js'
+import { CODE_TASK, codeStarted, git, init, INTRO_V2, markedOf, ok, project, reported, tokenIn, withWriter } from './harness.js'
 
 // The open items of round 6, closed on 2026-11-07 (Nanda: "do this open part").
 
@@ -78,14 +78,11 @@ describe('parts in one document file', () => {
   })
 
   test('a part may name a section also when no standard of its directions has a section "when"', async () => {
-    // P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
+    // P10 rejected, onboarding 2026-11-14: a new direction starts with its examples.
     // Nanda, 2026-11-15: a direction has a summary.
     const plain = 'id: plain\nname: Plain\nowner: Nanda\nsummary: Plain words.\nsays: Plain words.\nstandards:\n' +
       '  - id: short\n    says: Short.\n    rules:\n      - { id: short-lines, says: "Lines are short", checkedBy: linter }\n' +
-      'cases:\n' +
-      '  - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }\n' +
-      '  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }\n' +
-      '  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }\n'
+      markedOf('plain')
     const p = await start({ 'directions/plain.yaml': plain, 'task.yaml': WHOLE.replace('[tsd-writing]', '[plain]') })
     p.write('parts.yaml', '- { name: Story, text: Tell the story., context: { section: story } }\n' +
       '- { name: Cost, text: Say the cost., context: { section: cost } }\n')

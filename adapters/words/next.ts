@@ -12,7 +12,7 @@ import {
   type AssignmentId,
   type DirectionId,
   type EvaluationId,
-  MIN_CASES,
+  examplesMissing,
   type Standard,
   type Stop,
   type Suggestion,
@@ -187,18 +187,21 @@ const linesOf = (d: Derived, s: StepWhat, token: string): ReadonlyArray<string> 
           '--persistent=<true|false> --why="<one line>"',
       )
     }
-    // P10 rejected: the person sees how a new direction shows in the code before the accept, so
-    // its draft holds at least MIN_CASES real cases (ruling 4).
-    case 'AddCases': {
+    // P10 rejected: the person sees how a new direction shows in the output before the accept,
+    // so its draft holds an example that follows it and one that breaks it, for each marked step
+    // of its flow (ruling 4; Nanda, 2026-11-15).
+    case 'AddExamples': {
       const x = w.drafts.get(s.draft)
-      const has = x?._tag === 'New' ? x.cases.length : 0
+      const missing = x?._tag === 'New' ? examplesMissing(x.flow, x.examples) : undefined
       const name = w.directions.get(s.direction)?.name ?? s.direction
       return step(
-        `${s.draft} drafts the new direction "${name}" with ${has} cases, and its accept ` +
-          `needs ${MIN_CASES}; add real cases: each a ladder from the direction down to a real ` +
-          'output of the project, each rung named, each place a file, a line and a short ' +
-          'excerpt that is in the file, and whether the output follows or breaks the direction',
-        `work direction cases ${token} ${s.draft} --file=<cases.yaml>`,
+        `${s.draft} drafts the new direction "${name}", and ${missing ?? 'it misses examples'}; ` +
+          'write its flow in this project, each step that it governs with uses, and examples: ' +
+          'for each marked step an output that follows the direction and one that breaks it, ' +
+          'with its input for a step that checks or decides; a real place of the project (file, ' +
+          'line, a short excerpt in the file) when it has one, else the output in your words ' +
+          '(written)',
+        `work direction examples ${token} ${s.draft} --file=<flow and examples.yaml>`,
       )
     }
     case 'PutOnBase': {

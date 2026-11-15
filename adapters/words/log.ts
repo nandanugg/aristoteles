@@ -202,7 +202,7 @@ const OLD_TYPE: Total<string> = {
   'Revision.Drafted': 'direction.new',
   'Revision.Revised': 'direction.revise',
   'Revision.Imported': 'company.import',
-  'Revision.CasesAdded': 'direction.cases',
+  'Revision.ExamplesAdded': 'direction.examples',
   'Permission.Granted': 'grant',
   'Permission.Revoked': 'revoke',
   'Source.Moved': 'source',

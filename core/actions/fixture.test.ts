@@ -105,7 +105,7 @@ export const eventsOf = (dir: string): ReadonlyArray<Recorded> =>
     ).pipe(Effect.provide(storeLayer(dir))),
   )
 export const workOf = (dir: string): Work => fold(eventsOf(dir))
-// An event that a later wave's command writes (an adjustment, the cases of a draft, the start of
+// An event that a later wave's command writes (an adjustment, the examples of a draft, the start of
 // an agent's terminal), appended at the time of the last act, as the store appends any checked
 // event. The ref of the stored event.
 export const appendIn = (p: Project, author: Author, event: Event): EventRef =>

@@ -2,14 +2,16 @@
 // role, its state, and the command that answers it), `work onboard show` (one of them in full), and
 // what `work onboard wait` waits for. They read the onboarding files only; the adapter reads the
 // text of each case's file (textOf), so a stale case shows.
-import { caseStateOf, onboardingStateOf } from '../../core/derived/index.ts'
+import { exampleStateOf, onboardingStateOf } from '../../core/derived/index.ts'
 import type {
   AiQuestion,
+  FlowStep,
   OnboardingDirection,
   OnboardingRole,
 } from '../../core/schema/index.ts'
+import { resetWords } from '../../core/schema/index.ts'
 import type { OnboardingFiles } from '../../core/services/index.ts'
-import { caseLines, flowLines } from './show.ts'
+import { exampleLines, flowLines } from './show.ts'
 import { short } from './common.ts'
 
 type TextOf = (file: string) => string | null
@@ -48,6 +50,7 @@ const hostWork = (file: OnboardingDirection): string | undefined => {
   if (file.request._tag === 'Revise') return `the person asks: "${short(file.request.words, 120)}"`
   const answered = file.questions.length > 0 && file.questions.every((q) => q.answer._tag !== 'Open')
   if (answered) return answersWords(file)
+  if (file.draft._tag === 'Reset') return resetWords(file.id)
   if (file.draft._tag === 'Drafting' && file.asked._tag !== 'Found') return 'it waits for its first draft'
   return undefined
 }
@@ -61,9 +64,9 @@ export const waitsForHost = (files: OnboardingFiles): boolean =>
 
 const staleCount = (file: OnboardingDirection, textOf: TextOf): string => {
   if (file.draft._tag !== 'Drafted') return ''
-  const { cases } = file.draft
-  const stale = cases.filter((c) => caseStateOf(textOf, c)._tag === 'Stale').length
-  return ` · ${countOf(cases.length, 'case')}${stale ? `, ${stale} stale` : ''}`
+  const { examples } = file.draft
+  const stale = examples.filter((e) => exampleStateOf(textOf, e)._tag === 'Stale').length
+  return ` · ${countOf(examples.length, 'example')}${stale ? `, ${stale} stale` : ''}`
 }
 
 // The line of a direction, its summary once it has a draft (Nanda, 2026-11-15), and the command
@@ -166,9 +169,14 @@ export const onboardStatus = (files: OnboardingFiles, textOf: TextOf): ReadonlyA
   ]
 }
 
-const questionLines = (q: AiQuestion, i: number, textOf: TextOf): ReadonlyArray<string> => [
+const questionLines = (
+  q: AiQuestion,
+  i: number,
+  flow: ReadonlyArray<FlowStep>,
+  textOf: TextOf,
+): ReadonlyArray<string> => [
   `  ${i + 1}. ${q.says}`,
-  ...caseLines([q.case], textOf).map((l) => `  ${l}`),
+  ...exampleLines([q.example], flow, textOf).map((l) => `  ${l}`),
   `     A: ${q.options[0]}`,
   `     B: ${q.options[1]}`,
   ...(q.answer._tag === 'Chosen' ? [`     answer: ${q.answer.option}`] : []),
@@ -185,7 +193,7 @@ export const onboardShowDirection = (
     lines.push(`example: ${file.asked.example}`)
   }
   if (file.draft._tag === 'Drafted') {
-    const { name, from, content, cases } = file.draft
+    const { name, from, content, examples } = file.draft
     lines.push(
       `name: ${name}`,
       `summary: ${content.summary}`,
@@ -197,12 +205,13 @@ export const onboardShowDirection = (
       lines.push(`- ${s.id}: ${s.says}`)
       for (const r of s.rules) lines.push(`    - ${r.id} (${r.checkedBy ?? 'no checker'}): ${r.says}`)
     }
-    lines.push('cases:', ...caseLines(cases, textOf))
+    lines.push('examples:', ...exampleLines(examples, content.flow, textOf))
   } else {
     lines.push('no draft yet')
   }
   if (file.questions.length > 0) {
-    lines.push('questions:', ...file.questions.flatMap((q, i) => questionLines(q, i, textOf)))
+    const flow = file.draft._tag === 'Drafted' ? file.draft.content.flow : []
+    lines.push('questions:', ...file.questions.flatMap((q, i) => questionLines(q, i, flow, textOf)))
   }
   if (file.request._tag === 'Revise') lines.push(`revise: ${file.request.words}`)
   return lines

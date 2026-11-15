@@ -299,8 +299,8 @@ const inputOf = (w: Work, r: Recorded, dir: string): Read => {
     case 'Suggestion.Suggestion':
       return input({ _tag: 'Suggest', target: { about: c?.about }, content: { says: c?.says } })
     case 'Revision.Drafted': {
-      // P10 rejected, onboarding 2026-11-14: the file of a new direction holds its cases.
-      const direction = { ...(c?.direction as unknown as object), cases: c?.cases }
+      // P10 rejected, onboarding 2026-11-14: the file of a new direction holds its examples.
+      const direction = { ...(c?.direction as unknown as object), examples: c?.examples }
       const file = fileOf(dir, `direction-${k}.yaml`, yaml(direction))
       const why = whyInput(c?.why as never)
       return input({

@@ -10,6 +10,7 @@ import {
   FLOW,
   HOST,
   init,
+  markedOf,
   ok,
   project,
   reported,
@@ -343,12 +344,6 @@ describe('exit codes (card 8)', () => {
   })
 })
 
-// P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
-const HLD_CASES =
-  'cases:\n' +
-  '  - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }\n' +
-  '  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }\n' +
-  '  - { file: docs/tsd.md, line: 7, excerpt: "## Design", fit: Follows }\n'
 
 describe('the fixes of the skills round', () => {
   test('role fit reads only official directions: a draft-only one has no rules yet', async () => {
@@ -361,7 +356,7 @@ describe('the fixes of the skills round', () => {
         'says: The reader sees the whole system on one page.\nstandards:\n  - id: one-page\n' +
         '    says: Keep it to one page.\n    rules:\n' +
         '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n' +
-        HLD_CASES,
+        markedOf('hld-writing'),
     )
     ok(await p.agent('direction new --file=hld.yaml --by=assess'))
     // Before the fix, role fit exited 70: "the work has no official direction hld-writing".
@@ -382,7 +377,7 @@ describe('the fixes of the skills round', () => {
         'says: The reader sees the whole system on one page.\nstandards:\n  - id: one-page\n' +
         '    says: Keep it to one page.\n    rules:\n' +
         '      - { id: one-page-only, says: "The HLD fits one page", checkedBy: linter }\n' +
-        HLD_CASES,
+        markedOf('hld-writing'),
     )
     ok(await p.agent('direction new --file=hld.yaml --by=assess'))
     // Before the fix, task open and task draft exited 70: "the work has no official direction
@@ -461,7 +456,7 @@ describe('the summary of a direction', () => {
     const { p } = await started()
     expect(await out(p.nanda('direction show tsd-writing'))).toContain(
       'summary: A TSD lets its reader decide without a meeting, so each page stands alone.\n' +
-        'says: The reader understands and decides from the page alone.\n',
+        'flow:\n',
     )
     const arch = tokenIn(await out(p.nanda('assign t1 --role=architect')))
     ok(await p.agent(`brief ${arch}`))
@@ -478,24 +473,32 @@ describe('the summary of a direction', () => {
     )
   })
 
-  // Nanda, 2026-11-15: a direction has a flow. A revise gives it one; direction show prints it
-  // after the summary, and the draft shows the flow that it had before.
-  test('a revise gives a direction a flow; direction show prints its numbered steps', async () => {
+  // Nanda, 2026-11-15: a direction has a flow, the steps that it governs marked. A revise gives
+  // it another one; direction show prints it after the summary, each marked step with its ids,
+  // and the draft shows the flow that it had before. A mark names ids of the direction only.
+  test('a revise gives a direction another flow; direction show prints its marked steps', async () => {
     const { p } = await started()
+    expect(await out(p.nanda('direction show tsd-writing'))).toContain(
+      '  4. writer -> docs/tsd.md: fills the template one section at a time (docs/template.md:3) ' +
+        '[uses tsd-writing, intro-story, repeatable]\n',
+    )
     const arch = tokenIn(await out(p.nanda('assign t1 --role=architect')))
     ok(await p.agent(`brief ${arch}`))
-    p.write('edit.yaml', FLOW)
+    const flow = (uses) => `flow:\n  - { from: writer, to: docs/tsd.md, says: writes the TSD, uses: [${uses}] }\n`
+    p.write('ghost.yaml', flow('ghost'))
+    expect((await p.agent(`direction revise ${arch} tsd-writing --file=ghost.yaml`)).err).toContain(
+      'refused: flow step 1 uses "ghost", which is not tsd-writing or a standard or rule of it',
+    )
+    p.write('edit.yaml', flow('tsd-writing'))
     ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
     const draft = await out(p.nanda('direction show d2'))
-    expect(draft).toContain('  5. linter -> docs/tsd.md: checks that each section says one thing\n')
-    expect(draft).toContain('\nflow was: none')
+    expect(draft).toContain('  1. writer -> docs/tsd.md: writes the TSD [uses tsd-writing]\n')
+    expect(draft).toContain('flow was:\n  1. Person -> architect: asks for a TSD of the export\n')
     ok(await p.nanda('review d2 accept --evidence="the draft, its flow | it shows the steps"', 'accept'))
     expect(await out(p.nanda('direction show tsd-writing'))).toContain(
       'summary: A TSD lets its reader decide without a meeting, so each page stands alone.\n' +
         'flow:\n' +
-        '  1. Person -> architect: asks for a TSD of the export\n' +
-        '  2. architect -> writer: gives each section to a writer (CLAUDE.md:3)\n' +
-        '  3. writer: reads the rule of one heading for each section (.claude/skills/writer/SKILL.md:3)\n',
+        '  1. writer -> docs/tsd.md: writes the TSD [uses tsd-writing]\n',
     )
   })
 })

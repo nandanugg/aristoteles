@@ -18,8 +18,8 @@ import {
   create,
   currentVersion,
   type Event,
+  examplesMissing,
   isNonBlank,
-  MIN_CASES,
   move,
   type OnboardedDirection,
   officialDirections,
@@ -39,7 +39,7 @@ import {
 } from '../services/index.ts'
 import { foldStep } from '../state/index.ts'
 import type { Refusal } from '../schema/errors.ts'
-import { DRAFT, readCases } from './drafts.ts'
+import { DRAFT, readExamples } from './drafts.ts'
 import {
   allowed,
   asWrite,
@@ -78,11 +78,11 @@ export const REFUSALS = {
         'Write',
         `name a person of ${CONFIG} as the owner of ${id}`,
       ),
-    fewCases: (id: string, count: string) =>
+    fewExamples: (id: string, missing: string) =>
       no(
-        `${id} has ${count} cases; a direction starts with at least ${MIN_CASES} cases`,
+        `${id}: ${missing}; a direction starts with its examples`,
         'Write',
-        `give ${id} at least ${MIN_CASES} cases`,
+        `give ${id} an output that follows it and one that breaks it, for each marked step`,
       ),
     notRole: (rule: string, direction: string, role: string) =>
       no(
@@ -155,7 +155,7 @@ export const REFUSALS = {
       no('a reject of new words needs a reason', 'Write', 'write why with --reason'),
   },
   DraftAdjustment: {
-    cases: DRAFT.cases,
+    examples: DRAFT.examples,
     noWhy: (role: string) =>
       no(
         `the persistence of ${role} needs a reason`,
@@ -205,11 +205,12 @@ const startProblem = (
   if (!hostRole) return S.noHostRole()
   const ids = new Set<string>()
   const rules = new Map<string, string | undefined>()
-  for (const { direction: d, cases } of directions) {
+  for (const { direction: d, examples } of directions) {
     if (ids.has(d.id)) return S.sameId(d.id)
     ids.add(d.id)
     if (!config.people.includes(d.owner)) return S.owner(d.id, d.owner)
-    if (cases.length < MIN_CASES) return S.fewCases(d.id, String(cases.length))
+    const missing = examplesMissing(d.flow, examples)
+    if (missing !== undefined) return S.fewExamples(d.id, missing)
     if (d.maxStandards !== undefined && d.standards.length > d.maxStandards) {
       return S.tooMany(d.name, String(d.standards.length), String(d.maxStandards))
     }
@@ -614,7 +615,7 @@ const withAdjustment = (file: string, a: Adjustment): Edited => {
     case 'SetPersistence':
       return withRoleKeys(file, a.role, { persistence: a.persistence })
     case 'RetireDirection':
-    case 'SetCases':
+    case 'SetExamples':
       return { text: file }
     default:
       break
@@ -641,9 +642,12 @@ const adjustmentOf = (
   Effect.gen(function* () {
     const cwd = d.moment.outside.cwd
     switch (input._tag) {
-      case 'SetCases': {
-        const cases = yield* readCases(input.file, yield* readYaml(cwd, input.file))
-        return { _tag: 'SetCases', direction: input.direction, cases }
+      case 'SetExamples': {
+        const official = officialDirections(d.moment.work).find((x) => x.id === input.direction)
+        const flow = official === undefined ? [] : currentVersion(official).flow
+        const raw = yield* readYaml(cwd, input.file)
+        const examples = yield* readExamples(input.file, raw, flow)
+        return { _tag: 'SetExamples', direction: input.direction, examples }
       }
       case 'SetPersistence': {
         const { role, persistent, why } = input

@@ -315,7 +315,7 @@ interface DecisionBase {
 }
 // What a draft changes, as a code review: one diff of the whole text of the direction.
 export interface DraftChange {
-  readonly direction: Text // the name of the direction
+  readonly direction: Text // the title over it: the name of the direction, or what it compares
   readonly lines: ReadonlyArray<Text> // ' ' kept, '-' gone, '+' new
 }
 
@@ -573,29 +573,39 @@ export interface DirectionCard {
   readonly flow: ReadonlyArray<FlowStepView> // none: no diagram
   readonly says: Text | null // null: no draft yet
   readonly standards: DirectionView['standards'] // each rule names the role that checks it
-  readonly cases: ReadonlyArray<CaseView>
+  // The words against the last draft, or the version against the one before it (Nanda,
+  // 2026-11-15): with none before, every line comes. null: no draft yet.
+  readonly diff: DraftChange | null
+  readonly examples: ReadonlyArray<ExampleView>
   readonly questions: ReadonlyArray<QuestionView>
   readonly request: Text | null // the words of a Revise that wait for the host
+  // its file was in an older shape, so the host drafts it again (Nanda, 2026-11-15)
+  readonly reset: boolean
 }
 // One step of the flow of a direction (Nanda, 2026-11-15): an actor acts on another actor or on a
 // file (from equal to to: an act on its own). file and line: where the project defines the step;
-// null: it names none.
+// null: it names none. uses: the ids that apply at a step that the direction governs (the page
+// marks it); none: an unmarked step.
 export interface FlowStepView {
   readonly from: Text
   readonly to: Text
   readonly says: Text
   readonly file: Text | null
   readonly line: number | null
+  readonly uses: ReadonlyArray<Text>
 }
-// A case (ruling 4) as its ladder (Nanda, 2026-11-15): the named rungs from the direction down,
-// then the output, a real result that follows or breaks the direction (fit). A case with a stale
-// spot asks for other cases.
-export interface CaseView {
+// An example (ruling 4; Nanda, 2026-11-15): an output of a marked step that follows or breaks
+// the direction (fit), with the input of a step that checks or decides. step: the number of the
+// step in the flow. A stale spot asks for other examples.
+export interface ExampleView {
+  readonly step: number
   readonly fit: 'Follows' | 'Breaks'
-  readonly via: ReadonlyArray<RungView>
-  readonly output: SpotView
+  readonly input: SampleView | null
+  readonly output: SampleView
 }
-// One place of a case. current: its excerpt is in its file now. around: the real code, so the
+// A real place of the project, or the host's own words when the project has none.
+export type SampleView = SpotView | { readonly written: Text }
+// One real place of an example. current: its excerpt is in its file now. around: the real code, so the
 // person sees the place (Nanda, 2026-11-15): 3 lines above and 3 below the lines of the excerpt
 // (or its line, when the excerpt is gone), the lines of the excerpt marked; none when the file
 // does not read.
@@ -606,18 +616,15 @@ export interface SpotView {
   readonly current: boolean
   readonly around: ReadonlyArray<CaseLine>
 }
-export interface RungView extends SpotView {
-  readonly name: Text // the host's name of the rung: Instruction, Writer skill, Validator
-}
 export interface CaseLine {
   readonly line: number
   readonly text: Text
   readonly mark: boolean
 }
-// A question of the AI about a draft (ruling 5): a case, and the options A and B.
+// A question of the AI about a draft (ruling 5): an example, and the options A and B.
 export interface QuestionView {
   readonly says: Text
-  readonly case: CaseView
+  readonly example: ExampleView
   readonly options: readonly [Text, Text]
   readonly answer: 'A' | 'B' | null // null: open
 }

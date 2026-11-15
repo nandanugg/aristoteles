@@ -34,12 +34,17 @@ const FLAGS = {
 const lockOf = (repo) => `feature-flags:\n  repo: ${repo}\n  path: directions/feature-flags\n  owner: Nanda\n  checkedBy: linter\n`
 const readLock = (p) => Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.lock'), 'utf8'))
 const SEEN = '--evidence="the folder | each standard and rule reads as the company says"'
-// P10 rejected, onboarding 2026-11-14: a model gives the company draft of a new direction its cases
-// before the owner accepts it, with work direction cases.
-const CASE = '  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }\n'
-const addCases = async (p, draft) => {
-  p.write('cases.yaml', `cases:\n${CASE}${CASE}${CASE}`)
-  ok(await p.agent(`direction cases ${draft} --file=cases.yaml --by=host`))
+// P10 rejected, onboarding 2026-11-14: a model gives the company draft of a new direction its flow
+// in this project and its examples before the owner accepts it, with work direction examples.
+const FLAGS_EXAMPLES = `flow:
+  - { from: writer, to: docs/tsd.md, says: adds the flag, uses: [feature-flags, upper-snake] }
+examples:
+  - { step: 1, fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
+  - { step: 1, fit: Breaks, output: { written: "const fast = process.env.FAST_EXPORT" } }
+`
+const addExamples = async (p, draft) => {
+  p.write('examples.yaml', FLAGS_EXAMPLES)
+  ok(await p.agent(`direction examples ${draft} --file=examples.yaml --by=host`))
 }
 
 async function following() {
@@ -63,18 +68,24 @@ describe('a company direction', () => {
     expect(show).toContain('upper-snake: The flag is FF_<PROJECT>_<FEATURE>. (linter)')
     expect(show).toContain('\n    one-read (linter):\n        Each flag is read in one if.\n\n        ## Example')
     expect(ok(await p.nanda('direction show d2#one-read#example')).out).toContain('d2 · rule one-read · Example\n## Example')
-    await addCases(p, 'd2')
-    // P10 rejected, onboarding 2026-11-14: the draft shows its cases, each with its state.
-    // Nanda, 2026-11-15: a case is a ladder to an output, one line for each rung.
-    expect(ok(await p.nanda('direction show d2')).out).toContain('cases:\n  Follows · current\n    Output · docs/tsd.md:3 "## Introduction"\n')
+    await addExamples(p, 'd2')
+    // P10 rejected, onboarding 2026-11-14: the draft shows its examples, each with its state.
+    // Nanda, 2026-11-15: by the marked step of the flow, real or written by the host.
+    expect(ok(await p.nanda('direction show d2')).out).toContain(
+      'examples:\n  step 1 · writer -> docs/tsd.md\n    Follows\n      output · docs/tsd.md:3 "## Introduction"\n' +
+        '    Breaks\n      output · written by the host: "const fast = process.env.FAST_EXPORT"',
+    )
     const accept = ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept')).out
     expect(accept).toContain('d2 is official: feature-flags@1.')
     expect(accept).toContain(`feature-flags follows ${first.slice(0, 7)} of ${company.dir} now (aristoteles.lock).`)
     expect(readLock(p)['feature-flags'].commit).toBe(first)
     expect(ok(await p.agent('direction show feature-flags#one-read#example')).out).toContain('if flags.Enabled("FF_REPORTS_FAST_EXPORT") {')
-    // Ruling 4, onboarding 2026-11-14: a case is stale when its excerpt is no longer in its file.
+    // Ruling 4, onboarding 2026-11-14: an example is stale when its excerpt is no longer in its
+    // file.
     p.write('docs/tsd.md', '# TSD\n\nTODO\n')
-    expect(ok(await p.agent('direction show feature-flags')).out).toContain('cases:\n  Follows · stale\n    Output · docs/tsd.md:3 "## Introduction" · stale\n')
+    expect(ok(await p.agent('direction show feature-flags')).out).toContain(
+      '    Follows\n      output · docs/tsd.md:3 "## Introduction" · stale\n',
+    )
     const db = new Database(join(p.dir, '.work', 'aristoteles.db'), { readonly: true })
     expect(db.query("SELECT source FROM version WHERE id = 'feature-flags@1'").get().source).toBe(`${company.dir} directions/feature-flags@${first}`)
     db.close()
@@ -83,7 +94,7 @@ describe('a company direction', () => {
   test('the next day a new commit comes in; the same day nothing is fetched; other files make no draft', async () => {
     const { p, company, first } = await following()
     ok(await p.nanda('waiting'))
-    await addCases(p, 'd2')
+    await addExamples(p, 'd2')
     ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept'))
     const second = await company.commit({ 'directions/feature-flags/naming/upper-snake.md': 'The flag is FF_<PROJECT>_<FEATURE>, in capitals.\n' })
     expect(ok(await p.nanda('waiting')).err).not.toContain('refresh:')
@@ -114,7 +125,7 @@ describe('a company direction', () => {
   test('a company direction changes in its repo: a revise is refused, and a suggestion names the repo', async () => {
     const { p, company } = await following()
     ok(await p.nanda('waiting'))
-    await addCases(p, 'd2')
+    await addExamples(p, 'd2')
     ok(await p.nanda(`review d2 accept ${SEEN}`, 'accept'))
     const sol = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
     ok(await p.agent(`brief ${sol}`))

@@ -78,7 +78,7 @@ const official: Direction = {
     },
   ],
   source: { _tag: 'External', repo: company.repo, path: company.path },
-  cases: [],
+  examples: [],
 }
 const drafted: Direction = {
   _tag: 'NewDirection',
@@ -89,7 +89,7 @@ const drafted: Direction = {
   maxStandards: { _tag: 'Unlimited' },
   approvedBy: { _tag: 'Owner' },
   source: { _tag: 'Local' },
-  cases: [],
+  examples: [],
 }
 const revision = (
   id: RevisionId,

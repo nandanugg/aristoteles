@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'bun:test'
-import { changeDirection, codeStarted, evaluated, git, init, INTRO_V1, INTRO_V2, ok, project, reported, started, TASK_WHOLE, tokenIn, withWriter } from './harness.js'
+import { changeDirection, codeStarted, evaluated, git, init, INTRO_V1, INTRO_V2, markedOf, ok, project, reported, started, TASK_WHOLE, tokenIn, withWriter } from './harness.js'
 
 // One test for each round-4 finding that the prototype closes. The ids are those of
 // round4/FIXES.md. Round 4 was the last round by the stop rule; DESIGN section 0 lists what
@@ -119,17 +119,12 @@ describe('points close only the right way', () => {
   })
 })
 
-// P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
-const CASES = 'cases:\n' +
-  '  - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }\n' +
-  '  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }\n' +
-  '  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }\n'
 
 describe('directions', () => {
   test('R4-6: two directions cannot gain the same rule id through two accepts', async () => {
     // Nanda, 2026-11-15: a direction has a summary.
     const style = 'id: style\nname: Style\nowner: Nanda\nsummary: Plain words.\nsays: Plain words.\nstandards:\n  - id: plain\n    says: Use plain words.\n    rules: []\n' +
-      CASES
+      markedOf('style')
     const p = await fresh({ 'directions/style.yaml': style })
     p.write('a.yaml', 'add:\n  - { id: units-a, says: Units., rules: [ { id: units, says: "Units are named", checkedBy: linter } ] }\n')
     p.write('b.yaml', 'add:\n  - { id: units-b, says: Units., rules: [ { id: units, says: "Units are named", checkedBy: linter } ] }\n')

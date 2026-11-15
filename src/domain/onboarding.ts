@@ -2,9 +2,9 @@
 // person decides before any store exists (ruling 1: files first). One file of .work/assess holds
 // one direction; .work/assess/roles.yaml holds the onboarding state of each role, apart from the
 // config draft (P4). Nothing here is stored as an event: the store starts with the result only.
-import { Schema, SchemaGetter } from 'effect'
+import { Schema } from 'effect'
 import { Principle } from './closed.ts'
-import { CaseFile, CasesFile, firstSentence, FlowStep, RoleFile, StandardFile } from './files.ts'
+import { Example, Examples, FlowStep, RoleFile, StandardFile } from './files.ts'
 import { DirectionId, NonBlank, RoleName } from './ids.ts'
 import type { NonEmpty } from './model.ts'
 
@@ -17,11 +17,11 @@ const Request = Schema.Union([
   Schema.TaggedStruct('Revise', { words: NonBlank }),
 ])
 
-// page: AiQuestion. What the AI must know to draft a direction: it names a case, and gives the
-// options A and B (ruling 5). The files of onboarding hold a case in either form (CaseFile).
+// page: AiQuestion. What the AI must know to draft a direction: it names an example, and gives
+// the options A and B (ruling 5).
 export const AiQuestion = Schema.Struct({
   says: NonBlank,
-  case: CaseFile,
+  example: Example,
   options: Schema.Tuple([Text, Text]),
   answer: Schema.Union([
     Schema.TaggedStruct('Open', {}),
@@ -31,48 +31,45 @@ export const AiQuestion = Schema.Struct({
 export type AiQuestion = typeof AiQuestion.Type
 
 // What a draft says: its summary and its flow (Nanda, 2026-11-15), its words, and its standards;
-// each rule names the role that the AI proposes to check it. The file of an onboarding that
-// started before them has neither: there, the summary is the first sentence of says, and the flow
-// is none.
+// each rule names the role that the AI proposes to check it.
 const Content = Schema.Struct({
   summary: NonBlank,
   flow: Schema.Array(FlowStep),
   says: Text,
   standards: Schema.Array(StandardFile),
 })
-const ContentFile = Schema.Struct({
-  ...Content.fields,
-  summary: Schema.optionalKey(NonBlank),
-  flow: Schema.optionalKey(Schema.Array(FlowStep)),
+// What the draft said before the host drafted it again (Nanda, 2026-11-15): the page shows what
+// changed.
+const Previous = Schema.Struct({
+  summary: NonBlank,
+  says: Text,
+  standards: Schema.Array(StandardFile),
 })
-const DraftContent = Schema.toEncoded(ContentFile).pipe(
-  Schema.decodeTo(Content, {
-    decode: SchemaGetter.transform((c) => ({
-      summary: c.summary ?? firstSentence(c.says),
-      flow: c.flow ?? [],
-      says: c.says,
-      standards: c.standards,
-    })),
-    encode: SchemaGetter.transform((c) => c),
-  }),
-)
+export type Previous = typeof Previous.Type
 
+// Where a direction comes from.
+export const Asked = Schema.Union([
+  Schema.TaggedStruct('Found', {}), // the host found it in the project
+  Schema.TaggedStruct('New', { principle: NonBlank, example: Schema.NullOr(Text) }),
+  Schema.TaggedStruct('Company', { repo: Text, path: Text }),
+])
 // page: OnboardingDirection. One file of .work/assess: where the direction comes from, the
-// host's draft with its cases (3 or more, real), the questions, the person's request, the accept.
+// host's draft with its examples and what the last draft said, the questions, the person's
+// request, the accept.
 export const OnboardingDirection = Schema.Struct({
   id: DirectionId,
-  asked: Schema.Union([
-    Schema.TaggedStruct('Found', {}), // the host found it in the project
-    Schema.TaggedStruct('New', { principle: NonBlank, example: Schema.NullOr(Text) }),
-    Schema.TaggedStruct('Company', { repo: Text, path: Text }),
-  ]),
+  asked: Asked,
+  // Reset: the file was in an older shape, so the reader did not read its draft (Nanda,
+  // 2026-11-15: no old shape reads); the host drafts it again.
   draft: Schema.Union([
     Schema.TaggedStruct('Drafting', {}),
+    Schema.TaggedStruct('Reset', {}),
     Schema.TaggedStruct('Drafted', {
       name: Text,
       from: Schema.Array(Principle),
-      content: DraftContent,
-      cases: CasesFile,
+      content: Content,
+      previous: Schema.optionalKey(Previous),
+      examples: Examples,
     }),
   ]),
   questions: Schema.Array(AiQuestion),
@@ -80,6 +77,9 @@ export const OnboardingDirection = Schema.Struct({
   accepted: Schema.Union([Waiting, Accepted]),
 })
 export type OnboardingDirection = typeof OnboardingDirection.Type
+// The status of a file in an older shape, which the host drafts again.
+export const resetWords = (id: string): string =>
+  `${id} is not in the current shape: the host drafts it again`
 
 // The state that the list of the directions page shows, derived from one file (core/derived
 // onboardingStateOf).

@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ok, started, tokenIn } from './harness.js'
+import { EXAMPLES, ok, started, tokenIn } from './harness.js'
 
 const yamlOf = (p) => Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8'))
 const EDITOR = `tier: low
@@ -17,7 +17,6 @@ acts: [{ review: [writer] }]
 persistence: { persistent: false, why: It checks one section once. }
 icon: eye
 `
-const CASE = '  - { file: docs/facts.md, line: 5, excerpt: The export ran twice for one merchant., fit: Follows }\n'
 const drafted = (out) => out.match(/^(e\d+): an adjustment: /)[1]
 
 describe('an adjustment of a role', () => {
@@ -85,19 +84,21 @@ describe('an adjustment of a role', () => {
 })
 
 describe('an adjustment of a direction', () => {
-  test('new cases are drafted and accepted; a retire is rejected, and its drafter sees why', async () => {
+  test('new examples are drafted and accepted; a retire is rejected, and its drafter sees why', async () => {
     const { p } = await started()
-    p.write('cases.yaml', `cases:\n${CASE}${CASE}${CASE}`)
-    const cases = drafted(ok(await p.agent('adjust cases tsd-writing --file=cases.yaml --by=host')).out)
-    // Nanda, 2026-11-15: a case is a ladder to an output, one line for each rung (was: one line).
-    expect(ok(await p.nanda(`adjust show ${cases}`)).out).toContain(
-      `${cases} give tsd-writing 3 new cases, drafted by host, a model run outside any task · waits for the accept of Nanda\n` +
-        '  Follows\n    Output · docs/facts.md:5 "The export ran twice for one merchant."\n  Follows\n',
+    // Nanda, 2026-11-15: the examples of the marked steps of the flow (was: 3 cases).
+    const real = '{ file: docs/facts.md, line: 5, excerpt: The export ran twice for one merchant. }'
+    p.write('examples.yaml', EXAMPLES.replace('{ file: docs/tsd.md, line: 3, excerpt: "## Introduction" }', real))
+    const examples = drafted(ok(await p.agent('adjust examples tsd-writing --file=examples.yaml --by=host')).out)
+    const step4 =
+      '  step 4 · writer -> docs/tsd.md\n    Follows\n' +
+      '      output · docs/facts.md:5 "The export ran twice for one merchant."\n    Breaks\n' +
+      '      output · written by the host: "## Introduction and design, in one section"\n'
+    expect(ok(await p.nanda(`adjust show ${examples}`)).out).toContain(
+      `${examples} give tsd-writing 4 new examples, drafted by host, a model run outside any task · waits for the accept of Nanda\n${step4}`,
     )
-    expect(ok(await p.nanda(`adjust accept ${cases}`, 'accept')).out).toContain(`${cases} is accepted: give tsd-writing 3 new cases.`)
-    expect(ok(await p.nanda('direction show tsd-writing')).out).toContain(
-      'cases:\n  Follows · current\n    Output · docs/facts.md:5 "The export ran twice for one merchant."\n  Follows · current\n',
-    )
+    expect(ok(await p.nanda(`adjust accept ${examples}`, 'accept')).out).toContain(`${examples} is accepted: give tsd-writing 4 new examples.`)
+    expect(ok(await p.nanda('direction show tsd-writing')).out).toContain(`examples:\n${step4}`)
     const retire = drafted(ok(await p.agent('adjust retire tsd-writing --by=host')).out)
     expect(ok(await p.nanda(`adjust reject ${retire} --reason="the task still follows it"`)).out).toContain(
       `${retire} is rejected; work waiting shows the reason to its drafter.`,

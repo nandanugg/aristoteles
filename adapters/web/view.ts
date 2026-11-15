@@ -51,16 +51,17 @@ import {
   type AssignmentId,
   type By,
   type CanvasRow,
-  type Case,
-  type CaseView,
   type Decision,
   type Direction,
   type DirectionCard,
   type DirectionView,
   type DirView,
   type DraftChange,
+  type Example,
+  type ExampleView,
   type FlowStep,
   type FlowStepView,
+  isSpot,
   type OnboardingDirection,
   type OnboardingView,
   type Owner,
@@ -78,6 +79,7 @@ import {
   type Spot,
   type SpotView,
   type Standard,
+  type StandardFile,
   type Task,
   type TaskCard,
   type TaskId,
@@ -721,13 +723,15 @@ export const projectView = (d: Derived, id: string, ctx: ViewContext): ProjectVi
 // The directions of a top task: each one with its version now, its standards and rules, the
 // versions made during the project, and the drafts that wait.
 // The standards of a version, each rule with the role that checks it.
-// A step of the flow of a direction for the page: no file or line is null (Nanda, 2026-11-15).
+// A step of the flow of a direction for the page: no file or line is null, an unmarked step uses
+// none (Nanda, 2026-11-15).
 const flowStepView = (s: FlowStep): FlowStepView => ({
   from: s.from,
   to: s.to,
   says: s.says,
   file: s.file ?? null,
   line: s.line ?? null,
+  uses: s.uses ?? [],
 })
 const standardsOf = (w: Work, v: Version<Direction>): DirectionView['standards'] =>
   v.standards.map((entry) => {
@@ -995,8 +999,8 @@ const filesOf = (d: Derived, task: TaskId, ctx: ViewContext) => {
 
 // --- the onboarding pages and the gear (GET /api/onboarding) --------------------------------
 
-// The lines of a file around a case (Nanda, 2026-11-15): the lines of its excerpt, at the place
-// nearest to the line that the case names, or that line when the excerpt is not there; and 3
+// The lines of a file around a spot (Nanda, 2026-11-15): the lines of its excerpt, at the place
+// nearest to the line that the spot names, or that line when the excerpt is not there; and 3
 // lines above and below. A long line is cut, so a minified file stays small on the page.
 const AROUND = 3
 const LINE_CHARS = 240
@@ -1019,8 +1023,9 @@ const aroundOf = (text: string | null, s: Spot): SpotView['around'] => {
   }))
 }
 
-// Each spot of a case with its state and its code (ruling 4): each file is read once a view.
-const caseReader = (dir: string) => {
+// Each real sample of an example with its state and its code (ruling 4), and the host's words as
+// they are: each file is read once a view.
+const exampleReader = (dir: string) => {
   const texts = new Map<string, string | null>()
   const textOf = (file: string): string | null => {
     if (!texts.has(file)) {
@@ -1039,12 +1044,47 @@ const caseReader = (dir: string) => {
     current: spotCurrent(textOf(s.file), s),
     around: aroundOf(textOf(s.file), s),
   })
-  return (c: Case): CaseView => ({
-    fit: c.fit,
-    via: c.via.map((r) => ({ name: r.name, ...spotOf(r) })),
-    output: spotOf(c.output),
+  const sampleOf = (s: Example['output']): ExampleView['output'] =>
+    isSpot(s) ? spotOf(s) : { written: s.written }
+  return (e: Example): ExampleView => ({
+    step: e.step,
+    fit: e.fit,
+    input: e.input ? sampleOf(e.input) : null,
+    output: sampleOf(e.output),
   })
 }
+
+// The words of a direction as one text for its diff (Nanda, 2026-11-15): the summary, the words,
+// then each standard with each rule and its checker.
+type Words = {
+  readonly summary: string
+  readonly says: string
+  readonly standards: DirectionCard['standards']
+}
+const wordsText = (v: Words): string =>
+  [
+    v.summary,
+    v.says.trimEnd(),
+    ...v.standards.map((s) =>
+      [
+        `Standard ${s.id}: ${s.says.trimEnd()}`,
+        ...s.rules.map(
+          (r) => `  Rule ${r.id} (checked by ${r.checkedBy ?? 'the decider'}): ${r.says.trimEnd()}`,
+        ),
+      ].join('\n'),
+    ),
+  ].join('\n\n')
+// The words against the ones before them; with none before, every line comes.
+const diffOf = (title: string, before: Words | undefined, now: Words): DraftChange => ({
+  direction: title,
+  lines: lineDiff(before ? wordsText(before) : '', wordsText(now)),
+})
+const standardsView = (standards: ReadonlyArray<StandardFile>): DirectionCard['standards'] =>
+  standards.map((st) => ({
+    id: st.id,
+    says: st.says,
+    rules: st.rules.map((r) => ({ id: r.id, says: r.says, checkedBy: r.checkedBy ?? null })),
+  }))
 
 const STATE_WORD = {
   Loading: 'loading',
@@ -1065,9 +1105,12 @@ const originOf = (asked: OnboardingDirection['asked']): string => {
 // One file of .work/assess, for the directions page.
 const onboardingDirectionCard = (
   f: OnboardingDirection,
-  caseOf: (c: Case) => CaseView,
+  exampleOf: (e: Example) => ExampleView,
 ): DirectionCard => {
   const drafted = f.draft._tag === 'Drafted' ? f.draft : undefined
+  const words = drafted && { ...drafted.content, standards: standardsView(drafted.content.standards) }
+  const last = drafted?.previous
+  const title = last ? 'The last draft → this draft' : 'The first draft: every line is new'
   const asked = f.asked
   return {
     id: f.id,
@@ -1081,19 +1124,19 @@ const onboardingDirectionCard = (
     summary: drafted?.content.summary ?? null,
     flow: (drafted?.content.flow ?? []).map(flowStepView),
     says: drafted?.content.says ?? null,
-    standards: (drafted?.content.standards ?? []).map((st) => ({
-      id: st.id,
-      says: st.says,
-      rules: st.rules.map((r) => ({ id: r.id, says: r.says, checkedBy: r.checkedBy ?? null })),
-    })),
-    cases: (drafted?.cases ?? []).map(caseOf),
+    standards: words?.standards ?? [],
+    diff: words
+      ? diffOf(title, last && { ...last, standards: standardsView(last.standards) }, words)
+      : null,
+    examples: (drafted?.examples ?? []).map(exampleOf),
     questions: f.questions.map((q) => ({
       says: q.says,
-      case: caseOf(q.case),
+      example: exampleOf(q.example),
       options: q.options,
       answer: q.answer._tag === 'Chosen' ? q.answer.option : null,
     })),
     request: f.request._tag === 'Revise' ? f.request.words : null,
+    reset: f.draft._tag === 'Reset',
   }
 }
 
@@ -1124,7 +1167,7 @@ export const onboardingFilesView = (
   settings: Settings,
   dir: string,
 ): OnboardingView => {
-  const caseOf = caseReader(dir)
+  const exampleOf = exampleReader(dir)
   const leads = files.roles.filter(
     (r) => r.file.kind === 'agent' && r.file.tier === 'high' && r.file.persistence.persistent,
   )
@@ -1141,22 +1184,27 @@ export const onboardingFilesView = (
   )
   return {
     stage: 'files',
-    directions: files.directions.map((f) => onboardingDirectionCard(f, caseOf)),
+    directions: files.directions.map((f) => onboardingDirectionCard(f, exampleOf)),
     roles: [...roles.filter((r) => r.found !== null), ...roles.filter((r) => r.found === null)],
     adjustments: [],
   }
 }
 
-// After the store (the gear, ruling 13): the official directions with their cases, the roles of
+// After the store (the gear, ruling 13): the official directions with their examples, the roles of
 // the stored config, and the adjustments that wait for the person.
 export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingView => {
   const w = workOf(d)
-  const caseOf = caseReader(ctx.dir)
+  const exampleOf = exampleReader(ctx.dir)
   const directions = [...w.directions.values()]
     .filter((x) => d.states.directions.get(x.id)?._tag === 'Official')
     .map((x): DirectionCard => {
       const v = currentOf(w, x.id)
       const from = x.source._tag === 'External' ? `, from ${x.source.path} of ${x.source.repo}` : ''
+      const standards = standardsOf(w, v)
+      const before = x._tag === 'Official' ? x.versions[v.number - 2] : undefined
+      const title = before
+        ? `${versionIdOf(before)} → ${versionIdOf(v)}`
+        : `${versionIdOf(v)}, the first version: every line is new`
       return {
         id: x.id,
         name: x.name,
@@ -1167,10 +1215,15 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
         summary: v.summary,
         flow: v.flow.map(flowStepView),
         says: v.says,
-        standards: standardsOf(w, v),
-        cases: x.cases.map(caseOf),
+        standards,
+        diff: diffOf(title, before && { ...before, standards: standardsOf(w, before) }, {
+          ...v,
+          standards,
+        }),
+        examples: x.examples.map(exampleOf),
         questions: [],
         request: null,
+        reset: false,
       }
     })
   const roles = Object.entries(w.config.roles).map(

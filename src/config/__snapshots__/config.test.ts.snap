@@ -1069,6 +1069,16 @@ exports[`checkWorkspace a dot path with a slash 1`] = `
 exports[`readDirection a minimal direction 1`] = `
 {
   "ok": {
+    "flow": [
+      {
+        "from": "writer",
+        "says": "writes",
+        "to": "doc",
+        "uses": [
+          "tsd",
+        ],
+      },
+    ],
     "from": [],
     "id": "tsd",
     "name": "TSD",
@@ -1085,6 +1095,16 @@ exports[`readDirection a full direction 1`] = `
 {
   "ok": {
     "approvedBy": "checker",
+    "flow": [
+      {
+        "from": "writer",
+        "says": "writes",
+        "to": "doc",
+        "uses": [
+          "tsd",
+        ],
+      },
+    ],
     "from": [
       "Logos",
       "Mnēmē",

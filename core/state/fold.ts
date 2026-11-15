@@ -17,7 +17,7 @@ import {
 import { actOf, damaged, put, unchanged } from './act.ts'
 import { checkpointStep } from './checkpoint.ts'
 import { briefed, finish, freed, given, report } from './steps/assignments.ts'
-import { casesAdded, drafted, suggested } from './steps/directions.ts'
+import { examplesAdded, drafted, suggested } from './steps/directions.ts'
 import { confirmed, forwarded } from './steps/forwards.ts'
 import {
   answered,
@@ -123,7 +123,7 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
   'Revision.Drafted': (w, e, r) => drafted(w, e, actOf(r), r),
   'Revision.Revised': (w, e, r) => drafted(w, e, actOf(r), r),
   'Revision.Imported': (w, e, r) => drafted(w, e, actOf(r), r),
-  'Revision.CasesAdded': casesAdded,
+  'Revision.ExamplesAdded': examplesAdded,
   'Permission.Granted': (w, e, r) => granted(w, e, actOf(r)),
   'Permission.Revoked': (w, e, r) => revoked(w, e, actOf(r), r),
   'Source.Moved': (w, e) =>

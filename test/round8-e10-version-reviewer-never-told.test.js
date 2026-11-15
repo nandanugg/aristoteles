@@ -5,21 +5,17 @@
 // follows the direction (the words: own). An architect of another task tree is named as the
 // reviewer, and nothing ever tells it to review.
 import { describe, expect, test } from 'bun:test'
-import { DIRECTION, init, ok, project, tokenIn } from
+import { DIRECTION, init, markedOf, ok, project, tokenIn } from
   './harness.js'
 
-// P10 rejected, onboarding 2026-11-14: a new direction starts with at least 3 cases.
+// P10 rejected, onboarding 2026-11-14: a new direction starts with its examples.
 // Nanda, 2026-11-15: a direction has a summary.
 const STYLE = `id: page-style
 name: Page style
 owner: Nanda
 summary: Every page reads the same way.
 says: Pages read the same way.
-cases:
-  - { file: docs/tsd.md, line: 1, excerpt: "# TSD", fit: Follows }
-  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
-  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
-standards:
+${markedOf('page-style')}standards:
   - id: short-lines
     says: Lines stay short.
     rules:

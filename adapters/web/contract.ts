@@ -19,12 +19,12 @@ import {
   TaskId,
   Time,
   type CanvasRow as UiCanvasRow,
-  type CaseView as UiCaseView,
   type Decision as UiDecision,
   type DiffView as UiDiffView,
   type DirectionCard as UiDirectionCard,
   type DirectionView as UiDirectionView,
   type DirView as UiDirView,
+  type ExampleView as UiExampleView,
   type OnboardingView as UiOnboardingView,
   type Owner as UiOwner,
   type PageAct as UiPageAct,
@@ -320,6 +320,7 @@ const FlowView = Schema.Array(
     says: Text,
     file: Schema.NullOr(Text),
     line: Schema.NullOr(Schema.Number),
+    uses: Schema.Array(Text),
   }),
 )
 export const DirectionView = Schema.Struct({
@@ -357,14 +358,16 @@ const SpotView = Schema.Struct({
   current: Schema.Boolean,
   around: Schema.Array(Schema.Struct({ line: Schema.Number, text: Text, mark: Schema.Boolean })),
 })
-export const CaseView = Schema.Struct({
+const SampleView = Schema.Union([SpotView, Schema.Struct({ written: Text })])
+export const ExampleView = Schema.Struct({
+  step: Schema.Number,
   fit: Schema.Literals(['Follows', 'Breaks']),
-  via: Schema.Array(Schema.Struct({ name: Text, ...SpotView.fields })),
-  output: SpotView,
+  input: Schema.NullOr(SampleView),
+  output: SampleView,
 })
 export const QuestionView = Schema.Struct({
   says: Text,
-  case: CaseView,
+  example: ExampleView,
   options: Schema.Tuple([Text, Text]),
   answer: Schema.NullOr(Schema.Literals(['A', 'B'])),
 })
@@ -379,9 +382,11 @@ export const DirectionCard = Schema.Struct({
   flow: FlowView,
   says: Schema.NullOr(Text),
   standards: StandardsView,
-  cases: Schema.Array(CaseView),
+  diff: Schema.NullOr(DraftChange),
+  examples: Schema.Array(ExampleView),
   questions: Schema.Array(QuestionView),
   request: Schema.NullOr(Text),
+  reset: Schema.Boolean,
 })
 export const RoleCard = Schema.Struct({
   role: Text,
@@ -576,7 +581,7 @@ export type Agreements = [
   Must<Agree<typeof OnboardingView.Type, UiOnboardingView>>,
   Must<Agree<typeof DirectionCard.Type, UiDirectionCard>>,
   Must<Agree<typeof RoleCard.Type, UiRoleCard>>,
-  Must<Agree<typeof CaseView.Type, UiCaseView>>,
+  Must<Agree<typeof ExampleView.Type, UiExampleView>>,
   Must<Agree<typeof QuestionView.Type, UiQuestionView>>,
   Must<Agree<typeof ServerMessage.Type, UiServerMessage>>,
   Must<Agree<typeof PageMessage.Type, UiPageMessage>>,

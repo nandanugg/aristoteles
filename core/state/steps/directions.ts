@@ -5,10 +5,10 @@
 import {
   type AnswerId,
   type By,
-  type Case,
   type Deciders,
   type Direction,
   type DirectionFile,
+  type Example,
   type DirectionId,
   type EventOf,
   type EventRef,
@@ -163,9 +163,9 @@ interface DraftFields {
   readonly why: Why
   readonly origin: RevisionOrigin
 }
-// The cases of a new direction's draft: those of its file, or none yet for a company draft.
+// The examples of a new direction's draft: those of its file, or none yet for a company draft.
 interface NewFields {
-  readonly cases: ReadonlyArray<Case>
+  readonly examples: ReadonlyArray<Example>
 }
 // A model writes each draft: an assignment, or a run outside any task.
 const reviserOf = (by: By): Reviser => {
@@ -204,10 +204,10 @@ const fresh = (
         ? ({ _tag: 'Owner' } as const)
         : ({ _tag: 'Deciders', deciders: approvedBy } as const),
   }
-  // A drafted direction has no cases yet: the accept of its first version gives it its draft's.
+  // A drafted direction has no examples yet: the accept of its first version gives it its draft's.
   const direction: Direction =
     existing === undefined
-      ? { _tag: 'NewDirection', id: input.id, owner, source: input.source, ...fields, cases: [] }
+      ? { _tag: 'NewDirection', id: input.id, owner, source: input.source, ...fields, examples: [] }
       : { ...existing, ...fields }
   const edit = { add: input.add, remove: [], replace: [] }
   const standards = draftStandards(w, [], edit, scratch, x.id)
@@ -224,7 +224,7 @@ const fresh = (
     why: input.why,
     when: x.when,
     at: x.at,
-    cases: input.cases,
+    examples: input.examples,
   }
   return { direction, revision, scratch }
 }
@@ -302,13 +302,13 @@ const planDrafted = (
     approvedBy,
     source: { _tag: 'Local' } as const,
     summary: d.summary,
-    flow: d.flow ?? [],
+    flow: d.flow,
     says: d.says,
     add,
     answerIds: data.answers,
     why: data.why,
     origin: { _tag: 'Written', by: reviserOf(by) } as const,
-    cases: data.cases,
+    examples: data.examples,
   }
   return fresh(w, x, input, scratch)
 }
@@ -338,13 +338,13 @@ export const onboarded = (b: Build, od: OnboardedDirection, event: EventRef, whe
     approvedBy,
     source,
     summary: d.summary,
-    flow: d.flow ?? [],
+    flow: d.flow,
     says: d.says,
     add,
     answerIds: [],
     why: { _tag: 'NoneGiven' } as const,
     origin: { _tag: 'Onboarded', event } as const,
-    cases: od.cases,
+    examples: od.examples,
   }
   const planned = fresh(w, x, input, scratch)
   b.work = {
@@ -413,7 +413,8 @@ const planImported = (
   const origin: RevisionOrigin = { _tag: 'Imported', commit: source.commit, ref: source.ref }
   const why: Why = { _tag: 'NoneGiven' }
   // A company folder has no summary: its words are the company's (Nanda, 2026-11-15). It has no
-  // flow either: a new one has none, and a change keeps the flow of the current version.
+  // flow either: a new one gets its flow with its examples (ExamplesAdded), and a change keeps the
+  // flow of the current version.
   const summary = firstSentence(folder.says)
   if (official === undefined) {
     const add = files.map((s) => buildStandard(w, s, undefined, entryIn(x.id, s.id), scratch))
@@ -432,7 +433,7 @@ const planImported = (
       answerIds: [],
       why,
       origin,
-      cases: [],
+      examples: [],
     }
     return fresh(w, x, input, scratch)
   }
@@ -522,8 +523,8 @@ export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
     revision: draft,
     when,
   }
-  const cases = x._tag === 'New' ? x.cases : []
-  b.work = { ...w, directions: put(w.directions, d.id, Moves.makeOfficial(d, version, cases)) }
+  const examples = x._tag === 'New' ? x.examples : []
+  b.work = { ...w, directions: put(w.directions, d.id, Moves.makeOfficial(d, version, examples)) }
   b.created.push(versionId(d.id, version.number))
   if (from === undefined) return
   for (const text of lessonsOf(b.work, d.id, contentOf(from), contentOf(version))) {
@@ -534,12 +535,12 @@ export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
   }
 }
 
-// A model gives a company draft of a new direction its cases (P10 rejected, onboarding
-// 2026-11-14); a draft of a change has none to take.
-export const casesAdded = (work: Work, e: EventOf<'Revision.CasesAdded'>, r: Seq): Stepped => {
+// A model gives a company draft of a new direction its flow and its examples (P10 rejected,
+// onboarding 2026-11-14); a draft of a change has none to take.
+export const examplesAdded = (work: Work, e: EventOf<'Revision.ExamplesAdded'>, r: Seq): Stepped => {
   const x = work.drafts.get(e.id)
   if (x?._tag !== 'New') return damaged(r, `${e.id} is no draft of a new direction`)
-  const added = Moves.MOVES['Revision.CasesAdded'](x, e.move.cases)
+  const added = Moves.MOVES['Revision.ExamplesAdded'](x, e.move.flow, e.move.examples)
   return { work: { ...work, drafts: put(work.drafts, e.id, added) }, created: [] }
 }
 

@@ -268,7 +268,10 @@ const roles = async (): Promise<Obj> =>
 
 describe('readDirection', () => {
   // Nanda, 2026-11-15: a direction has a summary.
-  const direction = (o: Obj): Obj => ({ id: 'tsd', name: 'TSD', summary: 'U', says: 'S', owner: 'Nanda', ...o })
+  // Nanda, 2026-11-15: a direction has a flow, a step of it marked.
+  const marked = [{ from: 'writer', to: 'doc', says: 'writes', uses: ['tsd'] }]
+  const direction = (o: Obj): Obj =>
+    ({ id: 'tsd', name: 'TSD', summary: 'U', flow: marked, says: 'S', owner: 'Nanda', ...o })
   const cases: Array<[string, Obj]> = [
     ['a minimal direction', direction({})],
     ['a full direction', direction({ from: ['Logos', 'Mnēmē'], maxStandards: 5, approvedBy: 'checker', standards: [{ id: 's1', says: 'a', where: { section: 'x' }, rules: [{ id: 'r1', says: 'b', checkedBy: 'checker', supersedes: ['r0'] }, { id: 'r2', says: 'c' }] }] })],
@@ -314,16 +317,20 @@ describe('readDirection', () => {
 
   // Nanda, 2026-11-15: a direction has a flow: the steps from the first act down to the output,
   // each with where the project defines it when it does; a step from an actor to itself is an act
-  // on its own. A file with no flow reads with none.
+  // on its own. A file with no flow is refused.
   test('the flow of a direction reads, and a step with no words or a line with no file is refused', async () => {
     const flow = [
       { from: 'Person', to: 'architect', says: 'asks for a TSD' },
-      { from: 'writer', to: 'writer', says: 'fills the template', file: 'docs/t.md', line: 3 },
+      { from: 'writer', to: 'writer', says: 'fills the template', file: 'docs/t.md', line: 3, uses: ['tsd'] },
     ]
     expect(await runNew(next.readDirection('d.yaml', direction({ flow }), people))).toMatchObject({
       ok: { flow },
     })
-    expect(((await runNew(next.readDirection('d.yaml', direction({}), people))) as Obj).ok.flow).toBeUndefined()
+    expect(await runNew(next.readDirection('d.yaml', direction({ flow: undefined }), people))).toEqual({
+      refused:
+        'd.yaml: flow is required: the steps from the first act down to the output, each step ' +
+        'that the direction governs with uses',
+    })
     const bare = direction({ flow: [{ from: 'Person', to: 'architect' }] })
     expect(await runNew(next.readDirection('d.yaml', bare, people))).toEqual({
       refused:
@@ -333,6 +340,29 @@ describe('readDirection', () => {
     expect(await runNew(next.readDirection('d.yaml', lineOnly, people))).toEqual({
       refused: 'd.yaml: flow step 1: a line needs its file',
     })
+  })
+
+  // Nanda, 2026-11-15: a step that the direction governs names the ids that apply there: the
+  // direction, a standard, a rule of it; a flow marks at least one step.
+  test('the uses of a flow step name ids of the direction, and a flow marks a step', async () => {
+    const standards = [{ id: 's1', says: 'a', rules: [{ id: 'r2', says: 'b' }] }]
+    const step = (uses?: unknown) => ({ from: 'writer', to: 'doc', says: 'writes', uses })
+    const read = (flow: unknown) => runNew(next.readDirection('d.yaml', direction({ flow, standards }), people))
+    expect(await read([step(['tsd', 's1', 'r2'])])).toMatchObject({ ok: { flow: [step(['tsd', 's1', 'r2'])] } })
+    expect(await read([step(['tsd', 'r9'])])).toEqual({
+      refused: 'd.yaml: flow step 1 uses "r9", which is not tsd or a standard or rule of it',
+    })
+    expect(await read([])).toEqual({
+      refused: 'd.yaml: no flow step has uses: mark each step that the direction governs with its ids',
+    })
+    expect(await read([step(), step()])).toEqual({
+      refused: 'd.yaml: no flow step has uses: mark each step that the direction governs with its ids',
+    })
+    for (const uses of [[], 'tsd', [' ']]) {
+      expect(await read([step(uses)])).toEqual({
+        refused: 'd.yaml: flow step 1: uses lists the ids that apply there, such as [<direction id>, s1, r2]',
+      })
+    }
   })
 
   // A where is a filter over the closed context keys.

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { type DirView, OnboardingView } from '../contract.ts'
 import { RoleGrid } from './agents.ts'
 import { api, attempt, type OnboardingActJson, postOnboarding } from './api.ts'
-import { CaseBlock, Cases, DirectionText } from './direction.ts'
+import { DirectionReview, ExampleBlock } from './direction.ts'
 import { Inline } from './markdown.ts'
 
 type DirData = typeof DirView.Type
@@ -55,9 +55,9 @@ const nextAfter = (list: ReadonlyArray<Card>, id: string): string | undefined =>
   )?.id
 }
 
-// The right column: the direction by level (its standards and rules, each rule with the role
-// that the AI proposes to check it), its cases beside it on a wide screen, the questions, and the
-// acts. An accept or a remove opens the next direction (onDone).
+// The right column: the direction for its review (its summary, its marked flow, what its words
+// changed since the last draft, each rule with the role that the AI proposes to check it, and its
+// examples), the questions, and the acts. More examples are a Revise in words. An accept or a remove opens the next direction (onDone).
 function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
   const [words, setWords] = useState('')
   const open = card.questions.filter((q) => q.answer === null)
@@ -80,7 +80,7 @@ function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
     const n = open.indexOf(q)
     return html`<fieldset class="question" aria-label=${`question ${i + 1}`}>
       <legend><${Inline} text=${q.says} /></legend>
-      <ul class="cases"><${CaseBlock} c=${q.case} /></ul>
+      <ul class="examples"><${ExampleBlock} e=${q.example} /></ul>
       ${(['A', 'B'] as const).map((o, k) => html`<label class="option">
         <input type="radio" name=${`${card.id}-q${i}`} disabled=${n < 0}
           checked=${n < 0 ? q.answer === o : chosen[n] === o}
@@ -94,18 +94,17 @@ function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
     <div class="muted"><code>${card.id}</code> · ${card.origin}</div>
     ${card.principle ? html`<p><strong>The principle:</strong> ${card.principle}</p>` : ''}
     ${card.example ? html`<p><strong>An example:</strong> ${card.example}</p>` : ''}
-    ${card.state === 'loading' ? html`<p class="waits">The host drafts it${
-      card.request ? `, from your words: "${card.request}"` : ''}.</p>` : ''}
+    ${card.state === 'loading' ? html`<p class="waits">${card.reset
+      ? `${card.id} is not in the current shape: the host drafts it again`
+      : `The host drafts it${card.request ? `, from your words: "${card.request}"` : ''}`}.</p>`
+      : ''}
     <div class="direction-body">
-      <div class="direction-words">
-        <${DirectionText} card=${card} />
-        ${questions.length ? html`<div class="section-title">Questions of the AI</div>` : ''}
-        ${questions}
-        ${open.length ? html`<button class="btn primary"
-          disabled=${open.some((_, n) => !chosen[n])} onClick=${submit}>Submit the answers</button>`
-          : ''}
-      </div>
-      <div class="direction-cases"><${Cases} cases=${card.cases} /></div>
+      <${DirectionReview} card=${card} />
+      ${questions.length ? html`<div class="section-title">Questions of the AI</div>` : ''}
+      ${questions}
+      ${open.length ? html`<button class="btn primary"
+        disabled=${open.some((_, n) => !chosen[n])} onClick=${submit}>Submit the answers</button>`
+        : ''}
     </div>
     <label class="field"><span>What to change (Revise needs words; Accept needs none)</span>
       <textarea rows="3" value=${words} onInput=${(e: Event) => setWords(text(e))}></textarea>
@@ -137,8 +136,8 @@ function AddNew({ onAdded }: { onAdded: (id: string) => void }) {
   return html`<form class="add-form" aria-label="Add new direction"
     onSubmit=${(e: Event) => e.preventDefault()}>
     <h2>Add new direction</h2>
-    <p class="muted">Say the idea of the direction in your words. The AI drafts it with cases from
-      the code; it shows Loading until then.</p>
+    <p class="muted">Say the idea of the direction in your words. The AI drafts it with examples
+      from the project; it shows Loading until then.</p>
     <label class="field"><span>The principle (required)</span>
       <textarea rows="2" value=${principle} onInput=${(e: Event) => setPrinciple(text(e))}>
       </textarea></label>

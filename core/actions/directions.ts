@@ -2,7 +2,7 @@
 // are in drafts.ts.
 import { Effect } from 'effect'
 import type { Derived } from '../derived/index.ts'
-import { currentOf, labelOf, ruleAt, standardAt, within } from '../derived/reads.ts'
+import { currentOf, draftAt, labelOf, ruleAt, standardAt, within } from '../derived/reads.ts'
 import type { ActionInput, InputOf, WhyInput } from '../schema/actions.ts'
 import type { Refusal } from '../schema/errors.ts'
 import {
@@ -20,6 +20,7 @@ import {
   type ReviseFile,
   type Why,
   type Work,
+  usesProblem,
   whereRecord,
 } from '../schema/index.ts'
 import { readApprovedBy, readDirection, readFlow } from '../services/index.ts'
@@ -30,7 +31,7 @@ import {
   checkImported,
   checkRevised,
   DRAFT,
-  readCases,
+  readExamples,
   reviseAnswersFound,
 } from './drafts.ts'
 import { PERSON_ACTS } from './reviews.ts'
@@ -87,7 +88,7 @@ export const REFUSALS = {
     badFile: (file: string, what: string) => no(`${file}: ${what}`, 'Write', `correct ${file}`),
   },
   ImportCompany: { ...DRAFT },
-  AddCases: { cases: DRAFT.cases },
+  AddExamples: { examples: DRAFT.examples, uses: DRAFT.uses },
   Suggest: {
     noWords: () =>
       no('a suggestion says something: give its words', 'Write', 'write what you suggest'),
@@ -292,7 +293,7 @@ const asRevise = (w: Work, file: DirectionFile): ReviseFile => {
     .filter((s) => was.some((y) => y.id === s.id && shapeOf(y) !== shape(s)))
     .map((s) => ({ id: s.id, with: standard(s) }))
   const remove = was.filter((y) => !file.standards.some((s) => s.id === y.id)).map((y) => y.id)
-  const flow = file.flow ?? []
+  const flow = file.flow
   return {
     ...(file.summary !== now.summary ? { summary: file.summary } : {}),
     ...(JSON.stringify(flow) !== JSON.stringify(now.flow) ? { flow } : {}),
@@ -358,9 +359,9 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
     const direction = approvedBy === undefined ? base : { ...base, approvedBy }
     const drafted = { direction, answers, why }
     yield* checkDrafted(d, by, drafted)
-    // A new direction starts with its cases (P10 rejected, onboarding 2026-11-14).
-    const cases = yield* readCases(file, raw)
-    return [create('Revision', { _tag: 'Drafted', direction, cases, answers, why })]
+    // A new direction starts with its examples (P10 rejected, onboarding 2026-11-14).
+    const examples = yield* readExamples(file, raw, direction.flow)
+    return [create('Revision', { _tag: 'Drafted', direction, examples, answers, why })]
   })
 
 const ReviseDirection: Action<'ReviseDirection'> = ({ by, input }) =>
@@ -387,15 +388,26 @@ const ImportCompany: Action<'ImportCompany'> = ({ by, input }) =>
     return [create('Revision', { _tag: 'Imported', ...imported })]
   })
 
-// A model gives a company draft of a new direction its cases before the accept (P10 rejected,
-// onboarding 2026-11-14); the latest counts.
-const AddCases: Action<'AddCases'> = ({ by, input }) =>
+// A model gives a company draft of a new direction its flow in this project, its steps marked, and
+// its examples before the accept (P10 rejected, onboarding 2026-11-14); the latest counts.
+const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
+    const w = d.moment.work
     yield* allowed(d, by, input)
     const { file } = input.content
-    const cases = yield* readCases(file, yield* readYaml(d.moment.outside.cwd, file))
-    return [move('Revision', input.target.draft, { _tag: 'CasesAdded', cases })]
+    const raw = yield* readYaml(d.moment.outside.cwd, file)
+    const given = (raw as { readonly flow?: unknown } | null)?.flow
+    const flow = yield* readFlow(file, given).pipe(Effect.mapError(asWrite(file)))
+    const x = draftAt(w, input.target.draft)
+    const standards = x.standards.map((e) => {
+      const s = standardAt(w, e)
+      return { id: s.id, rules: s.rules.map((r) => ruleAt(w, r)) }
+    })
+    const marks = usesProblem(x.of, flow, standards)
+    if (marks !== undefined) return yield* Effect.fail(DRAFT.uses(`${file}: ${marks}`))
+    const examples = yield* readExamples(file, raw, flow)
+    return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow, examples })]
   })
 
 // --- suggestions and permissions -----------------------------------------------------------------
@@ -599,7 +611,7 @@ export const ACTIONS = {
   DraftDirection,
   ReviseDirection,
   ImportCompany,
-  AddCases,
+  AddExamples,
   Suggest,
   Grant,
   Revoke,

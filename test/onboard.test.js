@@ -8,16 +8,14 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  FLOW_FILES,
   git,
-  LADDER_FILES,
   ok,
   ONBOARD_CONFIG,
   ONBOARD_DIRECTION,
   ONBOARD_NEW,
   ONBOARD_QUESTIONS,
   onboardingProject,
-  withFlow,
-  withLadders,
 } from './harness.js'
 
 const ROLES = ['architect', 'section-lead', 'writer', 'linter']
@@ -56,18 +54,18 @@ describe('the whole onboarding at a terminal', () => {
     ok(await p.agent('onboard found code-proof'))
     p.write('tsd.yaml', ONBOARD_DIRECTION)
     expect(ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml')).out).toStartWith(
-      'tsd-writing: drafted, with 3 cases; it shows Ready.',
+      'tsd-writing: drafted, with 4 examples; it shows Ready.',
     )
     // Ruling 5: the person adds a new direction; its first draft names its id.
     expect(ok(await p.nanda('onboard add --principle="A section says one thing"')).out).toStartWith('new-1: a new direction')
     p.write('one.yaml', ONBOARD_NEW)
     expect(ok(await p.agent('onboard draft new-1 --file=one.yaml')).out).toStartWith('one-thing: drafted (it was new-1)')
-    // The host asks with a case and two options; the person answers; the host's wait wakes.
+    // The host asks with an example and two options; the person answers; the host's wait wakes.
     p.write('q.yaml', ONBOARD_QUESTIONS)
     ok(await p.agent('onboard ask one-thing --file=q.yaml'))
     // Nanda, 2026-11-15: a direction has a summary; status shows it under the line of a draft.
     expect(ok(await p.agent('onboard status')).out).toContain(
-      '  one-thing · Question · One thing per section · asked for by the person: "A section says one thing" · 3 cases\n' +
+      '  one-thing · Question · One thing per section · asked for by the person: "A section says one thing" · 3 examples\n' +
         '    summary: Each section of a TSD keeps to one topic, so a reader finds it fast.\n' +
         '    1 question for the person: work onboard show one-thing; work onboard answer one-thing --options=A',
     )
@@ -75,13 +73,15 @@ describe('the whole onboarding at a terminal', () => {
     expect(ok(await p.nanda('onboard show one-thing')).out).toContain(
       'name: One thing per section\n' +
         'summary: Each section of a TSD keeps to one topic, so a reader finds it fast.\n' +
+        'flow:\n  1. writer -> docs/tsd.md: writes one section [uses one-thing, one-heading]\n' +
         'from: Logos\nsays: Each section says one thing.\n',
     )
-    // Nanda, 2026-11-15: a case is a ladder to an output, one line for each rung (was: one line).
+    // Nanda, 2026-11-15: a question names an example of a marked step (was: a case, a ladder).
     expect(ok(await p.nanda('onboard show one-thing')).out).toContain(
       '  1. Does a section of facts count as one thing?\n' +
-        '    Follows · current\n' +
-        '      Output · docs/facts.md:3 "## Dedupe"\n' +
+        '    step 1 · writer -> docs/tsd.md\n' +
+        '      Follows\n' +
+        '        output · docs/facts.md:3 "## Dedupe"\n' +
         '     A: each fact is one thing\n     B: the facts together are one thing',
     )
     // Nanda, 2026-11-15: a reply names the direction and what each answer chose (was: the letters).
@@ -113,9 +113,9 @@ describe('the whole onboarding at a terminal', () => {
     const events = eventsOf(p)
     expect(events.map((e) => `${e.record}.${e.member}`)).toEqual(['Workflow.Defined'])
     const { directions } = JSON.parse(events[0].event).create
-    expect(directions.map((x) => [x.direction.id, x.direction.owner, x.cases.length, x.source._tag])).toEqual([
+    expect(directions.map((x) => [x.direction.id, x.direction.owner, x.examples.length, x.source._tag])).toEqual([
       ['one-thing', 'Nanda', 3, 'Local'],
-      ['tsd-writing', 'Nanda', 3, 'Local'],
+      ['tsd-writing', 'Nanda', 4, 'Local'],
     ])
     expect(ok(await p.nanda('direction show tsd-writing')).out).toContain(
       'tsd-writing@1 TSD writing (owner Nanda) · current\nmade from d2, drafted by the store start of onboarding (e1)',
@@ -142,14 +142,13 @@ const companyRepo = async () => {
   return { dir, folder, commit: git(dir, 'rev-parse', 'HEAD') }
 }
 // Nanda, 2026-11-15: a direction has a flow; the host writes the flow of a company direction in
-// this project.
+// this project, the steps that it governs marked, and the examples of those steps.
 const COMPANY_DRAFT = `checkedBy: linter
 flow:
-  - { from: writer, to: docs/tsd.md, says: puts each change under a flag, file: docs/tsd.md, line: 7 }
-cases:
-  - { file: docs/tsd.md, line: 3, excerpt: "## Introduction", fit: Follows }
-  - { file: docs/tsd.md, line: 5, excerpt: TODO, fit: Breaks }
-  - { file: docs/facts.md, line: 3, excerpt: "## Dedupe", fit: Follows }
+  - { from: writer, to: docs/tsd.md, says: puts each change under a flag, file: docs/tsd.md, line: 7, uses: [feature-flags, upper-snake] }
+examples:
+  - { step: 1, fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
+  - { step: 1, fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
 `
 const withCompany = async () => {
   const company = await companyRepo()
@@ -176,7 +175,10 @@ describe('a company direction in onboarding (ruling 6)', () => {
     // direction: its summary is the first sentence of the folder's words, under the heading.
     expect(directions[0].direction.summary).toBe('Each critical change is under a flag.')
     expect(directions[0].direction.flow).toEqual([
-      { from: 'writer', to: 'docs/tsd.md', says: 'puts each change under a flag', file: 'docs/tsd.md', line: 7 },
+      {
+        from: 'writer', to: 'docs/tsd.md', says: 'puts each change under a flag', file: 'docs/tsd.md', line: 7,
+        uses: ['feature-flags', 'upper-snake'],
+      },
     ])
     expect(directions[0].source).toEqual({
       _tag: 'External', repo: company.dir, path: company.folder, ref: { _tag: 'DefaultBranch' }, commit: company.commit,
@@ -239,75 +241,94 @@ describe('what onboarding refuses', () => {
     )
   })
 
-  test('a draft refuses a case whose excerpt is not in its file, and fewer than 3 cases', async () => {
+  // P10 rejected, onboarding 2026-11-14: a direction starts with real examples. Nanda, 2026-11-15:
+  // an output that follows and one that breaks for each marked step of the flow.
+  test('a draft refuses an example whose excerpt is not in its file, and a step with no break', async () => {
     const p = await drafted()
-    // P10 rejected, onboarding 2026-11-14: a direction starts with 3 real cases or more.
     p.write('stale.yaml', ONBOARD_DIRECTION.replace('excerpt: TODO', 'excerpt: DONE'))
     expect((await p.agent('onboard draft tsd-writing --file=stale.yaml')).err).toContain(
-      'refused: stale.yaml: case 3: "DONE" is not in docs/tsd.md',
+      'refused: stale.yaml: example 3: "DONE" is not in docs/tsd.md',
     )
-    p.write('few.yaml', ONBOARD_DIRECTION.replace(/ {2}- \{ file: docs\/tsd.md, line: 5.*\n/, ''))
-    expect((await p.agent('onboard draft tsd-writing --file=few.yaml')).err).toContain('refused: few.yaml: cases lists 2')
+    p.write('few.yaml', ONBOARD_DIRECTION.replace(/ {2}- step: 5\n {4}fit: Breaks\n(.*\n){2}/, ''))
+    expect((await p.agent('onboard draft tsd-writing --file=few.yaml')).err).toContain(
+      'refused: few.yaml: step 5 has no example that breaks the direction',
+    )
   })
 
-  // Nanda, 2026-11-15: a case is a ladder from the direction down to a real output.
-  test('a draft of ladders: show gives one line for each rung, and a stale rung is refused', async () => {
-    const p = onboardingProject(LADDER_FILES)
+  // Nanda, 2026-11-15: a direction has a flow, from the first act down to the output, the steps
+  // that it governs marked with their ids; its examples show by marked step, the input of a step
+  // that checks, real or written by the host.
+  test('a draft with a marked flow: show prints the marks, and the examples by step', async () => {
+    const p = onboardingProject(FLOW_FILES)
     p.write('draft.yaml', ONBOARD_CONFIG)
     ok(await p.agent('onboard config --file=draft.yaml'))
     ok(await p.agent('onboard found tsd-writing'))
-    const ladders = withLadders(ONBOARD_DIRECTION)
-    p.write('stale.yaml', ladders.replace('excerpt: Write one heading for each section.', 'excerpt: Write two headings.'))
-    expect((await p.agent('onboard draft tsd-writing --file=stale.yaml')).err).toContain(
-      'refused: stale.yaml: case 1, rung 2 (Writer skill): "Write two headings." is not in .claude/skills/writer/SKILL.md',
-    )
-    p.write('tsd.yaml', ladders)
+    p.write('tsd.yaml', ONBOARD_DIRECTION)
     ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
-    expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain(
-      'cases:\n' +
-        '  Follows · current\n' +
-        '    Instruction · CLAUDE.md:3 "Each TSD section says one thing."\n' +
-        '    Writer skill · .claude/skills/writer/SKILL.md:3 "Write one heading for each section."\n' +
-        '    Template · docs/template.md:3 "## Introduction"\n' +
-        '    Output · docs/tsd.md:3 "## Introduction"\n' +
-        '  Breaks · current\n' +
-        '    Instruction · CLAUDE.md:3 "Each TSD section says one thing."\n' +
-        '    Output · docs/tsd.md:5 "TODO"\n' +
-        '  Follows · current\n' +
-        '    Output · docs/facts.md:5 "The export ran twice for one merchant."',
-    )
-    // The excerpt of a rung leaves its file: each case with that rung is stale, and its line says so.
-    p.write('CLAUDE.md', '# How we write\n\nA section may say two things.\n')
-    expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain(
-      '  Breaks · stale\n' +
-        '    Instruction · CLAUDE.md:3 "Each TSD section says one thing." · stale\n' +
-        '    Output · docs/tsd.md:5 "TODO"\n',
-    )
-    expect(ok(await p.agent('onboard status')).out).toContain('found in the project · 3 cases, 2 stale')
-  })
-
-  // Nanda, 2026-11-15: a direction has a flow, from the first act down to the output.
-  test('a draft with a flow: show prints its steps after the summary, an act on its own once', async () => {
-    const p = onboardingProject(LADDER_FILES)
-    p.write('draft.yaml', ONBOARD_CONFIG)
-    ok(await p.agent('onboard config --file=draft.yaml'))
-    ok(await p.agent('onboard found tsd-writing'))
-    p.write('tsd.yaml', withFlow(ONBOARD_DIRECTION))
-    ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
-    expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain(
+    const show = ok(await p.nanda('onboard show tsd-writing')).out
+    expect(show).toContain(
       'summary: A TSD lets its reader decide without a meeting, so each page stands alone.\n' +
         'flow:\n' +
         '  1. Person -> architect: asks for a TSD of the export\n' +
         '  2. architect -> writer: gives each section to a writer (CLAUDE.md:3)\n' +
         '  3. writer: reads the rule of one heading for each section (.claude/skills/writer/SKILL.md:3)\n' +
-        '  4. writer -> docs/tsd.md: fills the template one section at a time (docs/template.md:3)\n' +
-        '  5. linter -> docs/tsd.md: checks that each section says one thing\n' +
+        '  4. writer -> docs/tsd.md: fills the template one section at a time (docs/template.md:3) ' +
+        '[uses tsd-writing, intro-story, repeatable]\n' +
+        '  5. linter -> docs/tsd.md: checks that each section says one thing [uses facts-not-proof, no-code-proof]\n' +
         'from: Pathos, Logos\n',
     )
-    p.write('bad.yaml', withFlow(ONBOARD_DIRECTION).replace('says: asks for a TSD of the export', 'says: " "'))
+    expect(show).toContain(
+      'examples:\n' +
+        '  step 4 · writer -> docs/tsd.md\n' +
+        '    Follows\n' +
+        '      output · docs/tsd.md:3 "## Introduction"\n' +
+        '    Breaks\n' +
+        '      output · written by the host: "## Introduction and design, in one section"\n' +
+        '  step 5 · linter -> docs/tsd.md\n' +
+        '    Follows\n' +
+        '      input · docs/tsd.md:5 "TODO"\n' +
+        '      output · written by the host: "Reject: the Introduction holds no words yet"\n' +
+        '    Breaks\n' +
+        '      input · docs/tsd.md:5 "TODO"\n' +
+        '      output · written by the host: "Accept: the section says one thing"',
+    )
+    // The excerpt of an input leaves its file: each example with it is stale, and its line says so.
+    p.write('docs/tsd.md', '# TSD\n\n## Introduction\n\nThe export ran twice.\n')
+    expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain(
+      '      input · docs/tsd.md:5 "TODO" · stale\n',
+    )
+    expect(ok(await p.agent('onboard status')).out).toContain('found in the project · 4 examples, 2 stale')
+    const unmarked = ONBOARD_DIRECTION.replaceAll(/, uses: \[.*\] \}/g, ' }')
+    p.write('unmarked.yaml', unmarked)
+    expect((await p.agent('onboard draft tsd-writing --file=unmarked.yaml')).err).toContain(
+      'refused: unmarked.yaml: no flow step has uses: mark each step that the direction governs with its ids',
+    )
+    p.write('bad.yaml', ONBOARD_DIRECTION.replace('says: asks for a TSD of the export', 'says: " "'))
     expect((await p.agent('onboard draft tsd-writing --file=bad.yaml')).err).toContain(
       'refused: bad.yaml: flow step 1 needs from, to and says: who acts, on whom or on what file, and what happens',
     )
+  })
+
+  // Nanda, 2026-11-15: the new shape is the only one. A file of onboarding in an older shape, an
+  // accepted one too, is not read: it waits for the host to draft it again, and its draft writes
+  // over it.
+  test('a direction file in an older shape: Loading, a status line, and the host drafts it again', async () => {
+    const p = await drafted()
+    const old = 'id: tsd-writing\nasked: { _tag: Found }\ndraft:\n  _tag: Drafted\n  name: TSD writing\n' +
+      '  from: []\n  content: { says: Old words., standards: [] }\n  cases: []\nquestions: []\n' +
+      'request: { _tag: None }\naccepted: { _tag: Accepted }\n'
+    p.write('.work/assess/tsd-writing.yaml', old)
+    expect(ok(await p.agent('onboard status')).out).toContain(
+      '  tsd-writing · Loading · found in the project\n' +
+        '    tsd-writing is not in the current shape: the host drafts it again ' +
+        '(the host: work onboard draft tsd-writing --file=<direction.yaml>)',
+    )
+    expect((await p.nanda('onboard accept tsd-writing')).err).toContain(
+      'tsd-writing is not in the current shape: the host drafts it again',
+    )
+    p.write('tsd.yaml', ONBOARD_DIRECTION)
+    ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+    ok(await p.nanda('onboard accept tsd-writing'))
   })
 
   test('work init refuses while onboarding files exist', async () => {

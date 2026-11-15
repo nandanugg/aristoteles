@@ -15,7 +15,7 @@ import {
 } from '../contract.ts'
 import { RoleGrid } from './agents.ts'
 import { api, attempt, post } from './api.ts'
-import { Cases, DirectionText } from './direction.ts'
+import { DirectionReview } from './direction.ts'
 import { ICONS, icon } from './icons.ts'
 import { Item } from './item.ts'
 
@@ -171,7 +171,7 @@ function Suggest({ targets }: { targets: ReadonlyArray<readonly [string, Target]
   </div>`
 }
 
-const isDirectionAdjustment = (tag: string) => tag === 'RetireDirection' || tag === 'SetCases'
+const isDirectionAdjustment = (tag: string) => tag === 'RetireDirection' || tag === 'SetExamples'
 
 function Entry({ view, kind }: { view: OnboardingData; kind: 'directions' | 'agents' }) {
   const mine = (tag: string) => isDirectionAdjustment(tag) === (kind === 'directions')
@@ -204,7 +204,8 @@ function Entry({ view, kind }: { view: OnboardingData; kind: 'directions' | 'age
 }
 
 // The current directions as the directions page shows them (Nanda, 2026-11-15): the list stays
-// in view at the left, and the open one shows by level, with its cases.
+// in view at the left, and the open one shows for its review: the version against the one before
+// it, and its examples.
 function CurrentDirections({ directions }: { directions: OnboardingData['directions'] }) {
   const [open, setOpen] = useState<string | null>(null)
   const card = directions.find((d) => d.id === open) ?? directions[0]
@@ -218,10 +219,7 @@ function CurrentDirections({ directions }: { directions: OnboardingData['directi
     <article class="direction-page" aria-label=${card.name}>
       <div class="direction-head"><h2>${card.name}</h2></div>
       <div class="muted"><code>${card.id}</code> · ${card.origin}</div>
-      <div class="direction-body">
-        <div class="direction-words"><${DirectionText} card=${card} /></div>
-        <div class="direction-cases"><${Cases} cases=${card.cases} /></div>
-      </div>
+      <div class="direction-body"><${DirectionReview} card=${card} /></div>
     </article>
   </div>`
 }

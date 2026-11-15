@@ -24,17 +24,17 @@ import type { Refusal } from '../schema/errors.ts'
 import {
   type AnswerId,
   type Author,
-  type Cases,
-  CasesFile,
   checkerProblem,
   create,
   type Direction,
   type DirectionId,
   type EventOf,
+  Examples,
+  examplesMissing,
+  type FlowStep,
   isNonBlank,
   type Limit,
   lookup,
-  MIN_CASES,
   type Recorded,
   type Revision,
   type RoleName,
@@ -43,6 +43,7 @@ import {
   type StandardEntry,
   type Suggestion,
   type TaskId,
+  usesProblem,
   type Work,
 } from '../schema/index.ts'
 import { foldStep } from '../state/index.ts'
@@ -224,16 +225,18 @@ export const DRAFT = {
       'Pick',
       'draft the adjustment that it asks for with work adjust',
     ),
-  // --- the cases of a new direction (P10 rejected, onboarding 2026-11-14) ---
-  cases: (file: string, what: string) =>
+  // --- the examples of a new direction (P10 rejected, onboarding 2026-11-14) ---
+  examples: (file: string, what: string) =>
     no(
       `${file}: ${what}`,
       'Write',
-      `write in ${file} at least ${MIN_CASES} cases, each a ladder from the direction down to ` +
-        'a real output that follows it or breaks it: { fit: Follows | Breaks, via: [{ name, ' +
-        'file, line, excerpt }], output: { file, line, excerpt } }, or { file, line, excerpt, ' +
-        'fit } for an output with no rungs',
+      `write in ${file} examples: for each marked step of the flow (one with uses), an output ` +
+        'that follows the direction and one that breaks it: { step: <n>, fit: Follows | ' +
+        'Breaks, input: <for a step that checks or decides>, output: { file, line, excerpt } ' +
+        'of the project, or { written: <words> } when the project has none }',
     ),
+  uses: (problem: string) =>
+    no(problem, 'Write', 'give uses: only the ids of the direction, its standards and its rules'),
   // --- a company commit ---
   localId: (id: string) =>
     no(
@@ -263,16 +266,22 @@ const firstOf = (checks: (guard: Guard) => void): Refusal | undefined => {
 const failIf = (r: Refusal | undefined): Effect.Effect<void, Refusal> =>
   r === undefined ? Effect.void : fail(r)
 
-// --- the cases of a file ------------------------------------------------------------------------
+// --- the examples of a file ---------------------------------------------------------------------
 
-// The cases: key of a file (a direction file, or a cases file): at least 3, each a ladder from the
-// direction down to a real output (Nanda, 2026-11-15): the rungs, each with its name, then the
-// output, and whether the output follows the direction or breaks it (ruling 4). The short form
-// { file, line, excerpt, fit } is a ladder with no rungs; CaseFile reads both forms. The excerpts
-// are not read here: whether each is still in its file is a derived state that the words show.
+// The examples: key of a file (a direction file, or an examples file): each an output of a marked
+// step of the flow that follows the direction or breaks it (Nanda, 2026-11-15), with its input for
+// a step that checks or decides. A sample is a real place of the project, or the host's words
+// when the project has none. The excerpts are not read here: whether each is still in its file is
+// a derived state that the words show.
 type Raw = Readonly<Record<string, unknown>>
 const isRaw = (x: unknown): x is Raw => typeof x === 'object' && x !== null && !Array.isArray(x)
-const spotProblem = (s: Raw, at: string): string | undefined => {
+const sampleProblem = (s: unknown, at: string): string | undefined => {
+  if (!isRaw(s)) return `${at} is { file, line, excerpt } of the project, or { written: <words> }`
+  if ('written' in s) {
+    return typeof s.written === 'string' && isNonBlank(s.written)
+      ? undefined
+      : `${at}: written is words`
+  }
   const line = s.line
   if (typeof s.file !== 'string' || !isNonBlank(s.file)) return `${at} needs a file`
   if (typeof line !== 'number' || !Number.isInteger(line) || line < 1) {
@@ -281,40 +290,31 @@ const spotProblem = (s: Raw, at: string): string | undefined => {
   if (typeof s.excerpt !== 'string' || !isNonBlank(s.excerpt)) return `${at} needs an excerpt`
   return undefined
 }
-const caseProblem = (c: Raw, at: string): string | undefined => {
-  if (c.fit !== 'Follows' && c.fit !== 'Breaks') return `${at}: fit is Follows or Breaks`
-  if (!('via' in c) && !('output' in c)) return spotProblem(c, at)
-  if (!Array.isArray(c.via)) {
-    return `${at}: via lists the rungs from the direction down to the output (via: [] for none)`
+const exampleProblem = (e: Raw, at: string, flow: ReadonlyArray<FlowStep>) => {
+  if (e.fit !== 'Follows' && e.fit !== 'Breaks') return `${at}: fit is Follows or Breaks`
+  const step = typeof e.step === 'number' ? flow[e.step - 1] : undefined
+  if (!Number.isInteger(e.step) || step?.uses === undefined) {
+    return `${at}: step is the number of a marked step of the flow (one with uses)`
   }
-  for (const [k, r] of c.via.entries()) {
-    const rung = `${at}: rung ${k + 1}`
-    if (!isRaw(r) || typeof r.name !== 'string' || !isNonBlank(r.name)) {
-      return `${rung} needs a name, such as Instruction or Writer skill`
-    }
-    const problem = spotProblem(r, rung)
-    if (problem !== undefined) return problem
-  }
-  if (!isRaw(c.output)) {
-    return (
-      `${at} needs an output: the real result at the bottom of the ladder (a document, code, a ` +
-      'test fixture), { file, line, excerpt }'
-    )
-  }
-  return spotProblem(c.output, `${at}: output`)
+  const input = e.input === undefined ? undefined : sampleProblem(e.input, `${at}: input`)
+  return input ?? sampleProblem(e.output, `${at}: output`)
 }
-export const readCases = (file: string, raw: unknown): Effect.Effect<Cases, Refusal> => {
-  const value = isRaw(raw) ? raw.cases : null
-  const cases: ReadonlyArray<unknown> = Array.isArray(value) ? value : []
-  if (cases.length < MIN_CASES) {
-    return fail(DRAFT.cases(file, `cases lists ${cases.length}`))
+export const readExamples = (
+  file: string,
+  raw: unknown,
+  flow: ReadonlyArray<FlowStep>,
+): Effect.Effect<Examples, Refusal> => {
+  const value = isRaw(raw) ? raw.examples : null
+  const list: ReadonlyArray<unknown> = Array.isArray(value) ? value : []
+  for (const [i, e] of list.entries()) {
+    const at = `example ${i + 1}`
+    const problem = isRaw(e) ? exampleProblem(e, at, flow) : `${at} gives no keys`
+    if (problem !== undefined) return fail(DRAFT.examples(file, problem))
   }
-  for (const [i, c] of cases.entries()) {
-    const problem = isRaw(c) ? caseProblem(c, `case ${i + 1}`) : `case ${i + 1} gives no keys`
-    if (problem !== undefined) return fail(DRAFT.cases(file, problem))
-  }
-  // The checks above refuse each case that CaseFile refuses, so the decode does not throw.
-  return Effect.sync(() => Schema.decodeUnknownSync(CasesFile)(cases))
+  // The checks above refuse each example that Examples refuses, so the decode does not throw.
+  const examples = Schema.decodeUnknownSync(Examples)(list)
+  const missing = examplesMissing(flow, examples)
+  return missing === undefined ? Effect.succeed(examples) : fail(DRAFT.examples(file, missing))
 }
 
 // --- the answers ---------------------------------------------------------------------------------
@@ -607,7 +607,7 @@ const withDraft = (d: Derived, by: Author, event: ReturnType<typeof create<'Revi
 export const checkDrafted = (
   d: Derived,
   by: Author,
-  data: Omit<EventOf<'Revision.Drafted'>['create'], '_tag' | 'cases'>,
+  data: Omit<EventOf<'Revision.Drafted'>['create'], '_tag' | 'examples'>,
 ): Effect.Effect<void, Refusal> => {
   const w = d.moment.work
   const file = data.direction
@@ -626,8 +626,8 @@ export const checkDrafted = (
     standardChecks(w, drafted, [], { add, remove: [], replace: [] }, guard)
   })
   if (problem !== undefined || answers.length === 0) return failIf(problem)
-  // The cases do not change what a draft proposes, so the draft that it compares holds none.
-  const proposed = create('Revision', { _tag: 'Drafted', ...data, cases: [] })
+  // The examples do not change what a draft proposes, so the draft that it compares holds none.
+  const proposed = create('Revision', { _tag: 'Drafted', ...data, examples: [] })
   const { work, draft } = withDraft(d, by, proposed)
   if (draft === undefined) return Effect.void
   const to = contentOfDraft(draft)
@@ -676,6 +676,16 @@ export const checkRevised = (
       rules: rulesOfFile(w, roles, r.with, base, guard),
     }))
     standardChecks(w, official, base.standards, { add, remove: edit.remove ?? [], replace }, guard)
+    // A new flow marks its steps with the ids of the direction as the change leaves it.
+    if (edit.flow !== undefined) {
+      const kept = base.standards
+        .map((e) => standardAt(w, e))
+        .filter((s) => !(edit.remove ?? []).includes(s.id))
+        .map((s) => ({ id: s.id, rules: s.rules.map((e) => ruleAt(w, e)) }))
+      const standards = [...kept, ...(edit.replace ?? []).map((r) => r.with), ...(edit.add ?? [])]
+      const problem = usesProblem(official.id, edit.flow, standards)
+      if (problem !== undefined) guard(DRAFT.uses(problem))
+    }
   })
   if (problem !== undefined || answers.length === 0) return failIf(problem)
   const { work, draft } = withDraft(d, by, create('Revision', { _tag: 'Revised', ...data }))

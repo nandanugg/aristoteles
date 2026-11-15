@@ -237,27 +237,47 @@ describe('the onboarding pages', () => {
     ])
     const tsd = view.directions[1]
     expect(tsd.standards[0].rules[0]).toEqual({ id: 'no-code-proof', says: 'No file paths with line numbers, no commit hashes in the body', checkedBy: 'linter' })
-    // Ruling 4: each case with its place, and whether its excerpt is in its file now. Nanda,
-    // 2026-11-15: a case is a ladder to an output; a short case is its output, with no rungs.
-    const withoutCode = ({ around: _, ...s }) => s
-    expect(tsd.cases.map((c) => ({ ...c, output: withoutCode(c.output) }))).toEqual([
-      { fit: 'Follows', via: [], output: { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice for one merchant.', current: true } },
-      { fit: 'Follows', via: [], output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', current: true } },
-      { fit: 'Breaks', via: [], output: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', current: true } },
+    // Nanda, 2026-11-15: the marked steps of the flow carry the ids that apply there.
+    expect(tsd.flow.map((f) => f.uses)).toEqual([
+      [], [], [], ['tsd-writing', 'intro-story', 'repeatable'], ['facts-not-proof', 'no-code-proof'],
     ])
-    // Nanda, 2026-11-15: each case carries the real code around it (3 lines above and below, as
+    // Ruling 4: each example by its step, a real sample with its place and whether its excerpt is
+    // in its file now, the host's words as they are (Nanda, 2026-11-15).
+    const sample = (x) => (x === null || 'written' in x ? x : (({ around: _, ...s }) => s)(x))
+    expect(tsd.examples.map((e) => ({ ...e, input: sample(e.input), output: sample(e.output) }))).toEqual([
+      { step: 4, fit: 'Follows', input: null, output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', current: true } },
+      { step: 4, fit: 'Breaks', input: null, output: { written: '## Introduction and design, in one section' } },
+      {
+        step: 5, fit: 'Follows', input: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', current: true },
+        output: { written: 'Reject: the Introduction holds no words yet' },
+      },
+      {
+        step: 5, fit: 'Breaks', input: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO', current: true },
+        output: { written: 'Accept: the section says one thing' },
+      },
+    ])
+    // Nanda, 2026-11-15: each real sample carries the code around it (3 lines above and below, as
     // far as the file goes), its own line marked; a TODO in two places is the one nearest its line.
-    expect(tsd.cases[0].output.around).toEqual([
-      { line: 2, text: '', mark: false },
-      { line: 3, text: '## Dedupe', mark: false },
-      { line: 4, text: '', mark: false },
-      { line: 5, text: 'The export ran twice for one merchant.', mark: true },
+    expect(tsd.examples[0].output.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' ')).toBe('1 2 3* 4 5 6')
+    expect(tsd.examples[2].input.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' ')).toBe('2 3 4 5* 6 7 8')
+    const text = readFileSync(join(p.dir, 'docs/tsd.md'), 'utf8')
+    p.write('docs/tsd.md', text.replaceAll('TODO', 'Done'))
+    expect((await get('/api/onboarding')).directions[1].examples[2].input.current).toBe(false)
+    p.write('docs/tsd.md', text)
+    // Nanda, 2026-11-15: the words against the last draft; a first draft has none, so every line
+    // comes: the summary, the words, each standard with each rule and its checker.
+    expect(tsd.diff.direction).toBe('The first draft: every line is new')
+    expect(tsd.diff.lines.every((l) => l.startsWith('+'))).toBe(true)
+    expect(tsd.diff.lines).toContain('+  Rule no-code-proof (checked by linter): No file paths with line numbers, no commit hashes in the body')
+    // A draft over it keeps the last one, and the diff shows what changed.
+    p.write('again.yaml', ONBOARD_DIRECTION.replace('says: Tell the story first, in plain words.', 'says: Tell the story first.'))
+    ok(await p.agent('onboard draft tsd-writing --file=again.yaml'))
+    const again = (await get('/api/onboarding')).directions[1].diff
+    expect(again.direction).toBe('The last draft → this draft')
+    expect(again.lines.filter((l) => !l.startsWith(' '))).toEqual([
+      '-Standard intro-story: Tell the story first, in plain words.',
+      '+Standard intro-story: Tell the story first.',
     ])
-    expect(tsd.cases.map((c) => c.output.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' '))).toEqual([
-      '2 3 4 5*', '1 2 3* 4 5 6', '2 3 4 5* 6 7 8',
-    ])
-    p.write('docs/tsd.md', readFileSync(join(p.dir, 'docs/tsd.md'), 'utf8').replaceAll('TODO', 'Done'))
-    expect((await get('/api/onboarding')).directions[1].cases[2].output.current).toBe(false)
     // Ruling 11: the roles that the project has come first; the model is the class of the tier
     // with no model in the settings; the role of the top task has no toggle (ruling 15).
     expect(view.roles.map((r) => [r.role, r.tier, r.model, r.found, r.toggle, r.state])).toEqual([
@@ -287,11 +307,11 @@ describe('the onboarding pages', () => {
     expect(asked).toMatchObject({ state: 'question', principle: 'A section says one thing' })
     expect(asked.questions).toEqual([{
       says: 'Does a section of facts count as one thing?',
-      // Nanda, 2026-11-15: the case of a question carries the code around it too, and is a
-      // ladder to an output (the short form has no rungs).
-      case: {
+      // Nanda, 2026-11-15: the example of a question carries the code around it too.
+      example: {
+        step: 1,
         fit: 'Follows',
-        via: [],
+        input: null,
         output: {
           file: 'docs/facts.md', line: 3, excerpt: '## Dedupe', current: true,
           around: [
@@ -357,7 +377,9 @@ describe('the onboarding pages', () => {
     // After the start, the same view reads the store (the gear), and onboarding is over.
     const view = await get('/api/onboarding')
     expect(view.stage).toBe('store')
-    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.cases.length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 3]])
+    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.examples.length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 4]])
+    // Nanda, 2026-11-15: in the gear, a version against the one before it; the first has none.
+    expect(view.directions[0].diff.direction).toBe('tsd-writing@1, the first version: every line is new')
     expect(view.roles.map((r) => [r.role, r.state, r.toggle])).toEqual(ROLES.map((r) => [r, 'current', false]))
     expect((await onboard({ act: 'add-direction', principle: 'one more' })).error).toBe('the store of this dir has started, so onboarding is over; a change now is an adjustment')
     // P7: the text box of the gear stores a suggestion about the roles.

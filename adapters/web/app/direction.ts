@@ -1,15 +1,18 @@
-// A direction as the person reviews it (Nanda, 2026-11-15): each level has its label (the
-// direction, each standard, each rule with the role that checks it), the words show as markdown,
-// and each case shows as a ladder from the direction down to its output, each place with the real
-// code around it. The directions page and the gear's directions entry show it.
+// A direction as the person reviews it (Nanda, 2026-11-15): its summary, its flow with the steps
+// that it governs marked, what its words changed (the last draft against this one, or the version
+// before against this one), and its examples by marked step, each sample with the real code
+// around it or the host's words. The directions page and the gear's directions entry show it; the
+// panel of a task shows the words by level (DirectionText).
 import { html } from 'htm/preact'
 import type { DirectionCard } from '../contract.ts'
-import { FlowDiagram } from './flow.ts'
+import { Change } from './change.ts'
+import { FlowDiagram, whoOf } from './flow.ts'
 import { Markdown } from './markdown.ts'
 
 type Card = typeof DirectionCard.Type
-type CaseData = Card['cases'][number]
-type SpotData = CaseData['output']
+type ExampleData = Card['examples'][number]
+type SampleData = ExampleData['output']
+type SpotData = Extract<SampleData, { file: string }>
 
 // The excerpt inside its line, marked; a line that does not hold it shows as it is.
 const withExcerpt = (text: string, excerpt: string) => {
@@ -25,44 +28,65 @@ function SpotCode({ s }: { s: SpotData }) {
   const lines = s.around.map((l) => html`<div class=${s.current && l.mark ? 'line mark' : 'line'}>
     <span class="ln">${l.line}</span><span class="t">${
       s.current && l.mark ? withExcerpt(l.text, excerpt) : l.text || ' '}</span></div>`)
-  if (s.current && lines.length) return html`<pre class="case-code">${lines}</pre>`
-  return html`<pre class="case-code"><div class="line mark"><span class="ln">${s.line}</span><span
+  if (s.current && lines.length) return html`<pre class="sample-code">${lines}</pre>`
+  return html`<pre class="sample-code"><div class="line mark"><span class="ln">${s.line}</span><span
     class="t">${excerpt}</span></div></pre>
     ${lines.length ? html`<div class="muted">The file now, at line ${s.line}:</div>
-      <pre class="case-code">${lines}</pre>` : ''}`
+      <pre class="sample-code">${lines}</pre>` : ''}`
 }
 
-// One place of the ladder: its tag, where it is, and its code.
-const rungOf = (tag: unknown, s: SpotData, kind: string) => html`<li class=${`rung ${kind}`}>
-  <div class="rung-head">${tag}<code class="where">${s.file}:${s.line}</code>
-    ${s.current ? '' : html`<span class="stale">Stale: the excerpt is not in the file now</span>`}
-  </div>
-  <${SpotCode} s=${s} />
-</li>`
+// One sample: a real place with its code, or the host's words, labeled so.
+const sampleOf = (name: string, s: SampleData) => html`<div class="sample">
+  <div class="sample-head"><span class="sample-name">${name}</span>${'file' in s
+    ? html`<code class="where">${s.file}:${s.line}</code>${s.current ? ''
+      : html`<span class="stale">Stale: the excerpt is not in the file now</span>`}`
+    : html`<span class="written-tag">written by the host</span>`}</div>
+  ${'file' in s ? html`<${SpotCode} s=${s} />` : html`<pre class="written">${s.written}</pre>`}
+</div>`
 
-// One case as a small vertical ladder (Nanda, 2026-11-15): the direction at the top, each named
-// rung with its code, and the output at the bottom in the color of its fit.
-export function CaseBlock({ c }: { c: CaseData }) {
-  const fit = c.fit.toLowerCase()
-  return html`<li class=${`case ${fit}`}>
-    <ol class="ladder" aria-label=${`${c.fit}: a ladder of ${c.via.length + 1} steps`}>
-      <li class="rung top"><span class="ladder-top">Direction</span></li>
-      ${c.via.map((r) => rungOf(html`<span class="rung-name">${r.name}</span>`, r, 'via'))}
-      ${rungOf(html`<span class=${`fit-tag ${fit}`}>Output · ${c.fit}</span>`, c.output,
-        `output ${fit}`)}
-    </ol>
+// One example: its fit, the input of a step that checks or decides, and the output.
+export function ExampleBlock({ e }: { e: ExampleData }) {
+  const fit = e.fit.toLowerCase()
+  return html`<li class=${`example ${fit}`}>
+    <span class=${`fit-tag ${fit}`}>${e.fit}</span>
+    ${e.input ? sampleOf('Input', e.input) : ''}
+    ${sampleOf('Output', e.output)}
   </li>`
 }
 
-export function Cases({ cases }: { cases: ReadonlyArray<CaseData> }) {
-  if (!cases.length) return null
-  return html`<div class="section-title">Cases (${cases.length})</div>
-    <ul class="cases">${cases.map((c) => html`<${CaseBlock} c=${c} />`)}</ul>`
+// The examples by marked step, in the order of the flow.
+export function Examples({ card }: { card: Pick<Card, 'flow' | 'examples'> }) {
+  const { flow, examples } = card
+  if (!examples.length) return null
+  const groups = flow
+    .flatMap((s, i) => (s.uses.length ? [{ s, n: i + 1 }] : []))
+    .map(({ s, n }) => ({
+      head: `Step ${n} · ${whoOf(s)}`,
+      of: examples.filter((e) => e.step === n),
+    }))
+    .filter((g) => g.of.length)
+  return html`<div class="section-title">Examples (${examples.length})</div>
+    ${groups.map((g) => html`<section class="example-group" aria-label=${g.head}>
+      <h3 class="example-step">${g.head}</h3>
+      <ul class="examples">${g.of.map((e) => html`<${ExampleBlock} e=${e} />`)}</ul>
+    </section>`)}`
+}
+
+// The direction for its review, in its order: the summary, the flow with its marks, the change of
+// the words (each standard and each rule with its checker inside it), then the examples.
+export function DirectionReview({ card }: { card: Card }) {
+  return html`<div class="direction-review">
+    ${card.summary ? html`<p class="direction-summary">${card.summary}</p>` : ''}
+    <${FlowDiagram} id=${card.id} flow=${card.flow} />
+    ${card.diff ? html`<div class="section-title">The words</div>
+      <${Change} change=${card.diff} />` : ''}
+    <${Examples} card=${card} />
+  </div>`
 }
 
 // The words of a direction, by level: the direction, then each standard with its rules inside.
 // The summary comes first, then the flow as a sequence diagram, then the words (Nanda,
-// 2026-11-15). The panel of a task shows its directions with it too.
+// 2026-11-15). The panel of a task shows its directions with it.
 type Words = Pick<Card, 'id' | 'summary' | 'flow' | 'says' | 'standards'>
 export function DirectionText({ card }: { card: Words }) {
   return html`<div class="direction-text">

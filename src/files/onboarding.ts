@@ -30,10 +30,10 @@ import type { Principle } from '../domain/closed.ts'
 import { OutsideFailed, Refused, refuse } from '../domain/errors.ts'
 import type { OnboardedDirection } from '../domain/events.ts'
 import {
-  type Case,
-  type Cases,
   type CompanyFolder,
   checkerProblem,
+  type Example,
+  type Examples,
   type FlowStep,
   type RoleFile,
   type StandardFile,
@@ -41,9 +41,11 @@ import {
 import { DirectionId, type NonBlank, type RoleName } from '../domain/ids.ts'
 import {
   type OnboardingAct,
+  Asked,
   OnboardingDirection,
   type OnboardingRole,
   OnboardingRoleState,
+  resetWords,
 } from '../domain/onboarding.ts'
 import type { Files, Spawn } from '../services/outside.ts'
 import { fetchFolder, LOCK, type LockEntry, readLock, writeLock } from './company.ts'
@@ -159,11 +161,27 @@ const decodeIn = <S extends Schema.Top>(schema: S, path: string, text: string) =
 
 const directionPath = (dir: string, id: string) => join(dir, ASSESS, `${id}.yaml`)
 
+// A direction file in an older shape is not read (Nanda, 2026-11-15: the new shape is the only
+// one): it counts as a direction that the host drafts again, by the id of its file, from where it
+// came when that still reads, and with no accept.
+const resetOf = (id: string, raw: unknown): OnboardingDirection => {
+  const asked = Schema.decodeUnknownOption(Asked)((raw as { asked?: unknown } | null)?.asked)
+  return {
+    id: DirectionId.make(id),
+    asked: asked._tag === 'Some' ? asked.value : { _tag: 'Found' },
+    draft: { _tag: 'Reset' },
+    questions: [],
+    request: NONE,
+    accepted: WAITING,
+  }
+}
 const readDirectionAt = (dir: string, id: string) =>
   Effect.gen(function* () {
-    const path = directionPath(dir, id)
-    const text = readText(path)
-    return text === null ? undefined : yield* decodeIn(OnboardingDirection, path, text)
+    const text = readText(directionPath(dir, id))
+    if (text === null) return undefined
+    const raw = yield* refusing(() => parseYaml(text))
+    const read = Schema.decodeUnknownOption(OnboardingDirection)(raw)
+    return read._tag === 'Some' ? read.value : resetOf(id, raw)
   })
 const writeDirection = (dir: string, file: OnboardingDirection) =>
   writeWhole(directionPath(dir, file.id), yamlOf(Schema.encodeSync(OnboardingDirection)(file)))
@@ -282,14 +300,14 @@ export interface DirectionDraft {
   readonly flow: ReadonlyArray<FlowStep>
   readonly says: string
   readonly standards: ReadonlyArray<StandardFile>
-  readonly cases: Cases
+  readonly examples: Examples
 }
 export interface QuestionDraft {
   readonly says: NonBlank
-  readonly case: Case
+  readonly example: Example
   readonly options: readonly [string, string]
 }
-// The CLI checks each file that the host names (its keys, real cases) before the act.
+// The CLI checks each file that the host names (its keys, real examples) before the act.
 export type HostAct =
   | {
       readonly _tag: 'Config'
@@ -456,6 +474,8 @@ const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft) =>
     if (draft.id !== file.id && existsSync(directionPath(dir, draft.id))) {
       return yield* refuse(`a direction ${draft.id} exists already`, 'give the new direction another id')
     }
+    // A draft over a draft keeps what the last one said, so that the page shows what changed.
+    const last = file.draft._tag === 'Drafted' ? file.draft.content : undefined
     const next: OnboardingDirection = {
       ...file,
       id: draft.id,
@@ -469,7 +489,10 @@ const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft) =>
           says: draft.says,
           standards: draft.standards,
         },
-        cases: draft.cases,
+        ...(last && {
+          previous: { summary: last.summary, says: last.says, standards: last.standards },
+        }),
+        examples: draft.examples,
       },
       questions: file.questions.filter((q) => q.answer._tag === 'Open'),
       request: NONE,
@@ -488,11 +511,12 @@ const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft) =>
 // The acts of the two pages, but the store start: prepareStart does that.
 export type PersonAct = Exclude<OnboardingAct, { readonly act: 'approve-all-roles' }>
 
-// Why the person cannot accept a direction now; undefined: it is Ready. The cases are the states
+// Why the person cannot accept a direction now; undefined: it is Ready. The examples are the states
 // of core/derived onboardingStateOf, each with its reason.
 const notReady = (file: OnboardingDirection): string | undefined => {
   if (file.accepted._tag === 'Accepted') return `${file.id} is accepted already`
   if (file.draft._tag === 'Drafting') return `${file.id} has no draft yet; the host drafts it`
+  if (file.draft._tag === 'Reset') return resetWords(file.id)
   if (file.request._tag === 'Revise') return `a Revise of ${file.id} waits for the host`
   if (file.questions.some((q) => q.answer._tag === 'Open')) {
     return `${file.id} has questions for you; answer them first`
@@ -669,7 +693,7 @@ export const personAct = (
 // --- the store start (BUILD.md 1c) ----------------------------------------------------------------
 
 export interface Start {
-  // The accepted directions, each with its cases and where it comes from.
+  // The accepted directions, each with its examples and where it comes from.
   readonly directions: ReadonlyArray<OnboardedDirection>
   // The store is refused: aristoteles.yaml and aristoteles.lock as they were; the files stay.
   readonly restore: Effect.Effect<void, OutsideFailed>
@@ -766,7 +790,7 @@ export const prepareStart = (
           says: drafted.content.says,
           standards: drafted.content.standards,
         },
-        cases: drafted.cases,
+        examples: drafted.examples,
         source,
       })
     }

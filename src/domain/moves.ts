@@ -11,8 +11,8 @@ import type {
   Answerer,
   Assignment,
   By,
-  Case,
   Direction,
+  Example,
   Meta,
   NonBlank,
   NonEmpty,
@@ -41,7 +41,7 @@ import type {
   TerminalState,
 } from './ui-model.ts'
 import type { Adjustment, EventGroup, MoveTag } from './events.ts'
-import type { ConfigFile, RoleFile, RoleWords } from './files.ts'
+import type { ConfigFile, FlowStep, RoleFile, RoleWords } from './files.ts'
 import type { Forward } from './work.ts'
 
 // A record whose field F is in the state T: Task & { end: Closed } is a closed task.
@@ -245,7 +245,7 @@ export const adjustRoles = (config: ConfigFile, adjustment: Adjustment): ConfigF
       break
     }
     case 'RetireDirection':
-    case 'SetCases':
+    case 'SetExamples':
       return config
   }
   return { ...config, roles }
@@ -254,29 +254,30 @@ export const adjustRoles = (config: ConfigFile, adjustment: Adjustment): ConfigF
 // --- Direction ---------------------------------------------------------------------------------
 
 // The accept that meets the deciders of a draft makes its version official: a new direction
-// becomes official with it and takes the cases of the draft; an official one adds it as its
-// current version and keeps its cases (ruling 4: cases make no new version).
+// becomes official with it and takes the examples of the draft; an official one adds it as its
+// current version and keeps its examples (ruling 4: examples make no new version).
 export const makeOfficial = (
   d: Direction,
   version: Version<Direction>,
-  cases: ReadonlyArray<Case>,
+  examples: ReadonlyArray<Example>,
 ): OfficialDirection =>
   d._tag === 'NewDirection'
-    ? { ...d, _tag: 'Official', versions: [version], cases }
+    ? { ...d, _tag: 'Official', versions: [version], examples }
     : { ...d, versions: [...d.versions, version] as NonEmpty<Version<Direction>> }
 
-// Adjustment.Accepted of SetCases: other cases of an official direction, with no new version.
-export const setCases = (d: OfficialDirection, cases: ReadonlyArray<Case>): OfficialDirection => ({
+// Adjustment.Accepted of SetExamples: other examples of an official direction, with no new version.
+export const setExamples = (d: OfficialDirection, examples: ReadonlyArray<Example>): OfficialDirection => ({
   ...d,
-  cases,
+  examples,
 })
 
-// Revision.CasesAdded: a model gives a company draft of a new direction its cases before the
-// accept (P10 rejected, onboarding 2026-11-14). The latest counts.
-export const addCases = (
+// Revision.ExamplesAdded: a model gives a company draft of a new direction its flow and its examples
+// before the accept (P10 rejected, onboarding 2026-11-14). The latest counts.
+export const addExamples = (
   x: Extract<Revision<Direction>, { readonly _tag: 'New' }>,
-  cases: ReadonlyArray<Case>,
-): Extract<Revision<Direction>, { readonly _tag: 'New' }> => ({ ...x, cases })
+  flow: ReadonlyArray<FlowStep>,
+  examples: ReadonlyArray<Example>,
+): Extract<Revision<Direction>, { readonly _tag: 'New' }> => ({ ...x, flow, examples })
 
 // --- the UI: runs, task drafts, problems, sends ----------------------------------------------
 
@@ -409,10 +410,10 @@ export const MOVES = {
   'Role.WordsRejected': null,
   'Agent.Started': startAgent,
   // The state of an adjustment follows from the log (core/derived); its accept changes the config
-  // or a direction through adjustRoles and setCases.
+  // or a direction through adjustRoles and setExamples.
   'Adjustment.Accepted': null,
   'Adjustment.Rejected': null,
-  'Revision.CasesAdded': addCases,
+  'Revision.ExamplesAdded': addExamples,
   'Run.HostMoved': moveHost,
   'Run.Done': runDone,
   'Run.Closed': runClosed,

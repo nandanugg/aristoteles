@@ -258,10 +258,13 @@ describe('the guard of an agent act is a refusal of canAct with a real choice', 
 // --- the refusals of onboarding (BUILD.md section 3) ---------------------------------------------
 
 const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
-// Three cases of the harness files (P10 rejected, onboarding 2026-11-14).
-const A_CASE = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', fit: 'Follows' }
-const CASES_YAML = (n: number) =>
-  `cases:\n${Array.from({ length: n }, () => `  - ${JSON.stringify(A_CASE)}\n`).join('')}`
+// The examples of the harness direction (P10 rejected, onboarding 2026-11-14; Nanda,
+// 2026-11-15: of the marked steps 4 and 5 of its flow), and a file of the ones that follow.
+const { examples: EXAMPLES } = Bun.YAML.parse(h.DIRECTION) as {
+  readonly examples: ReadonlyArray<{ readonly fit: string }>
+}
+const FOLLOWS = EXAMPLES.filter((e) => e.fit === 'Follows')
+const FOLLOWS_YAML = `examples:\n${FOLLOWS.map((e) => `  - ${JSON.stringify(e)}\n`).join('')}`
 const message = (o: ReturnType<typeof act>) => {
   const r = refused(o)
   expect(choiceProblems(r)).toEqual([])
@@ -334,15 +337,14 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
   test('the store start: a checker, an owner, cases, ids, supersedes, the host role', async () => {
     const p = h.project()
     const tsd = Bun.YAML.parse(h.DIRECTION) as Record<string, unknown>
-    const { cases: _, ...file } = tsd
+    const { examples: _, ...file } = tsd
     const standards = (file.standards as ReadonlyArray<{ rules: ReadonlyArray<object> }>).map(
       (s) => ({ ...s, rules: s.rules.map((r) => ({ ...r, supersedes: [] })) }),
     )
     const direction = { ...file, standards }
-    const cases = [A_CASE, A_CASE, A_CASE]
-    const one = (d: object, c: ReadonlyArray<object> = cases) => ({
+    const one = (d: object, examples: ReadonlyArray<object> = EXAMPLES) => ({
       direction: d,
-      cases: c,
+      examples,
       source: { _tag: 'Local' },
     })
     const startIn = (dir: string, directions: ReadonlyArray<object>) =>
@@ -378,8 +380,9 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     expect(why(p.dir, [one({ ...direction, owner: 'Dewi' })])).toBe(
       'the owner Dewi of tsd-writing is not in the people of aristoteles.yaml',
     )
-    expect(why(p.dir, [one(direction, [A_CASE, A_CASE])])).toBe(
-      'tsd-writing has 2 cases; a direction starts with at least 3 cases',
+    expect(why(p.dir, [one(direction, FOLLOWS)])).toBe(
+      'tsd-writing: step 4 has no example that breaks the direction; a direction starts with ' +
+        'its examples',
     )
     expect(why(p.dir, [one(direction), one(direction)])).toBe(
       'two directions have the id tsd-writing',
@@ -430,7 +433,7 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     const persistent = 'persistence: { persistent: true, why: It edits. }\n'
     p.write('editor.yaml', editor(`${persistent}icon: pen-tool\n`))
     p.write('bare.yaml', editor('icon: pen-tool\n'))
-    p.write('two.yaml', CASES_YAML(2))
+    p.write('two.yaml', FOLLOWS_YAML)
     const d = derivedIn(p)
     const setTier = { _tag: 'SetTier', role: 'writer', tier: 'medium' }
     expect(message(act(d, NANDA, adjust(setTier)))).toBe(
@@ -466,8 +469,8 @@ describe('the refusals of onboarding, each with its words and a real choice', ()
     expect(draft({ _tag: 'RetireDirection', direction: 'ghost' })).toBe(
       'there is no direction ghost',
     )
-    expect(draft({ _tag: 'SetCases', direction: 'tsd-writing', file: 'two.yaml' })).toBe(
-      'two.yaml: cases lists 2',
+    expect(draft({ _tag: 'SetExamples', direction: 'tsd-writing', file: 'two.yaml' })).toBe(
+      'two.yaml: step 4 has no example that breaks the direction',
     )
     const hld = h.DIRECTION.replaceAll('tsd-writing', 'hld-writing')
       .replaceAll('no-code-proof', 'hld-no-code')

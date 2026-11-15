@@ -1,7 +1,7 @@
 // The files that a person or a model writes, as config.ts reads them: aristoteles.yaml (the
 // mechanism and the settings), a task file, a direction file, a company folder. Their parsed
 // forms are stored inside events, so each one is a Schema.
-import { Schema, SchemaGetter } from 'effect'
+import { Schema } from 'effect'
 import { Principle, RoleIcon, Tier } from './closed.ts'
 import { DirectionId, NonBlank, PositiveInt, ResultId, RoleName, TaskId } from './ids.ts'
 
@@ -257,65 +257,93 @@ export type StandardFile = typeof StandardFile.Type
 // One place in a file of the project: the file, the line the page points to, and a short excerpt.
 export const Spot = Schema.Struct({ file: Schema.String, line: PositiveInt, excerpt: NonBlank })
 export type Spot = typeof Spot.Type
-// A step of a case between the direction and the output, named by the host (Instruction, Writer
-// skill, Validator, Template).
-const Rung = Schema.Struct({ name: NonBlank, ...Spot.fields })
 const Fit = Schema.Literals(['Follows', 'Breaks'])
+// page: Sample. An input or an output of an example: a real place of the project, or words that
+// the host wrote when the project has none yet (Nanda, 2026-11-15).
+const Written = Schema.Struct({ written: NonBlank })
+export const Sample = Schema.Union([Spot, Written])
+export type Sample = typeof Sample.Type
+export const isSpot = (s: Sample): s is Spot => 'file' in s
 
-// page: Case. A ladder from the direction down to a real output of the project (Nanda,
-// 2026-11-15): the rungs from top to bottom (none for a direction about code), then the output,
-// a result and never an instruction (a document, code, a test fixture, a golden file). The fit
-// is about the output: it follows the direction or breaks it (ruling 4). A break is information
-// only: it makes no task (ruling 17).
-export const Case = Schema.Struct({ fit: Fit, via: Schema.Array(Rung), output: Spot })
-export type Case = typeof Case.Type
-// Every place of a case, from the top rung down to the output.
-export const spotsOf = (c: Case): ReadonlyArray<Spot> => [...c.via, c.output]
-// A case as a file writes it: the ladder, or the short form { file, line, excerpt, fit } of a
-// ladder with no rungs (a direction about code, and the files of an onboarding that started
-// before the ladder), whose place is its output.
-// The two forms are read as written, and Case checks the ladder that they make.
-const ShortCase = Schema.Struct({ ...Spot.fields, fit: Fit })
-export const CaseFile = Schema.Union([Schema.toEncoded(Case), Schema.toEncoded(ShortCase)]).pipe(
-  Schema.decodeTo(Case, {
-    decode: SchemaGetter.transform((c) =>
-      'output' in c
-        ? c
-        : { fit: c.fit, via: [], output: { file: c.file, line: c.line, excerpt: c.excerpt } },
-    ),
-    encode: SchemaGetter.transform((c) => c),
-  }),
-)
-// A direction starts with at least 3 cases (P10 rejected, onboarding 2026-11-14).
-export const MIN_CASES = 3
-export const Cases = Schema.Array(Case).check(Schema.isMinLength(MIN_CASES))
-export type Cases = typeof Cases.Type
-export const CasesFile = Schema.Array(CaseFile).check(Schema.isMinLength(MIN_CASES))
+// page: Example. An output of a marked step of the flow that follows the direction or breaks it
+// (Nanda, 2026-11-15): step is the number of the step in the flow; a step that checks or decides
+// gives the input that it got too. A break is information only: it makes no task (ruling 17).
+export const Example = Schema.Struct({
+  step: PositiveInt,
+  fit: Fit,
+  input: Schema.optionalKey(Sample),
+  output: Sample,
+})
+export type Example = typeof Example.Type
+export const Examples = Schema.Array(Example)
+export type Examples = typeof Examples.Type
+// The real places of an example, the input first.
+export const spotsOf = (e: Example): ReadonlyArray<Spot> =>
+  [e.input, e.output].filter((s): s is Spot => s !== undefined && isSpot(s))
 
 // One step of the flow of a direction (Nanda, 2026-11-15: a direction has a flow): an actor does
 // something to another actor, or to a file that it acts on (from equal to to: an act on its own).
-// file and line: where the project defines the step, when it does.
+// file and line: where the project defines the step, when it does. uses: the ids that apply at a
+// step that the direction governs (the direction, its standards, its rules); the page marks it.
 export const FlowStep = Schema.Struct({
   from: NonBlank,
   to: NonBlank,
   says: NonBlank,
   file: Schema.optionalKey(NonBlank),
   line: Schema.optionalKey(PositiveInt),
+  uses: Schema.optionalKey(Schema.NonEmptyArray(NonBlank)),
 })
 export type FlowStep = typeof FlowStep.Type
+
+// What is wrong with the marks of a flow, for a draft: each id of uses is the direction, or a
+// standard or a rule of it, and the flow marks at least one step.
+export const usesProblem = (
+  id: string,
+  flow: ReadonlyArray<FlowStep>,
+  standards: ReadonlyArray<{ readonly id: string; readonly rules: ReadonlyArray<{ readonly id: string }> }>,
+): string | undefined => {
+  const ids = new Set([id, ...standards.flatMap((s) => [s.id, ...s.rules.map((r) => r.id)])])
+  for (const [i, s] of flow.entries()) {
+    const other = s.uses?.find((u) => !ids.has(u))
+    if (other !== undefined) {
+      return `flow step ${i + 1} uses "${other}", which is not ${id} or a standard or rule of it`
+    }
+  }
+  if (!flow.some((s) => s.uses)) {
+    return 'no flow step has uses: mark each step that the direction governs with its ids'
+  }
+  return undefined
+}
+
+// What the examples of a draft miss (Nanda, 2026-11-15): each marked step has an output that
+// follows the direction and one that breaks it, and a flow with no marked step has none to show.
+export const examplesMissing = (
+  flow: ReadonlyArray<FlowStep>,
+  examples: ReadonlyArray<Example>,
+): string | undefined => {
+  const lacks = (of: ReadonlyArray<Example>) =>
+    (['Follows', 'Breaks'] as const).filter((fit) => !of.some((e) => e.fit === fit))
+  const marked = flow.flatMap((s, i) => (s.uses ? [i + 1] : []))
+  if (marked.length === 0) return 'its flow marks no step that the direction governs'
+  for (const n of marked) {
+    const [fit] = lacks(examples.filter((e) => e.step === n))
+    if (fit) return `step ${n} has no example that ${fit.toLowerCase()} the direction`
+  }
+  return undefined
+}
 
 // A direction file after readDirection and readApprovedBy. summary: one or two plain sentences
 // that say what the direction asks and why it matters, for a person who reads it the first time
 // (Nanda, 2026-11-15); the page and the CLI show it before the words. flow: how the direction
-// works, from the first act of an actor down to the output; optional for now, and none when left
-// out (Nanda, 2026-11-15).
+// works, from the first act of an actor down to the output, the steps that it governs marked
+// (Nanda, 2026-11-15).
 export const DirectionFile = Schema.Struct({
   id: DirectionId,
   name: Schema.String,
   owner: Schema.String,
   from: Schema.Array(Principle),
   summary: NonBlank,
-  flow: Schema.optionalKey(Schema.Array(FlowStep)),
+  flow: Schema.Array(FlowStep),
   says: Schema.String,
   maxStandards: Schema.optionalKey(Schema.Number),
   standards: Schema.Array(StandardFile),
@@ -350,8 +378,7 @@ export const ExternalSource = Schema.Struct({
 export type ExternalSource = typeof ExternalSource.Type
 
 // The first sentence of the words of a direction, in its first paragraph that is no heading. It
-// stands in for a summary where none was written: a company folder has none (its words are the
-// company's), and neither has the file of an onboarding that started before the summary.
+// is the summary of a company direction: its folder has none (its words are the company's).
 export const firstSentence = (says: string): string => {
   const words = says
     .split('\n')

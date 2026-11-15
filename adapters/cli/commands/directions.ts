@@ -7,10 +7,11 @@ import type { PointInput, SuggestAbout } from '../../../core/schema/actions.ts'
 import {
   type AnswerId,
   type Author,
-  type Case,
   DirectionId,
   type EvidenceData,
   type EventRef,
+  type Example,
+  type FlowStep,
   type ForwardedAct,
   isNonBlank,
   isTime,
@@ -30,7 +31,7 @@ import {
 } from '../../../core/schema/index.ts'
 import { Dir, Files, Now } from '../../../core/services/index.ts'
 import {
-  caseLines,
+  exampleLines,
   describeInner,
   draftWaitsText,
   pieceNames,
@@ -47,8 +48,8 @@ import { followCommit } from '../refresh.ts'
 import { act, derivedAfter, peekWork, readWork } from '../runtime.ts'
 import {
   afterVersion,
-  CASES_FORM,
   EVIDENCE_FORM,
+  EXAMPLES_FORM,
   evidenceOf,
   pointsOf,
   versionMadeBy,
@@ -72,8 +73,8 @@ const DIRECTION_TEMPLATE = `write a file like this, then run the command again:
       rules:
         - { id: <rule id>, says: <one check>, checkedBy: <role> }`
 
-const CASES_TEMPLATE = `write a file like this, then run the command again:
-${CASES_FORM.replace(/^/gm, '  ')}`
+const EXAMPLES_TEMPLATE = `write a file like this, then run the command again:
+${EXAMPLES_FORM.replace(/^/gm, '  ')}`
 
 const REVISE_TEMPLATE =
   'write a file like this (any of the keys), then run the revise again:\n' +
@@ -82,18 +83,19 @@ const REVISE_TEMPLATE =
   '  remove: [<standard id>]\n  says: <a new spirit needs the accept of the owner>\n' +
   '  summary: <one or two plain sentences: what the direction asks, and why it matters>'
 
-// The cases of a direction or of a new draft, each with its state (ruling 4): the adapter reads the
-// text of each file of a ladder now, so a case with an excerpt that left its file shows stale.
-const casesOf = (cases: ReadonlyArray<Case>) =>
+// The examples of a direction or of a new draft, by the step of its flow, each with its state
+// (ruling 4): the adapter reads the text of each file now, so an excerpt that left its file shows
+// stale.
+const examplesOf = (examples: ReadonlyArray<Example>, flow: ReadonlyArray<FlowStep>) =>
   Effect.gen(function* () {
-    if (cases.length === 0) return []
+    if (examples.length === 0) return []
     const { cwd } = yield* Dir
     const files = yield* Files
     const texts = new Map<string, string | null>()
-    for (const { file } of cases.flatMap(spotsOf)) {
+    for (const { file } of examples.flatMap(spotsOf)) {
       if (!texts.has(file)) texts.set(file, yield* files.read(join(cwd, file)))
     }
-    return ['cases:', ...caseLines(cases, (file) => texts.get(file) ?? null)]
+    return ['examples:', ...exampleLines(examples, flow, (file) => texts.get(file) ?? null)]
   })
 
 // <id>[@<n>] or <draft>, then [#<standard, rule, or header>[#<header>]]: one piece.
@@ -105,8 +107,9 @@ const showDirection = (rest: ReadonlyArray<string>) =>
     if (/^d\d+$/.test(address)) {
       const { revision } = yield* lookupKind('Revision', ['d'], work, address)
       if (!keys.length) {
-        const cases = revision._tag === 'New' ? yield* casesOf(revision.cases) : []
-        return [renderDraft(d, revision.id), ...whyLines(revision.why), ...cases]
+        const examples =
+          revision._tag === 'New' ? yield* examplesOf(revision.examples, revision.flow) : []
+        return [renderDraft(d, revision.id), ...whyLines(revision.why), ...examples]
       }
       v = revision.id
     } else {
@@ -127,7 +130,8 @@ const showDirection = (rest: ReadonlyArray<string>) =>
       if (number && !numbered) return yield* refuse(`${id} has no version ${number}`)
       const version = numbered ?? currentOf(work, directionId)
       if (!keys.length) {
-        return [renderDirection(d, versionIdOf(version)), ...(yield* casesOf(dir.cases))]
+        const examples = yield* examplesOf(dir.examples, currentOf(work, directionId).flow)
+        return [renderDirection(d, versionIdOf(version)), ...examples]
       }
       v = versionIdOf(version)
     }
@@ -277,15 +281,15 @@ const reviseDirection = (call: Call, rest: ReadonlyArray<string>) =>
     ]
   })
 
-// A model gives a company draft of a new direction its cases before the accept (P10 rejected,
+// A model gives a company draft of a new direction its flow and examples before the accept (P10 rejected,
 // onboarding 2026-11-14): a high agent with its token, or a model run outside any task (--by).
-const draftCases = (call: Call, rest: ReadonlyArray<string>) =>
+const draftExamples = (call: Call, rest: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const { args, token } = call
     const runName = textOf(args.one('by'))
     const id = String(rest[0])
     const file = textOf(args.one('file'))
-    if (!file) return yield* refuse('the cases of a draft need --file=<cases.yaml>', CASES_TEMPLATE)
+    if (!file) return yield* refuse('the examples of a draft need --file=<examples.yaml>', EXAMPLES_TEMPLATE)
     const { work } = yield* peekWork
     if (token !== null && runName !== undefined) {
       return yield* refuse(
@@ -299,19 +303,19 @@ const draftCases = (call: Call, rest: ReadonlyArray<string>) =>
     else if (!/^[a-z][a-z0-9-]*$/.test(runName ?? '')) {
       return yield* refuse(
         'a model run outside any task names itself: --by=<its name in lower case>',
-        `run it again with --by, for example: work direction cases ${id} --file=${file} --by=host`,
+        `run it again with --by, for example: work direction examples ${id} --file=${file} --by=host`,
       )
     } else by = { _tag: 'ModelRun', name: String(runName), at: yield* (yield* Now).read }
     const { revision: draft } = yield* lookupKind('Revision', ['d'], work, id)
     const done = yield* act(by, {
-      _tag: 'AddCases',
+      _tag: 'AddExamples',
       target: { draft: draft.id },
       content: { file },
     })
     const after = yield* derivedAfter(done.work)
     const owner = done.work.directions.get(draft.of)?.owner.name
     return [
-      `${draft.id} has its cases; it waits for the accept of ${draftWaitsText(after, draft.id)}.`,
+      `${draft.id} has its examples; it waits for the accept of ${draftWaitsText(after, draft.id)}.`,
       `next: work direction show ${draft.id}; ${owner} runs work review ${draft.id} accept, or reject --reason="<why>"`,
     ]
   })
@@ -321,10 +325,10 @@ const direction: Command = (call) =>
     const [sub, ...rest] = call.args.positional
     if (sub === 'show') return yield* showDirection(rest)
     if (sub === 'new') return yield* newDirection(call)
-    if (sub === 'cases') return yield* draftCases(call, rest)
+    if (sub === 'examples') return yield* draftExamples(call, rest)
     if (sub !== 'revise') {
       return yield* refuse(
-        'use work direction show|new|revise|cases; a draft is accepted or rejected with work review <draft> accept|reject',
+        'use work direction show|new|revise|examples; a draft is accepted or rejected with work review <draft> accept|reject',
       )
     }
     return yield* reviseDirection(call, rest)

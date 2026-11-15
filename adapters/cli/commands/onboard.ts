@@ -5,13 +5,12 @@
 // This file reads and checks the files that the host names; the module checks the acts.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { readCases } from '../../../core/actions/drafts.ts'
+import { readExamples } from '../../../core/actions/drafts.ts'
 import { onboardingStateOf, spotCurrent } from '../../../core/derived/index.ts'
 import {
-  type Case,
-  CaseFile,
-  type Cases,
   DirectionId,
+  Example,
+  type Examples,
   firstSentence,
   isNonBlank,
   type OnboardingDirection,
@@ -19,6 +18,7 @@ import {
   refuse,
   RoleName,
   spotsOf,
+  usesProblem,
 } from '../../../core/schema/index.ts'
 import {
   CONFIG,
@@ -59,7 +59,7 @@ import { type Confirm, personChannel, personOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { act } from '../runtime.ts'
 import { configProblems } from '../../live/config-problems.ts'
-import { CASES_FORM } from '../shared.ts'
+import { EXAMPLES_FORM } from '../shared.ts'
 import { WAIT_SECONDS } from './wait.ts'
 
 const POLL_MS = 1000
@@ -82,37 +82,37 @@ const CONFIG_TEMPLATE = `write a file like this, then run the command again:
 ${ROLE_KEYS}`
 const ROLE_TEMPLATE = `write a file with the keys of one role, then run the command again:
 ${ROLE_KEYS.replaceAll('\n      ', '\n  ').replace(/^ {6}/, '  ')}`
-const CASES = CASES_FORM.replace(/^/gm, '  ')
+const EXAMPLES = EXAMPLES_FORM.replace(/^/gm, '  ')
 const DRAFT_TEMPLATE = `write a file like this, then run the command again:
   id: <a short id; a new direction takes it from its first draft>
   name: <a short name>
   from: [<the principles that ground it, such as Logos>]
   summary: <one or two plain sentences: what the direction asks, and why it matters>
   flow:   # how it works, from the first act of an actor down to the output
-    - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, file: <where the project defines it>, line: <n> }
+    - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, file: <where the project defines it>, line: <n>, uses: [<the ids that apply there, for a step that the direction governs: its id, standard ids, rule ids>] }
   says: <what the direction asks for>
   standards:
     - id: <standard id>
       says: <how the output looks>
       rules:
         - { id: <rule id>, says: <one check>, checkedBy: <a role of ${DRAFT}> }
-${CASES}`
+${EXAMPLES}`
 const COMPANY_TEMPLATE = `write a file like this, then run the command again (the words come from the company folder):
   checkedBy: <the role that checks each rule>
   rules: { <rule id>: <the role that checks this rule> }
   flow:   # how it works in this project, from the first act of an actor down to the output
-    - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens>, file: <path>, line: <n> }
-${CASES}`
+    - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens>, file: <path>, line: <n>, uses: [<the ids that apply there>] }
+${EXAMPLES}`
 const QUESTIONS_TEMPLATE = `write a file like this, then run the command again:
   questions:
     - says: <what the AI must know to draft the direction>
-      case: { file: <path>, line: <n>, excerpt: <a short part of the file>, fit: Follows | Breaks }   # or a ladder, as in a draft
+      example: { step: <n>, fit: Follows | Breaks, output: { file: <path>, line: <n>, excerpt: <a short part of the file> } }   # as in a draft
       options: [<option A>, <option B>]`
 // A draft of onboarding names no owner: readDirection checks the rest of the file with this one,
 // and the person who starts the store owns each direction.
 const OWNER = 'the person'
-const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'flow', 'says', 'standards', 'cases']
-const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'flow', 'cases']
+const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'flow', 'says', 'standards', 'examples']
+const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'flow', 'examples']
 
 const isRecord = (x: unknown): x is Readonly<Record<string, unknown>> =>
   typeof x === 'object' && x !== null && !Array.isArray(x)
@@ -186,40 +186,36 @@ const checkDraft = (file: string, raw: Readonly<Record<string, unknown>>) =>
     }
   })
 
-// A case is real now: the excerpt of each rung and of the output is in its file (Nanda,
-// 2026-11-15: a case is a ladder to an output).
-const realCases = (file: string, cases: ReadonlyArray<Case>) =>
+// A real sample of an example is real now: its excerpt is in its file. The host's own words
+// (written:) name no file.
+const realExamples = (file: string, examples: ReadonlyArray<Example>) =>
   Effect.gen(function* () {
     const { cwd } = yield* Dir
     const files = yield* Files
-    for (const [i, c] of cases.entries()) {
-      const spots = [
-        ...c.via.map((r, k) => ({ at: `, rung ${k + 1} (${r.name})`, spot: r })),
-        { at: '', spot: c.output },
-      ]
-      for (const { at, spot } of spots) {
+    for (const [i, e] of examples.entries()) {
+      for (const spot of spotsOf(e)) {
         if (!spotCurrent(yield* files.read(join(cwd, spot.file)), spot)) {
           return yield* refuse(
-            `${file}: case ${i + 1}${at}: "${short(spot.excerpt, 80)}" is not in ${spot.file}`,
-            'a case is real: each excerpt is a short part of its file as it is now',
+            `${file}: example ${i + 1}: "${short(spot.excerpt, 80)}" is not in ${spot.file}`,
+            'a real sample is a short part of its file as it is now; with none, write the output',
           )
         }
       }
     }
   })
 
-// The text of each file that a case names, for the stale cases of the words.
+// The text of each file that an example names, for the stale examples of the words.
 const textsOf = (files: OnboardingFiles) =>
   Effect.gen(function* () {
     const { cwd } = yield* Dir
     const read = yield* Files
     const texts = new Map<string, string | null>()
     for (const f of files.directions) {
-      const cases = [
-        ...(f.draft._tag === 'Drafted' ? f.draft.cases : []),
-        ...f.questions.map((q) => q.case),
+      const examples = [
+        ...(f.draft._tag === 'Drafted' ? f.draft.examples : []),
+        ...f.questions.map((q) => q.example),
       ]
-      for (const { file } of cases.flatMap(spotsOf)) {
+      for (const { file } of examples.flatMap(spotsOf)) {
         if (!texts.has(file)) texts.set(file, yield* read.read(join(cwd, file)))
       }
     }
@@ -318,12 +314,12 @@ const localDraft = (file: string, raw: Readonly<Record<string, unknown>>, curren
     }
     const id = yield* idOf(raw.id === undefined ? current.id : String(raw.id))
     const read = yield* readDirection(file, { ...raw, id, owner: OWNER }, [OWNER])
-    const draft: Omit<DirectionDraft, 'cases'> = {
+    const draft: Omit<DirectionDraft, 'examples'> = {
       id,
       name: read.name,
       from: read.from,
       summary: read.summary,
-      flow: read.flow ?? [],
+      flow: read.flow,
       says: read.says,
       standards: read.standards,
     }
@@ -370,8 +366,10 @@ const companyDraft = (
       )
     }
     // The flow is of this project, so the host writes it (Nanda, 2026-11-15).
-    const flow = raw.flow === undefined ? [] : yield* readFlow(file, raw.flow)
-    const draft: Omit<DirectionDraft, 'cases'> = {
+    const flow = yield* readFlow(file, raw.flow)
+    const marks = usesProblem(id, flow, folder.standards)
+    if (marks !== undefined) return yield* refuse(`${file}: ${marks}`, COMPANY_TEMPLATE)
+    const draft: Omit<DirectionDraft, 'examples'> = {
       id,
       name: folder.name,
       from: [],
@@ -405,21 +403,21 @@ const draft = (call: Call, id: string | undefined) =>
     const file = yield* fileFlag(call, template)
     const raw = yield* yamlIn(file)
     if (!isRecord(raw)) return yield* refuse(`${file}: write the keys of a draft`, template)
-    const cases: Cases = yield* readCases(file, raw)
-    yield* realCases(file, cases)
     const words =
       current.asked._tag === 'Company'
         ? yield* companyDraft(file, raw, current, current.asked)
         : yield* localDraft(file, raw, current)
+    const examples: Examples = yield* readExamples(file, raw, words.flow)
+    yield* realExamples(file, examples)
     const [made = direction] = yield* hostAct(cwd, {
       _tag: 'Draft',
       direction,
-      draft: { ...words, cases },
+      draft: { ...words, examples },
     })
     const after = directionIn(yield* readOnboarding(cwd), made)
     const state = after === undefined ? 'Loading' : onboardingStateOf(after)._tag
     return [
-      `${made}: drafted${made === direction ? '' : ` (it was ${direction})`}, with ${cases.length} cases; it shows ${state}.`,
+      `${made}: drafted${made === direction ? '' : ` (it was ${direction})`}, with ${examples.length} examples; it shows ${state}.`,
       'next: work onboard wait, until the person accepts, revises or removes it',
     ]
   })
@@ -437,11 +435,11 @@ const ask = (call: Call, id: string | undefined) =>
       if (!isRecord(q) || typeof q.says !== 'string' || !isNonBlank(q.says)) {
         return yield* refuse(`${at} needs says: what the AI must know`, QUESTIONS_TEMPLATE)
       }
-      const read = Schema.decodeUnknownOption(CaseFile)(q.case)
+      const read = Schema.decodeUnknownOption(Example)(q.example)
       if (read._tag === 'None') {
         return yield* refuse(
-          `${at}: case is { file, line, excerpt, fit: Follows | Breaks }, or a ladder ` +
-            '{ fit, via: [{ name, file, line, excerpt }], output: { file, line, excerpt } }',
+          `${at}: example is { step, fit: Follows | Breaks, output: { file, line, ` +
+            'excerpt } or { written } }',
           QUESTIONS_TEMPLATE,
         )
       }
@@ -449,9 +447,9 @@ const ask = (call: Call, id: string | undefined) =>
       if (typeof a !== 'string' || typeof b !== 'string' || more.length > 0) {
         return yield* refuse(`${at}: options lists two options, A and B`, QUESTIONS_TEMPLATE)
       }
-      questions.push({ says: q.says, case: read.value, options: [a, b] })
+      questions.push({ says: q.says, example: read.value, options: [a, b] })
     }
-    yield* realCases(file, questions.map((q) => q.case))
+    yield* realExamples(file, questions.map((q) => q.example))
     const { cwd } = yield* Dir
     yield* hostAct(cwd, { _tag: 'Ask', direction, questions })
     return [
@@ -477,8 +475,8 @@ const company = (call: Call, id: string | undefined) =>
         ? yield* asPerson({ act: 'add-company-direction', repo, path })
         : yield* hostAct(cwd, { _tag: 'Company', direction: yield* idOf(id), repo, path })
     return [
-      `${made}: a company direction from ${path} of ${repo}; it shows Loading until the host drafts its checkers and cases.`,
-      `next: the host drafts it: work onboard draft ${made} --file=<checkers and cases.yaml>`,
+      `${made}: a company direction from ${path} of ${repo}; it shows Loading until the host drafts its checkers, its flow and its examples.`,
+      `next: the host drafts it: work onboard draft ${made} --file=<checkers, flow and examples.yaml>`,
     ]
   })
 
@@ -561,7 +559,7 @@ const add = (call: Call) =>
     })
     return [
       `${made}: a new direction, "${short(principle, 80)}"; it shows Loading until the host drafts it.`,
-      'next: work onboard status shows it; the host drafts it with its cases',
+      'next: work onboard status shows it; the host drafts it with its examples',
     ]
   })
 

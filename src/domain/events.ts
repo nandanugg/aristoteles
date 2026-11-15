@@ -16,13 +16,14 @@ import { Schema } from 'effect'
 import { Author } from './actor.ts'
 import { Level, Reason, Tier } from './closed.ts'
 import {
-  Cases,
   CompanyCheckers,
   CompanyFolder,
   ConfigFile,
   ContextFile,
   DirectionFile,
+  Examples,
   ExternalSource,
+  FlowStep,
   PartFile,
   PersistenceFile,
   ReviseFile,
@@ -174,11 +175,11 @@ const Failure = Schema.Literals(['ended', 'error', 'silent'])
 // --- the workflow, roles, runs, terminals and sends ---------------------------------------------
 
 // An accepted direction of onboarding, as the store start keeps it (Question 20, option A): its
-// file, its cases, and where it comes from, so that a company direction stays one and the daily
-// refresh follows it (P8).
+// file, its examples, and where it comes from, so that a company direction stays one and the
+// daily refresh follows it (P8).
 export const OnboardedDirection = Schema.Struct({
   direction: DirectionFile,
-  cases: Cases,
+  examples: Examples,
   source: Schema.Union([
     Schema.TaggedStruct('Local', {}),
     Schema.TaggedStruct('External', ExternalSource.fields),
@@ -237,7 +238,7 @@ export const Adjustment = Schema.Union([
   Schema.TaggedStruct('SetTier', { role: RoleName, tier: Tier }),
   Schema.TaggedStruct('SetPersistence', { role: RoleName, persistence: PersistenceFile }),
   Schema.TaggedStruct('RetireDirection', { direction: DirectionId }),
-  Schema.TaggedStruct('SetCases', { direction: DirectionId, cases: Cases }),
+  Schema.TaggedStruct('SetExamples', { direction: DirectionId, examples: Examples }),
 ])
 export type Adjustment = typeof Adjustment.Type
 export const AdjustmentMove = Schema.Union([
@@ -591,17 +592,20 @@ export const Why = Schema.Union([
 // A draft (a Revision) of a direction: the whole of a new one (the CLI word: direction new), a
 // change of its current version (direction revise), or a commit of a company direction (the
 // daily refresh). Its state (waiting, vetoed, official) follows from the reviews. A new direction
-// starts with its cases (P10 rejected, onboarding 2026-11-14); a revise has none, since cases make
-// no new version (ruling 4). A company draft of a new direction gets its cases from a model before
-// the accept (CasesAdded: the latest counts).
-export const RevisionMove = Schema.Union([Schema.TaggedStruct('CasesAdded', { cases: Cases })])
+// starts with its examples (P10 rejected, onboarding 2026-11-14); a revise has none, since
+// examples make no new version (ruling 4). A company draft of a new direction gets its flow (of
+// this project, its steps marked) and its examples from a model before the accept (ExamplesAdded:
+// the latest counts).
+export const RevisionMove = Schema.Union([
+  Schema.TaggedStruct('ExamplesAdded', { flow: Schema.Array(FlowStep), examples: Examples }),
+])
 const Revision = Schema.Union([
   created(
     'Revision',
     Schema.Union([
       Schema.TaggedStruct('Drafted', {
         direction: DirectionFile,
-        cases: Cases,
+        examples: Examples,
         answers: Schema.Array(AnswerId),
         why: Why,
       }),
@@ -809,7 +813,7 @@ export const WRITTEN_BY = {
     'Suggestion.Suggestion',
     'Revision.Drafted',
     'Revision.Revised',
-    'Revision.CasesAdded',
+    'Revision.ExamplesAdded',
     'Adjustment.Drafted',
     'Permission.Granted',
     'Permission.Revoked',
@@ -859,14 +863,14 @@ export const WRITTEN_BY = {
   Host: ['TaskDraft.Drafted'],
   // A model run outside any task: its draft of a new direction, its revise of a direction that
   // has a version (a host revises a direction, ruling 2026-11-14), the fit of a role (the host
-  // that drafted the roles records their fits, Nanda 2026-11-13), new words of a role, the cases
+  // that drafted the roles records their fits, Nanda 2026-11-13), new words of a role, the examples
   // of a company draft, and an adjustment (onboarding). The AI CLI that the person triggers in a
   // pane: it starts a run there, or continues a run there on the person's quoted words, and then
   // takes the terminal of the run's Sol with a new token.
   ModelRun: [
     'Revision.Drafted',
     'Revision.Revised',
-    'Revision.CasesAdded',
+    'Revision.ExamplesAdded',
     'Adjustment.Drafted',
     'Role.Fitted',
     'Role.WordsDrafted',

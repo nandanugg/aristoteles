@@ -43,12 +43,11 @@ const CONFIG = Bun.YAML.parse(WORK_YAML) as { readonly roles: Record<string, unk
 const NOTES = Object.fromEntries(
   Object.keys(CONFIG.roles).map((r) => [r, { summary: `the ${r}`, found: { _tag: 'New' } }]),
 )
-// Nanda, 2026-11-15: a case is a ladder to an output (was: a file, a line, an excerpt, a fit).
-const A_CASE = {
-  fit: 'Follows',
-  via: [{ name: 'Template', file: 'docs/template.md', line: 1, excerpt: '## Introduction' }],
-  output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' },
-}
+// Nanda, 2026-11-15: an example is an output of a marked step (was: a case, a ladder to an
+// output).
+const OUTPUT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
+const A_CASE = { step: 2, fit: 'Follows', output: OUTPUT }
+const A_BREAK = { step: 2, fit: 'Breaks', output: { written: 'Two changes, one reason.' } }
 const draftOf = (id: string): DirectionDraft =>
   ({
     id,
@@ -58,7 +57,14 @@ const draftOf = (id: string): DirectionDraft =>
     summary: 'A change does one thing, so a reviewer reads one reason.',
     flow: [
       { from: 'Person', to: 'writer', says: 'asks for a change' },
-      { from: 'writer', to: 'writer', says: 'names one reason', file: 'docs/tsd.md', line: 3 },
+      {
+        from: 'writer',
+        to: 'writer',
+        says: 'names one reason',
+        file: 'docs/tsd.md',
+        line: 3,
+        uses: ['small-changes', 'says-why'],
+      },
     ],
     says: 'A change does one thing.',
     standards: [
@@ -68,7 +74,7 @@ const draftOf = (id: string): DirectionDraft =>
         rules: [{ id: 'says-why', says: 'The change says why.', checkedBy: 'linter', supersedes: [] }],
       },
     ],
-    cases: [A_CASE, A_CASE, A_CASE],
+    examples: [A_CASE, A_BREAK],
   }) as unknown as DirectionDraft
 const withConfig = async () => {
   const dir = dirOf()
@@ -159,20 +165,26 @@ describe('the acts', () => {
     const drafted = await fileOf(dir, 'small-changes')
     // Nanda, 2026-11-15: a direction has a flow; the file holds it as the host wrote it.
     expect(drafted.draft.content.flow).toEqual(draftOf('small-changes').flow)
+    // The first draft has none before it.
+    expect(drafted.draft.previous).toBeUndefined()
     // The person's revise: the request and the accept, never the draft.
     await nanda(dir, { act: 'revise', direction: 'small-changes', words: 'name the reviewer' })
     const revised = await fileOf(dir, 'small-changes')
     expect(revised.draft).toEqual(drafted.draft)
     expect(revised.request).toEqual({ _tag: 'Revise', words: 'name the reviewer' })
     // The host's questions answer the request; the person's answer writes only the answers.
-    const question = { says: 'Who checks it?', case: A_CASE, options: ['the linter', 'the lead'] }
+    const question = { says: 'Who checks it?', example: A_CASE, options: ['the linter', 'the lead'] }
     await host(dir, { _tag: 'Ask', direction: 'small-changes', questions: [question] })
     await nanda(dir, { act: 'answer', direction: 'small-changes', options: ['B'] })
     const answered = await fileOf(dir, 'small-changes')
     expect(answered.questions).toEqual([{ ...question, answer: { _tag: 'Chosen', option: 'B' } }])
     expect(answered.draft).toEqual(drafted.draft)
     // The host's next draft clears the answered questions; the accept is the person's.
-    await host(dir, { _tag: 'Draft', direction: 'small-changes', draft: draftOf('small-changes') })
+    const words = { ...draftOf('small-changes'), says: 'A change does one thing, and says why.' }
+    await host(dir, { _tag: 'Draft', direction: 'small-changes', draft: words })
+    // Nanda, 2026-11-15: a draft over a draft keeps what the last one said, for the diff.
+    const { summary, says, standards } = drafted.draft.content
+    expect((await fileOf(dir, 'small-changes')).draft.previous).toEqual({ summary, says, standards })
     await nanda(dir, { act: 'accept', direction: 'small-changes' })
     const accepted = await fileOf(dir, 'small-changes')
     expect(accepted).toMatchObject({ questions: [], request: { _tag: 'None' }, accepted: { _tag: 'Accepted' } })
@@ -192,39 +204,48 @@ describe('the acts', () => {
     expect(after?.accepted).toEqual(before?.accepted as never)
   })
 
-  // Nanda, 2026-11-15: a case is a ladder to an output, and a direction has a summary. The file of
-  // an onboarding that started before holds each case in the short form and no summary: a case
-  // reads as a ladder with no rungs, the summary is the first sentence of says, and the next write
-  // holds both.
-  test('an older file reads: short cases as ladders, the summary from says; written back so', async () => {
+  // Nanda, 2026-11-15: the new shape is the only one. A file in an older shape (here: cases, no
+  // summary and no flow, and accepted) is not read: it counts as a direction that the host drafts
+  // again, with its id and where it came from, and no accept; the host's draft writes over it.
+  test('a file in an older shape is reset: Loading, no accept, and the host drafts it again', async () => {
     const dir = await withConfig()
-    const short = { ...A_CASE.output, fit: 'Follows' }
     const old = {
       id: 'small-changes',
-      asked: { _tag: 'Found' },
+      asked: { _tag: 'New', principle: 'a change does one thing', example: null },
       draft: {
         _tag: 'Drafted',
         name: 'Small changes',
         from: ['Logos'],
         content: { says: 'A change does one thing. It names its reason.', standards: [] },
-        cases: [short, short, short],
+        cases: [{ ...OUTPUT, fit: 'Follows' }],
       },
       questions: [],
       request: { _tag: 'None' },
-      accepted: { _tag: 'Waiting' },
+      accepted: { _tag: 'Accepted' },
     }
     writeFileSync(join(dir, ASSESS, 'small-changes.yaml'), Bun.YAML.stringify(old, null, 2))
-    const ladder = { fit: 'Follows', via: [], output: A_CASE.output }
-    const read = (await fileOf(dir, 'small-changes')).draft
-    expect(read.cases).toEqual([ladder, ladder, ladder])
-    expect(read.content.summary).toBe('A change does one thing.')
-    // Nanda, 2026-11-15: a direction has a flow; an older file has none.
-    expect(read.content.flow).toEqual([])
-    await nanda(dir, { act: 'accept', direction: 'small-changes' })
-    const text = readFileSync(join(dir, ASSESS, 'small-changes.yaml'), 'utf8')
-    const written = (Bun.YAML.parse(text) as Obj).draft
-    expect(written.cases).toEqual([ladder, ladder, ladder])
-    expect(written.content.summary).toBe('A change does one thing.')
+    const reset = await fileOf(dir, 'small-changes')
+    expect(reset).toEqual({
+      id: 'small-changes',
+      asked: old.asked,
+      draft: { _tag: 'Reset' },
+      questions: [],
+      request: { _tag: 'None' },
+      accepted: { _tag: 'Waiting' },
+    } as never)
+    const accept = await exitOf(
+      personAct(dir, 'Nanda', { act: 'accept', direction: 'small-changes' } as PersonAct),
+    )
+    expect(String(Exit.isFailure(accept) && accept.cause)).toContain(
+      'small-changes is not in the current shape: the host drafts it again',
+    )
+    await host(dir, { _tag: 'Draft', direction: 'small-changes', draft: draftOf('small-changes') })
+    const drafted = await fileOf(dir, 'small-changes')
+    expect(drafted.draft._tag).toBe('Drafted')
+    expect(drafted.draft.previous).toBeUndefined()
+    // A file whose asked does not read either is one that the host found.
+    writeFileSync(join(dir, ASSESS, 'other.yaml'), 'id: other\nasked: { _tag: Lost }\n')
+    expect((await fileOf(dir, 'other')).asked).toEqual({ _tag: 'Found' })
   })
 
   test('a New direction takes the id of its first draft', async () => {

@@ -12,6 +12,7 @@ import {
   type FlowStep,
   type RoleFile,
   type TaskFile,
+  usesProblem,
   type Workspace,
 } from '../domain/files.ts'
 import { oneOf, PRINCIPLES, ROLE_ICONS } from '../domain/closed.ts'
@@ -457,10 +458,14 @@ export const readApprovedBy = (
 
 // The flow: key of a draft (Nanda, 2026-11-15: a direction has a flow): the steps from the first act
 // of an actor down to the output, each { from, to, says }, with the file and line where the
-// project defines it when it does.
+// project defines it when it does, and uses: the ids that apply at a step that the direction
+// governs.
 const isWords = (x: unknown): x is string => typeof x === 'string' && x.trim() !== ''
 const flowOf = (file: string, value: unknown): ReadonlyArray<FlowStep> => {
-  if (!Array.isArray(value)) fail(file, 'flow lists the steps, from the first act down to the output')
+  if (!Array.isArray(value)) {
+    const steps = 'the steps from the first act down to the output'
+    fail(file, `flow is required: ${steps}, each step that the direction governs with uses`)
+  }
   return (value as ReadonlyArray<Raw>).map((step, i) => {
     const at = `flow step ${i + 1}`
     if (!isWords(step?.from) || !isWords(step?.to) || !isWords(step?.says)) {
@@ -473,12 +478,17 @@ const flowOf = (file: string, value: unknown): ReadonlyArray<FlowStep> => {
         fail(file, `${at}: line is a whole number of 1 or more`)
       }
     }
+    const uses = step.uses
+    if (uses !== undefined && !(Array.isArray(uses) && uses.length && uses.every(isWords))) {
+      fail(file, `${at}: uses lists the ids that apply there, such as [<direction id>, s1, r2]`)
+    }
     return {
       from: step.from,
       to: step.to,
       says: step.says,
       ...(step.file !== undefined ? { file: step.file } : {}),
       ...(step.line !== undefined ? { line: step.line } : {}),
+      ...(uses !== undefined ? { uses } : {}),
     } as FlowStep
   })
 }
@@ -554,13 +564,16 @@ export const readDirection = (
       const message = `from names "${word}", which is not a principle; the principles are ${words}`
       return fail(file, message)
     })
+    const flow = flowOf(file, d.flow)
+    const marks = usesProblem(d.id, flow, standards)
+    if (marks !== undefined) fail(file, marks)
     return {
       id: d.id,
       name: d.name,
       owner: d.owner,
       from,
       summary: d.summary,
-      ...(d.flow !== undefined ? { flow: flowOf(file, d.flow) } : {}),
+      flow,
       says: d.says,
       ...(d.maxStandards !== undefined ? { maxStandards: d.maxStandards } : {}),
       standards,

@@ -1,5 +1,5 @@
 // The show views: a task and its tree, a result with its reviews, a direction, a draft, one piece
-// of them, a question, an evaluation, an assignment, the cases of a direction, an adjustment. Golden text, as the old CLI showed them. Every
+// of them, a question, an evaluation, an assignment, the examples of a direction, an adjustment. Golden text, as the old CLI showed them. Every
 // state a view prints comes from Derived: the end of a task, the state of a draft, an escalation,
 // an evaluation. Findings that change a view: C1 (an assignment of an ended task), S6/S7 (a draft
 // that is Outdated or Conflicted: Conflicted has no old words, so its line says nothing of it),
@@ -22,16 +22,18 @@ import {
   versionAt,
 } from '../../core/derived/reads.ts'
 import { sameWords } from '../../core/state/versions.ts'
-import { adjustmentDraftAt, caseStateOf, type Derived, spotCurrent } from '../../core/derived/index.ts'
+import { adjustmentDraftAt, type Derived, spotCurrent } from '../../core/derived/index.ts'
 import {
   type Adjustment,
   type AssignmentId,
-  type Case,
   type By,
   type Direction,
   type DirectionId,
+  currentVersion,
   type EventRef,
   type EvaluationId,
+  type Example,
+  isSpot,
   type QuestionId,
   type ResultId,
   type Review,
@@ -40,6 +42,7 @@ import {
   type RevisionId,
   type FlowStep,
   type Rule,
+  type Sample,
   type Spot,
   type StandardEntry,
   type TaskId,
@@ -204,18 +207,20 @@ const whereWords = (s: { readonly where: Parameters<typeof whereRecord>[0] }): s
 // What a version or a draft says, with what it changes from its base: + new, ~ replaced,
 // - removed.
 // The flow of a direction (Nanda, 2026-11-15: a direction has a flow), one numbered line for each
-// step: who acts, on whom or on what file, what happens, and where the project defines it. An act
-// of one actor on its own names the actor once. No step: no line.
+// step: who acts, on whom or on what file, what happens, where the project defines it, and for a
+// step that the direction governs the ids that apply there. An act of one actor on its own names
+// the actor once. No step: no line.
+const whoOfStep = (s: FlowStep) => (s.from === s.to ? s.from : `${s.from} -> ${s.to}`)
 export const flowLines = (
   flow: ReadonlyArray<FlowStep>,
   head = 'flow:',
 ): ReadonlyArray<string> => {
   if (flow.length === 0) return []
   const step = (s: FlowStep, i: number) => {
-    const who = s.from === s.to ? s.from : `${s.from} -> ${s.to}`
     const line = s.line === undefined ? '' : `:${s.line}`
     const place = s.file === undefined ? '' : ` (${s.file}${line})`
-    return `  ${i + 1}. ${who}: ${s.says}${place}`
+    const uses = s.uses ? ` [uses ${s.uses.join(', ')}]` : ''
+    return `  ${i + 1}. ${whoOfStep(s)}: ${s.says}${place}${uses}`
   }
   return [head, ...flow.map(step)]
 }
@@ -519,28 +524,32 @@ export const renderAssignment = (d: Derived, id: AssignmentId): ReadonlyArray<st
 }
 
 
-// --- the cases of a direction, and an adjustment (onboarding) -----------------------------------
+// --- the examples of a direction, and an adjustment (onboarding) --------------------------------
 
-// A case as its ladder (Nanda, 2026-11-15): a head line, then one indented line for each rung
-// from the top, and the output last, each with its name, its place and its excerpt. mark gives
-// the end of a line.
-const ladderLines = (c: Case, head: string, mark: (s: Spot) => string): ReadonlyArray<string> => {
-  const line = (name: string, s: Spot) =>
-    `    ${name} · ${s.file}:${s.line} "${short(s.excerpt, 80)}"${mark(s)}`
-  return [head, ...c.via.map((r) => line(r.name, r)), line('Output', c.output)]
-}
-// Each case with its state (ruling 4): stale when the excerpt of a rung or of the output is no
-// longer in its file, and that line says so. textOf gives the text of a file now (null: no such
-// file), which the adapter reads.
-export const caseLines = (
-  cases: ReadonlyArray<Case>,
-  textOf: (file: string) => string | null,
-): ReadonlyArray<string> =>
-  cases.flatMap((c) => {
-    const state = caseStateOf(textOf, c)._tag === 'Current' ? 'current' : 'stale'
-    const mark = (s: Spot) => (spotCurrent(textOf(s.file), s) ? '' : ' · stale')
-    return ladderLines(c, `  ${c.fit} · ${state}`, mark)
+// The examples by the marked step of the flow (Nanda, 2026-11-15): each with its fit, its input
+// when it has one, and its output; a real sample with its place and its excerpt, stale when the
+// excerpt is no longer in its file, and the host's own words as written by the host. textOf gives the text of a file now (null: no such file); with
+// none, no state shows.
+export const exampleLines = (
+  examples: ReadonlyArray<Example>,
+  flow: ReadonlyArray<FlowStep>,
+  textOf?: (file: string) => string | null,
+): ReadonlyArray<string> => {
+  const stale = (s: Spot) => textOf !== undefined && !spotCurrent(textOf(s.file), s)
+  const sample = (name: string, s: Sample) =>
+    isSpot(s)
+      ? `      ${name} · ${s.file}:${s.line} "${short(s.excerpt, 80)}"${stale(s) ? ' · stale' : ''}`
+      : `      ${name} · written by the host: "${short(s.written, 80)}"`
+  const lines = (e: Example) => [
+    `    ${e.fit}`,
+    ...(e.input ? [sample('input', e.input)] : []),
+    sample('output', e.output),
+  ]
+  return flow.flatMap((s, i) => {
+    const of = examples.filter((e) => e.step === i + 1)
+    return s.uses && of.length ? [`  step ${i + 1} · ${whoOfStep(s)}`, ...of.flatMap(lines)] : []
   })
+}
 
 // What an adjustment changes, in one line.
 export const adjustmentWords = (a: Adjustment): string => {
@@ -563,8 +572,8 @@ export const adjustmentWords = (a: Adjustment): string => {
       )
     case 'RetireDirection':
       return `retire the direction ${a.direction}`
-    case 'SetCases':
-      return `give ${a.direction} ${a.cases.length} new cases`
+    case 'SetExamples':
+      return `give ${a.direction} ${a.examples.length} new examples`
   }
 }
 
@@ -585,15 +594,17 @@ const adjustmentState = (d: Derived, ref: EventRef): string => {
   }
 }
 
-// work adjust show <event>: its head line, then what it holds (a new role, new cases).
+// work adjust show <event>: its head line, then what it holds (a new role, new examples).
 export const renderAdjustment = (d: Derived, ref: EventRef): ReadonlyArray<string> | undefined => {
   const x = adjustmentDraftAt(d.moment.work, ref)
   if (x === undefined) return undefined
   const a = x.adjustment
   const head = `${ref} ${adjustmentWords(a)}, drafted by ${drafterWords(x.by)} · ${adjustmentState(d, ref)}`
   if (a._tag === 'AddRole') return [head, ...JSON.stringify(a.file, null, 2).split('\n')]
-  if (a._tag === 'SetCases') {
-    return [head, ...a.cases.flatMap((c) => ladderLines(c, `  ${c.fit}`, () => ''))]
+  if (a._tag === 'SetExamples') {
+    const official = d.moment.work.directions.get(a.direction)
+    const flow = official?._tag === 'Official' ? currentVersion(official).flow : []
+    return [head, ...exampleLines(a.examples, flow)]
   }
   return [head]
 }

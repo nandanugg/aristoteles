@@ -1,5 +1,5 @@
 // The actions of onboarding (BUILD.md section 3, W1), each through dispatch on a harness store: a
-// new direction carries its cases, a company draft gets them from a model, an adjustment is
+// new direction carries its examples, a company draft gets them from a model, an adjustment is
 // drafted and accepted or rejected (a role adjustment writes aristoteles.yaml), the supervisor
 // starts a persistent agent, and the assignments of one agent share its terminal.
 import { describe, expect, test } from 'bun:test'
@@ -36,11 +36,16 @@ import type { ActionInput } from './types.ts'
 
 const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
 const SUPERVISOR: Author = { _tag: 'Supervisor', name: 'Nanda' }
-const A_CASE = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', fit: 'Follows' }
-// Nanda, 2026-11-15: a case is a ladder to an output; the short form A_CASE stores as this.
-const A_LADDER = { fit: 'Follows', via: [], output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' } }
-const CASES_YAML = (n: number) =>
-  `cases:\n${Array.from({ length: n }, () => `  - ${JSON.stringify(A_CASE)}\n`).join('')}`
+// Nanda, 2026-11-15: a direction starts with examples (was: 3 cases): for each marked step of its
+// flow, one that follows it and one that breaks it.
+const OUTPUT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
+const EXAMPLES = [
+  { step: 1, fit: 'Follows', output: OUTPUT },
+  { step: 1, fit: 'Breaks', output: { written: 'Introduction: see ABC-2964.' } },
+]
+const FLAGS_FLOW = 'flow:\n  - { from: writer, to: docs/tsd.md, says: adds a flag, uses: [flags] }\n'
+const EXAMPLES_YAML = (examples: ReadonlyArray<object>) =>
+  `examples:\n${examples.map((e) => `  - ${JSON.stringify(e)}\n`).join('')}`
 const later = (p: Project, minutes = 1) =>
   new Date(Date.parse(p.now()) + minutes * 60000).toISOString() as Time
 // One dispatch that must store its event, a minute after the last act; the clock of the CLI
@@ -55,20 +60,44 @@ const refOf = (seq: number | null) => `e${seq}` as EventRef
 const adjust = (adjustment: unknown): ActionInput =>
   ({ _tag: 'DraftAdjustment', target: {}, content: { adjustment } }) as ActionInput
 
-describe('the cases of a new direction (P10 rejected, onboarding 2026-11-14)', () => {
-  test('direction new stores the cases of its file, and refuses fewer than 3', async () => {
+describe('the examples of a new direction (P10 rejected, onboarding 2026-11-14)', () => {
+  // Nanda, 2026-11-15: a marked step of the flow has an output that follows and one that breaks.
+  test('direction new stores its marked flow and its examples by step; a miss is refused', async () => {
     const p = h.project()
     ok(await p.nanda('init'))
-    const few = h.DIRECTION.replace(/cases:\n( {2}- .*\n)+/, CASES_YAML(2))
-    p.write('few.yaml', few)
-    const refusedNew = await p.agent('direction new --file=few.yaml --by=assess')
-    expect(refusedNew.err).toContain('few.yaml: cases lists 2')
-    ok(await p.agent('direction new --file=directions/tsd-writing.yaml --by=assess'))
+    const marked = h.DIRECTION
+    p.write('one-step.yaml', marked.replace(/ {2}- step: 5\n(.*\n){3}/g, ''))
+    expect((await p.agent('direction new --file=one-step.yaml --by=assess')).err).toContain(
+      'one-step.yaml: step 5 has no example that follows the direction',
+    )
+    p.write('ghost.yaml', marked.replace('uses: [facts-not-proof, no-code-proof]', 'uses: [ghost]'))
+    expect((await p.agent('direction new --file=ghost.yaml --by=assess')).err).toContain(
+      'ghost.yaml: flow step 5 uses "ghost", which is not tsd-writing or a standard or rule of it',
+    )
+    p.write('no-flow.yaml', marked.replace(/flow:\n( {2}- .*\n)+/, ''))
+    expect((await p.agent('direction new --file=no-flow.yaml --by=assess')).err).toContain(
+      'no-flow.yaml: flow is required',
+    )
+    p.write('marked.yaml', marked)
+    ok(await p.agent('direction new --file=marked.yaml --by=assess'))
     const draft = workOf(p.dir).drafts.get('d1' as RevisionId)
-    expect(draft?._tag === 'New' ? draft.cases.length : 0).toBe(3)
+    const examples = draft?._tag === 'New' ? draft.examples : []
+    expect(examples.map((e) => [e.step, e.fit, e.input !== undefined])).toEqual([
+      [4, 'Follows', false],
+      [4, 'Breaks', false],
+      [5, 'Follows', true],
+      [5, 'Breaks', true],
+    ] as never)
+    expect(draft?.flow.map((s) => s.uses ?? [])).toEqual([
+      [],
+      [],
+      [],
+      ['tsd-writing', 'intro-story', 'repeatable'],
+      ['facts-not-proof', 'no-code-proof'],
+    ] as never)
   }, 60000)
 
-  test('a model adds the cases of a company draft; then the owner accepts it', async () => {
+  test('a model adds the flow and the examples of a company draft; then the owner accepts it', async () => {
     const { p } = await h.started()
     const source = {
       repo: 'company-repo',
@@ -86,22 +115,23 @@ describe('the cases of a new direction (P10 rejected, onboarding 2026-11-14)', (
       target: { of: { _tag: 'Revision', id: d2 } },
       content: { evidence: [], reason: null },
     }
-    // Nanda, 2026-11-15: a case is a ladder to an output (was: real code).
+    // Nanda, 2026-11-15: an example is an output that follows or breaks it (was: 3 cases).
     expect(refused(act(derivedIn(p), NANDA, accept)).message).toBe(
-      'd2 drafts the new direction Flags with 0 cases; a direction starts with at least 3 ' +
-        'cases: ladders down to a real output that follows it or breaks it',
+      'd2 drafts the new direction Flags, and its flow marks no step that the direction ' +
+        'governs; a direction starts with an output that follows it and one that breaks it, ' +
+        'for each marked step of its flow',
     )
-    p.write('cases.yaml', CASES_YAML(3))
+    p.write('cases.yaml', `${FLAGS_FLOW}${EXAMPLES_YAML(EXAMPLES)}`)
     const file = 'cases.yaml'
-    const add: ActionInput = { _tag: 'AddCases', target: { draft: d2 }, content: { file } }
+    const add: ActionInput = { _tag: 'AddExamples', target: { draft: d2 }, content: { file } }
     expect(refused(act(derivedIn(p), NANDA, add)).message).toBe(
-      'a model drafts the cases of a draft; the person says it in words',
+      'a model drafts the examples of a draft; the person says it in words',
     )
     stored(p, HOST_RUN, add)
     stored(p, NANDA, accept)
     const flags = workOf(p.dir).directions.get('flags' as DirectionId)
     expect(flags?._tag).toBe('Official')
-    expect(flags?.cases).toEqual([A_LADDER, A_LADDER, A_LADDER] as never)
+    expect(flags?.examples).toEqual(EXAMPLES as never)
   }, 60000)
 })
 

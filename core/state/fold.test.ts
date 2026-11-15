@@ -12,11 +12,12 @@ import {
   type AgentId,
   type AssignmentId,
   type Author,
-  type Case,
   type DirectionId,
   type Draft,
   type Event,
   type EventRef,
+  type Example,
+  type FlowStep,
   type Kind,
   kindOf,
   type OnboardedDirection,
@@ -131,11 +132,10 @@ const linesOf = (work: Work, dir: string): ReadonlyArray<string> => {
 // 2026-11-14: each role holds its persistence and its icon (the config, the workflow, the yaml
 // text, its hash and the fit hashes), each assignment where it runs (runs), and the page run has
 // the agent p1 (its line, its id in created, the agent counter). P10 rejected, onboarding
-// 2026-11-14: directions and drafts hold their cases, and the company scenario gives d2 its cases
-// in one more event. The last three scenarios are new. Nanda, 2026-11-15: a case is a ladder to
-// an output, and a direction has a summary: the cases are ladders, and each draft and each
-// version holds its summary. Nanda, 2026-11-15: a direction has a flow: each draft and each version
-// holds its flow (none in these scenarios).
+// 2026-11-14: directions and drafts hold their examples, and the company scenario gives d2 its
+// examples in one more event. The last three scenarios are new. Nanda, 2026-11-15: a direction has
+// a summary, and a flow with the steps that it governs marked: each draft and each version holds
+// both, and the examples are of those steps.
 const PINS = `${import.meta.dir}/fold.pins.txt`
 const pinnedLines = (name: string): ReadonlyArray<string> => {
   const text = readFileSync(PINS, 'utf8')
@@ -162,7 +162,7 @@ const startStore = (dir: string, directions: ReadonlyArray<OnboardedDirection>, 
       }),
     ).pipe(Effect.provide(Layer.merge(storeOf(dir), FilesLive))),
   )
-// An event that a later wave's command writes (an adjustment, the cases of a draft, the start of
+// An event that a later wave's command writes (an adjustment, the examples of a draft, the start of
 // an agent's terminal), appended as the store appends any checked event.
 const NANDA_UI: Author = { _tag: 'Person', name: 'Nanda', channel: 'ui' }
 const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
@@ -179,13 +179,12 @@ const withSupersedes = (standards: unknown) =>
     ...x,
     rules: x.rules.map((r) => ({ ...r, supersedes: [] })),
   }))
-// Three cases each (P10 rejected, onboarding 2026-11-14), of the files of the harness project.
-// Nanda, 2026-11-15: a case is a ladder to an output; these have no rungs.
-const CASES: ReadonlyArray<Case> = [
-  { fit: 'Follows', via: [], output: { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice for one merchant.' } },
-  { fit: 'Follows', via: [], output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' } },
-  { fit: 'Breaks', via: [], output: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO' } },
-] as unknown as ReadonlyArray<Case>
+// The flow and the examples of the harness direction (P10 rejected, onboarding 2026-11-14;
+// Nanda, 2026-11-15: examples of the marked steps), for the other directions of these scenarios.
+const { flow: FLOW, examples: CASES } = Bun.YAML.parse(harness.DIRECTION) as {
+  readonly flow: ReadonlyArray<FlowStep>
+  readonly examples: ReadonlyArray<Example>
+}
 
 // The fold of the store of the dir gives the Work of the old replay.
 const sameAsReplay = async (dir: string, name: string): Promise<Work> => {
@@ -405,9 +404,10 @@ describe('fold gives the Work of the old replay', () => {
       '  owner: Nanda\n  checkedBy: linter\n'
     p.write('aristoteles.lock', lock)
     ok(await p.nanda('waiting'))
-    // P10 rejected, onboarding 2026-11-14: the company draft of a new direction gets its cases
-    // from a model before the accept (the command comes in a later wave).
-    const cases = { _tag: 'Revision', id: 'd2', move: { _tag: 'CasesAdded', cases: CASES } }
+    // P10 rejected, onboarding 2026-11-14: the company draft of a new direction gets its flow and
+    // its examples from a model before the accept (the command comes in a later wave).
+    const move = { _tag: 'ExamplesAdded', flow: FLOW, examples: CASES }
+    const cases = { _tag: 'Revision', id: 'd2', move }
     await appendNow(p, HOST_RUN, cases as Event)
     const seen = '--evidence="the folder | each standard and rule reads as the company says"'
     ok(await p.nanda(`review d2 accept ${seen}`, 'accept'))
@@ -556,7 +556,7 @@ describe('fold gives the Work of the old replay', () => {
   test('onboarded start: the first event holds two directions, each at version 1', async () => {
     const p = harness.project()
     const tsd = Bun.YAML.parse(harness.DIRECTION) as Record<string, unknown>
-    const { cases: _, ...file } = tsd
+    const { examples: _, ...file } = tsd
     const flags = {
       id: 'feature-flags',
       name: 'Feature flags',
@@ -581,8 +581,8 @@ describe('fold gives the Work of the old replay', () => {
       commit: 'c'.repeat(40),
     }
     const directions = [
-      { direction: { ...file, standards: withSupersedes(file.standards) }, cases: CASES, source: { _tag: 'Local' } },
-      { direction: flags, cases: CASES, source: external },
+      { direction: { ...file, standards: withSupersedes(file.standards) }, examples: CASES, source: { _tag: 'Local' } },
+      { direction: { ...flags, flow: FLOW }, examples: CASES, source: external },
     ] as unknown as ReadonlyArray<OnboardedDirection>
     await startStore(p.dir, directions, p.now() as Time)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
@@ -599,7 +599,7 @@ describe('fold gives the Work of the old replay', () => {
       const d = work.directions.get(id as DirectionId)
       if (d?._tag !== 'Official') throw new Error(`${id} is not official`)
       expect(d.versions.map((v) => v.number)).toEqual([1] as never)
-      expect(d.cases).toEqual(CASES)
+      expect(d.examples).toEqual(CASES)
       expect(d.source).toEqual(source)
       const draft = work.drafts.get(d.versions[0].revision as RevisionId)
       expect<unknown>(draft?.origin).toEqual({ _tag: 'Onboarded', event: 'e1' })
@@ -683,7 +683,7 @@ describe('fold gives the Work of the old replay', () => {
       [{ _tag: 'SetPersistence', role: 'writer', persistence: { persistent: true, why } }, 'Accepted'],
       [{ _tag: 'SetTier', role: 'editor', tier: 'low' }, 'None'],
       [{ _tag: 'SetTier', role: 'editor', tier: 'high' }, 'Accepted'],
-      [{ _tag: 'SetCases', direction: 'tsd-writing', cases: other }, 'Accepted'],
+      [{ _tag: 'SetExamples', direction: 'tsd-writing', examples: other }, 'Accepted'],
       [{ _tag: 'RemoveRole', role: 'editor' }, 'Rejected'],
       [{ _tag: 'RetireDirection', direction: 'tsd-writing' }, 'Accepted'],
     ]
@@ -708,7 +708,7 @@ describe('fold gives the Work of the old replay', () => {
       why,
     })
     const tsd = work.directions.get('tsd-writing' as DirectionId)
-    expect(tsd?.cases).toEqual(other)
+    expect(tsd?.examples).toEqual(other)
   }, 30000)
 
   // Every kind of event that a scenario above wrote; the kinds that none writes are listed, so a
@@ -772,7 +772,7 @@ describe('fold gives the Work of the old replay', () => {
       'Revision.Drafted',
       'Revision.Revised',
       'Revision.Imported',
-      'Revision.CasesAdded',
+      'Revision.ExamplesAdded',
       'Permission.Granted',
       'Permission.Revoked',
       'Source.Moved',

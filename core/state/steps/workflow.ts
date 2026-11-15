@@ -201,7 +201,7 @@ export const adjustmentRejected = (
     : unchanged(work)
 
 // The accept applies the change: a role adjustment to the config and the roles of the workflow,
-// with the stored text of aristoteles.yaml; other cases to an official direction. A retired
+// with the stored text of aristoteles.yaml; other examples to an official direction. A retired
 // direction keeps its record: its state follows from this event (core/derived).
 export const adjustmentAccepted = (
   work: Work,
@@ -210,11 +210,11 @@ export const adjustmentAccepted = (
 ): Stepped => {
   const adjustment = adjustmentAt(work, e.id) ?? damaged(r, `${e.id} drafts no adjustment`)
   const { hashes, texts } = e.move
-  if (adjustment._tag === 'SetCases') {
+  if (adjustment._tag === 'SetExamples') {
     const official =
       officialAt(work, adjustment.direction) ??
       damaged(r, `${adjustment.direction} has no version`)
-    const changed = Moves.setCases(official, adjustment.cases)
+    const changed = Moves.setExamples(official, adjustment.examples)
     return unchanged({
       ...work,
       hashes,

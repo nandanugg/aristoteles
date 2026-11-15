@@ -37,7 +37,7 @@ export {
   adjustmentProblem,
 } from './adjustments.ts'
 export { agentStateOf } from './catalog.ts'
-export { type CaseState, caseStateOf, onboardingStateOf, spotCurrent } from './onboarding.ts'
+export { exampleStateOf, type ExampleState, onboardingStateOf, spotCurrent } from './onboarding.ts'
 export { tierOfAssignment } from './reads.ts'
 export { canAct } from './can.ts'
 export {

@@ -451,9 +451,9 @@ export type StepWhat =
     }
   // The person's words about the roles (P7): the host drafts the adjustment that they ask for.
   | { readonly _tag: 'AnswerRolesSuggestion'; readonly suggestion: SuggestionId }
-  // A company draft of a new direction waits for its cases (P10 rejected, onboarding
+  // A company draft of a new direction waits for its examples (P10 rejected, onboarding
   // 2026-11-14): the host adds them before the person's accept.
-  | { readonly _tag: 'AddCases'; readonly draft: RevisionId; readonly direction: DirectionId }
+  | { readonly _tag: 'AddExamples'; readonly draft: RevisionId; readonly direction: DirectionId }
   | {
       readonly _tag: 'PutOnBase'
       readonly task: TaskId

@@ -12,8 +12,8 @@ import {
   type By,
   type DeciderLeaf,
   type EventRef,
+  examplesMissing,
   human,
-  MIN_CASES,
   type NonBlank,
   type TaskId,
   type Work,
@@ -706,18 +706,18 @@ const reviewEvaluation = (c: Ctx, id: string): CanAct => {
   return MAY
 }
 
-// A direction starts with its cases (P10 rejected, onboarding 2026-11-14): the accept of a new
-// direction whose draft holds fewer waits until a model adds them.
-const draftCases = (c: Ctx, id: string): CanAct => {
+// A direction starts with its examples (P10 rejected, onboarding 2026-11-14): the accept of a
+// new direction whose draft misses some waits until a model adds them.
+const draftExamples = (c: Ctx, id: string): CanAct => {
   const x = c.w.drafts.get(id as never)
-  if (x?._tag !== 'New' || x.cases.length >= MIN_CASES) return MAY
+  const missing = x?._tag === 'New' ? examplesMissing(x.flow, x.examples) : undefined
+  if (x === undefined || missing === undefined) return MAY
   const name = directionAt(c.w, x.of).name
   return no(
-    `${id} drafts the new direction ${name} with ${x.cases.length} cases; a direction starts ` +
-      `with at least ${MIN_CASES} cases: ladders down to a real output that follows it or ` +
-      'breaks it',
+    `${id} drafts the new direction ${name}, and ${missing}; a direction starts with an ` +
+      'output that follows it and one that breaks it, for each marked step of its flow',
     'Wait',
-    `a model adds its cases first: work direction cases ${id} --file=<cases.yaml>`,
+    `a model adds its flow and examples first: work direction examples ${id} --file=<examples.yaml>`,
   )
 }
 const acceptOf: Check<'Accept'> = (c, { target: { of } }) =>
@@ -729,7 +729,7 @@ const acceptOf: Check<'Accept'> = (c, { target: { of } }) =>
         : of._tag === 'Revision'
           ? first(
               () => reviewDraft(c, of.id, true),
-              () => draftCases(c, of.id),
+              () => draftExamples(c, of.id),
             )
           : reviewEvaluation(c, of.id),
   )
@@ -1550,7 +1550,7 @@ const decideRoleWords = (c: Ctx, draft: EventRef): CanAct => {
   }
 }
 
-// --- onboarding: adjustments, cases, persistent agents -------------------------------------------
+// --- onboarding: adjustments, examples, persistent agents ------------------------------------------
 
 // A model drafts a change; the person says it in words (ruling 14).
 const modelDrafts = (c: Ctx, what: string): CanAct => {
@@ -1592,23 +1592,23 @@ const decideAdjustment = (c: Ctx, draft: EventRef, accept: boolean): CanAct => {
   const problem = accept ? adjustmentProblem(c.d, x.adjustment) : undefined
   return problem === undefined ? MAY : { _tag: 'MayNot', refusal: problem }
 }
-const addCases: Check<'AddCases'> = (c, { target: { draft } }) =>
+const addExamples: Check<'AddExamples'> = (c, { target: { draft } }) =>
   first(
     () => agentOpen(c),
-    () => modelDrafts(c, 'the cases of a draft'),
+    () => modelDrafts(c, 'the examples of a draft'),
     () => {
       const x = c.w.drafts.get(draft)
       if (x === undefined) return exists(false, draft, 'draft')
       if (x._tag !== 'New') {
         return no(
-          `${draft} changes a direction that has a version; cases make no new version`,
+          `${draft} changes a direction that has a version; examples make no new version`,
           'Pick',
-          'give other cases of a direction with work adjust cases',
+          'give other examples of a direction with work adjust examples',
         )
       }
       const state = c.d.states.revisions.get(draft)
       if (state?._tag !== 'Waiting') {
-        return no(`${draft} waits for no accept`, 'Pick', 'add the cases of a draft that waits')
+        return no(`${draft} waits for no accept`, 'Pick', 'add the examples of a draft that waits')
       }
       return MAY
     },
@@ -1735,7 +1735,7 @@ const CHECKS: { readonly [K in ActionTag]: Check<K> } = {
   DraftDirection: draftDirection,
   ReviseDirection: revise,
   ImportCompany: () => MAY,
-  AddCases: addCases,
+  AddExamples: addExamples,
   Suggest: (c) => agentOpen(c),
   Grant: (c, i) =>
     first(
@@ -1771,7 +1771,7 @@ const CLAIMED: ReadonlySet<ActionTag> = new Set<ActionTag>([
   'ReviseDirection',
   'DraftRoleWords',
   'DraftAdjustment',
-  'AddCases',
+  'AddExamples',
   'Forward',
   'Grant',
   'Revoke',

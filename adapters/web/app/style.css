@@ -336,7 +336,7 @@ button { font: inherit; color: inherit; }
 
 /* The onboarding pages (rulings 2, 3, 11): two columns of directions, then a grid of agents. */
 /* Nanda, 2026-11-15: the pages fill the main area; the prose keeps a column of about 80
-   characters, and on a wide card the cases stand beside the words. */
+   characters; the review of a direction reads from the top down. */
 .onboarding { display: flex; flex-direction: column; gap: 14px; }
 .onboarding .canvas-head { margin: 0; }
 .steps { padding: 0; }
@@ -356,9 +356,8 @@ button { font: inherit; color: inherit; }
 .direction-head h2, .add-form h2 { margin: 0; font-size: 17px; }
 .direction-page { container-type: inline-size; }
 .direction-page > .field { max-width: 84ch; }
-.direction-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 28px; margin-top: 12px; align-items: start; }
-@container (min-width: 1150px) { .direction-body { grid-template-columns: minmax(0, 84ch) minmax(0, 1fr); } }
-.direction-cases .section-title:first-child { margin-top: 0; }
+.direction-body { margin-top: 12px; min-width: 0; }
+.direction-review .change { max-width: 110ch; }
 
 /* Markdown (app/markdown.ts). */
 .md { max-width: 80ch; overflow-wrap: anywhere; }
@@ -382,9 +381,8 @@ button { font: inherit; color: inherit; }
 .level + .level { margin-top: 12px; }
 .level-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; font-size: 13px; }
 .level-head code { font: 12.5px var(--mono); }
-/* The top of a case's ladder is the direction too, in its look. */
-.level-tag, .ladder-top { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 8px; border-radius: 6px; }
-.level-tag.direction, .ladder-top { background: var(--sol-tint); color: var(--sol); border: 1px solid var(--sol-line); }
+.level-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 8px; border-radius: 6px; }
+.level-tag.direction { background: var(--sol-tint); color: var(--sol); border: 1px solid var(--sol-line); }
 .level-tag.standard { background: var(--terra-tint); color: var(--terra); border: 1px solid var(--terra-line); }
 .level-tag.rule { background: var(--luna-tint); color: var(--luna); border: 1px solid var(--luna-line); }
 .level-standard { border: 1px solid var(--terra-line); border-left: 4px solid var(--terra); padding: 10px 14px; }
@@ -406,40 +404,55 @@ button { font: inherit; color: inherit; }
 .flow-act rect { fill: var(--sol-tint); stroke: var(--sol-line); }
 .flow-act text { stroke: var(--sol-tint); }
 .flow-svg .flow-n { font-weight: 700; fill: var(--sol); }
+/* A step that the direction governs is in the color of the standards, with its ids in a tag;
+   once a step is marked, the others are gray (Nanda, 2026-11-15). */
+.flow-arrow.marked line { stroke: var(--terra); stroke-width: 2; }
+.flow-arrow.marked text, .flow-act.marked text { fill: var(--terra); font-weight: 600; }
+.flow-act.marked rect { fill: var(--terra-tint); stroke: var(--terra); }
+.flow-act.marked text { stroke: var(--terra-tint); }
+.flow-arrow.gray line { stroke: var(--line-strong); }
+.flow-svg marker.gray path { fill: var(--line-strong); }
+.flow-svg .gray text, .flow-svg .gray .flow-n { fill: var(--faint); }
+.flow-act.gray rect { fill: var(--surface-2); stroke: var(--line); }
+.flow-act.gray text { stroke: var(--surface-2); }
+.flow-svg .flow-tag rect { fill: var(--terra-tint); stroke: var(--terra-line); }
+.flow-svg .flow-tag text { font: 11px var(--mono); fill: var(--terra); font-weight: 400; stroke: var(--terra-tint); stroke-width: 0; }
 .flow-steps { margin: 8px 0 0; padding-left: 24px; font-size: 13px; }
-.flow-steps li + li { margin-top: 2px; }
+.flow-steps li + li { margin-top: 4px; }
 .flow-who { font-weight: 600; }
 .flow-steps .where { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.flow-steps li.marked::marker, .flow-steps li.marked .flow-who { color: var(--terra); }
+.flow-steps li.gray, .flow-steps li.gray .where { color: var(--faint); }
+.uses-tag { display: inline-block; font: 11px/1.6 var(--mono); padding: 0 8px; border-radius: 8px; background: var(--terra-tint); color: var(--terra); border: 1px solid var(--terra-line); overflow-wrap: anywhere; }
 /* The summary of a direction, before its words: what it asks and why, for a first reading. */
 .direction-summary { max-width: 80ch; margin: 0 0 10px; padding: 8px 12px; font-size: 15px; font-weight: 600; line-height: 1.45; background: var(--sol-tint); border-radius: 8px; }
 
-/* A case: a ladder from the direction down to its output (Follows or Breaks), each place with the
-   real code around it and its lines marked. A line on the left joins the steps; each has a dot. */
-.cases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.case { font-size: 13px; border: 1px solid var(--line); border-left: 4px solid var(--accept); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
-.case.breaks { border-left-color: var(--reject); }
-.ladder { list-style: none; margin: 0; padding: 0 0 0 20px; position: relative; display: flex; flex-direction: column; gap: 8px; }
-.ladder::before { content: ''; position: absolute; left: 6px; top: 10px; bottom: 10px; border-left: 2px solid var(--line-strong); }
-.rung { position: relative; min-width: 0; }
-.rung::before { content: ''; position: absolute; left: -19px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--line-strong); box-sizing: border-box; }
-.rung.top::before { background: var(--sol); border-color: var(--sol); }
-.rung.output.follows::before { background: var(--accept); border-color: var(--accept); }
-.rung.output.breaks::before { background: var(--reject); border-color: var(--reject); }
-.rung-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
-.rung-head .where { font: 12.5px var(--mono); overflow-wrap: anywhere; }
-.rung-name { font-weight: 600; }
+/* The examples (Nanda, 2026-11-15): by marked step, each an output that follows or breaks the
+   direction (the color of its left edge), with its input for a step that checks or decides. A
+   real sample shows the code around it, its lines marked; the host's words are labeled so. */
+.example-group + .example-group { margin-top: 14px; }
+.example-step { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--terra); overflow-wrap: anywhere; }
+.examples { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; align-items: start; }
+.example { font-size: 13px; border: 1px solid var(--line); border-left: 4px solid var(--accept); border-radius: 8px; padding: 8px 10px; background: var(--surface); min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.example.breaks { border-left-color: var(--reject); }
+.sample { width: 100%; min-width: 0; }
+.sample-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 4px; }
+.sample-head .where { font: 12.5px var(--mono); overflow-wrap: anywhere; }
+.sample-name { font-weight: 600; }
+.written-tag { font-size: 12px; font-style: italic; color: var(--muted); }
+.written { margin: 0; font: 12px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border: 1px dashed var(--line-strong); border-radius: 6px; padding: 6px 10px; }
 .fit-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 8px; border-radius: 6px; }
 .fit-tag.follows { background: var(--accept-tint); color: var(--accept); }
 .fit-tag.breaks { background: var(--reject-tint); color: var(--reject); }
-.case .stale { color: var(--reject); font-size: 12px; }
-.case-code { margin: 0; font: 12px/1.55 var(--mono); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 0; overflow-x: auto; }
-.case-code + .muted { margin-top: 6px; }
-.case-code .line { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); white-space: pre; }
-.case-code .ln { color: var(--faint); text-align: right; padding-right: 10px; user-select: none; }
-.case-code .t { padding-right: 10px; }
-.case-code .line.mark { background: var(--sol-tint); }
-.case-code .line.mark .ln { color: var(--sol); font-weight: 700; }
-.case-code mark { background: var(--sol-line); color: inherit; border-radius: 2px; }
+.example .stale { color: var(--reject); font-size: 12px; }
+.sample-code { margin: 0; font: 12px/1.55 var(--mono); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 0; overflow-x: auto; }
+.sample-code + .muted { margin-top: 6px; }
+.sample-code .line { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); white-space: pre; }
+.sample-code .ln { color: var(--faint); text-align: right; padding-right: 10px; user-select: none; }
+.sample-code .t { padding-right: 10px; }
+.sample-code .line.mark { background: var(--sol-tint); }
+.sample-code .line.mark .ln { color: var(--sol); font-weight: 700; }
+.sample-code mark { background: var(--sol-line); color: inherit; border-radius: 2px; }
 .question { border: 1px solid var(--sol-line); background: var(--sol-tint); border-radius: 10px; padding: 8px 12px 10px; margin: 0 0 10px; }
 .question legend { font-weight: 600; padding: 0 4px; }
 .option { display: flex; align-items: flex-start; gap: 8px; min-height: 32px; padding-top: 6px; cursor: pointer; }

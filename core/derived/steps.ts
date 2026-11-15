@@ -4,7 +4,7 @@
 // The bookkeeping steps of D14 are gone: no finish of a child of an ended task, no finish in an
 // ended task, no finish of a child after an accept (C1, I2).
 import type { Intent } from '../schema/actions.ts'
-import { MIN_CASES } from '../schema/index.ts'
+import { examplesMissing } from '../schema/index.ts'
 import type {
   Assignment,
   AssignmentId,
@@ -291,7 +291,7 @@ const explainSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
 }
 
 // What reaches an active host from no project (onboarding): a company draft of a new direction
-// with too few cases, whose cases the host adds before the person's accept (P10 rejected,
+// that misses examples, which the host adds before the person's accept (P10 rejected,
 // onboarding 2026-11-14); the person's words about the roles, which the host drafts as an
 // adjustment (P7).
 const onboardingSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> => {
@@ -299,10 +299,10 @@ const onboardingSteps = (d: Derived, a: Assignment): ReadonlyArray<Candidate> =>
   if (!hostedSessions(d, a.id).some((s) => terminalLive(d, s))) return []
   const steps: Array<Candidate> = []
   for (const x of w.drafts.values()) {
-    if (x._tag !== 'New' || x.cases.length >= MIN_CASES) continue
+    if (x._tag !== 'New' || examplesMissing(x.flow, x.examples) === undefined) continue
     if (d.states.revisions.get(x.id)?._tag !== 'Waiting') continue
-    const what: StepWhat = { _tag: 'AddCases', draft: x.id, direction: x.of }
-    steps.push(act(what, { _tag: 'AddCases', target: { draft: x.id } }))
+    const what: StepWhat = { _tag: 'AddExamples', draft: x.id, direction: x.of }
+    steps.push(act(what, { _tag: 'AddExamples', target: { draft: x.id } }))
   }
   for (const y of rolesSuggestionsWaiting(w)) {
     const what: StepWhat = { _tag: 'AnswerRolesSuggestion', suggestion: y.id }
@@ -903,7 +903,7 @@ const IDS: {
   ReviseRejectedDraft: (s) => [s.draft, s.reject],
   AnswerSuggestion: (s) => [s.suggestion, s.direction],
   AnswerRolesSuggestion: (s) => [s.suggestion],
-  AddCases: (s) => [s.draft],
+  AddExamples: (s) => [s.draft],
   PutOnBase: (s) => [s.task, s.result],
   FinishAcceptedTask: (s) => [s.task],
   EvaluationWaitsForOwner: (s) => [s.evaluation, s.task],

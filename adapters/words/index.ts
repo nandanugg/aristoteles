@@ -31,7 +31,7 @@ export {
 } from './common.ts'
 export {
   adjustmentWords,
-  caseLines,
+  exampleLines,
   pieceNames,
   renderAdjustment,
   renderAssignment,
