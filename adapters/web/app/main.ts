@@ -19,6 +19,7 @@ import {
 import { RunId, type TaskDraftId } from '../../../src/domain/ids.ts'
 import type { ActOut } from './api.ts'
 import { api, attempt, chime, post, socket, toast } from './api.ts'
+import { DirectionText } from './direction.ts'
 import { Gear } from './gear.ts'
 import { ICONS, icon } from './icons.ts'
 import { Item } from './item.ts'
@@ -303,12 +304,7 @@ function Directions({ panel }: { panel: PanelData }) {
     <div class="direction">
       <h3>${d.name} <code style="font-weight: 400; color: var(--faint)">${d.version}</code></h3>
       <div style="font-size: 13px; color: var(--muted)">owner ${d.owner}</div>
-      <div class="prose" style="margin-top: 8px">${d.says}</div>
-      ${d.standards.map((s) => html`<div class="standard"><div><span class="sid">${s.id}</span>
-        </div><div class="prose">${s.says}</div>
-        ${s.rules.map((r) => html`<div class="rule">
-          <span class="rid">${r.id}${r.checkedBy ? ` · ${r.checkedBy}` : ''}</span>
-          <div class="prose">${r.says}</div></div>`)}</div>`)}
+      <${DirectionText} card=${d} />
       ${d.changed.length ? html`<div class="section-title">Versions in this project</div>
         ${d.changed.map((v) => html`<div><code>${v.id}</code> · ${v.at}</div>`)}` : ''}
       ${d.drafts.length ? html`<div class="section-title">Drafts that wait</div>

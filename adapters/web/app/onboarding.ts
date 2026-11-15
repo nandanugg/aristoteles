@@ -6,11 +6,12 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { type DirView, OnboardingView } from '../contract.ts'
 import { RoleGrid } from './agents.ts'
 import { api, attempt, type OnboardingActJson, postOnboarding } from './api.ts'
+import { CaseBlock, Cases, DirectionText } from './direction.ts'
+import { Inline } from './markdown.ts'
 
 type DirData = typeof DirView.Type
 type ViewData = typeof OnboardingView.Type
 type Card = ViewData['directions'][number]
-type CaseData = Card['cases'][number]
 
 // The public example of a company direction (ruling 6): one direction, one standard, one rule.
 const EXAMPLE_REPO = 'https://github.com/nandanugg/aristoteles-example-direction'
@@ -45,22 +46,27 @@ function Confirm({ title, words, onYes, onNo }: ConfirmProps) {
   </div>`
 }
 
-const caseLine = (c: CaseData) => html`<li class=${`case ${c.fit.toLowerCase()}`}>
-  <span class="fit">${c.fit}</span> <code>${c.file}:${c.line}</code>
-  <span class="excerpt">${c.excerpt}</span>
-  ${c.current ? '' : html`<span class="stale">stale: the excerpt is not in the file now</span>`}
-</li>`
+// The next direction that waits for the person, after `id` in the list order and from the top
+// again (Nanda, 2026-11-15); none when every other one is accepted.
+const nextAfter = (list: ReadonlyArray<Card>, id: string): string | undefined => {
+  const at = list.findIndex((d) => d.id === id)
+  return [...list.slice(at + 1), ...list.slice(0, Math.max(at, 0))].find(
+    (d) => d.state !== 'accepted',
+  )?.id
+}
 
-// The right column: the text of a direction, its standards and rules (each with the role that
-// the AI proposes to check it), its cases, the questions, and the acts.
-function Direction({ card }: { card: Card }) {
+// The right column: the direction by level (its standards and rules, each rule with the role
+// that the AI proposes to check it), its cases beside it on a wide screen, the questions, and the
+// acts. An accept or a remove opens the next direction (onDone).
+function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
   const [words, setWords] = useState('')
   const open = card.questions.filter((q) => q.answer === null)
   const [chosen, setChosen] = useState<ReadonlyArray<'A' | 'B' | undefined>>([])
-  const act = (fn: () => OnboardingActJson) =>
+  const act = (fn: () => OnboardingActJson, done = false) =>
     attempt(async () => {
       const out = await postOnboarding(fn())
       setWords('')
+      if (done) onDone()
       return out
     })
   const submit = act(() => {
@@ -70,6 +76,18 @@ function Direction({ card }: { card: Card }) {
   })
   const empty = !words.trim()
   const drafted = card.says !== null
+  const questions = card.questions.map((q, i) => {
+    const n = open.indexOf(q)
+    return html`<fieldset class="question" aria-label=${`question ${i + 1}`}>
+      <legend><${Inline} text=${q.says} /></legend>
+      <ul class="cases"><${CaseBlock} c=${q.case} /></ul>
+      ${(['A', 'B'] as const).map((o, k) => html`<label class="option">
+        <input type="radio" name=${`${card.id}-q${i}`} disabled=${n < 0}
+          checked=${n < 0 ? q.answer === o : chosen[n] === o}
+          onChange=${() => setChosen((c) => Object.assign([...c], { [n]: o }))} />
+        <span>${o}: ${q.options[k]}</span></label>`)}
+    </fieldset>`
+  })
   return html`<article class="direction-page" aria-label=${card.name}>
     <div class="direction-head"><h2>${card.name}</h2>
       <span class=${`chip ${card.state}`}>${STATE_LABEL[card.state]}</span></div>
@@ -78,38 +96,26 @@ function Direction({ card }: { card: Card }) {
     ${card.example ? html`<p><strong>An example:</strong> ${card.example}</p>` : ''}
     ${card.state === 'loading' ? html`<p class="waits">The host drafts it${
       card.request ? `, from your words: "${card.request}"` : ''}.</p>` : ''}
-    ${card.says ? html`<div class="prose says">${card.says}</div>` : ''}
-    ${card.standards.map((s) => html`<div class="standard"><span class="sid">${s.id}</span>
-      <div class="prose">${s.says}</div>
-      ${s.rules.map((r) => html`<div class="rule"><span class="rid">${r.id}${
-        r.checkedBy ? ` · checked by ${r.checkedBy}` : ''}</span>
-        <div class="prose">${r.says}</div></div>`)}</div>`)}
-    ${card.cases.length ? html`<div class="section-title">Cases</div>
-      <ul class="cases">${card.cases.map(caseLine)}</ul>` : ''}
-    ${card.questions.length ? html`<div class="section-title">Questions of the AI</div>` : ''}
-    ${card.questions.map((q, i) => {
-      const n = open.indexOf(q)
-      return html`<fieldset class="question" aria-label=${`question ${i + 1}`}>
-        <legend>${q.says}</legend>
-        <ul class="cases">${caseLine(q.case)}</ul>
-        ${(['A', 'B'] as const).map((o, k) => html`<label class="option">
-          <input type="radio" name=${`${card.id}-q${i}`} disabled=${n < 0}
-            checked=${n < 0 ? q.answer === o : chosen[n] === o}
-            onChange=${() => setChosen((c) => Object.assign([...c], { [n]: o }))} />
-          <span>${o}: ${q.options[k]}</span></label>`)}
-      </fieldset>`
-    })}
-    ${open.length ? html`<button class="btn primary" disabled=${open.some((_, n) => !chosen[n])}
-      onClick=${submit}>Submit the answers</button>` : ''}
+    <div class="direction-body">
+      <div class="direction-words">
+        <${DirectionText} card=${card} />
+        ${questions.length ? html`<div class="section-title">Questions of the AI</div>` : ''}
+        ${questions}
+        ${open.length ? html`<button class="btn primary"
+          disabled=${open.some((_, n) => !chosen[n])} onClick=${submit}>Submit the answers</button>`
+          : ''}
+      </div>
+      <div class="direction-cases"><${Cases} cases=${card.cases} /></div>
+    </div>
     <label class="field"><span>What to change (Revise needs words; Accept needs none)</span>
       <textarea rows="3" value=${words} onInput=${(e: Event) => setWords(text(e))}></textarea>
     </label>
     <div class="item-actions">
       <button class="btn primary" disabled=${card.state !== 'ready' || !empty}
-        onClick=${act(() => ({ act: 'accept', direction: card.id }))}>Accept</button>
+        onClick=${act(() => ({ act: 'accept', direction: card.id }), true)}>Accept</button>
       <button class="btn" disabled=${!drafted || empty}
         onClick=${act(() => ({ act: 'revise', direction: card.id, words }))}>Revise</button>
-      <button class="btn" onClick=${act(() => ({ act: 'remove', direction: card.id }))}>
+      <button class="btn" onClick=${act(() => ({ act: 'remove', direction: card.id }), true)}>
         Remove</button>
     </div>
   </article>`
@@ -204,7 +210,10 @@ function Directions({ view, onAgents }: { view: ViewData; onAgents: () => void }
         agents</button></div>` : ''}
       ${open._tag === 'Add' ? html`<${AddNew} onAdded=${added} />`
         : open._tag === 'Company' ? html`<${AddCompany} onAdded=${added} />`
-        : card ? html`<${Direction} key=${card.id} card=${card} />`
+        : card ? html`<${Direction} key=${card.id} card=${card} onDone=${() => {
+            const next = nextAfter(view.directions, card.id)
+            if (next) setOpen({ _tag: 'Direction', id: next })
+          }} />`
         : html`<p class="muted">The host reads the project and drafts its directions; each one
           shows here when it starts.</p>`}
     </section>

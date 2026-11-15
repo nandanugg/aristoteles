@@ -265,11 +265,26 @@ const open = async () => {
   p.write('draft.yaml', ONBOARD_CONFIG)
   ok(await p.agent('onboard config --file=draft.yaml'))
   ok(await p.agent('onboard found tsd-writing'))
-  p.write('tsd.yaml', ONBOARD_DIRECTION)
+  // Nanda, 2026-11-15: the words of a direction are markdown, and the page shows them so.
+  p.write('tsd.yaml', ONBOARD_DIRECTION.replace('says: The reader understands and decides from the page alone.\n',
+    'says: |\n  The reader understands and decides from the page alone.\n\n  ## Where it comes from\n' +
+    '  The `docs/tsd.md` file, **every** section of it:\n\n  - the introduction\n  - the design\n'))
   ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
   ok(await p.agent('onboard found code-proof'))
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') } })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  // PAGE_SHOTS=<folder>: screenshots of the pages at a wide and a phone width, for a person to see.
+  const shot = async (name) => {
+    if (!process.env.PAGE_SHOTS) return
+    await page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()))
+    const size = page.viewportSize()
+    for (const [width, height, kind] of [[2560, 1440, 'wide'], [375, 812, 'phone']]) {
+      await page.setViewportSize({ width, height })
+      await page.waitForTimeout(300)
+      await page.screenshot({ path: join(process.env.PAGE_SHOTS, `${name}-${kind}.png`), fullPage: kind === 'phone' })
+    }
+    await page.setViewportSize(size)
+  }
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
   const icons = []
@@ -304,8 +319,34 @@ const open = async () => {
     await page.waitForSelector(`${item('One thing per section')} .chip.loading`)
     // Ruling 2: Accept with an empty box, Revise with words, Remove.
     await page.click(item('TSD writing'))
+    // Nanda, 2026-11-15: the direction shows by level, its markdown as a heading, a list and
+    // code, and each case as a block with the real code around it, its line marked (was: raw
+    // text, and a case on one line).
+    expect(await page.locator('.direction-page .level-tag').allTextContents()).toEqual(
+      ['Direction', 'Standard', 'Rule', 'Rule', 'Standard', 'Rule'])
+    expect(await page.textContent('.direction-page .level-direction h3')).toBe('Where it comes from')
+    expect(await page.locator('.direction-page .level-direction li').allTextContents()).toEqual(['the introduction', 'the design'])
+    expect(await page.textContent('.direction-page .level-direction code')).toBe('docs/tsd.md')
+    expect(await page.textContent('.direction-page .level-direction')).not.toContain('##')
+    expect(await page.textContent('.direction-page .level-rule .level-head')).toBe('Ruleno-code-proofchecked by linter')
     expect(await page.locator('.direction-page .case').count()).toBe(3)
-    expect(await page.textContent('.direction-page .rule')).toContain('no-code-proof · checked by linter')
+    expect(await page.textContent('.direction-page .case .case-head')).toBe('Followsdocs/facts.md:5')
+    expect(await page.locator('.direction-page .case >> nth=0 >> .line').allTextContents()).toEqual(
+      ['2 ', '3## Dedupe', '4 ', '5The export ran twice for one merchant.'])
+    expect(await page.textContent('.direction-page .case >> nth=0 >> .line.mark mark')).toBe('The export ran twice for one merchant.')
+    // Nanda, 2026-11-15: the page fills the main area, and the list stays in view when the page
+    // scrolls.
+    await page.setViewportSize({ width: 1440, height: 600 })
+    expect(await page.evaluate(() => {
+      const canvas = document.querySelector('.canvas')
+      const list = document.querySelector('.direction-list')
+      const fills = document.querySelector('.onboarding-cols').getBoundingClientRect().width > canvas.clientWidth - 80
+      canvas.scrollTop = canvas.scrollHeight
+      const top = list.getBoundingClientRect().top
+      return { fills, scrolled: canvas.scrollTop > 100, sticky: getComputedStyle(list).position, inView: top >= 0 && top < 40 }
+    })).toEqual({ fills: true, scrolled: true, sticky: 'sticky', inView: true })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await shot('directions')
     expect(await page.isDisabled('.direction-page .item-actions >> text=Revise')).toBe(true)
     await page.fill('.direction-page textarea', 'name the reader of the TSD')
     expect(await page.isDisabled('.direction-page .item-actions >> text=Accept')).toBe(true)
@@ -317,12 +358,21 @@ const open = async () => {
     await page.click(item('code-proof'))
     await page.click('.direction-page .item-actions >> text=Remove')
     await page.waitForFunction(() => document.querySelectorAll('.direction-item').length === 2)
+    // Nanda, 2026-11-15: a remove opens the next direction that is not accepted.
+    expect(await page.textContent('.direction-item[aria-current="true"] .title')).toBe('One thing per section')
     await page.waitForSelector(`${item('One thing per section')} .chip.ready`)
     await page.waitForSelector(`${item('TSD writing')} .chip.ready`)
+    // Nanda, 2026-11-15: an accept opens the next direction that is not accepted, from the top
+    // of the list again after the last one.
+    await page.click(item('TSD writing'))
+    await page.click('.direction-page .item-actions >> text=Accept')
+    await page.waitForSelector(`${item('TSD writing')} .chip.accepted`)
+    expect(await page.textContent('.direction-item[aria-current="true"] .title')).toBe('One thing per section')
     // Approve all, with a confirmation; then the agents page opens (ruling 3).
     await page.click('.direction-list >> text=Approve all')
+    // Nanda, 2026-11-15: TSD writing is accepted already, so approve all names one direction.
     expect(await page.textContent('[role=alertdialog] .prose')).toBe(
-      'Approve all accepts each ready direction: One thing per section, TSD writing.')
+      'Approve all accepts each ready direction: One thing per section.')
     await page.click('[role=alertdialog] .btn.primary')
     await page.waitForSelector('text=Next: the agents')
     expect(icons).toEqual([])
@@ -332,6 +382,7 @@ const open = async () => {
     expect(icons).toHaveLength(1)
     expect(await page.locator('.role-card .role-name').allTextContents()).toEqual(['linter', 'architect', 'section-lead', 'writer'])
     expect(await page.textContent('.role-card:has-text("architect") .kv')).toBe('ModelOpus')
+    await shot('agents')
     // Ruling 15: the role of the top task has no toggle; ruling 7: a toggle sets the persistence.
     expect(await page.locator('.role-card:has-text("architect") input[type=checkbox]').count()).toBe(0)
     await page.click('[aria-label="writer is persistent"]')
@@ -364,8 +415,14 @@ const open = async () => {
     expect(await page.locator('[aria-label="luna model"]').count()).toBe(1)
     // The directions entry: the current directions and a text box that stores a suggestion.
     await page.click('.gear .tab >> text=Directions')
-    await page.waitForSelector('.gear .direction')
-    expect(await page.locator('.gear .direction h3').allTextContents()).toEqual(['One thing per section', 'TSD writing'])
+    // Nanda, 2026-11-15: as on the directions page, a list and the open direction by level (was:
+    // each direction as a block of raw text).
+    await page.waitForSelector('.gear .direction-list')
+    expect(await page.locator('.gear .direction-item .title').allTextContents()).toEqual(['One thing per section', 'TSD writing'])
+    await page.click('.gear .direction-item:has-text("TSD writing")')
+    expect(await page.textContent('.gear .level-direction h3')).toBe('Where it comes from')
+    expect(await page.locator('.gear .case').count()).toBe(3)
+    await shot('gear-directions')
     await page.fill('.gear .suggest textarea', 'say who reads the TSD')
     await page.click('text=Store the suggestion')
     await page.waitForSelector('.toast:has-text("a suggestion; a draft of a direction answers it")')
@@ -374,6 +431,7 @@ const open = async () => {
     await page.click('.gear .tab >> text=Agents')
     await page.waitForSelector('.gear .item.adjustment')
     expect(await page.locator('.gear .role-card').count()).toBe(4)
+    await shot('gear-agents')
     expect(await page.locator('.gear .role-card input[type=checkbox]').count()).toBe(0)
     expect(await page.textContent('.gear .item.adjustment .prose')).toBe(
       'An adjustment, drafted by host, a model run outside any task, waits for your decision: writer becomes a medium role.')

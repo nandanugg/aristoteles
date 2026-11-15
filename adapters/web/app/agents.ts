@@ -6,6 +6,7 @@ import { html } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { RoleCard as RoleCardSchema } from '../contract.ts'
 import { ICONS, icon } from './icons.ts'
+import { Inline, Markdown } from './markdown.ts'
 
 export type RoleCardData = typeof RoleCardSchema.Type
 
@@ -90,7 +91,7 @@ export function RoleGrid({ roles, onToggle, acts }: GridProps) {
       <div class="card-body">
         <div class="kv"><span class="k">Model</span><span class="v">${r.model ?? 'none'}</span>
           </div>
-        <div class="now">${r.summary}</div>
+        <div class="now"><${Inline} text=${r.summary} /></div>
         ${r.request
           ? html`<div class="waits">Your words wait for the host: ${r.request}</div>` : ''}
       </div>
@@ -130,9 +131,12 @@ function RoleWindow({ role: r, icons, acts, onClose }: WindowProps) {
         </div>
       <div class="kv"><span class="k">Launch</span><code class="v">${r.launch ?? 'none'}</code>
         </div>
-      <p class="prose">${r.summary}</p>
-      ${r.description !== r.summary ? html`<p class="prose muted">${r.description}</p>` : ''}
-      ${r.persistence ? html`<p><strong>${persistenceWord(r)}</strong>: ${r.persistence.why}</p>`
+      <div class="section-title">Summary</div><${Markdown} text=${r.summary} />
+      ${r.description !== r.summary ? html`<div class="section-title">Description</div>
+        <${Markdown} text=${r.description} />` : ''}
+      <div class="section-title">Persistence</div>
+      ${r.persistence ? html`<p><strong>${persistenceWord(r)}</strong>: <${Inline}
+        text=${r.persistence.why} /></p>`
         : html`<p>A program runs in the CLI, never in a terminal.</p>`}
       ${r.found ? html`<p class="muted">The project has it: <code>${r.found}</code></p>` : ''}
       ${r.request ? html`<p class="waits">Your words wait for the host: ${r.request}</p>` : ''}

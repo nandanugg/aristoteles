@@ -15,6 +15,7 @@ import {
 } from '../contract.ts'
 import { RoleGrid } from './agents.ts'
 import { api, attempt, post } from './api.ts'
+import { Cases, DirectionText } from './direction.ts'
 import { ICONS, icon } from './icons.ts'
 import { Item } from './item.ts'
 
@@ -196,11 +197,32 @@ function Entry({ view, kind }: { view: OnboardingData; kind: 'directions' | 'age
     }),
   ]
   return html`<div>
-    ${view.directions.map((x) => html`<div class="direction">
-      <h3>${x.name}</h3><div class="muted">${x.origin} · ${x.cases.length} cases</div>
-      <div class="prose">${x.says}</div></div>`)}
+    <${CurrentDirections} directions=${view.directions} />
     <${Suggest} targets=${targets} />
     ${waiting}
+  </div>`
+}
+
+// The current directions as the directions page shows them (Nanda, 2026-11-15): the list stays
+// in view at the left, and the open one shows by level, with its cases.
+function CurrentDirections({ directions }: { directions: OnboardingData['directions'] }) {
+  const [open, setOpen] = useState<string | null>(null)
+  const card = directions.find((d) => d.id === open) ?? directions[0]
+  if (!card) return html`<p class="muted">No direction is official yet.</p>`
+  return html`<div class="onboarding-cols gear-directions">
+    <nav class="direction-list" aria-label="Directions">
+      ${directions.map((d) => html`<button class="direction-item"
+        aria-current=${d.id === card.id ? 'true' : undefined} onClick=${() => setOpen(d.id)}>
+        <span class="title">${d.name}</span></button>`)}
+    </nav>
+    <article class="direction-page" aria-label=${card.name}>
+      <div class="direction-head"><h2>${card.name}</h2></div>
+      <div class="muted"><code>${card.id}</code> · ${card.origin}</div>
+      <div class="direction-body">
+        <div class="direction-words"><${DirectionText} card=${card} /></div>
+        <div class="direction-cases"><${Cases} cases=${card.cases} /></div>
+      </div>
+    </article>
   </div>`
 }
 
@@ -240,8 +262,8 @@ export function Gear({ dir, version, onClose }: GearProps) {
     : view ? html`<${Entry} view=${view} kind=${tab} />` : ''
   return html`<div class="modal-back"
     onClick=${(e: Event) => e.target === e.currentTarget && onClose()}>
-    <div class="modal gear" role="dialog" aria-modal="true" aria-label="Settings" tabindex="-1"
-      ref=${ref}>
+    <div class=${`modal gear${tab === 'settings' ? '' : ' wide'}`} role="dialog"
+      aria-modal="true" aria-label="Settings" tabindex="-1" ref=${ref}>
       <h2>Settings</h2>
       <div class="tabs" role="tablist">
         ${tabButton('settings', 'Settings')}
