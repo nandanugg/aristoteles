@@ -5,6 +5,7 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { Effect } from 'effect'
+import type { WaitMarker } from '../../core/schema/outside.ts'
 import { dbPath, sha } from '../../core/services/index.ts'
 
 // The wait renews its marker this often; a marker with an older beat is stale (Claude Code
@@ -83,23 +84,26 @@ const alive = (pid: number): boolean => {
   }
 }
 
-// The sessions whose agent waits in `work wait` now: a fresh beat of a live process.
-export const readWaiting = (
+// The markers of the actors of a dir (P8): each says whether its wait runs now (a fresh beat of a
+// live process) and when it last beat or returned. Every process reads them with this one reader.
+export const readMarkers = (
   env: WaitPlace['env'],
+  cwd: string,
   now: number = Date.now(),
-): ReadonlySet<string> => {
+): ReadonlyArray<WaitMarker> => {
   const folder = folderOf(env)
+  const prefix = `${sha(cwd).slice(0, 16)}-`
   let names: ReadonlyArray<string>
   try {
-    names = readdirSync(folder).filter((n) => n.endsWith('.json'))
+    names = readdirSync(folder).filter((n) => n.startsWith(prefix) && n.endsWith('.json'))
   } catch {
-    return new Set()
+    return []
   }
-  const sessions = new Set<string>()
-  for (const name of names) {
+  return names.flatMap((name) => {
     const m = read(join(folder, name))
-    if (m?.session == null || m.pid === null) continue
-    if (now - m.beat < STALE_MS && alive(m.pid)) sessions.add(m.session)
-  }
-  return sessions
+    if (m === null) return []
+    const waits = m.pid !== null && now - m.beat < STALE_MS && alive(m.pid)
+    const actor = name.slice(prefix.length, -'.json'.length)
+    return [{ actor, session: m.session, waits, beat: m.beat }]
+  })
 }

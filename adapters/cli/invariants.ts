@@ -70,7 +70,7 @@ export const checkNextCanAct = (
   const envLayer = Layer.succeed(Env, { vars: env })
   const layer = Layer.mergeAll(
     FilesLive,
-    ReadingsLive.pipe(Layer.provide(Layer.succeed(Dir, { cwd: dir }))),
+    ReadingsLive.pipe(Layer.provide(Layer.mergeAll(Layer.succeed(Dir, { cwd: dir }), envLayer))),
     StoreLive.pipe(Layer.provide(envLayer)),
   )
   const time = Schema.decodeUnknownSync(Time)(at)

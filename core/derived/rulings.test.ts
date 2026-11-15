@@ -404,12 +404,22 @@ describe('ruling 10.10: a draft from one project goes to its host only', () => {
       ),
     ).out
     const draft = out.match(/^(d\d+) drafted/m)?.[1] ?? ''
-    const d = derivedNow(p)
-    const explains = (a: string) =>
-      nextFor(d, agentOf(a)).flatMap((s) =>
-        s.what._tag === 'ExplainDraft' ? [String(s.what.draft)] : [],
-      )
-    expect(explains('a1')).toEqual([draft])
-    expect(explains('a2')).toEqual([])
+    const w = workOf(p.dir)
+    const session = (run: string) => String(w.runs.get(id(run))?.session)
+    // P8, ruling 2: a host whose wait returned an hour ago is gone, and h2 waits now; the draft
+    // still waits for h1's words: nothing is redirected to another host.
+    const now = Date.parse(p.now())
+    const markers = [
+      { actor: 'a1', session: session('h1'), waits: false, beat: now - 3600000 },
+      { actor: 'a2', session: session('h2'), waits: true, beat: now },
+    ]
+    for (const d of [derivedNow(p), derivedOf(w, p.now() as Time, p.dir, { markers })]) {
+      const explains = (a: string) =>
+        nextFor(d, agentOf(a)).flatMap((s) =>
+          s.what._tag === 'ExplainDraft' ? [String(s.what.draft)] : [],
+        )
+      expect(explains('a1')).toEqual([draft])
+      expect(explains('a2')).toEqual([])
+    }
   }, 60000)
 })

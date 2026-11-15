@@ -59,6 +59,12 @@ export const hostStuckSays = (why: 'error' | 'silent', last: string): string =>
   `The host ${why === 'silent' ? 'is silent' : 'shows an error'}, and it does not wait for ` +
   `work. Its last lines: ${last} Tell it in its terminal to go on.`
 
+// P8: the host's wait returned and it has not waited since: the person brings it back.
+export const hostGoneSays = (run: string, at: string): string =>
+  `${run} stopped waiting at ${at} and has not come back. Its work waits for it. In its ` +
+  `terminal, tell it to run work wait again; if the terminal is gone, start your AI CLI and ` +
+  `run work run continue ${run}.`
+
 // The person's Fixed of a problem that its host recorded: stored as the host's ask, never typed.
 export const problemRetryLine = (problem: ProblemId, says: string): string =>
   `${SYSTEM} ${problem} is not fixed: ${clean(says, 300)} Test it once, when your ` +

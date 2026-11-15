@@ -246,10 +246,11 @@ describe('the findings that the effects close', () => {
     await tick()
     expect(fake.allTyped()).toEqual({ [lead]: '1\r' })
     expect(fake.typed(host)).toBe('')
-    // No supervisor line was stored to be typed: only the starts and the person's ask.
+    // No supervisor line was stored to be typed: only the starts and the person's ask, and the
+    // restart of the lead that stalled 11 minutes with a ready step (P8: an argument, not typed).
     const supervisor = p.work().sends.flatMap((s) =>
       s.from._tag === 'Supervisor' ? [s.from.reason._tag] : [],
     )
-    expect([...new Set(supervisor)].sort()).toEqual(['ProblemRetry', 'Start'])
+    expect([...new Set(supervisor)].sort()).toEqual(['ProblemRetry', 'Retry', 'Start'])
   })
 })

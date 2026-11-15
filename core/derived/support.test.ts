@@ -99,6 +99,7 @@ export const outsideNow = (work: Work, dir: string): Outside => {
     stale,
     onBase,
     terminals: {},
+    markers: [],
     measure: () => 0,
   }
 }

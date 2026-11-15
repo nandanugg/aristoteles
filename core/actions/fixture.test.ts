@@ -128,6 +128,7 @@ export const quietOutside = (dir: string, more: Partial<Outside> = {}): Outside 
   stale: new Map(),
   onBase: new Set(),
   terminals: {},
+  markers: [],
   measure: () => 0,
   ...more,
 })

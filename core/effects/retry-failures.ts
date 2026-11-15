@@ -7,14 +7,19 @@
 //   step (core/derived/notices.ts).
 // - A prompt of an AI CLI is stored once while it shows: the host of a child sees it as a step and
 //   answers it with work send; the host's own prompt is a problem for the person.
-// - An agent that waits in `work wait` (its marker, Outside.waiting) waits: it is not silent. An
-//   agent Between assignments waits too: its silence and its error words are no fault (ruling 9);
-//   an end of its process is.
-// - The host's own pane is the person's: it never restarts. A host that is silent or shows an
-//   error, and does not wait, is a problem for the person; a host that ended is the person's.
+// - An agent that waits in `work wait`, or returned from it within its silentMinutes (its marker,
+//   livenessOf), is there: it is not silent. An agent Between assignments waits too: its silence
+//   and its error words are no fault (ruling 9); an end of its process is.
+// - P8: an agent that has a ready step, runs no wait, and showed no sign of life (an act, a
+//   return of its wait) for its silentMinutes has stalled at its prompt: it restarts once for that
+//   stall, whatever its screen and its tree show. Its work waits for it; nobody else takes it.
+// - The host's own pane is the person's: it never restarts. A host that stopped waiting longer
+//   than its silentMinutes ago is a problem for the person, once; a host that never waited and is
+//   silent or shows an error is one too; a host that ended and never waited is the person's.
 import { Effect } from 'effect'
 import {
   type Derived,
+  nextFor,
   onPage,
   ranOnce,
   type ToWatch,
@@ -22,6 +27,7 @@ import {
   waitingFor,
   type WaitingItem,
 } from '../derived/index.ts'
+import { clockOf, lastSeenOf, type Liveness, livenessOf } from '../derived/liveness.ts'
 import { rootOf, within } from '../derived/reads.ts'
 import type { TerminalReading } from '../schema/outside.ts'
 import type { Failure, Settings, TaskId } from '../schema/index.ts'
@@ -40,7 +46,7 @@ import {
   modelsNow,
   to,
 } from './acting.ts'
-import { clean, DEFAULT_RETRY, fill, hostPromptSays, hostStuckSays } from './lines.ts'
+import { clean, DEFAULT_RETRY, fill, hostGoneSays, hostPromptSays, hostStuckSays } from './lines.ts'
 import { conversationOf, lastActOf, modelOfSession, retriesOf, timeOf } from './terminals.ts'
 import { type Memory, Supervision, type WorkEffect } from './types.ts'
 
@@ -72,17 +78,18 @@ const tasksOf = (d: Derived, owner: ToWatch['owner']): ReadonlyArray<TaskId> => 
   })
 }
 
-// A session waits, and is not silent, when it blocks in `work wait`, when it has no task (a host
-// that talks, an agent Between assignments), when the person must act in the tree of its task (a
-// decision, the end of the project), or while another terminal in that tree works.
+// A session waits, and is not silent, when its work wait runs or returned lately, when it has no
+// task (a host that talks, an agent Between assignments), when the person must act in the tree of
+// its task (a decision, the end of the project), or while another terminal in that tree works.
 const waits = (
   r: Round,
   x: ToWatch,
   tasks: ReadonlyArray<TaskId>,
   silentMs: number,
+  life: Liveness,
 ): boolean => {
   const w = r.d.moment.work
-  if (r.d.moment.outside.waiting?.has(x.session) === true) return true
+  if (life._tag === 'Waits' || life._tag === 'Returned') return true
   if (tasks.length === 0) return true
   return tasks.some((top) => {
     const root = rootOf(w, top)
@@ -100,6 +107,16 @@ const waits = (
     })
     return decides || works
   })
+}
+
+// An agent has a ready step: one of its open assignments may act now.
+const readyOf = (d: Derived, owner: ToWatch['owner']): boolean => {
+  if (owner._tag !== 'Agent') return false
+  const state = d.states.agents.get(owner.agent)
+  if (state?._tag !== 'OnAssignment') return false
+  return state.assignments.some((assignment) =>
+    nextFor(d, { _tag: 'Agent', assignment }).some((s) => s._tag === 'Do'),
+  )
 }
 
 const watch = (r: Round, x: ToWatch) =>
@@ -130,17 +147,32 @@ const watch = (r: Round, x: ToWatch) =>
     }
     const quiet = (ms: number) => r.now - Math.max(ms || startedAt, lastAct)
     const silentMs = (t?.silentMinutes ?? 10) * 60000
-    const waiting = waits(r, x, tasks, silentMs)
+    const life = livenessOf(r.d.moment.outside.markers, sid, r.now, silentMs)
+    const waiting = waits(r, x, tasks, silentMs, life)
     const errorShows = (t?.errors ?? []).some((e) => recent.join('\n').includes(e))
-    const kind: Failure | 'prompt' | undefined = reading._tag === 'Ended'
-      ? 'ended'
-      : asked !== undefined
-        ? 'prompt'
-        : errorShows && !waiting && quiet(reading.lastOutput) > ERROR_QUIET
-          ? 'error'
-          : quiet(reading.lastOutput) > silentMs && !waiting
+    // P8: a host gone from its wait; an agent stalled at its prompt with a ready step (once for
+    // each stall: no try since its last sign of life).
+    const seen = Math.max(lastAct, lastSeenOf(life, r.now))
+    const gone = host && life._tag === 'Gone'
+    const stalled =
+      !host &&
+      life._tag !== 'Waits' &&
+      r.now - Math.max(seen, startedAt) > silentMs &&
+      lastTry < seen &&
+      readyOf(r.d, x.owner)
+    const kind: Failure | 'prompt' | undefined = gone
+      ? 'silent'
+      : reading._tag === 'Ended'
+        ? 'ended'
+        : asked !== undefined
+          ? 'prompt'
+          : stalled
             ? 'silent'
-            : undefined
+            : errorShows && !waiting && quiet(reading.lastOutput) > ERROR_QUIET
+              ? 'error'
+              : quiet(reading.lastOutput) > silentMs && !waiting
+                ? 'silent'
+                : undefined
     if (kind === undefined || (kind === 'ended' && host)) return
 
     if (kind === 'prompt') {
@@ -174,10 +206,12 @@ const watch = (r: Round, x: ToWatch) =>
         content: { move: { _tag: 'Failed', why: kind, lastLines: clean(tail, 600) } },
       })
       if (!host || top === undefined || kind === 'ended') return
+      const says =
+        life._tag === 'Gone' ? hostGoneSays(String(id), clockOf(life.since)) : hostStuckSays(kind, last)
       yield* supervise<'RecordProblem'>({
         _tag: 'RecordProblem',
         target: { task: top },
-        content: { says: hostStuckSays(kind, last) },
+        content: { says },
       })
     })
     // The host's own pane never restarts: the person tells it to go on.

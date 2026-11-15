@@ -45,7 +45,6 @@ import {
 } from '../../core/services/index.ts'
 import { workCacheLayer } from '../../core/state/index.ts'
 import { pumpLayerOf } from '../live/pump.ts'
-import { readWaiting } from '../live/waiting.ts'
 import { ReadingsLive } from '../live/readings.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { withBriefMeasure } from '../words/index.ts'
@@ -101,13 +100,13 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     Readings.useSync((base) => ({
       read: (work: Work, at: Time) =>
         Effect.map(base.read(work, at), (outside) =>
-          withBriefMeasure(
-            { ...outside, terminals: pump.status(), waiting: readWaiting(env) },
-            at,
-          ),
+          withBriefMeasure({ ...outside, terminals: pump.status() }, at),
         ),
     })),
-  ).pipe(Layer.provide(ReadingsLive), Layer.provide(Layer.succeed(Dir, { cwd: dir })))
+  ).pipe(
+    Layer.provide(ReadingsLive),
+    Layer.provide(Layer.mergeAll(Layer.succeed(Dir, { cwd: dir }), Layer.succeed(Env, { vars: env }))),
+  )
   const services = Layer.mergeAll(io, readings)
   const layer = Layer.mergeAll(
     services,

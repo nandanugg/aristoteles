@@ -25,6 +25,15 @@ export type TerminalReading =
   | { readonly _tag: 'Live'; readonly lastOutput: number }
   | { readonly _tag: 'Ended'; readonly exit: number | null; readonly lastOutput: number }
 
+// The marker of an actor's `work wait`: waits is a live wait process with a fresh beat; beat is
+// the time (ms) of its last beat, or of its return.
+export interface WaitMarker {
+  readonly actor: string
+  readonly session: string | null
+  readonly waits: boolean
+  readonly beat: number
+}
+
 export interface Outside {
   readonly cwd: string
   readonly settings: OutsideSettings
@@ -36,9 +45,9 @@ export interface Outside {
   readonly onBase: ReadonlySet<ResultId>
   // The terminals of the pump by session; {} in the CLI.
   readonly terminals: Readonly<Record<string, TerminalReading>>
-  // The sessions whose agent blocks in `work wait` now (BUILD.md 10.1): it waits, it is not
-  // silent. The watcher reads the markers of adapters/live/waiting.ts; the CLI reads none.
-  readonly waiting?: ReadonlySet<string>
+  // The markers of `work wait` in this dir (adapters/live/waiting.ts), read alike by the CLI, the
+  // server and the watcher (P8): core/derived/liveness.ts says from them who is there.
+  readonly markers: ReadonlyArray<WaitMarker>
   // The length of an assignment's brief as the CLI prints it (the page's Workflow.measure). The
   // adapter gives it, so that core imports no words.
   readonly measure: (work: Work, assignment: AssignmentId) => number

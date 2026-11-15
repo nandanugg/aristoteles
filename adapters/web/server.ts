@@ -189,7 +189,7 @@ export function startServer(options: ServerOptions): ServerHandle {
       })),
     ).pipe(
       Layer.provide(readingsLive({ terminals: () => pump?.status() ?? {} })),
-      Layer.provide(dirLayer),
+      Layer.provide(Layer.mergeAll(dirLayer, Layer.succeed(Env, { vars: env }))),
     ),
   )
   const runtime = ManagedRuntime.make(

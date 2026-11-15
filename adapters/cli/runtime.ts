@@ -17,6 +17,7 @@ import type {
 } from '../../core/schema/index.ts'
 import {
   Dir,
+  Env,
   FilesLive,
   layerOfIo,
   Now,
@@ -31,7 +32,7 @@ import { ReadingsLive } from '../live/index.ts'
 import { withBriefMeasure } from '../words/index.ts'
 
 // The live readings, with the measure of a brief (ruling 10.9), at the time of the read.
-const readingsOfCli: Layer.Layer<Readings, never, Dir> = Layer.effect(
+const readingsOfCli: Layer.Layer<Readings, never, Dir | Env> = Layer.effect(
   Readings,
   Effect.gen(function* () {
     const live = yield* Readings.pipe(Effect.provide(ReadingsLive))

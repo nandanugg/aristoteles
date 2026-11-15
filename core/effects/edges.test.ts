@@ -26,6 +26,7 @@ import {
   terminalMoves,
   withLead,
 } from './support.test.ts'
+import { clockOf } from '../derived/liveness.ts'
 import { cliSession } from './lines.ts'
 
 afterEach(cleanUp)
@@ -191,6 +192,80 @@ describe('the supervisor of the terminals (the old edge tests, under ruling 10.1
       `resume ${lead}`,
     ])
     expect(fake.typed(lead)).toBe('')
+  })
+
+  // P8, ruling 2 (the live case of 2026-11-15): a persistent agent's AI CLI is alive at its
+  // prompt; it ended its turn after its last act with no wait running, while it has a ready step.
+  // Its screen still changes, and nothing else reaches it: it restarts with the retry prompt as an
+  // argument (nothing typed), once for each such stall, and the restart is stored.
+  test('an agent idle at its prompt with a ready step restarts once for each stall', async () => {
+    const { p, fake, w, lead, leadToken } = await withLead()
+    await p.agent(`brief ${leadToken}`)
+    fake.returned.set(lead, clock.now)
+    const idle = async (ms: number) => {
+      later(ms)
+      fake.show(lead, '> ')
+      await w.tick()
+    }
+    await idle(5 * 60_000)
+    expect(sendsInto(p.work(), 'Retry', lead)).toEqual([])
+    await idle(6 * 60_000)
+    expect(sendsInto(p.work(), 'Retry', lead)).toHaveLength(1)
+    expect(fake.calls.filter((c) => c.endsWith(lead))).toEqual([
+      `start ${lead}`,
+      `stop ${lead}`,
+      `resume ${lead}`,
+    ])
+    expect(fake.typed(lead)).toBe('')
+    // The same stall: no second restart.
+    await idle(11 * 60_000)
+    await idle(11 * 60_000)
+    expect(sendsInto(p.work(), 'Retry', lead)).toHaveLength(1)
+    // It acts, then stalls again: one more restart.
+    await p.agent(`note ${leadToken} message --text="the writer starts"`)
+    await idle(11 * 60_000)
+    expect(sendsInto(p.work(), 'Retry', lead)).toHaveLength(2)
+  })
+
+  test('an agent whose wait returned within its silent minutes is there: no restart', async () => {
+    const { p, fake, w, lead, leadToken } = await withLead()
+    await p.agent(`brief ${leadToken}`)
+    later(9 * 60_000)
+    fake.returned.set(lead, clock.now)
+    later(2 * 60_000)
+    await w.tick()
+    expect(sendsInto(p.work(), 'Retry', lead)).toEqual([])
+  })
+
+  // P8, ruling 2: a host whose wait returned longer ago than its silent minutes is gone (its pane
+  // ended here). The person sees a system problem, once; the UI starts nothing in its place.
+  test('a host that stopped waiting is a problem for the person, once; nothing restarts', async () => {
+    const { p, fake, w, host } = await hosted()
+    const returned = clock.now
+    fake.returned.set(host, returned)
+    later(5 * 60_000)
+    await w.tick()
+    expect([...p.work().problems.values()]).toEqual([])
+    fake.end(host)
+    later(6 * 60_000)
+    await w.tick()
+    await w.tick()
+    const says = [...p.work().problems.values()].map((x) => String(x.says))
+    expect(says).toEqual([
+      `h1 stopped waiting at ${clockOf(returned)} and has not come back. Its work waits for it. ` +
+        'In its terminal, tell it to run work wait again; if the terminal is gone, start your AI ' +
+        'CLI and run work run continue h1.',
+    ])
+    expect(fake.calls.filter((c) => !c.startsWith('adopt'))).toEqual([])
+  })
+
+  test('a host whose wait returned lately is there: its quiet pane is no problem', async () => {
+    const { p, fake, w, host } = await hosted()
+    later(11 * 60_000)
+    fake.returned.set(host, clock.now)
+    later(60_000)
+    await w.tick()
+    expect([...p.work().problems.values()]).toEqual([])
   })
 
   test('a silent host that does not wait is a problem for the person, once', async () => {

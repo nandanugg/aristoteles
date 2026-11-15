@@ -5,7 +5,7 @@
 // persistent agent waits by its id in its own terminal, and each new assignment gives it a token
 // (ruling 9). While it blocks, its marker tells the watcher that it waits.
 import { afterEach, describe, expect, test } from 'bun:test'
-import { readWaiting } from '../live/waiting.ts'
+import { readMarkers } from '../live/waiting.ts'
 import { cleanUp, hosted, project, tokenIn } from '../../core/effects/support.test.ts'
 
 afterEach(cleanUp)
@@ -18,6 +18,9 @@ const lead = async () => {
   await p.agent(`brief ${token}`)
   return { p, token }
 }
+// The sessions whose wait runs now, by the one reader of the markers (P8).
+const waitingNow = (p: { env: Record<string, string>; dir: string }) =>
+  readMarkers(p.env, p.dir).flatMap((m) => (m.waits ? [m.session] : []))
 const timed = async <A>(run: () => Promise<A>) => {
   const start = Date.now()
   const value = await run()
@@ -71,10 +74,10 @@ describe('work wait', () => {
     // The host blocks: its marker says so, until the person opens its draft.
     const waiting = p.inPane('wait --by=h1 --seconds=20', '%9')
     await Bun.sleep(1200)
-    expect([...readWaiting(p.env)]).toEqual([session])
+    expect(waitingNow(p)).toEqual([session])
     await p.ui('task open td1')
     const out = await waiting
-    expect(readWaiting(p.env).size).toBe(0)
+    expect(waitingNow(p)).toEqual([])
     const sol = tokenIn(out)
     expect(out).toBe(
       [

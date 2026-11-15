@@ -86,13 +86,14 @@ const timeNow = () => new Date(clock.now).toISOString() as Time
 // A fake tmux: each terminal is live or ended, has a screen and a time of its last output, and
 // keeps what was typed into it. The host's own pane is adopted: start, resume and stop refuse it.
 // commands: each start or resume with its command; waiting: the sessions whose agent blocks in
-// `work wait` (the markers that the watcher reads, Outside.waiting).
+// `work wait`; returned: the time when a session's wait returned (the markers, Outside.markers).
 export const fakePump = () => {
   const terms = new Map<string, { live: boolean; screen: Array<string>; lastOutput: number }>()
   const typed = new Map<string, string>()
   const calls: Array<string> = []
   const commands: Array<string> = []
   const waiting = new Set<string>()
+  const returned = new Map<string, number>()
   const panes = new Map<string, { readonly socket: string; readonly pane: string }>()
   const keys = new Map<string, number>()
   const failed = (message: string) =>
@@ -172,6 +173,11 @@ export const fakePump = () => {
     calls,
     commands,
     waiting,
+    returned,
+    markers: () => [
+      ...[...returned].map(([session, beat]) => ({ actor: session, session, waits: false, beat })),
+      ...[...waiting].map((session) => ({ actor: session, session, waits: true, beat: clock.now })),
+    ],
     typed: (sid: string) => typed.get(sid) ?? '',
     // Every key typed into any terminal, by session.
     allTyped: () => Object.fromEntries(typed),
@@ -347,7 +353,7 @@ export const supervisorOf = (p: Project, fake: FakePump, rec: Recorder) => {
         Effect.sync(() => ({
           ...outsideNow(work, p.dir),
           terminals: fake.status(),
-          waiting: new Set(fake.waiting),
+          markers: fake.markers(),
         })),
     }),
     Layer.succeed(Dir, { cwd: p.dir }),

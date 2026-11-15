@@ -13,7 +13,9 @@ import {
 } from '../../core/schema/index.ts'
 import { Dir, Env, Readings, StoreLive } from '../../core/services/index.ts'
 import { loadWork } from '../../core/state/index.ts'
+import { livenessOf } from '../../core/derived/liveness.ts'
 import { readingsLive, ReadingsLive } from './index.ts'
+import { markReturned, markWaiting } from './waiting.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harness from '../../test/harness.js'
 
@@ -44,10 +46,15 @@ const workOf = (dir: string): Promise<Work> => {
   )
 }
 
+const placeOf = (dir: string) =>
+  Layer.mergeAll(
+    Layer.succeed(Dir, { cwd: dir }),
+    Layer.succeed(Env, { vars: { ARISTOTELES_DB: `${dir}/.work/aristoteles.db` } }),
+  )
 const readOf = (dir: string, work: Work, at: string) =>
   Effect.runPromise(
     Readings.use((r) => r.read(work, Schema.decodeUnknownSync(Time)(at))).pipe(
-      Effect.provide(ReadingsLive.pipe(Layer.provide(Layer.succeed(Dir, { cwd: dir })))),
+      Effect.provide(ReadingsLive.pipe(Layer.provide(placeOf(dir)))),
     ),
   )
 
@@ -194,7 +201,7 @@ describe('ReadingsLive', () => {
     const work = await workOf(p.dir)
     const terminal = { _tag: 'Live', lastOutput: 5 } as const
     const layer = readingsLive({ terminals: () => ({ s1: terminal }) }).pipe(
-      Layer.provide(Layer.succeed(Dir, { cwd: p.dir })),
+      Layer.provide(placeOf(p.dir)),
     )
     const at = Schema.decodeUnknownSync(Time)(p.now())
     const outside = await Effect.runPromise(
@@ -202,5 +209,36 @@ describe('ReadingsLive', () => {
     )
     expect(outside.measure(work, 'a1' as never)).toBe(0)
     expect(outside.terminals).toEqual({ s1: terminal })
+  }, 30000)
+
+  // P8, ruling 2: one reader of the markers of work wait for the CLI, the server and the watcher.
+  test('the CLI and the server read the same markers, and the same liveness', async () => {
+    const { p } = await started()
+    const work = await workOf(p.dir)
+    const env = { ARISTOTELES_DB: `${p.dir}/.work/aristoteles.db` }
+    const place = (actor: string) => ({ env, cwd: p.dir, actor })
+    await Effect.runPromise(markWaiting(place('a1'), 's-a1', null))
+    await Effect.runPromise(markReturned(place('h1'), 's-h1', 'k'))
+    // Another dir's marker is not this dir's.
+    await Effect.runPromise(markReturned({ env, cwd: '/elsewhere', actor: 'a9' }, 's-a9', 'k'))
+    const at = Schema.decodeUnknownSync(Time)(p.now())
+    const read = (layer: Layer.Layer<Readings>) =>
+      Effect.runPromise(Readings.use((r) => r.read(work, at)).pipe(Effect.provide(layer)))
+    const cli = await read(ReadingsLive.pipe(Layer.provide(placeOf(p.dir))))
+    const server = await read(
+      readingsLive({ terminals: () => ({}) }).pipe(Layer.provide(placeOf(p.dir))),
+    )
+    expect(cli.markers.map((m) => [m.actor, m.session, m.waits]).sort()).toEqual([
+      ['a1', 's-a1', true],
+      ['h1', 's-h1', false],
+    ])
+    const now = Date.now()
+    const lives = (o: typeof cli, ms: number) =>
+      ['s-a1', 's-h1', 's-a9'].map((s) => livenessOf(o.markers, s, now + ms, 600000)._tag)
+    for (const o of [cli, server]) {
+      expect(lives(o, 0)).toEqual(['Waits', 'Returned', 'NeverWaited'])
+      expect(lives(o, 11 * 60000)).toEqual(['Waits', 'Gone', 'NeverWaited'])
+    }
+    expect(server.markers).toEqual(cli.markers)
   }, 30000)
 })
