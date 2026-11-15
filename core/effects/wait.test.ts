@@ -116,6 +116,8 @@ describe('the wait loop', () => {
         pollMs: 20,
         settleMs: 10,
         readyAgainMs: 200,
+        build: Effect.succeed('b1'),
+        buildMs: 50,
         lastSeq: Effect.succeed(0),
         blocking: Effect.void,
       }).pipe(Effect.provide(services(p))),
