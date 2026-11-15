@@ -27,13 +27,9 @@ export interface TmuxPumpOptions {
   readonly clock?: () => number
 }
 
-export interface TerminalStatus {
-  readonly live: boolean
-  readonly ended: boolean
-  readonly exit: number | null
-  // The clock time of the last output; 0 when none.
-  readonly lastOutput: number
-}
+export type TerminalStatus = TerminalReading
+const readingOf = (ended: boolean, exit: number | null, lastOutput: number): TerminalReading =>
+  ended ? { _tag: 'Ended', exit, lastOutput } : { _tag: 'Live', lastOutput }
 
 export interface StartOptions {
   readonly env?: Readonly<Record<string, string>>
@@ -549,11 +545,11 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     status() {
       const own = list().map((p): [string, TerminalStatus] => [
         p.sid,
-        { live: !p.dead, ended: p.dead, exit: p.status, lastOutput: rings.get(p.sid)?.last ?? 0 },
+        readingOf(p.dead, p.status, rings.get(p.sid)?.last ?? 0),
       ])
       const persons = [...adopted].map(([sid, a]): [string, TerminalStatus] => [
         sid,
-        { live: !a.ended, ended: a.ended, exit: null, lastOutput: a.last },
+        readingOf(a.ended, null, a.last),
       ])
       return Object.fromEntries([...own, ...persons])
     },

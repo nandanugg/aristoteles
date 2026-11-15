@@ -192,7 +192,7 @@ describe('ReadingsLive', () => {
   test('the caller gives the terminals', async () => {
     const { p } = await started()
     const work = await workOf(p.dir)
-    const terminal = { live: true, ended: false, exit: null, lastOutput: 5 }
+    const terminal = { _tag: 'Live', lastOutput: 5 } as const
     const layer = readingsLive({ terminals: () => ({ s1: terminal }) }).pipe(
       Layer.provide(Layer.succeed(Dir, { cwd: p.dir })),
     )

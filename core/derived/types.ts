@@ -712,7 +712,9 @@ export type WaitsFor =
   | { readonly _tag: 'Assignment'; readonly assignment: AssignmentId }
   | { readonly _tag: 'Role'; readonly role: RoleName }
 // When the page shows a decision: at once, or after the host wrote its words or a wait.
-export type Hold = Decision['shown']
+// A decision shows when its host wrote its words, when no host holds its tree, or when the host
+// wrote nothing for hostWaitMinutes; a problem that the person's UI recorded shows at once.
+export type Hold = { readonly _tag: 'Shown' } | { readonly _tag: 'HeldForHost'; readonly until: Time }
 
 interface WaitingBase {
   readonly for: WaitsFor

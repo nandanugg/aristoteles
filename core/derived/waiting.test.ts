@@ -87,7 +87,8 @@ describe('every item that the person moves has its place on the page', () => {
           continue
         }
         if (item.step._tag !== 'Do') continue
-        const card = decisionsOf(d, item.for.name).find((x) => x.id === idOf(item))
+        const cards = decisionsOf(d, item.for.name).map((p) => p.decision)
+        const card = cards.find((x) => x.id === idOf(item))
         expect([item._tag, card?._tag as string]).toEqual([item._tag, SURFACES[item._tag].page])
         expect(card?.acts.length).toBe(item.step.intents.length)
         checked.add(item._tag)

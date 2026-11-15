@@ -209,6 +209,7 @@ export type {
 // against these.
 export type {
   CanvasRow,
+  CardTerminal,
   DiffView,
   DirectionCard,
   DirectionView,
@@ -229,6 +230,7 @@ export type {
   TaskDraftView,
   TaskPanel,
   TerminalRef,
+  TerminalSeen,
   WorkCard,
 } from '../../src/domain/ui-model.ts'
 

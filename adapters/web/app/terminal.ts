@@ -53,7 +53,7 @@ const REPLY = /^(?:\x1b\[[?>][\d;]*c|\x1b\[\d+;\d+R|\x1b\][^\x07\x1b]*(?:\x07|\x
 // columns are wider than the box, the font gets smaller until they fit, as tmux shows them
 // (Nanda, 2026-11-15); below MIN_FONT the box scrolls sideways. Returns the size that would fill
 // the box now at the full font, for the resize button, and the cleanup.
-type Session = NonNullable<TerminalRef['session']>
+type Session = TerminalRef['terminal']['session']
 interface OpenTerminal {
   readonly fill: () => { readonly cols: number; readonly rows: number } | undefined
   readonly close: () => void
@@ -129,11 +129,18 @@ function openTerminal(
   }
 }
 
+// The state of a terminal in plain words.
+export const SEEN_WORDS = {
+  Unknown: 'no reading yet',
+  Live: 'runs',
+  Ended: 'ended',
+  Closed: 'closed',
+} as const
 export function Terminal({ terminal }: { terminal: TerminalRef | null }) {
   const box = useRef<HTMLDivElement>(null)
   const opened = useRef<OpenTerminal>()
   const [state, setState] = useState('connecting')
-  const sessionId = terminal?.session
+  const sessionId = terminal?.terminal.session
   useEffect(() => {
     const el = box.current
     if (!sessionId || !el) return undefined
@@ -150,14 +157,16 @@ export function Terminal({ terminal }: { terminal: TerminalRef | null }) {
       opened.current = undefined
     }
   }, [sessionId])
-  if (!terminal?.session) {
+  if (!terminal) {
     const words = 'This task has no terminal: no real agent works on it yet.'
     return html`<div style="padding: 16px; color: var(--faint)">${words}</div>`
   }
+  const { session } = terminal.terminal
+  const live = terminal.terminal._tag === 'Live'
   // Page Up and Page Down for the tool in the terminal: Claude scrolls its own view with them.
   // A press keeps the focus in the terminal, so that the person types on.
   const page = (key: string) =>
-    socket.send({ type: 'term.input', session: terminal.session, data: key })
+    socket.send({ type: 'term.input', session, data: key })
   const keep = (e: Event) => e.preventDefault()
   // The resize button asks tmux for the size that fills the box now, but never less than 80 x 24:
   // a tap on a phone must leave an AI CLI a terminal that it can use. The terminal takes the size
@@ -167,18 +176,18 @@ export function Terminal({ terminal }: { terminal: TerminalRef | null }) {
     if (fills === undefined || !(fills.cols > 0 && fills.rows > 0)) return
     const cols = Schema.decodeUnknownSync(PositiveInt)(Math.max(80, fills.cols))
     const rows = Schema.decodeUnknownSync(PositiveInt)(Math.max(24, fills.rows))
-    socket.send({ type: 'term.resize', session: terminal.session, cols, rows })
+    socket.send({ type: 'term.resize', session, cols, rows })
   }
-  const words = terminal.live ? 'runs' : terminal.ended ? 'ended' : 'closed'
-  return html`<div class="term-bar"><span>${terminal.a} · session <code>${terminal.session}</code>
+  const words = SEEN_WORDS[terminal.terminal._tag]
+  return html`<div class="term-bar"><span>${terminal.a} · session <code>${session}</code>
     </span><span class="grow"></span>
-      ${terminal.live ? html`<button class="btn small" onMouseDown=${keep} onClick=${fitBox}
+      ${live ? html`<button class="btn small" onMouseDown=${keep} onClick=${fitBox}
         title="Set the terminal to the size of this box, at least 80 x 24">Fit to box</button>`
         : ''}
       <span>${words}${state !== 'open' && state !== 'connecting' ? ` · ${state}` : ''}</span></div>
     <div class="term-wrap">
       <div class="term" ref=${box}></div>
-      ${terminal.live ? html`<div class="term-scroll">
+      ${live ? html`<div class="term-scroll">
         <button aria-label="Page up" title="Page up" onMouseDown=${keep}
           onClick=${() => page('\x1b[5~')}>${icon(ICONS.pageUp, 18)}</button>
         <button aria-label="Page down" title="Page down" onMouseDown=${keep}

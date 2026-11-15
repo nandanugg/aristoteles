@@ -25,7 +25,7 @@ const deliverOne = (d: Derived, x: PendingSend, send: Send) =>
     if (stateIn(terminals, x.to)?._tag === 'Stopped') {
       return yield* dropped(x.send, { _tag: 'StoppedByPerson' })
     }
-    if (reading?.live !== true) return yield* dropped(x.send, { _tag: 'TerminalNotLive' })
+    if (reading?._tag !== 'Live') return yield* dropped(x.send, { _tag: 'TerminalNotLive' })
     yield* deliver(x.send, x.to, textOfKeys(send))
   })
 

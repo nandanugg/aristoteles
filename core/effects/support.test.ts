@@ -132,7 +132,9 @@ export const fakePump = () => {
       Object.fromEntries(
         [...terms].map(([sid, t]) => [
           sid,
-          { live: t.live, ended: !t.live, exit: t.live ? null : 1, lastOutput: t.lastOutput },
+          t.live
+            ? ({ _tag: 'Live', lastOutput: t.lastOutput } as const)
+            : ({ _tag: 'Ended', exit: 1, lastOutput: t.lastOutput } as const),
         ]),
       ),
     ),
@@ -168,7 +170,9 @@ export const fakePump = () => {
       Object.fromEntries(
         [...terms].map(([sid, t]) => [
           sid,
-          { live: t.live, ended: !t.live, exit: t.live ? null : 1, lastOutput: t.lastOutput },
+          t.live
+            ? ({ _tag: 'Live', lastOutput: t.lastOutput } as const)
+            : ({ _tag: 'Ended', exit: 1, lastOutput: t.lastOutput } as const),
         ]),
       ),
     adopted: (sid: string) => panes.has(sid),

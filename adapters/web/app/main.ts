@@ -24,7 +24,7 @@ import { Gear } from './gear.ts'
 import { ICONS, icon } from './icons.ts'
 import { Item } from './item.ts'
 import { Onboarding } from './onboarding.ts'
-import { Terminal } from './terminal.ts'
+import { SEEN_WORDS, Terminal } from './terminal.ts'
 
 type DirData = typeof DirView.Type
 type ProjectData = typeof ProjectView.Type
@@ -159,13 +159,15 @@ function TaskCard({ task, selected, onOpen, onStop, onResume }: TaskCardProps) {
       ? `${TIER_NAME[tier]} · in ${o.inside}`
       : `${TIER_NAME[tier]} · ${o.agent ? `${o.agent} · ${o.a}` : o.a}`
     : 'no terminal'
-  const live = o && !o.inside && o.live
+  // A subagent's card shows no terminal: it runs inside the one above it.
+  const t = o && !o.inside && o.terminal._tag !== 'None' ? o.terminal : null
+  const live = t?._tag === 'Live'
   return html`<section class=${`card task ${tier}${selected ? ' selected' : ''}`}
     aria-label=${`${task.id} ${task.name}`} onClick=${() => onOpen(task.id)}>
     <div class="card-head">
       <span class="tier-icon">${icon(tierIcon(tier), 15)}</span>
-      ${o && !o.inside && o.session ? html`<span class=${`dot ${live ? 'run' : 'closed'}`}
-        role="img" aria-label=${live ? 'Its terminal runs' : 'Its terminal is closed'}>
+      ${t ? html`<span class=${`dot ${live ? 'run' : 'closed'}`}
+        role="img" aria-label=${`Its terminal: ${SEEN_WORDS[t._tag]}`}>
         </span>` : ''}
       ${task.badge ? html`<span class="badge" role="img" aria-label="Needs you">!</span>` : ''}
       <button class="tags tag-button" aria-label=${`Open the terminal of ${task.id}`}
@@ -180,7 +182,7 @@ function TaskCard({ task, selected, onOpen, onStop, onResume }: TaskCardProps) {
       ${task.attempt ? html`<div class="kv"><span class="k">Attempt</span>
         <span class="v">${task.attempt.now} of ${task.attempt.max}</span></div>` : ''}
     </div>
-    ${o && !o.inside && o.session && !live && o.resumable ? html`<div class="card-foot">
+    ${o && t && !live && o.resumable ? html`<div class="card-foot">
       <button class="btn primary wide" onClick=${stopThen(() => onResume(o))}>
         ${icon(ICONS.play, 13)} Resume ${o.a}</button></div>` : ''}
   </section>`
@@ -466,8 +468,8 @@ function FirstStart({ dir }: { dir: DirData }) {
   </div>`
 }
 
-// A decision that needs the person now: shown, with an act.
-const needsYou = (d: DirData['inbox'][number]) => d.shown._tag === 'Shown' && d.acts.length > 0
+// A decision that needs the person now: one with an act (the page gets only shown ones).
+const needsYou = (d: DirData['inbox'][number]) => d.acts.length > 0
 // The inbox of the dir (P1, F3): the decisions that no open task shows, above the projects.
 function Inbox({ dir }: { dir: DirData }) {
   if (!dir.inbox.length) return ''
@@ -560,12 +562,12 @@ function App() {
     badges.current = now
   }, [dir])
   const stop = attempt(async (o: Owner) =>
-    o.session ? post({ act: 'stop', session: o.session }) : undefined,
+    o.terminal._tag !== 'None' ? post({ act: 'stop', session: o.terminal.session }) : undefined,
   )
   // Every tier has its commands (ruling 10), so a persistent agent of any tier resumes.
   const resume = attempt(async (o: Owner) =>
-    o.session && o.tier !== 'program'
-      ? post({ act: 'resume', session: o.session, tier: o.tier })
+    o.terminal._tag !== 'None' && o.tier !== 'program'
+      ? post({ act: 'resume', session: o.terminal.session, tier: o.tier })
       : undefined,
   )
   const openDraft = attempt((id: TaskDraftId) => post({ act: 'open', draft: id }))

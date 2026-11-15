@@ -94,7 +94,6 @@ describe('an item that waits for the person shows on an open task', () => {
     expect(item).toMatchObject({
       id,
       task: 't1',
-      shown: true,
       words: null,
       quote: 'yes, add the cost',
       text: `a1 relayed your words as this act: accept d2 with evidence chat | Nanda says yes. It counts when you confirm it.`,

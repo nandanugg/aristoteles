@@ -18,7 +18,7 @@ import {
 } from './index.ts'
 import { momentOf, SCENARIOS } from './support.test.ts'
 
-const LIVE = { live: true, ended: false, exit: null, lastOutput: 0 }
+const LIVE = { _tag: 'Live', lastOutput: 0 } as const
 const derived = new Map<string, Derived>()
 // The scenario gives the lead a2 the session s-a2 by hand (work session); here the supervisor has
 // started the terminal of its agent p1 there (Agent.Started), as it does for a persistent role.

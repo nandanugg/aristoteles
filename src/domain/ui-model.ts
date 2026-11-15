@@ -282,44 +282,57 @@ export interface Supervised {
 
 // --- 3. The decisions that reach the person ----------------------------------------------------
 
-// A decision: one of the kinds that reach the person (the JSON names the kind in "kind").
-// Replaces view.js itemsOf's objects.
+// A decision that the page shows: one of the kinds that reach the person (the JSON names the kind
+// in "kind"), each with the id of its own record. One that waits for its host's words is held on
+// the server and never reaches the page.
 export type Decision = DecisionBase &
   (
-    | { readonly _tag: 'System'; readonly stopped: TaskId } // a system problem (id: sp..)
-    // a direction change: a draft that waits for the person (id: d..). why: the draft's reason
-    // and words, which the page shows with the change (nothing when none was given; new, the
-    // owner's ruling 2026-11-12: the JSON of the decision has the key why).
+    | { readonly _tag: 'System'; readonly id: ProblemId; readonly stopped: TaskId }
+    // a direction change: a draft that waits for the person. why: the draft's reason and words,
+    // which the page shows with the change (nothing when none was given). hope: the host's.
     | {
         readonly _tag: 'Direction'
+        readonly id: RevisionId
         readonly direction: Text
         readonly change: DraftChange
         readonly hope: Text | null
         readonly why: Why
       }
-    | { readonly _tag: 'End' } // the end of a project: the Sol accepted its top task (id: h..)
+    // the end of a project: the Sol accepted its top task, which a reject reopens
+    | { readonly _tag: 'End'; readonly id: RunId; readonly top: TaskId }
     // a relayed act: an agent relayed the person's words as an act that counts only when the
-    // person confirms it (id: e..; Nanda, 2026-11-13). quote: the person's words.
-    | { readonly _tag: 'Confirm'; readonly quote: Text }
+    // person confirms it (Nanda, 2026-11-13). quote: the person's words.
+    | { readonly _tag: 'Confirm'; readonly id: EventRef; readonly quote: Text }
     // new words of a role that a high agent or a host drafted, for the person's accept or reject
-    // (id: e..; ruling 2026-11-14). lines: '-' a word of now, '+' its drafted word.
-    | { readonly _tag: 'RoleWords'; readonly role: Text; readonly lines: ReadonlyArray<Text> }
-    // a drafted adjustment of a role or a direction (id: e..; ruling 14)
-    | { readonly _tag: 'Adjustment'; readonly adjustment: Adjustment }
-    // a question to the person (id: q..): text is the question; the person picks an option or
-    // writes the answer, and it counts at once. asker: who asked, as "writer (a3)".
-    | { readonly _tag: 'Question'; readonly asker: Text; readonly options: ReadonlyArray<Text> }
-    // an evaluation that counts after the owner's accept (id: ev..; P1, 2026-11-15)
+    // (ruling 2026-11-14). lines: '-' a word of now, '+' its drafted word.
+    | {
+        readonly _tag: 'RoleWords'
+        readonly id: EventRef
+        readonly role: Text
+        readonly lines: ReadonlyArray<Text>
+      }
+    // a drafted adjustment of a role or a direction (ruling 14)
+    | { readonly _tag: 'Adjustment'; readonly id: EventRef; readonly adjustment: Adjustment }
+    // a question to the person: text is the question; the person picks an option or writes the
+    // answer, and it counts at once. asker: who asked, as "writer (a3)".
+    | {
+        readonly _tag: 'Question'
+        readonly id: QuestionId
+        readonly asker: Text
+        readonly options: ReadonlyArray<Text>
+      }
+    // an evaluation that counts after the owner's accept (P1, 2026-11-15)
     | {
         readonly _tag: 'Evaluation'
+        readonly id: EvaluationId
         readonly level: Text
         readonly wrong: Text
         readonly why: Text
         readonly improve: ReadonlyArray<Text>
       }
     // any other item that waits for the person (P1, 2026-11-15): title names its kind, text says
-    // what waits, and its acts are the ones that move it (id: the item's id).
-    | { readonly _tag: 'Step'; readonly title: Text }
+    // what waits, and its acts are the ones that move it, each with its own ids.
+    | { readonly _tag: 'Step'; readonly id: Text; readonly title: Text }
   )
 // An act of a decision: each one is an intent of the item's step that passed canAct, so the page
 // offers no act that is refused (P1). Accept, Reject, Confirm, Answer and FixProblem act on the
@@ -331,22 +344,16 @@ export type DecisionAct =
   | { readonly _tag: 'Answer' }
   | { readonly _tag: 'FixProblem' }
   | { readonly _tag: 'Resolve'; readonly escalation: EscalationId }
-  | { readonly _tag: 'Give'; readonly task: TaskId; readonly role: Text }
+  | { readonly _tag: 'Give'; readonly task: TaskId; readonly role: RoleName }
   | { readonly _tag: 'Suggest'; readonly about: SuggestionTarget; readonly name: Text }
   | { readonly _tag: 'AtTerminal'; readonly line: Text }
 interface DecisionBase {
-  readonly id: Text
   readonly task: TaskId | null // the task where it shows; null: every top task of the dir
   readonly text: Text // the fixed sentence of its kind
   readonly words: Text | null // the host's words, when written
   readonly at: Time
   readonly acts: ReadonlyArray<DecisionAct> // none: it waits for others, as waits says
   readonly waits: Text | null // what it waits for, when the person cannot move it now
-  // It shows when its host wrote its words, when no host holds its tree, or when the host wrote
-  // nothing for hostWaitMinutes; a problem that the person's UI recorded shows at once.
-  readonly shown:
-    | { readonly _tag: 'Shown' }
-    | { readonly _tag: 'HeldForHost'; readonly until: Time }
 }
 // What a draft changes, as a code review: one diff of the whole text of the direction.
 export interface DraftChange {
@@ -357,12 +364,14 @@ export interface DraftChange {
 // --- 4. The view data that the page reads (GET /api/...) -----------------------------------------
 // Replaces the plain objects of view.js; the keys and the word values stay as today (parity).
 
-// The live state of a terminal on a card with a session (was added by server.js live()). Its
-// keys are optional because the JSON has them only on such a card (parity note 9).
-interface Live {
-  readonly live?: boolean // its pane runs
-  readonly ended?: boolean // its pane exited and stays for a resume
-}
+// A terminal as the page shows it: the pump's reading, else what the store says of it.
+export type TerminalSeen =
+  | { readonly _tag: 'Unknown'; readonly session: SessionId } // no reading of it yet
+  | { readonly _tag: 'Live'; readonly session: SessionId } // its pane runs
+  | { readonly _tag: 'Ended'; readonly session: SessionId } // its pane exited; it stays for a resume
+  | { readonly _tag: 'Closed'; readonly session: SessionId } // stopped, or closed when work ended
+// The terminal of a card: none (a program, or no agent yet), or one that the page sees.
+export type CardTerminal = { readonly _tag: 'None' } | TerminalSeen
 
 // GET /api/dir: the sidebar.
 export interface DirView {
@@ -417,22 +426,22 @@ export interface TaskCard {
 // The terminal that owns a task (ruling 7): its open assignment of the host or of a persistent
 // agent; a subagent runs inside the terminal above it. Two tasks of one persistent agent show its
 // one terminal (ruling 9).
-export interface Owner extends Live {
+export interface Owner {
   readonly a: AssignmentId
   readonly role: Text
   readonly tier: 'sol' | 'terra' | 'luna' | 'program'
   readonly agent: AgentId | null // the persistent agent whose terminal it is
-  readonly session: SessionId | null
+  readonly terminal: CardTerminal
   readonly inside: AssignmentId | null
-  // Only the terminal of live work can be resumed; the JSON has the key only then (outside).
-  readonly resumable?: boolean
+  // Only the terminal of live work can be resumed: a lead whose agent or assignment goes on.
+  readonly resumable: boolean
 }
-export interface WorkCard extends Live {
+export interface WorkCard {
   readonly a: AssignmentId
   readonly role: Text
   readonly tier: 'sol' | 'terra' | 'luna' | 'program'
   readonly attempt: { readonly now: number; readonly max: PositiveInt | null }
-  readonly session: SessionId | null
+  readonly terminal: CardTerminal
   readonly inside: AssignmentId | null
   readonly result: Text | null
   readonly output: Text | null
@@ -456,9 +465,9 @@ export interface TaskDraftView {
   readonly role: Text
   readonly at: Time
 }
-export interface TerminalRef extends Live {
-  readonly session: SessionId
+export interface TerminalRef {
   readonly a: Text // the run, the persistent agent, or the assignment
+  readonly terminal: TerminalSeen
 }
 
 // GET /api/task/<t>: the panel of a task.

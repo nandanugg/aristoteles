@@ -230,8 +230,8 @@ describe('run -> host, host watch, task draft (S1, S3)', () => {
   })
 })
 const TERMINALS = {
-  'host-k0001': { live: true, ended: false, exit: null, lastOutput: 0 },
-  's-a2': { live: true, ended: false, exit: null, lastOutput: 0 },
+  'host-k0001': { _tag: 'Live', lastOutput: 0 } as const,
+  's-a2': { _tag: 'Live', lastOutput: 0 } as const,
 }
 
 describe('version -> draft (S6)', () => {

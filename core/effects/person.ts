@@ -122,7 +122,7 @@ export const fixedProblem = (problem: ProblemId) =>
         'trigger the host in your AI CLI again',
       )
     if (p.recordedBy._tag === 'Host') {
-      if (host._tag === 'NoHost' || reading?.live !== true) return yield* noHost()
+      if (host._tag === 'NoHost' || reading?._tag !== 'Live') return yield* noHost()
       yield* sendLine({ _tag: 'ProblemRetry', problem }, problemRetryLine(problem, p.says))
       return (
         `${problem}: the host tries it again now; ` +
@@ -141,7 +141,7 @@ export const fixedProblem = (problem: ProblemId) =>
         'resume the host',
       )
     }
-    if ((yield* pump.status)[run.session]?.live !== true) return yield* noHost()
+    if ((yield* pump.status)[run.session]?._tag !== 'Live') return yield* noHost()
     const by = yield* personOnPage
     yield* act({ by, input: { _tag: 'FixProblem', target: { problem }, content: {} } })
     return `${problem}: the host runs, and the problem is fixed.`

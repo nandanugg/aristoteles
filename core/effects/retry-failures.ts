@@ -94,7 +94,7 @@ const waits = (
       const reading = r.status[y.session]
       return (
         tasksOf(r.d, y.owner).some((task) => within(w, task, top)) &&
-        reading?.live === true &&
+        reading?._tag === 'Live' &&
         r.now - reading.lastOutput < silentMs
       )
     })
@@ -133,7 +133,7 @@ const watch = (r: Round, x: ToWatch) =>
     const silentMs = (t?.silentMinutes ?? 10) * 60000
     const waiting = waits(r, x, tasks, silentMs)
     const errorShows = (t?.errors ?? []).some((e) => recent.join('\n').includes(e))
-    const kind: Failure | 'prompt' | undefined = reading.ended
+    const kind: Failure | 'prompt' | undefined = reading._tag === 'Ended'
       ? 'ended'
       : asked !== undefined
         ? 'prompt'
@@ -202,7 +202,7 @@ const watch = (r: Round, x: ToWatch) =>
     const session = conversationOf(w, sid, !ran)
     const command = fill(template ?? '', { session, model: t?.model, prompt })
     const restart = Effect.gen(function* () {
-      if (!reading.ended) yield* pump.stop(sid)
+      if (reading._tag === 'Live') yield* pump.stop(sid)
       yield* pump.resume(sid, { command, env: {}, cols: 160, rows: 48 })
     })
     const resumed = yield* Effect.result(restart)

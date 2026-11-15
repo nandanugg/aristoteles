@@ -19,14 +19,11 @@ export interface StaleSource {
   readonly now: string
 }
 
-// The pump's view of one terminal (the old TerminalStatus).
-export interface TerminalReading {
-  readonly live: boolean
-  readonly ended: boolean
-  readonly exit: number | null
-  // The clock time (ms) of the last output; 0 when none.
-  readonly lastOutput: number
-}
+// The pump's view of one terminal: its pane runs, or it exited with its status (null: unknown).
+// lastOutput is the clock time (ms) of the last output; 0 when none.
+export type TerminalReading =
+  | { readonly _tag: 'Live'; readonly lastOutput: number }
+  | { readonly _tag: 'Ended'; readonly exit: number | null; readonly lastOutput: number }
 
 export interface Outside {
   readonly cwd: string

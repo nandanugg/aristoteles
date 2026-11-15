@@ -4,17 +4,7 @@
 import { Schema } from 'effect'
 import { html } from 'htm/preact'
 import { useRef, useState } from 'preact/hooks'
-import {
-  EvaluationId,
-  EventRef,
-  NonBlank,
-  ProblemId,
-  QuestionId,
-  RevisionId,
-  RoleName,
-  RunId,
-  TaskId,
-} from '../../../src/domain/ids.ts'
+import { NonBlank, type QuestionId } from '../../../src/domain/ids.ts'
 import type { Decision } from '../contract.ts'
 import type { ActOut } from './api.ts'
 import { post, toast } from './api.ts'
@@ -87,42 +77,13 @@ export function Item({ item, inbox = false }: { item: Decision; inbox?: boolean 
   const has = (tag: Act['_tag']) => item.acts.some((a) => a._tag === tag)
   // A reject needs words: its button is off while the comment is blank.
   const reason = () => Schema.decodeUnknownSync(NonBlank)(comment)
-  // Each act decodes the id of the decision into its branded type; a bad id is shown as a refusal.
-  const fixed = () => post({ act: 'fixed', problem: Schema.decodeUnknownSync(ProblemId)(item.id) })
-  const acceptDraft = () =>
-    post({ act: 'accept-draft', draft: Schema.decodeUnknownSync(RevisionId)(item.id), comment })
-  const rejectDraft = () =>
-    post({
-      act: 'reject-draft',
-      draft: Schema.decodeUnknownSync(RevisionId)(item.id),
-      reason: reason(),
-    })
-  const confirm = () =>
-    post({ act: 'confirm', forward: Schema.decodeUnknownSync(EventRef)(item.id) })
-  const acceptEnd = () => post({ act: 'end', run: Schema.decodeUnknownSync(RunId)(item.id) })
-  const rejectTask = () =>
-    post({ act: 'reject-task', task: Schema.decodeUnknownSync(TaskId)(item.task), reason: reason() })
-  const words = Schema.decodeUnknownSync(EventRef)
-  const acceptWords = () => post({ act: 'accept-words', draft: words(item.id) })
-  const rejectWords = () => post({ act: 'reject-words', draft: words(item.id), reason: reason() })
-  const acceptAdjustment = () => post({ act: 'accept-adjustment', draft: words(item.id) })
-  const rejectAdjustment = () =>
-    post({ act: 'reject-adjustment', draft: words(item.id), reason: reason() })
-  // The person's answer counts at once: an option's words, or their own.
-  const answer = (text: string) => () =>
-    post({ act: 'answer', question: Schema.decodeUnknownSync(QuestionId)(item.id), text })
-  const evaluation = () => Schema.decodeUnknownSync(EvaluationId)(item.id)
-  const acceptEvaluation = () =>
-    post({ act: 'accept-evaluation', evaluation: evaluation(), text: comment })
-  const rejectEvaluation = () =>
-    post({ act: 'reject-evaluation', evaluation: evaluation(), reason: reason() })
   // The acts of any other item: an assign, a suggestion in words, a resolve.
   const gives = actsOf(item, 'Give')
   const suggests = actsOf(item, 'Suggest')
   const resolves = actsOf(item, 'Resolve')
   const terminal = actsOf(item, 'AtTerminal')
   const assign = (a: (typeof gives)[number]) => () =>
-    post({ act: 'assign', task: a.task, role: Schema.decodeUnknownSync(RoleName)(a.role) })
+    post({ act: 'assign', task: a.task, role: a.role })
   const suggest = (a: (typeof suggests)[number]) => () =>
     post({ act: 'suggest', about: a.about, says: Schema.decodeUnknownSync(NonBlank)(comment) })
   const resolve = (a: (typeof resolves)[number]) => () =>
@@ -157,6 +118,89 @@ export function Item({ item, inbox = false }: { item: Decision; inbox?: boolean 
             ? 'What you want, in your words'
             : null
   const title = item._tag === 'Step' ? item.title : KIND[kind]
+  // The person's answer counts at once: an option's words, or their own.
+  const answerOf = (question: QuestionId, text: string) => () =>
+    post({ act: 'answer', question, text })
+  // An accept and a reject of the decision's own record; a reject needs the comment.
+  type Post = () => Promise<ActOut>
+  const pair = (yes: string, accept: Post, no: string, reject: Post, needs = false) => html`
+    ${has('Accept') ? html`<button class="btn primary" disabled=${needs && noComment}
+      onClick=${run(accept)}>${yes}</button>` : ''}
+    ${has('Reject') ? html`<button class="btn" disabled=${noComment}
+      onClick=${run(reject)}>${no}</button>` : ''}`
+  // The acts on the decision's own record, by its kind: each id is typed on the wire.
+  const ownActs = () => {
+    switch (item._tag) {
+      case 'System': {
+        const problem = item.id
+        return has('FixProblem')
+          ? html`<button class="btn primary"
+              onClick=${run(() => post({ act: 'fixed', problem }))}>Fixed</button>`
+          : ''
+      }
+      case 'Direction': {
+        const draft = item.id
+        return pair(
+          'Accept the change',
+          () => post({ act: 'accept-draft', draft, comment }),
+          'Reject the change',
+          () => post({ act: 'reject-draft', draft, reason: reason() }),
+        )
+      }
+      case 'Confirm': {
+        const forward = item.id
+        return has('Confirm')
+          ? html`<button class="btn primary"
+              onClick=${run(() => post({ act: 'confirm', forward }))}>Confirm</button>`
+          : ''
+      }
+      case 'End': {
+        const { id: run, top: task } = item
+        return pair(
+          'Accept the end',
+          () => post({ act: 'end', run }),
+          'Reject the result',
+          () => post({ act: 'reject-task', task, reason: reason() }),
+        )
+      }
+      case 'RoleWords': {
+        const draft = item.id
+        return pair(
+          'Accept the words',
+          () => post({ act: 'accept-words', draft }),
+          'Reject the words',
+          () => post({ act: 'reject-words', draft, reason: reason() }),
+        )
+      }
+      case 'Question': {
+        return has('Answer')
+          ? html`<button class="btn primary" disabled=${noComment}
+              onClick=${run(answerOf(item.id, comment))}>Answer</button>`
+          : ''
+      }
+      case 'Adjustment': {
+        const draft = item.id
+        return pair(
+          'Accept',
+          () => post({ act: 'accept-adjustment', draft }),
+          'Reject',
+          () => post({ act: 'reject-adjustment', draft, reason: reason() }),
+        )
+      }
+      case 'Evaluation': {
+        const evaluation = item.id
+        return pair(
+          'Accept the evaluation',
+          () => post({ act: 'accept-evaluation', evaluation, text: comment }),
+          'Reject the evaluation',
+          () => post({ act: 'reject-evaluation', evaluation, reason: reason() }),
+          true,
+        )
+      }
+      case 'Step':
+        return ''
+    }
+  }
   return html`<div class=${`item ${kind}`} role="region" aria-label=${title}>
     <div class="item-head"><span class="badge" aria-hidden="true">${asked ? '?' : '!'}</span>
       <strong>${title}</strong>
@@ -175,44 +219,14 @@ export function Item({ item, inbox = false }: { item: Decision; inbox?: boolean 
     ${item.waits ? html`<div class="item-waits">${item.waits}</div>` : ''}
     ${asked?.options.length ? html`<div class="item-options">
       ${asked.options.map((o) => html`<button class="btn"
-        onClick=${run(answer(o))}>${o}</button>`)}</div>` : ''}
+        onClick=${run(answerOf(asked.id, o))}>${o}</button>`)}</div>` : ''}
     ${field ? html`<label class="field"><span>${field}</span>
       <textarea rows="2" value=${comment}
         onInput=${(e: Event) => setComment((e.currentTarget as HTMLTextAreaElement).value)}
       ></textarea></label>` : ''}
     ${error ? html`<div class="error" role="alert">Refused: ${error}</div>` : ''}
     <div class="item-actions">
-      ${has('FixProblem') ? html`<button class="btn primary"
-        onClick=${run(fixed)}>Fixed</button>` : ''}
-      ${kind === 'direction' ? html`
-        ${has('Accept') ? html`<button class="btn primary"
-          onClick=${run(acceptDraft)}>Accept the change</button>` : ''}
-        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
-          onClick=${run(rejectDraft)}>Reject the change</button>` : ''}` : ''}
-      ${has('Confirm') ? html`<button class="btn primary"
-        onClick=${run(confirm)}>Confirm</button>` : ''}
-      ${kind === 'end' ? html`
-        ${has('Accept') ? html`<button class="btn primary"
-          onClick=${run(acceptEnd)}>Accept the end</button>` : ''}
-        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
-          onClick=${run(rejectTask)}>Reject the result</button>` : ''}` : ''}
-      ${kind === 'roleWords' ? html`
-        ${has('Accept') ? html`<button class="btn primary"
-          onClick=${run(acceptWords)}>Accept the words</button>` : ''}
-        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
-          onClick=${run(rejectWords)}>Reject the words</button>` : ''}` : ''}
-      ${asked && has('Answer') ? html`<button class="btn primary" disabled=${noComment}
-        onClick=${run(answer(comment))}>Answer</button>` : ''}
-      ${kind === 'adjustment' ? html`
-        ${has('Accept') ? html`<button class="btn primary"
-          onClick=${run(acceptAdjustment)}>Accept</button>` : ''}
-        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
-          onClick=${run(rejectAdjustment)}>Reject</button>` : ''}` : ''}
-      ${evaluated ? html`
-        ${has('Accept') ? html`<button class="btn primary" disabled=${noComment}
-          onClick=${run(acceptEvaluation)}>Accept the evaluation</button>` : ''}
-        ${has('Reject') ? html`<button class="btn" disabled=${noComment}
-          onClick=${run(rejectEvaluation)}>Reject the evaluation</button>` : ''}` : ''}
+      ${ownActs()}
       ${resolves.map((a) => html`<button class="btn primary" disabled=${noComment}
         onClick=${run(resolve(a))}>Resolve</button>`)}
       ${suggests.map((a) => html`<button class="btn" disabled=${noComment}

@@ -36,7 +36,7 @@ test('two tasks of one persistent agent show its one terminal', async () => {
     task.id,
     task.owner?.a,
     task.owner?.agent,
-    task.owner?.session,
+    task.owner?.terminal._tag === 'None' ? null : task.owner?.terminal.session,
   ])
   expect(owners).toEqual([
     ['t1', 'a1', null, host],
@@ -49,5 +49,5 @@ test('a disposable role runs as a subagent: its work shows the terminal above it
   const { p, host, hostToken } = await hosted()
   await p.agent(`assign ${hostToken} t1 --role=writer`)
   const writer = canvasOf(p.dir)?.rows[0]?.work.find((c) => c.role === 'writer')
-  expect(writer).toMatchObject({ a: 'a2', tier: 'luna', session: host, inside: 'a1' })
+  expect(writer).toMatchObject({ a: 'a2', tier: 'luna', terminal: { session: host }, inside: 'a1' })
 })

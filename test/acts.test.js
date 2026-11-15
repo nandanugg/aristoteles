@@ -81,10 +81,10 @@ describe('the acts of the UI', () => {
       .toBe('sp1 recorded on t1 The Introduction; it shows to the person until a fix.')
     // The host wrote the problem itself, so its text is its words: the person sees it at once.
     expect(summary(await decisions(p))).toEqual([['system', 'sp1', 't1']])
-    expect((await decisions(p))[0]).toMatchObject({ shown: true, words: 'the cluster is down: run make up, then press Fixed' })
+    expect((await decisions(p))[0]).toMatchObject({ words: 'the cluster is down: run make up, then press Fixed' })
     // Words of the host that it writes after replace them.
     ok(await p.agent(`note ${host} words --on=sp1 --text="The cluster of this machine is down, so no test of t1 can run. Start it with make up."`))
-    expect((await decisions(p))[0]).toMatchObject({ shown: true, words: 'The cluster of this machine is down, so no test of t1 can run. Start it with make up.' })
+    expect((await decisions(p))[0]).toMatchObject({ words: 'The cluster of this machine is down, so no test of t1 can run. Start it with make up.' })
     ok(await p.agent(`problem ${host} t1 --says="the VPN is not connected"`))
     expect((await decisions(p)).map((i) => i.id)).toEqual(['sp1', 'sp2'])
     expect((await p.agent(`note ${lead} words --on=sp1 --text="x"`)).err).toContain('only the host of a project writes the words of a decision')
@@ -125,7 +125,7 @@ describe('the acts of the UI', () => {
     expect((await p.agent(`note ${host} words --on=sp1 --text="x" --hope="y"`)).err).toContain('--hope is only for the words of a direction problem')
     ok(await p.agent(`note ${host} words --on=d2 --text="The facts say nothing of the cost." --hope="The readers see first why the work matters."`))
     const [item] = await decisions(p)
-    expect(item).toMatchObject({ kind: 'direction', id: 'd2', words: 'The facts say nothing of the cost.', hope: 'The readers see first why the work matters.', shown: true })
+    expect(item).toMatchObject({ kind: 'direction', id: 'd2', words: 'The facts say nothing of the cost.', hope: 'The readers see first why the work matters.' })
     // One diff of the whole direction: what it says, then each standard with its checks.
     expect(item.change).toEqual({
       direction: 'TSD writing',
@@ -184,7 +184,7 @@ describe('the acts of the UI', () => {
     // While the host writes its words, the top task stays on the canvas, with no badge yet.
     expect((await canvas(p, 'h1')).rows.map((r) => [r.task.id, r.task.badge])).toEqual([['t1', false]])
     ok(await p.agent(`note ${host} words --on=h1 --text="The TSD is whole: the linter found no ticket id, and I read it end to end."`))
-    expect((await decisions(p))[0].shown).toBe(true)
+    expect((await decisions(p))[0]).toMatchObject({ kind: 'end', id: 'h1', top: 't1' })
     // The top task is accepted, but it stays on the canvas while the end waits for the person.
     expect((await canvas(p, 'h1')).rows.map((r) => [r.task.id, r.task.badge, r.work])).toEqual([['t1', true, []]])
     ok(await p.ui('run done h1'))
@@ -204,7 +204,7 @@ describe('an adjustment on the page', () => {
     gitPerson(p)
     const tier = drafted(ok(await p.agent('adjust tier writer --tier=medium --by=host')).out)
     const [item] = await decisions(p)
-    expect(item).toMatchObject({ kind: 'adjustment', id: tier, task: null, shown: true })
+    expect(item).toMatchObject({ kind: 'adjustment', id: tier, task: null })
     expect(item.text).toBe(
       'An adjustment, drafted by host, a model run outside any task, waits for your decision: writer becomes a medium role.',
     )

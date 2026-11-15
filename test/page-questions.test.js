@@ -71,7 +71,6 @@ describe('a question to the person', () => {
       asker: 'architect (a1)',
       options: ['m-17, the first one', 'm-18'],
       words: null,
-      shown: true,
     })])
   })
 

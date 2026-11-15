@@ -126,11 +126,11 @@ describe('the server, read only', () => {
     expect(view.rows).toHaveLength(1)
     const [row] = view.rows
     expect(row.task).toMatchObject({ id: 't1', name: 'The Introduction', words: 'works', attempt: { now: 2, max: 3 },
-      owner: { a: 'a1', role: 'section-lead', tier: 'terra', session: null, inside: null } })
+      owner: { a: 'a1', role: 'section-lead', tier: 'terra', terminal: { _tag: 'None' }, inside: null } })
     // Only the latest attempt (Nanda, 2026-11-11): r1 was rejected and the writer has tries
     // left, so its work card is attempt 2, in work, with no review yet.
     expect(row.work).toEqual([{
-      a: 'a2', role: 'writer', tier: 'luna', attempt: { now: 2, max: 3 }, session: null, inside: 'a1',
+      a: 'a2', role: 'writer', tier: 'luna', attempt: { now: 2, max: 3 }, terminal: { _tag: 'None' }, inside: 'a1',
       result: null, output: null, state: 'works', files: 0, reviews: [],
     }])
   })

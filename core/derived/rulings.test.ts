@@ -28,6 +28,7 @@ import type {
 } from '../schema/index.ts'
 import { canAct, type Derived, nextFor, stepKey, waitingFor } from './index.ts'
 import { fileTurn } from './steps.ts'
+import type { TerminalReading } from '../schema/outside.ts'
 
 const id = <A>(x: string): A => x as A
 const agentOf = (assignment: string): Author => ({
@@ -323,9 +324,10 @@ describe('ruling 10.10: the words of a direction draft go to the hosts', () => {
   test('the CLI and the page derive the same hosts, whatever the panes read', () => {
     const w = workOf(p.dir)
     const session = (run: string) => w.runs.get(id(run))?.session ?? ''
-    const reading = (live: boolean) => ({ live, ended: !live, exit: null, lastOutput: 0 })
+    const reading = (live: boolean): TerminalReading =>
+      live ? { _tag: 'Live', lastOutput: 0 } : { _tag: 'Ended', exit: null, lastOutput: 0 }
     const page = { [session('h1')]: reading(true), [session('h2')]: reading(false) }
-    const seen = (terminals: Record<string, ReturnType<typeof reading>>) => {
+    const seen = (terminals: Record<string, TerminalReading>) => {
       const d = derivedOf(w, p.now() as Time, p.dir, { terminals })
       const [item] = waitingFor(d, { _tag: 'Person', name: 'Nanda' }).filter(
         (i) => i._tag === 'DraftForPerson',

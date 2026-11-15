@@ -1,8 +1,8 @@
 // The JSON between the server and the page: the Schemas of the view data of ui-model.ts part 4. The
 // server encodes each answer with them and decodes each act and each terminal message; the page
 // decodes each answer. The wire keeps the keys and the words of today (parity). Where a domain
-// type differs from the wire, the Schema converts at its edge: a Decision is tagged and has a
-// tagged `shown` in the domain, and the wire has `kind` and `shown: boolean`.
+// type differs from the wire, the Schema converts at its edge: a Decision is tagged by `_tag` in
+// the domain and by `kind` on the wire.
 import { Schema, SchemaGetter } from 'effect'
 import {
   AdjustmentSchema,
@@ -52,11 +52,11 @@ import {
 
 const Text = Schema.String
 const Tier = Schema.Literals(['sol', 'terra', 'luna', 'program'])
-// The live state of a terminal: the keys are on a card with a session only.
-const Live = {
-  live: Schema.optionalKey(Schema.Boolean),
-  ended: Schema.optionalKey(Schema.Boolean),
-}
+// A terminal as the page shows it (ui-model.ts TerminalSeen), and the terminal of a card.
+const seen = (tag: 'Unknown' | 'Live' | 'Ended' | 'Closed') =>
+  Schema.TaggedStruct(tag, { session: SessionId })
+const TerminalSeen = Schema.Union([seen('Unknown'), seen('Live'), seen('Ended'), seen('Closed')])
+const CardTerminal = Schema.Union([Schema.TaggedStruct('None', {}), ...TerminalSeen.members])
 const TimeOrNone = Schema.Union([Time, Schema.Literal('')])
 const Attempt = Schema.Struct({ now: Schema.Number, max: Schema.NullOr(PositiveInt) })
 
@@ -77,56 +77,60 @@ const DecisionAct = Schema.Union([
   Schema.TaggedStruct('Answer', {}),
   Schema.TaggedStruct('FixProblem', {}),
   Schema.TaggedStruct('Resolve', { escalation: EscalationId }),
-  Schema.TaggedStruct('Give', { task: TaskId, role: Text }),
+  Schema.TaggedStruct('Give', { task: TaskId, role: RoleName }),
   Schema.TaggedStruct('Suggest', { about: SuggestionTarget, name: Text }),
   Schema.TaggedStruct('AtTerminal', { line: Text }),
 ])
 const DraftChange = Schema.Struct({ direction: Text, lines: Schema.Array(Text) })
-const Shown = Schema.Union([
-  Schema.TaggedStruct('Shown', {}),
-  Schema.TaggedStruct('HeldForHost', { until: Time }),
-])
 const DecisionBase = {
-  id: Text,
   task: Schema.NullOr(TaskId),
   text: Text,
   words: Schema.NullOr(Text),
   at: Time,
-  shown: Shown,
   acts: Schema.Array(DecisionAct),
   waits: Schema.NullOr(Text),
 }
 const EvaluationFields = { level: Text, wrong: Text, why: Text, improve: Schema.Array(Text) }
 const DecisionDomain = Schema.Union([
-  Schema.TaggedStruct('System', { ...DecisionBase, stopped: TaskId }),
+  Schema.TaggedStruct('System', { ...DecisionBase, id: ProblemId, stopped: TaskId }),
   Schema.TaggedStruct('Direction', {
     ...DecisionBase,
+    id: RevisionId,
     direction: Text,
     change: DraftChange,
     hope: Schema.NullOr(Text),
     why: Why,
   }),
-  Schema.TaggedStruct('End', DecisionBase),
-  Schema.TaggedStruct('Confirm', { ...DecisionBase, quote: Text }),
+  Schema.TaggedStruct('End', { ...DecisionBase, id: RunId, top: TaskId }),
+  Schema.TaggedStruct('Confirm', { ...DecisionBase, id: EventRef, quote: Text }),
   // New words of a role (ruling 2026-11-14).
-  Schema.TaggedStruct('RoleWords', { ...DecisionBase, role: Text, lines: Schema.Array(Text) }),
+  Schema.TaggedStruct('RoleWords', {
+    ...DecisionBase,
+    id: EventRef,
+    role: Text,
+    lines: Schema.Array(Text),
+  }),
   // A drafted adjustment (ruling 14).
-  Schema.TaggedStruct('Adjustment', { ...DecisionBase, adjustment: AdjustmentSchema }),
+  Schema.TaggedStruct('Adjustment', { ...DecisionBase, id: EventRef, adjustment: AdjustmentSchema }),
   // A question to the person: the text is the question.
-  Schema.TaggedStruct('Question', { ...DecisionBase, asker: Text, options: Schema.Array(Text) }),
-  Schema.TaggedStruct('Evaluation', { ...DecisionBase, ...EvaluationFields }),
-  Schema.TaggedStruct('Step', { ...DecisionBase, title: Text }),
+  Schema.TaggedStruct('Question', {
+    ...DecisionBase,
+    id: QuestionId,
+    asker: Text,
+    options: Schema.Array(Text),
+  }),
+  Schema.TaggedStruct('Evaluation', { ...DecisionBase, id: EvaluationId, ...EvaluationFields }),
+  Schema.TaggedStruct('Step', { ...DecisionBase, id: Text, title: Text }),
 ])
 type DecisionEncoded = typeof DecisionDomain.Encoded
 
+// The wire names the kind in `kind`; each id is plain text there, and the domain brands it.
 const WireBase = {
   id: Text,
   task: Schema.NullOr(Text),
   text: Text,
   words: Schema.NullOr(Text),
-  hope: Schema.NullOr(Text),
   at: Text,
-  shown: Schema.Boolean,
   acts: Schema.Array(Schema.toEncoded(DecisionAct)),
   waits: Schema.NullOr(Text),
 }
@@ -137,9 +141,10 @@ const DecisionWire = Schema.Union([
     ...WireBase,
     direction: Text,
     change: DraftChange,
+    hope: Schema.NullOr(Text),
     why: Schema.toEncoded(Why),
   }),
-  Schema.Struct({ kind: Schema.Literal('end'), ...WireBase }),
+  Schema.Struct({ kind: Schema.Literal('end'), ...WireBase, top: Text }),
   Schema.Struct({ kind: Schema.Literal('confirm'), ...WireBase, quote: Text }),
   Schema.Struct({
     kind: Schema.Literal('roleWords'),
@@ -163,86 +168,33 @@ const DecisionWire = Schema.Union([
 ])
 type DecisionWireType = typeof DecisionWire.Type
 
-const toWire = (d: DecisionEncoded): DecisionWireType => {
-  const base = {
-    id: d.id,
-    task: d.task,
-    text: d.text,
-    words: d.words,
-    at: d.at,
-    shown: d.shown._tag === 'Shown',
-    acts: d.acts,
-    waits: d.waits,
-  }
-  switch (d._tag) {
-    case 'System':
-      return { kind: 'system', ...base, hope: null, stopped: d.stopped }
-    case 'Direction':
-      return {
-        kind: 'direction',
-        ...base,
-        hope: d.hope,
-        direction: d.direction,
-        change: d.change,
-        why: d.why,
-      }
-    case 'End':
-      return { kind: 'end', ...base, hope: null }
-    case 'Confirm':
-      return { kind: 'confirm', ...base, hope: null, quote: d.quote }
-    case 'RoleWords':
-      return { kind: 'roleWords', ...base, hope: null, role: d.role, lines: d.lines }
-    case 'Adjustment':
-      return { kind: 'adjustment', ...base, hope: null, adjustment: d.adjustment }
-    case 'Question':
-      return { kind: 'question', ...base, hope: null, asker: d.asker, options: d.options }
-    case 'Evaluation': {
-      const { level, wrong, why, improve } = d
-      return { kind: 'evaluation', ...base, hope: null, level, wrong, why, improve }
-    }
-    case 'Step':
-      return { kind: 'step', ...base, hope: null, title: d.title }
-  }
-}
-
-// A decision that the server held back never goes on the wire (only shown ones do), so the wire
-// cannot say until when: a false `shown` reads as held until its own time.
-const fromWire = (w: DecisionWireType): DecisionEncoded => {
-  const shown = w.shown
-    ? ({ _tag: 'Shown' } as const)
-    : ({ _tag: 'HeldForHost', until: w.at } as const)
-  const { id, task, text, words, at, acts, waits } = w
-  const base = { id, task, text, words, at, shown, acts, waits }
-  switch (w.kind) {
-    case 'system':
-      return { _tag: 'System', ...base, stopped: w.stopped }
-    case 'direction':
-      return {
-        _tag: 'Direction',
-        ...base,
-        direction: w.direction,
-        change: w.change,
-        hope: w.hope,
-        why: w.why,
-      }
-    case 'end':
-      return { _tag: 'End', ...base }
-    case 'confirm':
-      return { _tag: 'Confirm', ...base, quote: w.quote }
-    case 'roleWords':
-      return { _tag: 'RoleWords', ...base, role: w.role, lines: w.lines }
-    case 'adjustment':
-      return { _tag: 'Adjustment', ...base, adjustment: w.adjustment }
-    case 'question':
-      return { _tag: 'Question', ...base, asker: w.asker, options: w.options }
-    case 'evaluation': {
-      const { level, wrong, why, improve } = w
-      return { _tag: 'Evaluation', ...base, level, wrong, why, improve }
-    }
-    case 'step':
-      return { _tag: 'Step', ...base, title: w.title }
-  }
-}
+const KINDS = {
+  System: 'system',
+  Direction: 'direction',
+  End: 'end',
+  Confirm: 'confirm',
+  RoleWords: 'roleWords',
+  Adjustment: 'adjustment',
+  Question: 'question',
+  Evaluation: 'evaluation',
+  Step: 'step',
+} as const
+const TAGS = {
+  system: 'System',
+  direction: 'Direction',
+  end: 'End',
+  confirm: 'Confirm',
+  roleWords: 'RoleWords',
+  adjustment: 'Adjustment',
+  question: 'Question',
+  evaluation: 'Evaluation',
+  step: 'Step',
+} as const
+// Only the tag and the kind differ: each member keeps its own keys.
+const toWire = ({ _tag, ...rest }: DecisionEncoded): DecisionWireType =>
+  ({ kind: KINDS[_tag], ...rest }) as DecisionWireType
+const fromWire = ({ kind, ...rest }: DecisionWireType): DecisionEncoded =>
+  ({ _tag: TAGS[kind], ...rest }) as DecisionEncoded
 
 export const Decision = DecisionWire.pipe(
   Schema.decodeTo(DecisionDomain, {
@@ -259,10 +211,9 @@ export const Owner = Schema.Struct({
   role: Text,
   tier: Tier,
   agent: Schema.NullOr(AgentId),
-  session: Schema.NullOr(SessionId),
+  terminal: CardTerminal,
   inside: Schema.NullOr(AssignmentId),
-  resumable: Schema.optionalKey(Schema.Boolean),
-  ...Live,
+  resumable: Schema.Boolean,
 })
 export const ReviewCard = Schema.Struct({
   id: Schema.NullOr(Text),
@@ -283,14 +234,13 @@ export const WorkCard = Schema.Struct({
   role: Text,
   tier: Tier,
   attempt: Attempt,
-  session: Schema.NullOr(SessionId),
+  terminal: CardTerminal,
   inside: Schema.NullOr(AssignmentId),
   result: Schema.NullOr(Text),
   output: Schema.NullOr(Text),
   ...WorkWord,
   files: Schema.Number,
   reviews: Schema.Array(ReviewCard),
-  ...Live,
 })
 export const TaskCard = Schema.Struct({
   id: TaskId,
@@ -313,7 +263,7 @@ export const TaskDraftView = Schema.Struct({
   role: Text,
   at: Time,
 })
-export const TerminalRef = Schema.Struct({ session: SessionId, a: Text, ...Live })
+export const TerminalRef = Schema.Struct({ a: Text, terminal: TerminalSeen })
 
 const SummaryFields = {
   id: Text,

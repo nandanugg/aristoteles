@@ -74,9 +74,9 @@ describe('the canvas shows only what runs now', () => {
     expect(await owner()).toMatchObject({ a: 'a2', tier: 'terra', resumable: true })
     ok(await p.agent(`finish ${host} a2`))
     // The host's own pane is the person's: the page has no Resume for it.
-    expect(await owner()).toMatchObject({ a: 'a1', tier: 'sol', session: expect.stringMatching(/^host-/), resumable: false })
+    expect(await owner()).toMatchObject({ a: 'a1', tier: 'sol', terminal: { session: expect.stringMatching(/^host-/) }, resumable: false })
     // The host's own assignment ends too; its run is still open, so its terminal stays live work.
     ok(await p.agent(`finish ${host}`))
-    expect(await owner()).toMatchObject({ a: 'a1', session: expect.stringMatching(/^host-/), resumable: false })
+    expect(await owner()).toMatchObject({ a: 'a1', terminal: { session: expect.stringMatching(/^host-/) }, resumable: false })
   })
 })

@@ -81,6 +81,8 @@ import {
   type RoleFile,
   type RunId,
   type RunState,
+  type SessionId,
+  type Supervised,
   type Settings,
   type Spot,
   type SpotView,
@@ -90,6 +92,8 @@ import {
   type TaskCard,
   type TaskId,
   type TaskPanel,
+  type CardTerminal,
+  type TerminalSeen,
   type Version,
   type VersionId,
   type Work,
@@ -112,6 +116,7 @@ import {
   touchedIds,
 } from '../words/index.ts'
 import type { TerminalStatus } from './frozen.ts'
+import { foldTerminals } from '../../core/effects/terminals.ts'
 import { actsOf, examplesWait, stepCardOf } from './cards.ts'
 import { canAct } from '../../core/derived/can.ts'
 import { idOf } from '../../core/derived/waiting.ts'
@@ -200,12 +205,26 @@ const runIsOpen = (d: Derived, run: RunId): boolean => {
 }
 const ruleIdOf = (w: Work, entry: string | null | undefined): string | null =>
   entry === null || entry === undefined ? null : ruleAt(w, entry as never).id
-// A card that has a session shows whether its terminal runs.
-const withLive = <T extends { readonly session: string | null }>(ctx: ViewContext, card: T) => {
-  if (!card.session) return card
-  const status = ctx.terminals[card.session]
-  return { ...card, live: Boolean(status?.live), ended: Boolean(status?.ended) }
+// The terminals as the store says, folded once for each Work.
+const folded = new WeakMap<Work, ReadonlyMap<SessionId, Supervised>>()
+const storedOf = (w: Work) => {
+  const known = folded.get(w)
+  if (known !== undefined) return known
+  const fresh = foldTerminals(new Map(), w, w.events)
+  folded.set(w, fresh)
+  return fresh
 }
+// A terminal as the page shows it: the pump's reading, else a stop or a close of the store, else
+// no reading yet.
+const seenOf = (ctx: ViewContext, w: Work, session: SessionId): TerminalSeen => {
+  const reading = ctx.terminals[session]
+  if (reading !== undefined) return { _tag: reading._tag, session }
+  const state = storedOf(w).get(session)?.state._tag
+  const closed = state === 'Stopped' || state === 'Closed'
+  return { _tag: closed ? 'Closed' : 'Unknown', session }
+}
+const cardTerminal = (ctx: ViewContext, w: Work, session: SessionId | null): CardTerminal =>
+  session === null ? { _tag: 'None' } : seenOf(ctx, w, session)
 const stateWord = (state: RunState): ProjectSummary['state'] => {
   switch (state._tag) {
     case 'Talking':
@@ -348,9 +367,8 @@ type Card<K extends PersonKind> = (
   item: Of<K>,
   base: Base,
 ) => Extract<Decision, { readonly _tag: (typeof SURFACES)[K]['page'] }> | undefined
-const shownNow = { _tag: 'Shown' } as const
 const step = <K extends PersonKind>(d: Derived, item: Of<K>, base: Base) =>
-  stepCardOf(d, item as never, { id: idOf(item), words: null, shown: shownNow, ...base })
+  stepCardOf(d, item as never, { id: idOf(item), words: null, ...base })
 const CARDS: { readonly [K in PersonKind]: Card<K> } = {
   Problem: (d, item, base) => {
     const w = workOf(d)
@@ -360,7 +378,7 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
     const own = p.recordedBy._tag === 'Host' ? p.says : null
     const words = w.hostWords.get(item.problem)?.text ?? own
     const { says: text, stopped } = p
-    return { _tag: 'System', id: p.id, text, stopped, words, shown: item.hold, ...base }
+    return { _tag: 'System', id: p.id, text, stopped, words, ...base }
   },
   DraftForPerson: (d, item, base) => {
     const w = workOf(d)
@@ -385,7 +403,6 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
       why: x.why,
       hope: words?._tag === 'DraftWords' ? words.hope : null,
       words: words?.text ?? null,
-      shown: item.hold,
       ...base,
       waits,
     }
@@ -406,7 +423,6 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
         `${describeInner(forward.inner, w)}. It counts when you confirm it.`,
       quote: stored.create.quote,
       words: null,
-      shown: item.hold,
       ...base,
     }
   },
@@ -415,11 +431,11 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
     return {
       _tag: 'End',
       id: item.run,
+      top: item.top,
       text:
         `The agent that leads "${taskAt(w, item.top).name}" accepted its result. ` +
         'Accept the end of the project, or reject the result with your reason.',
       words: w.hostWords.get(item.run)?.text ?? null,
-      shown: item.hold,
       ...base,
     }
   },
@@ -436,7 +452,6 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
       role: x.role,
       lines: roleWordsChange(workOf(d), x),
       words: null,
-      shown: item.hold,
       ...base,
     }
   },
@@ -452,7 +467,6 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
         `${adjustmentWords(x.adjustment)}.`,
       adjustment: x.adjustment,
       words: null,
-      shown: item.hold,
       ...base,
     }
   },
@@ -464,7 +478,7 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
     const asker =
       typeof q.from === 'string' ? `${assignmentAt(w, q.from).role} (${q.from})` : q.from.name
     const { id, text, options } = q
-    return { _tag: 'Question', id, text, asker, options, words: null, shown: shownNow, ...base }
+    return { _tag: 'Question', id, text, asker, options, words: null, ...base }
   },
   // D1: an evaluation at the level of a direction or a principle counts after the owner's accept.
   EvaluationForOwner: (d, item, base) => {
@@ -477,7 +491,6 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
       text: `${id} says what went wrong, and that ${an(level)} changes. It counts when you accept it.`,
       ...{ level, wrong, why, improve },
       words: null,
-      shown: shownNow,
       ...base,
     }
   },
@@ -493,7 +506,13 @@ const CARDS: { readonly [K in PersonKind]: Card<K> } = {
   IdleTask: step,
   BriefOver: step,
 }
-const decisionOf = (d: Derived, item: WaitingItem): Decision | undefined => {
+// A decision, and whether it shows now: one that waits for its host's words is held, and only
+// the shown ones go to the page.
+export interface Placed {
+  readonly decision: Decision
+  readonly shown: boolean
+}
+const placedOf = (d: Derived, item: WaitingItem): Placed | undefined => {
   if (SURFACES[item._tag].mover !== 'Person') return undefined
   const base: Base = {
     task: item.placement._tag === 'OnTask' ? item.placement.task : null,
@@ -501,32 +520,37 @@ const decisionOf = (d: Derived, item: WaitingItem): Decision | undefined => {
     acts: actsOf(d, item),
     waits: null,
   }
-  return (CARDS[item._tag as PersonKind] as Card<PersonKind>)(d, item as Of<PersonKind>, base)
+  const card = CARDS[item._tag as PersonKind] as Card<PersonKind>
+  const decision = card(d, item as Of<PersonKind>, base)
+  const shown = !('hold' in item) || item.hold._tag === 'Shown'
+  return decision === undefined ? undefined : { decision, shown }
 }
 
 // The items that reach the person on the page: every item of waitingFor that the person may
 // move, each one also while it waits for the host's words (shownOn keeps the shown ones).
-export const decisionsOf = (d: Derived, person: string): ReadonlyArray<Decision> => {
+export const decisionsOf = (d: Derived, person: string): ReadonlyArray<Placed> => {
   // B7, ruling 10.8: the person of git user.name sees only their own items, with no fallback: a
   // name that is no person of this work (none set, or a machine's global name) sees none.
   const who: WaitingWho = { _tag: 'Person', name: person }
   return waitingFor(d, who)
     .filter(onPage)
-    .flatMap((item) => decisionOf(d, item) ?? [])
+    .flatMap((item) => placedOf(d, item) ?? [])
 }
 // Where a decision shows (P1, F3): an item of a task, on the panel of its task while that task is
 // open; an item of no task, in the inbox of the dir and on each open top task; an item of a task
 // that ended, in the inbox. A shown one with an act needs the person.
 const onOpenTask = (d: Derived, i: Decision): boolean => i.task !== null && taskOpen(d, i.task)
-const needsYou = (i: Decision): boolean => i.shown._tag === 'Shown' && i.acts.length > 0
-const itemsOn = (d: Derived, items: ReadonlyArray<Decision>, task: Task) => {
+const needsYou = (p: Placed): boolean => p.shown && p.decision.acts.length > 0
+const itemsOn = (d: Derived, items: ReadonlyArray<Placed>, task: Task) => {
   const top = task.serves._tag === 'TopTask' && taskOpen(d, task.id)
-  return items.filter((i) => (i.task === null ? top : onOpenTask(d, i) && i.task === task.id))
+  return items.filter(({ decision: i }) =>
+    i.task === null ? top : onOpenTask(d, i) && i.task === task.id,
+  )
 }
-const shownOn = (d: Derived, items: ReadonlyArray<Decision>, task: Task) =>
-  itemsOn(d, items, task).filter((i) => i.shown._tag === 'Shown')
+const shownOn = (d: Derived, items: ReadonlyArray<Placed>, task: Task) =>
+  itemsOn(d, items, task).flatMap((p) => (p.shown ? [p.decision] : []))
 export const inboxOf = (d: Derived, person: string): ReadonlyArray<Decision> =>
-  decisionsOf(d, person).filter((i) => i.shown._tag === 'Shown' && !onOpenTask(d, i))
+  decisionsOf(d, person).flatMap((p) => (p.shown && !onOpenTask(d, p.decision) ? [p.decision] : []))
 
 // --- the projects of the dir ----------------------------------------------------------------
 
@@ -574,7 +598,8 @@ export const projectsOf = (d: Derived, ctx: ViewContext): ReadonlyArray<ProjectS
     .map((p) => {
       const ids = new Set<string>(p.top ? treeOf(w, p.top) : [])
       const open = p.top !== null && taskOpen(d, p.top)
-      const shows = (i: Decision) => (i.task === null ? open : onOpenTask(d, i) && ids.has(i.task))
+      const shows = ({ decision: i }: Placed) =>
+        i.task === null ? open : onOpenTask(d, i) && ids.has(i.task)
       return { ...p, badge: needs.some(shows) }
     })
     .sort((a, b) => String(b.at).localeCompare(String(a.at)))
@@ -595,7 +620,7 @@ const persistentParentOf = (w: Work, a: AssignmentId): Assignment | undefined =>
 // (Nanda, 2026-11-11). Only live work can be resumed: the terminal of an agent while its project
 // goes on (ruling 9), an open assignment that no run holds; the UI never restarts a host: the
 // person triggers it again (Nanda, 2026-11-13).
-const ownerOf = (d: Derived, task: TaskId): Owner | null => {
+const ownerOf = (d: Derived, task: TaskId, ctx: ViewContext): Owner | null => {
   const w = workOf(d)
   const mine = assignmentsOn(w, task)
   const leads = mine.filter(isPersistent)
@@ -604,11 +629,13 @@ const ownerOf = (d: Derived, task: TaskId): Owner | null => {
     leads.findLast((a) => !ended(d, a.id)) ?? leads.findLast(hostOfOpenRun) ?? leads.at(-1)
   if (lead) {
     const runs = lead.runs
+    const { agent, session } = terminalOf(w, lead)
     return {
       a: lead.id,
       role: lead.role,
       tier: tierWord(w, lead),
-      ...terminalOf(w, lead),
+      agent,
+      terminal: cardTerminal(ctx, w, session),
       inside: null,
       resumable:
         runs._tag === 'Agent'
@@ -624,8 +651,9 @@ const ownerOf = (d: Derived, task: TaskId): Owner | null => {
     role: maker.role,
     tier: tierWord(w, maker),
     agent: null,
-    session: parent ? terminalOf(w, parent).session : null,
+    terminal: cardTerminal(ctx, w, parent ? terminalOf(w, parent).session : null),
     inside: parent?.id ?? null,
+    resumable: false,
   }
 }
 
@@ -722,19 +750,20 @@ const workCards = (d: Derived, task: TaskId, ctx: ViewContext): ReadonlyArray<Wo
       const result = next ? undefined : last
       const parent = persistentParentOf(w, m.id)
       const own = isPersistent(m)
-      return withLive(ctx, {
+      const session = own ? terminalOf(w, m).session : parent ? terminalOf(w, parent).session : null
+      return {
         a: m.id,
         role: m.role,
         tier: tierWord(w, m),
         attempt: attemptCard(d, m),
-        session: own ? terminalOf(w, m).session : parent ? terminalOf(w, parent).session : null,
+        terminal: cardTerminal(ctx, w, session),
         inside: own || !parent ? null : parent.id,
         result: result ? result.id : null,
         output: result?.output ?? null,
         state: result ? resultWord(d, result.id) : ended(d, m.id) ? 'finished' : 'works',
         files: result ? (w.resultFiles.get(result.id) ?? []).length : 0,
         reviews: result ? reviewCards(d, result) : [],
-      })
+      }
     })
   return cards.filter((c) => c.state === 'works' || c.state === 'in review')
 }
@@ -742,12 +771,12 @@ const workCards = (d: Derived, task: TaskId, ctx: ViewContext): ReadonlyArray<Wo
 const taskCard = (
   d: Derived,
   task: Task,
-  items: ReadonlyArray<Decision>,
+  items: ReadonlyArray<Placed>,
   ctx: ViewContext,
 ): TaskCard => {
   const w = workOf(d)
   const maker = assignmentsOn(w, task.id).findLast((a) => isDo(w, a.role))
-  const owner = ownerOf(d, task.id)
+  const owner = ownerOf(d, task.id, ctx)
   const limited = maker?._tag === 'Maker' && maxOf(maker.maxAttempts) !== undefined
   return {
     id: task.id,
@@ -755,8 +784,8 @@ const taskCard = (
     // The attempt has its own row on the card, so the words leave it out.
     words: taskWords(d, task.id).replace(/ \(attempt [^)]*\)$/, ''),
     attempt: maker && limited ? attemptCard(d, maker) : null,
-    owner: owner ? withLive(ctx, owner) : null,
-    badge: shownOn(d, items, task).some(needsYou),
+    owner,
+    badge: itemsOn(d, items, task).some(needsYou),
     parent: task.serves._tag === 'Serves' ? task.serves.task : null,
   }
 }
@@ -787,7 +816,7 @@ export const projectView = (d: Derived, id: string, ctx: ViewContext): ProjectVi
         .filter((x) => x.run === run.id && d.states.taskDrafts.get(x.id)?._tag === 'Waiting')
         .map((x) => ({ id: x.id, name: x.task.name, text: x.task.text, role: x.role, at: x.at }))
     : []
-  const terminal = run ? withLive(ctx, { session: run.session, a: run.id }) : null
+  const terminal = run ? { a: run.id, terminal: seenOf(ctx, w, run.session) } : null
   return { ...project, rows, drafts, terminal }
 }
 
@@ -892,10 +921,11 @@ export const taskPanel = (d: Derived, id: string, ctx: ViewContext): TaskPanel |
     })),
   }))
   // The terminal of the task: its owner's (a subagent's task shows the terminal above it).
-  const owner = ownerOf(d, task.id)
-  const terminal = owner?.session
-    ? withLive(ctx, { session: owner.session, a: owner.inside ?? owner.agent ?? owner.a })
-    : null
+  const owner = ownerOf(d, task.id, ctx)
+  const terminal =
+    owner && owner.terminal._tag !== 'None'
+      ? { a: owner.inside ?? owner.agent ?? owner.a, terminal: owner.terminal }
+      : null
   return {
     id: task.id,
     name: task.name,
@@ -1324,7 +1354,9 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
       request: null,
     }),
   )
-  const adjustments = decisionsOf(d, ctx.person).filter((x) => x._tag === 'Adjustment')
+  const adjustments = decisionsOf(d, ctx.person).flatMap(({ decision: x }) =>
+    x._tag === 'Adjustment' ? [x] : [],
+  )
   return { stage: 'store', directions, roles, adjustments, start: { state: 'started' } }
 }
 

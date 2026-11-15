@@ -151,17 +151,17 @@ describe('the watcher and the acts of the UI', () => {
 
     // A failed child is retried with its resume command.
     pump.input(lead, 'fail\r')
-    await until(() => pump.status()[lead]?.ended)
+    await until(() => pump.status()[lead]?._tag === 'Ended')
     await watcher.tick()
     await until(() => screen(lead).includes('fake agent resumed'))
-    expect(pump.status()[lead].live).toBe(true)
+    expect(pump.status()[lead]._tag).toBe('Live')
 
     // Stop is no failure: the watcher does not start it again.
     expect((await post('stop', { session: lead })).status).toBe(200)
     await watcher.tick()
     expect(pump.status()[lead]).toBeUndefined()
     expect((await post('resume', { session: lead, tier: 'terra' })).status).toBe(200)
-    await until(() => pump.status()[lead]?.live)
+    await until(() => pump.status()[lead]?._tag === 'Live')
   }, 90000)
 
   test('the person\'s acts: settings, a system problem fixed, and Close', async () => {
@@ -382,7 +382,7 @@ describe('the watcher and the acts of the UI', () => {
     // The host is the person's own terminal: the page cannot stop it. A problem of the host that
     // the UI recorded ends with Fixed while the host runs.
     expect((await post('stop', { session: host })).body.error).toContain('the UI does not start, restart, or stop it')
-    expect(pump.status()[host].live).toBe(true)
+    expect(pump.status()[host]._tag).toBe('Live')
     ok(await p.ui('problem t1 --says="the host terminal failed 3 times"'))
     expect((await post('fixed', { problem: 'sp1' })).body.out).toBe('sp1: the host runs, and the problem is fixed.')
   }, 90000)
@@ -416,8 +416,8 @@ describe('the watcher and the acts of the UI', () => {
       later(9000)
       await watcher.tick()
     }
-    expect(pump.status()[lead].live).toBe(true)
-    expect(pump.status()[host].live).toBe(true)
+    expect(pump.status()[lead]._tag).toBe('Live')
+    expect(pump.status()[host]._tag).toBe('Live')
     // The host's writer and linter are disposable: subagents, with no terminals (ruling 7). The
     // top task is accepted, and the host stays while the end waits for the person.
     const writer = tokenIn(ok(await p.agent(`assign ${hostToken} t1 --role=writer`)).out)
@@ -432,8 +432,8 @@ describe('the watcher and the acts of the UI', () => {
     ok(await p.agent(`finish ${hostToken} ${writer.split('.')[0]}`))
     later(8500)
     await watcher.tick()
-    expect(pump.status()[host].live).toBe(true)
-    expect(pump.status()[lead].live).toBe(true)
+    expect(pump.status()[host]._tag).toBe('Live')
+    expect(pump.status()[lead]._tag).toBe('Live')
     expect((await post('end', { run: 'h1' })).status).toBe(200)
     expect(await closes(host)).toBe(true)
     expect(await closes(lead)).toBe(true)
@@ -464,7 +464,7 @@ describe('the watcher and the acts of the UI', () => {
       later(9000)
       await watcher.tick()
     }
-    expect(pump.status()[lead].live).toBe(true)
+    expect(pump.status()[lead]._tag).toBe('Live')
     expect(screen(lead)).not.toContain('fake agent resumed')
     // The next assignment of its role goes to the same terminal, through its wait.
     ok(await p.agent(`assign ${hostToken} t3 --role=section-lead`))

@@ -1,6 +1,7 @@
 // The types of the web entry points (plan/rebuild/BUILD.md D15): the pump, the watcher, the
 // server and work start, which test/code.js gives to the integrated tests.
 import type { Work } from '../../core/schema/index.ts'
+import type { TerminalReading } from '../../core/schema/outside.ts'
 
 export type Env = Readonly<Record<string, string | undefined>>
 
@@ -14,12 +15,7 @@ export interface PumpOptions {
   readonly clock?: () => number
 }
 
-export interface TerminalStatus {
-  readonly live: boolean
-  readonly ended: boolean
-  readonly exit: number | null
-  readonly lastOutput: number
-}
+export type TerminalStatus = TerminalReading
 
 export interface StartOptions {
   readonly env?: Readonly<Record<string, string>>

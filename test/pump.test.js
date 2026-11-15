@@ -46,7 +46,7 @@ describe('the pump', () => {
     await until(() => seen.get('s-1')?.includes('fake agent start s-1 (env s-1)'))
     pump.input('s-1', 'héllo; wörld -y\r')
     await until(() => seen.get('s-1')?.includes('you said: héllo; wörld -y'))
-    expect(pump.status()['s-1']).toMatchObject({ live: true, ended: false })
+    expect(pump.status()['s-1']).toMatchObject({ _tag: 'Live' })
     expect(text(pump.snapshot('s-1'))).toContain('you said: héllo; wörld -y')
     expect(() => pump.start('s-1', 'true')).toThrow('the session s-1 has a terminal already')
   }, 30000)
@@ -78,11 +78,11 @@ describe('the pump', () => {
     pump.input('s-2', 'fail\r')
     await until(() => exits.length > 0)
     expect(exits).toEqual([['s-2', 1]])
-    expect(pump.status()['s-2']).toMatchObject({ live: false, ended: true, exit: 1 })
+    expect(pump.status()['s-2']).toMatchObject({ _tag: 'Ended', exit: 1 })
     expect(pump.tail('s-2')).toContain('connection error')
     pump.resume('s-2', `bun ${FAKE} resumed s-2`)
     await until(() => seen.get('s-2')?.includes('fake agent resumed s-2'))
-    expect(pump.status()['s-2'].live).toBe(true)
+    expect(pump.status()['s-2']._tag).toBe('Live')
   }, 30000)
 
   test('a stop closes the window; a resume makes it again', async () => {
@@ -102,7 +102,7 @@ describe('the pump', () => {
     pump.close()
     const again = createPump({ dir: pump.dir, socket: pump.socket })
     pumps.push(again)
-    expect(again.status()['s-4']).toMatchObject({ live: true })
+    expect(again.status()['s-4']).toMatchObject({ _tag: 'Live' })
     expect(text(again.snapshot('s-4'))).toContain('fake agent start s-4')
   }, 30000)
 
@@ -129,7 +129,7 @@ describe('the pump', () => {
     try {
       pump.adopt('host-1', person.socket, person.pane)
       await until(() => text(pump.snapshot('host-1')).includes('fake agent start person-host (env none)'))
-      expect(pump.status()['host-1']).toMatchObject({ live: true, ended: false })
+      expect(pump.status()['host-1']).toMatchObject({ _tag: 'Live' })
       expect(pump.paneOf('host-1')).toEqual({ socket: person.socket, pane: person.pane })
       // Ruling 2026-11-14 (fixed-size terminals): the pane streams only while a page shows it.
       pump.show('host-1')
@@ -154,7 +154,7 @@ describe('the pump', () => {
       expect(pump.size('host-1')).toEqual({ cols: 80, rows: 30 })
       // The person ends the AI CLI: the pane is gone, and nothing restarts it.
       pump.input('host-1', 'exit\r')
-      await until(() => pump.status()['host-1']?.ended === true)
+      await until(() => pump.status()['host-1']?._tag === 'Ended')
       pump.release('host-1')
       expect(pump.status()['host-1']).toBeUndefined()
     } finally {
