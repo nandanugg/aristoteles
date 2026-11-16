@@ -365,8 +365,11 @@ const free: Check<'Free'> = (c, { target: { assignment } }) => {
   const x = c.w.assignments.get(assignment)
   if (x === undefined) return exists(false, assignment, 'assignment')
   const by = agentOf(c)
-  if (by !== undefined && !childOf(c.w, x, by.id)) {
-    return no(`${x.id} is not your child`, 'Pick', 'free a child of yours')
+  // A subagent frees its own claim when it stops with no counted act: its parent's step is
+  // ready at once, not after a timer (live, 2026-11-16: a judge stopped; t3 waited 10 minutes).
+  const self = by !== undefined && by.id === x.id && x.runs._tag === 'Subagent'
+  if (by !== undefined && !self && !childOf(c.w, x, by.id)) {
+    return no(`${x.id} is not your child`, 'Pick', 'free a child of yours, or yourself')
   }
   return MAY
 }
@@ -458,7 +461,10 @@ const report: Check<'Report'> = (c, { target: { assignment } }) => {
     )
   }
   const stop = workStop(w, a.task)
-  if (stop !== undefined) return no(stop, 'Wait', `STOP and tell ${upTo(a)}`)
+  if (stop !== undefined) {
+    const free = a.runs._tag === 'Subagent' ? `work free ${a.id}.<token> ${a.id}, then ` : ''
+    return no(stop, 'Wait', `${free}STOP and tell ${upTo(a)}`)
+  }
   const task = d.states.tasks.get(a.task)
   if (task?._tag === 'Returned' || task?._tag === 'WaitsForEvaluation') {
     return no(`${t?.name} is returned until a change answers it`, 'Wait', `tell ${upTo(a)}`)

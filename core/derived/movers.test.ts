@@ -317,3 +317,17 @@ describe('a second brief of a subagent', () => {
     expect(again.err).toContain('go on with your step: work next a2.<token>')
   }, 30000)
 })
+
+// Live, 2026-11-16: a judge stopped with no counted review; its claim held, and its lead waited
+// 10 minutes to free it. A subagent that stops frees its own claim, and its parent moves at once.
+describe('a subagent that stops frees its own claim', () => {
+  test('the free is allowed, and the parent no longer waits on the claim', async () => {
+    const s = await harness.withWriter()
+    ok(await s.p.agent(`brief ${s.writer}`))
+    expect(tags(nextFor(derivedOf(s), agent('a1')))).toContain('Wait MakerWorking')
+    ok(await s.p.agent(`free ${s.writer} a2`))
+    expect(tags(nextFor(derivedOf(s), agent('a1')))).not.toContain('Wait MakerWorking')
+    const other = await s.p.agent(`free ${s.writer} a1`)
+    expect(other.err).toContain('a1 is not your child')
+  }, 30000)
+})
