@@ -4,12 +4,14 @@
 // README.md has the words, the options, the properties with their tiers, and the limits.
 module workenv {
   const CFG: {
-    c1Keep: bool, d7: int, basis: bool, build: bool, rebase: bool, harnessTest: bool, classify: bool, passTests: bool, fullBrief: bool,
+    c1Keep: bool, d7: int, basis: bool, build: bool, rebase: bool, harnessTest: bool,
+    classify: bool, passTests: bool, fullBrief: bool,
     endedCheck: bool, formCheck: bool, refCheck: bool, epochs: bool, reviseCheck: bool,
     bindOpenOnly: bool, rebind: bool, pumpReattach: bool, hostWatched: bool,
     waitEmptyInput: bool, idleSeen: bool,
-    dashLive: bool, dashInactiveFromView: bool, silentSteps: int, reviewSubagents: bool,
-    editBack: int, acceptCheck: bool,
+    dashInactiveFromView: bool, silentSteps: int, reviewSubagents: bool,
+    editBack: int, acceptCheck: bool, decideRecheck: bool, briefCheck: bool,
+    shrinkAcrossSplit: bool, listOnAttach: bool,
     maxTries: int, maxMakers: int, maxChanges: int, budget: int, maxPts: int, maxLoops: int,
     maxRuleTries: int, maxRemakes: int,
   }
@@ -19,10 +21,14 @@ module workenv {
   // reject: the person rejects results. causes: the real causes a new task may have
   // (0 none, 1 split, 2 fit, 3 principle, 4 direct, 5 standard; CAUSE_OF).
   // maxFaults: environment faults; maxNet: acts in flight; maxPerson: the person's acts.
+  // printsOften: the assumption that a live terminal prints or renews its wait beat at least
+  // once in x ticks (its AI CLI streams output; `work wait` beats); false only in a mutant.
+  // start: 0 the top open with two new tasks; 1 a deep start: both tasks done and the top
+  // returned to the person (the host's assignment finished).
   const ENV: {
     byzMaker: bool, byzRole: bool, byzPipe: bool, byzHost: bool, crash: bool,
     tmuxFaults: bool, page: bool, head: bool, reject: bool, maxFaults: int, maxNet: int,
-    maxPerson: int, causes: Set[int], maxTicks: int,
+    maxPerson: int, causes: Set[int], start: int, printsOften: bool,
   }
   import work(OPT = CFG).* from "./work"
   import tmux.* from "./tmux"
@@ -32,9 +38,12 @@ module workenv {
   // read. ctx: it has the context of its work. stale: it was resumed with that context and
   // may act on its old view and repeat its last act until it reads again. view, todo: the
   // store and the steps as of its last read. last: its last act. waiting: for the answer.
+  // limited: the AI CLI hit its usage limit (it shows the message and stops). unseen: it
+  // ended while the pump was not attached (a control client sees only the ends it is
+  // attached for).
   type Proc = { actor: int, ep: int, gen: int, up: bool, idle: bool, starting: bool,
                 ctx: bool, stale: bool, view: Store, todo: Set[What], last: Set[Act],
-                waiting: bool, wakes: int }
+                waiting: bool, wakes: int, limited: bool, unseen: bool }
   type ReadMode = Full | Head | Drop
   type Page = { view: Store, oldBuild: bool, acts: int }
   type Event =
@@ -42,7 +51,8 @@ module workenv {
     | Read((int, ReadMode)) | Crashed(int) | SelfResumed(int) | Stopped(int) | Woke(int)
     | ServerKilled | SocketLost | ServerRecreated | PumpStolen | PageServerRestarted
     | PumpAttached | Typed(int) | Cleared(int) | PromptRead((int, bool))
-    | PageRefreshed | PageDeployed | PageReloaded | Polled(int) | Ticked
+    | PageRefreshed | PageDeployed | PageReloaded | Polled(int) | Ticked | Printed(int)
+    | Limited(int) | Rebooted
 
   var s: Store
   var net: Set[Act]            // acts sent and not yet appended or refused (unordered)
@@ -53,7 +63,8 @@ module workenv {
   var merged: bool             // history: a prompt merged with the person's typing was read
   // Wait markers: per persistent role, the ticks since its process last polled its wait.
   var silence: int -> int
-  var ticks: int               // ticks so far (bounded: ENV.maxTicks)
+  // Per persistent role, the ticks since its terminal last printed (it acted or read).
+  var quiet: int -> int
   var lastEvent: Event
   // For model-based testing: each actor's Do steps, and what is owed, in every state.
   var told: int -> Set[What]
@@ -67,6 +78,8 @@ module workenv {
   def envCauses: Set[Cause] = ENV.causes.map(n => CAUSE_OF(n))
   pure val FORMS = Set(NoForm, Mech, Ref, Both)
   pure val BOOLS = Set(true, false)
+  // The tasks a change may break (the environment's truth).
+  pure val HITS = Set(Set(), Set(0), Set(1), Set(0, 1))
   pure val PANES = PERSISTENT   // a pane per persistent role; makers live in the role's
   pure val MAKER_IDS = 3.to(8)
 
@@ -84,6 +97,7 @@ module workenv {
   // Acts of sender k in flight (each sender has at most ENV.maxNet).
   def sent(k: int): int = net.filter(a => a.who == k).size()
   def polled(k: int): int -> int = if (silence.keys().contains(k)) silence.set(k, 0) else silence
+  def printed(k: int): int -> int = if (quiet.keys().contains(k)) quiet.set(k, 0) else quiet
   def latest(k: int): Set[int] =
     procsOf(k).filter(p => procsOf(k).forall(q => q <= p))
   // The first line a wait prints (head): the lowest rank.
@@ -99,7 +113,7 @@ module workenv {
             pid: int): Act =
     { who: k, ep: ep, what: x, seen: seen, seenDir: seenDir, old: old, v: Pass, pts: 1,
       level: Standard, flag: true, flag2: true, form: Ref, cause: NoCause, items: Set(),
-      real: Set(), byz: byz, ctx: ctx, pid: pid }
+      real: Set(), hits: Set(), byz: byz, ctx: ctx, pid: pid }
   // Every content an act x may carry (only the fields x uses vary).
   def variants(b: Act): Set[Act] = whatVariants(b, b.what)
   def whatVariants(b: Act, x: What): Set[Act] = match x {
@@ -111,8 +125,9 @@ module workenv {
     | WriteRule(_) => FORMS.fold(Set(), (acc, fm) => acc.union(BOOLS.fold(Set(), (a2, f) =>
         a2.union(BOOLS.map(f2 => { ...b, form: fm, flag: f, flag2: f2 })))))
     | RemakeTop => envCauses.map(c => { ...b, cause: c })
-    | Ship(_) => ITEMSETS.fold(Set(), (acc, xs) => acc.union(ITEMSETS.map(ys =>
-        { ...b, items: xs, real: ys })))
+    | Ship(_) => ITEMSETS.fold(Set(), (acc, xs) => acc.union(ITEMSETS.fold(Set(), (a2, ys) =>
+        a2.union(HITS.map(h => { ...b, items: xs, real: ys, hits: h })))))
+    | Accept(_) => HITS.map(h => { ...b, hits: h })
     | _ => BOOLS.fold(Set(), (acc, f) => acc.union(BOOLS.map(f2 => { ...b, flag: f, flag2: f2 })))
   }
   // An honest agent's content, on its own view: it reviews correctly (it runs the test
@@ -146,7 +161,7 @@ module workenv {
                  and (tk(v, i).st == InReview or tk(v, i).st == Done))
                Set(Reject(i)) else Set())
       .union(if (fx(v, i).stage == SAtPerson) Set(Accept(i), SendBack(i)) else Set())
-      .union(if (fx(v, i).stage == SPerson) Set(Decide(i)) else Set()))
+      .union(if (legal(v, { ...NOACT, what: Decide(i) })) Set(Decide(i)) else Set()))
     // Run continue: once per model run (a bound of the model).
     val edit = if (fx(v, EDIT).stage == SClosed) Set(EditDirection) else Set()
     val acc = if (fx(v, EDIT).stage == SAtPerson) Set(Accept(EDIT), SendBack(EDIT)) else Set()
@@ -178,8 +193,15 @@ module workenv {
     else if (k == HOST) CFG.hostWatched
     else if (k == ROLE or k == PIPE) tm.pump or tm.pending
     else runs(ROLE) or tm.pump or tm.pending
+  // A host's step while the top has no host (the host returned it, or C1 a): it waits on the
+  // person, who is told to open the top again (a stress run found the case: an edit took
+  // effect after the host returned the top; the reassign it needs waits for a new host).
+  def hostWaitsOnPerson(ob: Ob): bool = not(s.top.hosted) and match ob {
+    | ReassignOb => true | RemakeOb => true | TopDoneOb => true | SendOb(_) => true
+    | _ => false }
   def waitsLegally(ob: Ob): bool =
     val t = toldAny(s, ob)
+    hostWaitsOnPerson(ob) or
     t.size() == 1 and t.forall(k => k >= 0 and not(hears(k)) and engineOwes(k))
   def doable(k: int, x: What): bool =
     variants(mkAct(k, epOf(s, k), x, cur(s, x), vsum(s), false, false, true, -1))
@@ -187,63 +209,91 @@ module workenv {
 
   // ---- the commit of a step: every variable, and the derived ones
   action commitS(ns: Store, nn: Set[Act], np: int -> Proc, nt: Tmux, npg: Page, nf: int,
-                 nm: bool, nsil: int -> int, ntk: int, ev: Event): bool = all {
+                 nm: bool, nsil: int -> int, nq: int -> int, ev: Event): bool = all {
     s' = ns, net' = nn, procs' = np, tm' = nt, page' = npg, faults' = nf, merged' = nm,
-    silence' = nsil, ticks' = ntk, lastEvent' = ev, told' = toldOf(ns), obligations' = obligationsOf(ns),
+    silence' = nsil, quiet' = nq, lastEvent' = ev, told' = toldOf(ns),
+    obligations' = obligationsOf(ns),
   }
   // Every step but a poll or a tick leaves the wait markers as they are.
   action commit(ns: Store, nn: Set[Act], np: int -> Proc, nt: Tmux, npg: Page, nf: int,
                 nm: bool, ev: Event): bool =
-    commitS(ns, nn, np, nt, npg, nf, nm, silence, ticks, ev)
+    commitS(ns, nn, np, nt, npg, nf, nm, silence, quiet, ev)
+  // A step that prints in the actor's terminal (it acted or read).
+  action commitP(k: int, ns: Store, nn: Set[Act], np: int -> Proc, nt: Tmux, npg: Page,
+                 nf: int, nm: bool, ev: Event): bool =
+    commitS(ns, nn, np, nt, npg, nf, nm, silence, printed(k), ev)
   def freshProc(k: int, ep: int, gen: int, v: Store): Proc =
     { actor: k, ep: ep, gen: gen, up: true, idle: false, starting: false, ctx: true,
-      stale: false, view: v, todo: Set(), last: Set(), waiting: false, wakes: 0 }
+      stale: false, view: v, todo: Set(), last: Set(), waiting: false, wakes: 0,
+      limited: false, unseen: false }
   action init = {
     nondet c0 = envCauses.oneOf()
     nondet c1 = envCauses.oneOf()
-    val s0 = initStore(Map(0 -> c0, 1 -> c1))
+    val sN = initStore(Map(0 -> c0, 1 -> c1))
+    val sD = { ...sN,
+      tasks: SLOTS.mapBy(i => { ...tk(sN, i), st: Done, rid: 0, cause: NoCause }),
+      top: { ...sN.top, done: true, hosted: false, hostSession: -1 } }
+    val s0 = if (ENV.start == 1) sD else sN
     all {
       s' = s0, net' = Set(),
       procs' = Map(HOST -> freshProc(HOST, 0, -1, s0), ROLE -> freshProc(ROLE, 0, 0, s0),
                    PIPE -> freshProc(PIPE, 0, 0, s0)),
       tm' = initTmux(PANES), page' = { view: s0, oldBuild: false, acts: 0 }, faults' = 0,
-      merged' = false, silence' = PERSISTENT.mapBy(k => 0), ticks' = 0, lastEvent' = Start, told' = toldOf(s0), obligations' = obligationsOf(s0),
+      merged' = false, silence' = PERSISTENT.mapBy(k => 0), quiet' = PERSISTENT.mapBy(k => 0),
+      lastEvent' = Start, told' = toldOf(s0), obligations' = obligationsOf(s0),
     }
   }
 
   // ---- honest processes: read (the wait returns with ready work), then act on the view
   action procReads(p: int): bool = all {
-    not(isByz(pr(p).actor)), active(p), not(pr(p).idle), not(pr(p).waiting),
+    not(isByz(pr(p).actor)), active(p), not(pr(p).idle), not(pr(p).waiting), not(pr(p).limited),
     pr(p).todo == Set() or pr(p).stale, dos(s, pr(p).actor) != Set(),
     nondet mode = Set(Full).union(if (ENV.head) Set(Head) else Set())
       .union(if (ENV.head and faults < ENV.maxFaults) Set(Drop) else Set()).oneOf()
     val xs = dos(s, pr(p).actor)
     val todo = if (mode == Full) xs else if (mode == Head) headOf(xs) else Set()
     commitS(s, net, procs.setBy(p, q => { ...q, view: s, todo: todo, stale: false }), tm, page,
-            faults + if (mode == Drop) 1 else 0, merged, polled(pr(p).actor), ticks,
-            Read((p, mode))),
+            faults + if (mode == Drop) 1 else 0, merged, polled(pr(p).actor),
+            printed(pr(p).actor), Read((p, mode))),
   }
   // An honest process in its wait with nothing ready polls (its wait marker is fresh).
   action procPolls(p: int): bool = all {
     not(isByz(pr(p).actor)), active(p), not(pr(p).waiting), PERSISTENT.contains(pr(p).actor),
-    dos(s, pr(p).actor) == Set(), silence.get(pr(p).actor) > 0,
-    commitS(s, net, procs, tm, page, faults, merged, polled(pr(p).actor), ticks, Polled(p)),
+    not(pr(p).limited), dos(s, pr(p).actor) == Set(), silence.get(pr(p).actor) > 0,
+    commitS(s, net, procs, tm, page, faults, merged, polled(pr(p).actor), quiet, Polled(p)),
   }
-  // Time passes: every persistent role's marker ages (up to x).
+  // A working process prints in its terminal (it thinks, runs tools): a sign of life that is
+  // not a wait poll.
+  action procPrints(p: int): bool = all {
+    active(p), not(pr(p).idle), not(pr(p).limited), PERSISTENT.contains(pr(p).actor),
+    isByz(pr(p).actor) or pr(p).todo != Set() or pr(p).waiting, quiet.get(pr(p).actor) > 0,
+    commitS(s, net, procs, tm, page, faults, merged, silence, printed(pr(p).actor), Printed(p)),
+  }
+  // A process hits the usage limit of its AI CLI: it shows the message and stops.
+  action hitsLimit(p: int): bool = all {
+    ENV.crash, faults < ENV.maxFaults, active(p), not(pr(p).limited),
+    PERSISTENT.contains(pr(p).actor),
+    commit(s, net, procs.setBy(p, z => { ...z, limited: true }), tm, page, faults + 1, merged,
+           Limited(p)),
+  }
+  // Time passes: every persistent role's markers age (they stop at x, so time never ends).
+  def aged(m: int -> int): int -> int =
+    m.keys().mapBy(k => if (m.get(k) < CFG.silentSteps) m.get(k) + 1 else m.get(k))
   action tick: bool = all {
-    ticks < ENV.maxTicks, PERSISTENT.exists(k => silence.get(k) < CFG.silentSteps),
-    commitS(s, net, procs, tm, page, faults, merged,
-            silence.keys().mapBy(k => if (silence.get(k) < CFG.silentSteps) silence.get(k) + 1
-                                      else silence.get(k)), ticks + 1, Ticked),
+    PERSISTENT.exists(k => silence.get(k) < CFG.silentSteps or quiet.get(k) < CFG.silentSteps),
+    // The timing assumption: a live terminal prints or renews its wait beat within x ticks.
+    not(ENV.printsOften) or PERSISTENT.forall(k => live(k) implies
+      (quiet.get(k) + 1 < CFG.silentSteps or silence.get(k) + 1 < CFG.silentSteps)),
+    commitS(s, net, procs, tm, page, faults, merged, aged(silence), aged(quiet), Ticked),
   }
   action procActs(p: int): bool = all {
-    not(isByz(pr(p).actor)), active(p), not(pr(p).idle), not(pr(p).waiting),
+    not(isByz(pr(p).actor)), active(p), not(pr(p).idle), not(pr(p).waiting), not(pr(p).limited),
     sent(pr(p).actor) < ENV.maxNet,
     nondet x = pr(p).todo.oneOf()
     val q = pr(p)
     nondet a = variants(mkAct(q.actor, q.ep, x, cur(q.view, x), vsum(q.view), false, false,
                               q.ctx, p)).filter(a => honestContent(q.view, a)).oneOf()
-    commit(s, net.union(Set(a)),
+    commitP(q.actor, s, net.union(Set(a)),
            procs.setBy(p, z => { ...z, waiting: true, last: Set(a),
                                  todo: if (z.stale) z.todo else z.todo.exclude(Set(x)) }),
            tm, page, faults, merged, Posted(a)),
@@ -251,14 +301,15 @@ module workenv {
   // A process resumed with its old context sends its last act again (it never saw the answer).
   action procRepeats(p: int): bool = all {
     not(isByz(pr(p).actor)), active(p), pr(p).stale, not(pr(p).waiting), pr(p).last != Set(),
+    not(pr(p).limited),
     sent(pr(p).actor) < ENV.maxNet,
     nondet a = pr(p).last.oneOf()
-    commit(s, net.union(Set(a)), procs.setBy(p, z => { ...z, waiting: true }), tm, page,
-           faults, merged, Repeated(a)),
+    commitP(pr(p).actor, s, net.union(Set(a)), procs.setBy(p, z => { ...z, waiting: true }), tm,
+            page, faults, merged, Repeated(a)),
   }
   // ---- Byzantine processes: any act with their own token, any content and basis, any time
   action byzActs(p: int): bool = all {
-    isByz(pr(p).actor), active(p), sent(pr(p).actor) < ENV.maxNet,
+    isByz(pr(p).actor), active(p), sent(pr(p).actor) < ENV.maxNet, not(pr(p).limited),
     // A step it is told (with any content and basis), any act of its own authority, or any
     // act at all (the token check refuses another's).
     val own = allWhats.filter(y => authority(mkAct(pr(p).actor, 0, y, 0, 0, false, true, true, p)))
@@ -277,8 +328,8 @@ module workenv {
   }
   action byzWakes(p: int): bool = all {
     isByz(pr(p).actor), active(p), pr(p).idle, pr(p).wakes < 2,
-    commit(s, net, procs.setBy(p, z => { ...z, idle: false, wakes: z.wakes + 1 }), tm, page,
-           faults, merged, Woke(p)),
+    commitP(pr(p).actor, s, net, procs.setBy(p, z => { ...z, idle: false, wakes: z.wakes + 1 }),
+            tm, page, faults, merged, Woke(p)),
   }
 
   // ---- the harness: the watcher revives (into a reachable server); the pump reports the
@@ -294,9 +345,12 @@ module workenv {
           commit(s, net.union(Set(harnessAct(x))), procs, tm, page, faults, merged,
                  Posted(harnessAct(x))) },
   }
+  // The pump sees the end of a pane of the current server only if it was attached when the
+  // pane ended, unless it lists the panes when it attaches (listOnAttach).
   def seenEnded(k: int): bool =
     procsOf(k).forall(p => pr(p).gen != tm.gen or not(pr(p).up)
                            or (CFG.idleSeen and pr(p).idle))
+      and (CFG.listOnAttach or procsOf(k).forall(p => not(pr(p).unseen)))
   def exitDue(k: int): bool =
     not(s.down.contains(k)) and not(net.contains(harnessAct(Exit(k))))
       and (if (k == ROLE or k == PIPE) tm.pump and reachable(tm) and seenEnded(k)
@@ -371,9 +425,11 @@ module workenv {
     nondet a = net.filter(a => a.who == k).oneOf()
     nondet ctx = BOOLS.oneOf()
     val ns = take(s, a)
+    // A revived terminal prints as it starts.
+    val k2 = match a.what { | Revive(j) => j | MoveHost => HOST | _ => -9 }
     all { accept(s, a),
-          commit(ns, net.exclude(Set(a)), procsAfter(a, ns, ctx), tmAfter(a), page, faults,
-                 merged, Taken(a)) },
+          commitP(k2, ns, net.exclude(Set(a)), procsAfter(a, ns, ctx), tmAfter(a), page, faults,
+                  merged, Taken(a)) },
   }
   action storeRefuses(k: int): bool = all {
     net.exists(a => a.who == k),
@@ -388,14 +444,15 @@ module workenv {
     nondet a = net.oneOf()
     nondet ctx = BOOLS.oneOf()
     val ns = take(s, a)
+    val k2 = match a.what { | Revive(j) => j | MoveHost => HOST | _ => -9 }
     all { accept(s, a),
-          commit(ns, net, procsAfter(a, ns, ctx), tmAfter(a), page, faults + 1, merged,
-                 TakenKept(a)) },
+          commitP(k2, ns, net, procsAfter(a, ns, ctx), tmAfter(a), page, faults + 1, merged,
+                  TakenKept(a)) },
   }
 
   // ---- processes die and come back by themselves. The role's death is its makers' death.
   def killed(p: int): int -> Proc =
-    val np = procs.setBy(p, z => { ...z, up: false, idle: false })
+    val np = procs.setBy(p, z => { ...z, up: false, idle: false, unseen: not(tm.pump) })
     if (pr(p).actor != ROLE) np
     else np.keys().fold(np, (acc, q) => if (pr(q).actor >= 3) acc.setBy(q, z => { ...z, up: false })
                                          else acc)
@@ -409,9 +466,10 @@ module workenv {
     ENV.crash, faults < ENV.maxFaults, not(pr(p).up),
     pr(p).actor < 3 or runs(ROLE),
     nondet ctx = BOOLS.oneOf()
-    commit(s, net, procs.setBy(p, z => if (ctx) { ...z, up: true, stale: true, waiting: false }
-                                       else { ...freshProc(z.actor, z.ep, z.gen, s), ctx: false }),
-           tm, page, faults + 1, merged, SelfResumed(p)),
+    commitP(pr(p).actor, s, net,
+            procs.setBy(p, z => if (ctx) { ...z, up: true, stale: true, waiting: false }
+                                else { ...freshProc(z.actor, z.ep, z.gen, s), ctx: false }),
+            tm, page, faults + 1, merged, SelfResumed(p)),
   }
 
   // ---- tmux
@@ -419,8 +477,16 @@ module workenv {
   action serverKilled: bool = all {
     ENV.tmuxFaults, faults < ENV.maxFaults, reachable(tm),
     commit(s, net, procs.keys().fold(procs, (acc, p) =>
-             if (agentsSide(p)) acc.setBy(p, z => { ...z, up: false }) else acc),
+             if (agentsSide(p)) acc.setBy(p, z => { ...z, up: false, unseen: true }) else acc),
            kill(tm), page, faults + 1, merged, ServerKilled),
+  }
+  // A reboot of the machine: the agents' server and the person's tmux (the host's pane)
+  // end at once.
+  action machineReboots: bool = all {
+    ENV.tmuxFaults, faults < ENV.maxFaults, reachable(tm),
+    commit(s, net, procs.keys().fold(procs, (acc, p) =>
+             acc.setBy(p, z => { ...z, up: false, unseen: true })),
+           kill(tm), page, faults + 1, merged, Rebooted),
   }
   action socketLost: bool = all {
     ENV.tmuxFaults, faults < ENV.maxFaults, reachable(tm),
@@ -456,7 +522,7 @@ module workenv {
     promptReady(tm, k),
     procsOf(k).exists(p => pr(p).up and pr(p).starting),
     val g = tm.input.get(k) == Garbled
-    commit(s, net, procsOf(k).fold(procs, (acc, p) =>
+    commitP(k, s, net, procsOf(k).fold(procs, (acc, p) =>
              if (pr(p).up and pr(p).starting)
                acc.setBy(p, z => { ...z, starting: false, ctx: z.ctx and not(g),
                                    stale: z.stale and not(g) })
@@ -466,7 +532,7 @@ module workenv {
 
   action procStep(p: int): bool = any {
     procReads(p), procActs(p), procRepeats(p), byzActs(p), byzStops(p), byzWakes(p),
-    crashes(p), selfResumes(p),
+    crashes(p), selfResumes(p), procPrints(p), hitsLimit(p),
   }
   // A Byzantine process also gets its own branch, so its acts are not rare in random runs.
   action byzStep: bool = {
@@ -483,7 +549,8 @@ module workenv {
     nondet k = Set(PERSON, HARNESS).union(PERSISTENT).union(s.makers.keys()).oneOf()
       any { storeTakes(k), storeRefuses(k) },
     storeTakesKept,
-    serverKilled, socketLost, serverRecreated, pumpStolen, pageServerRestarts, pumpAttaches,
+    serverKilled, machineReboots, socketLost, serverRecreated, pumpStolen, pageServerRestarts,
+    pumpAttaches,
     nondet k = PANES.oneOf() any { personTypes(k), personClears(k), promptRead(k) },
   }
 
@@ -495,11 +562,13 @@ module workenv {
     (fx(s, i).stage == SClosed and liveMaker(s, i) < 0))
   val OneMakerPerTask: bool = SLOTS.forall(i =>
     s.makers.keys().filter(m => mk(s, m).slot == i and not(mk(s, m).ended)).size() <= 1)
-  val ClaimOnlyLive: bool = s.makers.keys().forall(m => mk(s, m).claim implies
-    (not(mk(s, m).ended) and not(s.down.contains(m))))
   val RaiseHasOwner: bool =
     SLOTS.forall(i => (tk(s, i).st == Raised) iff (fx(s, i).stage != SClosed))
-  val Sane: bool = DoneIsClosed and OneMakerPerTask and ClaimOnlyLive and RaiseHasOwner
+  val Sane: bool = DoneIsClosed and OneMakerPerTask and RaiseHasOwner
+  // A claim is held only by a live maker the store has not seen end (a protocol property:
+  // without endedCheck an ended maker's late read takes a claim).
+  val NoClaimByEnded: bool = not(s.g.claimByEnded) and s.makers.keys().forall(m =>
+    mk(s, m).claim implies (not(mk(s, m).ended) and not(s.down.contains(m))))
   // The protocol's impossible states.
   val NoActByEnded: bool = not(s.g.endedActed)
   val NoReviewOfOtherResult: bool = not(s.g.otherResult)
@@ -524,6 +593,13 @@ module workenv {
   // DESIGN.md 9: the project never ends with a task done under an old version of an item
   // that applies to it; a change never misses a task its content touches.
   val NoDoneUnderOldVersion: bool = not(s.g.endOld)
+  // A done task with nothing pending to recheck is current (every item that applies to it
+  // at the version it was checked under).
+  val DoneIsCurrent: bool = SLOTS.forall(i => (tk(s, i).st == Done and tk(s, i).pend == Set())
+    implies oldFor(s, i) == Set())
+  // The project never ends with a done task whose work a change broke (the recheck caught
+  // it). The truth of "broke" is the environment's (Act.hits).
+  val NoDoneBrokenAtEnd: bool = not(s.g.endBroken)
   val NoUnrecheckedScope: bool = not(s.g.unrechecked)
   val NoMergedInput: bool = not(merged)
   // DESIGN.md 10.1: no accept takes effect on an escalation that did not wait for the person
@@ -539,24 +615,35 @@ module workenv {
   val C1aConfirmed: bool = not(s.g.remakeUnconfirmed)
   // C1 b: the host keeps the top (it is hosted unless done or ended). Fails under a.
   val C1bHosted: bool = s.top.ended or s.top.done or s.top.hosted
-  // D7 budget: agent changes stop at the budget.
-  val ChangesWithinBudget: bool = CFG.d7 != 1 or s.agentChanges <= CFG.budget
 
-  // ==== The dashboard (DESIGN.md 10): cards derived by the page from its copy of the store
-  // (or the live store, dashLive), the wait markers and tmux.
-  // A card's status. Inactive: tmux disconnected (the agents' server unreachable; the host's
-  // pane lives in the person's tmux) or x polls missed. Working: the role has a step of its
-  // own (with reviewSubagents a review is a subagent's: the role waits). Waiting: else.
+  // ==== The dashboard (DESIGN.md 10): cards derived by the page from its copy of the store,
+  // the wait markers and tmux. A page can only render a copy: the four "matches" properties
+  // below compare that copy with the store and break while the page is stale (a finding: it
+  // shows the staleness window; every act from the page is still checked by the store).
+  // A terminal card's status (Nanda, DESIGN.md 10: Inactive is the terminal's status, not the
+  // role's). Inactive: tmux disconnected, or the usage-limit message, or for x ticks neither
+  // a wait poll nor any output. Working: the role has a step of its own (with
+  // reviewSubagents a review is a subagent's: the role waits). Waiting: else.
   type CardSt = CardWorking | CardWaiting | CardInactive
-  def cardView: Store = if (CFG.dashLive) s else page.view
+  def cardView: Store = page.view
   def tmuxGone(k: int): bool = k != HOST and not(reachable(tm))
+  // The card shows the actor's current terminal: its latest process.
+  def limitShown(k: int): bool = latest(k).exists(p => pr(p).up and pr(p).limited)
+  def inactiveSignal(k: int): bool =
+    limitShown(k) or (silence.get(k) >= CFG.silentSteps and quiet.get(k) >= CFG.silentSteps)
   def ownWork(v: Store, k: int): Set[What] = dos(v, k).filter(x =>
     not(CFG.reviewSubagents and match x { | Review(_) => true | _ => false }))
   def card(k: int): CardSt =
-    if (tmuxGone(k) or silence.get(k) >= CFG.silentSteps
+    if (tmuxGone(k) or inactiveSignal(k)
         or (CFG.dashInactiveFromView and page.view.down.contains(k))) CardInactive
     else if (ownWork(cardView, k) != Set()) CardWorking
     else CardWaiting
+  // A live terminal (its current process runs, within its limit, and did not stop at its
+  // prompt: it works, or waits in `work wait`) never shows Inactive.
+  def live(k: int): bool = latest(k).exists(p => active(p) and not(pr(p).idle)
+    and not(pr(p).limited))
+  val LiveNotInactive: bool = cards.forall(k =>
+    (live(k) and not(tmuxGone(k))) implies card(k) != CardInactive)
   // Terminal cards: the host and each persistent role. The pipeline role's work is the TASK
   // PIPELINE row of escalation cards.
   def cards: Set[int] = Set(HOST, ROLE)
@@ -567,7 +654,8 @@ module workenv {
     val st = fx(v, i).stage
     if (st == SEval) EscQueued
     else if (pipeStage(st)) EscInPipeline
-    else if (st == SAtPerson or st == SPerson) EscWaitReview
+    else if (st == SAtPerson or st == SPerson or (st == SHostRemake and not(remakeable(v))))
+      EscWaitReview
     else EscNone
   def openTask(st: TS): bool = st == Unsent or st == Sent or st == Working or st == InReview
   // The queue: tasks shown as queued (no maker yet) or working.
@@ -575,9 +663,10 @@ module workenv {
   // A card never shows Working while the role only waits.
   val DashNoFalseWorking: bool =
     cards.forall(k => card(k) == CardWorking implies ownWork(s, k) != Set())
-  // Inactive only from tmux or missed polls, never from the page's copy of the store.
+  // Inactive only from tmux or its signal, never from the page's copy of the store (the
+  // requirement of DESIGN.md 10; it restates `card` unless dashInactiveFromView).
   val DashInactiveReal: bool = cards.forall(k => card(k) == CardInactive implies
-    (tmuxGone(k) or silence.get(k) >= CFG.silentSteps))
+    (tmuxGone(k) or inactiveSignal(k)))
   // The queue shows only queued and working tasks.
   val DashQueueActive: bool = queue.forall(i => openTask(tk(s, i).st))
   // An escalation card has the pipeline's state of that escalation.
@@ -588,7 +677,10 @@ module workenv {
   def rowShown(v: Store): bool = FIXIDS.exists(i => escOf(v, i) == EscWaitReview)
   val DashRowMatches: bool = rowShown(cardView) == rowShown(s)
 
-  // ==== Tier 2: told once.
+  // ==== Tier 2: told once. The person is told through the page: every step the page's view
+  // owes the person, the page offers.
+  val PageOffersPersonObs: bool = obligationsOf(page.view).filter(ob => isPersonOb(ob))
+    .forall(ob => personWhats(page.view).exists(x => discharges(ob, PERSON, x)))
   val EveryObligationToldOnce: bool =
     obligationsOf(s).forall(ob => waitsLegally(ob) or toldTo(ob).size() == 1)
   val ToldIsAllowed: bool =
@@ -611,7 +703,7 @@ module workenv {
   action deliverFrom(k: int): bool = any { storeTakes(k), storeRefuses(k) }
   action promptStep: bool = { nondet k = PANES.oneOf() promptRead(k) }
   action exitStep: bool = { nondet k = PERSISTENT.union(s.makers.keys()).oneOf() exitReported(k) }
-  val vars = (s, net, procs, tm, page, faults, merged, silence, ticks, lastEvent, told,
+  val vars = (s, net, procs, tm, page, faults, merged, silence, quiet, lastEvent, told,
               obligations)
   temporal Fairness = all {
     weakFair(actorStep(0), vars), weakFair(actorStep(1), vars), weakFair(actorStep(2), vars),
@@ -714,29 +806,39 @@ module workenv {
   val wEscCard = FIXIDS.exists(i => escOf(cardView, i) != EscNone)
   val wRowShown = rowShown(cardView)
   val wEdit = taken(x => x == EditDirection)
-  val wEditInEffect = taken(x => x == Ship(EDIT)) and fx(s, EDIT).stage == SClosed
+  val wEditInEffect = taken(x => x == Ship(EDIT) or x == Accept(EDIT))
+    and fx(s, EDIT).stage == SAccepted
   val wPolled = isEv(e => match e { | Polled(_) => true | _ => false })
+  val wPrinted = isEv(e => match e { | Printed(_) => true | _ => false })
+  val wLimited = isEv(e => match e { | Limited(_) => true | _ => false })
+  val wRebooted = isEv(e => e == Rebooted)
+  val wTopSplitStuck = SLOTS.exists(i => fx(s, i).stage == SHostRemake) and not(remakeable(s))
+  val wBroken = SLOTS.exists(i => tk(s, i).broken)
+  val wDecideRecheck = taken(x => match x { | Decide(_) => true | _ => false })
+    and SLOTS.exists(i => tk(s, i).st == Done and tk(s, i).pend != Set())
 }
 
 // ---- Configurations. DESIGN: DESIGN.md as written and the code fixes of today (refCheck,
 // bindOpenOnly, rebind); every other check off; C1 a; no D7. FIXED: every proposed check on,
 // D7 budget.
 module cfgs {
-  pure val DESIGN = { c1Keep: false, d7: 0, basis: false, build: false, rebase: false, harnessTest: false, classify: false, passTests: false,
-    fullBrief: false, endedCheck: false, formCheck: false, refCheck: true, epochs: false,
+  pure val DESIGN = { c1Keep: false, d7: 0, basis: false, build: false, rebase: false,
+    harnessTest: false, classify: false, passTests: false, fullBrief: false, endedCheck: false, formCheck: false, refCheck: true, epochs: false,
     reviseCheck: false, bindOpenOnly: true, rebind: true, pumpReattach: false,
     hostWatched: false, waitEmptyInput: false, idleSeen: false,
-    dashLive: false, dashInactiveFromView: false, silentSteps: 3, reviewSubagents: false,
-    editBack: 1, acceptCheck: true,
+    dashInactiveFromView: false, silentSteps: 3, reviewSubagents: false,
+    editBack: 1, acceptCheck: true, decideRecheck: true, briefCheck: false,
+    shrinkAcrossSplit: false, listOnAttach: false,
     maxTries: 3, maxMakers: 6, maxChanges: 4, budget: 3, maxPts: 2, maxLoops: 1,
     maxRuleTries: 2, maxRemakes: 1 }
-  pure val FIXED = { ...DESIGN, d7: 1, basis: true, build: true, rebase: true, harnessTest: true, classify: true, passTests: true,
+  pure val FIXED = { ...DESIGN, d7: 1, basis: true, build: true, rebase: true,
+    harnessTest: true, classify: true, passTests: true,
     fullBrief: true, endedCheck: true, formCheck: true, epochs: true, reviseCheck: true,
     pumpReattach: true, hostWatched: true, waitEmptyInput: true, idleSeen: true,
-    dashLive: true }
+    briefCheck: true, shrinkAcrossSplit: true, listOnAttach: true }
   pure val HONEST = { byzMaker: false, byzRole: false, byzPipe: false, byzHost: false,
     crash: true, tmuxFaults: true, page: true, head: true, reject: true, maxFaults: 3,
-    maxNet: 3, maxPerson: 6, causes: 0.to(5), maxTicks: 8 }
+    maxNet: 3, maxPerson: 6, causes: 0.to(5), start: 0, printsOften: true }
   pure val CALM = { ...HONEST, crash: false, tmuxFaults: false, page: false, head: false,
     reject: false, maxFaults: 0, maxPerson: 10, causes: 0.to(5) }
 }
@@ -789,7 +891,7 @@ module c1b {
 }
 module d7none {
   import cfgs.*
-  import workenv(CFG = { ...FIXED, d7: 0 }, ENV = { ...CALM, causes: Set(0) }).* from "./workenv"
+  import workenv(CFG = { ...FIXED, d7: 0 }, ENV = CALM).* from "./workenv"
 }
 module d7shrink {
   import cfgs.*
@@ -800,21 +902,54 @@ module d7shrink {
 module beforeBind {
   import cfgs.*
   import workenv(CFG = { ...FIXED, bindOpenOnly: false },
-    ENV = { ...CALM, reject: true, causes: Set(0, 5) })
-    .* from "./workenv"
+    ENV = { ...CALM, reject: true, start: 1 }).* from "./workenv"
 }
 module beforeMove {
   import cfgs.*
   import workenv(CFG = { ...FIXED, rebind: false }, ENV = CALM).* from "./workenv"
 }
+// Every check on, a calm run with a budget of 1: deep runs past the budget.
+module fixedCalm {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, budget: 1 }, ENV = CALM).* from "./workenv"
+}
+// DESIGN.md 11: "take as is" first rechecks; a mutant with it off. Then round-3 options
+// off on the fixed checks (Nanda decides).
+module noDecideRecheck {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, budget: 1, maxRemakes: 0, decideRecheck: false },
+    ENV = { ...CALM, causes: Set(0, 1, 5) }).* from "./workenv"
+}
+module noShrinkSplit {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, d7: 2, shrinkAcrossSplit: false }, ENV = CALM)
+    .* from "./workenv"
+}
+// A mutant of the timing assumption: a working terminal may stay silent for x ticks.
+module mutQuiet {
+  import cfgs.*
+  import workenv(CFG = FIXED, ENV = { ...CALM, printsOften: false }).* from "./workenv"
+}
+module noListOnAttach {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, listOnAttach: false },
+    ENV = { ...HONEST, maxFaults: 4 }).* from "./workenv"
+}
 // Mutants: the design as written, a calm run, one fault class each, so runs go deep.
+// mutBuild: the basis check on, the build check off: an act from an old build names no
+// basis, so it skips the basis check.
+module mutBuild {
+  import cfgs.*
+  import workenv(CFG = { ...DESIGN, basis: true }, ENV = { ...CALM, page: true, reject: true })
+    .* from "./workenv"
+}
 module mutPage {
   import cfgs.*
   import workenv(CFG = DESIGN, ENV = { ...CALM, page: true, reject: true }).* from "./workenv"
 }
 module mutDup {
   import cfgs.*
-  import workenv(CFG = DESIGN, ENV = { ...CALM, maxFaults: 3 }).* from "./workenv"
+  import workenv(CFG = DESIGN, ENV = { ...CALM, maxFaults: 8 }).* from "./workenv"
 }
 module mutCrash {
   import cfgs.*
@@ -858,6 +993,12 @@ module mutPipe {
   import cfgs.*
   import workenv(CFG = DESIGN, ENV = { ...CALM, byzPipe: true }).* from "./workenv"
 }
+// A Byzantine pipeline role with tasks that reach done (it rechecks done tasks).
+module mutRecheck {
+  import cfgs.*
+  import workenv(CFG = DESIGN, ENV = { ...CALM, byzPipe: true, causes: Set(0, 5) })
+    .* from "./workenv"
+}
 module mutRef {
   import cfgs.*
   import workenv(CFG = { ...DESIGN, refCheck: false }, ENV = { ...CALM, byzPipe: true })
@@ -884,6 +1025,11 @@ module witnessCrash {
 module witnessFaults {
   import cfgs.*
   import workenv(CFG = FIXED, ENV = { ...HONEST, maxFaults: 4 }).* from "./workenv"
+}
+module witnessStuck {
+  import cfgs.*
+  import workenv(CFG = { ...DESIGN, d7: 1, budget: 1, maxRemakes: 0, rebase: true },
+    ENV = { ...CALM, causes: Set(0, 1, 5) }).* from "./workenv"
 }
 module witnessByz {
   import cfgs.*

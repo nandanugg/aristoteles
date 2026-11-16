@@ -26,12 +26,12 @@ module work {
     hostWatched: bool,  // tmux: the exit of the host's pane (the person's tmux) is reported
     waitEmptyInput: bool, // tmux: the engine types a prompt only into an empty input line
     idleSeen: bool,     // tmux: a process that stops at its prompt counts as an exit
-    // The dashboard (DESIGN.md 10; read by workenv.qnt): dashLive: cards are derived from the
-    // live store, not the page's copy; dashInactiveFromView: a mutant that also shows Inactive
+    // The dashboard (DESIGN.md 10; read by workenv.qnt): dashInactiveFromView: a mutant that
+    // also shows Inactive
     // from the page's copy of the store; silentSteps: the ticks without a wait poll before a
     // role is Inactive (1 minute); reviewSubagents: Nanda's reading is false (a role reviews
     // itself).
-    dashLive: bool, dashInactiveFromView: bool, silentSteps: int, reviewSubagents: bool,
+    dashInactiveFromView: bool, silentSteps: int, reviewSubagents: bool,
     // DESIGN.md 10.1 (open): after the pipeline role carries the person's direction edit down,
     // does it come back to the person? 0 always; 1 only when the pipeline changed items the
     // person did not write; 2 never.
@@ -39,6 +39,14 @@ module work {
     // DESIGN.md 10.1: the store refuses an accept (or a send-back) of an escalation that does
     // not wait for the person at the append (the page offers it only when its view says so).
     acceptCheck: bool,
+    // DESIGN.md 11 (in the design; off only in a mutant): a task the person takes as it is
+    // is first rechecked against the changes that landed since its result was checked.
+    decideRecheck: bool,
+    // Review round 3 (each Nanda decides; the finding stays in README.md):
+    briefCheck: bool,        // the store refuses a report made under an old brief
+    shrinkAcrossSplit: bool, // D7 shrink: a split keeps the task's bound of points
+    listOnAttach: bool,      // tmux: the pump lists the panes when it attaches (else it sees
+                             // only the ends that happen while it is attached)
     maxTries: int, maxMakers: int, maxChanges: int, budget: int, maxPts: int, maxLoops: int,
     maxRuleTries: int, maxRemakes: int,
   }
@@ -101,13 +109,17 @@ module work {
   // byz (a Byzantine sender), ctx (the sender had its context), pid (its process).
   type Act = { who: int, ep: int, what: What, seen: int, seenDir: int, old: bool, v: Verdict,
                pts: int, level: Level, flag: bool, flag2: bool, form: Form, cause: Cause,
-               items: Set[Item], real: Set[Item], byz: bool, ctx: bool, pid: int }
+               items: Set[Item], real: Set[Item], hits: Set[int], byz: bool, ctx: bool,
+               pid: int }
 
   // rBad: the latest result is wrong (a slip of the maker or the task's real cause).
   // checked: the item versions the result was made or last checked under. pend: items of a
   // done task still to recheck. bound: D7 shrink, the points the next failing review may have.
+  // broken (ghost): a change that landed broke this task's work (the environment's truth;
+  // only a result made again under the new versions clears it).
   type Task = { gen: int, st: TS, tries: int, maker: int, rid: int, checked: Item -> int,
-                pend: Set[Item], rBad: bool, cause: Cause, lastPts: int, bound: int }
+                pend: Set[Item], rBad: bool, broken: bool, cause: Cause, lastPts: int,
+                bound: int }
   // brief: the item versions of the brief it read (its snapshot `under`).
   type Maker = { slot: int, ended: bool, claim: bool, brief: Item -> int, revs: int }
   // A raise and what follows it. truth: the test command behaves on its examples. refOk: the
@@ -130,7 +142,8 @@ module work {
     failedTest: bool, noForm: bool, badRef: bool, deepNoPerson: bool, roleMisjudged: bool,
     passBroken: bool, passDefect: bool, shallowEval: bool, staleFix: bool, oldEpoch: bool,
     noContext: bool, unchangedResubmit: bool, endOld: bool, remakeUnconfirmed: bool,
-    unrechecked: bool, unacceptedChange: bool, acceptNotWaiting: bool, rebaseFired: bool, recheckFired: bool, reassignEnded: bool,
+    unrechecked: bool, unacceptedChange: bool, acceptNotWaiting: bool, claimByEnded: bool,
+    endBroken: bool, rebaseFired: bool, recheckFired: bool, reassignEnded: bool,
   }
   type Store = {
     top: Top, session: int, tasks: int -> Task, makers: int -> Maker, fixes: int -> Fix,
@@ -148,11 +161,11 @@ module work {
     lostUpdate: false, failedTest: false, noForm: false, badRef: false, deepNoPerson: false,
     roleMisjudged: false, passBroken: false, passDefect: false, shallowEval: false,
     staleFix: false, oldEpoch: false, noContext: false, unchangedResubmit: false,
-    endOld: false, remakeUnconfirmed: false, unrechecked: false, unacceptedChange: false, acceptNotWaiting: false,
+    endOld: false, remakeUnconfirmed: false, unrechecked: false, unacceptedChange: false, acceptNotWaiting: false, claimByEnded: false, endBroken: false,
     rebaseFired: false,
     recheckFired: false, reassignEnded: false }
   def freshTask(gen: int, c: Cause): Task = { gen: gen, st: Unsent, tries: 0, maker: -1,
-    rid: -1, checked: ZERO, pend: Set(), rBad: false, cause: c, lastPts: OPT.maxPts, bound: OPT.maxPts }
+    rid: -1, checked: ZERO, pend: Set(), rBad: false, broken: false, cause: c, lastPts: OPT.maxPts, bound: OPT.maxPts }
   // The person opened the top task before the model starts; the host holds it in session 0.
   def initStore(causes: int -> Cause): Store = {
     top: { hosted: true, hostSession: 0, everBound: true, done: false, ended: false,
@@ -172,7 +185,9 @@ module work {
   // The sum of all versions: it grows with every change (an act's view of the versions).
   def vsum(s: Store): int = ITEMS.fold(0, (acc, x) => acc + s.ver.get(x))
   def appliesTo(i: int): Set[Item] = ITEMS.filter(x => applies(x, i))
-  def testRule(s: Store, x: Item): bool = isRule(x) and hasMech(s.ruleForm.get(ruleNo(x)))
+  // A rule rechecked by the harness alone: a test command and no reader (Mech). A rule with
+  // both forms needs the role's judgement: the pipeline role rechecks it.
+  def testRule(s: Store, x: Item): bool = isRule(x) and s.ruleForm.get(ruleNo(x)) == Mech
   // A rule with only a test command (no reader) applies to the task: its test catches a
   // bad result without a judge.
   def mechCatches(s: Store, i: int): bool =
@@ -297,6 +312,7 @@ module work {
     | Resume(m) => isMaker(s, m) and not(mk(s, m).ended) and s.down.contains(m)
     | ReadBrief(m) => makerAt(s, m)
     | Report(m) => makerAt(s, m) and (mk(s, m).claim or not(OPT.endedCheck))
+        and not(OPT.briefCheck and briefOld(s, m))
     | Evaluate(i) => fx(s, i).stage == SEval
     | Advance(i) => Set(SPrinciple, SDirAssess, SStdAssess).contains(fx(s, i).stage)
     // Past maxRuleTries a rule must take the reference form (a model bound; README.md).
@@ -360,7 +376,19 @@ module work {
   // role (the maker reads its brief again; the role reviews under the new versions); done
   // tasks wait for the pipeline role (RecheckDone) or, for a rule with a test command, the
   // harness (RunRule).
-  def itemsInEffect(s: Store, i: int, agent: bool): Store =
+  // Compare and set (with rebase): a draft whose changed items moved since its base is not
+  // put in effect; it goes back to its entry to be redone on the new versions.
+  def conflict(s: Store, i: int): bool =
+    val f = fx(s, i)
+    if (f.kind == DRole) f.cardBase < s.card
+    else changedBy(f).exists(x => f.base.get(x) < s.ver.get(x))
+  def redo(s: Store, i: int): Store =
+    ghost(setF(s, i, y => { ...y, stage: y.entry, base: s.ver, cardBase: s.card, rev: y.rev + 1,
+                            step: y.step + 1 }), g => { ...g, rebaseFired: true })
+  def casBlocks(s: Store, i: int): bool = OPT.rebase and conflict(s, i)
+  // hits (ghost, the environment's choice): the tasks whose work this change breaks; only a
+  // task an item of the change applies to can be hit.
+  def itemsInEffect(s: Store, i: int, agent: bool, hits: Set[int]): Store =
     val f = fx(s, i)
     val c = changedBy(f)
     val rules = c.filter(x => isRule(x))
@@ -377,7 +405,13 @@ module work {
       ver: s.ver.keys().mapBy(x => s.ver.get(x) + if (c.contains(x)) 1 else 0),
       ruleForm: s.ruleForm.keys().mapBy(j =>
         if (rules.contains(IRule(j))) f.form else s.ruleForm.get(j)) }, agent), i)
-    val s2 = SLOTS.fold(s1, (acc, j) =>
+    val s1b = SLOTS.fold(s1, (acc, j) =>
+      if (j != i and hits.contains(j) and f.real.exists(x => applies(x, j))
+          and Set(Working, InReview, Done).contains(tk(acc, j).st))
+        setT(acc, j, z => { ...z, broken: true,
+                            rBad: z.rBad or z.st != Working })
+      else acc)
+    val s2 = SLOTS.fold(s1b, (acc, j) =>
       val hit = c.filter(x => applies(x, j))
       if (j != i and tk(acc, j).st == Done and hit != Set())
         ghost({ ...setT(acc, j, t => { ...t, pend: t.pend.union(hit) }),
@@ -410,8 +444,9 @@ module work {
   def staleFixAct(s: Store, i: int, a: Act): Store =
     ghost(s, g => { ...g, staleFix: g.staleFix or (not(a.byz) and a.seen != fx(s, i).step) })
   // Ship's yes branch: a standard change, in effect at once (past the budget: the person).
-  def shipStandard(s: Store, i: int): Store =
-    if (budgetLeft(s)) backToRole(itemsInEffect(s, i, true), i) else toPerson(s, i)
+  def shipStandard(s: Store, i: int, hits: Set[int]): Store =
+    if (casBlocks(s, i)) redo(s, i)
+    else if (budgetLeft(s)) backToRole(itemsInEffect(s, i, true, hits), i) else toPerson(s, i)
 
   // The person's edit after the pipeline role carried it down. editBack 0: back to the
   // person always; 1: only when the change has items the person did not write (as the store
@@ -422,9 +457,11 @@ module work {
     val seen = if (OPT.classify) a.real else a.items
     val back = OPT.editBack == 0 or (OPT.editBack == 1 and seen.exclude(f.wrote) != Set())
     if (back) setF(s, EDIT, z => { ...z, stage: SLoop })
-    else backToRole(itemsInEffect(ghost(s, g => { ...g, unacceptedChange: g.unacceptedChange
-                                           or a.real.exclude(f.wrote) != Set() }),
-                                  EDIT, false), EDIT)
+    else if (casBlocks(s, EDIT)) redo(s, EDIT)
+    // In effect at once; then, as after the person's accept, the host reassigns roles.
+    else setF(itemsInEffect(ghost(s, g => { ...g, unacceptedChange: g.unacceptedChange
+                                       or a.real.exclude(f.wrote) != Set() }),
+                            EDIT, false, a.hits), EDIT, z => { ...z, stage: SAccepted })
   def effect(s: Store, a: Act): Store = match a.what {
     // A new host assignment. Before fde5e40 it bound the session only if no assignment of
     // this top task, finished or open, ever held one.
@@ -435,7 +472,9 @@ module work {
     | EndProject =>
         // A task done under an old version of an item that applies to it.
         val old = SLOTS.exists(i => tk(s, i).st == Done and oldFor(s, i) != Set())
-        ghost({ ...s, top: { ...s.top, ended: true } }, g => { ...g, endOld: g.endOld or old })
+        val broken = SLOTS.exists(i => tk(s, i).st == Done and tk(s, i).broken)
+        ghost({ ...s, top: { ...s.top, ended: true } }, g => { ...g, endOld: g.endOld or old,
+                                                               endBroken: g.endBroken or broken })
     // Run continue: the run's host moves to a new session (a new host process).
     | MoveHost =>
         val s1 = newEp({ ...s, session: s.session + 1 }, HOST)
@@ -455,17 +494,23 @@ module work {
           acceptNotWaiting: g.acceptNotWaiting or f.stage != SAtPerson,
           unseenAccept: g.unseenAccept or a.seen != f.step,
           rejectedInEffect: g.rejectedInEffect or (f.sentBack.contains(f.rev) and a.seen < f.step) })
-        val s2 = bump(if (f.kind == DDir) itemsInEffect(s1, i, false) else cardInEffect(s1, i), i)
+        val s2 = bump(if (f.kind == DDir) itemsInEffect(s1, i, false, a.hits)
+                      else cardInEffect(s1, i), i)
         // "only a role change?" yes: back to the card, the work goes on. no: host reassigns.
         val roleOnly = f.kind == DRole and (if (OPT.classify) f.roleOnly else f.roleLabel)
         val s3 = ghost(s2, g => { ...g, roleMisjudged: g.roleMisjudged
           or (roleOnly and not(f.roleOnly)) })
-        if (roleOnly) backToRole(s3, i) else setF(s3, i, z => { ...z, stage: SAccepted })
+        if (casBlocks(s1, i)) redo(s1, i)
+        else if (roleOnly) backToRole(s3, i) else setF(s3, i, z => { ...z, stage: SAccepted })
     | SendBack(i) => setF(s, i, f => { ...f, stage: SLoop, sentBack: f.sentBack.union(Set(f.rev)),
                                        needRevise: true, loops: 0, step: f.step + 1 })
     // The person decides past the D7 bound: take the result as it is, or evaluate again.
+    // With decideRecheck the result is first rechecked against the changes since it was
+    // checked (they land on raised tasks without a recheck).
     | Decide(i) =>
-        if (a.flag) setF(setT(s, i, t => { ...t, st: Done }), i, f => { ...CLOSED, step: f.step + 1 })
+        if (a.flag) setF(setT(s, i, t => { ...t, st: Done,
+                       pend: if (OPT.decideRecheck) oldFor(s, i) else Set() }), i,
+                     f => { ...CLOSED, step: f.step + 1 })
         else setF(s, i, f => { ...f, stage: SEval, step: f.step + 1 })
     | SendTask(i) => setT(s, i, t => { ...t, st: Sent })
     // The roles are reassigned: the accepted raises go back, the role's open work is sent
@@ -524,7 +569,9 @@ module work {
           | RaiseMisses => raise(s1, i, t.tries, a.pts)
         }
     | Resume(m) => newEp({ ...s, down: s.down.exclude(Set(m)) }, m)
-    | ReadBrief(m) => setM(s, m, y => { ...y, claim: true, brief: s.ver })
+    // A read by a maker the store ended (endedCheck off): a claim on an ended maker.
+    | ReadBrief(m) => ghost(setM(s, m, y => { ...y, claim: true, brief: s.ver }),
+                            g => { ...g, claimByEnded: g.claimByEnded or mk(s, m).ended })
     | Report(m) =>
         val y = mk(s, m)
         val t = tk(s, y.slot)
@@ -533,8 +580,11 @@ module work {
           endedActed: g.endedActed or y.ended or t.maker != m,
           noContext: g.noContext or (not(a.byz) and y.revs > 0 and not(a.ctx)
                                      and not(OPT.fullBrief)) })
+        // A result made under an old brief keeps the work a change broke.
+        val old = briefOld(s, m)
         setT(s1, y.slot, z => { ...z, st: InReview, rid: z.rid + 1, checked: y.brief,
-                                rBad: a.flag or z.cause != NoCause })
+                                broken: z.broken and old,
+                                rBad: a.flag or z.cause != NoCause or (z.broken and old) })
     | Evaluate(i) =>
         val t = tk(s, i)
         val s1 = ghost(bump(staleFixAct(s, i, a), i), g => { ...g,
@@ -547,7 +597,8 @@ module work {
               else if (not(budgetLeft(s))) toPerson(s2, i)
               else
                 val s3 = counted(s2, true)
-                setF(setT(s3, i, z => { ...freshTask(z.gen + 1, a.cause), st: Sent }), i,
+                setF(setT(s3, i, z => { ...freshTask(z.gen + 1, a.cause), st: Sent,
+                                        bound: if (OPT.shrinkAcrossSplit) z.bound else OPT.maxPts }), i,
                      f => { ...CLOSED, step: f.step })
           | Fit => setF(s2, i, f => { ...f, kind: DRole, stage: SLoop, entry: SLoop,
                                       roleLabel: a.flag, roleOnly: a.flag2, cardBase: s.card })
@@ -572,7 +623,7 @@ module work {
         if (i == EDIT) shipEdit(s1, a)
         else if (isStd)
           shipStandard(ghost(s1, g => { ...g,
-            deepNoPerson: g.deepNoPerson or a.real.contains(IDir) }), i)
+            deepNoPerson: g.deepNoPerson or a.real.contains(IDir) }), i, a.hits)
         else setF(s1, i, z => { ...z, stage: SLoop })
     // flag: the draft goes to the person; else the loop revises it.
     | LoopReview(i) =>
@@ -659,7 +710,7 @@ module work {
     else makerDos(s, k)
   pure val NOACT: Act = { who: HARNESS, ep: 0, what: OpenTop, seen: -1, seenDir: 0, old: false,
     v: Pass, pts: 1, level: Standard, flag: true, flag2: true, form: Ref, cause: NoCause,
-    items: Set(), real: Set(), byz: false, ctx: true, pid: -1 }
+    items: Set(), real: Set(), hits: Set(), byz: false, ctx: true, pid: -1 }
   def actorsOf(s: Store): Set[int] =
     Set(PERSON, HARNESS).union(PERSISTENT).union(s.makers.keys())
   def toldOf(s: Store): int -> Set[What] = actorsOf(s).mapBy(k => dos(s, k))
@@ -733,5 +784,5 @@ module work {
     s.top.ended or (obligationsOf(s) != Set() and obligationsOf(s).forall(ob => isPersonOb(ob)))
   // Past the model's bounds (not a success: README.md, "Convergence").
   def pastBound(s: Store): bool =
-    s.nextMaker > OPT.maxMakers + 2 or s.changes > OPT.maxChanges
+    s.nextMaker > OPT.maxMakers + 2 or s.agentChanges > OPT.maxChanges
 }

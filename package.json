@@ -11,6 +11,7 @@
     "test:slow": "bun test --timeout 30000 --parallel=12 --path-ignore-patterns='plan/**' $(bun test/slow-files.js)",
     "spec": "sh core/model/spec.sh",
     "spec:check": "sh core/model/spec.sh --check",
+    "spec:stress": "sh core/model/stress.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p adapters/web/app/tsconfig.json"
   },
   "devDependencies": {
