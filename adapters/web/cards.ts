@@ -18,6 +18,7 @@ import {
   stopAnswered,
   stopTask,
   taskAt,
+  taskLevelPoint,
 } from '../../core/derived/reads.ts'
 import type { Intent } from '../../core/schema/actions.ts'
 import type { Decision, DecisionAct, Work } from '../../core/schema/index.ts'
@@ -161,11 +162,14 @@ const WORDS: { readonly [K in StepKind]: (d: Derived, item: Of<K>) => Words } = 
   },
   ChangePoint: (d, item) => {
     const t = taskAt(d.moment.work, item.task)
+    // An evaluation at the level task asks for a change of the task only.
+    const own = taskLevelPoint(d.moment.work, item.point)
     return {
       title: 'A point needs a change',
-      text:
-        `${item.point} on ${t.id} ${t.name} needs a change of its directions or of the task. ` +
-        'Suggest the change in words, or change the task.',
+      text: own
+        ? `${item.point} on ${t.id} ${t.name} needs a change of the task. Change the task.`
+        : `${item.point} on ${t.id} ${t.name} needs a change of one of its directions or ` +
+          'of the task. Suggest the change in words, or change the task.',
     }
   },
   Stop: (d, item) => {

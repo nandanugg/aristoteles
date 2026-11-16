@@ -758,6 +758,16 @@ const answeredStop = (w: Work, key: string): boolean =>
   [...w.evaluations.values()].some((e) => stopKey(w, e.answers) === key && evaluationCounts(w, e))
 export const stopRefAnswered = (w: Work, s: StopRef): boolean => answeredStop(w, stopRefKey(s))
 export const stopAnswered = (w: Work, stop: Stop): boolean => answeredStop(w, stopKey(w, stop))
+// A point whose counted evaluation is at the level task: its task changes, not a direction.
+export const taskLevelPoint = (w: Work, point: string): boolean => {
+  const p = itemAt(w, point)
+  if (p === undefined) return false
+  const key = p.first ?? p.id
+  const e = [...w.evaluations.values()]
+    .filter((x) => stopKey(w, x.answers) === key && evaluationCounts(w, x))
+    .at(-1)
+  return e?.level === 'task'
+}
 // The first stop of a task that no counted evaluation answers.
 export const evaluationWaitsRef = (w: Work, task: TaskId): StopRef | undefined =>
   stopRefsOf(w, task).find((s) => !stopRefAnswered(w, s))

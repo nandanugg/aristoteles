@@ -24,7 +24,6 @@ import { canAct, refusedForBrief } from './can.ts'
 import { leafName, turnOf } from './deciders.ts'
 import {
   answered,
-  answersInclude,
   blockersOfResult,
   currentOf,
   deciderOf,
@@ -62,6 +61,7 @@ import { rolesSuggestionsWaiting } from './adjustments.ts'
 import type { Derived, Idle, NextFor, NextStep, StepKey, StepWhat } from './types.ts'
 import { isEndedTask } from './types.ts'
 import {
+  draftsForPoint,
   newDirectionsToDraft,
   openDrafts,
   suggestionsToDraft,
@@ -757,9 +757,7 @@ const changePointSteps = (
   return items.flatMap((item): ReadonlyArray<Candidate> => {
     const point = changePoint(w, item)
     if (point === undefined) return []
-    const drafts =
-      nonEmpty(draftsAnswering(d, point)) ??
-      nonEmpty(directionIdsOf(w, t.id).flatMap((x) => openDrafts(d, x).map((y) => y.id)))
+    const drafts = nonEmpty(draftsForPoint(d, point, t.id))
     if (drafts) return [wait({ _tag: 'ChangeWaitsForDraft', point, drafts, first })]
     const local = localDirections(w, t.id)
     if (holdsA(w, a, 'Direct') && local.length > 0) {
@@ -778,15 +776,6 @@ const changePointSteps = (
     const what: StepWhat = { _tag: 'EscalateForPoint', point, result, first }
     return [act(what, { _tag: 'EscalateResult', target: { result } })]
   })
-}
-// The waiting drafts that name the point (or its Reject) in their answers.
-const draftsAnswering = (d: Derived, point: PointId): ReadonlyArray<RevisionId> => {
-  const p = itemAt(d.moment.work, point)
-  if (p === undefined) return []
-  return [...d.moment.work.drafts.values()]
-    .filter((x) => answersInclude(x.answers, p))
-    .filter((x) => d.states.revisions.get(x.id)?._tag === 'Waiting')
-    .map((x) => x.id)
 }
 // The open and the resolved escalation of a point, by any assignment: an escalation of a result
 // of the point's task, made after the point.

@@ -22,7 +22,13 @@ import type {
 import { canAct } from './can.ts'
 import { hostOf, placementOf } from './catalog.ts'
 import { adjustmentDrafts, rolesSuggestionsWaiting, subjectOf } from './adjustments.ts'
-import { newDirectionsToDraft, openDrafts, suggestionsToDraft, waitsForNewDraft } from './drafts.ts'
+import {
+  draftsForPoint,
+  newDirectionsToDraft,
+  openDrafts,
+  suggestionsToDraft,
+  waitsForNewDraft,
+} from './drafts.ts'
 import {
   authorAssignment,
   authorOf,
@@ -57,6 +63,7 @@ import {
   holds,
   holdsA,
   leads as isLead,
+  taskLevelPoint,
   unitA,
 } from './reads.ts'
 import { fileTurn, followsDirection, splitterAbove } from './steps.ts'
@@ -504,12 +511,14 @@ const changeItems = (d: Derived): ReadonlyArray<WaitingItem> => {
   for (const { t, point } of points) {
     if (seen.has(point)) continue
     seen.add(point)
+    // A draft answers it, or a draft of its task is open: it waits for that draft (steps.ts).
+    if (draftsForPoint(d, point as never, t.id).length > 0) continue
     const item = itemsOf(w, t.id).find((i) => i.id === point) ?? undefined
     const own = item === undefined || taskOfTarget(w, item.of) === t.id
     const change: ReadonlyArray<Intent> = own ? [changeOf(w, t, point as never)] : []
-    const suggests: ReadonlyArray<Intent> = directionIdsOf(w, t.id)
-      .filter((x) => openDrafts(d, x).length === 0)
-      .map((direction) => suggest({ _tag: 'Direction', direction }))
+    const suggests: ReadonlyArray<Intent> = taskLevelPoint(w, point)
+      ? []
+      : directionIdsOf(w, t.id).map((direction) => suggest({ _tag: 'Direction', direction }))
     // A role of the tree that directs drafts the change (steps.ts): the person waits, as for a stop.
     const intents = splitterActs(d, t.id) ? [] : [...change, ...suggests]
     const bare: Bare = {

@@ -14,7 +14,6 @@
 // list, decider order or option of its own. A Wait prints no command.
 import { whoOf } from '../../core/schema/index.ts'
 import type { Direction, DirectionId, TaskId, Work } from '../../core/schema/index.ts'
-import { openDrafts } from '../../core/derived/drafts.ts'
 import {
   claimOf,
   directionIdsOf,
@@ -27,6 +26,7 @@ import {
   stopAnswered,
   stopTask,
   taskAt,
+  taskLevelPoint,
   usedBy,
   isDo,
 } from '../../core/derived/reads.ts'
@@ -241,13 +241,22 @@ const personRow = (d: Derived, item: Of<'DraftForPerson'>, direction: DirectionI
 
 // The points of a direction with no open draft; the suggest only when a step offers it (P1: a
 // role of the tree that directs drafts it, and the person waits).
-const pointsRow = (direction: DirectionId, points: ReadonlyArray<Of<'ChangePoint'>>): string => {
+const pointsRow = (
+  task: TaskId,
+  directions: ReadonlyArray<DirectionId>,
+  points: ReadonlyArray<Of<'ChangePoint'>>,
+): string => {
   const ids = points.map((i) => i.point as string)
-  const yours = points.some((i) => suggestedOf(i.step).includes(direction))
+  const yours = [...new Set(points.flatMap((i) => suggestedOf(i.step)))]
+  // One change answers the points: a named direction, else one of the task's.
+  const which =
+    directions.length === 1
+      ? directions[0]
+      : `a direction of ${task} (${directions.join(', ')})`
   return row(
-    `${ids.join(', ')} ${ids.length > 1 ? 'need' : 'needs'} a change of ${direction}; ` +
-      `a role that directs drafts it${yours ? ', or you suggest it' : ''}`,
-    yours ? `work suggest ${direction} --says="<the change>"` : undefined,
+    `${ids.join(', ')} ${ids.length > 1 ? 'need' : 'needs'} a change of ${which}; ` +
+      `a role that directs drafts it${yours.length > 0 ? ', or you suggest it' : ''}`,
+    yours.length > 0 ? `work suggest ${yours.join('|')} --says="<the change>"` : undefined,
   )
 }
 
@@ -468,6 +477,7 @@ export const waitingRows = (d: Derived, all: ReadonlyArray<WaitingItem>): Readon
 
   // The rows of each direction together: the official ones first, then the new ones.
   const points = of('ChangePoint')
+  const pointed = new Set<TaskId>()
   const directions = [...w.directions.values()].sort(
     (a, b) => Number(b._tag === 'Official') - Number(a._tag === 'Official'),
   )
@@ -489,9 +499,15 @@ export const waitingRows = (d: Derived, all: ReadonlyArray<WaitingItem>): Readon
         rows.push(personRow(d, person, direction.id))
       }
     }
-    const here = points.filter((i) => directionIdsOf(w, i.task).includes(direction.id))
-    if (here.length > 0 && openDrafts(d, direction.id).length === 0) {
-      rows.push(pointsRow(direction.id, here))
+    // The points of a task, once, at its first direction; a point at the level task is no
+    // direction's (its task changes).
+    const tasks = [...new Set(points.map((i) => i.task))].filter(
+      (t) => !pointed.has(t) && directionIdsOf(w, t).includes(direction.id),
+    )
+    for (const t of tasks) {
+      pointed.add(t)
+      const here = points.filter((i) => i.task === t && !taskLevelPoint(w, i.point))
+      if (here.length > 0) rows.push(pointsRow(t, directionIdsOf(w, t), here))
     }
   }
 

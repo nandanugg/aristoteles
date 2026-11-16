@@ -4,12 +4,16 @@
 import type {
   Direction,
   DirectionId,
+  PointId,
   Revision,
+  RevisionId,
   Suggestion,
   SuggestionId,
+  TaskId,
   Work,
 } from '../schema/index.ts'
 import { authorOf } from './authors.ts'
+import { answersInclude, directionIdsOf, itemAt } from './reads.ts'
 import type { Derived, DraftAuthor } from './types.ts'
 
 // The drafts of a direction that wait for their deciders.
@@ -20,6 +24,23 @@ export const openDrafts = (
   [...d.moment.work.drafts.values()].filter(
     (x) => x.of === direction && d.states.revisions.get(x.id)?._tag === 'Waiting',
   )
+
+// The drafts that a change point waits for: the waiting drafts that answer it (or its Reject),
+// else any open draft of a direction of its task. Steps and waiting read this one.
+export const draftsForPoint = (
+  d: Derived,
+  point: PointId,
+  task: TaskId,
+): ReadonlyArray<RevisionId> => {
+  const w = d.moment.work
+  const p = itemAt(w, point)
+  const answering = [...w.drafts.values()]
+    .filter((x) => p !== undefined && answersInclude(x.answers, p))
+    .filter((x) => d.states.revisions.get(x.id)?._tag === 'Waiting')
+    .map((x) => x.id)
+  if (answering.length > 0) return answering
+  return directionIdsOf(w, task).flatMap((x) => openDrafts(d, x).map((y) => y.id))
+}
 
 // One key for one author: a host is its run, however it wrote.
 const keyOf = (a: DraftAuthor): string => {
