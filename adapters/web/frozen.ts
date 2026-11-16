@@ -108,6 +108,12 @@ export interface ServerOptions {
   }
   readonly pump?: Pump
   readonly watcher?: Watcher
+  // P8: with restart, the server reads the build of the code (buildOf by default) each buildMs;
+  // when it changes, the server stops listening, ends its requests, stops, and calls restart
+  // with its port (work start runs the new code there).
+  readonly restart?: (port: number) => Promise<void> | void
+  readonly readBuild?: () => string
+  readonly buildMs?: number
 }
 
 export interface ServerHandle extends ServerTools {

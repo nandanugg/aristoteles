@@ -65,6 +65,9 @@ const runningUrl = async (dir: string, record: string): Promise<string | undefin
   }
 }
 
+// The CLI of this copy of aristoteles, whatever process calls this.
+const CLI = join(import.meta.dir, '..', '..', 'bin', 'work.js')
+
 // work start --detach (Nanda, 2026-11-13): the host starts the UI from its own shell, and the UI
 // must outlive that shell. The server runs as its own process group, and its words go to a log
 // beside its record; this waits until the server writes its record, and says its address.
@@ -83,9 +86,7 @@ export const workStartDetached = async (
   const log = record.replace(/\.json$/, '.log')
   mkdirSync(dirname(record), { recursive: true })
   const words = openSync(log, 'a')
-  // The CLI of this copy of aristoteles, whatever process calls this.
-  const cli = join(import.meta.dir, '..', '..', 'bin', 'work.js')
-  const child = spawn(process.execPath, [cli, 'start'], {
+  const child = spawn(process.execPath, [CLI, 'start'], {
     cwd: dir,
     env: { ...env, WORK_DIR: dir },
     detached: true,
@@ -106,6 +107,33 @@ export const workStartDetached = async (
   out(`the UI of ${dir} did not start; its words are in ${log}`)
   return false
 }
+
+// P8: the server of an old build restarts on the new code: the CLI of this copy, in the same
+// dir, on the same port, as a process of its own with this one's words (its log, or the
+// terminal). The pump only detaches its tmux clients: the agents' terminals live in tmux and
+// keep running; the new server attaches again. This exits when the new one answers.
+const restartOn =
+  (dir: string, env: Env, record: string, pump: Pump | undefined, out: (l: string) => void) =>
+  async (port: number) => {
+    out('the code changed; the UI restarts on it')
+    pump?.close()
+    const child = spawn(process.execPath, [CLI, 'start'], {
+      cwd: dir,
+      env: { ...env, WORK_DIR: dir, WORK_PORT: String(port), WORK_NO_OPEN: '1' },
+      detached: true,
+      stdio: 'inherit',
+    })
+    child.unref()
+    for (let waited = 0; waited < 20000; waited += 100) {
+      await Bun.sleep(100)
+      // This one no longer answers, so an answer is the new one's.
+      if (await runningUrl(dir, record)) process.exit(0)
+      if (child.exitCode !== null) break
+    }
+    out(`the UI of ${dir} did not restart; start it again with work start`)
+    rmSync(record, { force: true })
+    process.exit(1)
+  }
 
 // `work start [--detach]` from a shell, with its exit code. The page acts as the person, so the
 // terminal of a real agent does not start it. The host that the person triggered starts it with
@@ -167,6 +195,7 @@ export const workStart = async (
     port,
     ...(pump ? { pump } : {}),
     ...(watcher ? { watcher } : {}),
+    restart: restartOn(dir, env, record, pump, out),
   })
   mkdirSync(dirname(record), { recursive: true })
   writeFileSync(

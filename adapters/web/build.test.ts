@@ -36,3 +36,50 @@ test('the socket hears the build of the server first', async () => {
   ws.close()
   expect(JSON.parse(first)).toEqual({ type: 'hello', build: commit })
 }, 30000)
+
+// P8 (live 2026-11-16): a server of an old build called a newer store damaged. When the build
+// changes, it frees its port, lets a request in flight end, and calls restart with its port.
+test('a change of the build stops the server after its requests, and restarts it', async () => {
+  const p = h.project()
+  await h.init(p)
+  let build = 'one'
+  const restarts: Array<number> = []
+  let slowStarted = () => {}
+  const started = new Promise<void>((ok) => {
+    slowStarted = ok
+  })
+  const s = startServer({
+    dir: p.dir,
+    env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') },
+    readBuild: () => build,
+    buildMs: 20,
+    restart: (port) => {
+      restarts.push(port)
+    },
+    extend: {
+      api: async (_req, url) => {
+        if (url.pathname !== '/api/slow') return undefined
+        slowStarted()
+        await Bun.sleep(300)
+        return new Response('done')
+      },
+    },
+  })
+  done.push(() => s.stop())
+  const base = `http://127.0.0.1:${s.port}`
+  expect(await (await fetch(`${base}/health`)).json()).toEqual({ dir: p.dir })
+  await Bun.sleep(100)
+  expect(restarts).toEqual([])
+  const slow = fetch(`${base}/api/slow`, { headers: { origin: base } })
+  await started
+  build = 'two'
+  await Bun.sleep(100)
+  // The port is free, the request in flight goes on, and restart waits for it.
+  await expect(fetch(`${base}/health`)).rejects.toThrow()
+  expect(restarts).toEqual([])
+  const res = await slow
+  expect(res.status).toBe(200)
+  expect(await res.text()).toBe('done')
+  await Bun.sleep(150)
+  expect(restarts).toEqual([s.port])
+}, 30000)

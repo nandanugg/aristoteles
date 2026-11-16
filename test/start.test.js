@@ -53,3 +53,46 @@ test('work start --detach starts the page on a machine with no browser opener', 
   pids.push(record.pid)
   expect(await (await fetch(`http://127.0.0.1:${record.port}/health`)).json()).toEqual({ dir })
 }, 30000)
+
+// P8 (live 2026-11-16): a server of an old build called a newer store damaged. A change of the
+// build (a commit of the code) restarts the server on the new code: a new process, on the same
+// port, with the same record.
+test('work start restarts itself on the new code when the build changes', async () => {
+  const dir = join(mkdtempSync(join(tmpdir(), 'start-')), 'report-export')
+  mkdirSync(dir)
+  const bin = mkdtempSync(join(tmpdir(), 'bin-'))
+  symlinkSync(Bun.which('git') ?? '/usr/bin/git', join(bin, 'git'))
+  const code = mkdtempSync(join(tmpdir(), 'code-'))
+  const git = (...args) =>
+    Bun.spawnSync(['git', '-C', code, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+  git('init', '-q')
+  git('commit', '-q', '--allow-empty', '-m', 'one')
+  const env = {
+    ARISTOTELES_DB: join(dir, '..', 'aristoteles.db'),
+    ARISTOTELES_CODE: code,
+    WORK_NO_OPEN: '1',
+    HOME: process.env.HOME,
+    PATH: bin,
+  }
+  expect(await workStartDetached(dir, { env, out: () => {} })).toBe(true)
+  const first = JSON.parse(readFileSync(recordOf(dir, env), 'utf8'))
+  pids.push(first.pid)
+  git('commit', '-q', '--allow-empty', '-m', 'two')
+  let next = first
+  for (let waited = 0; waited < 25000 && next.pid === first.pid; waited += 200) {
+    await Bun.sleep(200)
+    try {
+      next = JSON.parse(readFileSync(recordOf(dir, env), 'utf8'))
+    } catch {}
+  }
+  pids.push(next.pid)
+  expect(next.pid).not.toBe(first.pid)
+  expect(next.port).toBe(first.port)
+  const health = await fetch(`http://127.0.0.1:${next.port}/health`)
+  expect(await health.json()).toEqual({ dir })
+  // The old process exited.
+  await Bun.sleep(500)
+  expect(() => process.kill(first.pid, 0)).toThrow()
+  const log = readFileSync(recordOf(dir, env).replace(/\.json$/, '.log'), 'utf8')
+  expect(log).toContain('the code changed; the UI restarts on it')
+}, 40000)

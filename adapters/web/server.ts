@@ -167,10 +167,13 @@ export function startServer(options: ServerOptions): ServerHandle {
     extend = {},
     pump,
     watcher,
+    restart,
+    readBuild = () => buildOf(env),
+    buildMs = 5000,
   } = options
 
-  // P8: the build of the code that this server runs, read once: a page of another build reloads.
-  const build = buildOf(env)
+  // P8: the build of the code that this server runs: a page of another build reloads.
+  const build = readBuild()
 
   // --- the store and the cache -----------------------------------------------------------------
 
@@ -756,22 +759,43 @@ export function startServer(options: ServerOptions): ServerHandle {
     seen = now
   }, 3000)
 
+  const ownPort = server.port ?? 0
+  const stop = () => {
+    watcher?.stop()
+    clearInterval(poll)
+    clearInterval(rebuild)
+    clearTimeout(timer)
+    clearTimeout(edgeTimer)
+    clearTimeout(onboardTimer)
+    fileWatch?.close()
+    dirWatch.close()
+    assessWatch?.close()
+    void server.stop(true)
+    void runtime.dispose()
+  }
+  // P8 (live 2026-11-16): a server of an old build decodes a newer store with its old schemas
+  // and calls it damaged. When the build changes, it frees its port, lets its requests end
+  // (30 s at most), stops, and restarts on the new code.
+  let restarting = false
+  const rebuild =
+    restart === undefined
+      ? undefined
+      : setInterval(() => {
+          if (restarting || readBuild() === build) return
+          restarting = true
+          void (async () => {
+            void server.stop(false)
+            for (let w = 0; server.pendingRequests > 0 && w < 30000; w += 50) await Bun.sleep(50)
+            stop()
+            await restart(ownPort)
+          })()
+        }, buildMs)
+
   return {
-    port: server.port ?? 0,
-    url: `http://127.0.0.1:${server.port}/`,
+    port: ownPort,
+    url: `http://127.0.0.1:${ownPort}/`,
     send,
     readState,
-    stop() {
-      watcher?.stop()
-      clearInterval(poll)
-      clearTimeout(timer)
-      clearTimeout(edgeTimer)
-      clearTimeout(onboardTimer)
-      fileWatch?.close()
-      dirWatch.close()
-      assessWatch?.close()
-      void server.stop(true)
-      void runtime.dispose()
-    },
+    stop,
   }
 }
