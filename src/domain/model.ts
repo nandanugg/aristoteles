@@ -619,6 +619,7 @@ export type Escalate = ReviewBase & {
   readonly id: EscalationId
   readonly of: ResultId
   readonly reason: NonBlank
+  readonly points: ReadonlyArray<PointId> // the change points it escalates (B6)
   readonly answerBy: Answerer
 }
 // page: Resolve. It ends one escalation with an agreement or a direction, in words (the CLI's

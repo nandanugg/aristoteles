@@ -342,13 +342,22 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
         `${s.point} needs a direction change${s.first ? ' first' : ''}; ` +
           `it is escalated in ${s.escalation}; wait until it is resolved`,
       )
+    case 'ChangeWaitsForDirector': {
+      const by = s.director
+        ? `${s.director} (${roleOfId(w, s.director)}) drafts the change`
+        : 'the owner of the task changes it (work waiting shows it)'
+      return step(
+        `${s.point} needs a direction change${s.first ? ' first' : ''}; ` +
+          `its escalation is resolved, and ${by}`,
+      )
+    }
     case 'ReviseForPoint':
     case 'EscalateForPoint':
       return step(
         `${s.point} needs a direction change${s.first ? ' first' : ''}: "${reasonOf(w, s.point)}"`,
         s._tag === 'ReviseForPoint'
           ? reviseOf(at, token, ` --answers=${s.point}`)
-          : `work escalate ${token} --result=${s.result} ` +
+          : `work escalate ${token} --result=${s.result} --point=${s.point} ` +
             `--reason="${s.point} needs a direction change"`,
       )
     case 'MakerWaitsForFile': {

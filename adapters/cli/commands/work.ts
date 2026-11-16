@@ -26,6 +26,7 @@ import {
   lookup,
   type NonBlank,
   type NonEmpty,
+  type PointId,
   type QuestionId,
   refuse,
   revisionOf,
@@ -317,11 +318,22 @@ const escalate: Command = (call) =>
     const { work, caller, a, by } = yield* agentOfCall(call)
     const result = textOf(call.args.one('result'))
     const reason = wordsOf(call.args.one('reason'))
+    const points: Array<PointId> = []
+    for (const x of call.args.all('point').map(String)) {
+      const found = yield* lookup(work, x, ['v'])
+      if (found._tag !== 'Point') {
+        return yield* refuse(`${x} is not a point`, 'name a point of a Reject: --point=v4.1')
+      }
+      points.push(found.id)
+    }
+    if (points.length > 0 && !result) {
+      return yield* refuse('a point is escalated on its result', 'add --result=<the result>')
+    }
     const done = result
       ? yield* act(by, {
           _tag: 'EscalateResult',
           target: { result: (yield* lookupKind('Result', ['r'], work, result)).result.id },
-          content: { reason },
+          content: { reason, points },
         })
       : yield* act(by, { _tag: 'EscalateTask', target: { task: a.task }, content: { reason } })
     const owner = done.work.tasks.get(a.task)?.owner.name

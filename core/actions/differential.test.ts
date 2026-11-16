@@ -262,7 +262,7 @@ const inputOf = (w: Work, r: Recorded, dir: string): Read => {
       return input({
         _tag: 'EscalateResult',
         target: { result: c?.of },
-        content: { reason: c?.reason },
+        content: { reason: c?.reason, points: c?.points ?? [] },
       })
     case 'Review.Resolve':
       return input({

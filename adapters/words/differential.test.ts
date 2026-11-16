@@ -33,7 +33,11 @@ import {
   waitingLines,
 } from './index.ts'
 
-const old = pinned(`${import.meta.dir}/differential.pins.json`)
+const pins = pinned(`${import.meta.dir}/differential.pins.json`)
+// B6 (2026-11-16): the escalate step of a change point names the point (--point).
+const POINT_STEP = /(work escalate \S+ --result=r\d+) (--reason=\\"(v\d+\.\d+) needs a direction)/g
+const old = <A = unknown>(s: Scenario, key: string): A =>
+  JSON.parse(JSON.stringify(pins(s, key)).replace(POINT_STEP, '$1 --point=$3 $2')) as A
 type Lines = ReadonlyArray<string>
 
 interface Built {

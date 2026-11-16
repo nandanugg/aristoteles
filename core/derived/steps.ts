@@ -10,7 +10,6 @@ import type {
   AssignmentId,
   Blocker,
   DirectionId,
-  EscalationId,
   NonEmpty,
   PointId,
   ResultId,
@@ -38,15 +37,12 @@ import {
   itemAt,
   latestResultOf,
   mayChange,
-  resultAt,
-  reviewItems,
   reviewsOf,
   sameRole,
   stopAnswered,
   stopKey,
   stopsOf,
   stopTask,
-  taskOfTarget,
   unresolvedEscalationItems,
   within,
   workStop,
@@ -76,6 +72,7 @@ import {
   redrafterOf,
   redrafters,
 } from './authors.ts'
+import { directorOf, escalationsOfPoint } from './escalations.ts'
 import { noticesOf } from './notices.ts'
 import { waitingFor } from './waiting.ts'
 
@@ -769,36 +766,16 @@ const changePointSteps = (
       }
       return [act(what, ...revise(local))]
     }
-    // B6: one escalation of a point by anyone; an open one is waited for, a resolved one ends it.
-    const [open, done] = escalationsOfPoint(d, point)
+    // B6: one escalation of a point serves everyone; after its resolve, the director drafts.
+    const { open, resolved } = escalationsOfPoint(d, point)
     if (open) return [wait({ _tag: 'ChangeWaitsForEscalation', point, escalation: open, first })]
-    if (done) return []
+    if (resolved) {
+      const director = directorOf(d, t.id)?.id ?? null
+      return [wait({ _tag: 'ChangeWaitsForDirector', point, director, first })]
+    }
     const what: StepWhat = { _tag: 'EscalateForPoint', point, result, first }
     return [act(what, { _tag: 'EscalateResult', target: { result } })]
   })
-}
-// The open and the resolved escalation of a point, by any assignment: an escalation of a result
-// of the point's task, made after the point.
-const escalationsOfPoint = (
-  d: Derived,
-  point: PointId,
-): readonly [EscalationId | undefined, EscalationId | undefined] => {
-  const w = d.moment.work
-  const p = itemAt(w, point)
-  if (p === undefined) return [undefined, undefined]
-  const task = taskOfTarget(w, p.of)
-  const after = reviewItems(w).filter(
-    (e) =>
-      e.decision === 'Escalate' &&
-      e.at > p.at &&
-      e.of._tag === 'Result' &&
-      resultAt(w, e.of.id).task === task,
-  )
-  const inState = (tag: string) =>
-    after.find((e) => d.states.escalations.get(e.id as EscalationId)?._tag === tag)?.id as
-      | EscalationId
-      | undefined
-  return [inState('Open'), inState('Resolved')]
 }
 
 // Who makes the next result of a task: the open maker that waits for its file, works, or waits
@@ -1085,6 +1062,7 @@ const IDS: {
   RunWithLead: (s) => [s.task, ...s.roles, s.last ?? 'none'],
   ChangeWaitsForDraft: (s) => [s.point, ...s.drafts],
   ChangeWaitsForEscalation: (s) => [s.point, s.escalation],
+  ChangeWaitsForDirector: (s) => [s.point, s.director ?? 'owner'],
   ReviseForPoint: (s) => [s.point, ...s.directions],
   EscalateForPoint: (s) => [s.point, s.result],
   MakerWaitsForFile: (s) => [s.maker, s.before],

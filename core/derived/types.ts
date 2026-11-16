@@ -583,6 +583,13 @@ export type StepWhat =
       readonly escalation: EscalationId
       readonly first: boolean
     }
+  // B6: the point's escalation is resolved; the director drafts the change (null: the owner).
+  | {
+      readonly _tag: 'ChangeWaitsForDirector'
+      readonly point: PointId
+      readonly director: AssignmentId | null
+      readonly first: boolean
+    }
   | {
       readonly _tag: 'ReviseForPoint'
       readonly point: PointId

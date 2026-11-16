@@ -514,8 +514,12 @@ export const ReviewWritten = Schema.Union([
   // work recheck: a Reject that any later result answers.
   Schema.TaggedStruct('Recheck', { of: ResultId, reason: NonBlank }),
   // The CLI word: escalate --result. Its answerer is derived from the author: the nearest open
-  // assignment above, else the owner, at each time.
-  Schema.TaggedStruct('Escalate', { of: ResultId, reason: NonBlank }),
+  // assignment above, else the owner, at each time. points: the change points it escalates.
+  Schema.TaggedStruct('Escalate', {
+    of: ResultId,
+    reason: NonBlank,
+    points: Schema.optionalKey(Schema.Array(PointId)),
+  }),
   Resolve,
 ])
 export type ReviewWritten = typeof ReviewWritten.Type

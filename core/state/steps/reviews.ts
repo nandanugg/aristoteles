@@ -224,6 +224,7 @@ export const review = (work: Work, d: ReviewWritten, act: Act): Stepped =>
           by: a,
           of: d.of,
           reason: d.reason,
+          points: d.points ?? [],
           answerBy,
           at: b.tick(),
         }

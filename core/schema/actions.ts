@@ -178,7 +178,7 @@ export type ActionInput =
   | In<'Reject', { readonly of: WorkOf }, { readonly points: ReadonlyArray<PointInput> }>
   | In<'Reject', { readonly of: DraftOf }, { readonly reason: Words }>
   | In<'Recheck', { readonly result: ResultId }, { readonly reason: Words }>
-  | In<'EscalateResult', { readonly result: ResultId }, { readonly reason: Words }>
+  | In<'EscalateResult', { readonly result: ResultId }, { readonly reason: Words; readonly points: ReadonlyArray<PointId> }>
   | In<'EscalateTask', { readonly task: TaskId }, { readonly reason: Words }> // a maker sends its task up
   | In<'Resolve', { readonly escalation: EscalationId }, { readonly resolution: Words; readonly evidence: ReadonlyArray<typeof EvidenceData.Encoded> }>
   | In<'Ask', { readonly to: 'Above' | 'Owner' }, { readonly text: Words; readonly options: ReadonlyArray<Words> }>

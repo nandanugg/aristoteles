@@ -4,17 +4,21 @@
 import { Effect, Schema } from 'effect'
 import type { Derived } from '../derived/index.ts'
 import { turnOf, waitsForWords } from '../derived/deciders.ts'
+import { draftsAnswering } from '../derived/drafts.ts'
+import { escalationsOfPoint } from '../derived/escalations.ts'
 import {
   actsOf,
   decidesResults,
   deciderOf,
   decidingNow,
   isOpenTask,
+  itemAt,
   roleNameOf,
   rootOf,
   rulesOf,
   sameRole,
   standardAt,
+  taskOfTarget,
   ruleAt,
   unitA,
   within,
@@ -132,6 +136,27 @@ export const REFUSALS = {
         'an escalation needs a reason',
         'Write',
         'write the refusal or the fact, and what you tried',
+      ),
+    notOnTask: (point: string, task: string) =>
+      no(`${point} is no point of ${task}`, 'Pick', `name a point of a Reject of ${task}`),
+    // B6: one escalation of a point serves every assignment.
+    escalated: (point: string, escalation: string) =>
+      no(
+        `${point} is escalated in ${escalation} already`,
+        'Wait',
+        `wait until ${escalation} is resolved: work next shows it`,
+      ),
+    resolved: (point: string, escalation: string) =>
+      no(
+        `${point} was escalated in ${escalation}, and it is resolved`,
+        'Wait',
+        'a role that directs drafts the change: work next shows who',
+      ),
+    drafted: (point: string, draft: string) =>
+      no(
+        `${draft} answers ${point} already`,
+        'Wait',
+        `wait for its accept: work direction show ${draft}`,
       ),
   },
   EscalateTask: {
@@ -435,7 +460,21 @@ const EscalateResult: Action<'EscalateResult'> = ({ by, input }) =>
     yield* allowed(d, by, input)
     const { reason } = input.content
     if (blank(reason)) return yield* fail(R.EscalateResult.noReason())
-    return [create('Review', { _tag: 'Escalate', of: result, reason: reason as never })]
+    const { points } = input.content
+    const task = w.results.get(result)?.task
+    for (const p of points) {
+      const item = itemAt(w, p)
+      if (item === undefined || task === undefined || taskOfTarget(w, item.of) !== task) {
+        return yield* fail(R.EscalateResult.notOnTask(p, task ?? result))
+      }
+      const { open, resolved } = escalationsOfPoint(d, p)
+      if (open) return yield* fail(R.EscalateResult.escalated(p, open))
+      if (resolved) return yield* fail(R.EscalateResult.resolved(p, resolved))
+      const [draft] = draftsAnswering(d, p)
+      if (draft) return yield* fail(R.EscalateResult.drafted(p, draft))
+    }
+    const made = { _tag: 'Escalate', of: result, reason: reason as never } as const
+    return [create('Review', points.length > 0 ? { ...made, points } : made)]
   })
 
 // A maker sends its blocked task up as a question. N11: while its own question on the task is

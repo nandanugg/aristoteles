@@ -100,7 +100,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   assign: ['dry-run', 'max-attempts', 'role'],
   report: ['made-from', 'output'],
   recheck: ['reason'],
-  escalate: ['reason', 'result'],
+  escalate: ['point', 'reason', 'result'],
   ask: ['text', 'to', 'option'],
   answer: ['text', 'option'],
   note: ['text', 'on', 'hope'],

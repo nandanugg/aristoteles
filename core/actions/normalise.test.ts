@@ -268,7 +268,7 @@ describe('N11 (B6): a second escalation while one is open makes no event', () =>
     const again = {
       _tag: 'EscalateResult',
       target: { result: 'r1' as ResultId },
-      content: { reason: 'the rule still reads two ways' },
+      content: { reason: 'the rule still reads two ways', points: [] },
     } as const
     expect(events(act(derivedIn(p), agent(linter), again))).toEqual([])
     ok(await p.agent(`escalate ${writer} --reason="the facts do not say the cost"`))

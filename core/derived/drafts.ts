@@ -25,6 +25,15 @@ export const openDrafts = (
     (x) => x.of === direction && d.states.revisions.get(x.id)?._tag === 'Waiting',
   )
 
+// The waiting drafts that name the point (or its Reject) in their answers.
+export const draftsAnswering = (d: Derived, point: PointId): ReadonlyArray<RevisionId> => {
+  const p = itemAt(d.moment.work, point)
+  if (p === undefined) return []
+  return [...d.moment.work.drafts.values()]
+    .filter((x) => answersInclude(x.answers, p))
+    .filter((x) => d.states.revisions.get(x.id)?._tag === 'Waiting')
+    .map((x) => x.id)
+}
 // The drafts that a change point waits for: the waiting drafts that answer it (or its Reject),
 // else any open draft of a direction of its task. Steps and waiting read this one.
 export const draftsForPoint = (
@@ -32,13 +41,9 @@ export const draftsForPoint = (
   point: PointId,
   task: TaskId,
 ): ReadonlyArray<RevisionId> => {
-  const w = d.moment.work
-  const p = itemAt(w, point)
-  const answering = [...w.drafts.values()]
-    .filter((x) => p !== undefined && answersInclude(x.answers, p))
-    .filter((x) => d.states.revisions.get(x.id)?._tag === 'Waiting')
-    .map((x) => x.id)
+  const answering = draftsAnswering(d, point)
   if (answering.length > 0) return answering
+  const w = d.moment.work
   return directionIdsOf(w, task).flatMap((x) => openDrafts(d, x).map((y) => y.id))
 }
 
