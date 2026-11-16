@@ -66,6 +66,23 @@ describe('runs and sessions', () => {
     db.close()
   })
 
+  // Live, 2026-11-16: the person gave the top task, finished that assignment, and gave it again;
+  // the second got no session, so the host's wait never found it.
+  test('a top task given again after a finished give hosts in the run', async () => {
+    const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
+    await init(p)
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    const first = { env: { ...HOST_PANE, TMUX_PANE: '%1' } }
+    ok(await p.run('run start', first))
+    ok(await p.run('task draft --file=top.yaml --by=h1', first))
+    await solToken(p, ok(await p.ui('task open td1')).out, 'h1', first)
+    ok(await p.nanda('finish a1'))
+    ok(await p.nanda('assign t1 --role=architect'))
+    const again = ok(await p.run('wait --by=h1 --seconds=1', first)).out
+    expect(again).toContain('a2')
+    ok(await p.agent(`brief ${tokenIn(again)}`))
+  })
+
   test('the UI records the session of a real agent; one session is one agent', async () => {
     const { p } = await started()
     expect(ok(await p.ui('session a1 --id=s-a1')).out).toBe('a1 runs in the session s-a1.')

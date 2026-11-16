@@ -161,10 +161,12 @@ const hostSession = (work: Work, stepped: Stepped, at: Time): Stepped => {
   const role = work.workflow.roles.get(given.role)
   const run = task?.serves._tag === 'TopTask' ? runOf(work, task.id) : undefined
   if (run === undefined || role?._tag !== 'Model' || !holds(role, 'Split')) return stepped
-  const taken = [...stepped.work.sessions.values()].some(
-    (s) =>
-      stepped.work.assignments.get(s.assignment)?.task === given.task && s.session === run.session,
-  )
+  // Only an open assignment holds the session: a finished one hands it on (live, 2026-11-16:
+  // the person finished a212 and gave a213, which got no session, and the host waited forever).
+  const taken = [...stepped.work.sessions.values()].some((s) => {
+    const x = stepped.work.assignments.get(s.assignment)
+    return x?.task === given.task && x.end._tag === 'NotEnded' && s.session === run.session
+  })
   if (taken) return stepped
   const session = { assignment: given.id, session: run.session, at }
   return {
