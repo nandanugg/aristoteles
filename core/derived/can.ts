@@ -424,10 +424,13 @@ const brief: Check<'Brief'> = (c, { target: { assignment } }) => {
     )
   }
   if (claim !== undefined && claim._tag !== 'Free' && unitA(w, a)) {
+    // A subagent has no identity of its own: this may be the one that read the brief (live,
+    // 2026-11-16: a judge read it again to check its review, was told to stop, and did).
     return no(
-      `${a.id} is claimed since ${claim.since.slice(11, 16)} by another subagent`,
-      'Escalate',
-      `STOP and tell ${upTo(a)}`,
+      `the brief of ${a.id} was read at ${claim.since.slice(11, 16)}; its claim is open`,
+      'Pick',
+      `if you read it, go on with your step: work next ${a.id}.<token>; ` +
+        `if you did not, STOP and tell ${upTo(a)}`,
     )
   }
   const stop = isDo(w, a.role) && state?._tag === 'Working' ? workStop(w, a.task) : undefined

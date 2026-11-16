@@ -305,3 +305,15 @@ describe('a point that one assignment escalated needs no escalation from another
     expect(waits).toEqual([what] as never)
   }, 30000)
 })
+
+// Live, 2026-11-16: a judge read its brief again to check its review, was told another subagent
+// held its claim, and stopped; it was the holder.
+describe('a second brief of a subagent', () => {
+  test('tells the reader to go on with its step if it read the brief', async () => {
+    const s = await harness.withWriter()
+    ok(await s.p.agent(`brief ${s.writer}`))
+    const again = await s.p.agent(`brief ${s.writer}`)
+    expect(again.err).toContain('the brief of a2 was read at')
+    expect(again.err).toContain('go on with your step: work next a2.<token>')
+  }, 30000)
+})
