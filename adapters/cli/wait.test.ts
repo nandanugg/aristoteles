@@ -149,6 +149,7 @@ describe('work wait', () => {
     // a2 is not new now: the next wait prints the steps of each assignment that p1 holds.
     expect(await p.inSession('wait --by=p1 --seconds=1', session)).toBe(
       [
+        'Ready now: do these steps first.',
         'a2 (t1 The Introduction):',
         '  make t1 The Introduction',
         '    work assign a2.<token> t1 --role=writer',
