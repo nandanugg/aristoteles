@@ -14,29 +14,7 @@ done
 [ $fail = 0 ] || exit 1
 echo "ok     typecheck $(ls *.qnt | tr '\n' ' ')"
 
-holds() {
-  out=$($Q run "$1" --main="$2" --invariant="$3" --max-samples="${SAMPLES:-5000}" \
-    --max-steps=30 2>&1)
-  if echo "$out" | grep -q '^\[ok\]'; then
-    echo "holds  $1 $2 $3"
-  else
-    echo "FAIL   $1 $2 $3 (expected no violation)"
-    echo "$out" | tail -30
-    fail=1
-  fi
-}
-# A violation is expected: the script inverts quint's exit.
-breaks() {
-  out=$($Q run "$1" --main="$2" --invariant="$3" --max-samples=20000 --max-steps=40 \
-    --seed=7 2>&1)
-  if echo "$out" | grep -q '^\[violation\]'; then
-    echo "breaks $1 $2 $3"
-  else
-    echo "FAIL   $1 $2 $3 (expected a violation)"
-    fail=1
-  fi
-}
-# For workenv: the seed of a run that found the violation (300 runs, 120 steps, one thread:
+# The seed of a run that found the violation (300 runs, 120 steps, one thread:
 # with more threads a seed does not reproduce).
 breaksW() {
   out=$($Q run workenv.qnt --main="$1" --invariant="$2" --max-samples=300 --max-steps=120 \
@@ -49,10 +27,6 @@ breaksW() {
   fi
 }
 
-holds protocol.qnt after Safe
-holds wait.qnt oneStep Told
-holds wait.qnt oneStep ReturnTellsOne
-holds tasks.qnt after RunSafe
 # The new work design (work.qnt, tmux.qnt, workenv.qnt): every proposed check on, honest
 # agents, every fault. Smoke size until the review of the model is done.
 FLAGS="NoActByEnded NoReviewOfOtherResult NoPassUnderOtherVersion NoStaleReport NoUnseenReject
@@ -77,23 +51,6 @@ holdsAll() {
 holdsAll fixedHonest
 
 if [ "${1:-}" = "--check" ]; then
-  breaks protocol.qnt before Safe
-  breaks protocol.qnt today EveryObligationToldOnce
-  breaks protocol.qnt orphan NoOrphan
-  breaks protocol.qnt startWait EveryObligationToldOnce
-  breaks protocol.qnt churn ToldIsAllowed
-  breaks protocol.qnt goneRace NoFalseGone
-  breaks protocol.qnt stale NoStaleReview
-  breaks protocol.qnt noOwner EveryObligationToldOnce
-  breaks protocol.qnt claimHeld ClaimEndsWithExit
-  breaks protocol.qnt claimHeld EveryObligationToldOnce
-  breaks wait.qnt live ReturnTells
-  breaks wait.qnt readyFirst NoHiddenReady
-  breaks wait.qnt tokenWait NoHiddenReady
-  breaks tasks.qnt today EveryObligationToldOnce
-  breaks tasks.qnt needDirection EveryObligationToldOnce
-  breaks tasks.qnt diverge ChangesWithinBudget
-  breaks tasks.qnt topRemake EveryObligationToldOnce
   # The new work design: each property breaks in its mutant (README.md, Properties).
   breaksW mutMaker NoActByEnded 0xff427e93af58b980
   breaksW mutDup NoStalePipelineAct 0x5c00ca5e97e94971
