@@ -282,4 +282,4 @@ One per action and per fault; the five witness modules together reach each in > 
 
 Heavy runs (TLC on full models, long simulations, Apalache) go to `ssh arch-temp`: 14 cores,
 28 GB, Java 21, Node, Bun, Quint 0.33.1 (`~/aristoteles`, synced by rsync without .git, plan/,
-node_modules). Use up to `_JAVA_OPTIONS=-Xmx24g` there; arch-3 keeps the quick checks and Metis.
+node_modules). Use up to `_JAVA_OPTIONS=-Xmx24g` there; arch-3 keeps the quick checks and the live runs.
