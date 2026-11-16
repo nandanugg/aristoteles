@@ -246,7 +246,7 @@ describe('the watcher and the acts of the UI', () => {
     const woke = await wokenBy(p, leadToken, async () => {
       ok(await p.agent(`answer ${hostToken} q1 --text="No: the retry is a task of its own."`))
     })
-    expect(woke).toContain('your question q1 has its answer.\n  work question show q1')
+    expect(woke).toContain('your question q1 has its answer.\n    work question show q1')
     later(9000)
     await watcher.tick()
     expect(screen(lead)).not.toContain('acted. Run work next')
