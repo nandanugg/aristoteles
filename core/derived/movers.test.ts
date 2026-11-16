@@ -233,3 +233,32 @@ describe('every wait has a mover', () => {
     expect(checked).toBeGreaterThan(0)
   })
 })
+
+// Live, 2026-11-15: the lead, the writer and the checkers each escalated the same point after
+// another had escalated it (and it was resolved). One escalation of a point serves everyone (B6).
+describe('a point that one assignment escalated needs no escalation from another', () => {
+  const escalated = async () => {
+    const s = await harness.reported()
+    ok(await s.p.agent(`review ${s.linter} r1 reject --point="the reader cannot see the cost"`))
+    const why = '--reason="v2.1 needs a direction change"'
+    ok(await s.p.agent(`escalate ${s.linter} --result=r1 ${why}`))
+    return s
+  }
+  const escalates = (d: Derived, id: string) =>
+    tags(nextFor(d, agent(id))).filter((x) => x.includes('EscalateForPoint'))
+  test('while the escalation is open, the others wait for it', async () => {
+    const s = await escalated()
+    const d = derivedOf(s)
+    for (const id of ['a1', 'a2', 'a3']) expect(escalates(d, id)).toEqual([])
+    expect(tags(nextFor(d, agent('a2')))).toEqual(['Wait ChangeWaitsForEscalation'])
+    expect(ok(await s.p.agent(`next ${s.lead}`)).out).toContain(
+      'v2.1 needs a direction change; it is escalated in v3; wait until it is resolved',
+    )
+  }, 30000)
+  test('after its resolve, nobody escalates the point again', async () => {
+    const s = await escalated()
+    ok(await s.p.agent(`resolve ${s.lead} v3 --resolution="the cost is out of scope"`))
+    const d = derivedOf(s)
+    for (const id of ['a1', 'a2', 'a3']) expect(escalates(d, id)).toEqual([])
+  }, 30000)
+})

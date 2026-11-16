@@ -576,6 +576,13 @@ export type StepWhat =
       readonly drafts: NonEmpty<RevisionId>
       readonly first: boolean
     }
+  // B6: another assignment escalated the point; its escalation is open.
+  | {
+      readonly _tag: 'ChangeWaitsForEscalation'
+      readonly point: PointId
+      readonly escalation: EscalationId
+      readonly first: boolean
+    }
   | {
       readonly _tag: 'ReviseForPoint'
       readonly point: PointId

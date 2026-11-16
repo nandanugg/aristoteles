@@ -337,6 +337,11 @@ const linesOf = (d: Derived, at: NextStep, token: string): ReadonlyArray<string>
           `waits for the accept of ${draftWaitsText(d, s.drafts[0])} ` +
           `(work direction show ${s.drafts[0]})`,
       )
+    case 'ChangeWaitsForEscalation':
+      return step(
+        `${s.point} needs a direction change${s.first ? ' first' : ''}; ` +
+          `it is escalated in ${s.escalation}; wait until it is resolved`,
+      )
     case 'ReviseForPoint':
     case 'EscalateForPoint':
       return step(

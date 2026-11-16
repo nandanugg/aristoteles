@@ -607,7 +607,7 @@ export const usedBy = (w: Work, a: AssignmentId): number =>
 
 // --- the answers of a Reject ---------------------------------------------------------------------
 
-const answersInclude = (ids: ReadonlyArray<string>, r: Item): boolean =>
+export const answersInclude = (ids: ReadonlyArray<string>, r: Item): boolean =>
   ids.includes(r.id) || (r.group !== undefined && ids.includes(r.group))
 export const answeredByVersion = (w: Work, r: Item): boolean =>
   [...w.drafts.values()].some((d) => answersInclude(d.answers, r) && madeBy(w, d.id) !== undefined)
