@@ -160,3 +160,137 @@ assignment on the new top.
 - The models are small (two regions, a few results, one question, one death). The simulator
   goes deeper; TLC is exact only within these bounds.
 - Not modelled: text, the page and CLI as code, the store and fold, setup, real time.
+
+# The new work design: work.qnt and workenv.qnt
+
+The source is plan/model/DESIGN.md (locked 2026-11-16). It replaces the flow of today's code,
+so these two files do not extend protocol.qnt or tasks.qnt; they start again. Status: built,
+typechecked, smoke-run only (a few hundred random runs). A review of the model comes before
+any stress run (TLC, Apalache, long simulations).
+
+## Words (new here)
+
+- **Store**: the one truth. An ordered, append-only log; the model keeps its fold (`Store`).
+- **Act**: a request to the store (`Act`): who sends it (its **token**), what it asks, and its
+  content. The store takes it (it is appended) or refuses it.
+- **Token**: the sender's identity. A sender can use only its own; the store's `authority`
+  check stands for "cannot forge another actor's token".
+- **Basis**: the revision of its target an act was built on (`seen`), e.g. the result id a
+  review read, or the draft step the page showed.
+- **Network**: the acts sent and not yet answered, as an unordered set (`net`, a "message
+  soup"). Any act in it can arrive next; so acts arrive late and out of order.
+- **Honest agent**: does only what it is told, on the current view, with honest content.
+- **Byzantine agent**: may send any act with its own token, any content, built on any view,
+  at any time; may stop at its prompt. It cannot forge another token.
+- **Ghost**: a history flag in the store (`Ghost`): it records that an impossible state was let
+  in. Each must stay false.
+- **Witness**: a state that should be reachable; `quint run --witnesses` counts the random runs
+  that reach it. Zero means a dead action.
+
+## Files and modules
+
+- `work.qnt`, module `work`: the protocol and the store, pure (no variables). Types, the
+  store's check `accept` (= `authority` + `legal` + `basisOk` + build check), `effect`, the told
+  steps `dos`, the obligations `obligationsOf`, `finalOf`.
+- `workenv.qnt`, module `workenv`: the environment and the properties. Variables: `s` (store),
+  `net` (acts in flight), `term` (a terminal per persistent role and per maker), `page`,
+  `faults`, `noContext`, `lastEvent`, `told`, `obligations`.
+- Instances (in workenv.qnt): `design` (DESIGN.md as written: every unstated check off, all
+  agents Byzantine, all faults), `designHonest` (same, honest agents), `fixed` (every proposed
+  check on, D7 budget, all Byzantine), `fixedHonest`, `c1b`, `d7shrink`, `d7none`, and the
+  witness modules `witness` (honest role, pipeline and maker; Byzantine host; faults) and
+  `witnessCalm` (no terminal faults, so random runs go deep).
+
+Sizes: two tasks of the top (`SLOTS`), one persistent role, one pipeline role, one host, at
+most 6 makers, 2 tries, 2 points, 4 changes (budget 3), 1 review-loop revision, 1 rule
+rewrite, 1 top remake, 3 faults, 3 acts in flight, 4 person acts (40 in the witness modules).
+
+## Options (`CFG`)
+
+| Field | Meaning | In `design` |
+|---|---|---|
+| c1Keep | C1: false = (a) the host's first remake of the top is a warning; true = (b) the host keeps hosting | false |
+| d7 | D7: 0 none, 1 a budget of changes (past it a raise is the person's), 2 each recheck only shrinks the points | 0 |
+| basis | an act names its basis; the store refuses an old one | off |
+| build | the store refuses an act from an old page build | off |
+| staleRedo | a brief or result under an older direction is made again | off |
+| rebase | a change in effect sends the other open drafts back to be redone | off |
+| harnessTest | the harness, not the pipeline role, runs a test command on the examples | off |
+| classify | the store, not the pipeline role, answers "only a standard change?" | off |
+| passTests | the store refuses a pass while a test command prints lines on the result | off |
+| fullBrief | a revision carries every earlier point | off |
+| idleSeen | a process that stops at its prompt counts as an exit | off |
+
+The checks marked "off" are not in DESIGN.md. Each is a proposal; the stress test will say
+which impossible state each one removes.
+
+## DESIGN.md to Quint
+
+| DESIGN.md | Quint (work.qnt unless named) |
+|---|---|
+| 1 Person | `PERSON`; acts `OpenTop`, `Reject`, `Accept`, `SendBack`, `Decide`, `EndProject`; workenv `personSends`, `personClicks` |
+| 1 Host | `HOST`; `SendTask`, `Reassign`, `RemakeTop` |
+| 1 Persistent role (card) | `ROLE`; `AssignDo`, `Review` (its verdict is the decision), `Resume`; `card` version |
+| 1 Maker subagent | `Maker` record, ids from 3, fresh per `AssignDo`; `ReadBrief`, `Report`; ended by `Pass` or a raise |
+| 1 Pipeline role | `PIPE`; `Evaluate`, `Advance`, `WriteRule`, `RunTest`, `Ship`, `LoopReview` |
+| 2.1-2.3 send, assign, report, review | `SendTask`, `AssignDo`, `Report`, `Review` |
+| 2.4 pass: done, back to the parent | `Review` with `Pass`: task `Done`, maker ended; all done: the person's `EndOb` |
+| 2.5 revision to the same maker | `Review` with `Fail` (while `tries + 1 < maxTries`): `revs + 1`, same maker keeps its claim |
+| 2.6 raise | `RaiseTries` (tries used up), `Reject` (person), `RaiseNoRule`, `RaiseMisses`; `raise` |
+| 3 evaluation, five levels | `Evaluate` with `Level`: `Split` (new task generation, back to the role), `Fit` (role draft), `Principle`, `Direct`, `Standard` (enter the pipeline at their stage) |
+| 4 pipeline stages | `Stage`: `SPrinciple` -> `SDirAssess` -> `SStdAssess` -> `SRuleAssess` -> `STest` -> `SDraft`; `nextStage` |
+| 4 rule forms, test on examples | `Form` (`Mech`, `Ref`, `Both`; `NoForm` refused); `truth`; `RunTest` |
+| 5 only a standard change? | `Ship`: yes: `dirInEffect` and `backToRole`; no: `SLoop` |
+| 5 review loop, change by human | `LoopReview` (`SLoop` -> `SAtPerson`), `Accept`, `SendBack` |
+| 5 role draft | `Evaluate` with `Fit`: `kind: DRole`, straight to `SLoop` |
+| 5 only a role change? | `Accept`: role draft with `roleOnly`: `cardInEffect` and `backToRole`; else `SAccepted`, then the host's `Reassign` |
+| 6 C1, D7 | `CFG.c1Keep` (`RemakeTop`), `CFG.d7` (`overBudget`, `SPerson`, `Decide`; `ptsBound`) |
+| 7 Store | `accept`, `effect`; workenv `storeTakes`, `storeRefuses` |
+
+## The environment to Quint (workenv.qnt)
+
+| Fault (DESIGN.md 7 and the task) | Quint |
+|---|---|
+| Store refuses an act | `storeRefuses` |
+| Act arrives late, out of order | `net` is a set; `storeTakes` picks any |
+| Act sent twice (page or agent) | `storeTakesKept` (taken, a copy stays in flight) |
+| Page shows an old state | `page.view` (a copy of the store), `pageRefreshes` |
+| Page from an old build | `pageDeploys`, `pageReloads`; `Act.old` (the act names no basis) |
+| Terminal dies; process ends at any step | `crashes`; the pump reports it later, `pumpSendsExit` |
+| Terminal detached | `detaches`, `reattaches` (no exit is reported while detached) |
+| Restarted / resumed, with or without context | `Resume` and `Revive` taken (`termAfter`), `selfResumes`; `Term.ctx`, `Term.stale` |
+| Agent: old token, old brief, repeat, out of order, misread | `byzSends` (any act, any basis), `staleSends` (an honest process resumed on an old view acts once) |
+| Agent: stops without waiting | `byzStops`, `byzWakes`; with `idleSeen` the pump reports it |
+| Agent: skips its step | Byzantine agents are not fair |
+| Honest agent | `honestSends`: a told step, current basis, honest content, one act in flight |
+| Person: any act at any time, or never | `personSends` (any person act), `personClicks` (what the page shows); not fair; `ENV.person` |
+
+## Properties
+
+Tier 1, safety under Byzantine agents and faults (`Safe`): `DoneIsClosed`,
+`OneMakerPerTask`, `MakerOnlyWhileWorking`, `NoOrphanMaker`, `ClaimOnlyLive`,
+`RaiseHasOwner`, `TopHasOwner`, `NoActByEnded`, `NoReviewOfOtherResult`,
+`NoPassUnderOtherVersion`, `NoStaleReport`, `NoUnseenReject`, `NoUnseenAccept`,
+`NoRejectedDraftInEffect`, `NoLostUpdate`, `NoFailedTestInEffect`, `EveryRuleHasForm`,
+`NoDeepChangeWithoutPerson`, `NoPassOfBrokenResult`, `NoStalePipelineAct`,
+`RevisionHasContext`, `ChangesWithinBudget`.
+
+Tier 2, told once (`Told`): `EveryObligationToldOnce` (a legal wait: the one actor told is down
+and the pump or the harness owes the next move), `ToldIsAllowed` (some content of each told
+step is taken), `SomethingOwed`, `Recorded`.
+
+Tier 3, progress: `FairProgress` = fairness of honest agents, the store's answers, the pump,
+reattach and the harness implies `always(eventually(FinalOrBound))`. Byzantine agents and the
+person are not fair.
+
+## Simplified or left out on purpose
+
+- One persistent role for both tasks; "reassign roles" ends the role's open work and sends it
+  again (no second role card).
+- A split remakes the task as one finer task in the same slot (a new generation), not several.
+- Rule rewrites past `maxRuleTries` must take the reference form (DESIGN.md has no bound).
+- Claims end with every exit (rule D6 of the earlier specs; DESIGN.md does not speak of claims).
+- The person ends the project only when every task is done.
+- A stale honest process acts once, with a basis one step old (not a full old copy of the store).
+- Fairness of makers and of the network is fairness of "some maker", "some delivery".
+- No text, no timing, no store or page as code.

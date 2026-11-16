@@ -7,6 +7,7 @@ cd "$(dirname "$0")" || exit 1
 Q=../../node_modules/.bin/quint
 fail=0
 
+# workenv.qnt imports work.qnt; each file typechecks on its own.
 for f in *.qnt; do
   $Q typecheck "$f" >/dev/null 2>&1 || { echo "FAIL   typecheck $f"; fail=1; }
 done
@@ -40,6 +41,11 @@ holds protocol.qnt after Safe
 holds wait.qnt oneStep Told
 holds wait.qnt oneStep ReturnTellsOne
 holds tasks.qnt after RunSafe
+# The new work design (work.qnt + workenv.qnt): every proposed check on, Byzantine agents,
+# all faults. Smoke size until the review of the model is done.
+SAMPLES=${SAMPLES:-1000} holds workenv.qnt fixed Safe
+SAMPLES=${SAMPLES:-1000} holds workenv.qnt fixed Told
+SAMPLES=${SAMPLES:-1000} holds workenv.qnt fixedHonest Told
 
 if [ "${1:-}" = "--check" ]; then
   breaks protocol.qnt before Safe
