@@ -402,7 +402,7 @@ after "r1" {"docs/tsd.md":"# TSD\n\n## Introduction\n\nABC-2964: the export ran 
 runs "h1" {"_tag":"Host","id":"h1","session":"host-k0007","terminal":{"_tag":"Pane","socket":"/tmp/ar-test-person.sock","pane":"%8"},"formerSessions":["host-k0001"],"startedAt":"2026-10-25T09:20:00.000Z","end":{"_tag":"NotEnded"}}
 runs "h2" {"_tag":"Host","id":"h2","session":"s-window","terminal":{"_tag":"Window"},"formerSessions":[],"startedAt":"2026-10-25T12:02:00.000Z","end":{"_tag":"Closed","at":"2026-10-25T10:29:00.000Z"}}
 runs "h3" {"_tag":"Host","id":"h3","session":"host-k0009","terminal":{"_tag":"Pane","socket":"/tmp/ar-test-person.sock","pane":"%7"},"formerSessions":[],"startedAt":"2026-10-25T10:27:00.000Z","end":{"_tag":"Done","at":"2026-10-25T12:59:00.000Z"}}
-sessions "a1" {"assignment":"a1","session":"host-k0001","at":"2026-10-25T09:33:00.000Z"}
+sessions "a1" {"assignment":"a1","session":"host-k0007","at":"2026-10-25T09:33:00.000Z"}
 sessions "a2" {"assignment":"a2","session":"s-lead","at":"2026-10-25T09:39:00.000Z"}
 agents "p1" {"id":"p1","role":"section-lead","run":"h1","model":"sonnet","at":"2026-10-25T09:37:00.000Z","terminal":{"_tag":"NotStarted"}}
 taskDrafts "td1" {"id":"td1","run":"h1","task":{"name":"The Introduction","text":"Write the Introduction from the agreed facts.","directions":["tsd-writing"],"context":{},"needs":[],"from":null,"workspace":[{"_tag":"Files","source":"tsd","path":"docs/tsd.md","verify":"work-lint docs/tsd.md"}],"references":["docs/facts.md#dedupe"]},"role":"architect","at":"2026-10-25T09:22:00.000Z","opened":{"_tag":"Opened","task":"t1"}}

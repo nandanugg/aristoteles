@@ -81,7 +81,14 @@ export const hostMoved = (work: Work, e: EventOf<'Run.HostMoved'>, r: Seq): Step
   const { session, socket, pane } = e.move
   const terminal = { _tag: 'Pane' as const, socket, pane }
   const moved = Moves.MOVES['Run.HostMoved']({ ...run, end: run.end }, session, terminal)
-  return unchanged({ ...work, runs: put(work.runs, e.id, moved) })
+  // The open assignments on the run's old session move with it (live, 2026-11-16: a top task
+  // given before a continue stayed on the old pane's session, and the host's wait never found it).
+  let sessions = work.sessions
+  for (const s of work.sessions.values()) {
+    const open = work.assignments.get(s.assignment)?.end._tag === 'NotEnded'
+    if (open && s.session === run.session) sessions = put(sessions, s.assignment, { ...s, session })
+  }
+  return unchanged({ ...work, runs: put(work.runs, e.id, moved), sessions })
 }
 export const runDone = (
   work: Work,

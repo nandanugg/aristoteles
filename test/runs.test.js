@@ -83,6 +83,24 @@ describe('runs and sessions', () => {
     ok(await p.agent(`brief ${tokenIn(again)}`))
   })
 
+  // ... and a continue after that give moves the open host assignment to the new pane.
+  test('a top task given before a continue hosts in the new pane', async () => {
+    const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
+    await init(p)
+    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+    const first = { env: { ...HOST_PANE, TMUX_PANE: '%1' } }
+    const second = { env: { ...HOST_PANE, TMUX_PANE: '%2' } }
+    ok(await p.run('run start', first))
+    ok(await p.run('task draft --file=top.yaml --by=h1', first))
+    await solToken(p, ok(await p.ui('task open td1')).out, 'h1', first)
+    ok(await p.nanda('finish a1'))
+    ok(await p.nanda('assign t1 --role=architect'))
+    ok(await p.run('run continue h1 --quote="go on"', second))
+    const host = ok(await p.run('wait --by=h1 --seconds=1', second)).out
+    expect(host).toContain('a2')
+    ok(await p.agent(`brief ${tokenIn(host)}`))
+  })
+
   test('the UI records the session of a real agent; one session is one agent', async () => {
     const { p } = await started()
     expect(ok(await p.ui('session a1 --id=s-a1')).out).toBe('a1 runs in the session s-a1.')
