@@ -387,10 +387,13 @@ module work {
   def ghost(s: Store, f: Ghost => Ghost): Store = { ...s, g: f(s.g) }
   def bump(s: Store, i: int): Store = setF(s, i, f => { ...f, step: f.step + 1 })
   def newEp(s: Store, k: int): Store = { ...s, ep: s.ep.put(k, epOf(s, k) + 1) }
-  // A raise: the maker ends; the evaluation opens.
+  // A raise: the maker ends; the evaluation opens. What the task still has to be rechecked
+  // against (pend: a contradiction that broke its rule) stays for the person's "take as is"
+  // (TLC, core.qnt coreTwoExit: a fight that landed while the task was in review was lost
+  // at the raise, and the task was taken as is, broken).
   def raise(s: Store, i: int, tries: int): Store =
     val s1 = setT(endMaker(s, tk(s, i).maker), i, t => { ...t, st: Raised, tries: tries,
-                                                          maker: -1, pend: Set() })
+                                                          maker: -1 })
     setF(s1, i, f => { ...CLOSED, stage: SEval,
                        step: f.step + 1, base: s.ver, cardBase: s.card })
   // The work goes back to the role as a task (a fresh maker, no tries used).
@@ -474,7 +477,8 @@ module work {
           // A done task is rechecked against its own rule (the one the change contradicts).
           setT(acc, j, z => { ...z, broken: true, rBad: z.rBad or z.st != Working,
                               cause: CauseAt(Standard),
-                              pend: if (z.st == Done or z.st == Raised) z.pend.union(Set(IRule(j)))
+                              pend: if (z.st == Done or z.st == Raised or z.st == InReview)
+                                      z.pend.union(Set(IRule(j)))
                                     else z.pend })
         else acc), g => { ...g, fightShipped: true })
     val s1b = SLOTS.fold(s1a, (acc, j) =>

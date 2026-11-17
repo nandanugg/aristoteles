@@ -4,6 +4,7 @@
 // its step takes it) the "hears" of G1 is the agent's step itself.
 // G3 (the store): store.qnt proves it; core.qnt assumes it (its acts are atomic, current).
 // G4 (the person's channel): browser.qnt proves it; core.qnt's Final assumes it.
+// README.md "The small models" gives the arguments each side passes and the composition.
 module contract {
   // G1: an agent that owes work is, in the end, alive and hears its step; or it no longer
   // owes it; or the person owes the move that brings it back (the person is told, and is
