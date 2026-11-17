@@ -24,9 +24,13 @@ module workenv {
   // once in x ticks (its AI CLI streams output; `work wait` beats); false only in a mutant.
   // starts: the starting states the run may begin in (START_OF): 0 two new tasks; 1 both
   // done and the top returned; 2 a standards draft about to ship; 3 a direction draft at the
-  // person; 4 rules with only a test command in effect; 5 a split of the top the host can no
-  // longer remake, the
-  // person to decide; 6 a done task with a recheck pending.
+  // person; 4 rules with only a test command in effect; 5 a task the person took as is, with
+  // a recheck pending; 6 a done task with a recheck pending; 7 a done task with a recheck
+  // pending that the change did not break, and a direction draft of the other task at the
+  // person (its accept may break the done task while a recheck is in flight); 8 a direction
+  // draft of task 0 at the person while a standards draft of the other task, on task 0's
+  // standard, is about to ship (the person may take task 0 as is after the change); 9 task 0
+  // in revision: its maker (id 3, process 3) holds its claim after one failed review.
   // liars: the actors (HOST, ROLE, PIPE; 3 for makers) that are honest except for lies: an
   // act with any content, at most maxLies lies, only on the act kinds in lieOn (KIND_OF;
   // empty: any). dups: the network may deliver an act twice. bounded: every counter stops at
@@ -165,10 +169,13 @@ module workenv {
           | NoCause => true
           | CauseAt(c) => a.level == c
               or (ENV.misjudge and depth(a.level) < depth(c) and a.level != Fit) }
-        // A split part is not split again (raiseLevel): its split cause is evaluated at
-        // standard level.
-        val raised = CFG.raiseLevel and t.floor == Standard and t.cause == CauseAt(Split)
-        (if (raised) a.level == Standard else atCause) and (a.level != Fit or a.flag == a.flag2)
+        // With raiseLevel the task's floor wins: a level below it is refused, and the floor
+        // itself is taken when the cause is below it.
+        val floored = CFG.raiseLevel and a.level != Fit
+        val atFloor = floored and a.level == t.floor
+        or { atCause, atFloor }
+          and not(floored and depth(a.level) < depth(t.floor))
+          and (a.level != Fit or a.flag == a.flag2)
     | WriteRule(_) => a.form != NoForm and a.flag2
     | RunTest(i) => a.flag == (fx(v, i).truth and not(CFG.crossTest and fx(v, i).fights))
         and a.flag2 == (CFG.crossTest and fx(v, i).fights)
@@ -280,6 +287,24 @@ module workenv {
       { ...d1, ver: v1, tasks: d1.tasks.set(0, { ...tk(d1, 0), st: Done, rid: 0,
           cause: NoCause, checked: ZERO, pend: Set(IDir), broken: true, rBad: true })
           .set(1, { ...tk(d1, 1), checked: v1 }) }
+    else if (n == 7)
+      val v7 = ZERO.set(IStd(0), 1)
+      val r7 = raisedAt({ ...sN, ver: v7 }, 1, { ...CLOSED, stage: SAtPerson,
+        entry: SDirAssess, level: Direct, kind: DDir, items: Set(IDir), real: Set(IDir),
+        step: 1 })
+      { ...r7, tasks: r7.tasks.set(0, { ...tk(r7, 0), st: Done, rid: 0, cause: NoCause,
+          checked: ZERO, pend: Set(IStd(0)), broken: false }) }
+    else if (n == 8)
+      val r8 = raisedAt(sN, 0, { ...CLOSED, stage: SAtPerson, entry: SDirAssess,
+        level: Direct, kind: DDir, items: Set(IDir), real: Set(IDir), step: 1 })
+      raisedAt(r8, 1, { ...CLOSED, stage: SDraft, entry: SStdAssess, level: Standard,
+        kind: DDir, form: Mech, truth: true, items: Set(IStd(0)), real: Set(IStd(0)),
+        step: 1 })
+    else if (n == 9)
+      { ...sN, nextMaker: 4, ep: sN.ep.put(3, 0),
+        makers: sN.makers.put(3, { slot: 0, ended: false, claim: true, brief: ZERO, revs: 1 }),
+        tasks: sN.tasks.set(0, { ...tk(sN, 0), st: Working, tries: 1, maker: 3, rid: 1,
+                                 rBad: false }) }
     else sN
   action init = {
     nondet c0 = envCauses.oneOf()
@@ -288,8 +313,8 @@ module workenv {
     val s0 = START_OF(n, initStore(Map(0 -> c0, 1 -> c1)))
     all {
       s' = s0, net' = Set(),
-      procs' = Map(HOST -> freshProc(HOST, 0, -1, s0), ROLE -> freshProc(ROLE, 0, 0, s0),
-                   PIPE -> freshProc(PIPE, 0, 0, s0)),
+      procs' = Set(HOST, ROLE, PIPE).union(if (n == 9) Set(3) else Set())
+        .mapBy(k => freshProc(k, 0, if (k == HOST or k >= 3) -1 else 0, s0)),
       tm' = initTmux(PANES), page' = { view: s0, oldBuild: false, acts: 0 }, faults' = 0,
       merged' = false, silence' = PERSISTENT.mapBy(k => 0), quiet' = PERSISTENT.mapBy(k => 0),
       lies' = 0,
@@ -855,6 +880,7 @@ module workenv {
   val wFloorRaised = ITEMS.exists(x => s.fixDepth.get(x) >= 2)
   val wFightShipped = s.g.fightShipped
   val wRaisedUp = s.g.raisedUp
+  val wTaskFloor = SLOTS.exists(i => depth(tk(s, i).floor) >= 2)
   val wRoleDraft = FIXIDS.exists(i => fx(s, i).kind == DRole and fx(s, i).stage != SClosed)
   val wTakenRechecked = taken(x => match x { | RecheckDone(i) => tk(s, i).taken | _ => false })
   val wLimitLifted = isEv(e => match e { | LimitLifted(_) => true | _ => false })
@@ -908,7 +934,8 @@ module workenv {
   val wLimited = isEv(e => match e { | Limited(_) => true | _ => false })
   val wRebooted = isEv(e => e == Rebooted)
   val wBroken = SLOTS.exists(i => tk(s, i).broken)
-  val wDecideRecheck = taken(x => match x { | Decide(_) => true | _ => false })
+  val wDecideRecheck = taken(x => match x {
+    | Decide(i) => tk(s, i).taken and tk(s, i).pend != Set() | _ => false })
     and SLOTS.exists(i => tk(s, i).st == Done and tk(s, i).pend != Set())
 }
 
@@ -937,7 +964,7 @@ module cfgs {
   pure val CALM = { ...HONEST, crash: false, tmuxFaults: false, page: false, head: false,
     reject: false, maxFaults: 0, maxPerson: 10, dups: false }
   // Every starting state (START_OF).
-  pure val DEEP = 0.to(6)
+  pure val DEEP = 0.to(9)
   pure val ROLE_ID = 1
   pure val PIPE_ID = 2
   pure val RECHECK_KIND = 6
@@ -993,7 +1020,7 @@ module fixedCalm {
 // R1: the recheck judged on an old view (recheckBasis off; every other check on).
 module noRecheckBasis {
   import cfgs.*
-  import workenv(CFG = { ...FIXED, recheckBasis: false }, ENV = { ...CALM, starts: Set(6) })
+  import workenv(CFG = { ...FIXED, recheckBasis: false }, ENV = { ...CALM, starts: Set(7) })
     .* from "./workenv"
 }
 // For TLC: one task, a calm run, every counter capped.
@@ -1046,7 +1073,7 @@ module beforeMove {
 module noDecideRecheck {
   import cfgs.*
   import workenv(CFG = { ...FIXED, decideRecheck: false },
-    ENV = { ...CALM, starts: Set(3) }).* from "./workenv"
+    ENV = { ...CALM, starts: Set(8) }).* from "./workenv"
 }
 module noListOnAttach {
   import cfgs.*
@@ -1072,7 +1099,8 @@ module mutDup {
 }
 module mutCrash {
   import cfgs.*
-  import workenv(CFG = DESIGN, ENV = { ...CALM, crash: true, maxFaults: 3, causes: Set(5) })
+  import workenv(CFG = DESIGN, ENV = { ...CALM, crash: true, maxFaults: 3, causes: Set(5),
+    starts: Set(0, 9) })
     .* from "./workenv"
 }
 module mutCrashHi {

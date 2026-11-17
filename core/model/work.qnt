@@ -129,7 +129,10 @@ module work {
   // rBad: the latest result is wrong (a slip of the maker or the task's real cause).
   // checked: the item versions the result was made or last checked under. pend: items of a
   // done task still to recheck. sections: the sections of the top it owns (strictScope).
-  // floor: Standard for a split part (DESIGN.md 13.2: it is not split again); else Split.
+  // floor (DESIGN.md 13.2, per task): the lowest level its next evaluation may take. Split
+  // at first; Standard for a split part (it is not split again); one level above the level
+  // of the last change of its own raise (a task raised again after its standard change goes
+  // to direction, after its direction change to principle).
   // broken (ghost): a change that landed broke this task's work (the environment's truth;
   // only a result made again under the new versions clears it).
   // taken: the person took the result as it is (its defect is accepted; DESIGN.md 11).
@@ -330,9 +333,10 @@ module work {
     | ReadBrief(m) => makerAt(s, m)
     | Report(m) => makerAt(s, m) and (mk(s, m).claim or not(OPT.endedCheck))
         and not(OPT.briefCheck and briefOld(s, m))
-    // A split part is not split again (raiseLevel); a one-section task cannot be split.
+    // Not below the task's floor (raiseLevel); a one-section task cannot be split. A role
+    // draft (Fit) is off the ladder.
     | Evaluate(i) => fx(s, i).stage == SEval
-        and not(OPT.raiseLevel and a.level == Split and tk(s, i).floor == Standard)
+        and not(OPT.raiseLevel and a.level != Fit and depth(a.level) < depth(tk(s, i).floor))
         and not(OPT.strictScope and a.level == Split and tk(s, i).sections <= 1)
     | Advance(i) => Set(SPrinciple, SDirAssess, SStdAssess).contains(fx(s, i).stage)
     // Past maxRuleTries a rule must take the reference form (a model bound; README.md).
@@ -433,7 +437,9 @@ module work {
     val rules = c.filter(x => isRule(x))
     // Items the content changes but the store did not version: their tasks are not rechecked.
     val missed = f.real.exclude(c)
-    val again = refixed(s, i)
+    // A fix again at the same or a lower level: of an item (refixed), or of the task (below
+    // its floor).
+    val again = refixed(s, i) or (not(free(i)) and fixAt(f) < depth(tk(s, i).floor))
     val s0 = ghost(s, g => { ...g, refix: g.refix or again,
       failedTest: g.failedTest or (rules != Set() and hasMech(f.form) and not(f.truth)),
       noForm: g.noForm or (rules != Set() and f.form == NoForm),
@@ -444,6 +450,8 @@ module work {
     val s1 = resolveCause(counted({ ...s0,
       fixDepth: if (free(i)) s.fixDepth else
         s.fixDepth.keys().mapBy(x => if (c.contains(x)) fixAt(f) else s.fixDepth.get(x)),
+      tasks: if (free(i)) s.tasks else s.tasks.setBy(i, z => { ...z,
+        floor: if (fixAt(f) >= 2) Principle else if (z.floor == Principle) Principle else Direct }),
       ver: s.ver.keys().mapBy(x => s.ver.get(x) + if (c.contains(x)) 1 else 0),
       ruleForm: s.ruleForm.keys().mapBy(j =>
         if (rules.contains(IRule(j))) f.form else s.ruleForm.get(j)) }, agent), i)
@@ -663,8 +671,11 @@ module work {
         val contra = if (OPT.harnessTest) OPT.crossTest and f.fights else a.flag2
         val ok = if (OPT.harnessTest) f.truth and not(contra) else a.flag
         val s1 = bump(staleFixAct(s, i, a), i)
-        if (not(ok) and contra)
+        // Already a direction draft: it goes on to the person (Ship of a direction draft goes
+        // to the review loop, then the person), the contradicting rule with it.
+        if (not(ok) and contra and f.entry != SDirAssess and f.entry != SPrinciple)
           setF(s1, i, z => { ...z, kind: DDir, level: Direct, stage: SDirAssess, entry: SDirAssess })
+        else if (not(ok) and contra) setF(s1, i, z => { ...z, stage: SDraft })
         else setF(s1, i, z => { ...z,
           stage: if (ok) SDraft else SRuleAssess, ruleTries: z.ruleTries + if (ok) 0 else 1 })
     // items: the items the draft names; real: those its content changes. "Only a standard
@@ -835,9 +846,9 @@ module work {
   // Final: the project ended, or what is owed is owed by the person only.
   def finalOf(s: Store): bool =
     s.top.ended or (obligationsOf(s) != Set() and obligationsOf(s).forall(ob => isPersonOb(ob)))
-  // The model's bound on agent changes, from the config (README.md "Convergence"): with
-  // raiseLevel each standard or rule is fixed at standard level once (4); each task splits at
-  // most sections - 1 times (strict scope). Past it is not a success.
-  def changeBound: int = 4 + SLOTS.size() * (OPT.sections - 1)
+  // The model's bound on agent changes, from the config (README.md "Convergence"): per task,
+  // at most sections - 1 splits (strict scope) and one standard change per generation (its
+  // floor then goes to direction, which reaches the person). Past it is not a success.
+  def changeBound: int = SLOTS.size() * ((OPT.sections - 1) + OPT.sections)
   def pastBound(s: Store): bool = s.agentChanges > changeBound
 }

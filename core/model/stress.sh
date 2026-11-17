@@ -55,7 +55,7 @@ holds fixedCalm '' $X
 holds convFixed NoShallowEvaluation $X
 holds fixedRole NoPassOfBadResult,NoDoneBrokenAtEnd $X,RevisionHasContext
 holds fixedPipe NoShallowEvaluation,NoPassOfBadResult,NoDoneBrokenAtEnd $X,NoWrittenDropped,NoUnacceptedEditChange,NoRefixAtSameLevel,DoneIsCurrent,NoTakenUndone,NoPassOfBrokenResult
-seed noRecheckBasis NoPassOfBadResult 1000 300
+seed noRecheckBasis NoPassOfBadResult 1000 120
 seed mutMaker NoActByEnded
 seed witnessCalm NoClaimByEnded
 seed mutDup NoReviewOfOtherResult 3000
@@ -69,6 +69,7 @@ seed mutAccept NoAcceptNotWaiting
 seed mutRace NoLostUpdate 3000 200
 seed mutRace NoPassUnderOtherVersion 3000
 seed mutCrash NoSplitBrain
+seed mutCrash RevisionHasContext
 seed mutCrashHi RevisionHasContext 3000 250
 seed mutPipeByz NoFailedTestInEffect 3000 200
 seed mutPipeByz EveryRuleHasForm 3000 200

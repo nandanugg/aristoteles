@@ -11,7 +11,7 @@ PROPWIT="NoActByEnded:wReport NoClaimByEnded:wReadBrief NoReviewOfOtherResult:wR
   RevisionHasContext:wSecondRevision NoUnrevisedResubmit:wSendBack NoMergedInput:wTyped
   DoneIsCurrent:wTakenRechecked NoDoneBrokenAtEnd:wEndProject NoTakenUndone:wTakenRechecked
   NoWrittenDropped:wEditInEffect NoAcceptNotWaiting:wAccept NoUnacceptedEditChange:wEditInEffect
-  HostBoundToRunSession:wMoveHost NoRefixAtSameLevel:wRaisedUp
+  HostBoundToRunSession:wMoveHost NoRefixAtSameLevel:wTaskFloor
   Converges:wSplit"
 # witnessesFor "props" "exempt": the key witnesses (no duplicates).
 witnessesFor() {
