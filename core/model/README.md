@@ -119,7 +119,9 @@ stress.sh. Status: fifth review round; simulator only. No TLC or Apalache yet.
   at the person while a standards draft on task 0's standard is about to ship; 9 task 0 in
   revision, its maker holding its claim after one failed review; 10 near the change bound
   (task 0 a one-section split part with a standard cause, task 1 done after its standard
-  change). `DEEP` is all of them. `ENV.dups`: the network may deliver an
+  change); 11 task 0's direction draft at the person while task 1's fighting reference-only
+  rule is about to ship; 12 both tasks at the top rung, task 0's principle draft (a fighting
+  reference-only rule) about to ship. `DEEP` is all of them. `ENV.dups`: the network may deliver an
   act twice (a fault). `ENV.liars`, `maxLies`, `lieOn`: actors honest except for lies (an act
   with any content, a budget of its own, only on the act kinds named, `KIND_OF`).
   `ENV.misjudge`: an honest pipeline role may evaluate shallower than the real cause (a
@@ -185,7 +187,7 @@ flight; 6 person acts.
 | 5 review loop, change by human | `LoopReview`, `Accept`, `SendBack` |
 | 5 role draft, only a role change? | `Evaluate` `Fit` -> `SLoop`; `Accept`: role-only -> `cardInEffect`, `backToRole`; else `SAccepted` -> `Reassign` |
 | 6 C1, D7 | settled: DESIGN.md 12 (the host keeps the top; agents never remake it, 13.1) and DESIGN.md 13 (no budgets) |
-| 13, 13.1 how the loop ends | `crossTest` (`Fix.fights`, `RunTest`); no agreeing rule: a contradiction found at `RunTest` goes at once to direction assessment (13.1), and a second contradiction of a draft already at direction goes on to the person (`Fix.contradicted`; a rule that fails its own examples is always written again); `raiseLevel` (`Task.floor` per task; `Store.fixDepth` per item, `refixed`, `raiseUp`); `ladderRoute`; `strictScope` (`Task.sections`); `changeBound`, `raiseBound`, `NoRefixAtSameLevel`, `RaiseChangesBounded` |
+| 13, 13.1 how the loop ends | `crossTest` (`Fix.fights`, `RunTest`); no agreeing rule: a contradiction found at `RunTest` goes at once to direction assessment (13.1), and a second contradiction of a draft already at direction goes on to the person (`Fix.contradicted`; a rule that fails its own examples is always written again); `raiseLevel` (`Task.floor` per task; `Store.fixDepth` per item, `refixed`, `raiseUp`); `ladderRoute`; `strictScope` (`Task.sections`); `changeBound`, `NoRefixAtSameLevel`, `NoAgentChangeAtTop` |
 | 12 lifetimes | the host holds the top for the whole project (`Top` has no "hosted"; `TopDone` keeps it); roles never end |
 | 7 Store | `accept`, `take`; workenv `storeTakes`, `storeRefuses` |
 | 8 tmux | tmux.qnt; workenv `serverKilled`, `socketLost`, `serverRecreated`, `pumpStolen`, `pageServerRestarts`, `pumpAttaches`, `personTypes`, `personClears`, `promptRead`, `procReads` (output) |
@@ -291,15 +293,18 @@ Tier 1, safety under Byzantine agents and faults:
 | NoRefixAtSameLevel | guard (raiseLevel) | an item or a task fixed again at the same or a lower level (DESIGN.md 13.2) | convNoRaise, convNeither (raiseLevel) |
 | NoEscalationWithoutPerson | guard (ladderRoute) | a draft raised to direction or principle took effect without the person | noLadderRoute (a lying pipeline role names only standards) |
 | Converges | derived (raiseLevel, strictScope, ladderRoute) | the agents made more than `changeBound` changes (standard changes and splits) | convNoSplitLimits (strictScope and raiseLevel off) |
-| RaiseChangesBounded | content | more than `raiseBound` changes from task raises, through the person too (not the person's own edits): a loop through the person | none seen (convNoCross with 40 person acts holds) |
+| NoAgentChangeAtTop | guard (raiseLevel, ladderRoute) | a change of a task already at the top rung (floor principle) took effect without the person | noLadderRoute (start 12) |
 
 `changeBound` is derived from the config: per task, sections - 1 splits and then one standard
 change (the task's floor then goes to direction, which reaches the person); slots x sections,
 4 with 2 tasks and 2 sections. It does not depend on the number of items. Under FIXED it
 follows from three store checks (an evaluation below the task's floor is refused, a split at
 one section is refused, a raised draft goes to the person): a derived property; its value is
-that those checks imply the bound. `raiseBound` = slots x (sections + 2): the ladder's rungs
-per task (split parts, standard, direction, principle). It is a check of the model, not a budget of the design: the design has none.
+that those checks imply the bound. Past the top rung the person is the end (DESIGN.md 13):
+a task at principle may change again, one principle change through the person per new
+fight (start 12 shows it); nothing bounds that count but the person, who can send the draft
+back or take the task as is. NoAgentChangeAtTop checks that each such change goes through the
+person. It is a check of the model, not a budget of the design: the design has none.
 
 Removed: NoDraftDropped and the kept-draft handling (agents never remake the top, DESIGN.md
 13.1); C1aConfirmed and C1bHosted (DESIGN.md 12: the host keeps the top); NoDoneUnderOldVersion
@@ -324,8 +329,8 @@ Convergence (DESIGN.md 13 and 13.1), 600 steps per run:
 - convNoRaise (raiseLevel off): breaks NoRefixAtSameLevel (a misjudged standard fix repeats
   at the same level).
 - convNeither (crossTest and raiseLevel off): breaks NoRefixAtSameLevel (two rules ping-pong).
-- convNoCross (crossTest off, raiseLevel on, a person with 40 acts): holds, Converges and
-  RaiseChangesBounded (changes through the person counted too). A contradiction is raised
+- convNoCross (crossTest off, raiseLevel on, a person with 40 acts): holds Converges and
+  NoAgentChangeAtTop. A contradiction is raised
   to direction and principle, which go to the person: more work for the person, not an
   endless loop. Whether the person's direction change resolves a contradiction is the
   environment's choice at the accept (`flag3`); if not, the rule still fights.
