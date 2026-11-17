@@ -772,7 +772,7 @@ CoreChangesStop):
 | coreTwoExit | CoreProgressNoEngine (the revive is needed) | breaks | 87,979 | 109 s |
 | coreTwoDir (task 0 a direction cause) | 13 invariants, CoreProgress, CoreChangesStop | holds | 287,004 | 484 s (a) |
 | coreCrossOnly (raiseLevel off, every rule a test command) | CoreChangesStop | holds | 658,413 | 720 s (a) |
-| coreNoRaise (raiseLevel off) | CoreChangesStop | breaks | 236,468 | 225 s |
+| coreNoRaise (raiseLevel off) | CoreChangesStop | breaks | 1,649,416 | 1,007 s |
 | coreNoCross (crossTest and raiseLevel off, every rule a test command) | CoreChangesStop | breaks | 45,300 | 109 s (a) |
 | coreNoSplit (strictScope and raiseLevel off) | CoreChangesStop | breaks | 46 | 52 s (a) |
 | coreLoops (one task, a direction or standard cause, rules that fail their examples, the ladder of 13.2, the person's send-backs up to 3) | 13 invariants, LIVE | holds | 82,034 | 161 s (a) |
