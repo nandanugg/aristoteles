@@ -754,6 +754,43 @@ module work {
   def take(s: Store, a: Act): Store =
     effect(ghost(s, g => { ...g, oldEpoch: g.oldEpoch or (a.who >= 0 and a.ep < epOf(s, a.who)) }), a)
 
+  // An honest agent's content, on its own view (workenv.qnt and core.qnt; misjudge: the
+  // pipeline role may evaluate shallower than the real cause, a mistake): it reviews correctly (it runs the test
+  // commands; on a rule with both forms it judges the candidates), evaluates at the real
+  // cause, reports its test runs as they printed, labels a draft by its content, revises a
+  // draft the person sent back, writes real references. Its maker's slips, the test
+  // command's real behaviour and the real causes of new tasks are the environment's choice.
+  def honestOf(v: Store, a: Act, misjudge: bool): bool = match a.what {
+    | Review(i) =>
+        val t = tk(v, i)
+        val left = t.tries + 1 < OPT.maxTries
+        if (not(t.rBad)) a.v == Pass
+        else if (t.cause == NoCause) a.v == (if (left) Fail else RaiseTries)
+        else a.v != Pass and (a.v != Fail or left) and (a.v != RaiseTries or not(left))
+    // At the real cause (with misjudge: possibly shallower), and one level up after a fix
+    // (raiseLevel): the floor wins when it is deeper.
+    | Evaluate(i) =>
+        val t = tk(v, i)
+        val atCause = match t.cause {
+          | NoCause => true
+          | CauseAt(c) => a.level == c
+              or (misjudge and depth(a.level) < depth(c) and a.level != Fit) }
+        // With raiseLevel the task's floor wins: a level below it is refused, and the floor
+        // itself is taken when the cause is below it.
+        val floored = OPT.raiseLevel and a.level != Fit
+        val atFloor = floored and a.level == t.floor and match t.cause {
+          | CauseAt(c) => c != Fit and depth(c) < depth(t.floor) | NoCause => true }
+        or { atCause, atFloor }
+          and not(floored and depth(a.level) < depth(t.floor))
+          and (a.level != Fit or a.flag == a.flag2)
+    | WriteRule(_) => a.form != NoForm and a.flag2
+    | RunTest(i) => a.flag == fx(v, i).truth and a.flag2 == (OPT.crossTest and fx(v, i).fights)
+    | Ship(i) => a.real.contains(IDir) == (fx(v, i).entry != SStdAssess) and a.items == a.real
+        and fx(v, i).wrote.forall(x => a.real.contains(x))
+    | RecheckDone(i) => a.flag == not(tk(v, i).broken)
+    | LoopReview(i) => not(a.flag and fx(v, i).needRevise)
+    | _ => true
+  }
   // ---- told: the Do steps each actor's wait prints, from the store alone
   def pipeDo(st: Stage, i: int): Set[What] =
     if (st == SEval) Set(Evaluate(i))

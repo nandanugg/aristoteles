@@ -1,7 +1,7 @@
 #!/bin/sh
 # bun run spec: typecheck every spec, then simulate the design modules (no violation expected).
 # bun run spec:check: also each "before" module must break its invariant (a violation expected).
-# No JVM here: TLC and Apalache are run by hand (README.md).
+# No JVM here: TLC runs by tlc.sh (bun run spec:tlc) and by hand (README.md).
 # Each run is one job; the jobs run in parallel (JOBS, default the number of cores), each
 # with its own fixed seed and one thread, so the answer is the same every time.
 set -u
@@ -89,6 +89,25 @@ pageTest() {
     >/dev/null 2>&1 \
     && echo "ok     workenv_test.qnt pageTest" || { echo "FAIL   workenv_test.qnt pageTest"; fail=1; }
 }
+# The two small models (core.qnt, terminals.qnt; README.md "The small models"): a simulator
+# smoke here; TLC proves them (tlc.sh, bun run spec:tlc). $1 file, $2 module, $3 invariants.
+smallHolds() {
+  out=$($Q run "$1" --main="$2" --invariants $3 --max-samples="${SAMPLES:-400}" \
+    --max-steps="${STEPS:-200}" --seed=0x2a --n-threads=1 --verbosity=1 2>&1)
+  if echo "$out" | grep -q '^\[ok\]'; then echo "holds  $1 $2 $3"
+  else echo "FAIL   $1 $2 (expected no violation)"; echo "$out" | grep -E '❌' | head -3; fail=1; fi
+}
+# $1 file, $2 module, $3 invariant, $4 seed, $5 runs, $6 steps: a violation expected.
+smallBreaks() {
+  out=$($Q run "$1" --main="$2" --invariant="$3" --max-samples="$5" --max-steps="$6" \
+    --seed="$4" --n-threads=1 --verbosity=1 2>&1)
+  if echo "$out" | grep -q '^\[violation\]'; then echo "breaks $1 $2 $3"
+  else echo "FAIL   $1 $2 $3 (expected a violation)"; fail=1; fi
+}
+CORE_INV="Sane EveryObligationToldOnce ToldIsAllowed SomethingOwed DoneIsCurrent
+  NoDoneBrokenAtEnd NoLostUpdate NoTakenUndone NoPassOfBadResult NoRefixAtSameLevel
+  NoEscalationWithoutPerson NoAgentChangeAtTop Converges"
+CORE_INV=$(echo $CORE_INV)
 # A job: optional VAR=value settings (SAMPLES, STEPS), then a function and its arguments.
 if [ $MODE = job ]; then
   shift
@@ -119,6 +138,10 @@ holdsAll fixedPipe 'NoShallowEvaluation NoPassOfBadResult NoDoneBrokenAtEnd' '$P
 notAtCap tlcCalm
 notAtCap tlcCrash
 pageTest
+smallHolds core.qnt coreTwo '$CORE_INV'
+smallHolds core.qnt coreAll '$CORE_INV'
+smallHolds core.qnt coreCrossOnly 'Converges'
+smallHolds terminals.qnt termFixed 'Sane ExactlyOnce'
 EOF2
 # Each property breaks in its mutant (README.md, Properties): module, property, seed, runs,
 # steps.
@@ -171,6 +194,10 @@ breaksW noLadderRoute NoEscalationWithoutPerson 0xcfb09fbf2e25de13 1000 120
 breaksW noListOnAttach EveryObligationToldOnce 0x30fc86f22e8856f5 3000 120
 breaksW noRecheckBasis NoPassOfBadResult 0xeedb7b8c46a9b2a4 1000 120
 breaksW witnessCalm NoClaimByEnded 0xce25f34abbaa781f 1000 120
+smallBreaks core.qnt coreNoRaise Converges 0x2a 500 200
+smallBreaks core.qnt coreNoCross Converges 0x2a 500 200
+smallBreaks core.qnt coreNoSplit Converges 0x2a 500 200
+smallBreaks terminals.qnt termNoEvidence ExactlyOnce 0x2a 2000 60
 EOF2
 JOBS=${JOBS:-$(nproc)}
 # -d: one job per line, quotes kept for the job's own shell (slow jobs first).

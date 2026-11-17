@@ -354,11 +354,13 @@ module terminals {
   val Sane: bool = old.forall(k => up(k)) and (up(MAKER) implies up(ROLE))
 }
 
-// ---- instances: the design (every check on), and the sanity mutants where G1 must FAIL.
+// The design: every check on.
 module termCfgs {
   pure val FIXED_T = { listOnAttach: true, pumpReattach: true, promptArg: true, outbox: true,
                        evidence: true, hostWatched: true, maxFaults: 2 }
 }
+// ---- instances (tlc.sh keeps only the one it checks: quint's TLA+ export of a file with
+// many instances overflows). The design, and the sanity mutants where G1 must FAIL.
 module termFixed {
   import termCfgs.*
   import terminals(T = FIXED_T).* from "./terminals"
