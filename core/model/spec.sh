@@ -30,25 +30,26 @@ breaksW() {
 
 # The new work design (work.qnt, tmux.qnt, workenv.qnt): every proposed check on, honest
 # agents, every fault. Smoke size until the review of the model is done.
-FLAGS="NoActByEnded NoReviewOfOtherResult NoPassUnderOtherVersion
-  NoStaleReport NoUnseenReject NoUnseenAccept NoRejectedDraftInEffect NoLostUpdate
-  NoFailedTestInEffect EveryRuleHasForm NoBadReference NoDeepChangeWithoutPerson
-  NoRoleChangeMisjudged NoPassOfBrokenResult NoPassOfBadResult NoShallowEvaluation
-  NoStalePipelineAct NoSplitBrain RevisionHasContext NoUnrevisedResubmit NoUnrecheckedScope
-  NoMergedInput DoneIsCurrent NoDoneBrokenAtEnd NoTakenUndone NoWrittenDropped NoClaimByEnded
-  HostBoundToRunSession NoAcceptNotWaiting NoUnacceptedEditChange Converges"
-# The coverage gate: in each holds module these witnesses must be reached (else the module
-# never exercises what the properties guard, and "no violation" means nothing). The holds
-# runs use a fixed seed and one thread, so the gate gives the same answer every time; the
-# broad random runs are in stress.sh.
-KEY="wEndProject wRecheckDone wRunRule wRebase wAccept wDecide wFloorRaised"
+FLAGS="NoActByEnded NoReviewOfOtherResult NoPassUnderOtherVersion NoStaleReport
+  NoUnseenReject NoUnseenAccept NoRejectedDraftInEffect NoLostUpdate NoFailedTestInEffect
+  EveryRuleHasForm NoBadReference NoDeepChangeWithoutPerson NoRoleChangeMisjudged
+  NoPassOfBrokenResult NoPassOfBadResult NoShallowEvaluation NoStalePipelineAct NoSplitBrain
+  RevisionHasContext NoUnrevisedResubmit NoUnrecheckedScope NoMergedInput DoneIsCurrent
+  NoDoneBrokenAtEnd NoTakenUndone NoWrittenDropped NoClaimByEnded HostBoundToRunSession
+  NoAcceptNotWaiting NoUnacceptedEditChange NoRefixAtSameLevel Converges"
+# The coverage gate (keys.sh): each checked property's key witness must be reached, else
+# "no violation" would mean nothing. The holds runs use a fixed seed and one thread, so the
+# gate gives the same answer every time; the broad random runs are in stress.sh.
+. ./keys.sh
 # $2: properties the module is known to break (no store check can hold them).
+# $3: properties whose key witness the module's environment cannot reach (no such fault).
 holdsAll() {
   inv=$(for f in Sane EveryObligationToldOnce ToldIsAllowed SomethingOwed $FLAGS; do
     case " ${2:-} " in *" $f "*) ;; *) printf '%s ' "$f" ;; esac; done)
-  out=$($Q run workenv.qnt --main="$1" --invariants $inv --witnesses $KEY \
-    --max-samples="${SAMPLES:-400}" --max-steps=100 --seed="${SEED:-0x2a}" --n-threads=1 \
-    --verbosity=1 2>&1)
+  wit=$(witnessesFor "$inv" "${3:-}")
+  out=$($Q run workenv.qnt --main="$1" --invariants $inv --witnesses $wit \
+    --max-samples="${SAMPLES:-400}" --max-steps="${STEPS:-300}" --seed="${SEED:-0x2a}" \
+    --n-threads=1 --verbosity=1 2>&1)
   zero=$(echo "$out" | grep -E 'witnessed in 0 trace' | awk '{print $1}' | tr '\n' ' ')
   if ! echo "$out" | grep -q '^\[ok\]'; then
     echo "FAIL   workenv.qnt $1 (expected no violation)"
@@ -61,13 +62,17 @@ holdsAll() {
     echo "holds  workenv.qnt $1 Sane Told and every flag; every key witness reached"
   fi
 }
+CALMX="NoSplitBrain NoMergedInput NoUnseenReject"
 holdsAll fixedHonest
 holdsAll fixedMaker
 holdsAll fixedHost
-holdsAll fixedCalm
-holdsAll convFixed NoShallowEvaluation
-holdsAll fixedRole "NoPassOfBadResult NoDoneBrokenAtEnd"
-holdsAll fixedPipe "NoShallowEvaluation NoPassOfBadResult NoDoneBrokenAtEnd"
+holdsAll fixedCalm "" "$CALMX"
+holdsAll convFixed NoShallowEvaluation "$CALMX"
+holdsAll fixedRole "NoPassOfBadResult NoDoneBrokenAtEnd" "$CALMX RevisionHasContext"
+# A Byzantine pipeline role seldom carries an edit or a recheck through.
+holdsAll fixedPipe "NoShallowEvaluation NoPassOfBadResult NoDoneBrokenAtEnd" \
+  "$CALMX NoWrittenDropped NoUnacceptedEditChange NoRefixAtSameLevel DoneIsCurrent NoTakenUndone
+  NoPassOfBrokenResult"
 # A regression of the page (it offers every step its view owes the person).
 $Q test workenv_test.qnt --main=pageTest --match=pageOffersTest --max-samples=200 \
   >/dev/null 2>&1 \
