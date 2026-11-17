@@ -16,6 +16,7 @@ PROPWIT="NoActByEnded:wReport NoClaimByEnded:wReadBrief NoReviewOfOtherResult:wR
   NoAgentChangeAtTop:wTopChange NoDoneBrokenAtEnd:wDecideFought"
 # witnessesFor "props" "exempt": the key witnesses (no duplicates).
 witnessesFor() {
+  set -- "$(echo "$1" | tr '\n' ' ')" "$(echo "$2" | tr '\n' ' ')"
   for pw in $PROPWIT; do
     p=${pw%%:*}; w=${pw##*:}
     case " $1 " in *" $p "*) ;; *) continue ;; esac

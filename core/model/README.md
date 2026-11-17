@@ -23,6 +23,9 @@ agents, no reminder, is the fix.
   with the coverage gate; a seed search for each mutant (one thread, so a seed reproduces; it
   prints the `breaksW` lines for spec.sh); and the witness sweep (every witness over the
   witness modules, printing the ones never reached).
+- spec.sh runs its jobs in parallel (`JOBS`, default the number of cores), each with a
+  fixed seed and one thread: the same answer every time. On the check machine `spec:check`
+  takes about 7.5 minutes.
 - None is part of `bun test`.
 - What each tool covers: the simulator (`quint run`) only its random runs (samples x steps);
   TLC every reachable state within the model's bounds, any run length; Apalache every run up
@@ -98,7 +101,9 @@ stress.sh. Status: fifth review round; simulator only. No TLC or Apalache yet.
 - Instances: `designHonest`, `designMaker`, `designRole`, `designPipe`, `designHost` (the design
   as written, one Byzantine class at a time, every fault); the same five as `fixed*` (every
   proposed check on, from every starting state; `fixedRole` and `fixedPipe` on a calm run);
-  `fixedCalm`; `tlcCalm`, `tlcCrash` (for TLC); `noRecheckBasis`, `noDecideRecheck`,
+  `fixedCalm`; `fixedMakerTake`, `fixedHostTake` (fixedMaker and fixedHost from the take-as-is
+  starts 8 and 11: spec.sh reaches their rare key witnesses wDecideFought and wDecideRecheck
+  there); `tlcCalm`, `tlcCrash` (for TLC); `noRecheckBasis`, `noDecideRecheck`,
   `noListOnAttach`, `noLadderRoute` (one check off on the fixed ones); `convFixed`, `convNoCross`, `convNoRaise`, `convNeither`,
   `convNoScope`, `convNoSplitLimits` (how the loop ends, DESIGN.md 13);
   `editAlways`, `editNever` (editBack 0 and 2); `beforeMove` (the live fault before e4e49ff);

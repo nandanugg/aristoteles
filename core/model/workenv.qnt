@@ -1066,6 +1066,18 @@ module fixedHost {
   import workenv(CFG = FIXED, ENV = { ...HONEST, byzHost: true, starts: DEEP })
     .* from "./workenv"
 }
+// The take-as-is starts (8, 11) of fixedMaker and fixedHost: spec.sh reaches their rare key
+// witnesses (wDecideFought, wDecideRecheck) here within its smoke size.
+module fixedMakerTake {
+  import cfgs.*
+  import workenv(CFG = FIXED, ENV = { ...HONEST, byzMaker: true, starts: Set(8, 11) })
+    .* from "./workenv"
+}
+module fixedHostTake {
+  import cfgs.*
+  import workenv(CFG = FIXED, ENV = { ...HONEST, byzHost: true, starts: Set(8, 11) })
+    .* from "./workenv"
+}
 module fixedCalm {
   import cfgs.*
   import workenv(CFG = FIXED, ENV = { ...CALM, starts: DEEP }).* from "./workenv"
