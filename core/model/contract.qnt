@@ -38,4 +38,9 @@ module contract {
   // restarts, an old page build, a background tab; the person is never assumed to act.
   // "Shown" while a page is open: with no page open the person is not told by this channel.
   temporal G4(owes: bool, shown: bool): bool = always(eventually(not(owes) or shown))
+
+  // P (an assumption about the person, DESIGN.md 13.2, Nanda: "otherwise I'm the problem"):
+  // the person sends one draft back at most this many times. core.qnt assumes it; past it
+  // the run still waits only on the person, who is shown it (G4): not a stall of the system.
+  pure val PERSON_SEND_BACKS = 3
 }

@@ -11,8 +11,7 @@ module workenv {
     silentSteps: int, reviewSubagents: bool,
     editBack: int, acceptCheck: bool, decideRecheck: bool, briefCheck: bool,
     strictScope: bool, sections: int, listOnAttach: bool,
-    ladderRoute: bool, maxTries: int, maxMakers: int, maxLoops: int,
-    maxRuleTries: int,
+    ladderRoute: bool, ruleLadder: bool, loopLadder: bool, maxTries: int, maxMakers: int,
   }
   // byz*: that agent class is Byzantine (else honest). crash: processes die and resume.
   // tmuxFaults: server kill, lost socket, pump detached or closed, the person typing.
@@ -971,7 +970,7 @@ module cfgs {
     rebind: true, pumpReattach: false, hostWatched: false, promptArg: true, idleSeen: false,
     silentSteps: 3, reviewSubagents: false, editBack: 1, acceptCheck: true,
     decideRecheck: true, briefCheck: false, strictScope: true, sections: 2, listOnAttach: false,
-    ladderRoute: true, maxTries: 3, maxMakers: 6, maxLoops: 1, maxRuleTries: 2 }
+    ladderRoute: true, ruleLadder: true, loopLadder: true, maxTries: 3, maxMakers: 6 }
   pure val FIXED = { ...DESIGN, basis: true, build: true, rebase: true,
     harnessTest: true, classify: true, passTests: true, recheckBasis: true,
     fullBrief: true, endedCheck: true, formCheck: true, epochs: true, reviseCheck: true,

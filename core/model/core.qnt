@@ -33,8 +33,8 @@ module core {
     reviseCheck: bool, rebind: bool, pumpReattach: bool, hostWatched: bool, promptArg: bool,
     idleSeen: bool, silentSteps: int, reviewSubagents: bool, editBack: int, acceptCheck: bool,
     decideRecheck: bool, briefCheck: bool, strictScope: bool, sections: int,
-    listOnAttach: bool, ladderRoute: bool, maxTries: int, maxMakers: int, maxLoops: int,
-    maxRuleTries: int,
+    listOnAttach: bool, ladderRoute: bool, ruleLadder: bool, loopLadder: bool, maxTries: int,
+    maxMakers: int,
   }
   // causes: the real causes task 0 may start with, and a split part may get (0 none,
   // 1 split, 2 fit, 3 principle, 4 direct, 5 standard); causes1: those of task 1.
@@ -45,7 +45,8 @@ module core {
   // (then the rule is written again; past maxRuleTries only as a reference). reject: the
   // person may reject a result.
   const C: { causes: Set[int], causes1: Set[int], maxPerson: int, maxMistakes: int, slips: bool,
-             forms: Set[int], testsFail: bool, reject: bool, maxExits: int, caps: bool }
+             forms: Set[int], testsFail: bool, reject: bool, maxExits: int,
+             personBound: bool }
   import work(OPT = CFG).* from "./work"
 
   var s: Store
@@ -91,6 +92,7 @@ module core {
       val keep = f.stage != SEval and f.kind == DDir
       if (f.stage == SClosed) CLOSED
       else { ...f, step: 0, rev: 0, sentBack: Set(),
+             backs: if (f.backs > PERSON_SEND_BACKS) PERSON_SEND_BACKS else f.backs,
              base: if (keep) f.base else st.ver, trueBase: if (keep) f.trueBase else st.ver,
              cardBase: if (f.kind == DRole) f.cardBase else st.card })
     val open = fxs.keys().filter(i => fxs.get(i).stage != SClosed)
@@ -118,12 +120,8 @@ module core {
            escalatedNoPerson: st.g.escalatedNoPerson, topNoPerson: st.g.topNoPerson,
            passDefect: st.g.passDefect } }
 
-  // caps off (a mutant, R6-6): the model's caps on the review loop's revisions and on rule
-  // rewrites (OPT.maxLoops, OPT.maxRuleTries) are forgotten: those loops can go on.
-  def uncapped(st: Store): Store = if (C.caps) st else
-    { ...st, fixes: st.fixes.keys().mapBy(i => { ...fx(st, i), loops: 0, ruleTries: 0 }) }
   action commitE(ns: Store, np: int, nm: int, ne: int): bool = all {
-    s' = uncapped(canon(ns)), persons' = np, mistakes' = nm, exits' = ne,
+    s' = canon(ns), persons' = np, mistakes' = nm, exits' = ne,
     chg' = if (ns.agentChanges > s.agentChanges) not(chg) else chg,
   }
   action commit(ns: Store, np: int, nm: int): bool = commitE(ns, np, nm, exits)
@@ -199,14 +197,19 @@ module core {
     val a = base(HARNESS, Exit(k))
     all { accept(s, a), commitE(take(s, a), persons, mistakes, exits + 1) },
   }
-  // The person: what the person is told (accept, send back, take as is, end), and a
-  // reject of a result. Not fair; at most maxPerson acts.
+  // The person: what the person is told (accept, send back, take as is, end, start the
+  // host), and a reject of a result. Not fair; at most maxPerson acts (-1: no count). With
+  // personBound (DESIGN.md 13.2, an assumption about the person, contract.qnt
+  // PERSON_SEND_BACKS) the person sends one draft back at most that many times, and send-backs
+  // are not counted in maxPerson.
   def personMoves: Set[What] = dos(s, PERSON).union(if (not(C.reject)) Set() else
     SLOTS.filter(i => tk(s, i).rid >= 0 and (tk(s, i).st == InReview or tk(s, i).st == Done))
       .map(i => Reject(i)))
   action personStep = all {
-    persons < C.maxPerson,
     nondet x = personMoves.oneOf()
+    val counted = match x { | SendBack(_) => not(C.personBound) | _ => true }
+    val bounded = match x { | SendBack(i) => not(C.personBound) or fx(s, i).backs < PERSON_SEND_BACKS
+                            | _ => true }
     // flag: take as is (Decide); flag3: the accepted direction change resolves a
     // contradiction; hits: the tasks the accepted change breaks.
     val fs = match x { | Decide(_) => BOOLS | _ => Set(true) }
@@ -216,7 +219,9 @@ module core {
     nondet r = rs.oneOf()
     nondet h = hs.oneOf()
     val a = { ...base(PERSON, x), flag: f, flag3: r, hits: h }
-    all { accept(s, a), G3(fresh(a)), commit(take(s, a), persons + 1, mistakes) },
+    all { not(counted) or C.maxPerson < 0 or persons < C.maxPerson, bounded,
+          accept(s, a), G3(fresh(a)),
+          commit(take(s, a), persons + if (counted and C.maxPerson >= 0) 1 else 0, mistakes) },
   }
   action step = any {
     agentStep(HOST), agentStep(ROLE), agentStep(PIPE), agentStep(HARNESS),
@@ -300,11 +305,11 @@ module coreCfgs {
     epochs: true, reviseCheck: true, rebind: true, pumpReattach: true, hostWatched: true,
     promptArg: true, idleSeen: true, silentSteps: 3, reviewSubagents: false, editBack: 1,
     acceptCheck: true, decideRecheck: true, briefCheck: true, strictScope: true, sections: 2,
-    listOnAttach: true, ladderRoute: true, maxTries: 2, maxMakers: 6, maxLoops: 1,
-    maxRuleTries: 1 }
+    listOnAttach: true, ladderRoute: true, ruleLadder: true, loopLadder: true, maxTries: 2,
+    maxMakers: 6 }
   pure val ENV_C = { causes: Set(0, 5), causes1: Set(0, 5), maxPerson: 1, maxMistakes: 0, slips: false,
                      forms: Set(1, 2), testsFail: true, reject: false, maxExits: 0,
-                     caps: true }
+                     personBound: true }
 }
 // ---- instances (tlc.sh keeps only the one it checks: quint's TLA+ export of a file with
 // many instances overflows).
@@ -340,13 +345,31 @@ module coreTwoExit {
   import core(CFG = FIXED_C, C = { ...ENV_C, causes: Set(5), causes1: Set(0), testsFail: false,
                                    maxPerson: 2, maxExits: 1 }).* from "./core"
 }
-// R6-6: without the model's caps on the review loop and on rule rewrites (DESIGN.md has
-// no rule that ends them), the run need not end: CoreProgress breaks.
-module coreNoCaps {
+// DESIGN.md 13.2 (R6-6, Nanda's ruling): no caps on agents; a repeated failure climbs the
+// ladder. A rule that keeps failing its own examples, and a draft the review loop keeps
+// sending back, each reach the person; the person sends a draft back at most 3 times.
+module coreLoops {
   import coreCfgs.*
   import core(CFG = { ...FIXED_C, slots: Set(0) },
-              C = { ...ENV_C, causes: Set(5), causes1: Set(0), maxPerson: 0, caps: false })
-    .* from "./core"
+              C = { ...ENV_C, causes: Set(4, 5), causes1: Set(0), maxPerson: 1 }).* from "./core"
+}
+// The mutants: without the ladder on rule rewrites, or on the review loop, the pipeline role
+// may loop for ever; with the person unbounded the run depends on the person (expected).
+module coreNoRuleLadder {
+  import coreCfgs.*
+  import core(CFG = { ...FIXED_C, slots: Set(0), ruleLadder: false },
+              C = { ...ENV_C, causes: Set(5), causes1: Set(0), maxPerson: 0 }).* from "./core"
+}
+module coreNoLoopLadder {
+  import coreCfgs.*
+  import core(CFG = { ...FIXED_C, slots: Set(0), loopLadder: false },
+              C = { ...ENV_C, causes: Set(4), causes1: Set(0), maxPerson: 0 }).* from "./core"
+}
+module corePersonUnbounded {
+  import coreCfgs.*
+  import core(CFG = { ...FIXED_C, slots: Set(0) },
+              C = { ...ENV_C, causes: Set(4), causes1: Set(0), maxPerson: -1,
+                    personBound: false }).* from "./core"
 }
 // The simulator only (too big for TLC): two tasks, every cause, the person's acts.
 module coreAll {

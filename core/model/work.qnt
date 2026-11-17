@@ -58,8 +58,12 @@ module work {
     ladderRoute: bool,       // DESIGN.md 13.2: a draft entered at direction or principle (a
                              // raise up the ladder, a contradiction) goes to the review loop
                              // and the person whatever its content names
-    maxTries: int, maxMakers: int, maxLoops: int,
-    maxRuleTries: int,
+    // DESIGN.md 13.2 (no caps on agents): a second failure at the same step is a repeated fix
+    // and moves one level up the ladder. ruleLadder: a rule failing its own examples again;
+    // loopLadder: a draft the review loop sends back again. Off only in mutants (then the
+    // step repeats with no bound).
+    ruleLadder: bool, loopLadder: bool,
+    maxTries: int, maxMakers: int,
   }
 
   // ---- actors. Makers get ids from 3 up, one per assignment (a fresh one per task).
@@ -156,6 +160,7 @@ module work {
                refOk: bool, ruleTries: int, items: Set[Item], real: Set[Item],
                roleOnly: bool, roleLabel: bool, base: Item -> int, cardBase: int, rev: int,
                sentBack: Set[int], needRevise: bool, loops: int, step: int, wrote: Set[Item],
+               climb: Stage, backs: int,
                trueBase: Item -> int, fights: bool, contradicted: bool }
   // The host holds the top for the whole project (DESIGN.md 12). hostSession: the session its
   // assignment is bound to. done: the host returned the top (all done). step: basis of host acts.
@@ -185,7 +190,8 @@ module work {
   pure val CLOSED: Fix = { stage: SClosed, entry: SClosed, level: Standard, kind: DDir,
     form: NoForm, truth: true, refOk: true, ruleTries: 0, items: Set(), real: Set(),
     roleOnly: false, roleLabel: false, base: ZERO, cardBase: 0, rev: 0, sentBack: Set(),
-    needRevise: false, loops: 0, step: 0, wrote: Set(), trueBase: ZERO, fights: false,
+    needRevise: false, loops: 0, step: 0, wrote: Set(), climb: SRuleAssess, backs: 0,
+    trueBase: ZERO, fights: false,
     contradicted: false }
   pure val NOGHOST: Ghost = { endedActed: false, otherResult: false, otherVersion: false,
     staleReport: false, unseenReject: false, unseenAccept: false, rejectedInEffect: false,
@@ -351,12 +357,9 @@ module work {
     | WriteRule(i) => fx(s, i).stage == SRuleAssess
         and (not(OPT.formCheck) or a.form != NoForm)
         and (not(OPT.refCheck) or not(hasRef(a.form)) or a.flag2)
-        // Past maxRuleTries: a reference rule (a model bound; README.md).
-        and (fx(s, i).ruleTries < OPT.maxRuleTries or a.form == Ref)
     | RunTest(i) => fx(s, i).stage == STest
     | Ship(i) => fx(s, i).stage == SDraft
     | LoopReview(i) => fx(s, i).stage == SLoop
-        and (a.flag or fx(s, i).loops < OPT.maxLoops)
         and not(OPT.reviseCheck and a.flag and fx(s, i).needRevise)
     | RecheckDone(i) => recheckDue(s, i) and not(OPT.recheckBasis and not(recheckCurrent(s, i, a)))
     | RunRule(i) => tk(s, i).st == Done and tk(s, i).pend.exists(x => testRule(s, x))
@@ -415,6 +418,29 @@ module work {
   def refixed(s: Store, i: int): bool =
     not(free(i)) and fx(s, i).kind == DDir and fixAt(fx(s, i)) < 3
       and changedBy(fx(s, i)).exists(x => s.fixDepth.get(x) >= fixAt(fx(s, i)))
+  // DESIGN.md 13.2: a repeated failure at one step moves the draft one level up. A rule
+  // failing its own examples again: standard assessment, then direction, then principle,
+  // then the person (climb: the stage it was last sent up to).
+  def upStage(st: Stage): Stage =
+    if (st == SRuleAssess) SStdAssess else if (st == SStdAssess) SDirAssess
+    else if (st == SDirAssess) SPrinciple else SAtPerson
+  def stageLevel(st: Stage): Level =
+    if (st == SPrinciple) Principle else if (st == SDirAssess) Direct else Standard
+  def deeperEntry(e: Stage, n: Stage): Stage =
+    if (n == SAtPerson) e else if (depth(stageLevel(n)) > depth(stageLevel(e))) n else e
+  def ruleClimb(z: Fix): Fix =
+    val n = upStage(z.climb)
+    val e = deeperEntry(z.entry, n)
+    { ...z, climb: n, stage: n, entry: e, level: stageLevel(e), ruleTries: 0, loops: 0,
+      kind: if (n == SAtPerson) z.kind else DDir }
+  // A draft the review loop sends back again: one level up from its entry (standard ->
+  // direction -> principle -> the person); a role draft (off the ladder) goes to the person.
+  def loopClimb(z: Fix): Fix =
+    val n = if (z.kind == DRole) SAtPerson else upStage(if (z.entry == SRuleAssess) SStdAssess
+                                                       else z.entry)
+    if (n == SAtPerson) { ...z, stage: SAtPerson, loops: 0, needRevise: false }
+    else { ...z, stage: n, entry: n, level: stageLevel(n), loops: 0, needRevise: false,
+           rev: z.rev + 1 }
   def raiseUp(s: Store, i: int): Store =
     val st = if (fixAt(fx(s, i)) == 1) SDirAssess else SPrinciple
     ghost(setF(s, i, z => { ...z, stage: st, entry: st,
@@ -585,7 +611,8 @@ module work {
         else if (OPT.raiseLevel and refixed(s1, i)) raiseUp(s1, i)
         else if (roleOnly) backToRole(s3, i) else setF(s3, i, z => { ...z, stage: SAccepted })
     | SendBack(i) => setF(s, i, f => { ...f, stage: SLoop, sentBack: f.sentBack.union(Set(f.rev)),
-                                       needRevise: true, loops: 0, step: f.step + 1 })
+                                       needRevise: true, loops: 0, backs: f.backs + 1,
+                                       step: f.step + 1 })
     // The person takes the result as it is (instead of the draft at the person), or sends the
     // raise back to evaluation.
     // With decideRecheck the result is first rechecked against the changes since it was
@@ -693,7 +720,9 @@ module work {
         // A rule that fails its own examples is written again (DESIGN.md 4). A contradiction
         // goes to direction assessment; a draft already at direction goes on, marked, and
         // its Ship goes to the person (13.1).
-        if (not(own)) setF(s1, i, z => { ...z, stage: SRuleAssess, ruleTries: z.ruleTries + 1 })
+        if (not(own)) setF(s1, i, z =>
+          if (OPT.ruleLadder and z.ruleTries >= 1) ruleClimb(z)
+          else { ...z, stage: SRuleAssess, ruleTries: 1 })
         else if (contra and f.entry != SDirAssess and f.entry != SPrinciple)
           setF(s1, i, z => { ...z, kind: DDir, level: Direct, stage: SDirAssess, entry: SDirAssess,
                              contradicted: true })
@@ -722,7 +751,9 @@ module work {
           unchangedResubmit: g.unchangedResubmit or (a.flag and f.needRevise) })
         setF(s1, i, z =>
           if (a.flag) { ...z, stage: SAtPerson }
-          else { ...z, rev: z.rev + 1, loops: z.loops + 1, needRevise: false })
+          else if (OPT.loopLadder and z.loops >= 1) loopClimb(z)
+          // (loops 1 and 2 alternate without the ladder: each revision is a new state)
+          else { ...z, rev: z.rev + 1, loops: if (z.loops == 1) 2 else 1, needRevise: false })
     // The pipeline role rechecks a done task against the changed items (flag: it still
     // holds). The recheck judges what the change broke (`broken`), not a defect the person
     // took as it is (DESIGN.md 11). A failed recheck sends the task back to the role and

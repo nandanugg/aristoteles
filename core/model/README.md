@@ -139,7 +139,7 @@ spec:tlc`). Status: sixth review round.
 
 Sizes: two tasks (`CFG.slots`); one host, one persistent role, one pipeline role; maker ids
 from 3 (at most `maxMakers` with `ENV.bounded`; unbounded otherwise); 3 tries; 2 sections per
-task; 1 review-loop revision; 2 rule rewrites; 1 run continue; 3 environment faults; 3 acts in
+task; no cap on review-loop revisions or rule rewrites (the ladder, DESIGN.md 13.2); 1 run continue; 3 environment faults; 3 acts in
 flight; 6 person acts.
 
 ## Options (`CFG`; README of `cfgs` in workenv.qnt)
@@ -149,6 +149,7 @@ flight; 6 person acts.
 | crossTest | DESIGN.md 13.1: rule assessment runs a new rule's test command on the other rules' examples; a rule that contradicts another does not ship. A reference-only rule has no test command: it cannot be cross-tested | on | on |
 | raiseLevel | DESIGN.md 13.2, per task and per item. Per task (`Task.floor`): a split part's next evaluation is at least standard; after a change of the task's own raise, at least direction (after a direction change, principle); the store refuses an evaluation below the floor (a role draft, Fit, is off the ladder). Per item: a draft that changes an item already fixed at its level goes one level up | on | on |
 | ladderRoute | DESIGN.md 13.2: a draft entered at direction or principle (a raise up the ladder, a contradiction) goes to the review loop and the person, whatever items its content names | on | on |
+| ruleLadder, loopLadder | DESIGN.md 13.2: a rule failing its own examples again, a draft the review loop sends back again, climbs one level (no caps on agents) | on | on |
 | strictScope | DESIGN.md 13: a split part owns one section less; a one-section task cannot be split (the store refuses it) | on | on |
 | recheckBasis | a recheck names the items and versions it judged; the store refuses it if they moved | off | on |
 | slots | the tasks of the top (`Set(0, 1)`; `tlcCalm` uses one) | 0, 1 | 0, 1 |
@@ -378,8 +379,12 @@ One per action and per fault; the five witness modules together reach each in > 
   working task; `Fail` only while tries remain and `RaiseTries` only when they are used up;
   `Accept` only at the person; `Reject` only of a result in review or done; `EndProject` only
   once the host returned the top and no recheck is pending.
-- Rule rewrites past `maxRuleTries` must take the reference form (DESIGN.md has no bound). A
-  reference-only rule cannot be cross-tested, so a contradiction can still ship through it.
+- DESIGN.md 13.2: no caps on agents. A rule that fails its own examples is written again
+  once; a second failure climbs (`ruleLadder`): standard assessment, then direction, then
+  principle, then the person (`Fix.climb`). A draft the review loop sends back is revised
+  once; a second send-back climbs one level from its entry (`loopLadder`; a role draft goes to
+  the person). A reference-only rule cannot be cross-tested, so a contradiction can still ship
+  through it.
 - The person's "take as is" (`Decide`) is offered at the person instead of the draft
   (DESIGN.md 11: "any person's done"); there are no budgets, so no other path reaches it.
 - The truth of a contradiction is the environment's choice (`WriteRule` `flag3`, a ghost the
@@ -768,10 +773,13 @@ CoreChangesStop):
 | coreNoRaise (raiseLevel off) | CoreChangesStop | breaks | 236,468 | 225 s |
 | coreNoCross (crossTest and raiseLevel off, every rule a test command) | CoreChangesStop | breaks | 37,930 | 66 s |
 | coreNoSplit (strictScope and raiseLevel off) | CoreChangesStop | breaks | 46 | 43 s |
-| coreNoCaps (the model's caps on loops forgotten) | CoreProgress | breaks | 241 | 44 s |
+| coreLoops (one task, a direction or standard cause, rules that fail their examples, the ladder of 13.2, the person's send-backs up to 3) | 13 invariants, LIVE | holds | LOOPS_N | LOOPS_T |
+| coreNoRuleLadder (a rule failing again is written again, for ever) | CoreProgress | breaks | NRL_N | NRL_T |
+| coreNoLoopLadder (the review loop may send back for ever) | CoreProgress | breaks | NLL_N | NLL_T |
+| corePersonUnbounded (the person's acts and send-backs unbounded) | CoreProgress | breaks: the run depends on the person, as expected | PU_N | PU_T |
 
-Bounds: tasks 1 or 2, 2 sections, 2 tries, 1 review-loop revision, 1 rule rewrite, the
-person 0 to 2 acts, 0 or 1 mistake, 0 or 1 process end. Not proven by TLC (the simulator
+Bounds: tasks 1 or 2, 2 sections, 2 tries, no cap on agents (13.2), the person 0 to 2
+acts (other than send-backs; at most 3 send-backs per draft: P), 0 or 1 mistake, 0 or 1 process end. Not proven by TLC (the simulator
 only, `bun run spec`): two tasks with every cause and the person's acts (coreAll); more than
 one process end; the person's direction edit and run continue.
 
@@ -787,13 +795,12 @@ tasks' rules); no cross test and no level raise with every rule a test command; 
 limit (a split part splits again). With every rule a test command, the cross test alone ends
 the ping-pong (coreCrossOnly holds).
 
-R6-6, not proven, a finding for Nanda: two loops end only by a bound of the model, not by a
-rule of DESIGN.md: the review loop of a draft (the pipeline role may revise it any number of
-times; `maxLoops`) and rule rewrites when a test command fails its own examples
-(`maxRuleTries`, then a reference). Without the caps the run need not end (coreNoCaps breaks
-CoreProgress). In the proof they are under A (an honest pipeline role hands a draft to the
-person after a bounded number of revisions, and falls back to a reference after a bounded
-number of failed tests); the design should state these endings as rules.
+DESIGN.md 13.2 (Nanda's ruling on R6-6): the model's caps on review-loop revisions and rule
+rewrites are gone. A second failure at the same step climbs the ladder; four levels bound
+every agent loop. One assumption about the person is added, P in contract.qnt
+(`PERSON_SEND_BACKS` = 3): the person sends one draft back at most 3 times. Past it the run
+still waits only on the person (G4 shows it), not a stall of the system: corePersonUnbounded
+shows that without P the run depends on the person.
 
 ### How to run
 
