@@ -1,91 +1,108 @@
 // The store model (plan/model/DESIGN.md 7 and 14): G3 of contract.qnt. An act takes effect
-// only if it is fresh, so every act that takes effect is applied once, atomically, to the
-// state it was built on. Small on purpose, for TLC (safety only; every reachable state).
+// only if it is fresh: every act that takes effect is applied to the state it was built on
+// (no lost update, no second copy), by a token of the actor's current process, from the
+// current page build. Small on purpose, for TLC (safety only; every reachable state).
 // The protocol is abstracted to items with versions: any act's effect is "write these
-// items" (an over-approximation of every act kind). An ADVERSARY sends any act: built on any
-// view (any versions, seen or not), with any token epoch up to the current one, any id (so
-// twice, or a copy that arrives late), from an old page build, in any order. The page is
-// one more stale viewer: the person's accept is built on the page's copy of the store.
-// The store's checks (work.qnt accept): basis (the versions of what the act read are the
-// current ones; for a draft this is the compare-and-set of rebase), recheckBasis (the
-// versions a recheck judged did not move), dedup (an act id is taken once), epochs (a token
-// of an older epoch is refused), build (an act of an old page build is refused),
-// acceptCheck (an accept is taken only while the draft waits for the person).
-// Left out: what an act means (core.qnt and work.qnt), liveness (the page's: browser.qnt).
+// items" (an over-approximation of every act kind). Senders are honest but slow: an act is
+// built on a SNAPSHOT of the store (any versions up to the current ones: every old view and
+// more), names its basis from it (the versions of what it read), and the network may
+// deliver it late, out of order, twice (a copy is the same act again, built on the same
+// snapshot). The page is one more stale viewer: the person's accept is built on the page's
+// copy. A process whose actor was revived still runs and sends (its token has the old epoch).
+// The property is semantic (ghosts the store never reads): an act that takes effect was
+// built on a snapshot equal to the store on every item it reads or writes; it was sent by
+// the actor's current process; it came from the current page build; an accept is of a
+// draft that waits for the person.
+// The checks (work.qnt accept): basis (the versions an act read are the current ones: for a
+// draft the compare-and-set of rebase), recheckBasis (the versions a recheck judged did not
+// move), epochs, build, acceptCheck. G3 rests on one fact of the protocol, stated in the
+// contract: every act reads what it writes (its basis or `legal` covers the items it
+// changes; README "The small models" maps work.qnt's acts). The model's acts keep it; the
+// mutant storeBlind drops it and G3 breaks.
 module store {
   import contract.* from "./contract"
-  const S: { basis: bool, recheckBasis: bool, dedup: bool, epochs: bool, build: bool,
-             acceptCheck: bool }
+  const S: { basis: bool, recheckBasis: bool, epochs: bool, build: bool, acceptCheck: bool,
+             readsWrites: bool }
   pure val ITEMS = Set(0, 1)     // item 1 holds the draft the person may accept
-  pure val IDS = Set(0, 1, 2)
   pure val MAXV = 2
   pure val VIEWS: Set[int -> int] =
     tuples(0.to(MAXV), 0.to(MAXV)).map(p => Map(0 -> p._1, 1 -> p._2))
   type Kind = AgentAct | Recheck | PersonAccept
-  // reads: the items the act was built on (a recheck: the items it judged); basis: their
-  // versions as the sender saw them; writes: the items it changes.
-  type Act = { kind: Kind, reads: Set[int], basis: int -> int, writes: Set[int], id: int,
-               ep: int, oldBuild: bool }
-  // ver, atPerson (the draft waits for the person), ep (the agent's current epoch), done
-  // (the act ids taken), page (the person's copy and whether its build is old), bad (ghost:
-  // an act that took effect broke G3).
-  type St = { ver: int -> int, atPerson: bool, ep: int, done: Set[int],
+  // reads: what the act was built on (a recheck: what it judged); basis: their versions as
+  // named in the act; writes: what it changes; ep: its token's epoch; oldBuild: from an old
+  // page build (an old build names no basis: work.qnt basisOk). Ghosts: snap, the store the
+  // sender saw; gen, the sender process's generation.
+  type Act = { kind: Kind, reads: Set[int], basis: int -> int, writes: Set[int], ep: int,
+               oldBuild: bool, snap: int -> int, gen: int }
+  // ep: the agent's current epoch (a revive raises it); page: the person's copy and whether
+  // its build is old; bad: ghost, an act that took effect was not fresh.
+  type St = { ver: int -> int, atPerson: bool, ep: int,
               page: { ver: int -> int, atPerson: bool, old: bool }, bad: bool }
   var st: St
 
   action init = all {
-    st' = { ver: Map(0 -> 0, 1 -> 0), atPerson: false, ep: 0, done: Set(),
+    st' = { ver: Map(0 -> 0, 1 -> 0), atPerson: false, ep: 0,
             page: { ver: Map(0 -> 0, 1 -> 0), atPerson: false, old: false }, bad: false },
   }
 
-  // What the store knows of an act at its append (contract.qnt Fresh).
+  // The facts the store can read of an act at its append (contract.qnt Fresh), read
+  // through the act's own fields. No act carries an id: a second copy is refused because
+  // what it read has moved (work.qnt has no act ids either).
+  def named(a: Act): bool = a.reads.forall(x => a.basis.get(x) == st.ver.get(x))
   def facts(a: Act): Fresh = {
-    basisCurrent: a.kind == Recheck or a.reads.forall(x => a.basis.get(x) == st.ver.get(x)),
-    judgedCurrent: a.kind != Recheck or a.reads.forall(x => a.basis.get(x) == st.ver.get(x)),
-    firstTime: not(st.done.contains(a.id)),
+    basisCurrent: a.kind == Recheck or a.oldBuild or named(a),
+    judgedCurrent: a.kind != Recheck or named(a),
+    firstTime: true,
     currentEpoch: a.kind == PersonAccept or a.ep == st.ep,
     currentBuild: not(a.oldBuild),
     waitsIfAccept: a.kind != PersonAccept or st.atPerson,
   }
-  // The store's check, each part behind its option.
   def accepts(a: Act): bool =
     val f = facts(a)
     (not(S.basis) or f.basisCurrent) and (not(S.recheckBasis) or f.judgedCurrent)
-      and (not(S.dedup) or f.firstTime) and (not(S.epochs) or f.currentEpoch)
-      and (not(S.build) or f.currentBuild) and (not(S.acceptCheck) or f.waitsIfAccept)
+      and (not(S.epochs) or f.currentEpoch) and (not(S.build) or f.currentBuild)
+      and (not(S.acceptCheck) or f.waitsIfAccept)
+  // The truth (ghosts): the act was built on the current store for all it touches, by the
+  // current process, from the current build, and an accept is of the draft that waits.
+  def freshTruth(a: Act): bool =
+    a.reads.union(a.writes).forall(x => a.snap.get(x) == st.ver.get(x))
+      and (a.kind == PersonAccept or a.gen == st.ep) and not(a.oldBuild)
+      and (a.kind != PersonAccept or st.atPerson)
   // Versions stop at MAXV (a bound of the model: an act that would pass it is not sent).
   def inBound(a: Act): bool = a.writes.forall(x => st.ver.get(x) < MAXV)
   action arrives(a: Act): bool = all {
     inBound(a),
     if (accepts(a))
       st' = { ...st, ver: ITEMS.mapBy(x => st.ver.get(x) + if (a.writes.contains(x)) 1 else 0),
-              done: st.done.union(Set(a.id)),
               atPerson: if (a.kind == PersonAccept) false else st.atPerson,
-              bad: st.bad or not(G3(facts(a))) }
+              bad: st.bad or not(freshTruth(a)) }
     else st' = st,
   }
 
-  // ---- the adversary: any agent act or recheck, on any view, any id, any epoch
+  // ---- senders: an agent act or a recheck, built on any old view, by the current or an
+  // old process (its token carries its own epoch), delivered at any time, any number of
+  // times. It reads what it writes (readsWrites; off: a blind write is possible).
+  def older(v: int -> int): bool = ITEMS.forall(x => v.get(x) <= st.ver.get(x))
   action agentSends = {
     nondet k = Set(AgentAct, Recheck).oneOf()
-    nondet reads = ITEMS.powerset().oneOf()
-    nondet basis = VIEWS.oneOf()
+    nondet snap = VIEWS.filter(v => older(v)).oneOf()
     nondet writes = (if (k == Recheck) Set(Set()) else ITEMS.powerset().exclude(Set(Set())))
       .oneOf()
-    nondet id = IDS.oneOf()
-    nondet ep = 0.to(st.ep).oneOf()
-    arrives({ kind: k, reads: reads, basis: basis, writes: writes, id: id, ep: ep,
-             oldBuild: false })
+    nondet extra = ITEMS.powerset().oneOf()
+    val reads = if (S.readsWrites) writes.union(extra) else extra
+    nondet gen = 0.to(st.ep).oneOf()
+    arrives({ kind: k, reads: reads, basis: snap, writes: writes, ep: gen, oldBuild: false,
+              snap: snap, gen: gen })
   }
-  // The person accepts what the page shows: built on the page's copy, from its build.
+  // The person accepts what the page shows: built on the page's copy (the draft, item 1,
+  // and what it changes, item 0), from the page's build; any number of times.
   action personAccepts = all {
     st.page.atPerson,
-    nondet id = IDS.oneOf()
-    arrives({ kind: PersonAccept, reads: Set(1), basis: st.page.ver, writes: Set(0), id: id,
-             ep: 0, oldBuild: st.page.old }),
+    arrives({ kind: PersonAccept, reads: ITEMS, basis: st.page.ver, writes: Set(0), ep: 0,
+              oldBuild: st.page.old, snap: st.page.ver, gen: 0 }),
   }
   // ---- the rest of the protocol, abstracted: a draft goes to the person or back (its
-  // content changes), the agent is revived (a new epoch).
+  // content changes), the agent is revived (a new epoch; the old process may still send).
   action draftMoves = all {
     st.ver.get(1) < MAXV,
     st' = { ...st, atPerson: not(st.atPerson), ver: st.ver.set(1, st.ver.get(1) + 1) },
@@ -101,16 +118,16 @@ module store {
   action step = any {
     agentSends, personAccepts, draftMoves, revived, pageRefreshes, newBuild, pageReloads,
   }
-  // G3: every act that took effect was fresh.
+  // G3: every act that took effect was fresh (the truth, not the store's check).
   val G3Holds: bool = not(st.bad)
 }
 
 module storeCfgs {
-  pure val FIXED_S = { basis: true, recheckBasis: true, dedup: true, epochs: true, build: true,
-                       acceptCheck: true }
+  pure val FIXED_S = { basis: true, recheckBasis: true, epochs: true, build: true,
+                       acceptCheck: true, readsWrites: true }
 }
-// ---- instances (tlc.sh keeps only the one it checks). The design, and one check off each:
-// G3Holds must break.
+// ---- instances (tlc.sh keeps only the one it checks). The design, and one check off
+// each: G3Holds must break, unless another check covers it (README).
 module storeFixed {
   import storeCfgs.*
   import store(S = FIXED_S).* from "./store"
@@ -123,10 +140,6 @@ module storeNoRecheckBasis {
   import storeCfgs.*
   import store(S = { ...FIXED_S, recheckBasis: false }).* from "./store"
 }
-module storeNoDedup {
-  import storeCfgs.*
-  import store(S = { ...FIXED_S, dedup: false }).* from "./store"
-}
 module storeNoEpochs {
   import storeCfgs.*
   import store(S = { ...FIXED_S, epochs: false }).* from "./store"
@@ -138,4 +151,8 @@ module storeNoBuild {
 module storeNoAcceptCheck {
   import storeCfgs.*
   import store(S = { ...FIXED_S, acceptCheck: false }).* from "./store"
+}
+module storeBlind {
+  import storeCfgs.*
+  import store(S = { ...FIXED_S, readsWrites: false }).* from "./store"
 }

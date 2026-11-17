@@ -66,14 +66,15 @@ terminals.qnt termNoIdleSeen breaks - G1All
 store.qnt storeFixed holds G3Holds -
 store.qnt storeNoBasis breaks G3Holds -
 store.qnt storeNoRecheckBasis breaks G3Holds -
-store.qnt storeNoDedup breaks G3Holds -
 store.qnt storeNoEpochs breaks G3Holds -
 store.qnt storeNoBuild breaks G3Holds -
-store.qnt storeNoAcceptCheck breaks G3Holds -
+store.qnt storeNoAcceptCheck holds G3Holds -
+store.qnt storeBlind breaks G3Holds -
 browser.qnt browserFixed holds DashAfterRefresh G4All
 browser.qnt browserNoReconnect breaks - G4All
 browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All
+browser.qnt browserNoPoll breaks - G4All
 core.qnt coreOne holds $SAFE $LIVE
 core.qnt coreTwo holds $SAFE $LIVE
 core.qnt coreTwo breaks - CoreProgressNoPipe

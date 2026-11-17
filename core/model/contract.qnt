@@ -21,7 +21,10 @@ module contract {
   // a recheck whose judged versions moved, a duplicate, an old epoch's token, an act from an
   // old page build, or an accept of a draft that does not wait for the person, is refused.
   // So every act that takes effect is applied once, atomically, to the state it was built
-  // on, and the protocol may treat acts as atomic and current.
+  // on, and the protocol may treat acts as atomic and current. It rests on one fact of the
+  // protocol: an act's content that was built from a view is covered by its basis or by
+  // `legal` (it reads what it writes); the rest of its effect is computed by the store at
+  // the append (README "The small models" maps work.qnt's acts).
   type Fresh = { basisCurrent: bool, judgedCurrent: bool, firstTime: bool,
                  currentEpoch: bool, currentBuild: bool, waitsIfAccept: bool }
   pure def G3(f: Fresh): bool =
@@ -32,5 +35,6 @@ module contract {
   // every act the person owes is, in the end, shown on the person's page (or no longer
   // owed). The same form as G1, for the person's channel: websocket drops, page server
   // restarts, an old page build, a background tab; the person is never assumed to act.
+  // "Shown" while a page is open: with no page open the person is not told by this channel.
   temporal G4(owes: bool, shown: bool): bool = always(eventually(not(owes) or shown))
 }
