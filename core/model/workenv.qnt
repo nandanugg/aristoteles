@@ -1144,6 +1144,14 @@ module apaHost {
   import workenv(CFG = { ...FIXED, slots: Set(0) }, ENV = { ...HONEST, byzHost: true })
     .* from "./workenv"
 }
+// tlcTiny cut further, for TLC's liveness check: one try, one act in flight per sender,
+// markers age to 2.
+module tlcMini {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0), silentSteps: 2, maxTries: 1 },
+    ENV = { ...CALM, causes: Set(0), maxNet: 1, bounded: true, maxPerson: 0, maxProcs: 14,
+            maxVer: 12, maxStep: 40 }).* from "./workenv"
+}
 // Sanity for TLC: Progress must fail in these (tlcTiny with one check off, one tmux fault).
 module tlcNoList {
   import cfgs.*
