@@ -139,6 +139,7 @@ breaksW mutAccept NoRejectedDraftInEffect 0x1a10971dd24e49e2 1000 120
 breaksW mutBuild NoUnseenReject 0xf5cd2516e467a41f 3000 200
 breaksW mutCrash NoSplitBrain 0x55338bf96b4df1aa 1000 120
 breaksW mutCrash RevisionHasContext 0x7ba6f3072a94bf96 1000 120
+breaksW mutCrashHi RevisionHasContext 0xc799eb929dfeaafc 3000 250
 breaksW mutDup NoReviewOfOtherResult 0x8f23f3490192d1a0 3000 120
 breaksW mutDup NoStalePipelineAct 0xa1506874ac5d6a1b 1000 120
 breaksW mutDup NoStaleReport 0xb0e910ae6d3c982d 3000 120

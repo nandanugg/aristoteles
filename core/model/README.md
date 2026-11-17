@@ -290,7 +290,7 @@ Tier 1, safety under Byzantine agents and faults:
 | NoPassOfBrokenResult | guard (passTests) | a pass of a result a test-command rule catches | mutRole (passTests) |
 | NoPassOfBadResult | content | a pass (or a passed recheck) of a bad result | mutRole, mutRecheck, noRecheckBasis (recheckBasis; start 7); breaks in fixedRole (and in principle fixedPipe; not seen there in 1000 runs) by design: no store check judges quality |
 | NoShallowEvaluation | content | an evaluation at a level that cannot remove the real cause | mutPipeByz; breaks in fixedPipe and convFixed (misjudge) by design: no store check knows the cause |
-| RevisionHasContext | content | a revision worked by a maker that lost its context | mutCrash (fullBrief; start 9); mutCrashHi from a fresh start: not seen in 3000 runs |
+| RevisionHasContext | content | a revision worked by a maker that lost its context | mutCrash (fullBrief; start 9); mutCrashHi from a fresh start (3000 runs of 250 steps) |
 | NoMergedInput | content | a typed prompt merged with the person's typing was read | mutTmux (promptArg) |
 | DoneIsCurrent | content | a done task with nothing left to recheck is under an old version of an item that applies to it | noDecideRecheck (decideRecheck, DESIGN.md 11) |
 | NoDoneBrokenAtEnd | content | the project ended with a done task whose work a change broke (`hits`) | mutRecheck (a lying recheck) |
@@ -433,6 +433,26 @@ One per action and per fault; the five witness modules together reach each in > 
   measure the staleness window, they are not safety goals. Every act the page sends is still
   checked by the store (NoUnseenReject, NoUnseenAccept, NoAcceptNotWaiting).
 - No text, no timing, no store, page or CLI as code.
+
+## Results (stress phase, 2026-11-17, arch-temp)
+
+Run with `OUT=~/stress/run1 JOBS=12 sh stress.sh` at 3f26b07 (one thread per quint process),
+about 40 minutes.
+
+- Holds, with the coverage gate (every key witness reached), 3000 random runs each: fixedHonest,
+  fixedMaker, fixedHost, fixedCalm, fixedMakerTake, fixedHostTake (only their two take-as-is
+  witnesses gated), fixedRole (without NoPassOfBadResult, NoDoneBrokenAtEnd), fixedPipe
+  (without NoShallowEvaluation, NoPassOfBadResult, NoDoneBrokenAtEnd), at 300 steps; convFixed
+  (without NoShallowEvaluation) at 600 steps, wNearBound reached. 25 to 40 minutes each.
+- NotAtCap holds in tlcCalm and tlcCrash, 3000 runs of 300 steps.
+- Holds checks named as mutants in the review list: convNoCross keeps Converges and
+  NoAgentChangeAtTop (1000 runs of 600 steps), as the Properties section says.
+- Seeds: a new seed for each of the 47 `--check` lines, and one more, mutCrashHi
+  RevisionHasContext (now in spec.sh). Not seen: mutPage NoUnseenReject (1000x120; mutBuild
+  breaks it), fixedPipe NoPassOfBadResult (1000x120; fixedRole breaks it), convNoScope
+  Converges (1000x600; its spec.sh line was dropped before).
+- The witness sweep: all 84 witnesses reached in at least one witness module (1000 runs of 200
+  steps each).
 
 ## The check machine (arch-temp)
 

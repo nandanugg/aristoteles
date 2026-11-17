@@ -6,7 +6,7 @@
 #    the seed reproduces); it prints the line for spec.sh, or "not seen".
 # 3. The witness sweep: every witness over the witness modules; it prints the ones never
 #    reached.
-# Runs up to $JOBS quint processes at once.
+# Runs up to $JOBS quint processes at once, one thread each (JOBS at most the cores).
 set -u
 cd "$(dirname "$0")" || exit 1
 Q=../../node_modules/.bin/quint
@@ -26,7 +26,7 @@ holds() {
     case " \$skip " in *" \$f "*) ;; *) printf '%s ' "\$f" ;; esac; done)
   wit=\$(witnessesFor "\$inv" "\$ex")
   r=\$(\$Q run workenv.qnt --main="\$m" --invariants \$inv --witnesses \$wit --max-samples=3000 \\
-    --max-steps=\${4:-300} --verbosity=1 --out-itf="\$OUT/holds-\$m.itf.json" 2>&1)
+    --max-steps=\${4:-300} --n-threads=1 --verbosity=1 --out-itf="\$OUT/holds-\$m.itf.json" 2>&1)
   zero=\$(echo "\$r" | grep -E 'witnessed in 0 trace' | awk '{print \$1}' | tr '\n' ' ')
   echo "holds \$m \$(echo "\$r" | grep -E '^\[|❌' | tr '\n' ' ') never reached: \$zero"
 }
@@ -35,7 +35,7 @@ keys() {
   m=\$1; inv=\$(for f in Sane EveryObligationToldOnce ToldIsAllowed SomethingOwed \$FLAGS; do
     printf '%s ' "\$f"; done)
   r=\$(\$Q run workenv.qnt --main="\$m" --invariants \$inv --witnesses \$2 --max-samples=3000 \\
-    --max-steps=300 --verbosity=1 2>&1)
+    --max-steps=300 --n-threads=1 --verbosity=1 2>&1)
   zero=\$(echo "\$r" | grep -E 'witnessed in 0 trace' | awk '{print \$1}' | tr '\n' ' ')
   echo "holds \$m \$(echo "\$r" | grep -E '^\[|❌' | tr '\n' ' ') never reached: \$zero"
 }
@@ -51,7 +51,7 @@ sweep() {
   m=\$1
   w=\$(grep -o '^  val w[A-Za-z]*' workenv.qnt | awk '{print \$2}' | tr '\n' ' ')
   \$Q run workenv.qnt --main="\$m" --witnesses \$w --max-samples=1000 --max-steps=200 \\
-    --verbosity=1 2>&1 | grep 'witnessed in' | sed "s/^/sweep \$m /" > "\$OUT/sweep-\$m.txt"
+    --n-threads=1 --verbosity=1 2>&1 | grep 'witnessed in' | sed "s/^/sweep \$m /" > "\$OUT/sweep-\$m.txt"
 }
 EOF2
 
@@ -129,7 +129,8 @@ sweep witnessByz
 EOF2
 
 # -d: one job per line, quotes kept for the job's own shell (as in spec.sh).
-xargs -d '\n' -P "$JOBS" -I{} sh -c ". $OUT/fns.sh; {}" < "$OUT/jobs" | sort > "$OUT/result.txt"
+xargs -d '\n' -P "$JOBS" -I{} sh -c ". $OUT/fns.sh; {}" < "$OUT/jobs" \
+  | tee "$OUT/raw.txt" | sort > "$OUT/result.txt"
 grep -v '^sweep' "$OUT/result.txt"
 # The witness sweep: the witnesses never reached in any witness module.
 # Each sweep writes its own file (parallel jobs' long outputs interleave on one pipe).

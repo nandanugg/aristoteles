@@ -1128,6 +1128,35 @@ module tlcConv {
     ENV = { ...CALM, causes: Set(1, 5), misjudge: true, bounded: true, maxPerson: 0,
             maxProcs: 14, maxVer: 12, maxStep: 40 }).* from "./workenv"
 }
+// For Apalache (README "Results"): fixedHonest, fixedMaker, fixedHost cut down to one task
+// from start 0, for a bounded check of the content properties.
+module apaHonest {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0) }, ENV = HONEST).* from "./workenv"
+}
+module apaMaker {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0) }, ENV = { ...HONEST, byzMaker: true })
+    .* from "./workenv"
+}
+module apaHost {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0) }, ENV = { ...HONEST, byzHost: true })
+    .* from "./workenv"
+}
+// Sanity for TLC: Progress must fail in these (tlcTiny with one check off, one tmux fault).
+module tlcNoList {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0), listOnAttach: false },
+    ENV = { ...CALM, tmuxFaults: true, maxFaults: 1, causes: Set(0), bounded: true,
+            maxPerson: 0, maxProcs: 14, maxVer: 12, maxStep: 40 }).* from "./workenv"
+}
+module tlcMutTmux {
+  import cfgs.*
+  import workenv(CFG = { ...DESIGN, slots: Set(0), promptArg: false },
+    ENV = { ...CALM, tmuxFaults: true, maxFaults: 1, causes: Set(0), bounded: true,
+            maxPerson: 0, maxProcs: 14, maxVer: 12, maxStep: 40 }).* from "./workenv"
+}
 // Convergence (DESIGN.md 13). The pipeline role may misjudge the level; rules may
 // contradict. NoRefixAtSameLevel (a guard of raiseLevel) and Converges (the bound derived
 // from the config) hold in convFixed; each mutant turns one rule off.
