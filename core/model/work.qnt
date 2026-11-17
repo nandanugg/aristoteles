@@ -304,7 +304,9 @@ module work {
     | LoopReview(_) => a.who == PIPE
     | RecheckDone(_) => a.who == PIPE
     | RunRule(_) => a.who == HARNESS
-    | Revive(_) => a.who == HARNESS
+    // The host's pane is in the person's own tmux: the person starts it again (the engine
+    // records the end and shows it; terminals.qnt). The engine revives the roles.
+    | Revive(k) => a.who == (if (k == HOST) PERSON else HARNESS)
     | Exit(_) => a.who == HARNESS
   }
   def epochOk(s: Store, a: Act): bool = not(OPT.epochs) or a.who < 0 or a.ep >= epOf(s, a.who)
@@ -812,7 +814,7 @@ module work {
       val drafts = FIXIDS.filter(i => fx(s, i).stage == SAtPerson)
       val decide = SLOTS.filter(i => legal(s, { ...NOACT, what: Decide(i) })).map(i => Decide(i))
       end.union(drafts.map(i => Accept(i))).union(drafts.map(i => SendBack(i)))
-        .union(decide)
+        .union(decide).union(if (s.down.contains(HOST)) Set(Revive(HOST)) else Set())
     else if (k == HOST)
       if (not(hostFinds(s))) Set() else
       val sends = SLOTS.filter(i => tk(s, i).st == Unsent).map(i => SendTask(i))
@@ -829,7 +831,7 @@ module work {
         acc.union(pipeDo(fx(s, i).stage, i))), (acc, i) =>
       acc.union(pipeDo(fx(s, i).stage, i))
         .union(if (recheckDue(s, i)) Set(RecheckDone(i)) else Set()))
-    else if (k == HARNESS) PERSISTENT.filter(p => s.down.contains(p)).map(p => Revive(p))
+    else if (k == HARNESS) Set(ROLE, PIPE).filter(p => s.down.contains(p)).map(p => Revive(p))
       .union(SLOTS.filter(i => legal(s, { ...NOACT, what: RunRule(i) })).map(i => RunRule(i)))
     else makerDos(s, k)
   pure val NOACT: Act = { who: HARNESS, ep: 0, what: EndProject, seen: -1, seenDir: 0,
@@ -895,6 +897,7 @@ module work {
   }
   def isPersonOb(ob: Ob): bool = match ob {
     | EndOb => true
+    | ReviveOb(p) => p == HOST
     | DraftOb(_) => true
     | DecideOb(_) => true
     | _ => false

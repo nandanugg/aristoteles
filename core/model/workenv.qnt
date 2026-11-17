@@ -172,6 +172,7 @@ module workenv {
       .fold(Set(), (a2, i) => a2.union(Set(Accept(i), SendBack(i))))
     end.union(per).union(edit).union(acc)
       .union(if (v.session < 1) Set(MoveHost) else Set())
+      .union(if (v.down.contains(HOST)) Set(Revive(HOST)) else Set())
   def allWhats: Set[What] =
     val perSlot = SLOTS.fold(Set(), (acc, i) => acc.union(Set(Reject(i), Accept(i), SendBack(i),
       Decide(i), SendTask(i), AssignDo(i), Review(i), Evaluate(i), Advance(i), WriteRule(i),
@@ -415,11 +416,12 @@ module workenv {
   // end of a pane it sees (the processes of the current server); the hook inside the role's
   // process reports a maker's end; the host's pane only with hostWatched.
   def harnessAct(x: What): Act = mkAct(HARNESS, 0, x, cur(s, x), vsum(s), false, false, true, -1)
-  // The watcher revives into a reachable server; the harness runs a changed rule's test.
+  // The watcher revives a role into a reachable server (the host is the person's: work.qnt
+  // Revive); the harness runs a changed rule's test.
   action harnessRevives: bool = all {
     sent(HARNESS) < ENV.maxNet,
     nondet x = dos(s, HARNESS).oneOf()
-    val ok = match x { | Revive(k) => k == HOST or reachable(tm) | _ => true }
+    val ok = match x { | Revive(_) => reachable(tm) | _ => true }
     all { ok, not(net.exists(a => a.what == x)),
           commit(s, net.union(Set(harnessAct(x))), procs, tm, page, faults, merged,
                  Posted(harnessAct(x))) },

@@ -208,6 +208,16 @@ module core {
   temporal AgentChangesStop = eventually(always(chg)) or eventually(always(not(chg)))
   temporal CoreProgress = Assumed implies Progress
   temporal CoreChangesStop = Assumed implies AgentChangesStop
+  // Sanity (not vacuous): without the pipeline role's part of the assumption, a run can
+  // stop short of Final. TLC must break this.
+  temporal AssumedNoPipe = all {
+    G1(owes(HOST), mustChange(agentStep(HOST), vars), false),
+    G1(owes(ROLE), mustChange(agentStep(ROLE), vars), false),
+    G1(owes(HARNESS), mustChange(agentStep(HARNESS), vars), false),
+    G1(owes(3), mustChange(agentStep(3), vars), false),
+    G1(owes(4), mustChange(agentStep(4), vars), false),
+  }
+  temporal CoreProgressNoPipe = AssumedNoPipe implies Progress
 
   // Safety (README.md "Properties"), each one an invariant of TLC.
   val DoneIsClosed: bool = SLOTS.forall(i => tk(s, i).st == Done implies

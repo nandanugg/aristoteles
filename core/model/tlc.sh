@@ -32,7 +32,7 @@ run() {
   [ "$inv" = - ] || set -- "$@" --invariants $(echo "$inv" | tr ',' ' ')
   [ "$temp" = - ] || set -- "$@" --temporal "$temp"
   start=$(date +%s)
-  timeout "${TIMEOUT:-7200}" $Q "$@" > "$log" 2>&1
+  timeout "${TIMEOUT:-7200}" $Q "$@" > "$log" 2>&1 < /dev/null
   secs=$(( $(date +%s) - start ))
   n=$(grep -E 'distinct states found' "$log" | tail -1 | sed 's/.*generated, //; s/ distinct.*//')
   if grep -q '^\[ok\]' "$log"; then got=holds
@@ -55,8 +55,10 @@ terminals.qnt termNoOutbox breaks - G1All
 terminals.qnt termNoOutbox breaks - SendDone
 terminals.qnt termNoHostWatch breaks - G1All
 terminals.qnt termNoEvidence breaks ExactlyOnce -
+terminals.qnt termNoIdleSeen breaks - G1All
 core.qnt coreOne holds $SAFE $LIVE
 core.qnt coreTwo holds $SAFE $LIVE
+core.qnt coreTwo breaks - CoreProgressNoPipe
 core.qnt coreTwoDir holds $SAFE $LIVE
 core.qnt coreCrossOnly holds - CoreChangesStop
 core.qnt coreNoRaise breaks - CoreChangesStop
