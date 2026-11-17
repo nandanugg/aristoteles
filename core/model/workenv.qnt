@@ -34,7 +34,9 @@ module workenv {
   // the change bound: task 0 a split part (one section, a standard cause) and task 1 done
   // after its standard change (2 agent changes; one more is changeBound - 1); 11 a direction
   // draft of task 0 at the person while task 1's standards draft, a reference-only rule that
-  // contradicts task 0's rule (crossTest cannot see it), is about to ship.
+  // contradicts task 0's rule (crossTest cannot see it), is about to ship; 12 both tasks at
+  // the top rung (floor principle): task 0's principle draft, a fighting reference-only rule,
+  // about to ship, task 1 done.
   // liars: the actors (HOST, ROLE, PIPE; 3 for makers) that are honest except for lies: an
   // act with any content, at most maxLies lies, only on the act kinds in lieOn (KIND_OF;
   // empty: any). dups: the network may deliver an act twice. bounded: every counter stops at
@@ -308,6 +310,13 @@ module workenv {
         makers: sN.makers.put(3, { slot: 0, ended: false, claim: true, brief: ZERO, revs: 1 }),
         tasks: sN.tasks.set(0, { ...tk(sN, 0), st: Working, tries: 1, maker: 3, rid: 1,
                                  rBad: false }) }
+    else if (n == 12)
+      val r12 = raisedAt(sN, 0, { ...CLOSED, stage: SDraft, entry: SPrinciple, level: Principle,
+        kind: DDir, form: Ref, truth: true, refOk: true, fights: true,
+        items: Set(IDir, IRule(0)), real: Set(IDir, IRule(0)), step: 1 })
+      { ...r12, tasks: r12.tasks
+          .set(0, { ...tk(r12, 0), floor: Principle })
+          .set(1, { ...tk(r12, 1), st: Done, rid: 0, cause: NoCause, floor: Principle }) }
     else if (n == 11)
       val r11 = raisedAt(sN, 0, { ...CLOSED, stage: SAtPerson, entry: SDirAssess,
         level: Direct, kind: DDir, items: Set(IDir), real: Set(IDir), step: 1 })
@@ -315,7 +324,7 @@ module workenv {
         kind: DDir, form: Ref, truth: true, refOk: true, fights: true,
         items: Set(IRule(1)), real: Set(IRule(1)), step: 1 })
     else if (n == 10)
-      { ...sN, agentChanges: 2, changes: 2, raiseChanges: 2, tasks: sN.tasks
+      { ...sN, agentChanges: 2, changes: 2, tasks: sN.tasks
           .set(0, { ...freshTask(1, CauseAt(Standard)), st: Sent, floor: Standard,
                     sections: 1 })
           .set(1, { ...tk(sN, 1), st: Done, rid: 0, cause: NoCause, floor: Direct }) }
@@ -824,8 +833,9 @@ module workenv {
   val NoRefixAtSameLevel: bool = not(s.g.refix)
   // DESIGN.md 13.2: a draft raised to direction or principle reaches the person.
   val NoEscalationWithoutPerson: bool = not(s.g.escalatedNoPerson)
-  // DESIGN.md 13: the loop of changes ends, through the person too (content: the count).
-  val RaiseChangesBounded: bool = s.raiseChanges <= raiseBound
+  // DESIGN.md 13: past the top rung (a task at principle) the person is the end: every
+  // further change of the task goes through the person.
+  val NoAgentChangeAtTop: bool = not(s.g.topNoPerson)
 
 
   // ==== Tier 3: progress. Fair: each honest actor's process does what it is told; the
@@ -916,6 +926,8 @@ module workenv {
   val wRaisedUp = s.g.raisedUp
   val wTaskFloor = SLOTS.exists(i => depth(tk(s, i).floor) >= 2)
   val wNearBound = s.agentChanges >= changeBound - 1
+  val wTopChange = taken(x => match x {
+    | Accept(i) => i < 2 and tk(s, i).floor == Principle | _ => false })
   val wDecideFought = taken(x => match x {
     | Decide(i) => tk(s, i).pend.contains(IRule(i)) | _ => false })
   val wEscalatedLoop = taken(x => match x {
@@ -1004,7 +1016,7 @@ module cfgs {
   pure val CALM = { ...HONEST, crash: false, tmuxFaults: false, page: false, head: false,
     reject: false, maxFaults: 0, maxPerson: 10, dups: false }
   // Every starting state (START_OF).
-  pure val DEEP = 0.to(11)
+  pure val DEEP = 0.to(12)
   pure val ROLE_ID = 1
   pure val PIPE_ID = 2
   pure val RECHECK_KIND = 6
@@ -1124,7 +1136,7 @@ module beforeMove {
 module noLadderRoute {
   import cfgs.*
   import workenv(CFG = { ...FIXED, ladderRoute: false }, ENV = { ...CALM, liars: Set(PIPE_ID),
-    maxLies: 2, lieOn: Set(4), causes: Set(5), starts: Set(2) }).* from "./workenv"
+    maxLies: 2, lieOn: Set(4), causes: Set(5), starts: Set(2, 12) }).* from "./workenv"
 }
 // One check off on the fixed ones.
 module noDecideRecheck {

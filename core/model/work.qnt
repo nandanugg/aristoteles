@@ -169,6 +169,7 @@ module work {
     noContext: bool, unchangedResubmit: bool, takenUndone: bool, wroteDropped: bool,
     unrechecked: bool, unacceptedChange: bool, acceptNotWaiting: bool, claimByEnded: bool,
     endBroken: bool, refix: bool, fightShipped: bool, raisedUp: bool, escalatedNoPerson: bool,
+    topNoPerson: bool,
     rebaseFired: bool, recheckFired: bool, reassignEnded: bool,
   }
   type Store = {
@@ -176,9 +177,6 @@ module work {
     // fixDepth: per item, the depth of the level of its last fix from a task's raise (-1:
     // none; 1 standard, 2 direction, 3 principle). DESIGN.md 13.2 reads it.
     ver: Item -> int, ruleForm: int -> Form, card: int, changes: int, agentChanges: int,
-    // raiseChanges: changes from a task's raise put in effect, by an agent or the person (not
-    // the person's own edits).
-    raiseChanges: int,
     fixDepth: Item -> int,
     down: Set[int], ep: int -> int, nextMaker: int, g: Ghost,
   }
@@ -195,7 +193,7 @@ module work {
     roleMisjudged: false, passBroken: false, passDefect: false, shallowEval: false,
     staleFix: false, oldEpoch: false, noContext: false, unchangedResubmit: false,
     takenUndone: false, wroteDropped: false, unrechecked: false, unacceptedChange: false, acceptNotWaiting: false, claimByEnded: false, endBroken: false,
-    refix: false, fightShipped: false, raisedUp: false, escalatedNoPerson: false,
+    refix: false, fightShipped: false, raisedUp: false, escalatedNoPerson: false, topNoPerson: false,
     rebaseFired: false,
     recheckFired: false, reassignEnded: false }
   def freshTask(gen: int, c: Cause): Task = { gen: gen, st: Unsent, tries: 0, maker: -1,
@@ -206,7 +204,7 @@ module work {
     top: { hostSession: 0, done: false, ended: false },
     session: 0, tasks: SLOTS.mapBy(i => freshTask(0, causes.get(i))), makers: Map(),
     fixes: FIXIDS.mapBy(i => CLOSED), ver: ZERO, ruleForm: Set(0, 1).mapBy(j => Ref), card: 0,
-    changes: 0, agentChanges: 0, raiseChanges: 0,
+    changes: 0, agentChanges: 0,
     fixDepth: ITEMS.mapBy(x => -1), down: Set(), ep: PERSISTENT.mapBy(k => 0), nextMaker: 3,
     g: NOGHOST,
   }
@@ -449,6 +447,7 @@ module work {
     // its floor).
     val again = refixed(s, i) or (not(free(i)) and fixAt(f) < depth(tk(s, i).floor))
     val s0 = ghost(s, g => { ...g, refix: g.refix or again,
+      topNoPerson: g.topNoPerson or (agent and not(free(i)) and tk(s, i).floor == Principle),
       failedTest: g.failedTest or (rules != Set() and hasMech(f.form) and not(f.truth)),
       noForm: g.noForm or (rules != Set() and f.form == NoForm),
       badRef: g.badRef or (rules != Set() and hasRef(f.form) and not(f.refOk)),
@@ -458,7 +457,6 @@ module work {
     val s1 = resolveCause(counted({ ...s0,
       fixDepth: if (free(i)) s.fixDepth else
         s.fixDepth.keys().mapBy(x => if (c.contains(x)) fixAt(f) else s.fixDepth.get(x)),
-      raiseChanges: s.raiseChanges + if (free(i)) 0 else 1,
       tasks: if (free(i)) s.tasks else s.tasks.setBy(i, z => { ...z,
         floor: if (fixAt(f) >= 2) Principle else if (z.floor == Principle) Principle else Direct }),
       ver: s.ver.keys().mapBy(x => s.ver.get(x) + if (c.contains(x)) 1 else 0),
@@ -874,7 +872,4 @@ module work {
   // direction, which reaches the person; a split is below it). Past it is not a success.
   def changeBound: int = SLOTS.size() * OPT.sections
   def pastBound(s: Store): bool = s.agentChanges > changeBound
-  // Changes from task raises, through the person too: per task the ladder's four rungs
-  // (split parts, standard, direction, principle). Past it: a loop through the person.
-  def raiseBound: int = SLOTS.size() * (OPT.sections + 2)
 }

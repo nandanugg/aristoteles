@@ -37,7 +37,7 @@ FLAGS="NoActByEnded NoReviewOfOtherResult NoPassUnderOtherVersion NoStaleReport
   RevisionHasContext NoUnrevisedResubmit NoUnrecheckedScope NoMergedInput DoneIsCurrent
   NoDoneBrokenAtEnd NoTakenUndone NoWrittenDropped NoClaimByEnded HostBoundToRunSession
   NoAcceptNotWaiting NoUnacceptedEditChange NoRefixAtSameLevel Converges NoEscalationWithoutPerson
-  RaiseChangesBounded"
+  NoAgentChangeAtTop"
 # The coverage gate (keys.sh): each checked property's key witness must be reached, else
 # "no violation" would mean nothing. The holds runs use a fixed seed and one thread, so the
 # gate gives the same answer every time; the broad random runs are in stress.sh.
@@ -74,7 +74,7 @@ holdsAll fixedRole "NoPassOfBadResult NoDoneBrokenAtEnd" "$CALMX RevisionHasCont
 # A Byzantine pipeline role seldom carries an edit or a recheck through.
 holdsAll fixedPipe "NoShallowEvaluation NoPassOfBadResult NoDoneBrokenAtEnd" \
   "$CALMX NoWrittenDropped NoUnacceptedEditChange NoRefixAtSameLevel DoneIsCurrent NoTakenUndone
-  NoPassOfBrokenResult Converges NoEscalationWithoutPerson RaiseChangesBounded"
+  NoPassOfBrokenResult Converges NoEscalationWithoutPerson NoAgentChangeAtTop"
 # The TLC modules stay inside their caps (else TLC would check the caps, not the design).
 for m in tlcCalm tlcCrash; do
   $Q run workenv.qnt --main=$m --invariant=NotAtCap --max-samples=400 --max-steps=300 \
