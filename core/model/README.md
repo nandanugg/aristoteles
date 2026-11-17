@@ -275,7 +275,7 @@ Tier 1, safety under Byzantine agents and faults:
 | NoUnacceptedEditChange | guard | the person's edit put into effect items the person did not write and did not accept | editNever (editBack) |
 | HostBoundToRunSession | guard | the host's assignment of the top is on another session than the run's | beforeMove (rebind, e4e49ff) |
 | NoWrittenDropped | guard (classify) | the person's edit took effect without an item the person wrote | mutPipeByz (classify); true by construction with classify on (the store reads the content) |
-| NoUnseenReject | guard (basis, build) | the person's reject hit a result the page did not show | mutPage (basis); mutBuild (build) |
+| NoUnseenReject | guard (basis, build) | the person's reject hit a result the page did not show | mutBuild (build); mutPage (basis): not seen in 1000 runs |
 | NoUnseenAccept | guard (basis) | the person's accept hit a draft the page did not show | mutPage (basis) |
 | NoLostUpdate | content | a draft took effect built on an older version of an item it changes (`trueBase`) | mutRace (rebase) |
 | NoFailedTestInEffect | guard (harnessTest) | a rule took effect whose test command fails its examples | mutPipeByz (harnessTest) |
@@ -283,9 +283,9 @@ Tier 1, safety under Byzantine agents and faults:
 | NoRoleChangeMisjudged | guard (classify) | a role draft that changes more went back to the card without the host's reassign | mutPipeByz (classify) |
 | NoUnrecheckedScope | guard (classify) | a change missed a task its content touches | mutPipe (classify) |
 | NoPassOfBrokenResult | guard (passTests) | a pass of a result a test-command rule catches | mutRole (passTests) |
-| NoPassOfBadResult | content | a pass (or a passed recheck) of a bad result | mutRole, mutRecheck, noRecheckBasis (recheckBasis); breaks in fixedRole, fixedPipe by design: no store check judges quality |
+| NoPassOfBadResult | content | a pass (or a passed recheck) of a bad result | mutRole, mutRecheck, noRecheckBasis (recheckBasis; start 7); breaks in fixedRole (and in principle fixedPipe; not seen there in 1000 runs) by design: no store check judges quality |
 | NoShallowEvaluation | content | an evaluation at a level that cannot remove the real cause | mutPipeByz; breaks in fixedPipe and convFixed (misjudge) by design: no store check knows the cause |
-| RevisionHasContext | content | a revision worked by a maker that lost its context | mutCrash, mutCrashHi (fullBrief) |
+| RevisionHasContext | content | a revision worked by a maker that lost its context | mutCrash (fullBrief; start 9); mutCrashHi from a fresh start: not seen in 3000 runs |
 | NoMergedInput | content | a typed prompt merged with the person's typing was read | mutTmux (promptArg) |
 | DoneIsCurrent | content | a done task with nothing left to recheck is under an old version of an item that applies to it | noDecideRecheck (decideRecheck, DESIGN.md 11) |
 | NoDoneBrokenAtEnd | content | the project ended with a done task whose work a change broke (`hits`) | mutRecheck (a lying recheck) |
@@ -327,8 +327,9 @@ Convergence (DESIGN.md 13 and 13.1), 600 steps per run:
 - convFixed (crossTest, raiseLevel, strictScope on; a pipeline role that can misjudge the
   level; rules that can contradict): holds.
 - convNoRaise (raiseLevel off): breaks NoRefixAtSameLevel (a misjudged standard fix repeats
-  at the same level).
-- convNeither (crossTest and raiseLevel off): breaks NoRefixAtSameLevel (two rules ping-pong).
+  at the same level) and Converges.
+- convNeither (crossTest and raiseLevel off): breaks NoRefixAtSameLevel (two rules ping-pong)
+  and Converges.
 - convNoCross (crossTest off, raiseLevel on, a person with 40 acts): holds Converges and
   NoAgentChangeAtTop. A contradiction is raised
   to direction and principle, which go to the person: more work for the person, not an
@@ -336,7 +337,8 @@ Convergence (DESIGN.md 13 and 13.1), 600 steps per run:
   environment's choice at the accept (`flag3`); if not, the rule still fights.
 - convNoScope (strictScope off): holds. The split floor (with raiseLevel on, a split part
   cannot be split again; its next fix is a standard or higher) already ends splits; strict scope and the floor overlap.
-- convNoSplitLimits (strictScope and raiseLevel off): breaks Converges (splits never end).
+- convNoSplitLimits (strictScope and raiseLevel off): breaks Converges (splits never end) and
+  NoRefixAtSameLevel.
 
 Tier 3, progress: `FairProgress` and `AgentChangesStop` (temporal, with per-process fairness).
 For TLC; not yet run.
@@ -345,7 +347,9 @@ Holds (no violation, every key witness of keys.sh reached): fixedHonest, fixedMa
 fixedHost, fixedCalm, convFixed (except NoShallowEvaluation), fixedRole (except
 NoPassOfBadResult, NoDoneBrokenAtEnd), fixedPipe (except NoShallowEvaluation,
 NoPassOfBadResult, NoDoneBrokenAtEnd). spec.sh: 400 runs of 300 steps; stress.sh: 3000 runs
-of 300 steps.
+of 300 steps (convFixed 600), on c2b4405 (2026-11-17): every module held, every key witness
+was reached, and the witness sweep reached every witness. tlcCalm and tlcCrash: NotAtCap
+held in 3000 runs of 300 steps.
 
 ## Witnesses
 
