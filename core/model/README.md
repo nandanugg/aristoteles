@@ -765,11 +765,11 @@ CoreChangesStop):
 
 | Module | Checked | Expected | Distinct states | Time |
 |---|---|---|---|---|
-| coreOne (one task, every cause, person 2, one mistake, slips, rejects) | 13 invariants, LIVE | holds | 213,270 | 127 s |
-| coreTwo (two tasks, task 0 a standard cause, rules may contradict, person 1) | 13 invariants, LIVE | holds | 210,501 | 232 s |
-| coreTwo | CoreProgressNoPipe (assumption not vacuous) | breaks | 4,425 | 45 s |
-| coreTwoExit (coreTwo, one process end, person 2) | 13 invariants, LIVE | holds | (running) | |
-| coreTwoExit | CoreProgressNoEngine (the revive is needed) | breaks | (running) | |
+| coreOne (one task, every cause, person 2, one mistake, slips, rejects; no send-back) | 13 invariants, LIVE | holds | 1,465,220 | 2,293 s (a) |
+| coreTwo (two tasks, task 0 a standard cause, rules may contradict, person 1, one send-back) | 13 invariants, LIVE | holds | 992,236 | 2,702 s (a) |
+| coreTwo | CoreProgressNoPipe (assumption not vacuous) | breaks | 3,928 | 55 s (a) |
+| coreTwoExit (coreTwo, one process end, person 1, no send-back) | 13 invariants, LIVE | holds | 2,609,213 | 5,597 s |
+| coreTwoExit | CoreProgressNoEngine (the revive is needed) | breaks | 87,979 | 109 s |
 | coreTwoDir (task 0 a direction cause) | 13 invariants, CoreProgress, CoreChangesStop | holds | 287,004 | 484 s (a) |
 | coreCrossOnly (raiseLevel off, every rule a test command) | CoreChangesStop | holds | 658,413 | 720 s (a) |
 | coreNoRaise (raiseLevel off) | CoreChangesStop | breaks | 236,468 | 225 s |
