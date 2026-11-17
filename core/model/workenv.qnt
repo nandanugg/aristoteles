@@ -178,7 +178,8 @@ module workenv {
         // With raiseLevel the task's floor wins: a level below it is refused, and the floor
         // itself is taken when the cause is below it.
         val floored = CFG.raiseLevel and a.level != Fit
-        val atFloor = floored and a.level == t.floor
+        val atFloor = floored and a.level == t.floor and match t.cause {
+          | CauseAt(c) => c != Fit and depth(c) < depth(t.floor) | NoCause => true }
         or { atCause, atFloor }
           and not(floored and depth(a.level) < depth(t.floor))
           and (a.level != Fit or a.flag == a.flag2)
