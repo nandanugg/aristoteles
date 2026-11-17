@@ -32,7 +32,9 @@ module workenv {
   // standard, is about to ship (the person may take task 0 as is after the change); 9 task 0
   // in revision: its maker (id 3, process 3) holds its claim after one failed review; 10 near
   // the change bound: task 0 a split part (one section, a standard cause) and task 1 done
-  // after its standard change (2 agent changes; one more is changeBound - 1).
+  // after its standard change (2 agent changes; one more is changeBound - 1); 11 a direction
+  // draft of task 0 at the person while task 1's standards draft, a reference-only rule that
+  // contradicts task 0's rule (crossTest cannot see it), is about to ship.
   // liars: the actors (HOST, ROLE, PIPE; 3 for makers) that are honest except for lies: an
   // act with any content, at most maxLies lies, only on the act kinds in lieOn (KIND_OF;
   // empty: any). dups: the network may deliver an act twice. bounded: every counter stops at
@@ -179,8 +181,7 @@ module workenv {
           and not(floored and depth(a.level) < depth(t.floor))
           and (a.level != Fit or a.flag == a.flag2)
     | WriteRule(_) => a.form != NoForm and a.flag2
-    | RunTest(i) => a.flag == (fx(v, i).truth and not(CFG.crossTest and fx(v, i).fights))
-        and a.flag2 == (CFG.crossTest and fx(v, i).fights)
+    | RunTest(i) => a.flag == fx(v, i).truth and a.flag2 == (CFG.crossTest and fx(v, i).fights)
     | Ship(i) => a.real.contains(IDir) == (fx(v, i).entry != SStdAssess) and a.items == a.real
         and fx(v, i).wrote.forall(x => a.real.contains(x))
     | RecheckDone(i) => a.flag == not(tk(v, i).broken)
@@ -307,8 +308,14 @@ module workenv {
         makers: sN.makers.put(3, { slot: 0, ended: false, claim: true, brief: ZERO, revs: 1 }),
         tasks: sN.tasks.set(0, { ...tk(sN, 0), st: Working, tries: 1, maker: 3, rid: 1,
                                  rBad: false }) }
+    else if (n == 11)
+      val r11 = raisedAt(sN, 0, { ...CLOSED, stage: SAtPerson, entry: SDirAssess,
+        level: Direct, kind: DDir, items: Set(IDir), real: Set(IDir), step: 1 })
+      raisedAt(r11, 1, { ...CLOSED, stage: SDraft, entry: SStdAssess, level: Standard,
+        kind: DDir, form: Ref, truth: true, refOk: true, fights: true,
+        items: Set(IRule(1)), real: Set(IRule(1)), step: 1 })
     else if (n == 10)
-      { ...sN, agentChanges: 2, changes: 2, tasks: sN.tasks
+      { ...sN, agentChanges: 2, changes: 2, raiseChanges: 2, tasks: sN.tasks
           .set(0, { ...freshTask(1, CauseAt(Standard)), st: Sent, floor: Standard,
                     sections: 1 })
           .set(1, { ...tk(sN, 1), st: Done, rid: 0, cause: NoCause, floor: Direct }) }
@@ -815,6 +822,8 @@ module workenv {
   val NoRefixAtSameLevel: bool = not(s.g.refix)
   // DESIGN.md 13.2: a draft raised to direction or principle reaches the person.
   val NoEscalationWithoutPerson: bool = not(s.g.escalatedNoPerson)
+  // DESIGN.md 13: the loop of changes ends, through the person too (content: the count).
+  val RaiseChangesBounded: bool = s.raiseChanges <= raiseBound
 
 
   // ==== Tier 3: progress. Fair: each honest actor's process does what it is told; the
@@ -905,6 +914,8 @@ module workenv {
   val wRaisedUp = s.g.raisedUp
   val wTaskFloor = SLOTS.exists(i => depth(tk(s, i).floor) >= 2)
   val wNearBound = s.agentChanges >= changeBound - 1
+  val wDecideFought = taken(x => match x {
+    | Decide(i) => tk(s, i).pend.contains(IRule(i)) | _ => false })
   val wEscalatedLoop = taken(x => match x {
     | Ship(i) => fx(s, i).stage == SLoop
         and (fx(s, i).entry == SDirAssess or fx(s, i).entry == SPrinciple) | _ => false })
@@ -991,7 +1002,7 @@ module cfgs {
   pure val CALM = { ...HONEST, crash: false, tmuxFaults: false, page: false, head: false,
     reject: false, maxFaults: 0, maxPerson: 10, dups: false }
   // Every starting state (START_OF).
-  pure val DEEP = 0.to(10)
+  pure val DEEP = 0.to(11)
   pure val ROLE_ID = 1
   pure val PIPE_ID = 2
   pure val RECHECK_KIND = 6
@@ -1076,7 +1087,8 @@ module convFixed {
 }
 module convNoCross {
   import cfgs.*
-  import workenv(CFG = { ...FIXED, crossTest: false }, ENV = { ...CALM, causes: Set(5) })
+  import workenv(CFG = { ...FIXED, crossTest: false },
+    ENV = { ...CALM, causes: Set(5), maxPerson: 40 })
     .* from "./workenv"
 }
 module convNoRaise {
@@ -1116,7 +1128,7 @@ module noLadderRoute {
 module noDecideRecheck {
   import cfgs.*
   import workenv(CFG = { ...FIXED, decideRecheck: false },
-    ENV = { ...CALM, starts: Set(8) }).* from "./workenv"
+    ENV = { ...CALM, starts: Set(8, 11) }).* from "./workenv"
 }
 module noListOnAttach {
   import cfgs.*

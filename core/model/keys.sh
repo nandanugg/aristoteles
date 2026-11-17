@@ -3,16 +3,17 @@
 # of every property it checks, except the ones its environment cannot exercise ($2).
 PROPWIT="NoActByEnded:wReport NoClaimByEnded:wReadBrief NoReviewOfOtherResult:wRevision
   NoPassUnderOtherVersion:wReviewPass NoStaleReport:wRevision NoUnseenReject:wReject
-  NoUnseenAccept:wAccept NoRejectedDraftInEffect:wSendBack NoLostUpdate:wShipStandard
+  NoUnseenAccept:wAccept NoRejectedDraftInEffect:wSendBack NoLostUpdate:wRebase
   NoFailedTestInEffect:wRunTest EveryRuleHasForm:wWriteRule NoBadReference:wWriteRule
   NoDeepChangeWithoutPerson:wShipStandard NoRoleChangeMisjudged:wRoleDraft
   NoUnrecheckedScope:wRecheck NoPassOfBrokenResult:wRunRule NoPassOfBadResult:wRecheckDone
   NoShallowEvaluation:wEvaluate NoStalePipelineAct:wAdvance NoSplitBrain:wSelfResume
   RevisionHasContext:wSecondRevision NoUnrevisedResubmit:wSendBack NoMergedInput:wTyped
-  DoneIsCurrent:wTakenRechecked NoDoneBrokenAtEnd:wEndProject NoTakenUndone:wTakenRechecked
+  DoneIsCurrent:wDecideRecheck NoDoneBrokenAtEnd:wEndProject NoTakenUndone:wTakenRechecked
   NoWrittenDropped:wEditInEffect NoAcceptNotWaiting:wAccept NoUnacceptedEditChange:wEditInEffect
   HostBoundToRunSession:wMoveHost NoRefixAtSameLevel:wTaskFloor
-  Converges:wNearBound NoEscalationWithoutPerson:wEscalatedLoop"
+  Converges:wNearBound NoEscalationWithoutPerson:wEscalatedLoop
+  RaiseChangesBounded:wTaskFloor NoDoneBrokenAtEnd:wDecideFought"
 # witnessesFor "props" "exempt": the key witnesses (no duplicates).
 witnessesFor() {
   for pw in $PROPWIT; do

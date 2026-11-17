@@ -156,7 +156,7 @@ module work {
                refOk: bool, ruleTries: int, items: Set[Item], real: Set[Item],
                roleOnly: bool, roleLabel: bool, base: Item -> int, cardBase: int, rev: int,
                sentBack: Set[int], needRevise: bool, loops: int, step: int, wrote: Set[Item],
-               trueBase: Item -> int, fights: bool }
+               trueBase: Item -> int, fights: bool, contradicted: bool }
   // The host holds the top for the whole project (DESIGN.md 12). hostSession: the session its
   // assignment is bound to. done: the host returned the top (all done). step: basis of host acts.
   type Top = { hostSession: int, done: bool, ended: bool }
@@ -176,6 +176,9 @@ module work {
     // fixDepth: per item, the depth of the level of its last fix from a task's raise (-1:
     // none; 1 standard, 2 direction, 3 principle). DESIGN.md 13.2 reads it.
     ver: Item -> int, ruleForm: int -> Form, card: int, changes: int, agentChanges: int,
+    // raiseChanges: changes from a task's raise put in effect, by an agent or the person (not
+    // the person's own edits).
+    raiseChanges: int,
     fixDepth: Item -> int,
     down: Set[int], ep: int -> int, nextMaker: int, g: Ghost,
   }
@@ -184,7 +187,8 @@ module work {
   pure val CLOSED: Fix = { stage: SClosed, entry: SClosed, level: Standard, kind: DDir,
     form: NoForm, truth: true, refOk: true, ruleTries: 0, items: Set(), real: Set(),
     roleOnly: false, roleLabel: false, base: ZERO, cardBase: 0, rev: 0, sentBack: Set(),
-    needRevise: false, loops: 0, step: 0, wrote: Set(), trueBase: ZERO, fights: false }
+    needRevise: false, loops: 0, step: 0, wrote: Set(), trueBase: ZERO, fights: false,
+    contradicted: false }
   pure val NOGHOST: Ghost = { endedActed: false, otherResult: false, otherVersion: false,
     staleReport: false, unseenReject: false, unseenAccept: false, rejectedInEffect: false,
     lostUpdate: false, failedTest: false, noForm: false, badRef: false, deepNoPerson: false,
@@ -202,7 +206,7 @@ module work {
     top: { hostSession: 0, done: false, ended: false },
     session: 0, tasks: SLOTS.mapBy(i => freshTask(0, causes.get(i))), makers: Map(),
     fixes: FIXIDS.mapBy(i => CLOSED), ver: ZERO, ruleForm: Set(0, 1).mapBy(j => Ref), card: 0,
-    changes: 0, agentChanges: 0,
+    changes: 0, agentChanges: 0, raiseChanges: 0,
     fixDepth: ITEMS.mapBy(x => -1), down: Set(), ep: PERSISTENT.mapBy(k => 0), nextMaker: 3,
     g: NOGHOST,
   }
@@ -454,6 +458,7 @@ module work {
     val s1 = resolveCause(counted({ ...s0,
       fixDepth: if (free(i)) s.fixDepth else
         s.fixDepth.keys().mapBy(x => if (c.contains(x)) fixAt(f) else s.fixDepth.get(x)),
+      raiseChanges: s.raiseChanges + if (free(i)) 0 else 1,
       tasks: if (free(i)) s.tasks else s.tasks.setBy(i, z => { ...z,
         floor: if (fixAt(f) >= 2) Principle else if (z.floor == Principle) Principle else Direct }),
       ver: s.ver.keys().mapBy(x => s.ver.get(x) + if (c.contains(x)) 1 else 0),
@@ -461,7 +466,9 @@ module work {
         if (rules.contains(IRule(j))) f.form else s.ruleForm.get(j)) }, agent), i)
     // A rule that contradicts the other rule of the direction breaks the tasks that rule
     // applies to: their trouble is that rule again (a standard cause).
-    val fightsBack = f.fights and rules != Set()
+    // A contradicted draft (crossTest found it) reaches the person as a direction draft: the
+    // direction change resolves the contradiction (DESIGN.md 13.1), so it breaks nothing.
+    val fightsBack = f.fights and not(f.contradicted) and rules != Set()
     val s1a = if (not(fightsBack)) s1 else ghost(
       SLOTS.fold(s1, (acc, j) =>
         if (j != i and not(rules.contains(IRule(j)))
@@ -469,7 +476,8 @@ module work {
           // A done task is rechecked against its own rule (the one the change contradicts).
           setT(acc, j, z => { ...z, broken: true, rBad: z.rBad or z.st != Working,
                               cause: CauseAt(Standard),
-                              pend: if (z.st == Done) z.pend.union(Set(IRule(j))) else z.pend })
+                              pend: if (z.st == Done or z.st == Raised) z.pend.union(Set(IRule(j)))
+                                    else z.pend })
         else acc), g => { ...g, fightShipped: true })
     val s1b = SLOTS.fold(s1a, (acc, j) =>
       if (j != i and hits.contains(j) and f.real.exists(x => applies(x, j))
@@ -526,7 +534,7 @@ module work {
     // A change that leaves out what the person wrote (as the store sees it) goes back to the
     // person too.
     val back = OPT.editBack == 0 or (OPT.editBack == 1 and seen.exclude(f.wrote) != Set())
-      or not(f.wrote.forall(x => seen.contains(x)))
+      or not(f.wrote.forall(x => seen.contains(x))) or f.contradicted
     if (back) setF(s, EDIT, z => { ...z, stage: SLoop })
     else if (casBlocks(s, EDIT)) redo(s, EDIT)
     // In effect at once; then, as after the person's accept, the host reassigns roles.
@@ -578,7 +586,7 @@ module work {
     // checked (they land on raised tasks without a recheck).
     | Decide(i) =>
         if (a.flag) setF(setT(s, i, t => { ...t, st: Done, taken: true,
-                       pend: if (OPT.decideRecheck) oldFor(s, i) else Set() }), i,
+                       pend: if (OPT.decideRecheck) oldFor(s, i).union(t.pend) else Set() }), i,
                      f => { ...CLOSED, step: f.step + 1 })
         else setF(s, i, f => { ...CLOSED, stage: SEval, step: f.step + 1 })
     | SendTask(i) => setT(s, i, t => { ...t, st: Sent })
@@ -672,16 +680,19 @@ module work {
     // draft goes at once to direction assessment (DESIGN.md 13.1; no count).
     | RunTest(i) =>
         val f = fx(s, i)
+        // own: the rule passes its own examples; contra: it fails another rule's example.
         val contra = if (OPT.harnessTest) OPT.crossTest and f.fights else a.flag2
-        val ok = if (OPT.harnessTest) f.truth and not(contra) else a.flag
+        val own = if (OPT.harnessTest) f.truth else a.flag
         val s1 = bump(staleFixAct(s, i, a), i)
-        // Already a direction draft: it goes on to the person (Ship of a direction draft goes
-        // to the review loop, then the person), the contradicting rule with it.
-        if (not(ok) and contra and f.entry != SDirAssess and f.entry != SPrinciple)
-          setF(s1, i, z => { ...z, kind: DDir, level: Direct, stage: SDirAssess, entry: SDirAssess })
-        else if (not(ok) and contra) setF(s1, i, z => { ...z, stage: SDraft })
-        else setF(s1, i, z => { ...z,
-          stage: if (ok) SDraft else SRuleAssess, ruleTries: z.ruleTries + if (ok) 0 else 1 })
+        // A rule that fails its own examples is written again (DESIGN.md 4). A contradiction
+        // goes to direction assessment; a draft already at direction goes on, marked, and
+        // its Ship goes to the person (13.1).
+        if (not(own)) setF(s1, i, z => { ...z, stage: SRuleAssess, ruleTries: z.ruleTries + 1 })
+        else if (contra and f.entry != SDirAssess and f.entry != SPrinciple)
+          setF(s1, i, z => { ...z, kind: DDir, level: Direct, stage: SDirAssess, entry: SDirAssess,
+                             contradicted: true })
+        else if (contra) setF(s1, i, z => { ...z, stage: SDraft, contradicted: true })
+        else setF(s1, i, z => { ...z, stage: SDraft })
     // items: the items the draft names; real: those its content changes. "Only a standard
     // change?" is read from the named items (with classify: from the content).
     | Ship(i) =>
@@ -695,6 +706,8 @@ module work {
           shipStandard(ghost(s1, g => { ...g,
             deepNoPerson: g.deepNoPerson or a.real.contains(IDir),
             escalatedNoPerson: g.escalatedNoPerson or escalated }), i, a.hits)
+        // Raised up the ladder before the person sees it (R5-10), else to the loop.
+        else if (OPT.raiseLevel and refixed(s1, i)) raiseUp(s1, i)
         else setF(s1, i, z => { ...z, stage: SLoop })
     // flag: the draft goes to the person; else the loop revises it.
     | LoopReview(i) =>
@@ -859,4 +872,7 @@ module work {
   // direction, which reaches the person; a split is below it). Past it is not a success.
   def changeBound: int = SLOTS.size() * OPT.sections
   def pastBound(s: Store): bool = s.agentChanges > changeBound
+  // Changes from task raises, through the person too: per task the ladder's four rungs
+  // (split parts, standard, direction, principle). Past it: a loop through the person.
+  def raiseBound: int = SLOTS.size() * (OPT.sections + 2)
 }
