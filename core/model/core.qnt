@@ -321,14 +321,14 @@ module coreCfgs {
 }
 // ---- instances (tlc.sh keeps only the one it checks: quint's TLA+ export of a file with
 // many instances overflows).
-// One task, every real cause, the ladder to the person: the person's acts (accept, send
-// back, reject, take as is, end; two), a maker that slips, one shallow evaluation, a test
+// One task, every real cause, the ladder to the person: the person's acts (accept, reject,
+// take as is, end; two; the send-backs are coreLoops'), a maker that slips, one shallow evaluation, a test
 // command that may fail its examples.
 module coreOne {
   import coreCfgs.*
   import core(CFG = { ...FIXED_C, slots: Set(0) },
               C = { ...ENV_C, causes: 0.to(5), causes1: Set(0), maxPerson: 2, maxMistakes: 1,
-                    slips: true, reject: true }).* from "./core"
+                    slips: true, reject: true, sendBacks: 0 }).* from "./core"
 }
 // Two tasks: task 0 with a standard cause, task 1 with none. Its rule may contradict task
 // 1's (fights), its change may break task 1 (hits): scoped rechecks, rechecks of a done
@@ -347,11 +347,12 @@ module coreTwoDir {
 }
 // coreTwo with one process end (R6-5): an exit of the host, a role, the pipeline role or
 // a maker, its revive (the harness), its resume (the role), the host started again by the
-// person (one more person act).
+// person. One person act and no send-back (with two acts and a send-back TLC passed 1.25
+// million states at 40 minutes, still growing).
 module coreTwoExit {
   import coreCfgs.*
   import core(CFG = FIXED_C, C = { ...ENV_C, causes: Set(5), causes1: Set(0), testsFail: false,
-                                   maxPerson: 2, maxExits: 1 }).* from "./core"
+                                   maxPerson: 1, sendBacks: 0, maxExits: 1 }).* from "./core"
 }
 // DESIGN.md 13.2 (R6-6, Nanda's ruling): no caps on agents; a repeated failure climbs the
 // ladder. A rule that keeps failing its own examples, and a draft the review loop keeps
