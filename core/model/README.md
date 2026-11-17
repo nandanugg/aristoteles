@@ -43,8 +43,10 @@ agents, no reminder, is the fix.
 
 work.qnt (store, protocol), tmux.qnt, workenv.qnt (environment, properties, witnesses,
 instances), workenv_test.qnt (a regression test), keys.sh (the coverage gate), spec.sh,
-stress.sh, tlc/ (the TLC and Apalache harness, Results). Status: fifth review round; the
-stress phase ran (Results).
+stress.sh, tlc/ (the TLC and Apalache harness, Results). The small models, proven by TLC
+(section "The small models"): contract.qnt (G1, G3, G4, each written once), core.qnt (the
+protocol core, G2), terminals.qnt (G1), store.qnt (G3), browser.qnt (G4), tlc.sh (`bun run
+spec:tlc`). Status: sixth review round.
 
 ## Words
 
@@ -346,8 +348,9 @@ Convergence (DESIGN.md 13 and 13.1), 600 steps per run:
 - convNoSplitLimits (strictScope and raiseLevel off): breaks Converges (splits never end) and
   NoRefixAtSameLevel.
 
-Tier 3, progress: `FairProgress` and `AgentChangesStop` (temporal, with per-process fairness).
-For TLC; not yet run.
+Tier 3, progress: `FairProgress` and `AgentChangesStop` (temporal, with per-process fairness)
+are not run on this model (too big for TLC's liveness check). They are proven on the small
+models instead (section "The small models").
 
 Holds (no violation, every key witness of keys.sh reached): fixedHonest, fixedMaker,
 fixedHost, fixedCalm, convFixed (except NoShallowEvaluation), fixedRole (except
@@ -514,6 +517,291 @@ apaHonest (fixedHonest with one task, start 0), depth 3, the content invariants:
 to translate and preprocess, then each transition of a step is checked on its own (step 1:
 32 transitions in 25 minutes); step 2 was not finished after the 1-hour timeout. Depth 20-30
 is out of reach at this size. apaMaker and apaHost were not run.
+
+## The small models (assume-guarantee, DESIGN.md 14)
+
+The big model (workenv.qnt) is too big for TLC's liveness check (Results). So the question
+"does every run end, or wait only on the person, who is shown the wait?" is split, and each
+part is a model small enough for TLC to visit every reachable state, liveness included:
+
+    owed --G1--> alive and hears --A--> acts --G2--> the run goes on and ends
+    every act takes effect fresh and once: G3        the person is shown what it owes: G4
+
+| Model | Proves | Assumes |
+|---|---|---|
+| terminals.qnt | G1: an agent that owes work in the end hears its step | fairness of the engine parts only |
+| store.qnt | G3: an act takes effect only if it is fresh | nothing (an adversary sends any act) |
+| browser.qnt | G4: what the person owes is in the end shown on the page | fairness of the engine parts only |
+| core.qnt | G2: every run reaches Final; agent changes stop | G1 (with A), G3, G4, engine fairness |
+
+A (an agent that hears its step takes it) is not provable: it is assumed, bounded (tries,
+the ladder, the person) and shown safe without it in the big model (Byzantine runs).
+
+### The contract (contract.qnt)
+
+Each guarantee is written once and imported by the model that proves it and the model that
+assumes it:
+
+- `G1(owes, hears, personOwes) = always(eventually(not(owes) or hears or personOwes))`, the
+  same as `always(owes implies eventually(hears or not(owes) or personOwes))`. terminals.qnt
+  checks it with owes always true (no action there reads owes, so this is the strongest
+  case); core.qnt assumes it for each agent with `hears` = the agent's own step (that is G1
+  followed by A).
+- `G3(f: Fresh)`: the act's basis is current, a recheck's judged versions did not move, its
+  id is new, its token's epoch is current, it is from the current page build, and an accept
+  is of a draft that waits for the person. store.qnt proves that every act the store takes
+  has G3; core.qnt takes an act only when G3 holds of it (computed from work.qnt's checks),
+  which is what lets core.qnt apply each act at once to the current state.
+- `G4(owes, shown) = always(eventually(not(owes) or shown))`: browser.qnt proves it for each
+  act the person owes; core.qnt's Final ("waits only on the person") relies on it.
+
+The arguments each side uses (R6-13):
+
+| Guarantee | Proven as | Assumed in core.qnt as |
+|---|---|---|
+| G1 host | `G1(true, heardBy(HOST), personOwes(HOST))` | `G1(owes(HOST), agentStep(HOST), HOST in s.down)` |
+| G1 role, pipeline role | `G1(true, heardBy(k), false)` | `G1(owes(k), agentStep(k), false)` |
+| G1 maker | `G1(true, heardBy(MAKER), false)`: the maker hears, or its exit is recorded and the role hears (its resume) | `G1(owes(m), agentStep(m), false)`: a maker whose exit is recorded is told nothing; its resume is a role's step |
+| G3 | `G3Holds` in store.qnt: every act taken was fresh | each act core takes is built on the current store and satisfies `G3(fresh(a))` (true by construction: it names the assumption) |
+| G4 | `G4(owed x, page shows x)` in browser.qnt for any set the protocol sets | the person's obligations of Final (work.qnt `isPersonOb`, `dos(PERSON)`) are browser's `owed` |
+
+Composition, in words. Take a run of the whole system. terminals gives each agent G1; with A
+each agent then takes its step in the end, or the host waits for the person to start it
+again. core assumes exactly that for each agent (the same third argument for the host: its
+exit is recorded, work.qnt `ReviveOb(HOST)` is a person obligation). store gives G3, so the
+acts that take effect are the fresh ones core takes. core then proves the run reaches Final,
+and browser shows the person every act it owes, so a Final that waits on the person is a
+wait the person can see, not a stall. One fairness is not from the contract: the engine runs
+a due rule test and revives a role (core.qnt `EngineFair`; the watcher's revive is proven in
+terminals).
+
+### terminals.qnt (G1)
+
+Contains: the host's pane in the person's own tmux (never revived by the engine: its end or
+its stop is recorded and shown to the person, who starts it again); the role's and the
+pipeline role's panes in the agents' server; the role's maker, a subagent inside the role's
+process; the server killed, its socket lost, a reboot (also the host's pane and the
+engine); the pump (attached, about to attach again, or detached for good without
+pumpReattach; it hears an end only while attached; listOnAttach); a CLI stopped at its
+prompt (idleSeen: its hook records an exit); the usage limit (a limited process hears
+nothing; the limit lifts, fair); the outbox: the watcher records a revive or a send in the
+store, acts, then marks it, and can crash between any two (evidence: before acting again on a
+revive it looks for the pane of that revive); the person typing into a pane (promptArg off
+only). Aristoteles is an adversary: what an agent owes is not state (G1 is checked for owes
+always true) and a send can be asked for at any time. Faults are not counted: any number, in
+any order, until one weakly fair "calm" step (faults stop in the end).
+
+Abstracted: process ids and epochs (one process per agent; a revived one replaces the old
+one, whose acts the store refuses), the context of a resumed process, time, the protocol.
+
+Fair: the engine parts only (the pump's and hooks' reports, the watcher's record, act and
+mark per op, the server's recreation, the pump's attach, a typed prompt read, the limit
+lifting, calm). Not fair: agents, the person, the adversary, faults.
+
+TLC results (arch-temp, 12 workers, 2026-11-17), every reachable state:
+
+| Module | Checked | Expected | Distinct states | Time |
+|---|---|---|---|---|
+| termFixed (maxFaults 2) | Sane, ExactlyOnce; G1All (G1 for host, role, pipeline role, maker), SendDone | holds | 18,125 | 10 s |
+| termFixed3 (maxFaults 3) | the same | holds | 123,173 | 22 s |
+| termNoList (listOnAttach off) | G1All | breaks | 3,351 | 8 s |
+| termNoReattach (pumpReattach off) | G1All | breaks | 19,303 | 10 s |
+| termNoPromptArg (promptArg off: the prompt typed, merged with the person's typing) | G1All | breaks | 73,858 | 12 s |
+| termNoOutbox (the watcher acts from memory after the record) | G1All; SendDone | breaks (each) | 8,822 | 9 s |
+| termNoHostWatch (the host's end not recorded) | G1All | breaks | 14,235 | 9 s |
+| termNoIdleSeen (no stop-at-prompt hook) | G1All | breaks | 16,637 | 10 s |
+| termNoEvidence (no look for the revive's pane after a crash) | ExactlyOnce | breaks | 3,263 | 8 s |
+
+What it measured (rule 7): the adversary's owes bits as state multiplied the states by 16
+(they feed no action: now G1 is checked with owes true); faults without a count (until a fair
+calm step) passed 2.3 million states and kept growing, so the count stays (2, and 3).
+
+Two findings came from TLC and are in the model (and the design must have them): the page
+server looks at the host's pane when it starts (else a restart between the host's end and
+its record loses the end: the pump's listing does not cover the person's tmux); the role's
+revive holds its makers as ended (else a maker resumed by the old role, on a lost socket,
+between the role's exit and its revive, dies unseen). work.qnt's Revive does not do the
+second yet: noted for P2.
+
+A send is at least once: a typed text leaves no mark the watcher can read, so after a crash
+between act and mark it is typed again. Agents hear their steps through the store; a send is
+a nudge.
+
+### store.qnt (G3)
+
+Contains: two items with versions (item 1 holds the draft the person may accept); the
+store's checks of work.qnt (basis: compare-and-set on what the act read, which also refuses
+a second copy; recheckBasis; epochs; build; acceptCheck); senders that are honest but slow:
+an act is built on a snapshot (any versions up to the current ones: every old view and
+more), names its basis from it, and arrives late, out of order, any number of times; a
+process whose actor was revived still sends with its old epoch; the page as one more stale
+viewer (refresh, a new build, reload): the person's accept is built on the page's copy. Any
+act's effect is "write these items": an over-approximation of every act kind. The property
+is the truth, in ghosts the store never reads (R6-10): an act that took effect was built on
+a snapshot equal to the store on every item it reads or writes, by the actor's current
+process, from the current build, and an accept is of the draft that waits. Safety only.
+Versions stop at 2, one epoch bump. Symmetry was not used (quint's TLC export has no
+symmetry sets); the model is small without it. A Byzantine sender (one that names a basis
+it did not build on) is outside G3: the big model covers it (NoLostUpdate, mutRace).
+
+TLC results:
+
+| Module | Expected | Distinct states | Time |
+|---|---|---|---|
+| storeFixed: G3Holds | holds | 336 | 7 s |
+| storeNoBasis | breaks (a stale act) | 30 | 6 s |
+| storeNoRecheckBasis | breaks (a stale recheck) | 42 | 6 s |
+| storeNoEpochs | breaks (an old process's act after a revive) | 117 | 7 s |
+| storeNoBuild | breaks (an accept from an old build, which names no basis) | 248 | 6 s |
+| storeNoAcceptCheck | holds: the basis on the draft's version already refuses an accept of a draft that moved | 336 | 7 s |
+| storeBlind (an act may write what it did not read) | breaks (a lost update, a second copy) | 30 | 7 s |
+
+Senders are honest about their basis (the basis is the snapshot): the harness, not the AI,
+fills the basis from what the CLI fetched; an agent acting on an old brief is then exactly a
+stale basis. A sender that names a basis it did not build on is Byzantine (the big model).
+
+How work.qnt's acts keep "it reads what it writes" (the fact G3 rests on). An act's
+content built from a view is covered by its basis (`cur`: a fix's step, a result's id, a
+maker's revision; with recheckBasis the judged versions) or by `legal` (the state the act
+needs, which its own effect changes, so a second copy is refused); the rest of its effect is
+computed by the store at the append, from the current store, so it is not stale:
+
+| Acts | What refuses a stale or second copy |
+|---|---|
+| Review, Reject, RecheckDone | the result's id (`rid`); RecheckDone also the judged versions |
+| Report | the maker's revision, the brief's versions (briefCheck), the live maker (endedCheck) |
+| Evaluate, Advance, WriteRule, RunTest, Ship, LoopReview, Accept, SendBack, Decide | the fix's step |
+| SendTask, AssignDo, TopDone, EndProject, Reassign, EditDirection | `legal`: the state they change (Unsent, Sent, not done, open, an accepted fix, the edit closed) |
+| Resume, Revive, Exit, RunRule | `legal`: the exit record or the pending rule they change |
+| RecheckDone (its own second copy) | `legal`: the pending items it clears, or the task sent back; a copy of a passed recheck excludes the same items again (no effect) |
+| MoveHost (run continue) | nothing: `legal` is always true. A second copy moves the host twice. A finding (P2: give it a basis, the session it moves from) |
+
+What store.qnt does not show (R6-11): it checks the mechanism on items with versions, not
+work.qnt's accept itself; the table above is the mapping, by reading. The big model checks
+work.qnt's accept against stale and repeated acts by simulation (NoStaleReport,
+NoReviewOfOtherResult, NoStalePipelineAct, NoSplitBrain, NoLostUpdate).
+
+### browser.qnt (G4)
+
+Contains: what the person owes (two acts), the role's terminal inputs (its own step, the
+engine's inactive signal: tmux, the usage-limit message, 1 minute of silence) and the
+escalation's state, all set and cleared at any time; the page's copy, its websocket, its
+build; the page server (it restarts itself on a new build); faults: websocket drops, server
+crashes, a new build, any number until calm. A background tab has no timer of its own: only
+what the engine pushes or sends on reconnect reaches it. The page server has its own copy
+of the store: it hears changes through its watch, which can be lost (a fault), and reads the
+store again when it starts and by a poll (off in browserNoPoll). G4 is "shown while a page
+is open". Fair: the server's restart, the
+page's reconnect (or reload when its build is old), the push. The person's refresh is not
+fair. Safety after a refresh (`DashAfterRefresh`): the dashboard the page draws from its copy
+is the store's (no Working while the role only waits, Inactive only from the engine's signal,
+the pipeline row exactly when an escalation waits for the person, the escalation card's
+status, the owed acts). These are definitions more than checks (the page draws its cards
+with the store's function, from a copy it got whole): they fail only if the copy is not
+whole. A page that applies pushed diffs to an old copy is not modelled.
+
+TLC results:
+
+| Module | Checked | Expected | Distinct states | Time |
+|---|---|---|---|---|
+| browserFixed | DashAfterRefresh; G4All | holds | 131,584 | 14 s |
+| browserNoReconnect | G4All | breaks | 95,528 | 10 s |
+| browserNoReload (no reload on a new build) | G4All | breaks | 100,421 | 9 s |
+| browserNoPush (only the person's refresh) | G4All | breaks | 100,782 | 10 s |
+| browserNoPoll (the server's watch lost, no poll) | G4All | breaks | 99,850 | 9 s |
+
+One owed act: every copy the page gets is the whole state, so each act behaves alone (two
+acts and a three-state escalation passed 3 million states).
+
+### core.qnt (G2)
+
+Contains: work.qnt's protocol, imported, not restated; the actors around it: each agent takes
+a step it is told with honest content (work.qnt `honestOf`, moved there from workenv.qnt so
+both models use one copy); a bounded number of mistakes (the pipeline role evaluates
+shallower than the real cause, `maxMistakes`); the environment's truths (a maker's slip, a
+test command's behaviour, a rule that contradicts the other rule, what a change breaks, the
+cause of a split part); the person (accept, send back, reject, take as is, end, start the
+host again; at most `maxPerson` acts; never assumed to act); a bounded number of process
+ends (`maxExits`: work.qnt's Exit, then Revive by the harness, Resume by the role, the host's
+revival by the person). An act takes effect in one step on the current state (G3).
+
+Abstracted: tmux, terminals, processes (G1), the network and old views (G3), the page (G4),
+time, the person's direction edit (EditDirection) and run continue (MoveHost).
+
+One store per state (`canon`): with no act in flight and no old view, the counters that only
+tell an old act from a current one (a fix's step and revision, a result's id, a maker's
+revisions, the epochs, the maker ids, a task's generation) carry nothing and are set to one
+value; item versions and the card are shifted so that their smallest copy is 0; ended makers
+are dropped; history flags this model does not check are cleared; agentChanges stops at
+changeBound + 1. A maker of task i has the id 3 + i. A draft of task i's raise changes items
+that apply to task i (a choice of this model, to cut states).
+
+Reused from work.qnt (imported): every type, the store, `accept`, `take`/`effect`, `dos`,
+`obligationsOf`, `toldAny`, `finalOf`, `changeBound`/`pastBound`, `initStore`, `honestOf`,
+`basisOk`, `epochOk`, `recheckCurrent`. Restated (and why): the CFG record type (quint needs
+the const's type in the module), the FIXED values (`coreCfgs`: importing workenv's `cfgs`
+pulls workenv.qnt into the TLA+ export), `CAUSE_OF` (3 lines of workenv), the property
+one-liners (Sane's parts, DoneIsCurrent, the flags: as in workenv), EveryObligationToldOnce
+without the hearing part (every actor hears here: G1), ToldIsAllowed on core's own content
+choices (`choices`: smaller than workenv's `variants`).
+
+Properties: invariants Sane, EveryObligationToldOnce, ToldIsAllowed, SomethingOwed,
+DoneIsCurrent, NoDoneBrokenAtEnd, NoLostUpdate, NoTakenUndone, NoPassOfBadResult,
+NoRefixAtSameLevel, NoEscalationWithoutPerson, NoAgentChangeAtTop, Converges (the
+convergence flag); temporal CoreProgress = Assumed implies always(eventually(Final)), and
+CoreChangesStop = Assumed implies "agent changes stop" (a bit that flips at each agent
+change is in the end constant). CoreProgressNoPipe drops the pipeline role's part of the
+assumption and must break: the assumption is not vacuous.
+
+TLC results (arch-temp, 12 workers; the invariants are the 13 above; LIVE = CoreProgress and
+CoreChangesStop):
+
+| Module | Checked | Expected | Distinct states | Time |
+|---|---|---|---|---|
+| coreOne (one task, every cause, person 2, one mistake, slips, rejects) | 13 invariants, LIVE | holds | 213,270 | 127 s |
+| coreTwo (two tasks, task 0 a standard cause, rules may contradict, person 1) | 13 invariants, LIVE | holds | 210,501 | 232 s |
+| coreTwo | CoreProgressNoPipe (assumption not vacuous) | breaks | 4,425 | 45 s |
+| coreTwoExit (coreTwo, one process end, person 2) | 13 invariants, LIVE | holds | (running) | |
+| coreTwoExit | CoreProgressNoEngine (the revive is needed) | breaks | (running) | |
+| coreTwoDir (task 0 a direction cause) | 13 invariants, LIVE | holds | 24,543 | 61 s |
+| coreCrossOnly (raiseLevel off, every rule a test command) | CoreChangesStop | holds | 24,495 | 55 s |
+| coreNoRaise (raiseLevel off) | CoreChangesStop | breaks | 236,468 | 225 s |
+| coreNoCross (crossTest and raiseLevel off, every rule a test command) | CoreChangesStop | breaks | 37,930 | 66 s |
+| coreNoSplit (strictScope and raiseLevel off) | CoreChangesStop | breaks | 46 | 43 s |
+| coreNoCaps (the model's caps on loops forgotten) | CoreProgress | breaks | 241 | 44 s |
+
+Bounds: tasks 1 or 2, 2 sections, 2 tries, 1 review-loop revision, 1 rule rewrite, the
+person 0 to 2 acts, 0 or 1 mistake, 0 or 1 process end. Not proven by TLC (the simulator
+only, `bun run spec`): two tasks with every cause and the person's acts (coreAll); more than
+one process end; the person's direction edit and run continue.
+
+One TLC finding, fixed in work.qnt (5934497): a contradiction that landed while the other
+task was in review broke it, but the raise cleared what it had to be rechecked against; the
+person took it as is and the project ended with that task broken (NoDoneBrokenAtEnd, in
+coreTwoExit). fightsBack now keeps the broken rule pending for a task in review, and a raise
+keeps what is pending for the person's take as is.
+
+The "before" mutants of DESIGN.md 13 and 13.1 loop in TLC (CoreChangesStop breaks): no level
+raise (a reference-only rule, which the cross test cannot see, ping-pongs between the two
+tasks' rules); no cross test and no level raise with every rule a test command; no split
+limit (a split part splits again). With every rule a test command, the cross test alone ends
+the ping-pong (coreCrossOnly holds).
+
+R6-6, not proven, a finding for Nanda: two loops end only by a bound of the model, not by a
+rule of DESIGN.md: the review loop of a draft (the pipeline role may revise it any number of
+times; `maxLoops`) and rule rewrites when a test command fails its own examples
+(`maxRuleTries`, then a reference). Without the caps the run need not end (coreNoCaps breaks
+CoreProgress). In the proof they are under A (an honest pipeline role hands a draft to the
+person after a bounded number of revisions, and falls back to a reference after a bounded
+number of failed tests); the design should state these endings as rules.
+
+### How to run
+
+`bun run spec:tlc` (core/model/tlc.sh): every TLC job, one JVM at a time, each on a copy of
+the model with only the instance it checks (quint's TLA+ export of a file with many
+instances overflows). HEAP, WORKERS, OUT, ONLY (a grep pattern on the job lines), TIMEOUT.
+`sh tlc.sh one FILE MODULE holds|breaks INVARIANTS|- TEMPORAL|-` runs one job. `bun run
+spec` also simulates the small models (a smoke, no JVM).
 
 ## The check machine (arch-temp)
 

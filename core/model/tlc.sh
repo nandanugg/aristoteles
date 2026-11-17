@@ -80,6 +80,7 @@ core.qnt coreTwo holds $SAFE $LIVE
 core.qnt coreTwo breaks - CoreProgressNoPipe
 core.qnt coreTwoExit holds $SAFE $LIVE
 core.qnt coreNoCaps breaks - CoreProgress
+core.qnt coreTwoExit breaks - CoreProgressNoEngine
 core.qnt coreTwoDir holds $SAFE $LIVE
 core.qnt coreCrossOnly holds - CoreChangesStop
 core.qnt coreNoRaise breaks - CoreChangesStop

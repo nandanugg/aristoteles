@@ -259,6 +259,9 @@ module core {
     EngineFair,
   }
   temporal CoreProgressNoPipe = AssumedNoPipe implies Progress
+  // Sanity on runs with exits: without engine fairness (the watcher's revive) a role's exit
+  // can stall the run. TLC must break this on coreTwoExit.
+  temporal CoreProgressNoEngine = AgentsG1 implies Progress
 
   // Safety (README.md "Properties"), each one an invariant of TLC.
   val DoneIsClosed: bool = SLOTS.forall(i => tk(s, i).st == Done implies
