@@ -1104,6 +1104,30 @@ module tlcCrash {
     ENV = { ...CALM, crash: true, maxFaults: 2, bounded: true, maxPerson: 2, maxProcs: 12,
             maxVer: 12, maxStep: 40 }).* from "./workenv"
 }
+// Cut-down TLC modules (README "Results"): tlcCalm's state space is far beyond TLC (depth 5
+// after 2 minutes: 4 million states, a branching of ~10 per state). The same config with
+// one real cause and no person acts. tlcTiny: no cause (the task passes its review);
+// tlcStd: a standard cause (raise, evaluation, the direction pipeline, a standard change);
+// tlcConv: convFixed cut down (one task, a split or a standard cause, the pipeline role may
+// misjudge), for AgentChangesStop.
+module tlcTiny {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0) },
+    ENV = { ...CALM, causes: Set(0), bounded: true, maxPerson: 0, maxProcs: 14, maxVer: 12,
+            maxStep: 40 }).* from "./workenv"
+}
+module tlcStd {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0) },
+    ENV = { ...CALM, causes: Set(5), bounded: true, maxPerson: 0, maxProcs: 14, maxVer: 12,
+            maxStep: 40 }).* from "./workenv"
+}
+module tlcConv {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0) },
+    ENV = { ...CALM, causes: Set(1, 5), misjudge: true, bounded: true, maxPerson: 0,
+            maxProcs: 14, maxVer: 12, maxStep: 40 }).* from "./workenv"
+}
 // Convergence (DESIGN.md 13). The pipeline role may misjudge the level; rules may
 // contradict. NoRefixAtSameLevel (a guard of raiseLevel) and Converges (the bound derived
 // from the config) hold in convFixed; each mutant turns one rule off.

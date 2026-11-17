@@ -30,6 +30,15 @@ holds() {
   zero=\$(echo "\$r" | grep -E 'witnessed in 0 trace' | awk '{print \$1}' | tr '\n' ' ')
   echo "holds \$m \$(echo "\$r" | grep -E '^\[|❌' | tr '\n' ' ') never reached: \$zero"
 }
+# Every property, and only the key witnesses named (\$2), from a deep start module.
+keys() {
+  m=\$1; inv=\$(for f in Sane EveryObligationToldOnce ToldIsAllowed SomethingOwed \$FLAGS; do
+    printf '%s ' "\$f"; done)
+  r=\$(\$Q run workenv.qnt --main="\$m" --invariants \$inv --witnesses \$2 --max-samples=3000 \\
+    --max-steps=300 --verbosity=1 2>&1)
+  zero=\$(echo "\$r" | grep -E 'witnessed in 0 trace' | awk '{print \$1}' | tr '\n' ' ')
+  echo "holds \$m \$(echo "\$r" | grep -E '^\[|❌' | tr '\n' ' ') never reached: \$zero"
+}
 seed() {
   m=\$1; i=\$2; n=\${3:-1000}; d=\${4:-120}
   r=\$(\$Q run workenv.qnt --main="\$m" --invariant="\$i" --max-samples="\$n" --max-steps="\$d" \\
@@ -42,7 +51,7 @@ sweep() {
   m=\$1
   w=\$(grep -o '^  val w[A-Za-z]*' workenv.qnt | awk '{print \$2}' | tr '\n' ' ')
   \$Q run workenv.qnt --main="\$m" --witnesses \$w --max-samples=1000 --max-steps=200 \\
-    --verbosity=1 2>&1 | grep 'witnessed in' | sed "s/^/sweep \$m /"
+    --verbosity=1 2>&1 | grep 'witnessed in' | sed "s/^/sweep \$m /" > "\$OUT/sweep-\$m.txt"
 }
 EOF2
 
@@ -52,6 +61,8 @@ holds fixedHonest '' Converges
 holds fixedMaker '' Converges
 holds fixedHost '' Converges
 holds fixedCalm '' $X,Converges
+keys fixedMakerTake 'wDecideFought wDecideRecheck'
+keys fixedHostTake 'wDecideFought wDecideRecheck'
 holds convFixed NoShallowEvaluation $X 600
 holds fixedRole NoPassOfBadResult,NoDoneBrokenAtEnd $X,RevisionHasContext,Converges
 holds fixedPipe NoShallowEvaluation,NoPassOfBadResult,NoDoneBrokenAtEnd $X,NoWrittenDropped,NoUnacceptedEditChange,NoRefixAtSameLevel,DoneIsCurrent,NoTakenUndone,NoPassOfBrokenResult,Converges,NoEscalationWithoutPerson,NoAgentChangeAtTop
@@ -117,8 +128,11 @@ sweep witnessFaults
 sweep witnessByz
 EOF2
 
-xargs -P "$JOBS" -I{} sh -c ". $OUT/fns.sh; {}" < "$OUT/jobs" | sort > "$OUT/result.txt"
+# -d: one job per line, quotes kept for the job's own shell (as in spec.sh).
+xargs -d '\n' -P "$JOBS" -I{} sh -c ". $OUT/fns.sh; {}" < "$OUT/jobs" | sort > "$OUT/result.txt"
 grep -v '^sweep' "$OUT/result.txt"
 # The witness sweep: the witnesses never reached in any witness module.
-grep '^sweep' "$OUT/result.txt" | awk '{n=$6+0; w=$3; if(!(w in b) || n>b[w]) b[w]=n}
-  END {for (w in b) if (b[w]==0) print "never reached: " w}'
+# Each sweep writes its own file (parallel jobs' long outputs interleave on one pipe).
+# Fields: sweep <module> <witness> was witnessed in <n> trace(s) ...
+cat "$OUT"/sweep-*.txt | awk '{n=$7+0; w=$3; if(!(w in b) || n>b[w]) b[w]=n}
+  END {for (w in b) if (b[w]==0) print "never reached: " w; print "sweep: " length(b) " witnesses"}'
