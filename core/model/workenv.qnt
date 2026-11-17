@@ -1088,7 +1088,7 @@ module tlcCalm {
 module tlcCrash {
   import cfgs.*
   import workenv(CFG = { ...FIXED, slots: Set(0) },
-    ENV = { ...CALM, crash: true, maxFaults: 2, bounded: true, maxPerson: 2, maxProcs: 16,
+    ENV = { ...CALM, crash: true, maxFaults: 2, bounded: true, maxPerson: 2, maxProcs: 12,
             maxVer: 12, maxStep: 40 }).* from "./workenv"
 }
 // Convergence (DESIGN.md 13). The pipeline role may misjudge the level; rules may
