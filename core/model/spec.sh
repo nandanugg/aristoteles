@@ -14,10 +14,11 @@ done
 [ $fail = 0 ] || exit 1
 echo "ok     typecheck $(ls *.qnt | tr '\n' ' ')"
 
-# The seed of a run that found the violation ($4 runs, default 300; 120 steps; one thread:
+# The seed of a run that found the violation ($4 runs, default 300; $5 steps, default 120; one thread:
 # with more threads a seed does not reproduce). Seeds come from `bun run spec:stress`.
 breaksW() {
-  out=$($Q run workenv.qnt --main="$1" --invariant="$2" --max-samples="${4:-300}" --max-steps=120 \
+  out=$($Q run workenv.qnt --main="$1" --invariant="$2" --max-samples="${4:-300}" \
+    --max-steps="${5:-120}" \
     --seed="$3" --n-threads=1 --verbosity=1 2>&1)
   if echo "$out" | grep -q '^\[violation\]'; then
     echo "breaks workenv.qnt $1 $2"
@@ -29,72 +30,93 @@ breaksW() {
 
 # The new work design (work.qnt, tmux.qnt, workenv.qnt): every proposed check on, honest
 # agents, every fault. Smoke size until the review of the model is done.
-FLAGS="PageOffersPersonObs NoActByEnded NoReviewOfOtherResult NoPassUnderOtherVersion
+FLAGS="NoActByEnded NoReviewOfOtherResult NoPassUnderOtherVersion
   NoStaleReport NoUnseenReject NoUnseenAccept NoRejectedDraftInEffect NoLostUpdate
   NoFailedTestInEffect EveryRuleHasForm NoBadReference NoDeepChangeWithoutPerson
   NoRoleChangeMisjudged NoPassOfBrokenResult NoPassOfBadResult NoShallowEvaluation
   NoStalePipelineAct NoSplitBrain RevisionHasContext NoUnrevisedResubmit NoUnrecheckedScope
-  NoMergedInput NoDoneUnderOldVersion DoneIsCurrent NoDoneBrokenAtEnd NoClaimByEnded
-  HostBoundToRunSession C1aConfirmed DashInactiveReal LiveNotInactive NoAcceptNotWaiting
-  NoUnacceptedEditChange"
-# $2: properties the module is known to break (the store cannot prevent them).
+  NoMergedInput DoneIsCurrent NoDoneBrokenAtEnd NoTakenUndone NoWrittenDropped NoClaimByEnded
+  HostBoundToRunSession NoAcceptNotWaiting NoUnacceptedEditChange Converges"
+# The coverage gate: in each holds module these witnesses must be reached (else the module
+# never exercises what the properties guard, and "no violation" means nothing). The holds
+# runs use a fixed seed and one thread, so the gate gives the same answer every time; the
+# broad random runs are in stress.sh.
+KEY="wEndProject wRecheckDone wRunRule wRebase wAccept wDecide wFloorRaised"
+# $2: properties the module is known to break (no store check can hold them).
 holdsAll() {
   inv=$(for f in Sane EveryObligationToldOnce ToldIsAllowed SomethingOwed $FLAGS; do
     case " ${2:-} " in *" $f "*) ;; *) printf '%s ' "$f" ;; esac; done)
-  out=$($Q run workenv.qnt --main="$1" --invariants $inv --max-samples="${SAMPLES:-150}" \
-    --max-steps=100 --verbosity=1 2>&1)
-  if echo "$out" | grep -q '^\[ok\]'; then
-    echo "holds  workenv.qnt $1 Sane Told and every flag"
-  else
+  out=$($Q run workenv.qnt --main="$1" --invariants $inv --witnesses $KEY \
+    --max-samples="${SAMPLES:-400}" --max-steps=100 --seed="${SEED:-0x2a}" --n-threads=1 \
+    --verbosity=1 2>&1)
+  zero=$(echo "$out" | grep -E 'witnessed in 0 trace' | awk '{print $1}' | tr '\n' ' ')
+  if ! echo "$out" | grep -q '^\[ok\]'; then
     echo "FAIL   workenv.qnt $1 (expected no violation)"
     echo "$out" | grep -E '❌|^\[' | head -5
     fail=1
+  elif [ -n "$zero" ]; then
+    echo "FAIL   workenv.qnt $1 coverage: never reached $zero"
+    fail=1
+  else
+    echo "holds  workenv.qnt $1 Sane Told and every flag; every key witness reached"
   fi
 }
 holdsAll fixedHonest
 holdsAll fixedMaker
 holdsAll fixedHost
 holdsAll fixedCalm
-holdsAll c1b
-holdsAll fixedRole NoPassOfBadResult
-holdsAll fixedPipe NoShallowEvaluation
+holdsAll convFixed NoShallowEvaluation
+holdsAll fixedRole "NoPassOfBadResult NoDoneBrokenAtEnd"
+holdsAll fixedPipe "NoShallowEvaluation NoPassOfBadResult NoDoneBrokenAtEnd"
+# A regression of the page (it offers every step its view owes the person).
+$Q test workenv_test.qnt --main=pageTest --match=pageOffersTest --max-samples=200 \
+  >/dev/null 2>&1 \
+  && echo "ok     workenv_test.qnt pageTest" || { echo "FAIL   workenv_test.qnt pageTest"; fail=1; }
 
 if [ "${1:-}" = "--check" ]; then
-  # Each property breaks in its mutant (README.md, Properties): module, property, seed, runs.
-  breaksW beforeBind HostBoundToRunSession 0x7a47477f765fd81e 1000
-  breaksW beforeMove EveryObligationToldOnce 0xc64c6d505bfbdd97 300
-  breaksW beforeMove HostBoundToRunSession 0xc0a820bfd8a8a10c 300
-  breaksW editNever NoUnacceptedEditChange 0xe80d6164492c0126 300
-  breaksW fixedPipe NoShallowEvaluation 0x7fab2f025cd8cd33 300
-  breaksW fixedRole NoPassOfBadResult 0x14e0fbf5687beee1 300
-  breaksW mutAccept NoAcceptNotWaiting 0xe4025682223b478f 300
-  breaksW mutAccept NoRejectedDraftInEffect 0x5892b989ef2f88c 1000
-  breaksW mutBuild NoUnseenReject 0x65eb144540cf3a3d 1000
-  breaksW mutCrash NoSplitBrain 0x66844b1fcd13e48d 300
-  breaksW mutDash DashInactiveReal 0xcdf98e41c2f60e38 300
-  breaksW mutDup C1aConfirmed 0xc7786be3a19a4187 1000
-  breaksW mutDup NoReviewOfOtherResult 0x500741b2e64a04bd 1000
-  breaksW mutDup NoStalePipelineAct 0xeb4cd7185472e26b 300
-  breaksW mutDup NoStaleReport 0x7a16b206dc5b8c5e 1000
-  breaksW mutMaker NoActByEnded 0xe2ccda6e3803c181 1000
-  breaksW mutPage DashEscalationMatches 0x97c0d10fa3573ade 300
-  breaksW mutPage DashNoFalseWorking 0x350d8073ac579aec 300
-  breaksW mutPage DashQueueActive 0x446e14e05e361201 300
-  breaksW mutPage DashRowMatches 0x8bee8b564fe069a5 300
-  breaksW mutPage NoUnseenReject 0x73e87a7871706bfd 300
-  breaksW mutPipe EveryRuleHasForm 0x95f1e7559eb308c 300
-  breaksW mutPipe NoFailedTestInEffect 0xa365bae619fdef9b 300
-  breaksW mutPipe NoShallowEvaluation 0x3f87549f00952b43 300
-  breaksW mutPipe NoUnrecheckedScope 0x883245973dea6145 300
-  breaksW mutPipe NoUnrevisedResubmit 0xbffc085dd238228d 300
-  breaksW mutQuiet LiveNotInactive 0xbaf48fd80ca44a3f 300
-  breaksW mutRace NoLostUpdate 0x4801f75ba5cb9458 1000
-  breaksW mutRef NoBadReference 0x3903932251a665a2 300
-  breaksW mutRole NoPassOfBadResult 0x9b47c7c36c525d37 300
-  breaksW mutTmux EveryObligationToldOnce 0xb57a4bcc94b588ab 300
-  breaksW mutTmux NoMergedInput 0x15f41d898673eb5c 300
-  breaksW noDecideRecheck DoneIsCurrent 0x3fe976a2ac1d373a 1000
-  breaksW witnessCalm C1bHosted 0x400d2b50291330b6 300
-  breaksW witnessCalm NoClaimByEnded 0x11ced95a209d1fb6 1000
+  # Each property breaks in its mutant (README.md, Properties): module, property, seed, runs,
+  # steps.
+  breaksW beforeMove EveryObligationToldOnce 0x4dffbae5e436cc24 1000 120
+  breaksW beforeMove HostBoundToRunSession 0xd09d7b4ff59002d 1000 120
+  breaksW convNeither Converges 0xc82db8237ef71886 1000 600
+  breaksW convNoRaise Converges 0x6329e11b8bce237b 1000 600
+  breaksW convNoScope Converges 0xbbd30cc12b8cad2c 1000 300
+  breaksW editNever NoUnacceptedEditChange 0x2ddc9950cc84a442 1000 120
+  breaksW fixedPipe NoPassOfBadResult 0xd04d5b41a088c916 1000 120
+  breaksW fixedPipe NoShallowEvaluation 0x9d6da3e51e618599 1000 120
+  breaksW fixedRole NoPassOfBadResult 0xe8ec111165164ddd 1000 120
+  breaksW mutAccept NoAcceptNotWaiting 0xba2a957d6ee03def 1000 120
+  breaksW mutAccept NoRejectedDraftInEffect 0x78ec0c1c45532d25 1000 120
+  breaksW mutBuild NoUnseenReject 0x793d159d251d3478 3000 200
+  breaksW mutCrash NoSplitBrain 0x6e138d285f03a403 1000 120
+  breaksW mutDup NoReviewOfOtherResult 0xd4c91b06678774af 3000 120
+  breaksW mutDup NoStalePipelineAct 0x962e6919c9994fe3 1000 120
+  breaksW mutDup NoStaleReport 0x3242deebe45ce439 3000 120
+  breaksW mutMaker NoActByEnded 0x91931fbcbbb7556b 1000 120
+  breaksW mutPage DashEscalationMatches 0x56c3c8b5f9d1e4b4 1000 120
+  breaksW mutPage DashNoFalseWorking 0xb8ae5ab68f3ac19b 1000 120
+  breaksW mutPage DashQueueActive 0xf40aef2bfe329f8a 1000 120
+  breaksW mutPage DashRowMatches 0xb84dee0adf8a4718 1000 120
+  breaksW mutPage NoUnseenAccept 0x4a718d0b742db6ed 3000 120
+  breaksW mutPage NoUnseenReject 0x9e4548d669607b9c 1000 120
+  breaksW mutPipe NoDeepChangeWithoutPerson 0xd2ec5c67bff303d8 3000 120
+  breaksW mutPipe NoUnrecheckedScope 0xc282319f8b094852 1000 120
+  breaksW mutPipe NoUnrevisedResubmit 0x2e9584cab5bc9c1d 1000 120
+  breaksW mutPipeByz EveryRuleHasForm 0xa6914d5beabe46d 3000 200
+  breaksW mutPipeByz NoFailedTestInEffect 0xeff71ba39965dd3e 3000 200
+  breaksW mutPipeByz NoRoleChangeMisjudged 0xe4056a43dbcefbfd 3000 200
+  breaksW mutPipeByz NoShallowEvaluation 0x3827b18b6959e5b4 3000 200
+  breaksW mutPipeByz NoWrittenDropped 0xee764e4422183171 3000 200
+  breaksW mutRace NoLostUpdate 0x5710257864eacbe4 3000 200
+  breaksW mutRace NoPassUnderOtherVersion 0xd1fdb79a976aa283 3000 120
+  breaksW mutRecheck NoDoneBrokenAtEnd 0xf7a7f5fdc12eaeaf 1000 120
+  breaksW mutRefByz NoBadReference 0xffd5c7dcf6030bc6 3000 200
+  breaksW mutRole NoPassOfBadResult 0x8f2aa2e3ee38a73 1000 120
+  breaksW mutRole NoPassOfBrokenResult 0x10681f5984d8ae48 1000 120
+  breaksW mutTmux EveryObligationToldOnce 0xe809e5061af614e3 1000 120
+  breaksW mutTmux NoMergedInput 0xd2c1e3ce2ea717bf 1000 120
+  breaksW noDecideRecheck DoneIsCurrent 0x9deb2b3146cb611c 1000 120
+  breaksW noListOnAttach EveryObligationToldOnce 0x70330eba5fc834c1 3000 120
+  breaksW witnessCalm NoClaimByEnded 0xc80a9deda88becc6 1000 120
 fi
 exit $fail

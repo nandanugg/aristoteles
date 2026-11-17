@@ -11,10 +11,14 @@ agents, no reminder, is the fix.
 
 ## How to run
 
-- `bun run spec`: typechecks every `.qnt` file, then simulates the design (no violation
-  expected). About 2.5 minutes.
+- `bun run spec`: typechecks every `.qnt` file, then simulates the design with every proposed
+  check (no violation expected) and applies the coverage gate: in each holds module the key
+  witnesses (`KEY` in spec.sh: an end of the project, a recheck by the pipeline role and by
+  the harness, a rebase, an accept, a decision, an evaluation raised a level) must each be reached,
+  else "no violation" would mean nothing. Then the quint test `workenv_test.qnt`. About 4
+  minutes.
 - `bun run spec:check`: the same, and each mutant must break its property with its recorded
-  seed (the script turns quint's failure into a pass). About 10 minutes (run it on the check
+  seed (the script turns quint's failure into a pass). About 20 minutes (run it on the check
   machine).
 - `bun run spec:stress`: for the check machine. Every design module with every proposed check
   in 3000 runs of 150 steps, and a seed search for each mutant (one thread, so a seed
@@ -28,8 +32,9 @@ agents, no reminder, is the fix.
 ## Files and status
 
 work.qnt (store, protocol), tmux.qnt, workenv.qnt (environment, properties, witnesses,
-instances), spec.sh, stress.sh. Status: third review round; simulator only (smoke runs here,
-3000-run holds and the seed search on the check machine). No TLC or Apalache yet.
+instances), workenv_test.qnt (a regression test), spec.sh, stress.sh. Status: fourth review
+round; simulator only (smoke runs here, 3000-run holds and the seed search on the check
+machine). No TLC or Apalache yet.
 
 ## Words
 
@@ -82,33 +87,39 @@ instances), spec.sh, stress.sh. Status: third review round; simulator only (smok
 - `workenv.qnt`, module `workenv`: the environment and all properties. Variables: `s` (store),
   `net`, `procs` (every process), `tm` (tmux), `page`, `faults`, `merged`, `lastEvent`, `told`,
   `obligations`, `silence` (wait markers), `quiet` (terminal output). Module `cfgs`: the
-  configurations `DESIGN`, `FIXED`, `HONEST`, `CALM`.
+  configurations `DESIGN`, `FIXED`, `HONEST`, `CALM`, `DEEP` (every starting state).
 - Instances: `designHonest`, `designMaker`, `designRole`, `designPipe`, `designHost` (the design
   as written, one Byzantine class at a time, every fault); the same five as `fixed*` (every
   proposed check on; `fixedRole` and `fixedPipe` on a calm run); `fixedCalm` (every check, a
-  calm run, budget 1); `c1b`, `d7none`, `d7shrink` (Nanda's options); `editAlways`,
-  `editNever` (editBack 0 and 2); `noDecideRecheck`, `noShrinkSplit`, `noListOnAttach` (one
-  check off on the fixed ones); `beforeBind`, `beforeMove` (the live faults before fde5e40 and
-  e4e49ff); the mutants `mutPage`, `mutDup`, `mutCrash`, `mutTmux`, `mutMaker`, `mutRole`,
-  `mutPipe`, `mutRef`, `mutRace`, `mutDash`, `mutAccept`, `mutBuild`, `mutQuiet` (the design
-  as written on a calm run, one fault class each, so random runs go deep); the witness modules
-  `witnessCalm`, `witnessDone`, `witnessCrash`, `witnessFaults`, `witnessStuck`, `witnessByz`.
+  calm run); `convFixed`, `convNoCross`, `convNoRaise`, `convNeither`, `convNoScope` (how the
+  loop ends, DESIGN.md 13); `editAlways`, `editNever` (editBack 0 and 2); `noDecideRecheck`,
+  `noListOnAttach` (one check off on the fixed ones); `beforeMove` (the live
+  fault before e4e49ff); the mutants `mutPage`, `mutDup`, `mutCrash`, `mutTmux`, `mutMaker`,
+  `mutRace`, `mutAccept`, `mutBuild` (the design as written on a calm run, one fault class
+  each) and `mutRole`, `mutPipe`, `mutRecheck`, `mutRef` (honest except one lie: one act with
+  any content); the witness modules `witnessCalm`, `witnessDone`, `witnessCrash`,
+  `witnessFaults`, `witnessStuck`, `witnessByz`.
 - Environments (`cfgs`): `HONEST` (every fault, honest agents, every real cause); `CALM` (no
   fault, no reject, 10 person acts). `ENV.causes` limits the real causes a task may get, so a
-  calm run reaches done tasks. `ENV.start` 1 starts deep: both tasks done and the top returned
-  to the person. `ENV.printsOften`: the timing assumption that a live terminal prints or
-  renews its wait beat within x ticks (false only in `mutQuiet`).
+  calm run reaches done tasks. `ENV.starts`: the starting states a run may begin in
+  (`START_OF`): 0 two new tasks; 1 both done and the top returned; 2 a standards draft about
+  to ship; 3 a direction draft at the person; 4 rules with only a test command in effect; 5 a
+  split of the top the host can no longer remake, the person to decide; 6 a done task with a recheck pending (its
+  work broken by a change). `ENV.liars`: actors honest except for lies (one act with any
+  content, each lie one fault). `ENV.printsOften`: the timing assumption that a live terminal
+  prints or renews its wait beat within x ticks.
 
 Sizes: two tasks (`SLOTS`); one host, one persistent role, one pipeline role; at most 6 makers;
-3 tries; 2 points; 4 changes (D7 budget 3); 1 review-loop revision; 2 rule rewrites; 1 top
+3 tries; 2 sections per task; 4 agent changes (the convergence bound); 1 review-loop revision; 2 rule rewrites; 1 top
 remake; 1 run continue; 3 environment faults; 3 acts in flight; 6 person acts.
 
 ## Options (`CFG`; README of `cfgs` in workenv.qnt)
 
 | Field | Meaning | `DESIGN` | `FIXED` |
 |---|---|---|---|
-| c1Keep | C1: false = (a) the host's first remake of the top is a warning, the next one (built on it) remakes; true = (b) the host keeps hosting | a | a |
-| d7 | D7: 0 none; 1 a budget of agent changes (checked when a change takes effect; past it the person decides); 2 a recheck only shrinks points (per task; more points go to the person) | 0 | 1 |
+| crossTest | DESIGN.md 13.1: rule assessment runs a new rule's test command on the other rules' examples; a rule that contradicts another does not ship (honest pipeline role and, with harnessTest, the harness) | on | on |
+| raiseLevel | DESIGN.md 13.2: a task raised again after a fix is evaluated one level up (split -> standard -> direction -> principle); the store refuses a lower level | on | on |
+| strictScope | DESIGN.md 13: a split part owns one section less; a one-section task cannot be split (the store refuses it) | on | on |
 | basis | an act names its basis; the store refuses an old one | off | on |
 | build | the store refuses an act from an old page build | off | on |
 | rebase | a change in effect sends the other open drafts it touches back to be redone | off | on |
@@ -121,27 +132,24 @@ remake; 1 run continue; 3 environment faults; 3 acts in flight; 6 person acts.
 | refCheck | the harness verifies a reference (DESIGN.md 4 states it) | on | on |
 | epochs | the store refuses an act of an older epoch | off | on |
 | reviseCheck | a draft the person sent back reaches the person again only revised | off | on |
-| bindOpenOnly | fde5e40: a new host assignment binds the run's session unless an open one holds it | on | on |
 | rebind | e4e49ff: run continue moves the open host assignment to the new session | on | on |
 | pumpReattach | the pump attaches again after another client's attach -d | off | on |
 | hostWatched | the end of the host's pane (in the person's tmux) is reported | off | on |
-| waitEmptyInput | the engine types a prompt only into an empty input line; the page shows a prompt held by the person's typing | off | on |
-| idleSeen | a process that stops at its prompt counts as an exit | off | on |
-| dashInactiveFromView | a mutant: a card is also Inactive when the page's copy says the role is down | off | off |
+| promptArg | a revive passes its prompt as an argument to the CLI; nothing is typed into the input line (off only in `mutTmux`) | on | on |
+| idleSeen | the CLI's own "stopped at its prompt" hook: it counts as an exit, and the terminal shows Inactive | off | on |
 | silentSteps | the ticks without a wait poll before a card shows Inactive (DESIGN.md: 1 minute) | 3 | 3 |
 | reviewSubagents | a role gives its review to a subagent (then the role waits); Nanda's reading: no | off | off |
 | editBack | DESIGN.md 10.1, open: after the pipeline role carries the person's direction edit down, back to the person: 0 always, 1 only when the change has items the person did not write (the proposal), 2 never | 1 | 1 |
 | acceptCheck | the store refuses an accept or send-back of an escalation not waiting for the person at the append | on | on |
 | decideRecheck | DESIGN.md 11 (Nanda's ruling): the person's "take as is" first rechecks the task against the changes that landed while it was raised | on | on (off only in `noDecideRecheck`) |
 | briefCheck | the store refuses a report made under an old brief (an item that applies to the task moved since the maker read it) | off | on |
-| shrinkAcrossSplit | D7 shrink: a split keeps the task's bound of points (else a split resets it and the loop never shrinks) | off | on |
 | listOnAttach | tmux: the pump lists the panes when it attaches (else it sees only the ends that happen while it is attached: edge-triggered) | off | on |
 
 ## DESIGN.md to Quint
 
 | DESIGN.md | Quint (work.qnt unless named) |
 |---|---|
-| 1 Person | `PERSON`: `OpenTop`, `Reject`, `Accept`, `SendBack`, `Decide`, `EndProject`, `MoveHost` (run continue); workenv `personActs` |
+| 1 Person | `PERSON`: `Reject`, `Accept`, `SendBack`, `Decide`, `EndProject`, `MoveHost` (run continue); workenv `personActs` |
 | 1 Host | `HOST`: `SendTask`, `Reassign`, `RemakeTop`, `TopDone`; its wait finds the top only through `hostFinds` |
 | 1 Persistent role | `ROLE`: `AssignDo`, `Review` (its verdict is the decision), `Resume`; `card` |
 | 1 Maker subagent | `Maker`, a fresh id per `AssignDo`; `ReadBrief`, `Report`; it lives inside the role's process (workenv `killed`, `Exit` of the role) |
@@ -154,7 +162,9 @@ remake; 1 run continue; 3 environment faults; 3 acts in flight; 6 person acts.
 | 5 only a standard change? | `Ship`: the draft names `items` (content: `real`); no direction among them: `shipStandard` (in effect at once, back to the role); else `SLoop` |
 | 5 review loop, change by human | `LoopReview`, `Accept`, `SendBack` |
 | 5 role draft, only a role change? | `Evaluate` `Fit` -> `SLoop`; `Accept`: role-only -> `cardInEffect`, `backToRole`; else `SAccepted` -> `Reassign` |
-| 6 C1, D7 | `c1Keep` in `RemakeTop`; `d7`: `budgetLeft`, `SPerson`, `Decide`; `Task.bound` |
+| 6 C1, D7 | C1 settled as b (DESIGN.md 12): `RemakeTop` keeps the host. D7 settled by DESIGN.md 13 (no budgets) |
+| 13 how the loop ends | `crossTest` (`Fix.fights`: the rule contradicts the other rule; `RunTest`); `raiseLevel` (`Task.floor`, `up`, `atLeast`, set by `resolveCause`); `strictScope` (`Task.sections`) |
+| 12 lifetimes | the host holds the top for the whole project (`Top` has no "hosted"; `TopDone` and `RemakeTop` keep it); roles never end; a draft waiting for the person survives a remake (it moves to fix 3 + its task, `free`) |
 | 7 Store | `accept`, `take`; workenv `storeTakes`, `storeRefuses` |
 | 8 tmux | tmux.qnt; workenv `serverKilled`, `socketLost`, `serverRecreated`, `pumpStolen`, `pageServerRestarts`, `pumpAttaches`, `personTypes`, `personClears`, `promptRead`, `procReads` (output) |
 | 10.1 the person's edit, the pipeline row | `EditDirection` (a pipeline entry `EDIT` at direction assessment; `wrote`), `shipEdit` (editBack), `atPerson` (acceptCheck); workenv `rowShown`, `DashRowMatches` |
@@ -185,7 +195,7 @@ remake; 1 run continue; 3 environment faults; 3 acts in flight; 6 person acts.
 | terminal output | `quiet` (ticks since the terminal printed), `procPrints`, every act and read prints |
 | socket gone, processes run | `socketLost`: processes run on; the pump cannot see them; a new server (`serverRecreated`) does not have them |
 | pump detached / page server restart | `pumpStolen`, `pageServerRestarts`, `pumpAttaches` |
-| input line | `personTypes`, `personClears`, a revive's prompt (`queuePrompt`), `promptRead` (a merged prompt is misread). The engine sends a prompt with Enter: it merges only with a line the person had already started |
+| input line | `personTypes`, `personClears`. A revive passes its prompt as an argument (promptArg), so no engine text is typed; with promptArg off (`mutTmux`) it is typed (`queuePrompt`) and merges with a line the person had already started (`promptRead`) |
 | wait markers, time | `silence` (per persistent role, ticks since its last poll), `tick`, `procPolls`, `procReads` |
 | person acts any time or never | `personActs`; not fair |
 
@@ -197,88 +207,87 @@ pipeline role's claim of the outcome; `Evaluate` with `Split` flag: the top must
 `Fit` flag: the label "only a role change", flag2: the content; `LoopReview` flag: hand the
 draft to the person; `Decide` flag: take the result as it is; `RecheckDone` flag: it still
 holds. `cause` on `Evaluate` (split) and `RemakeTop`: the real cause of the new task. `hits` on
-`Ship` and `Accept` (ghost, the environment's truth): the tasks whose work the change breaks;
-their result becomes bad (`Task.broken`, `rBad`) until it is made again under the new
-versions, so a recheck has something real to find.
+`Ship` and `Accept`, the person's too (ghost, the environment's truth): the tasks whose work
+the change breaks, raised tasks included; their result becomes bad (`Task.broken`, `rBad`)
+until it is made again under the new versions. A recheck judges only that (`broken`), not a
+defect the person took as it is (`Task.taken`). `vers` on `Evaluate` and `EditDirection`: the
+item versions the sender says its content is built on (the draft's `base`, compared and set at
+the append with rebase); `realVers` (ghost): the versions it really is built on (`trueBase`,
+which NoLostUpdate reads; they differ only for a Byzantine sender).
 
 ## Properties
 
 Each property, its tier, and its mutant: the module where it must break, with the seed in
-spec.sh `--check` (from `bun run spec:stress`). "Not seen" = the mutant is defined but no
-violation came in the runs given (they need the deep starts or targeted environments of the
-stress phase).
+spec.sh `--check` (found by `bun run spec:stress`). "Not seen" = the mutant is defined but no
+violation came in the runs given.
 
 Tier 1, safety under Byzantine agents and faults. One invariant each:
 
-| Property | The impossible state | Mutant (check it shows needed) |
+| Property | The impossible state | Mutant (the check it shows needed) |
 |---|---|---|
 | NoActByEnded | an act of a maker that is not the task's live maker was taken | mutMaker (endedCheck) |
-| NoClaimByEnded | a claim held by a maker the store ended or holds as down (a late read by an ended maker) | witnessCalm (endedCheck: it must cover ReadBrief too) |
+| NoClaimByEnded | a claim held by a maker the store ended or holds as down | witnessCalm (endedCheck must cover ReadBrief) |
 | NoReviewOfOtherResult | a review was applied to another result than the one read | mutDup (basis) |
-| NoPassUnderOtherVersion | a pass by a reviewer whose view had other item versions | mutRace (basis): not seen in 3000 runs |
+| NoPassUnderOtherVersion | a pass by a reviewer whose view had other item versions | mutRace (basis) |
 | NoStaleReport | a report answered another revision than the one it was made for | mutDup (basis) |
-| NoUnseenReject | the person's reject hit a result the page did not show (the live case: the page shows r0, the role fails it, the maker reports r1, the reject on the old page hits r1) | mutPage (basis); mutBuild (build: an old-build act names no basis, so it skips the basis check) |
-| NoUnseenAccept | the person's accept hit a draft the page did not show | mutPage (basis): not seen in 3000 runs |
+| NoUnseenReject | the person's reject hit a result the page did not show (the live case: the page shows r0, the role fails it, the maker reports r1, the reject on the old page hits r1) | mutPage (basis); mutBuild (build: an old build names no basis) |
+| NoUnseenAccept | the person's accept hit a draft the page did not show | mutPage (basis) |
 | NoRejectedDraftInEffect | a draft the person sent back took effect by an earlier accept | mutAccept (acceptCheck) |
-| NoLostUpdate | a draft built on an older version of an item it changes took effect | mutRace (rebase: compare and set at the append) |
-| NoFailedTestInEffect | a rule took effect whose test command fails its examples | mutPipe (harnessTest) |
-| EveryRuleHasForm | a rule took effect with neither evidence form | mutPipe (formCheck) |
-| NoBadReference | a rule took effect with a reference that does not exist | mutRef (refCheck) |
-| NoDeepChangeWithoutPerson | a change of the direction took effect without the person | mutPipe (classify): not seen in 3000 runs |
-| NoRoleChangeMisjudged | a role draft that changes more went back to the card without the host's reassign | mutPipe (classify): not seen in 3000 runs |
-| NoUnrecheckedScope | a change missed a task its content touches (named items fewer than the real ones) | mutPipe (classify) |
-| NoPassOfBrokenResult | a pass of a result a test-command rule catches | mutRole (passTests): not seen in 1000 runs |
-| NoPassOfBadResult | a pass (or recheck) of a bad result | mutRole; fixedRole: no store check can judge quality |
-| NoShallowEvaluation | an evaluation at a level that cannot remove the real cause | mutPipe; fixedPipe: no store check can know the cause |
+| NoLostUpdate | a draft took effect whose content is built on an older version of an item it changes (`trueBase`) | mutRace (rebase) |
+| NoFailedTestInEffect | a rule took effect whose test command fails its examples | mutPipeByz (harnessTest) |
+| EveryRuleHasForm | a rule took effect with neither evidence form | mutPipeByz (formCheck) |
+| NoBadReference | a rule took effect with a reference that does not exist | mutRefByz (refCheck) |
+| NoDeepChangeWithoutPerson | a change of the direction took effect without the person | mutPipe (classify; one lie) |
+| NoRoleChangeMisjudged | a role draft that changes more went back to the card without the host's reassign | mutPipeByz (classify) |
+| NoUnrecheckedScope | a change missed a task its content touches | mutPipe (classify) |
+| NoPassOfBrokenResult | a pass of a result a test-command rule catches | mutRole (passTests; one lie) |
+| NoPassOfBadResult | a pass (or a passed recheck) of a bad result | mutRole; fixedRole, fixedPipe: no store check can judge quality |
+| NoShallowEvaluation | an evaluation at a level that cannot remove the real cause | fixedPipe: no store check can know the cause; mutPipeByz |
 | NoStalePipelineAct | a pipeline act applied to a stage it was not made for | mutDup (basis) |
 | NoSplitBrain | an act of an older epoch of its actor was taken | mutCrash (epochs) |
 | RevisionHasContext | a revision worked by a maker that lost its context | mutCrash (fullBrief): not seen in 3000 runs |
-| NoUnrevisedResubmit | a draft the person sent back reached the person unchanged | mutPipe (reviseCheck) |
-| NoMergedInput | a revive's prompt merged with the person's typing was read | mutTmux (waitEmptyInput) |
-| NoDoneUnderOldVersion | the project ended with a task done under an old version of an item that applies to it | noDecideRecheck: not seen in 1000 runs (DoneIsCurrent shows the same state) |
-| DoneIsCurrent | a done task with nothing left to recheck is under an old version of an item that applies to it (the reviewer's case: past the budget, a change lands on the raised task, the person takes it as is) | noDecideRecheck (decideRecheck, now DESIGN.md 11) |
-| NoDoneBrokenAtEnd | the project ended with a done task whose work a change broke (ground truth: `hits`) | mutRecheck (a Byzantine pipeline role passes the recheck): not seen in 1000 runs |
+| NoUnrevisedResubmit | a draft the person sent back reached the person unchanged | mutPipe (reviseCheck; one lie) |
+| NoMergedInput | a typed prompt merged with the person's typing was read | mutTmux (promptArg off) |
+| DoneIsCurrent | a done task with nothing left to recheck is under an old version of an item that applies to it (the person took it as is while a change landed) | noDecideRecheck (decideRecheck, DESIGN.md 11) |
+| NoDoneBrokenAtEnd | the project ended with a done task whose work a change broke (ground truth: `hits`) | mutRecheck (one lie of the pipeline role passes the recheck); fixedRole, fixedPipe |
+| NoTakenUndone | a recheck undid a task the person took as is, though the change broke nothing (DESIGN.md 11) | mutRecheck: not seen in 3000 runs |
+| NoWrittenDropped | the person's edit took effect without an item the person wrote | mutPipeByz (classify) |
 | NoAcceptNotWaiting | an accept took effect on an escalation that did not wait for the person at its append | mutAccept (acceptCheck) |
-| NoUnacceptedEditChange | the person's direction edit put into effect items the person did not write and did not accept | editNever (editBack 2) |
-| HostBoundToRunSession | an open run's top task has its open host assignment on another session | beforeMove (rebind, e4e49ff); beforeBind (bindOpenOnly, fde5e40; from the deep start: top returned, a reject reopens it, the person gives it again) |
-| C1aConfirmed | under C1 a, a remake not built on the host's warning (a duplicate of the first remake) | mutDup (basis) |
-| C1bHosted | the top has no host (not done, not ended) | witnessCalm (C1 a); holds in c1b |
+| NoUnacceptedEditChange | the person's edit put into effect items the person did not write and did not accept | editNever (editBack 2) |
+| HostBoundToRunSession | the host's assignment of the top is on another session than the run's | beforeMove (rebind, e4e49ff) |
 
-ChangesWithinBudget was dropped: it restated the store's own guard (the budget is checked
-where a change takes effect).
+Dropped this round: C1aConfirmed and C1bHosted (DESIGN.md 12 settles C1: the host keeps the
+top; there is no unhosted top), NoDoneUnderOldVersion (merged into DoneIsCurrent),
+ChangesWithinBudget (no budgets, DESIGN.md 13), LiveNotInactive and DashInactiveReal (they
+restate the model's own assumption and definition; README "Simplified").
 
 Store-shape sanity (`Sane`; a violation is a bug of the model): `DoneIsClosed`,
-`OneMakerPerTask`, `RaiseHasOwner`. (ClaimOnlyLive left it: it is a protocol property,
-NoClaimByEnded.)
+`OneMakerPerTask`, `RaiseHasOwner`.
 
-The dashboard (DESIGN.md 10). The terminal card (Nanda: Inactive is the terminal's status):
+Dashboard staleness (they compare the page's copy with the store; a page renders a copy, so
+they break whenever the page is stale; not in the holds runs): DashNoFalseWorking,
+DashQueueActive, DashEscalationMatches, DashRowMatches (mutPage). PageOffersPersonObs holds by
+the page's definition: it is the quint test `workenv_test.qnt`, a regression check.
 
-| Property | The impossible state | Mutant |
-|---|---|---|
-| LiveNotInactive | a live terminal (it works, or waits in `work wait`; within its limit) shows Inactive | mutQuiet (without the timing assumption: a live terminal may print nothing and renew no beat for x ticks) |
-| DashInactiveReal | Inactive from the page's copy of the store (it restates `card` unless the mutant) | mutDash |
-| PageOffersPersonObs | a step the page's view owes the person that the page does not offer (the reviewer's case: a top split the host can no longer remake; now offered, and the row shows it) | none: the fix is in; no mutant |
+Tier 2, told once: `EveryObligationToldOnce` (mutants beforeMove; mutTmux (pumpReattach);
+noListOnAttach (listOnAttach: a pane that ended while the pump was away is never seen; the
+model no longer counts that as a legal wait)), `ToldIsAllowed`, `SomethingOwed`.
 
-The staleness properties compare the page's copy with the store; a page can only render a
-copy, so they break whenever the page is stale (they are not in the holds runs):
-DashNoFalseWorking, DashQueueActive, DashEscalationMatches, DashRowMatches (mutPage).
+Convergence (DESIGN.md 13): `Converges` = the agents' changes (standard changes, splits, top
+remakes) stay within `maxChanges`. It holds in convFixed (crossTest, raiseLevel, strict scope
+on; a pipeline role that can misjudge the level; rules that can contradict). It breaks:
+convNoRaise (raiseLevel off: a misjudged standard fix repeats at the same level),
+convNeither (crossTest and raiseLevel off: two rules ping-pong), convNoScope (strict scope
+off: splits never end). With crossTest off but raiseLevel on (convNoCross) it does not break
+in 1000 runs of 600 steps: the contradiction is raised to direction and principle, which go
+to the person (more work for the person, not an endless agent loop).
 
-Tier 2, told once: `EveryObligationToldOnce` (mutants beforeMove, mutTmux (pumpReattach);
-noListOnAttach: not seen in 1000 runs), `ToldIsAllowed`, `SomethingOwed`. A legal wait: the
-one actor told does not hear and the engine owes the next move (`engineOwes`), or a host's
-step while the top has no host (`hostWaitsOnPerson`: the person is told to open the top).
+Tier 3, progress: `FairProgress`. Not yet run (TLC).
 
-Convergence: `Converges` = agent changes stay within `maxChanges` and makers within
-`maxMakers`. A violation is a finding (the run goes on past them), never a success. Mutants:
-d7none (every real cause) and noShrinkSplit: not seen in 3000 runs.
-
-Tier 3, progress: `FairProgress` = `Fairness` (each honest actor, each sender's acts, the
-watcher, the pump and hooks, a new server, the pump attaching, a typed prompt read) implies
-`always(eventually(final))`. Final is never "past the bound". Not yet run (TLC).
-
-Holds (no violation, 3000 runs of 150 steps on the check machine): fixedHonest, fixedMaker,
-fixedHost, fixedCalm, c1b, d7shrink, and fixedRole / fixedPipe except the two properties no
-store check can hold.
+Holds (no violation in 3000 runs of 150 steps on the check machine, every key witness
+reached): fixedHonest, fixedMaker, fixedHost, fixedCalm, convFixed, fixedRole (except
+NoPassOfBadResult, NoDoneBrokenAtEnd), fixedPipe (except NoShallowEvaluation,
+NoPassOfBadResult, NoDoneBrokenAtEnd).
 
 ## Witnesses
 
@@ -288,26 +297,34 @@ One per action and per fault; the five witness modules together reach each in > 
 
 ## Simplified or left out on purpose (declared)
 
-- The top task starts open, hosted, bound to session 0 (or, with `ENV.start` 1, done and
-  returned to the person).
+- The top task starts open and hosted, bound to session 0 (or in a deep start, `ENV.starts`).
+  The host and the roles live as long as the project (DESIGN.md 12): returning or remaking the
+  top does not end the host; there is no "give the top again".
 - One persistent role for both tasks. Reassign ends the role's open work and sends it again
-  (its makers end); it is not counted as a change by D7.
+  (its makers end); it is not counted as an agent change.
 - A split remakes the task as one finer task in the same slot (a new generation).
 - Always-on store checks (the store's state machine): the stage order; a maker act only on a
   working task; `Fail` only while tries remain and `RaiseTries` only when they are used up;
   `Accept` only at the person; `Reject` only of a result in review or done; `EndProject` only
-  once the host returned the top; `RemakeTop` only within the D7 budget.
-- Rule rewrites past `maxRuleTries` must take the reference form (DESIGN.md has no bound).
-- Past the D7 bound the person decides: take the result as it is (done, after the recheck of
-  DESIGN.md 11) or evaluate again. A split of the top the host can no longer remake is also
-  the person's decision (the page offers it, the row shows it).
+  once the host returned the top and no recheck is pending; `RemakeTop` only when an
+  evaluation asked for it (a split of the top), up to `maxRemakes` (a model bound).
+- Rule rewrites past `maxRuleTries` must take the reference form and contradict no other rule
+  (DESIGN.md has no bound; this stands for "the pipeline role writes a consistent rule in the
+  end").
+- A split of the top the host can no longer remake (past `maxRemakes`, a model bound) is the
+  person's decision: take the result as it is (done, after the recheck of DESIGN.md 11) or
+  evaluate again (the page offers it, the row shows it).
+- The truth of a contradiction is the environment's choice (`WriteRule` `flag3`): a rule that
+  fights the other rule of the direction breaks the tasks that rule applies to and gives them
+  a standard cause again (the ping-pong of DESIGN.md 13, example d20). An honest pipeline role
+  evaluates at the real cause; with `misjudge` it may evaluate shallower (a mistake).
 - A rule with both forms: the test command finds candidates, the role judges; `passTests`
   covers only rules with a test command alone, and the harness rechecks only those (`RunRule`);
   a rule with both forms is rechecked by the pipeline role (`RecheckDone`).
 - An honest agent is competent: it reviews correctly and evaluates at the real cause. The
   store cannot protect review quality or the choice of level from a Byzantine role or
-  pipeline role: `NoPassOfBadResult` and `NoShallowEvaluation` break in `fixedRole` and
-  `fixedPipe`, by design of the problem.
+  pipeline role: `NoPassOfBadResult` and `NoShallowEvaluation` (and, through a passed recheck,
+  `NoDoneBrokenAtEnd`) break in `fixedRole` and `fixedPipe`, by design of the problem.
 - History flags read from a sender's own basis (`seen`, `seenDir`, `ctx`) count only for
   non-Byzantine senders: a Byzantine sender can write the right basis while acting on a wrong
   one. For them only the store's refusal of a wrong claimed basis is checked.
@@ -318,12 +335,24 @@ One per action and per fault; the five witness modules together reach each in > 
 - Time is a tick that ages every wait marker and every output marker (they stop at x, so time
   never ends); a poll resets the wait marker, any output the output marker. The card shows the
   actor's latest process (an old one left running by a lost socket is not its terminal).
+- The terminal card's Inactive (DESIGN.md 10): tmux disconnected, the usage-limit message,
+  the CLI's own "stopped at its prompt" hook (idleSeen), or 1 minute with neither a wait poll
+  nor output. The 1-minute rule rests on an assumption (`ENV.printsOften`; LiveNotInactive
+  restates it, so it is not a check): a live terminal prints or renews its beat within the
+  minute. What it cannot see: a CLI that keeps redrawing while stuck never shows Inactive; a
+  hung tool call that prints nothing shows Inactive only after the minute.
 - The truth of what a change breaks is the environment's choice (`hits`); a result made under
   an old brief stays broken.
 - The person's direction edit, once in effect (accepted, or at once by editBack), goes to the
   host's reassign like any accepted direction draft.
 - The page offers run continue only while its view shows session 0 (a bound of the model;
   an old page can still send it twice). The old host process ends with it.
+- fde5e40 (a finished host assignment held the session) has no path under DESIGN.md 12 (the
+  host's assignment never finishes), so its "before" module is gone; HostBoundToRunSession
+  rests on rebind (e4e49ff, `beforeMove`).
+- Not done (the review's "nice to have"): fairness per process (a stale process of the same
+  actor can satisfy `actorStep(k)`); the card version in the task's snapshot; a test command
+  that catches only some bad results (`mechCatches` assumes every one).
 - Done tasks are rechecked; active tasks are rechecked by their running role (the maker reads
   its brief again; the role reviews under the new versions), not by a separate act.
 - The dashboard's "matches" properties (DashNoFalseWorking, DashQueueActive,
