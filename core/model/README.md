@@ -30,7 +30,10 @@ agents, no reminder, is the fix.
   (one task, every counter capped: `ENV.bounded`), fairness per process, `AgentChangesStop`,
   and `NotAtCap`. At a cap every action is off, the fair ones too: the run stops there,
   `Progress` does not judge it, and the invariant `NotAtCap` reports it (a cap is a bound of the
-  model, never a success). `maxStep` 24 in tlcCalm fits three raises of the task.
+  model, never a success). tlcCalm and tlcCrash have two person acts and caps above what
+  their runs reach: `NotAtCap` holds there (spec.sh 400 runs, stress.sh 3000 runs of 300
+  steps), so TLC checks the design, not the caps. Dead processes stay in the process map (a
+  history, not state): the cap on processes counts them.
 - Heavy runs go to the check machine (below).
 
 ## Files and status

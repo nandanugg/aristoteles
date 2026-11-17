@@ -56,6 +56,8 @@ holds convFixed NoShallowEvaluation $X 600
 holds fixedRole NoPassOfBadResult,NoDoneBrokenAtEnd $X,RevisionHasContext,Converges
 holds fixedPipe NoShallowEvaluation,NoPassOfBadResult,NoDoneBrokenAtEnd $X,NoWrittenDropped,NoUnacceptedEditChange,NoRefixAtSameLevel,DoneIsCurrent,NoTakenUndone,NoPassOfBrokenResult,Converges,NoEscalationWithoutPerson,RaiseChangesBounded
 seed convNoCross RaiseChangesBounded 1000 600
+seed tlcCalm NotAtCap 3000 300
+seed tlcCrash NotAtCap 3000 300
 seed noLadderRoute NoEscalationWithoutPerson
 seed noRecheckBasis NoPassOfBadResult 1000 120
 seed mutMaker NoActByEnded

@@ -75,6 +75,12 @@ holdsAll fixedRole "NoPassOfBadResult NoDoneBrokenAtEnd" "$CALMX RevisionHasCont
 holdsAll fixedPipe "NoShallowEvaluation NoPassOfBadResult NoDoneBrokenAtEnd" \
   "$CALMX NoWrittenDropped NoUnacceptedEditChange NoRefixAtSameLevel DoneIsCurrent NoTakenUndone
   NoPassOfBrokenResult Converges NoEscalationWithoutPerson RaiseChangesBounded"
+# The TLC modules stay inside their caps (else TLC would check the caps, not the design).
+for m in tlcCalm tlcCrash; do
+  $Q run workenv.qnt --main=$m --invariant=NotAtCap --max-samples=400 --max-steps=300 \
+    --seed=0x2a --n-threads=1 >/dev/null 2>&1 \
+    && echo "holds  workenv.qnt $m NotAtCap" || { echo "FAIL   workenv.qnt $m NotAtCap"; fail=1; }
+done
 # A regression of the page (it offers every step its view owes the person).
 $Q test workenv_test.qnt --main=pageTest --match=pageOffersTest --max-samples=200 \
   >/dev/null 2>&1 \

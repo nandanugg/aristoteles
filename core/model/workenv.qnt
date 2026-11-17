@@ -1067,15 +1067,15 @@ module noRecheckBasis {
 module tlcCalm {
   import cfgs.*
   import workenv(CFG = { ...FIXED, slots: Set(0) },
-    ENV = { ...CALM, bounded: true, maxPerson: 3, maxProcs: 6, maxVer: 6, maxStep: 24 })
+    ENV = { ...CALM, bounded: true, maxPerson: 2, maxProcs: 14, maxVer: 12, maxStep: 40 })
     .* from "./workenv"
 }
 // For TLC with crashes (R4: a usage limit, a crash and a resume).
 module tlcCrash {
   import cfgs.*
   import workenv(CFG = { ...FIXED, slots: Set(0) },
-    ENV = { ...CALM, crash: true, maxFaults: 2, bounded: true, maxPerson: 2, maxProcs: 8,
-            maxVer: 4, maxStep: 16 }).* from "./workenv"
+    ENV = { ...CALM, crash: true, maxFaults: 2, bounded: true, maxPerson: 2, maxProcs: 16,
+            maxVer: 12, maxStep: 40 }).* from "./workenv"
 }
 // Convergence (DESIGN.md 13). The pipeline role may misjudge the level; rules may
 // contradict. NoRefixAtSameLevel (a guard of raiseLevel) and Converges (the bound derived
