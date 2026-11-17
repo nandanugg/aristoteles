@@ -45,15 +45,16 @@ module core {
   // (then the rule is written again; past maxRuleTries only as a reference). reject: the
   // person may reject a result.
   const C: { causes: Set[int], causes1: Set[int], maxPerson: int, maxMistakes: int, slips: bool,
-             forms: Set[int], testsFail: bool, reject: bool }
+             forms: Set[int], testsFail: bool, reject: bool, maxExits: int, caps: bool }
   import work(OPT = CFG).* from "./work"
 
   var s: Store
   var persons: int      // the person's acts so far
   var mistakes: int     // the pipeline role's mistakes so far
   var chg: bool         // flips at each agent change (AgentChangesStop)
+  var exits: int        // the exits so far (C.maxExits)
 
-  val vars = (s, persons, mistakes, chg)
+  val vars = (s, persons, mistakes, chg, exits)
   pure val VERDICTS = Set(Pass, Fail, RaiseTries, RaiseNoRule, RaiseMisses)
   pure val LEVELS = Set(Split, Fit, Principle, Direct, Standard)
   pure val BOOLS = Set(true, false)
@@ -117,15 +118,21 @@ module core {
            escalatedNoPerson: st.g.escalatedNoPerson, topNoPerson: st.g.topNoPerson,
            passDefect: st.g.passDefect } }
 
-  action commit(ns: Store, np: int, nm: int): bool = all {
-    s' = canon(ns), persons' = np, mistakes' = nm,
+  // caps off (a mutant, R6-6): the model's caps on the review loop's revisions and on rule
+  // rewrites (OPT.maxLoops, OPT.maxRuleTries) are forgotten: those loops can go on.
+  def uncapped(st: Store): Store = if (C.caps) st else
+    { ...st, fixes: st.fixes.keys().mapBy(i => { ...fx(st, i), loops: 0, ruleTries: 0 }) }
+  action commitE(ns: Store, np: int, nm: int, ne: int): bool = all {
+    s' = uncapped(canon(ns)), persons' = np, mistakes' = nm, exits' = ne,
     chg' = if (ns.agentChanges > s.agentChanges) not(chg) else chg,
   }
+  action commit(ns: Store, np: int, nm: int): bool = commitE(ns, np, nm, exits)
 
   action init = {
     nondet c0 = causes.oneOf()
     nondet c1 = C.causes1.map(n => CAUSE_OF(n)).oneOf()
-    all { s' = initStore(Map(0 -> c0, 1 -> c1)), persons' = 0, mistakes' = 0, chg' = false }
+    all { s' = initStore(Map(0 -> c0, 1 -> c1)), persons' = 0, mistakes' = 0, chg' = false,
+          exits' = 0 }
   }
 
   // ---- acts. An act as its sender builds it on the current store (its basis is current).
@@ -172,13 +179,25 @@ module core {
     waitsIfAccept: match a.what { | Accept(i) => fx(s, i).stage == SAtPerson | _ => true },
   }
   def makers: Set[int] = SLOTS.map(i => makerOf(i))
-  // An agent (or the harness) takes a step it is told, with honest content.
-  action agentStep(k: int): bool = {
+  // An agent (or the harness) takes a step it is told, with honest content; not while its
+  // exit is recorded (it is revived or resumed first).
+  action agentStep(k: int): bool = all {
+    not(s.down.contains(k)),
     nondet x = dos(s, k).oneOf()
     nondet a = choices(base(k, x)).filter(a => accept(s, a) and G3(fresh(a)) and honestNow(a))
       .oneOf()
     commit(take(prep(a), a), persons,
-           mistakes + if (honestOf(s, a, false)) 0 else 1)
+           mistakes + if (honestOf(s, a, false)) 0 else 1),
+  }
+  // A process ends (R6-5): the engine records its exit (work.qnt Exit, the harness's act),
+  // at most maxExits times; not fair. Then the harness revives a role, the role resumes its
+  // maker, the person starts the host again (work.qnt Revive, Resume, ReviveOb).
+  action exitHappens = all {
+    exits < C.maxExits,
+    nondet k = Set(HOST, ROLE, PIPE).union(s.makers.keys()).filter(j => not(s.down.contains(j)))
+      .oneOf()
+    val a = base(HARNESS, Exit(k))
+    all { accept(s, a), commitE(take(s, a), persons, mistakes, exits + 1) },
   }
   // The person: what the person is told (accept, send back, take as is, end), and a
   // reject of a result. Not fair; at most maxPerson acts.
@@ -202,35 +221,42 @@ module core {
   action step = any {
     agentStep(HOST), agentStep(ROLE), agentStep(PIPE), agentStep(HARNESS),
     nondet m = makers.oneOf() agentStep(m),
-    personStep,
+    personStep, exitHappens,
   }
 
   // ---- properties
   def owes(k: int): bool = dos(s, k) != Set()
-  // The assumption: G1 then A, for each actor (the person excluded): an actor told a step
-  // takes one in the end, or it is no longer told one. The harness (RunRule) is the engine.
-  temporal Assumed = all {
-    G1(owes(HOST), mustChange(agentStep(HOST), vars), false),
+  // The assumption, with the same arguments terminals.qnt proves (R6-5): G1 then A, for
+  // each agent: an agent told a step takes one in the end, or it is no longer told one; the
+  // host may instead wait for the person to start it again (its exit is recorded: a person
+  // obligation, work.qnt ReviveOb). A maker whose exit is recorded is told nothing (its
+  // resume is the role's step): terminals' "the role hears the resume".
+  temporal AgentsG1 = all {
+    G1(owes(HOST), mustChange(agentStep(HOST), vars), s.down.contains(HOST)),
     G1(owes(ROLE), mustChange(agentStep(ROLE), vars), false),
     G1(owes(PIPE), mustChange(agentStep(PIPE), vars), false),
-    G1(owes(HARNESS), mustChange(agentStep(HARNESS), vars), false),
     G1(owes(3), mustChange(agentStep(3), vars), false),
     G1(owes(4), mustChange(agentStep(4), vars), false),
   }
+  // Engine fairness, not the contract (R6-7): the harness runs a rule's test command it is
+  // due to run (RunRule) and revives a role whose exit is recorded (terminals.qnt's watcher).
+  temporal EngineFair = G1(owes(HARNESS), mustChange(agentStep(HARNESS), vars), false)
+  temporal Assumed = AgentsG1 and EngineFair
   // G2: every run reaches Final (the project ended, or it waits only on the person) and
   // stays there or goes on from it; and agent changes stop.
   temporal Progress = always(eventually(finalOf(s)))
+  // With exits: the host whose exit is recorded waits for the person (work.qnt finalOf).
   temporal AgentChangesStop = eventually(always(chg)) or eventually(always(not(chg)))
   temporal CoreProgress = Assumed implies Progress
   temporal CoreChangesStop = Assumed implies AgentChangesStop
   // Sanity (not vacuous): without the pipeline role's part of the assumption, a run can
   // stop short of Final. TLC must break this.
   temporal AssumedNoPipe = all {
-    G1(owes(HOST), mustChange(agentStep(HOST), vars), false),
+    G1(owes(HOST), mustChange(agentStep(HOST), vars), s.down.contains(HOST)),
     G1(owes(ROLE), mustChange(agentStep(ROLE), vars), false),
-    G1(owes(HARNESS), mustChange(agentStep(HARNESS), vars), false),
     G1(owes(3), mustChange(agentStep(3), vars), false),
     G1(owes(4), mustChange(agentStep(4), vars), false),
+    EngineFair,
   }
   temporal CoreProgressNoPipe = AssumedNoPipe implies Progress
 
@@ -274,7 +300,8 @@ module coreCfgs {
     listOnAttach: true, ladderRoute: true, maxTries: 2, maxMakers: 6, maxLoops: 1,
     maxRuleTries: 1 }
   pure val ENV_C = { causes: Set(0, 5), causes1: Set(0, 5), maxPerson: 1, maxMistakes: 0, slips: false,
-                     forms: Set(1, 2), testsFail: true, reject: false }
+                     forms: Set(1, 2), testsFail: true, reject: false, maxExits: 0,
+                     caps: true }
 }
 // ---- instances (tlc.sh keeps only the one it checks: quint's TLA+ export of a file with
 // many instances overflows).
@@ -301,6 +328,22 @@ module coreTwoDir {
   import coreCfgs.*
   import core(CFG = FIXED_C,
               C = { ...ENV_C, causes: Set(4), causes1: Set(0), testsFail: false }).* from "./core"
+}
+// coreTwo with one process end (R6-5): an exit of the host, a role, the pipeline role or
+// a maker, its revive (the harness), its resume (the role), the host started again by the
+// person (one more person act).
+module coreTwoExit {
+  import coreCfgs.*
+  import core(CFG = FIXED_C, C = { ...ENV_C, causes: Set(5), causes1: Set(0), testsFail: false,
+                                   maxPerson: 2, maxExits: 1 }).* from "./core"
+}
+// R6-6: without the model's caps on the review loop and on rule rewrites (DESIGN.md has
+// no rule that ends them), the run need not end: CoreProgress breaks.
+module coreNoCaps {
+  import coreCfgs.*
+  import core(CFG = { ...FIXED_C, slots: Set(0) },
+              C = { ...ENV_C, causes: Set(5), causes1: Set(0), maxPerson: 0, caps: false })
+    .* from "./core"
 }
 // The simulator only (too big for TLC): two tasks, every cause, the person's acts.
 module coreAll {

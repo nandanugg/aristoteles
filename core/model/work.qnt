@@ -904,9 +904,12 @@ module work {
   }
   def toldAny(s: Store, ob: Ob): Set[int] =
     actorsOf(s).filter(k => dos(s, k).exists(x => discharges(ob, k, x)))
-  // Final: the project ended, or what is owed is owed by the person only.
+  // Final: the project ended, or what is owed is owed by the person only (a step of the host
+  // whose exit is recorded waits for the person, who starts it again: Revive(HOST)).
+  def waitsOnPerson(s: Store, ob: Ob): bool =
+    isPersonOb(ob) or (s.down.contains(HOST) and toldAny(s, ob).contains(HOST))
   def finalOf(s: Store): bool =
-    s.top.ended or (obligationsOf(s) != Set() and obligationsOf(s).forall(ob => isPersonOb(ob)))
+    s.top.ended or (obligationsOf(s) != Set() and obligationsOf(s).forall(ob => waitsOnPerson(s, ob)))
   // The model's bound on agent changes, from the config (README.md "Convergence"): per task,
   // sections - 1 splits (strict scope) and then one standard change (its floor goes to
   // direction, which reaches the person; a split is below it). Past it is not a success.

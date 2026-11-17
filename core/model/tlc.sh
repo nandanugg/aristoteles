@@ -5,6 +5,8 @@
 # the lines whose module matches this grep pattern).
 # Each job: file, module, the answer expected (holds: no violation; breaks: a violation),
 # the invariants (comma-separated, or -) and the temporal properties (comma-separated, or -).
+# The whole script is one function, read before it runs (an edit during a run is safe).
+main() {
 set -u
 cd "$(dirname "$0")" || exit 1
 Q=../../node_modules/.bin/quint
@@ -52,6 +54,7 @@ run() {
 jobs() {
   cat <<EOF
 terminals.qnt termFixed holds Sane,ExactlyOnce G1All,SendDone
+terminals.qnt termFixed3 holds Sane,ExactlyOnce G1All,SendDone
 terminals.qnt termNoList breaks - G1All
 terminals.qnt termNoReattach breaks - G1All
 terminals.qnt termNoPromptArg breaks - G1All
@@ -74,6 +77,8 @@ browser.qnt browserNoPush breaks - G4All
 core.qnt coreOne holds $SAFE $LIVE
 core.qnt coreTwo holds $SAFE $LIVE
 core.qnt coreTwo breaks - CoreProgressNoPipe
+core.qnt coreTwoExit holds $SAFE $LIVE
+core.qnt coreNoCaps breaks - CoreProgress
 core.qnt coreTwoDir holds $SAFE $LIVE
 core.qnt coreCrossOnly holds - CoreChangesStop
 core.qnt coreNoRaise breaks - CoreChangesStop
@@ -89,3 +94,5 @@ jobs | grep -E "${ONLY:-.}" | while read -r f m want inv temp; do
 done
 [ -f "$OUT/failed" ] && { rm -f "$OUT/failed"; exit 1; }
 exit 0
+}
+main "$@"

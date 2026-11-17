@@ -18,7 +18,7 @@ module browser {
   // reconnect: the page reconnects its websocket after a drop. reloadOnBuild: a page of an
   // old build reloads itself when the server has a new one. push: the server pushes each
   // change to a connected page (off: only the person's refresh brings it).
-  const B: { reconnect: bool, reloadOnBuild: bool, push: bool, maxFaults: int }
+  const B: { reconnect: bool, reloadOnBuild: bool, push: bool }
   pure val OWED = Set(0, 1)
   type Esc = NoEsc | InPipe | WaitReview
   // What the store and the engine say: the person's owed acts; the role has a step of its
@@ -28,13 +28,13 @@ module browser {
   // page: the page's copy; ws: its websocket is connected; synced: the copy is the store's
   // since the last change (set by a refresh, a push, a reconnect, a reload).
   type Bw = { now: Now, srv: Srv, srvBuild: int, ws: bool, pageBuild: int, page: Now,
-              synced: bool, faults: int }
+              synced: bool, calm: bool }
   var b: Bw
 
   pure val NOW0: Now = { owed: Set(), own: false, sig: false, esc: NoEsc }
   action init = all {
     b' = { now: NOW0, srv: SrvUp, srvBuild: 0, ws: true, pageBuild: 0, page: NOW0,
-           synced: true, faults: 0 },
+           synced: true, calm: false },
   }
 
   // ---- the dashboard the page draws from a copy (DESIGN.md 10)
@@ -51,9 +51,10 @@ module browser {
     val n = { owed: o, own: own, sig: sig, esc: e }
     all { n != b.now, b' = { ...b, now: n, synced: false } }
   }
-  // ---- faults (at most maxFaults; not fair)
-  action fault(nb: Bw): bool =
-    all { b.faults < B.maxFaults, b' = { ...nb, faults: b.faults + 1 } }
+  // ---- faults: any number, until the run is calm (one weakly fair step); not fair. One
+  // new build (srvBuild 0 to 1).
+  action fault(nb: Bw): bool = all { not(b.calm), b' = nb }
+  action calms = all { not(b.calm), b' = { ...b, calm: true } }
   action wsDrops = all { b.ws, fault({ ...b, ws: false }) }
   action serverCrashes = fault({ ...b, srv: Restarting, ws: false })
   // A new build: the page server restarts itself on it; the open page is of the old build.
@@ -80,12 +81,13 @@ module browser {
   }
 
   action step = any {
-    nowChanges, wsDrops, serverCrashes, newBuild, personRefreshes, serverRestarts,
+    nowChanges, calms, wsDrops, serverCrashes, newBuild, personRefreshes, serverRestarts,
     pageReconnects, serverPushes,
   }
 
   temporal Fairness = all {
     weakFair(serverRestarts, b), weakFair(pageReconnects, b), weakFair(serverPushes, b),
+    weakFair(calms, b),
   }
   // G4 for each act the person may owe.
   temporal G4All = Fairness implies all {
@@ -103,7 +105,7 @@ module browser {
 }
 
 module browserCfgs {
-  pure val FIXED_B = { reconnect: true, reloadOnBuild: true, push: true, maxFaults: 2 }
+  pure val FIXED_B = { reconnect: true, reloadOnBuild: true, push: true }
 }
 // ---- instances (tlc.sh keeps only the one it checks). The design, and the mutants where
 // G4 must FAIL.

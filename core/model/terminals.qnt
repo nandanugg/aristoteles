@@ -2,9 +2,13 @@
 // "An agent that owes work is, in the end, alive and hears its step", under process ends,
 // tmux faults, reboots, usage limits, stops at the prompt and crashes of the engine. Small
 // on purpose, for TLC with liveness: no time, no page, no store but the records the engine
-// reads. Aristoteles is an ARBITRARY ADVERSARY here: each agent's `owes` bit may be set or
-// cleared at any time, and it may ask for a send at any time. The model assumes nothing
-// about the protocol.
+// reads. Aristoteles is an ARBITRARY ADVERSARY here: whatever an agent owes, at any time,
+// and it may ask for a send at any time. The model assumes nothing about the protocol.
+// No action reads what an agent owes, so G1 is checked with `owes` always true: "always
+// eventually the agent hears (or the person owes its revival)". That implies G1 for every
+// way the adversary may set and clear owes (R6-8; the owes bits are not state).
+// Faults: at most maxFaults in a run, in any order (TLC measured: with any number of faults
+// until a fair "calm" step the state space passed 2.3 million states and kept growing).
 // What it has:
 // - the host's pane, in the person's own tmux. The engine never revives it: its end is
 //   recorded (hostWatched) and the person is shown it; the person starts it again;
@@ -55,21 +59,21 @@ module terminals {
   type Pump = Attached | Again | Off
   type Line = Empty | Typing
   type Box = NoBox | Recorded
-  // owes: the adversary's bits. old: panes of an agents' server whose socket was lost.
+  // old: panes of an agents' server whose socket was lost.
   // noticed: ends the engine heard and has not yet recorded (in its memory). down: the
   // store's exit records. box: the outbox records (ROLE, PIPE: revives; SEND). acting: ops
   // the watcher acted on and has not yet marked (its memory). tag: revives whose pane is in
   // the current server (the evidence). sendTo: the send's target (-1: none). mem: outbox
   // off, ops to act on from memory. sent, dupAct: ghosts (the send was acted; a revive was
   // acted while the pane of its first act still ran).
-  type W = { owes: Set[int], ps: int -> PS, old: Set[int], srvUp: bool, pump: Pump,
+  type W = { ps: int -> PS, old: Set[int], srvUp: bool, pump: Pump,
              noticed: Set[int], down: Set[int], box: int -> Box, acting: Set[int],
              tag: Set[int], sendTo: int, mem: Set[int], line: int -> Line, faults: int,
              sent: bool, dupAct: bool }
   var w: W
 
   action init = all {
-    w' = { owes: Set(), ps: AGENTS.mapBy(k => Hears), old: Set(), srvUp: true,
+    w' = { ps: AGENTS.mapBy(k => Hears), old: Set(), srvUp: true,
            pump: Attached, noticed: Set(), down: Set(), box: OPS.mapBy(k => NoBox),
            acting: Set(), tag: Set(), sendTo: -1, mem: Set(), line: PANES.mapBy(k => Empty),
            faults: 0, sent: false, dupAct: false },
@@ -83,20 +87,17 @@ module terminals {
   // The maker's step after its end: the role is told to resume it (work.qnt ResumeOb).
   def heardBy(k: int): bool =
     hears(k) or (k == MAKER and w.down.contains(MAKER) and hears(ROLE))
-  // The person owes the host's revival: its end is recorded, so the person is shown it.
-  def personOwes(k: int): bool = k == HOST and not(up(HOST)) and w.down.contains(HOST)
+  // The person owes the host's revival: its end (or its stop at the prompt) is recorded,
+  // so the person is shown it.
+  def personOwes(k: int): bool = k == HOST and not(hears(HOST)) and w.down.contains(HOST)
   // The pump hears a pane end while attached to the server that has the pane.
   def heard(k: int): bool = PANES.contains(k) and w.pump == Attached and not(w.old.contains(k))
   action fault(nw: W): bool = all { w.faults < T.maxFaults, w' = { ...nw, faults: w.faults + 1 } }
   def ended(ps: int -> PS, k: int): int -> PS =
     if (k == ROLE) ps.set(ROLE, Down).set(MAKER, Down) else ps.set(k, Down)
 
-  // ---- the adversary (aristoteles): any agent owes work, or stops owing it, at any time;
-  // it asks for a send (a text for an agent's terminal), recorded in the store first.
-  action owesChanges = {
-    nondet k = AGENTS.oneOf()
-    w' = { ...w, owes: if (w.owes.contains(k)) w.owes.exclude(Set(k)) else w.owes.union(Set(k)) }
-  }
+  // ---- the adversary (aristoteles) asks for a send (a text for an agent's terminal),
+  // recorded in the store first.
   action sendRecorded = all {
     w.sendTo == -1, w.box.get(SEND) == NoBox, not(w.mem.contains(SEND)),
     nondet k = Set(HOST, ROLE, PIPE).oneOf()
@@ -105,7 +106,7 @@ module terminals {
            mem: if (T.outbox) w.mem else w.mem.union(Set(SEND)) },
   }
 
-  // ---- faults (at most maxFaults in a run; not fair)
+  // ---- faults (at most maxFaults; not fair)
   // A process ends. The pump hears a pane's end while attached; the hook inside the role
   // records its maker's end; the host's end is seen with hostWatched. The role's end is
   // its maker's end.
@@ -170,9 +171,10 @@ module terminals {
     nondet k = PANES.oneOf()
     w' = { ...w, line: w.line.set(k, if (w.line.get(k) == Empty) Typing else Empty) },
   }
-  // The person starts the host again in its own tmux (the engine does not revive it).
+  // The person starts the host again in its own tmux, or talks to it after its stop (the
+  // engine does not revive it).
   action personRevivesHost = all {
-    not(up(HOST)),
+    not(hears(HOST)), w.ps.get(HOST) != Limited,
     w' = { ...w, ps: w.ps.set(HOST, Hears), down: w.down.exclude(Set(HOST)),
            noticed: w.noticed.exclude(Set(HOST)) },
   }
@@ -188,7 +190,8 @@ module terminals {
   // ---- the engine (fair)
   // The pump (or the host's watcher) records an end it heard: an exit in the store. The
   // role's exit is its maker's exit too. With idleSeen the CLI's hook records the stop at
-  // the prompt as an exit, and the engine ends that CLI.
+  // the prompt as an exit, and the engine ends that CLI; the host's CLI is the person's: its
+  // stop is recorded and shown to the person, and the CLI is left as it is (R6-9).
   action report = {
     nondet k = w.noticed.oneOf()
     val gone = if (k == ROLE) Set(ROLE, MAKER) else Set(k)
@@ -197,8 +200,9 @@ module terminals {
   }
   action idleHook = all {
     T.idleSeen,
-    nondet k = AGENTS.filter(j => w.ps.get(j) == Idle).oneOf()
-    w' = { ...w, ps: ended(w.ps, k), tag: w.tag.exclude(Set(k)), old: w.old.exclude(Set(k)),
+    nondet k = AGENTS.filter(j => w.ps.get(j) == Idle
+                                 and not(j == HOST and w.down.contains(HOST))).oneOf()
+    w' = { ...w, ps: if (k == HOST) w.ps else ended(w.ps, k), tag: w.tag.exclude(Set(k)), old: w.old.exclude(Set(k)),
            down: w.down.union(if (k == ROLE) Set(ROLE, MAKER) else Set(k)) },
   }
   action engineReports = any { report, idleHook }
@@ -271,7 +275,7 @@ module terminals {
   }
 
   action step = any {
-    owesChanges, sendRecorded,
+    sendRecorded,
     crash, stopsAtPrompt, serverKilled, reboot, socketLost, pumpStolen, pageServerRestarts,
     watcherCrashes, hitsLimit,
     personTypes, personRevivesHost, roleResumesMaker,
@@ -290,10 +294,10 @@ module terminals {
     weakFair(limitLifts, w), weakFair(serverRecreated, w), weakFair(pumpAttaches, w),
   }
   // G1 for each agent (contract.qnt). The host: or the person owes its revival.
-  temporal G1Host = G1(w.owes.contains(HOST), heardBy(HOST), personOwes(HOST))
-  temporal G1Role = G1(w.owes.contains(ROLE), heardBy(ROLE), false)
-  temporal G1Pipe = G1(w.owes.contains(PIPE), heardBy(PIPE), false)
-  temporal G1Maker = G1(w.owes.contains(MAKER), heardBy(MAKER), false)
+  temporal G1Host = G1(true, heardBy(HOST), personOwes(HOST))
+  temporal G1Role = G1(true, heardBy(ROLE), false)
+  temporal G1Pipe = G1(true, heardBy(PIPE), false)
+  temporal G1Maker = G1(true, heardBy(MAKER), false)
   temporal G1All = Fairness implies all { G1Host, G1Role, G1Pipe, G1Maker }
   // A recorded send is acted on in the end (or its target is the host and the person owes
   // its revival): the same form as G1.
@@ -310,7 +314,8 @@ module terminals {
 // The design: every check on.
 module termCfgs {
   pure val FIXED_T = { listOnAttach: true, pumpReattach: true, promptArg: true, outbox: true,
-                       evidence: true, hostWatched: true, idleSeen: true, maxFaults: 2 }
+                       evidence: true, hostWatched: true, idleSeen: true,
+                       maxFaults: 2 }
 }
 // ---- instances (tlc.sh keeps only the one it checks: quint's TLA+ export of a file with
 // many instances overflows). The design, and the sanity mutants where G1 must FAIL.
