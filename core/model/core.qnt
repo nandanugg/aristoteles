@@ -46,7 +46,7 @@ module core {
   // person may reject a result.
   const C: { causes: Set[int], causes1: Set[int], maxPerson: int, maxMistakes: int, slips: bool,
              forms: Set[int], testsFail: bool, reject: bool, maxExits: int,
-             personBound: bool }
+             personBound: bool, sendBacks: int }
   import work(OPT = CFG).* from "./work"
 
   var s: Store
@@ -208,7 +208,9 @@ module core {
   action personStep = all {
     nondet x = personMoves.oneOf()
     val counted = match x { | SendBack(_) => not(C.personBound) | _ => true }
-    val bounded = match x { | SendBack(i) => not(C.personBound) or fx(s, i).backs < PERSON_SEND_BACKS
+    // sendBacks: the send-backs a run of this instance explores per draft (at most P).
+    val cap = if (C.sendBacks < PERSON_SEND_BACKS) C.sendBacks else PERSON_SEND_BACKS
+    val bounded = match x { | SendBack(i) => not(C.personBound) or fx(s, i).backs < cap
                             | _ => true }
     // flag: take as is (Decide); flag3: the accepted direction change resolves a
     // contradiction; hits: the tasks the accepted change breaks.
@@ -315,7 +317,7 @@ module coreCfgs {
     maxMakers: 6 }
   pure val ENV_C = { causes: Set(0, 5), causes1: Set(0, 5), maxPerson: 1, maxMistakes: 0, slips: false,
                      forms: Set(1, 2), testsFail: true, reject: false, maxExits: 0,
-                     personBound: true }
+                     personBound: true, sendBacks: 1 }
 }
 // ---- instances (tlc.sh keeps only the one it checks: quint's TLA+ export of a file with
 // many instances overflows).
@@ -357,7 +359,8 @@ module coreTwoExit {
 module coreLoops {
   import coreCfgs.*
   import core(CFG = { ...FIXED_C, slots: Set(0) },
-              C = { ...ENV_C, causes: Set(4, 5), causes1: Set(0), maxPerson: 1 }).* from "./core"
+              C = { ...ENV_C, causes: Set(4, 5), causes1: Set(0), maxPerson: 1, sendBacks: 3 })
+    .* from "./core"
 }
 // The mutants: without the ladder on rule rewrites, or on the review loop, the pipeline role
 // may loop for ever; with the person unbounded the run depends on the person (expected).

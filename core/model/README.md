@@ -770,18 +770,22 @@ CoreChangesStop):
 | coreTwo | CoreProgressNoPipe (assumption not vacuous) | breaks | 4,425 | 45 s |
 | coreTwoExit (coreTwo, one process end, person 2) | 13 invariants, LIVE | holds | (running) | |
 | coreTwoExit | CoreProgressNoEngine (the revive is needed) | breaks | (running) | |
-| coreTwoDir (task 0 a direction cause) | 13 invariants, LIVE | holds | 24,543 | 61 s |
-| coreCrossOnly (raiseLevel off, every rule a test command) | CoreChangesStop | holds | 24,495 | 55 s |
+| coreTwoDir (task 0 a direction cause) | 13 invariants, CoreProgress, CoreChangesStop | holds | 287,004 | 484 s (a) |
+| coreCrossOnly (raiseLevel off, every rule a test command) | CoreChangesStop | holds | 658,413 | 720 s (a) |
 | coreNoRaise (raiseLevel off) | CoreChangesStop | breaks | 236,468 | 225 s |
-| coreNoCross (crossTest and raiseLevel off, every rule a test command) | CoreChangesStop | breaks | 37,930 | 66 s |
-| coreNoSplit (strictScope and raiseLevel off) | CoreChangesStop | breaks | 46 | 43 s |
-| coreLoops (one task, a direction or standard cause, rules that fail their examples, the ladder of 13.2, the person's send-backs up to 3) | 13 invariants, LIVE | holds | LOOPS_N | LOOPS_T |
-| coreNoRuleLadder (a rule failing again is written again, for ever) | CoreProgress | breaks | NRL_N | NRL_T |
-| coreNoLoopLadder (the review loop may send back for ever) | CoreProgress | breaks | NLL_N | NLL_T |
-| corePersonUnbounded (the person's acts and send-backs unbounded) | CoreSettles | breaks: the run depends on the person, as expected | PU_N | PU_T |
+| coreNoCross (crossTest and raiseLevel off, every rule a test command) | CoreChangesStop | breaks | 45,300 | 109 s (a) |
+| coreNoSplit (strictScope and raiseLevel off) | CoreChangesStop | breaks | 46 | 52 s (a) |
+| coreLoops (one task, a direction or standard cause, rules that fail their examples, the ladder of 13.2, the person's send-backs up to 3) | 13 invariants, LIVE | holds | 82,034 | 161 s (a) |
+| coreNoRuleLadder (a rule failing again is written again, for ever) | CoreProgress | breaks | 5,003 | 54 s (a) |
+| coreNoLoopLadder (the review loop may send back for ever) | CoreProgress | breaks | 6,481 | 54 s (a) |
+| corePersonUnbounded (the person's acts and send-backs unbounded) | CoreSettles | breaks: the run depends on the person, as expected | 4,921 | 54 s (a) |
+
+(a): arch-3, 5 workers, 3 GB; the others arch-temp, 12 workers. All core rows are on the model
+with DESIGN.md 13.2 (no caps on agents) unless marked otherwise.
 
 Bounds: tasks 1 or 2, 2 sections, 2 tries, no cap on agents (13.2), the person 0 to 2
-acts (other than send-backs; at most 3 send-backs per draft: P), 0 or 1 mistake, 0 or 1 process end. Not proven by TLC (the simulator
+acts (other than send-backs; send-backs per draft: up to P = 3 in coreLoops, 1 in the
+other instances, a subset of the runs P allows, to keep them small), 0 or 1 mistake, 0 or 1 process end. Not proven by TLC (the simulator
 only, `bun run spec`): two tasks with every cause and the person's acts (coreAll); more than
 one process end; the person's direction edit and run continue.
 
