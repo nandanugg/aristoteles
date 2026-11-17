@@ -185,7 +185,7 @@ flight; 6 person acts.
 | 5 review loop, change by human | `LoopReview`, `Accept`, `SendBack` |
 | 5 role draft, only a role change? | `Evaluate` `Fit` -> `SLoop`; `Accept`: role-only -> `cardInEffect`, `backToRole`; else `SAccepted` -> `Reassign` |
 | 6 C1, D7 | settled: DESIGN.md 12 (the host keeps the top; agents never remake it, 13.1) and DESIGN.md 13 (no budgets) |
-| 13, 13.1 how the loop ends | `crossTest` (`Fix.fights`, `RunTest`); no agreeing rule: a contradiction found at `RunTest` goes at once to direction assessment (13.1), and a second contradiction of a draft already at direction goes on to the person; `raiseLevel` (`Task.floor` per task; `Store.fixDepth` per item, `refixed`, `raiseUp`); `ladderRoute`; `strictScope` (`Task.sections`); `changeBound`, `NoRefixAtSameLevel` |
+| 13, 13.1 how the loop ends | `crossTest` (`Fix.fights`, `RunTest`); no agreeing rule: a contradiction found at `RunTest` goes at once to direction assessment (13.1), and a second contradiction of a draft already at direction goes on to the person (`Fix.contradicted`; a rule that fails its own examples is always written again); `raiseLevel` (`Task.floor` per task; `Store.fixDepth` per item, `refixed`, `raiseUp`); `ladderRoute`; `strictScope` (`Task.sections`); `changeBound`, `raiseBound`, `NoRefixAtSameLevel`, `RaiseChangesBounded` |
 | 12 lifetimes | the host holds the top for the whole project (`Top` has no "hosted"; `TopDone` keeps it); roles never end |
 | 7 Store | `accept`, `take`; workenv `storeTakes`, `storeRefuses` |
 | 8 tmux | tmux.qnt; workenv `serverKilled`, `socketLost`, `serverRecreated`, `pumpStolen`, `pageServerRestarts`, `pumpAttaches`, `personTypes`, `personClears`, `promptRead`, `procReads` (output) |
@@ -290,11 +290,16 @@ Tier 1, safety under Byzantine agents and faults:
 | NoTakenUndone | content | a recheck undid a task the person took as is, though the change broke nothing (DESIGN.md 11) | mutRecheck |
 | NoRefixAtSameLevel | guard (raiseLevel) | an item or a task fixed again at the same or a lower level (DESIGN.md 13.2) | convNoRaise, convNeither (raiseLevel) |
 | NoEscalationWithoutPerson | guard (ladderRoute) | a draft raised to direction or principle took effect without the person | noLadderRoute (a lying pipeline role names only standards) |
-| Converges | content | the agents made more than `changeBound` changes (standard changes and splits) | convNoSplitLimits (strictScope and raiseLevel off) |
+| Converges | derived (raiseLevel, strictScope, ladderRoute) | the agents made more than `changeBound` changes (standard changes and splits) | convNoSplitLimits (strictScope and raiseLevel off) |
+| RaiseChangesBounded | content | more than `raiseBound` changes from task raises, through the person too (not the person's own edits): a loop through the person | none seen (convNoCross with 40 person acts holds) |
 
 `changeBound` is derived from the config: per task, sections - 1 splits and then one standard
 change (the task's floor then goes to direction, which reaches the person); slots x sections,
-4 with 2 tasks and 2 sections. It does not depend on the number of items. It is a check of the model, not a budget of the design: the design has none.
+4 with 2 tasks and 2 sections. It does not depend on the number of items. Under FIXED it
+follows from three store checks (an evaluation below the task's floor is refused, a split at
+one section is refused, a raised draft goes to the person): a derived property; its value is
+that those checks imply the bound. `raiseBound` = slots x (sections + 2): the ladder's rungs
+per task (split parts, standard, direction, principle). It is a check of the model, not a budget of the design: the design has none.
 
 Removed: NoDraftDropped and the kept-draft handling (agents never remake the top, DESIGN.md
 13.1); C1aConfirmed and C1bHosted (DESIGN.md 12: the host keeps the top); NoDoneUnderOldVersion
@@ -319,9 +324,11 @@ Convergence (DESIGN.md 13 and 13.1), 600 steps per run:
 - convNoRaise (raiseLevel off): breaks NoRefixAtSameLevel (a misjudged standard fix repeats
   at the same level).
 - convNeither (crossTest and raiseLevel off): breaks NoRefixAtSameLevel (two rules ping-pong).
-- convNoCross (crossTest off, raiseLevel on, a person who acts): holds. A contradiction is
-  raised to direction and principle, which go to the person: more work for the person, not
-  an endless agent loop.
+- convNoCross (crossTest off, raiseLevel on, a person with 40 acts): holds, Converges and
+  RaiseChangesBounded (changes through the person counted too). A contradiction is raised
+  to direction and principle, which go to the person: more work for the person, not an
+  endless loop. Whether the person's direction change resolves a contradiction is the
+  environment's choice at the accept (`flag3`); if not, the rule still fights.
 - convNoScope (strictScope off): holds. The split floor (with raiseLevel on, a split part
   cannot be split again; its next fix is a standard or higher) already ends splits; strict scope and the floor overlap.
 - convNoSplitLimits (strictScope and raiseLevel off): breaks Converges (splits never end).

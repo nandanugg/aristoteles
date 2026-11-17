@@ -475,8 +475,10 @@ module workenv {
     nondet xs = ITEMSETS.filter(ys => ys.contains(IDir)).oneOf()
     // An accepted change may break tasks (the environment's truth).
     nondet h = HITS.oneOf()
+    // flag3 (the environment's truth): the accepted direction change resolves a contradiction.
+    nondet r = BOOLS.oneOf()
     val a = { ...mkAct(PERSON, 0, x, cur(page.view, x), vsum(page.view), page.oldBuild, false,
-                       true, -1), flag: f, items: xs, hits: h, vers: page.view.ver,
+                       true, -1), flag: f, flag3: r, items: xs, hits: h, vers: page.view.ver,
               realVers: page.view.ver }
     commit(s, net.union(Set(a)), procs, tm, { ...page, acts: page.acts + 1 }, faults, merged,
            Posted(a)),

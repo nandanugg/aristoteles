@@ -466,9 +466,7 @@ module work {
         if (rules.contains(IRule(j))) f.form else s.ruleForm.get(j)) }, agent), i)
     // A rule that contradicts the other rule of the direction breaks the tasks that rule
     // applies to: their trouble is that rule again (a standard cause).
-    // A contradicted draft (crossTest found it) reaches the person as a direction draft: the
-    // direction change resolves the contradiction (DESIGN.md 13.1), so it breaks nothing.
-    val fightsBack = f.fights and not(f.contradicted) and rules != Set()
+    val fightsBack = f.fights and rules != Set()
     val s1a = if (not(fightsBack)) s1 else ghost(
       SLOTS.fold(s1, (acc, j) =>
         if (j != i and not(rules.contains(IRule(j)))
@@ -569,7 +567,11 @@ module work {
           acceptNotWaiting: g.acceptNotWaiting or f.stage != SAtPerson,
           unseenAccept: g.unseenAccept or a.seen != f.step,
           rejectedInEffect: g.rejectedInEffect or (f.sentBack.contains(f.rev) and a.seen < f.step) })
-        val s2 = bump(if (f.kind == DDir) itemsInEffect(s1, i, false, a.hits)
+        // A contradicted draft: whether its direction change resolves the contradiction is
+        // the environment's truth (flag3); if not, the rule still fights (DESIGN.md 13.1).
+        val s1r = if (f.contradicted and a.flag3) setF(s1, i, z => { ...z, fights: false })
+                  else s1
+        val s2 = bump(if (f.kind == DDir) itemsInEffect(s1r, i, false, a.hits)
                       else cardInEffect(s1, i), i)
         // "only a role change?" yes: back to the card, the work goes on. no: host reassigns.
         val roleOnly = f.kind == DRole and (if (OPT.classify) f.roleOnly else f.roleLabel)
@@ -671,7 +673,7 @@ module work {
     // flag: the test command really behaves on the examples; flag2: the reference exists.
     | WriteRule(i) =>
         setF(bump(staleFixAct(s, i, a), i), i, f => { ...f, form: a.form, truth: a.flag,
-          refOk: a.flag2, fights: a.flag3,
+          refOk: a.flag2, fights: a.flag3, contradicted: f.contradicted and a.flag3,
           stage: if (hasMech(a.form)) STest else SDraft })
     // flag: the pipeline role's claim that the test passed; flag2: its claim that a test
     // failed on another rule's example (a contradiction). The test command runs on the rule's
