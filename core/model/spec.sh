@@ -142,6 +142,8 @@ smallHolds core.qnt coreTwo '$CORE_INV'
 smallHolds core.qnt coreAll '$CORE_INV'
 smallHolds core.qnt coreCrossOnly 'Converges'
 smallHolds terminals.qnt termFixed 'Sane ExactlyOnce'
+smallHolds store.qnt storeFixed 'G3Holds'
+smallHolds browser.qnt browserFixed 'DashAfterRefresh'
 EOF2
 # Each property breaks in its mutant (README.md, Properties): module, property, seed, runs,
 # steps.
@@ -198,6 +200,8 @@ smallBreaks core.qnt coreNoRaise Converges 0x2a 500 200
 smallBreaks core.qnt coreNoCross Converges 0x2a 500 200
 smallBreaks core.qnt coreNoSplit Converges 0x2a 500 200
 smallBreaks terminals.qnt termNoEvidence ExactlyOnce 0x2a 2000 60
+smallBreaks store.qnt storeNoDedup G3Holds 0x2a 2000 30
+smallBreaks store.qnt storeNoAcceptCheck G3Holds 0x2a 2000 30
 EOF2
 JOBS=${JOBS:-$(nproc)}
 # -d: one job per line, quotes kept for the job's own shell (slow jobs first).

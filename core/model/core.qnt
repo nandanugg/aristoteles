@@ -14,9 +14,15 @@
 //   never assumed to act (a run that waits only on the person is Final).
 // Abstracted away: tmux, terminals, processes, crashes, the network, the page, time, the
 // person's direction edit (EditDirection) and run continue (MoveHost).
-// The ONE assumption is the contract (contract.qnt G1), for each actor: an agent told a
-// step takes it in the end (G1 then A: "hears" is the step itself). terminals.qnt proves
-// G1; A is assumed (DESIGN.md 14).
+// The assumptions are the contract's (contract.qnt), each proven by its own model:
+// - G1, for each actor: an agent told a step takes it in the end (G1 then A: "hears" is
+//   the step itself). terminals.qnt proves G1; A is assumed (DESIGN.md 14). Assumed below.
+// - G3: an act takes effect only if it is fresh (store.qnt proves it). It is what lets this
+//   model apply each act atomically to the current state: every step below takes an act
+//   only if G3 holds of it (a guard that is true of every act built here).
+// - G4: what the person owes is, in the end, shown on the person's page (browser.qnt
+//   proves it). It is what makes Final's "waits only on the person" an end and not a
+//   stall: the person is shown the wait. This model has no page: it relies on G4 there.
 module core {
   import contract.* from "./contract"
   // The options of work.qnt (README.md "Options").
@@ -157,11 +163,20 @@ module core {
     | _ => s
   }
   def honestNow(a: Act): bool = honestOf(s, a, mistakes < C.maxMistakes)
+  // G3's facts of an act at its append, read from work.qnt's checks. Every act here is
+  // sent once (firstTime).
+  def fresh(a: Act): Fresh = {
+    basisCurrent: basisOk(s, a),
+    judgedCurrent: match a.what { | RecheckDone(i) => recheckCurrent(s, i, a) | _ => true },
+    firstTime: true, currentEpoch: epochOk(s, a), currentBuild: not(a.old),
+    waitsIfAccept: match a.what { | Accept(i) => fx(s, i).stage == SAtPerson | _ => true },
+  }
   def makers: Set[int] = SLOTS.map(i => makerOf(i))
   // An agent (or the harness) takes a step it is told, with honest content.
   action agentStep(k: int): bool = {
     nondet x = dos(s, k).oneOf()
-    nondet a = choices(base(k, x)).filter(a => accept(s, a) and honestNow(a)).oneOf()
+    nondet a = choices(base(k, x)).filter(a => accept(s, a) and G3(fresh(a)) and honestNow(a))
+      .oneOf()
     commit(take(prep(a), a), persons,
            mistakes + if (honestOf(s, a, false)) 0 else 1)
   }
@@ -182,7 +197,7 @@ module core {
     nondet r = rs.oneOf()
     nondet h = hs.oneOf()
     val a = { ...base(PERSON, x), flag: f, flag3: r, hits: h }
-    all { accept(s, a), commit(take(s, a), persons + 1, mistakes) },
+    all { accept(s, a), G3(fresh(a)), commit(take(s, a), persons + 1, mistakes) },
   }
   action step = any {
     agentStep(HOST), agentStep(ROLE), agentStep(PIPE), agentStep(HARNESS),

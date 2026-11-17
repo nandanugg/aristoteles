@@ -33,6 +33,10 @@ run() {
   [ "$temp" = - ] || set -- "$@" --temporal "$temp"
   start=$(date +%s)
   timeout "${TIMEOUT:-7200}" $Q "$@" > "$log" 2>&1 < /dev/null
+  # Another quint on this machine may hold the Apalache server's port: try once more.
+  if grep -q 'Address already in use' "$log"; then
+    sleep 20; timeout "${TIMEOUT:-7200}" $Q "$@" > "$log" 2>&1 < /dev/null
+  fi
   secs=$(( $(date +%s) - start ))
   n=$(grep -E 'distinct states found' "$log" | tail -1 | sed 's/.*generated, //; s/ distinct.*//')
   if grep -q '^\[ok\]' "$log"; then got=holds
@@ -56,6 +60,17 @@ terminals.qnt termNoOutbox breaks - SendDone
 terminals.qnt termNoHostWatch breaks - G1All
 terminals.qnt termNoEvidence breaks ExactlyOnce -
 terminals.qnt termNoIdleSeen breaks - G1All
+store.qnt storeFixed holds G3Holds -
+store.qnt storeNoBasis breaks G3Holds -
+store.qnt storeNoRecheckBasis breaks G3Holds -
+store.qnt storeNoDedup breaks G3Holds -
+store.qnt storeNoEpochs breaks G3Holds -
+store.qnt storeNoBuild breaks G3Holds -
+store.qnt storeNoAcceptCheck breaks G3Holds -
+browser.qnt browserFixed holds DashAfterRefresh G4All
+browser.qnt browserNoReconnect breaks - G4All
+browser.qnt browserNoReload breaks - G4All
+browser.qnt browserNoPush breaks - G4All
 core.qnt coreOne holds $SAFE $LIVE
 core.qnt coreTwo holds $SAFE $LIVE
 core.qnt coreTwo breaks - CoreProgressNoPipe

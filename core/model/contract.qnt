@@ -1,7 +1,9 @@
-// The contract between the two small models (plan/model/DESIGN.md 14): G1, written once.
-// terminals.qnt PROVES it for every agent, with aristoteles as an arbitrary adversary.
-// core.qnt ASSUMES it, as its fairness: with A (an agent that hears its step takes it) the
-// "hears" of G1 is the agent's step itself.
+// The contract between the small models (plan/model/DESIGN.md 14), each part written once.
+// G1 (the agents' channel): terminals.qnt PROVES it for every agent, with aristoteles as an
+// arbitrary adversary; core.qnt ASSUMES it, as its fairness: with A (an agent that hears
+// its step takes it) the "hears" of G1 is the agent's step itself.
+// G3 (the store): store.qnt proves it; core.qnt assumes it (its acts are atomic, current).
+// G4 (the person's channel): browser.qnt proves it; core.qnt's Final assumes it.
 module contract {
   // G1: an agent that owes work is, in the end, alive and hears its step; or it no longer
   // owes it; or the person owes the move that brings it back (the person is told, and is
@@ -13,4 +15,22 @@ module contract {
   // takes its step infinitely often, or infinitely often it owes nothing".
   temporal G1(owes: bool, hears: bool, personOwes: bool): bool =
     always(eventually(not(owes) or hears or personOwes))
+
+  // G3 (store.qnt proves it; core.qnt assumes it): an act takes effect only if it is fresh.
+  // The facts the store knows of an act at its append. A stale act (built on an old view),
+  // a recheck whose judged versions moved, a duplicate, an old epoch's token, an act from an
+  // old page build, or an accept of a draft that does not wait for the person, is refused.
+  // So every act that takes effect is applied once, atomically, to the state it was built
+  // on, and the protocol may treat acts as atomic and current.
+  type Fresh = { basisCurrent: bool, judgedCurrent: bool, firstTime: bool,
+                 currentEpoch: bool, currentBuild: bool, waitsIfAccept: bool }
+  pure def G3(f: Fresh): bool =
+    f.basisCurrent and f.judgedCurrent and f.firstTime and f.currentEpoch and f.currentBuild
+      and f.waitsIfAccept
+
+  // G4 (browser.qnt proves it; core.qnt's Final "waits only on the person" assumes it):
+  // every act the person owes is, in the end, shown on the person's page (or no longer
+  // owed). The same form as G1, for the person's channel: websocket drops, page server
+  // restarts, an old page build, a background tab; the person is never assumed to act.
+  temporal G4(owes: bool, shown: bool): bool = always(eventually(not(owes) or shown))
 }
