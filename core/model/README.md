@@ -26,8 +26,11 @@ agents, no reminder, is the fix.
 - None is part of `bun test`.
 - What each tool covers: the simulator (`quint run`) only its random runs (samples x steps);
   TLC every reachable state within the model's bounds, any run length; Apalache every run up
-  to a depth bound. Only the simulator has been used so far. For TLC: `tlcCalm` (one task,
-  every counter capped: `ENV.bounded`), fairness per process, and `AgentChangesStop`.
+  to a depth bound. Only the simulator has been used so far. For TLC: `tlcCalm` and `tlcCrash`
+  (one task, every counter capped: `ENV.bounded`), fairness per process, `AgentChangesStop`,
+  and `NotAtCap`. At a cap every action is off, the fair ones too: the run stops there,
+  `Progress` does not judge it, and the invariant `NotAtCap` reports it (a cap is a bound of the
+  model, never a success). `maxStep` 24 in tlcCalm fits three raises of the task.
 - Heavy runs go to the check machine (below).
 
 ## Files and status
@@ -92,8 +95,8 @@ stress.sh. Status: fifth review round; simulator only. No TLC or Apalache yet.
 - Instances: `designHonest`, `designMaker`, `designRole`, `designPipe`, `designHost` (the design
   as written, one Byzantine class at a time, every fault); the same five as `fixed*` (every
   proposed check on, from every starting state; `fixedRole` and `fixedPipe` on a calm run);
-  `fixedCalm`; `tlcCalm` (for TLC); `noRecheckBasis`, `noDecideRecheck`, `noListOnAttach` (one
-  check off on the fixed ones); `convFixed`, `convNoCross`, `convNoRaise`, `convNeither`,
+  `fixedCalm`; `tlcCalm`, `tlcCrash` (for TLC); `noRecheckBasis`, `noDecideRecheck`,
+  `noListOnAttach`, `noLadderRoute` (one check off on the fixed ones); `convFixed`, `convNoCross`, `convNoRaise`, `convNeither`,
   `convNoScope`, `convNoSplitLimits` (how the loop ends, DESIGN.md 13);
   `editAlways`, `editNever` (editBack 0 and 2); `beforeMove` (the live fault before e4e49ff);
   the mutants `mutPage`, `mutDup`, `mutCrash`, `mutCrashHi`, `mutTmux`, `mutMaker`, `mutRace`,
@@ -107,7 +110,13 @@ stress.sh. Status: fifth review round; simulator only. No TLC or Apalache yet.
   tasks; 1 both done and the top returned; 2 a standards draft about to ship, on items already
   fixed once at standard level; 3 a direction draft at the person; 4 rules with only a test
   command in effect; 5 a task taken as is with a recheck pending (not broken); 6 a done task
-  with a recheck pending (its work broken by a change). `ENV.dups`: the network may deliver an
+  with a recheck pending (its work broken by a change); 7 a done task with a recheck pending
+  that the change did not break, and a direction draft of the other task at the person (its
+  accept may break the done task while a recheck is in flight); 8 a direction draft of task 0
+  at the person while a standards draft on task 0's standard is about to ship; 9 task 0 in
+  revision, its maker holding its claim after one failed review; 10 near the change bound
+  (task 0 a one-section split part with a standard cause, task 1 done after its standard
+  change). `DEEP` is all of them. `ENV.dups`: the network may deliver an
   act twice (a fault). `ENV.liars`, `maxLies`, `lieOn`: actors honest except for lies (an act
   with any content, a budget of its own, only on the act kinds named, `KIND_OF`).
   `ENV.misjudge`: an honest pipeline role may evaluate shallower than the real cause (a
@@ -125,7 +134,8 @@ flight; 6 person acts.
 | Field | Meaning | `DESIGN` | `FIXED` |
 |---|---|---|---|
 | crossTest | DESIGN.md 13.1: rule assessment runs a new rule's test command on the other rules' examples; a rule that contradicts another does not ship. A reference-only rule has no test command: it cannot be cross-tested | on | on |
-| raiseLevel | DESIGN.md 13.2, per item: a draft from a task's raise that changes an item already fixed at its level goes one level up (standard -> direction assessment, direction -> principle; principle reaches the person); a split part is not split again (the store refuses it) | on | on |
+| raiseLevel | DESIGN.md 13.2, per task and per item. Per task (`Task.floor`): a split part's next evaluation is at least standard; after a change of the task's own raise, at least direction (after a direction change, principle); the store refuses an evaluation below the floor (a role draft, Fit, is off the ladder). Per item: a draft that changes an item already fixed at its level goes one level up | on | on |
+| ladderRoute | DESIGN.md 13.2: a draft entered at direction or principle (a raise up the ladder, a contradiction) goes to the review loop and the person, whatever items its content names | on | on |
 | strictScope | DESIGN.md 13: a split part owns one section less; a one-section task cannot be split (the store refuses it) | on | on |
 | recheckBasis | a recheck names the items and versions it judged; the store refuses it if they moved | off | on |
 | slots | the tasks of the top (`Set(0, 1)`; `tlcCalm` uses one) | 0, 1 | 0, 1 |
@@ -172,7 +182,7 @@ flight; 6 person acts.
 | 5 review loop, change by human | `LoopReview`, `Accept`, `SendBack` |
 | 5 role draft, only a role change? | `Evaluate` `Fit` -> `SLoop`; `Accept`: role-only -> `cardInEffect`, `backToRole`; else `SAccepted` -> `Reassign` |
 | 6 C1, D7 | settled: DESIGN.md 12 (the host keeps the top; agents never remake it, 13.1) and DESIGN.md 13 (no budgets) |
-| 13, 13.1 how the loop ends | `crossTest` (`Fix.fights`, `RunTest`); no agreeing rule: a contradiction found at `RunTest` goes at once to direction assessment (13.1); `raiseLevel` (`Store.fixDepth` per item, `refixed`, `raiseUp`; `Task.floor` for a split part); `strictScope` (`Task.sections`); `changeBound`, `NoRefixAtSameLevel` |
+| 13, 13.1 how the loop ends | `crossTest` (`Fix.fights`, `RunTest`); no agreeing rule: a contradiction found at `RunTest` goes at once to direction assessment (13.1), and a second contradiction of a draft already at direction goes on to the person; `raiseLevel` (`Task.floor` per task; `Store.fixDepth` per item, `refixed`, `raiseUp`); `ladderRoute`; `strictScope` (`Task.sections`); `changeBound`, `NoRefixAtSameLevel` |
 | 12 lifetimes | the host holds the top for the whole project (`Top` has no "hosted"; `TopDone` keeps it); roles never end |
 | 7 Store | `accept`, `take`; workenv `storeTakes`, `storeRefuses` |
 | 8 tmux | tmux.qnt; workenv `serverKilled`, `socketLost`, `serverRecreated`, `pumpStolen`, `pageServerRestarts`, `pumpAttaches`, `personTypes`, `personClears`, `promptRead`, `procReads` (output) |
@@ -233,9 +243,13 @@ violation came in the runs given.
 
 Kind: **guard** = the flag is set on exactly the act a store check refuses, so the property is
 a regression check of that check (it fails the moment the check is switched off, and says
-nothing more). **content** = the flag compares with a truth the store cannot read (the real
-content, the real cause, what a change really breaks, what the page showed, what tmux
-delivered); these are the properties that say the design is right.
+nothing more). **guard (option)** = the flag compares with a truth (the content, what the page
+showed, the test command's real result) that the store reads through that option; with the
+option on (FIXED) it is true by construction; its mutant shows the option is needed.
+**content** = the flag compares with a truth the store cannot read even with every check on
+(the real cause, the quality of a result, what a change really breaks, what a lost context or
+tmux did, a Byzantine sender's real base, the count of agent changes); these are the
+properties that say the design is right.
 
 Tier 1, safety under Byzantine agents and faults:
 
@@ -255,15 +269,15 @@ Tier 1, safety under Byzantine agents and faults:
 | NoUnrevisedResubmit | guard | a draft the person sent back reached the person unchanged | mutPipe (reviseCheck) |
 | NoUnacceptedEditChange | guard | the person's edit put into effect items the person did not write and did not accept | editNever (editBack) |
 | HostBoundToRunSession | guard | the host's assignment of the top is on another session than the run's | beforeMove (rebind, e4e49ff) |
-| NoWrittenDropped | guard | the person's edit took effect without an item the person wrote | mutPipeByz (classify); true by construction with classify on (the store reads the content) |
-| NoUnseenReject | content | the person's reject hit a result the page did not show | mutPage (basis); mutBuild (build) |
-| NoUnseenAccept | content | the person's accept hit a draft the page did not show | mutPage (basis) |
+| NoWrittenDropped | guard (classify) | the person's edit took effect without an item the person wrote | mutPipeByz (classify); true by construction with classify on (the store reads the content) |
+| NoUnseenReject | guard (basis, build) | the person's reject hit a result the page did not show | mutPage (basis); mutBuild (build) |
+| NoUnseenAccept | guard (basis) | the person's accept hit a draft the page did not show | mutPage (basis) |
 | NoLostUpdate | content | a draft took effect built on an older version of an item it changes (`trueBase`) | mutRace (rebase) |
-| NoFailedTestInEffect | content | a rule took effect whose test command fails its examples | mutPipeByz (harnessTest) |
-| NoDeepChangeWithoutPerson | content | a change of the direction took effect without the person | mutPipe (classify) |
-| NoRoleChangeMisjudged | content | a role draft that changes more went back to the card without the host's reassign | mutPipeByz (classify) |
-| NoUnrecheckedScope | content | a change missed a task its content touches | mutPipe (classify) |
-| NoPassOfBrokenResult | content | a pass of a result a test-command rule catches | mutRole (passTests) |
+| NoFailedTestInEffect | guard (harnessTest) | a rule took effect whose test command fails its examples | mutPipeByz (harnessTest) |
+| NoDeepChangeWithoutPerson | guard (classify) | a change of the direction took effect without the person | mutPipe (classify) |
+| NoRoleChangeMisjudged | guard (classify) | a role draft that changes more went back to the card without the host's reassign | mutPipeByz (classify) |
+| NoUnrecheckedScope | guard (classify) | a change missed a task its content touches | mutPipe (classify) |
+| NoPassOfBrokenResult | guard (passTests) | a pass of a result a test-command rule catches | mutRole (passTests) |
 | NoPassOfBadResult | content | a pass (or a passed recheck) of a bad result | mutRole, mutRecheck, noRecheckBasis (recheckBasis); breaks in fixedRole, fixedPipe by design: no store check judges quality |
 | NoShallowEvaluation | content | an evaluation at a level that cannot remove the real cause | mutPipeByz; breaks in fixedPipe and convFixed (misjudge) by design: no store check knows the cause |
 | RevisionHasContext | content | a revision worked by a maker that lost its context | mutCrash, mutCrashHi (fullBrief) |
@@ -271,12 +285,13 @@ Tier 1, safety under Byzantine agents and faults:
 | DoneIsCurrent | content | a done task with nothing left to recheck is under an old version of an item that applies to it | noDecideRecheck (decideRecheck, DESIGN.md 11) |
 | NoDoneBrokenAtEnd | content | the project ended with a done task whose work a change broke (`hits`) | mutRecheck (a lying recheck) |
 | NoTakenUndone | content | a recheck undid a task the person took as is, though the change broke nothing (DESIGN.md 11) | mutRecheck |
-| NoRefixAtSameLevel | content | an item, or a split part, fixed again at the same or a lower level (DESIGN.md 13) | convNoRaise, convNeither (raiseLevel) |
+| NoRefixAtSameLevel | guard (raiseLevel) | an item or a task fixed again at the same or a lower level (DESIGN.md 13.2) | convNoRaise, convNeither (raiseLevel) |
+| NoEscalationWithoutPerson | guard (ladderRoute) | a draft raised to direction or principle took effect without the person | noLadderRoute (a lying pipeline role names only standards) |
 | Converges | content | the agents made more than `changeBound` changes (standard changes and splits) | convNoSplitLimits (strictScope and raiseLevel off) |
 
-`changeBound` is derived from the config: 4 (each standard and rule fixed once at standard
-level; raiseLevel then sends it up) + slots x (sections - 1) splits; 6 with 2 tasks and 2
-sections. It is a check of the model, not a budget of the design: the design has none.
+`changeBound` is derived from the config: per task, sections - 1 splits and then one standard
+change (the task's floor then goes to direction, which reaches the person); slots x sections,
+4 with 2 tasks and 2 sections. It does not depend on the number of items. It is a check of the model, not a budget of the design: the design has none.
 
 Removed: NoDraftDropped and the kept-draft handling (agents never remake the top, DESIGN.md
 13.1); C1aConfirmed and C1bHosted (DESIGN.md 12: the host keeps the top); NoDoneUnderOldVersion
@@ -345,8 +360,8 @@ One per action and per fault; the five witness modules together reach each in > 
   example d20). Any direction draft can change any standard or rule (`ITEMSETS` is
   symmetric). An honest pipeline role evaluates at the real cause; with `misjudge` it may
   evaluate shallower (a mistake).
-- Convergence: `changeBound` = 4 (each standard or rule fixed once at standard level, then
-  raiseLevel sends it up) + 2 tasks x (sections - 1) splits = 6 agent changes. Fixes at principle level reach the person and are not counted.
+- Convergence: `changeBound` = slots x sections = 4 agent changes (README "Properties").
+  Fixes at direction and principle level reach the person and are not counted.
 - A rule with both forms: the test command finds candidates, the role judges; `passTests`
   covers only rules with a test command alone, and the harness rechecks only those (`RunRule`);
   a rule with both forms is rechecked by the pipeline role (`RecheckDone`).

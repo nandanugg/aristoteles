@@ -36,7 +36,7 @@ FLAGS="NoActByEnded NoReviewOfOtherResult NoPassUnderOtherVersion NoStaleReport
   NoPassOfBrokenResult NoPassOfBadResult NoShallowEvaluation NoStalePipelineAct NoSplitBrain
   RevisionHasContext NoUnrevisedResubmit NoUnrecheckedScope NoMergedInput DoneIsCurrent
   NoDoneBrokenAtEnd NoTakenUndone NoWrittenDropped NoClaimByEnded HostBoundToRunSession
-  NoAcceptNotWaiting NoUnacceptedEditChange NoRefixAtSameLevel Converges"
+  NoAcceptNotWaiting NoUnacceptedEditChange NoRefixAtSameLevel Converges NoEscalationWithoutPerson"
 # The coverage gate (keys.sh): each checked property's key witness must be reached, else
 # "no violation" would mean nothing. The holds runs use a fixed seed and one thread, so the
 # gate gives the same answer every time; the broad random runs are in stress.sh.
@@ -63,16 +63,17 @@ holdsAll() {
   fi
 }
 CALMX="NoSplitBrain NoMergedInput NoUnseenReject"
-holdsAll fixedHonest
-holdsAll fixedMaker
-holdsAll fixedHost
-holdsAll fixedCalm "" "$CALMX"
-holdsAll convFixed NoShallowEvaluation "$CALMX"
-holdsAll fixedRole "NoPassOfBadResult NoDoneBrokenAtEnd" "$CALMX RevisionHasContext"
+# Converges' key witness (near the bound) is required in convFixed only (600 steps).
+holdsAll fixedHonest "" Converges
+holdsAll fixedMaker "" Converges
+holdsAll fixedHost "" Converges
+holdsAll fixedCalm "" "$CALMX Converges"
+STEPS=600 holdsAll convFixed NoShallowEvaluation "$CALMX"
+holdsAll fixedRole "NoPassOfBadResult NoDoneBrokenAtEnd" "$CALMX RevisionHasContext Converges"
 # A Byzantine pipeline role seldom carries an edit or a recheck through.
 holdsAll fixedPipe "NoShallowEvaluation NoPassOfBadResult NoDoneBrokenAtEnd" \
   "$CALMX NoWrittenDropped NoUnacceptedEditChange NoRefixAtSameLevel DoneIsCurrent NoTakenUndone
-  NoPassOfBrokenResult"
+  NoPassOfBrokenResult Converges NoEscalationWithoutPerson"
 # A regression of the page (it offers every step its view owes the person).
 $Q test workenv_test.qnt --main=pageTest --match=pageOffersTest --max-samples=200 \
   >/dev/null 2>&1 \

@@ -11,7 +11,7 @@ module workenv {
     silentSteps: int, reviewSubagents: bool,
     editBack: int, acceptCheck: bool, decideRecheck: bool, briefCheck: bool,
     strictScope: bool, sections: int, listOnAttach: bool,
-    maxTries: int, maxMakers: int, maxChanges: int, maxLoops: int,
+    ladderRoute: bool, maxTries: int, maxMakers: int, maxLoops: int,
     maxRuleTries: int,
   }
   // byz*: that agent class is Byzantine (else honest). crash: processes die and resume.
@@ -30,7 +30,9 @@ module workenv {
   // person (its accept may break the done task while a recheck is in flight); 8 a direction
   // draft of task 0 at the person while a standards draft of the other task, on task 0's
   // standard, is about to ship (the person may take task 0 as is after the change); 9 task 0
-  // in revision: its maker (id 3, process 3) holds its claim after one failed review.
+  // in revision: its maker (id 3, process 3) holds its claim after one failed review; 10 near
+  // the change bound: task 0 a split part (one section, a standard cause) and task 1 done
+  // after its standard change (2 agent changes; one more is changeBound - 1).
   // liars: the actors (HOST, ROLE, PIPE; 3 for makers) that are honest except for lies: an
   // act with any content, at most maxLies lies, only on the act kinds in lieOn (KIND_OF;
   // empty: any). dups: the network may deliver an act twice. bounded: every counter stops at
@@ -305,6 +307,11 @@ module workenv {
         makers: sN.makers.put(3, { slot: 0, ended: false, claim: true, brief: ZERO, revs: 1 }),
         tasks: sN.tasks.set(0, { ...tk(sN, 0), st: Working, tries: 1, maker: 3, rid: 1,
                                  rBad: false }) }
+    else if (n == 10)
+      { ...sN, agentChanges: 2, changes: 2, tasks: sN.tasks
+          .set(0, { ...freshTask(1, CauseAt(Standard)), st: Sent, floor: Standard,
+                    sections: 1 })
+          .set(1, { ...tk(sN, 1), st: Done, rid: 0, cause: NoCause, floor: Direct }) }
     else sN
   action init = {
     nondet c0 = envCauses.oneOf()
@@ -645,10 +652,14 @@ module workenv {
       and vsum(st) <= ENV.maxVer and st.card <= ENV.maxVer
       and FIXIDS.forall(i => fx(st, i).step <= ENV.maxStep)
       and SLOTS.forall(i => tk(st, i).rid <= ENV.maxStep and tk(st, i).gen <= ENV.maxStep)
-      and st.changes <= ENV.maxStep and st.session <= 2
+      and st.session <= 2
       and st.ep.keys().forall(k => st.ep.get(k) <= ENV.maxStep)
       and st.makers.keys().forall(m => mk(st, m).revs <= ENV.maxStep)
-  action step = all { not(ENV.bounded) or capped(s), any {
+  // At a cap (ENV.bounded) every action is off, the fair ones too: the run stops there and
+  // NotAtCap reports it (a cap is a bound of the model, never a success).
+  val inCaps: bool = not(ENV.bounded) or capped(s)
+  val NotAtCap: bool = inCaps
+  action step = all { inCaps, any {
     nondet p = procs.keys().oneOf() procStep(p),
     byzStep, tick,
     nondet p = procs.keys().oneOf() procPolls(p),
@@ -802,6 +813,8 @@ module workenv {
   // the same or a lower level than its last fix.
   val Converges: bool = not(pastBound(s))
   val NoRefixAtSameLevel: bool = not(s.g.refix)
+  // DESIGN.md 13.2: a draft raised to direction or principle reaches the person.
+  val NoEscalationWithoutPerson: bool = not(s.g.escalatedNoPerson)
 
 
   // ==== Tier 3: progress. Fair: each honest actor's process does what it is told; the
@@ -809,11 +822,17 @@ module workenv {
   // closed pump attaches again; a typed prompt is read. Byzantine agents, the person and
   // the page are not fair. Final is never "past the bound".
   // Per process (a stale process of an actor cannot stand in for the live one).
-  action procFair(p: int): bool = all { procs.keys().contains(p), any { procReads(p), procActs(p) } }
-  action liftFair(p: int): bool = all { procs.keys().contains(p), limitLifts(p) }
-  action deliverFrom(k: int): bool = any { storeTakes(k), storeRefuses(k) }
-  action promptStep: bool = { nondet k = PANES.oneOf() promptRead(k) }
-  action exitStep: bool = { nondet k = PERSISTENT.union(s.makers.keys()).oneOf() exitReported(k) }
+  action procFair(p: int): bool = all { inCaps, procs.keys().contains(p),
+    any { procReads(p), procActs(p) } }
+  action liftFair(p: int): bool = all { inCaps, procs.keys().contains(p), limitLifts(p) }
+  action deliverFrom(k: int): bool = all { inCaps, any { storeTakes(k), storeRefuses(k) } }
+  action promptStep: bool = all { inCaps, nondet k = PANES.oneOf() promptRead(k) }
+  action exitStep: bool = all { inCaps,
+    nondet k = PERSISTENT.union(s.makers.keys()).oneOf() exitReported(k) }
+  action pageFair: bool = all { inCaps, pageRefreshes }
+  action revivesFair: bool = all { inCaps, harnessRevives }
+  action recreatedFair: bool = all { inCaps, serverRecreated }
+  action attachFair: bool = all { inCaps, pumpAttaches }
   val vars = (s, net, procs, tm, page, faults, merged, silence, quiet, lies, lastEvent, told,
               obligations)
   temporal Fairness = all {
@@ -822,17 +841,21 @@ module workenv {
     weakFair(procFair(6), vars), weakFair(procFair(7), vars), weakFair(procFair(8), vars),
     weakFair(procFair(9), vars), weakFair(procFair(10), vars), weakFair(procFair(11), vars),
     weakFair(liftFair(0), vars), weakFair(liftFair(1), vars), weakFair(liftFair(2), vars),
-    weakFair(pageRefreshes, vars),
+    weakFair(liftFair(3), vars), weakFair(liftFair(4), vars), weakFair(liftFair(5), vars),
+    weakFair(liftFair(6), vars), weakFair(liftFair(7), vars), weakFair(liftFair(8), vars),
+    weakFair(liftFair(9), vars), weakFair(liftFair(10), vars), weakFair(liftFair(11), vars),
+    weakFair(pageFair, vars),
     weakFair(deliverFrom(-2), vars), weakFair(deliverFrom(-1), vars),
     weakFair(deliverFrom(0), vars), weakFair(deliverFrom(1), vars),
     weakFair(deliverFrom(2), vars), weakFair(deliverFrom(3), vars),
     weakFair(deliverFrom(4), vars), weakFair(deliverFrom(5), vars),
     weakFair(deliverFrom(6), vars), weakFair(deliverFrom(7), vars),
     weakFair(deliverFrom(8), vars),
-    weakFair(harnessRevives, vars), weakFair(exitStep, vars), weakFair(serverRecreated, vars),
-    weakFair(pumpAttaches, vars), weakFair(promptStep, vars),
+    weakFair(revivesFair, vars), weakFair(exitStep, vars), weakFair(recreatedFair, vars),
+    weakFair(attachFair, vars), weakFair(promptStep, vars),
   }
-  temporal Progress = always(eventually(finalOf(s)))
+  // A run stopped at a cap is not judged here; NotAtCap reports it.
+  temporal Progress = always(eventually(finalOf(s) or not(inCaps)))
   // For TLC: agent changes stop in the end (no endless loop of fixes).
   val agentChangeNow: bool = match lastEvent {
     | Taken(a) => match a.what { | Ship(_) => true | Evaluate(_) => true
@@ -881,6 +904,10 @@ module workenv {
   val wFightShipped = s.g.fightShipped
   val wRaisedUp = s.g.raisedUp
   val wTaskFloor = SLOTS.exists(i => depth(tk(s, i).floor) >= 2)
+  val wNearBound = s.agentChanges >= changeBound - 1
+  val wEscalatedLoop = taken(x => match x {
+    | Ship(i) => fx(s, i).stage == SLoop
+        and (fx(s, i).entry == SDirAssess or fx(s, i).entry == SPrinciple) | _ => false })
   val wRoleDraft = FIXIDS.exists(i => fx(s, i).kind == DRole and fx(s, i).stage != SClosed)
   val wTakenRechecked = taken(x => match x { | RecheckDone(i) => tk(s, i).taken | _ => false })
   val wLimitLifted = isEv(e => match e { | LimitLifted(_) => true | _ => false })
@@ -950,7 +977,7 @@ module cfgs {
     rebind: true, pumpReattach: false, hostWatched: false, promptArg: true, idleSeen: false,
     silentSteps: 3, reviewSubagents: false, editBack: 1, acceptCheck: true,
     decideRecheck: true, briefCheck: false, strictScope: true, sections: 2, listOnAttach: false,
-    maxTries: 3, maxMakers: 6, maxChanges: 4, maxLoops: 1, maxRuleTries: 2 }
+    ladderRoute: true, maxTries: 3, maxMakers: 6, maxLoops: 1, maxRuleTries: 2 }
   pure val FIXED = { ...DESIGN, basis: true, build: true, rebase: true,
     harnessTest: true, classify: true, passTests: true, recheckBasis: true,
     fullBrief: true, endedCheck: true, formCheck: true, epochs: true, reviseCheck: true,
@@ -964,7 +991,7 @@ module cfgs {
   pure val CALM = { ...HONEST, crash: false, tmuxFaults: false, page: false, head: false,
     reject: false, maxFaults: 0, maxPerson: 10, dups: false }
   // Every starting state (START_OF).
-  pure val DEEP = 0.to(9)
+  pure val DEEP = 0.to(10)
   pure val ROLE_ID = 1
   pure val PIPE_ID = 2
   pure val RECHECK_KIND = 6
@@ -1023,16 +1050,25 @@ module noRecheckBasis {
   import workenv(CFG = { ...FIXED, recheckBasis: false }, ENV = { ...CALM, starts: Set(7) })
     .* from "./workenv"
 }
-// For TLC: one task, a calm run, every counter capped.
+// For TLC: one task, a calm run, every counter capped. maxStep 24: three raises of the task
+// (7 fix steps each) fit, so the ladder's rungs and a contradiction are inside the caps.
+// Check NotAtCap with them: a run that reaches a cap is reported, not excused.
 module tlcCalm {
   import cfgs.*
   import workenv(CFG = { ...FIXED, slots: Set(0) },
-    ENV = { ...CALM, bounded: true, maxPerson: 3, maxProcs: 6, maxVer: 4, maxStep: 8 })
+    ENV = { ...CALM, bounded: true, maxPerson: 3, maxProcs: 6, maxVer: 6, maxStep: 24 })
     .* from "./workenv"
 }
+// For TLC with crashes (R4: a usage limit, a crash and a resume).
+module tlcCrash {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, slots: Set(0) },
+    ENV = { ...CALM, crash: true, maxFaults: 2, bounded: true, maxPerson: 2, maxProcs: 8,
+            maxVer: 4, maxStep: 16 }).* from "./workenv"
+}
 // Convergence (DESIGN.md 13). The pipeline role may misjudge the level; rules may
-// contradict. NoRefixAtSameLevel (the real violation) and Converges (the config bound) hold
-// in convFixed; each mutant turns one rule off.
+// contradict. NoRefixAtSameLevel (a guard of raiseLevel) and Converges (the bound derived
+// from the config) hold in convFixed; each mutant turns one rule off.
 module convFixed {
   import cfgs.*
   import workenv(CFG = FIXED, ENV = { ...CALM, causes: Set(0, 1, 5), misjudge: true,
@@ -1068,6 +1104,13 @@ module convNoScope {
 module beforeMove {
   import cfgs.*
   import workenv(CFG = { ...FIXED, rebind: false }, ENV = CALM).* from "./workenv"
+}
+// R5-3: the store routes by content only; a lying pipeline role ships a raised draft as a
+// standards change.
+module noLadderRoute {
+  import cfgs.*
+  import workenv(CFG = { ...FIXED, ladderRoute: false }, ENV = { ...CALM, liars: Set(PIPE_ID),
+    maxLies: 2, lieOn: Set(4), causes: Set(5), starts: Set(2) }).* from "./workenv"
 }
 // One check off on the fixed ones.
 module noDecideRecheck {

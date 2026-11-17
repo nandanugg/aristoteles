@@ -26,7 +26,7 @@ holds() {
     case " \$skip " in *" \$f "*) ;; *) printf '%s ' "\$f" ;; esac; done)
   wit=\$(witnessesFor "\$inv" "\$ex")
   r=\$(\$Q run workenv.qnt --main="\$m" --invariants \$inv --witnesses \$wit --max-samples=3000 \\
-    --max-steps=300 --verbosity=1 --out-itf="\$OUT/holds-\$m.itf.json" 2>&1)
+    --max-steps=\${4:-300} --verbosity=1 --out-itf="\$OUT/holds-\$m.itf.json" 2>&1)
   zero=\$(echo "\$r" | grep -E 'witnessed in 0 trace' | awk '{print \$1}' | tr '\n' ' ')
   echo "holds \$m \$(echo "\$r" | grep -E '^\[|❌' | tr '\n' ' ') never reached: \$zero"
 }
@@ -48,13 +48,14 @@ EOF2
 
 X=NoSplitBrain,NoMergedInput,NoUnseenReject
 grep -v '^#' > "$OUT/jobs" <<EOF2
-holds fixedHonest
-holds fixedMaker
-holds fixedHost
-holds fixedCalm '' $X
-holds convFixed NoShallowEvaluation $X
-holds fixedRole NoPassOfBadResult,NoDoneBrokenAtEnd $X,RevisionHasContext
-holds fixedPipe NoShallowEvaluation,NoPassOfBadResult,NoDoneBrokenAtEnd $X,NoWrittenDropped,NoUnacceptedEditChange,NoRefixAtSameLevel,DoneIsCurrent,NoTakenUndone,NoPassOfBrokenResult
+holds fixedHonest '' Converges
+holds fixedMaker '' Converges
+holds fixedHost '' Converges
+holds fixedCalm '' $X,Converges
+holds convFixed NoShallowEvaluation $X 600
+holds fixedRole NoPassOfBadResult,NoDoneBrokenAtEnd $X,RevisionHasContext,Converges
+holds fixedPipe NoShallowEvaluation,NoPassOfBadResult,NoDoneBrokenAtEnd $X,NoWrittenDropped,NoUnacceptedEditChange,NoRefixAtSameLevel,DoneIsCurrent,NoTakenUndone,NoPassOfBrokenResult,Converges,NoEscalationWithoutPerson
+seed noLadderRoute NoEscalationWithoutPerson
 seed noRecheckBasis NoPassOfBadResult 1000 120
 seed mutMaker NoActByEnded
 seed witnessCalm NoClaimByEnded

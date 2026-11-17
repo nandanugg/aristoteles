@@ -12,7 +12,7 @@ PROPWIT="NoActByEnded:wReport NoClaimByEnded:wReadBrief NoReviewOfOtherResult:wR
   DoneIsCurrent:wTakenRechecked NoDoneBrokenAtEnd:wEndProject NoTakenUndone:wTakenRechecked
   NoWrittenDropped:wEditInEffect NoAcceptNotWaiting:wAccept NoUnacceptedEditChange:wEditInEffect
   HostBoundToRunSession:wMoveHost NoRefixAtSameLevel:wTaskFloor
-  Converges:wSplit"
+  Converges:wNearBound NoEscalationWithoutPerson:wEscalatedLoop"
 # witnessesFor "props" "exempt": the key witnesses (no duplicates).
 witnessesFor() {
   for pw in $PROPWIT; do

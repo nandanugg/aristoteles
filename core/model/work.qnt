@@ -10,10 +10,10 @@ module work {
   const OPT: {
     crossTest: bool,    // DESIGN.md 13.1: rule assessment runs a new rule's test command on
                         // the examples of the other rules; a contradicting rule does not ship
-    raiseLevel: bool,   // DESIGN.md 13.2: an item fixed again goes one level up (a standard
-                        // draft changing an item already fixed at standard level goes to
-                        // direction assessment; direction to principle); a split part is
-                        // not split again
+    raiseLevel: bool,   // DESIGN.md 13.2: a task or an item fixed again goes one level up
+                        // (Task.floor; a draft changing an item already fixed at its level
+                        // goes to direction assessment, direction to principle); a split
+                        // part is not split again
     recheckBasis: bool, // a recheck names the items and versions it judged; the store
                         // refuses it if they moved
     slots: Set[int],    // the tasks of the top (a set, so a cut-down model can use one)
@@ -55,7 +55,10 @@ module work {
     sections: int,           // the sections a task of the top owns
     listOnAttach: bool,      // tmux: the pump lists the panes when it attaches (else it sees
                              // only the ends that happen while it is attached)
-    maxTries: int, maxMakers: int, maxChanges: int, maxLoops: int,
+    ladderRoute: bool,       // DESIGN.md 13.2: a draft entered at direction or principle (a
+                             // raise up the ladder, a contradiction) goes to the review loop
+                             // and the person whatever its content names
+    maxTries: int, maxMakers: int, maxLoops: int,
     maxRuleTries: int,
   }
 
@@ -165,7 +168,7 @@ module work {
     passBroken: bool, passDefect: bool, shallowEval: bool, staleFix: bool, oldEpoch: bool,
     noContext: bool, unchangedResubmit: bool, takenUndone: bool, wroteDropped: bool,
     unrechecked: bool, unacceptedChange: bool, acceptNotWaiting: bool, claimByEnded: bool,
-    endBroken: bool, refix: bool, fightShipped: bool, raisedUp: bool,
+    endBroken: bool, refix: bool, fightShipped: bool, raisedUp: bool, escalatedNoPerson: bool,
     rebaseFired: bool, recheckFired: bool, reassignEnded: bool,
   }
   type Store = {
@@ -188,7 +191,8 @@ module work {
     roleMisjudged: false, passBroken: false, passDefect: false, shallowEval: false,
     staleFix: false, oldEpoch: false, noContext: false, unchangedResubmit: false,
     takenUndone: false, wroteDropped: false, unrechecked: false, unacceptedChange: false, acceptNotWaiting: false, claimByEnded: false, endBroken: false,
-    refix: false, fightShipped: false, raisedUp: false, rebaseFired: false,
+    refix: false, fightShipped: false, raisedUp: false, escalatedNoPerson: false,
+    rebaseFired: false,
     recheckFired: false, reassignEnded: false }
   def freshTask(gen: int, c: Cause): Task = { gen: gen, st: Unsent, tries: 0, maker: -1,
     rid: -1, checked: ZERO, pend: Set(), rBad: false, broken: false, taken: false, cause: c,
@@ -682,11 +686,15 @@ module work {
     // change?" is read from the named items (with classify: from the content).
     | Ship(i) =>
         val s1 = setF(bump(staleFixAct(s, i, a), i), i, f => { ...f, items: a.items, real: a.real })
+        val f = fx(s, i)
+        val escalated = f.entry == SDirAssess or f.entry == SPrinciple
         val isStd = not((if (OPT.classify) a.real else a.items).contains(IDir))
+          and not(OPT.ladderRoute and escalated)
         if (i == EDIT) shipEdit(s1, a)
         else if (isStd)
           shipStandard(ghost(s1, g => { ...g,
-            deepNoPerson: g.deepNoPerson or a.real.contains(IDir) }), i, a.hits)
+            deepNoPerson: g.deepNoPerson or a.real.contains(IDir),
+            escalatedNoPerson: g.escalatedNoPerson or escalated }), i, a.hits)
         else setF(s1, i, z => { ...z, stage: SLoop })
     // flag: the draft goes to the person; else the loop revises it.
     | LoopReview(i) =>
@@ -847,8 +855,8 @@ module work {
   def finalOf(s: Store): bool =
     s.top.ended or (obligationsOf(s) != Set() and obligationsOf(s).forall(ob => isPersonOb(ob)))
   // The model's bound on agent changes, from the config (README.md "Convergence"): per task,
-  // at most sections - 1 splits (strict scope) and one standard change per generation (its
-  // floor then goes to direction, which reaches the person). Past it is not a success.
-  def changeBound: int = SLOTS.size() * ((OPT.sections - 1) + OPT.sections)
+  // sections - 1 splits (strict scope) and then one standard change (its floor goes to
+  // direction, which reaches the person; a split is below it). Past it is not a success.
+  def changeBound: int = SLOTS.size() * OPT.sections
   def pastBound(s: Store): bool = s.agentChanges > changeBound
 }
