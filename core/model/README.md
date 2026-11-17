@@ -755,10 +755,12 @@ DoneIsCurrent, NoDoneBrokenAtEnd, NoLostUpdate, NoTakenUndone, NoPassOfBadResult
 NoRefixAtSameLevel, NoEscalationWithoutPerson, NoAgentChangeAtTop, Converges (the
 convergence flag); temporal CoreProgress = Assumed implies always(eventually(Final)), and
 CoreChangesStop = Assumed implies "agent changes stop" (a bit that flips at each agent
-change is in the end constant). CoreProgressNoPipe drops the pipeline role's part of the
+change is in the end constant), and CoreSettles = Assumed implies eventually(always(Final))
+(the run is Final for good: it ended, or it waits on a person with no acts left; this is the
+one that sees a person who keeps a draft going round). CoreProgressNoPipe drops the pipeline role's part of the
 assumption and must break: the assumption is not vacuous.
 
-TLC results (arch-temp, 12 workers; the invariants are the 13 above; LIVE = CoreProgress and
+TLC results (arch-temp, 12 workers; the invariants are the 13 above; LIVE = CoreProgress, CoreSettles and
 CoreChangesStop):
 
 | Module | Checked | Expected | Distinct states | Time |
@@ -776,7 +778,7 @@ CoreChangesStop):
 | coreLoops (one task, a direction or standard cause, rules that fail their examples, the ladder of 13.2, the person's send-backs up to 3) | 13 invariants, LIVE | holds | LOOPS_N | LOOPS_T |
 | coreNoRuleLadder (a rule failing again is written again, for ever) | CoreProgress | breaks | NRL_N | NRL_T |
 | coreNoLoopLadder (the review loop may send back for ever) | CoreProgress | breaks | NLL_N | NLL_T |
-| corePersonUnbounded (the person's acts and send-backs unbounded) | CoreProgress | breaks: the run depends on the person, as expected | PU_N | PU_T |
+| corePersonUnbounded (the person's acts and send-backs unbounded) | CoreSettles | breaks: the run depends on the person, as expected | PU_N | PU_T |
 
 Bounds: tasks 1 or 2, 2 sections, 2 tries, no cap on agents (13.2), the person 0 to 2
 acts (other than send-backs; at most 3 send-backs per draft: P), 0 or 1 mistake, 0 or 1 process end. Not proven by TLC (the simulator

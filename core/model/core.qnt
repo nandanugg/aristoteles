@@ -254,6 +254,12 @@ module core {
   temporal AgentChangesStop = eventually(always(chg)) or eventually(always(not(chg)))
   temporal CoreProgress = Assumed implies Progress
   temporal CoreChangesStop = Assumed implies AgentChangesStop
+  // The run settles: in the end it is Final for good (ended, or waiting only on a person who
+  // has no acts left). It holds with the person's acts bounded (maxPerson, P); without P the
+  // person can keep a draft going round for ever: corePersonUnbounded breaks it (expected:
+  // the run then depends on the person, not on the system).
+  temporal Settles = eventually(always(finalOf(s)))
+  temporal CoreSettles = Assumed implies Settles
   // Sanity (not vacuous): without the pipeline role's part of the assumption, a run can
   // stop short of Final. TLC must break this.
   temporal AssumedNoPipe = all {

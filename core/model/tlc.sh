@@ -17,7 +17,7 @@ fail=0
 SAFE=Sane,EveryObligationToldOnce,ToldIsAllowed,SomethingOwed,DoneIsCurrent,NoDoneBrokenAtEnd
 SAFE=$SAFE,NoLostUpdate,NoTakenUndone,NoPassOfBadResult,NoRefixAtSameLevel
 SAFE=$SAFE,NoEscalationWithoutPerson,NoAgentChangeAtTop,Converges
-LIVE=CoreProgress,CoreChangesStop
+LIVE=CoreProgress,CoreChangesStop,CoreSettles
 # A copy of the model with only the instance checked: the file up to its "---- instances"
 # line, then that module (quint's TLA+ export of a file with many instances overflows).
 extract() {
@@ -82,7 +82,7 @@ core.qnt coreTwoExit holds $SAFE $LIVE
 core.qnt coreLoops holds $SAFE $LIVE
 core.qnt coreNoRuleLadder breaks - CoreProgress
 core.qnt coreNoLoopLadder breaks - CoreProgress
-core.qnt corePersonUnbounded breaks - CoreProgress
+core.qnt corePersonUnbounded breaks - CoreSettles
 core.qnt coreTwoExit breaks - CoreProgressNoEngine
 core.qnt coreTwoDir holds $SAFE $LIVE
 core.qnt coreCrossOnly holds - CoreChangesStop
