@@ -20,6 +20,7 @@ const card: RoleDraft = { role: 'dev', words: 'w', model: 'm' }
 const top = { name: 'top', goal: 'g', sections: ['a'], directions: [] }
 
 const start = () => initState(top, new Map([['rule:r1', rule]]), new Map([['dev', card]]), 2)
+const downAtOpen = () => ({ ...start(), down: new Set(['host', 'pipe', 'role:dev']) })
 const record = (seq: number, create: unknown): Recorded =>
   ({
     seq,
@@ -52,7 +53,7 @@ describe('foldWork', () => {
 
   test('Opened is the start state with the tokens at epoch 0', () => {
     const f = foldWork([opened])
-    expect(f?.state).toEqual(start())
+    expect(f?.state).toEqual(downAtOpen())
     expect(f?.tokens).toEqual(
       new Map([
         ['host', [{ ep: 0, hash: 'h0' }]],
@@ -69,7 +70,7 @@ describe('foldWork', () => {
       record(3, { _tag: 'Acted', act: assign, token: ['maker:m1', 'm1h'] }),
       record(4, { _tag: 'Acted', act: move, token: ['host', 'h1'] }),
     ])
-    expect(f?.state).toEqual([send, assign, move].reduce(take, start()))
+    expect(f?.state).toEqual([send, assign, move].reduce(take, downAtOpen()))
     expect(f?.ids).toEqual(new Map([['x1', 2], ['x2', 3], ['x3', 4]]))
     expect(f?.tokens.get('maker:m1')).toEqual([{ ep: 0, hash: 'm1h' }])
     expect(f?.tokens.get('host')).toEqual([{ ep: 0, hash: 'h0' }, { ep: 1, hash: 'h1' }])

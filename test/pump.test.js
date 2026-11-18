@@ -174,6 +174,57 @@ describe('the pump', () => {
     expect(text(pump.snapshot('s-ring'))).not.toContain('fake agent start s-ring')
   }, 30000)
 
+  // terminals.qnt G1 (pumpReattach, listOnAttach): another client's attach -d detaches the pump's
+  // client; it attaches again and lists the panes, so an end while detached is not lost.
+  const clientPids = (pump) =>
+    Bun.spawnSync(['tmux', '-f', '/dev/null', '-L', pump.socket, 'list-clients', '-F', '#{client_pid}'])
+      .stdout.toString().split('\n').filter(Boolean)
+  const stealing = (pump) => {
+    const other = Bun.spawn(['tmux', '-f', '/dev/null', '-L', pump.socket, '-C', 'attach-session', '-d', '-t', pump.name],
+      { stdin: 'pipe', stdout: 'pipe', stderr: 'ignore' })
+    pumps.push({ killServer: () => other.kill() })
+    return other
+  }
+
+  test('the pump attaches again after another client\'s attach -d', async () => {
+    const { pump } = make()
+    await until(() => clientPids(pump).length === 1)
+    const [first] = clientPids(pump)
+    const other = stealing(pump)
+    await until(() => clientPids(pump).length === 2 && !clientPids(pump).includes(first))
+    expect(clientPids(pump)).toContain(String(other.pid))
+  }, 30000)
+
+  test('a window killed while the pump is detached shows ended after it attaches again', async () => {
+    const { pump, exits } = make()
+    pump.start('s-gone', 'exec cat')
+    await until(() => clientPids(pump).length === 1)
+    stealing(pump)
+    await until(() => !clientPids(pump).length || clientPids(pump).length === 1)
+    Bun.spawnSync(['tmux', '-f', '/dev/null', '-L', pump.socket, 'kill-window', '-t', `${pump.name}:=s-gone`])
+    await until(() => pump.status()['s-gone']?._tag === 'Ended')
+    expect(pump.status()['s-gone']).toMatchObject({ _tag: 'Ended', exit: null })
+    expect(exits).toEqual([['s-gone', null]])
+    pump.resume('s-gone', 'exec cat')
+    expect(pump.status()['s-gone']._tag).toBe('Live')
+  }, 30000)
+
+  test('the host pane killed while no page shows it shows ended', async () => {
+    const { pump } = make()
+    const person = personPane('exec cat')
+    try {
+      pump.adopt('host-2', person.socket, person.pane)
+      expect(pump.status()['host-2']).toMatchObject({ _tag: 'Live' })
+      person.kill()
+      await until(() => pump.status()['host-2']?._tag === 'Ended')
+      // Adopting a pane that is already gone shows ended at once.
+      pump.adopt('host-3', person.socket, '%99')
+      expect(pump.status()['host-3']._tag).toBe('Ended')
+    } finally {
+      person.kill()
+    }
+  }, 30000)
+
   test('killServer ends the server and removes its socket file', async () => {
     const { pump, seen } = make()
     pump.start('s-sock', `bun ${FAKE} start s-sock`)

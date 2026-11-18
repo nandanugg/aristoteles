@@ -251,6 +251,7 @@ describe('the work token, as its epoch is checked', () => {
   const folded: WorkFolded = {
     state: undefined as never,
     ids: new Map(),
+    hostPane: null,
     tokens: new Map([
       ['host', [{ ep: 0, hash: sha('k0001') }]],
       ['role:dev.v2', [{ ep: 0, hash: sha('old') }, { ep: 1, hash: sha('new') }]],

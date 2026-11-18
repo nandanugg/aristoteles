@@ -15,14 +15,7 @@
 // it and the stored terminal moves. EFFECTS and reconcile live in index.ts.
 import { Context, type Effect, type Ref } from 'effect'
 import type { ActionCall, Dispatched } from '../actions/types.ts'
-import type {
-  Derived,
-  HostPane,
-  PendingSend,
-  ToClose,
-  ToStart,
-  ToWatch,
-} from '../derived/index.ts'
+import type { Derived, PendingSend } from '../derived/index.ts'
 import type { Refusal } from '../schema/errors.ts'
 import type { OutsideFailed, SessionId, StoreDamaged, Supervised } from '../schema/index.ts'
 import type {
@@ -39,28 +32,14 @@ import type {
 import type { WorkCache } from '../state/index.ts'
 
 export type EffectName =
-  | 'HostPanes' // S1: adopt the host's pane of each live run; release the others
-  | 'StartTerminals' // the terminal of each new persistent agent, the first prompt an argument
   | 'DeliverSends' // C5: type a host's work send into the terminal of its child
-  | 'CloseEnded' // C1, S1: close the terminal of an ended agent or run, once, when quiet
-  | 'RetryFailures' // C1, S1: up to 3 restarts of a failed terminal; a prompt and a failure stored
 
 // The order of one round: the order of the old tick.
-export const EFFECT_ORDER: ReadonlyArray<EffectName> = [
-  'HostPanes',
-  'StartTerminals',
-  'DeliverSends',
-  'CloseEnded',
-  'RetryFailures',
-]
+export const EFFECT_ORDER: ReadonlyArray<EffectName> = ['DeliverSends']
 
 // What each effect selects from the derived value.
 export interface Selected {
-  readonly HostPanes: ReadonlyArray<HostPane>
-  readonly StartTerminals: ReadonlyArray<ToStart>
   readonly DeliverSends: ReadonlyArray<PendingSend>
-  readonly CloseEnded: ReadonlyArray<ToClose>
-  readonly RetryFailures: ReadonlyArray<ToWatch>
 }
 
 // The memory of the supervisor. Lost on a restart: what must survive one is in the store.
@@ -101,15 +80,11 @@ export class Dispatcher extends Context.Service<
 // The times of the supervisor, in ms. The windows and gaps are read on the clock (Now); the
 // pauses are real waits.
 export interface Timing {
-  // A terminal with output within this window is busy: a close waits for it.
-  readonly outputWindow: number
-  // The tries of a failed terminal are at least this far apart.
-  readonly retryGap: number
   // The pause between the text of a host's send and its Enter.
   readonly enterPause: number
 }
 // enterPause: the pause between a line and its Enter (Nanda, 2026-11-15: more room, safer).
-export const TIMING: Timing = { outputWindow: 8000, retryGap: 30000, enterPause: 1000 }
+export const TIMING: Timing = { enterPause: 1000 }
 
 // The supervisor of one start: its times, the person whose UI it is (the author of its acts), and
 // when it started (an act or a send this much older was handled before it).

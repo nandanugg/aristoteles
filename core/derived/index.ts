@@ -51,10 +51,6 @@ export { nextFor, stepKey } from './steps.ts'
 export { waitingFor } from './waiting.ts'
 
 export {
-  hostPanesOf,
   ranOnce,
   sendsPending,
-  terminalsToClose,
-  terminalsToStart,
-  terminalsToWatch,
 } from './selectors.ts'

@@ -942,49 +942,6 @@ export type StepKey = (steps: ReadonlyArray<NextStep>) => string
 // The selectors of the effects (BUILD.md 3.7)
 // =================================================================================================
 
-// Each run whose RunState is Talking, Working or AwaitingEndAccept and whose terminal is a pane
-// of the person (S1); former: the sessions of its older hosts.
-export interface HostPane {
-  readonly run: RunId
-  readonly session: SessionId
-  readonly socket: string
-  readonly pane: string
-  readonly former: ReadonlyArray<SessionId>
-}
-export type HostPanesOf = (d: Derived) => ReadonlyArray<HostPane>
-
-// Each persistent agent on an assignment with no terminal yet, or with a session that took no
-// assignment and is not Stopped (ruling 7: only a persistent agent gets a terminal; C1: never an
-// Ended one).
-export interface ToStart {
-  readonly agent: AgentId
-  readonly session:
-    | { readonly _tag: 'New' }
-    | { readonly _tag: 'Again'; readonly session: SessionId }
-}
-export type TerminalsToStart = (d: Derived) => ReadonlyArray<ToStart>
-
-// The owner of a terminal: a persistent agent, or a run (its host).
-export type TerminalOwner =
-  | { readonly _tag: 'Agent'; readonly agent: AgentId }
-  | { readonly _tag: 'Run'; readonly run: RunId }
-
-// Each terminal of an agent that is Ended, or of a run that is Done or Closed, not closed once
-// (ruling 9: an agent lives to the end of its project; S1).
-export interface ToClose {
-  readonly session: SessionId
-  readonly owner: TerminalOwner
-}
-export type TerminalsToClose = (d: Derived) => ReadonlyArray<ToClose>
-
-// The live terminals whose failures the supervisor retries: live runs, and agents that are not
-// Ended (also Between: an ended process restarts; ruling 9; C1, S1).
-export interface ToWatch {
-  readonly session: SessionId
-  readonly owner: TerminalOwner
-}
-export type TerminalsToWatch = (d: Derived) => ReadonlyArray<ToWatch>
-
 // Each send whose SendState is Pending, with the session that it goes to (C5).
 export interface PendingSend {
   readonly send: EventRef

@@ -11,7 +11,7 @@ export const SYSTEM = 'System message, not from the person.'
 // the agent's own wait (ruling 9), or the host's wait by its run.
 export const DEFAULT_RETRY = `${SYSTEM} Run work wait --by={agent}, and do what it prints.`
 
-const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
+export const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
 type Key = 'session' | 'agent' | 'model' | 'prompt'
 // The session of a command is a UUID: an AI CLI takes no other session id (Claude Code: "Invalid
 // session ID. Must be a valid UUID", Nanda, 2026-11-15). A UUID stays as it is; any other id maps

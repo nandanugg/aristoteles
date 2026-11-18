@@ -268,11 +268,12 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     }
   }
 
-  const list = (): PaneRow[] => {
+  // The panes of the pump's session; undefined when tmux does not answer (no server).
+  const rowsNow = (): PaneRow[] | undefined => {
     const fields =
       '#{pane_id}|#{window_name}|#{pane_dead}|#{pane_dead_status}|#{pane_width}x#{pane_height}'
     const r = tmuxNow('list-panes', '-s', '-t', name, '-F', fields)
-    if (r.code !== 0) return []
+    if (r.code !== 0) return undefined
     return r.out
       .split('\n')
       .filter(Boolean)
@@ -284,6 +285,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       })
       .filter((p) => p.sid !== '_home')
   }
+  const list = (): PaneRow[] => rowsNow() ?? []
   const refreshPanes = () => {
     panes.clear()
     for (const p of list()) panes.set(p.pane, p.sid)
@@ -303,6 +305,26 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
   // after a %layout-change each terminal says its size again (a page that has it already keeps it).
   let client: ControlClient | undefined
   let closed = false
+  // Which panes ended since the last look, and which windows are gone (killed while the pump was
+  // detached, or after): a window that a start or a stop did not take is ended, whatever tmux
+  // lists. Each look runs each second, and on every attach (an end while detached shows then).
+  const known = new Map<string, PaneRow>()
+  const gone = new Set<string>()
+  const lookOwn = () => {
+    const rows = rowsNow()
+    if (!rows) return
+    for (const p of rows) {
+      const was = known.get(p.sid)
+      if (p.dead && !was?.dead) onExit(p.sid, p.status)
+      known.set(p.sid, p)
+      gone.delete(p.sid)
+    }
+    for (const sid of known.keys()) {
+      if (gone.has(sid) || rows.some((p) => p.sid === sid)) continue
+      gone.add(sid)
+      onExit(sid, null)
+    }
+  }
   const ownLine = (line: Uint8Array) => {
     if (startsWith(line, LAYOUT_CHANGE)) {
       for (const p of list()) emitSize(p.sid, p.size)
@@ -317,12 +339,26 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     keep(sid, data)
     emit(sid, data)
   }
+  // Any detach (another client's attach -d, %exit, the server) ends the client's output: the pump
+  // attaches again, after a delay that doubles to 5 s and starts over with the first line.
+  let delay = 500
   const attach = () => {
     // The session can be gone (its server was killed): make it again before the client attaches.
     if (tmuxNow('has-session', '-t', name).code !== 0) makeSession()
-    client = controlClient(['-L', socket, '-C', 'attach-session', '-t', name], ownLine, () => {
-      if (!closed) setTimeout(attach, 500)
-    })
+    const args = ['-L', socket, '-C', 'attach-session', '-t', name]
+    client = controlClient(
+      args,
+      (line) => {
+        delay = 500
+        ownLine(line)
+      },
+      () => {
+        if (closed) return
+        setTimeout(attach, delay)
+        delay = Math.min(delay * 2, 5000)
+      },
+    )
+    lookOwn()
   }
   attach()
 
@@ -351,6 +387,20 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     const cursor = `\x1b[${Number(y) + 1};${Number(x) + 1}H`
     return new TextEncoder().encode(`\x1b[H\x1b[2J${rows}${cursor}${mouseModesOf(flags)}`)
   }
+  // Whether the host's pane still exists and wrote; it runs each second, when the pane is adopted,
+  // and when its client attaches again, with or without a page that shows it.
+  const lookHost = (sid: string, a: Adopted) => {
+    const format = '#{pane_dead} #{window_activity}'
+    const r = onPersonServer(a.socket, ['display-message', '-p', '-t', a.pane, format])
+    const [dead = '1', activity = '0'] = r.stdout.toString().trim().split(' ')
+    const ended = r.exitCode !== 0 || dead === '1'
+    if (ended && !a.ended) onExit(sid, null)
+    a.ended = ended
+    if (Number(activity) > a.activity) {
+      a.activity = Number(activity)
+      a.last = clock()
+    }
+  }
   const streamHost = (sid: string, a: Adopted) => {
     // Not read-only (-r): tmux refuses a send-keys from outside the session when its newest
     // client is read-only, and this client is the newest. It is sent no command.
@@ -371,7 +421,8 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       setTimeout(() => {
         if (adopted.get(sid) !== a || a.client !== hostClient) return
         a.client = undefined
-        if (hostSize(a) === undefined) return
+        lookHost(sid, a)
+        if (a.ended || hostSize(a) === undefined) return
         streamHost(sid, a)
         emit(sid, hostFrame(a))
       }, 500)
@@ -383,25 +434,9 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
   // Each second: which panes ended since the last look, and whether the host's pane wrote (tmux
   // keeps the time of the last output for a whole window only). This look needs no client on the
   // person's server, so the watcher reads the host's pane while no page shows it too.
-  const known = new Map<string, PaneRow>()
   const poll = setInterval(() => {
-    for (const p of list()) {
-      const was = known.get(p.sid)
-      if (p.dead && !was?.dead) onExit(p.sid, p.status)
-      known.set(p.sid, p)
-    }
-    for (const [sid, a] of adopted) {
-      const format = '#{pane_dead} #{window_activity}'
-      const r = onPersonServer(a.socket, ['display-message', '-p', '-t', a.pane, format])
-      const [dead = '1', activity = '0'] = r.stdout.toString().trim().split(' ')
-      const ended = r.exitCode !== 0 || dead === '1'
-      if (ended && !a.ended) onExit(sid, null)
-      a.ended = ended
-      if (Number(activity) > a.activity) {
-        a.activity = Number(activity)
-        a.last = clock()
-      }
-    }
+    lookOwn()
+    for (const [sid, a] of adopted) lookHost(sid, a)
   }, 1000)
   poll.unref()
   const ownPane = (sid: string): never =>
@@ -462,7 +497,8 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       )
       panes.set(r.out.trim(), sid)
       tmuxNow('resize-window', '-t', target(sid), '-x', String(cols), '-y', String(rows))
-      known.delete(sid)
+      gone.delete(sid)
+      lookOwn()
       return r.out.trim()
     },
     // A resume: a dead pane runs the resume command; a closed window is made again.
@@ -475,7 +511,8 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
         const env = ['-e', `ARISTOTELES_SESSION=${sid}`]
         const respawn = ['respawn-pane', '-k', ...env, '-t', p.pane, '--', 'sh', '-c', command]
         runOrThrow(mustTmux(`resume ${sid}`, respawn))
-        known.delete(sid)
+        gone.delete(sid)
+        lookOwn()
         return p.pane
       }
       return pump.start(sid, command, startOptions)
@@ -513,11 +550,14 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       if (adopted.has(sid)) ownPane(sid)
       tmuxNow('kill-window', '-t', target(sid))
       known.delete(sid)
+      gone.delete(sid)
     },
     // The ring of a terminal that the person stopped stays, so that a Resume shows its old output;
     // the end of a project frees it here.
     forget(sid) {
       rings.delete(sid)
+      gone.delete(sid)
+      known.delete(sid)
     },
     // The bytes to show a tab that opens: the ring buffer, or the screen of the pane after a
     // restart of the server; then the mouse modes of the pane now. A tool that turned them on
@@ -547,11 +587,17 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
         p.sid,
         readingOf(p.dead, p.status, rings.get(p.sid)?.last ?? 0),
       ])
+      const vanished = [...gone]
+        .filter((sid) => !own.some(([s]) => s === sid))
+        .map((sid): [string, TerminalStatus] => [
+          sid,
+          readingOf(true, null, rings.get(sid)?.last ?? 0),
+        ])
       const persons = [...adopted].map(([sid, a]): [string, TerminalStatus] => [
         sid,
         readingOf(a.ended, null, a.last),
       ])
-      return Object.fromEntries([...own, ...persons])
+      return Object.fromEntries([...vanished, ...own, ...persons])
     },
     // The last lines of a terminal, for the words of an event.
     tail(sid, lines = 12) {
@@ -582,6 +628,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
         client: undefined,
       }
       adopted.set(sid, b)
+      lookHost(sid, b)
       // A page that showed the old pane goes on with the new one.
       if (a?.client) {
         pump.show(sid)

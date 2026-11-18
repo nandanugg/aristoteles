@@ -1,6 +1,6 @@
-// createWatcher (frozen; package P6): the supervisor of the terminals. tick() renews the Work from
-// the store (its own WorkCache), reads the outside (the pump's status, and the markers of the
-// agents that wait in `work wait`), derives, and runs reconcile(EFFECTS) once (core/effects). The
+// createWatcher (frozen; package P6): the engine of the terminals. tick() runs engineTick (the
+// revives of the work model, from the store alone), then renews the Work from the store (its own
+// WorkCache), reads the outside, derives, and runs reconcile(EFFECTS) once (core/effects). The
 // person's acts on the terminals (open, stop, resume, fixed, close) dispatch actions (core/effects
 // person.ts); they and the tick run one at a time (bug 14). What a restart must keep is in the
 // store; the rest is the memory of this one. Ruling 10.1: the watcher types nothing but a host's
@@ -12,6 +12,7 @@ import {
   DispatcherLive,
   EFFECTS,
   EffectLog,
+  engineTick,
   fixedProblem,
   latest,
   NO_MEMORY,
@@ -47,7 +48,9 @@ import { workCacheLayer } from '../../core/state/index.ts'
 import { pumpLayerOf } from '../live/pump.ts'
 import { ReadingsLive } from '../live/readings.ts'
 import { tokenSecret } from '../live/tokens.ts'
+import { stopHookSettings } from '../live/stop-hook.ts'
 import { withBriefMeasure } from '../words/index.ts'
+import { launchWords, workTokenOf } from '../words/work.ts'
 import type { Watcher, WatcherOptions } from './frozen.ts'
 
 export type { Watcher, WatcherOptions, WatcherTiming } from './frozen.ts'
@@ -146,7 +149,19 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     return next
   }
 
+  // The engine (the revives, the evidence, the rule runs) for a store with a top; then the
+  // person's typed sends.
+  const say = {
+    prompt: launchWords,
+    hook: (actor: string, t: { readonly ep: number; readonly secret: string }) =>
+      stopHookSettings(workTokenOf(actor, t.ep, t.secret)),
+  }
   const round = Effect.gen(function* () {
+    for (const line of yield* engineTick(say).pipe(
+      Effect.catch((e) => Effect.succeed([`the engine: ${e.message}`])),
+    )) {
+      log(line)
+    }
     const d = yield* latest
     if (d !== null) yield* reconcile(EFFECTS, d)
   })

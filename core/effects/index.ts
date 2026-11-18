@@ -5,11 +5,7 @@ import { dispatch } from '../actions/index.ts'
 import type { Derived } from '../derived/index.ts'
 import { Dir, Files, Now, Readings, Spawn, Store, Tokens } from '../services/index.ts'
 import { step } from './acting.ts'
-import { CloseEnded } from './close-ended.ts'
 import { DeliverSends } from './deliver-sends.ts'
-import { HostPanes } from './host-panes.ts'
-import { RetryFailures } from './retry-failures.ts'
-import { StartTerminals } from './start-terminals.ts'
 import {
   Dispatcher,
   EFFECT_ORDER,
@@ -28,13 +24,10 @@ export {
   stopSession,
 } from './person.ts'
 export { latest } from './acting.ts'
+export { engineTick, type Words } from './engine.ts'
 
 export const EFFECTS: Effects = {
-  HostPanes,
-  StartTerminals,
   DeliverSends,
-  CloseEnded,
-  RetryFailures,
 }
 
 // One effect of a round: its failure (also a defect) is logged, and the round goes on.

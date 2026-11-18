@@ -117,3 +117,7 @@ export const WorkActed = Schema.TaggedStruct('Acted', {
   act: Act,
   token: Schema.NullOr(TokenHash),
 })
+
+// The pane of the host in the person's own tmux (its socket and pane id): bookkeeping that the
+// page and the engine read, not an act of the protocol.
+export const WorkHostPane = Schema.TaggedStruct('HostPane', { socket: Str, pane: Str })

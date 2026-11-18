@@ -19,6 +19,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, SubscriptionRef } from 'effect'
 import { dispatch } from '../../core/actions/index.ts'
 import { type Derived, derive, nextChangeAt } from '../../core/derived/index.ts'
+import { checkHost, tmuxPaneExists } from '../../core/effects/host-check.ts'
 import {
   type AssignmentId,
   type Author,
@@ -211,6 +212,9 @@ export function startServer(options: ServerOptions): ServerHandle {
     if (Exit.isSuccess(exit)) return exit.value
     throw new Error(messageOf(Cause.squash(exit.cause)))
   }
+
+  // The host's pane is gone: its end is recorded (a failure here never stops the server).
+  runSync(Effect.asVoid(Effect.exit(checkHost(tmuxPaneExists))))
 
   // The Work now: the cache renews itself from the store, and folds only on a new last seq.
   const refresh = Effect.gen(function* () {

@@ -79,6 +79,12 @@ export interface Harness {
     yaml: string,
     opts?: Record<string, unknown>,
   ) => Promise<{ readonly draft: string; readonly arch: string; readonly out: string }>
+  readonly personPane: (command: string) => {
+    readonly socket: string
+    readonly pane: string
+    readonly env: { readonly TMUX: string; readonly TMUX_PANE: string }
+    readonly kill: () => void
+  }
   readonly git: (dir: string, ...args: ReadonlyArray<string>) => string
   readonly INTRO_V1: string
   readonly HOST: object

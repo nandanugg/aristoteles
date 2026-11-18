@@ -58,10 +58,7 @@ export const verify = (
     return { assignment: assignment.id, token }
   })
 
-// A token of the work model: w.<actor>.<ep>.<secret>. The actor may hold dots (a role name): the
-// epoch (digits) and the secret (no dots) are the last two parts.
-export const workTokenOf = (who: Actor, ep: number, secret: string): string =>
-  `w.${who}.${ep}.${secret}`
+export { workTokenOf } from '../words/work.ts'
 
 // The actor and the epoch a work token names, when the secret matches the hash that the store
 // kept for that actor at that epoch. An old epoch's token verifies as that epoch, so that the

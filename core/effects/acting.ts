@@ -5,12 +5,10 @@ import { Cause, Effect, Ref } from 'effect'
 import type { ActionCall, InputOf } from '../actions/types.ts'
 import { type Derived, derive } from '../derived/index.ts'
 import {
-  type Activity,
   type Author,
   type DropReason,
   type EventRef,
   isNonBlank,
-  Moves,
   type SessionId,
   type TerminalState,
   type Work,
@@ -148,19 +146,6 @@ export const stateIn = (
   terminals: Memory['terminals'],
   sid: SessionId,
 ): TerminalState | undefined => terminals.get(sid)?.state
-
-// A live terminal shows something new: its activity changes (nothing stores it).
-export const see = (sid: SessionId, activity: Activity) =>
-  Effect.gen(function* () {
-    const { ref } = yield* SupervisorMemory
-    yield* Ref.update(ref, (m) => {
-      const known = m.terminals.get(sid)
-      if (known?.state._tag !== 'Live') return m
-      const terminals = new Map(m.terminals)
-      terminals.set(sid, { ...known, state: Moves.tick(known.state, activity) })
-      return { ...m, terminals }
-    })
-  })
 
 // --- the newest Derived ------------------------------------------------------------------------
 

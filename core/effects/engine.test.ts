@@ -1,0 +1,241 @@
+// The engine's tick on a temp store with a fake pump: the revive is recorded, then its pane
+// started (the prompt an argument); an actor up with no live pane exits, then is revived at the
+// next epoch; a revive recorded and never launched is found the same way; a done task with a
+// pending test rule gets its RunRule with the harness's holds.
+import { join } from 'node:path'
+import { describe, expect, test } from 'bun:test'
+import { Effect, Layer, type Scope } from 'effect'
+import { dispatchAct, openTop } from '../actions/work.ts'
+import { h, NANDA, eventsOf } from '../actions/fixture.test.ts'
+import { OutsideFailed, type Time } from '../schema/index.ts'
+import type { TerminalReading } from '../schema/outside.ts'
+import { Dir, Env, FilesLive, Now, Pump, SpawnLive, StoreLive, Tokens } from '../services/index.ts'
+import { foldWork } from '../state/work/fold.ts'
+import { epOf } from '../state/work/reads.ts'
+import type { ItemRec, What } from '../state/work/types.ts'
+import { stopHookSettings } from '../../adapters/live/stop-hook.ts'
+import { engineTick, sessionOf } from './engine.ts'
+
+const CONFIG = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
+  .replace('  opus:   {', '  opus:   { launch: "fake {session} {prompt}",')
+  .replace('  sonnet: {', '  sonnet: { launch: "fake {session}",')
+
+const LEAD = 'role:section-lead'
+
+// A pump that starts nothing: the test says which sessions live. start records the command.
+const fakePump = () => {
+  const live = new Set<string>()
+  const commands = new Map<string, string>()
+  let refuse = false
+  const never = Effect.die('not used by the engine')
+  const layer = Layer.succeed(Pump, {
+    start: (sid, s) =>
+      refuse
+        ? Effect.fail(new OutsideFailed({ system: 'tmux', message: 'no tmux', next: null }))
+        : Effect.sync(() => {
+          live.add(sid)
+          commands.set(sid, s.command)
+        }),
+    resume: () => never,
+    input: () => never,
+    enter: () => never,
+    stop: (sid) => Effect.sync(() => void live.delete(sid)),
+    forget: (sid) => Effect.sync(() => void live.delete(sid)),
+    status: Effect.sync(() =>
+      Object.fromEntries(
+        [...live].map((sid): [string, TerminalReading] => [sid, { _tag: 'Live', lastOutput: 0 }]),
+      )
+    ),
+    tail: () => never,
+    adopt: () => never,
+    release: () => never,
+    paneOf: () => never,
+    keysAt: () => never,
+  })
+  return { layer, live, commands, refuseStarts: (on: boolean) => void (refuse = on) }
+}
+
+const setup = async (sections = ['a', 'b']) => {
+  const { p } = await h.started({ 'aristoteles.yaml': CONFIG })
+  const pump = fakePump()
+  let n = 0
+  const layer = Layer.mergeAll(
+    StoreLive.pipe(
+      Layer.provide(
+        Layer.succeed(Env, { vars: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') } }),
+      ),
+    ),
+    Layer.succeed(Dir, { cwd: p.dir }),
+    Layer.succeed(Now, { read: Effect.succeed(p.now() as Time) }),
+    Layer.succeed(Tokens, { random: Effect.sync(() => `k${++n}`) }),
+    FilesLive,
+    SpawnLive,
+    pump.layer,
+  )
+  const run = <A, E>(e: Effect.Effect<A, E, Layer.Success<typeof layer> | Scope.Scope>) =>
+    Effect.runPromise(Effect.scoped(e).pipe(Effect.provide(layer)))
+  await run(openTop({ by: NANDA, name: 'T', goal: 'g', sections }))
+  const tick = () =>
+    run(engineTick({
+      prompt: (actor, words, t) => `${actor}|${t.ep}|${t.secret}|${words}`,
+      hook: (actor, t) => stopHookSettings(`${actor}.${t.ep}.${t.secret}`),
+    }))
+  const state = () => foldWork(eventsOf(p.dir))?.state
+  const acts = (tag: string) =>
+    eventsOf(p.dir).filter((r) =>
+      r.event._tag === 'Work' && r.event.create._tag === 'Acted' &&
+      r.event.create.act.what._tag === tag
+    ).length
+  let x = 0
+  // An act of an actor on the state as it is now.
+  const go = (who: string, what: What) => {
+    const s = state()
+    return run(dispatchAct({
+      by: NANDA,
+      act: { id: `t${++x}`, who, ep: s === undefined ? 0 : epOf(s, who), what },
+      on: s?.seq ?? null,
+      build: null,
+      current: 'b',
+    }))
+  }
+  return { p, pump, tick, state, acts, go }
+}
+
+describe('engineTick', () => {
+  test('a new top: pipe and role are revived, their panes started with the prompt as argument',
+    async () => {
+      const t = await setup()
+      expect(t.state()?.down.size).toBe(3)
+      const lines = await t.tick()
+      expect(lines).toEqual([
+        'pipe: revived in pipe-e1',
+        `${LEAD}: revived in ${sessionOf(LEAD, 1)}`,
+      ])
+      expect(t.acts('Revive')).toBe(2)
+      expect([...(t.state()?.down ?? [])]).toEqual(['host'])
+      expect([...t.pump.live].sort()).toEqual(['pipe-e1', 'role-section-lead-e1'])
+      const pipe = t.pump.commands.get('pipe-e1') ?? ''
+      expect(pipe).toMatch(/^fake [0-9a-f-]{36} 'pipe\|1\|k\d+\|You keep/)
+      expect(pipe).toMatch(/ --settings '.*work hook stopped pipe\.1\.k\d+.*'$/)
+      expect(pipe).toContain('You keep the TSD on its directions.')
+      const lead = t.pump.commands.get('role-section-lead-e1') ?? ''
+      expect(lead).toContain(`'${LEAD}|1|k`)
+      expect(lead).toContain('You run one section')
+      expect(lead).toContain(`work hook stopped ${LEAD}.1.k`)
+    }, 90000)
+
+  test('both alive: the tick does nothing', async () => {
+    const t = await setup()
+    await t.tick()
+    const stored = eventsOf(t.p.dir).length
+    expect(await t.tick()).toEqual([])
+    expect(eventsOf(t.p.dir).length).toBe(stored)
+  }, 90000)
+
+  test('a pane gone: its exit is recorded, then it is revived at the next epoch', async () => {
+    const t = await setup()
+    await t.tick()
+    t.pump.live.delete('pipe-e1')
+    expect(await t.tick()).toEqual([
+      'pipe: no live pane pipe-e1; its exit is recorded',
+      'pipe: revived in pipe-e2',
+    ])
+    expect(t.acts('Exit')).toBe(1)
+    expect(epOf(t.state() ?? (undefined as never), 'pipe')).toBe(2)
+    expect(t.pump.live.has('pipe-e2')).toBe(true)
+    expect(t.pump.commands.get('pipe-e2')).toContain('pipe|2|')
+  }, 90000)
+
+  test('a revive recorded and never launched: exit, then revive again', async () => {
+    const t = await setup()
+    await t.go('harness', { _tag: 'Revive', who: 'pipe' })
+    await t.go('harness', { _tag: 'Revive', who: LEAD })
+    t.pump.live.add(sessionOf(LEAD, 1))
+    const lines = await t.tick()
+    expect(lines).toEqual([
+      'pipe: no live pane pipe-e1; its exit is recorded',
+      'pipe: revived in pipe-e2',
+    ])
+    expect(t.acts('Revive')).toBe(3)
+    expect(t.acts('Exit')).toBe(1)
+  }, 90000)
+
+  test('a start that fails is a line; the next tick records the exit and tries again', async () => {
+    const t = await setup()
+    t.pump.refuseStarts(true)
+    const lines = await t.tick()
+    expect(lines.map((l) => l.replace(/ in .*/, ''))).toEqual([
+      'pipe: its pane did not start: no tmux',
+      `${LEAD}: its pane did not start: no tmux`,
+    ])
+    t.pump.refuseStarts(false)
+    await t.tick()
+    expect(epOf(t.state() ?? (undefined as never), 'pipe')).toBe(2)
+    expect(t.pump.live.has('pipe-e2')).toBe(true)
+  }, 90000)
+
+  test('the end of the project closes the live panes', async () => {
+    const t = await setup(['a'])
+    await t.tick()
+    const spec = { name: 'n', goal: 'g', sections: ['a'], role: 'section-lead' }
+    await t.go('host', { _tag: 'SendTask', spec })
+    await t.go(LEAD, { _tag: 'AssignDo', task: 't1' })
+    await t.go('maker:m1', { _tag: 'ReadBrief', maker: 'm1' })
+    await t.go('maker:m1', {
+      _tag: 'Report', maker: 'm1', output: 'o', files: [], caught: new Set(),
+    })
+    await t.go(LEAD, { _tag: 'Review', task: 't1', v: 'Pass', points: [] })
+    await t.go('host', { _tag: 'TopDone' })
+    await t.go('person', { _tag: 'EndProject' })
+    expect(await t.tick()).toEqual([])
+    expect([...t.pump.live]).toEqual([])
+  }, 90000)
+
+  test('RunRule: a done task with a pending test rule gets the holds of the test', async () => {
+    const t = await setup()
+    await t.tick()
+    t.p.write('docs/tsd.md', '# TSD\n\nBAD line\n')
+    const spec = (name: string, section: string): What => ({
+      _tag: 'SendTask',
+      spec: { name, goal: 'g', sections: [section], role: 'section-lead' },
+    })
+    const make = async (task: string, maker: string) => {
+      await t.go(LEAD, { _tag: 'AssignDo', task })
+      await t.go(`maker:${maker}`, { _tag: 'ReadBrief', maker })
+      await t.go(`maker:${maker}`, {
+        _tag: 'Report', maker, output: 'o', files: ['docs/tsd.md'], caught: new Set(),
+      })
+    }
+    await t.go('host', spec('one', 'a'))
+    await t.go('host', spec('two', 'b'))
+    await make('t2', 'm1')
+    await t.go(LEAD, { _tag: 'Review', task: 't2', v: 'Pass', points: [] })
+    await make('t1', 'm2')
+    await t.go(LEAD, { _tag: 'Review', task: 't1', v: 'RaiseNoRule', points: [] })
+    await t.go('pipe', {
+      _tag: 'Evaluate', task: 't1', level: 'Standard', parts: [], roleDraft: null, summary: 's',
+    })
+    await t.go('pipe', { _tag: 'Advance', fix: 't1' })
+    const std = [...(t.state()?.items.keys() ?? [])].find((x) => x.startsWith('std:')) ?? ''
+    const rec: ItemRec = {
+      kind: 'rule', parent: std, name: 'r9', says: 's', where: null, test: 'grep -n BAD',
+      ref: null, form: 'mech', examples: [],
+    }
+    await t.go('pipe', { _tag: 'WriteRule', fix: 't1', rule: 'rule:r9', rec, refOk: true })
+    await t.go('pipe', { _tag: 'RunTest', fix: 't1', own: true, contra: [] })
+    await t.go('pipe', {
+      _tag: 'Ship', fix: 't1', items: new Set(['rule:r9']), draft: new Map([['rule:r9', rec]]),
+    })
+    expect([...(t.state()?.tasks.get('t2')?.pend ?? [])]).toEqual(['rule:r9'])
+    expect(await t.tick()).toEqual([])
+    expect(t.acts('RunRule')).toBe(1)
+    const ran = eventsOf(t.p.dir).flatMap((r) =>
+      r.event._tag === 'Work' && r.event.create._tag === 'Acted' &&
+        r.event.create.act.what._tag === 'RunRule'
+        ? [r.event.create.act.what]
+        : []
+    )
+    expect(ran).toEqual([{ _tag: 'RunRule', task: 't2', holds: false }])
+    expect(t.state()?.tasks.get('t2')?.pend.size).toBe(0)
+  }, 90000)
+})

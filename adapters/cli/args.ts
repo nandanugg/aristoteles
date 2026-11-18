@@ -114,6 +114,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   loop: ['on'],
   recheck: ['on'],
   top: { open: ['name', 'goal', 'sections'] },
+  hook: { stopped: [] },
   ask: ['text', 'to', 'option'],
   answer: ['text', 'option'],
   note: ['text', 'on', 'hope'],
@@ -177,6 +178,7 @@ type ActOf = (words: ReadonlyArray<string>) => string | undefined
 export const ACT_OF: Readonly<Record<string, ActOf>> = {
   task: first,
   top: first,
+  hook: first,
   direction: first,
   role: first,
   evaluation: first,
@@ -308,6 +310,7 @@ export const COMMAND_NAMES = [
   'ship',
   'loop',
   'top',
+  'hook',
   'source',
   'direction',
   'suggest',

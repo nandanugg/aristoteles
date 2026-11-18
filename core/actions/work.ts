@@ -367,3 +367,26 @@ export const openTop = (call: OpenCall) =>
     if (seq === null) return yield* Effect.die('openTop: the store built no top')
     return { seq, secrets }
   })
+
+// The person's pane for the host: bookkeeping that the engine and the page read (no act).
+export const recordHostPane = (
+  by: Author,
+  pane: { readonly socket: string; readonly pane: string },
+) =>
+  Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    const clock = yield* Now
+    const opened = yield* (yield* Store)
+      .open(cwd, { create: false })
+      .pipe(Effect.catchTag('Refused', (e) => Effect.fail(STORE.noStore(e.message, cwd))))
+    return yield* opened.write((events) =>
+      Effect.gen(function* () {
+        if ((yield* folding(() => foldWork(events))) === null) return yield* WORK.noTop()
+        const event = create('Work', { _tag: 'HostPane', ...pane })
+        if (!writtenBy(by, event)) {
+          return yield* Effect.die(`${by._tag} does not write Work.HostPane`)
+        }
+        return { draft: { at: yield* clock.read, author: by, event }, rows: [] }
+      }),
+    )
+  })

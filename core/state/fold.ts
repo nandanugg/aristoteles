@@ -139,6 +139,7 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
   // The work model folds apart (core/state/work/fold.ts); the old Work stays as it is.
   'Work.Opened': (w) => unchanged(w),
   'Work.Acted': (w) => unchanged(w),
+  'Work.HostPane': (w) => unchanged(w),
 }
 
 // The step of one stored event through the table: the Work after it, and the ids it made.

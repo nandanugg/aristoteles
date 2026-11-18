@@ -19,6 +19,7 @@ export {
   ItemRec as ItemRecSchema,
   What as WhatSchema,
   WorkActed,
+  WorkHostPane,
   WorkOpened,
 } from '../../src/domain/work-acts.ts'
 

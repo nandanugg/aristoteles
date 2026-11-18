@@ -58,7 +58,7 @@ import {
   TaskId,
   Time,
 } from './ids.ts'
-import { WorkActed, WorkOpened } from './work-acts.ts'
+import { WorkActed, WorkHostPane, WorkOpened } from './work-acts.ts'
 
 const Text = Schema.String
 const NonEmpty = Schema.NonEmptyArray
@@ -702,7 +702,7 @@ const Forward = Schema.Union([
 ])
 
 // The work model (core/state/work): the person opens the top; each accepted act is one event.
-const WorkEvent = created('Work', Schema.Union([WorkOpened, WorkActed]))
+const WorkEvent = created('Work', Schema.Union([WorkOpened, WorkActed, WorkHostPane]))
 
 // --- every event --------------------------------------------------------------------------------
 
@@ -880,6 +880,7 @@ export const WRITTEN_BY = {
     'Adjustment.Accepted',
     'Adjustment.Rejected',
     'Work.Opened',
+    'Work.HostPane',
     'Work.Acted',
   ],
   // A host run before it has an assignment: its task draft.

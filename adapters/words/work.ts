@@ -6,9 +6,28 @@ import type { Recorded } from '../../core/schema/index.ts'
 import { appliesTo } from '../../core/state/work/items.ts'
 import { depth, fx, uncovered } from '../../core/state/work/reads.ts'
 import type { Act, ItemKey, Level, What, WhatTag, WorkState } from '../../core/state/work/types.ts'
+import type { NewToken } from '../../core/actions/work.ts'
+import type { Actor } from '../../core/state/work/types.ts'
 import { HOST, kindOf } from '../../core/state/work/types.ts'
 
 type Lines = ReadonlyArray<string>
+
+// A token of the work model: w.<actor>.<ep>.<secret>. The actor may hold dots (a role name): the
+// epoch (digits) and the secret (no dots) are the last two parts.
+export const workTokenOf = (who: Actor, ep: number, secret: string): string =>
+  `w.${who}.${ep}.${secret}`
+
+// The first prompt of a revived pane (an argument of its launch command): who it is, its token,
+// and its wait. Its steps come from work wait, one at a time.
+export const launchWords = (actor: Actor, words: string, token: NewToken): string => {
+  const t = workTokenOf(actor, token.ep, token.secret)
+  return [
+    `You are ${actor} of an Aristoteles project. ${words}`,
+    `Your token is ${t}.`,
+    `Run \`work wait ${t}\` now: it prints your next step. Do that step with the command it`,
+    `prints, then run \`work wait ${t}\` again after every act. Never act without it.`,
+  ].join(' ')
+}
 
 // The acts the store accepted, in order.
 const actsOf = (events: ReadonlyArray<Recorded>): ReadonlyArray<Act> =>
@@ -272,3 +291,12 @@ export const briefOf = (
     `  ${stepLine(s, { tag: 'Report', target: maker }, s.seq)}`,
   ]
 }
+
+// The host's first words after the person ran `work run continue`: what the host does.
+export const hostWords = (s: WorkState, token: string): Lines => [
+  `You are the host of "${s.top.name}": ${s.top.goal}`,
+  `Sections of the top: ${s.top.sections.join(', ')}.`,
+  'You send the tasks that cover the sections of the top, one `work send` for each part; you',
+  'reassign a task after the person accepts a change; you return the top when every task is done.',
+  `Run work wait ${token} now, and again after every act: it prints your next step.`,
+]

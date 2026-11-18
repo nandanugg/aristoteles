@@ -5,7 +5,7 @@
 // the step was derived from. An agent's next step is not printed: it runs `work wait` again.
 import { isAbsolute, join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { dispatchAct, formOf, openTop } from '../../../core/actions/work.ts'
+import { dispatchAct, formOf, openTop, recordHostPane } from '../../../core/actions/work.ts'
 import {
   caughtOn,
   pendingHold,
@@ -21,9 +21,10 @@ import {
   UsageError,
   WhatSchema,
 } from '../../../core/schema/index.ts'
-import { Dir, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
+import { Dir, Env, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
 import { loadWork } from '../../../core/state/index.ts'
 import { foldWork } from '../../../core/state/work/fold.ts'
+import { epOf } from '../../../core/state/work/reads.ts'
 import type {
   Actor,
   ItemKey,
@@ -35,8 +36,8 @@ import type {
   What,
   WorkState,
 } from '../../../core/state/work/types.ts'
-import { HARNESS, kindOf, PERSON } from '../../../core/state/work/types.ts'
-import { briefOf } from '../../words/work.ts'
+import { HARNESS, HOST, kindOf, PERSON } from '../../../core/state/work/types.ts'
+import { briefOf, hostWords } from '../../words/work.ts'
 import { type Args, textOf } from '../args.ts'
 import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
 import type { Call, CliServices, Command, Commands } from '../command.ts'
@@ -470,6 +471,10 @@ const isWork = (call: Call): boolean => call.token?.startsWith('w.') === true
 // The person's answer to an agent's question names the asker, not a question id (q1).
 const answerIsNew = (call: Call): boolean => !/^q\d+$/.test(call.args.positional[0] ?? '')
 
+// The new `work run continue` has no run id (the old one names a run and the person's words).
+const isContinue = (call: Call): boolean =>
+  call.args.positional.length === 1 && call.args.positional[0] === 'continue'
+
 const fresh = (names: ReadonlyArray<string>): Commands =>
   Object.fromEntries(names.flatMap((n) => {
     const spec = SPECS[n]
@@ -485,8 +490,11 @@ export const sharing = (old: Commands): Commands => {
   }
   const answer = old.answer
   const now = runAct('answer', SPECS.answer as Spec)
+  const oldRun = old.run
   return {
     ...Object.fromEntries(SHARED.map((n) => [n, both(n)] as const)),
+    run: (call) =>
+      oldRun === undefined || isContinue(call) ? runContinue(call) : oldRun(call),
     answer: (call) => (answer === undefined || answerIsNew(call) ? now(call) : answer(call)),
   }
 }
@@ -513,4 +521,63 @@ const top: Command = (call) =>
     ]
   })
 
-export const commands: Commands = { ...fresh(NEW), top }
+// The person's pane for the host: the socket (the first part of $TMUX) and $TMUX_PANE.
+const paneOfPerson = Effect.gen(function* () {
+  const { vars } = yield* Env
+  const socket = (vars.TMUX ?? '').split(',')[0] ?? ''
+  const pane = vars.TMUX_PANE ?? ''
+  return socket === '' || !/^%\d+$/.test(pane)
+    ? yield* refuse(
+      'the host runs inside tmux, so that the page shows its terminal',
+      'start this AI CLI in a tmux pane, then run work run continue',
+    )
+    : { socket, pane }
+})
+
+// work run continue (the person, in the pane of the host): the host is down, so it is revived;
+// else the host moves here, from the session of the view. The new token is printed, with the
+// host's first words.
+const runContinue: Command = () =>
+  Effect.gen(function* () {
+    const { folded } = yield* readFolded
+    const by = yield* personOf
+    const pane = yield* paneOfPerson
+    const s = folded.state
+    const what: What = s.down.has(HOST)
+      ? { _tag: 'Revive', who: HOST }
+      : { _tag: 'MoveHost', fromSession: s.session }
+    const on = s.seq
+    const acted = yield* dispatchAct({
+      by,
+      act: { id: idOf(PERSON, 0, what, on), who: PERSON, ep: 0, what },
+      on,
+      build: null,
+      current: 'cli',
+    })
+    if (acted.token === null) return [outcome(what, acted.seq, acted.again)]
+    yield* recordHostPane(by, pane)
+    const token = workTokenOf(acted.token.actor, acted.token.ep, acted.token.secret)
+    return [outcome(what, acted.seq, false), `  host: ${token}`, ...hostWords(acted.state, token)]
+  })
+
+// work hook stopped <token>: the CLI of the actor stopped at its prompt, so its exit is recorded
+// (the harness; nothing when the token is old or the actor is down). A hook never breaks the CLI:
+// no output, and no failure.
+const hook: Command = (call) =>
+  Effect.gen(function* () {
+    const { folded } = yield* readFolded
+    const { who, ep } = yield* verifyWork(folded, call.token)
+    if (call.args.positional[0] !== 'stopped') return []
+    if (ep !== epOf(folded.state, who) || folded.state.down.has(who)) return []
+    const what: What = { _tag: 'Exit', who }
+    yield* dispatchAct({
+      by: { _tag: 'System' },
+      act: { id: idOf(HARNESS, ep, what, null), who: HARNESS, ep: 0, what },
+      on: null,
+      build: null,
+      current: 'cli',
+    })
+    return []
+  }).pipe(Effect.catch(() => Effect.succeed([])))
+
+export const commands: Commands = { ...fresh(NEW), top, hook }

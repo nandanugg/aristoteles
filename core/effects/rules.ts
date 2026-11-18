@@ -9,6 +9,7 @@ import { Data, Effect } from 'effect'
 import { fx, tk } from '../state/work/reads.ts'
 import { appliesTo, mechRule, testRule } from '../state/work/items.ts'
 import type { ItemKey, ItemRec, WorkState } from '../state/work/types.ts'
+import type { Recorded } from '../schema/index.ts'
 import { Dir, Files, Spawn } from '../services/index.ts'
 
 // A test command that cannot start or times out: a failure to report, never "holds".
@@ -213,3 +214,29 @@ export const pendingHold = (
     }
     return true
   })
+
+// The paths of the last Report of a task.
+export const filesOfLast = (
+  s: WorkState,
+  events: ReadonlyArray<Recorded>,
+  task: string,
+): ReadonlyArray<string> =>
+  events.flatMap((r) =>
+    r.event._tag === 'Work' && r.event.create._tag === 'Acted' &&
+      r.event.create.act.what._tag === 'Report' &&
+      s.makers.get(r.event.create.act.what.maker)?.task === task
+      ? [r.event.create.act.what.files]
+      : []
+  ).at(-1) ?? []
+
+// RunRule's `holds` as the harness fills it: true when the task has no report with files.
+export const ruleHolds = (
+  s: WorkState,
+  events: ReadonlyArray<Recorded>,
+  task: string,
+): Effect.Effect<boolean, RuleRunFailed, Dir | Spawn | Files> => {
+  const files = filesOfLast(s, events, task)
+  return files.length === 0 || !s.tasks.has(task)
+    ? Effect.succeed(true)
+    : pendingHold(s, task, files)
+}
