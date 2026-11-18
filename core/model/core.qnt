@@ -402,6 +402,14 @@ module coreAsk {
   import core(CFG = FIXED_C, C = { ...ENV_C, causes: Set(5), causes1: Set(0), testsFail: false,
                                    maxAsks: 1, maxPerson: 2 }).* from "./core"
 }
+// coreOne with one possible question (Ask by the role, the pipeline role or a maker; the
+// person's Answer): for TLC, as small as coreOne otherwise.
+module coreOneAsk {
+  import coreCfgs.*
+  import core(CFG = { ...FIXED_C, slots: Set(0) },
+              C = { ...ENV_C, causes: 0.to(5), causes1: Set(0), maxPerson: 2, maxMistakes: 1,
+                    slips: true, reject: true, sendBacks: 0, maxAsks: 1 }).* from "./core"
+}
 // The simulator only (too big for TLC): two tasks, every cause, the person's acts.
 module coreAll {
   import coreCfgs.*

@@ -76,6 +76,7 @@ browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All
 browser.qnt browserNoPoll breaks - G4All
 core.qnt coreOne holds $SAFE $LIVE
+core.qnt coreOneAsk holds $SAFE $LIVE
 core.qnt coreTwo holds $SAFE $LIVE
 core.qnt coreTwo breaks - CoreProgressNoPipe
 core.qnt coreTwoExit holds $SAFE $LIVE

@@ -731,7 +731,8 @@ test command's behaviour, a rule that contradicts the other rule, what a change 
 cause of a split part); the person (accept, send back, reject, take as is, end, start the
 host again; at most `maxPerson` acts; never assumed to act); a bounded number of process
 ends (`maxExits`: work.qnt's Exit, then Revive by the harness, Resume by the role, the host's
-revival by the person); a bounded number of questions (`maxAsks`, 0 except in `coreAsk`: an
+revival by the person); a bounded number of questions (`maxAsks`, 0 except in `coreAsk` and
+`coreOneAsk`, coreOne with one question, the TLC job for Ask (not run yet): an
 agent's `Ask`, the person's `Answer` is one of its `maxPerson` acts; Nanda's ruling,
 2026-11-18: a question waiting for the person is a wait on the person, so a state owing only
 `AnswerOb` is Final; `NoFinalWithAsk` is its witness, the simulator breaks it). An act takes
