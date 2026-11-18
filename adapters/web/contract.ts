@@ -598,6 +598,8 @@ const DashAct = Schema.Struct({
   words: Schema.Array(Text),
 })
 // `rec` is the whole record of the item: an edit starts from it.
+// A forwarded act waits for the person's Confirm or Drop.
+const DashForward = Schema.Struct({ id: Text, quote: Text, words: Schema.Array(Text) })
 const DashRule = Schema.Struct({
   key: Text,
   rec: DashRec,
@@ -636,6 +638,7 @@ export const Dash = Schema.Struct({
   row: Schema.Array(DashEscalation),
   rowShown: Schema.Boolean,
   person: Schema.Array(DashAct),
+  forwards: Schema.Array(DashForward),
   directions: Schema.Array(DashDirection),
 })
 export type Dash = typeof Dash.Type

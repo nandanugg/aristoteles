@@ -5,6 +5,7 @@
 //   bun test/slow-files.js --skip   a --path-ignore-patterns flag for each slow file
 const SLOW = [
   'test/pump.test.js', // real tmux and the fake AI tool
+  'test/dash.test.js', // a real browser
 ]
 
 const skip = process.argv.includes('--skip')

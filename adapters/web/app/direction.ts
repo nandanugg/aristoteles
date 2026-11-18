@@ -1,13 +1,11 @@
 // A direction as the person reviews it (Nanda, 2026-11-15): its summary, its flow with the steps
 // that it governs marked, what its words changed (the last draft against this one, or the version
 // before against this one), and its examples by marked step, each sample with the real code
-// around it or the host's words. The directions page and the gear's directions entry show it; the
-// panel of a task shows the words by level (DirectionText).
+// around it or the host's words. The gear's directions entry and the onboarding pages show it.
 import { html } from 'htm/preact'
-import type { DirectionCard, DirectionView } from '../contract.ts'
+import type { DirectionCard } from '../contract.ts'
 import { Change } from './change.ts'
 import { FlowDiagram, whoOf } from './flow.ts'
-import { Markdown } from './markdown.ts'
 
 // The words of a draft or of a version: a card in any state but the first loading has them.
 type Draft = Extract<typeof DirectionCard.Type, { readonly draft: unknown }>['draft']
@@ -78,32 +76,5 @@ export function DirectionReview({ id, draft }: { id: string; draft: Draft }) {
     <div class="section-title">The words</div>
     <${Change} change=${draft.diff} />
     <${Examples} draft=${draft} />
-  </div>`
-}
-
-// The words of a direction, by level: the direction, then each standard with its rules inside.
-// The summary comes first, then the flow as a sequence diagram, then the words (Nanda,
-// 2026-11-15). The panel of a task shows its directions with it.
-type Words = Pick<typeof DirectionView.Type, 'id' | 'summary' | 'flow' | 'says' | 'standards'>
-export function DirectionText({ card }: { card: Words }) {
-  return html`<div class="direction-text">
-    <section class="level level-direction" aria-label="Direction">
-      <div class="level-head"><span class="level-tag direction">Direction</span></div>
-      <p class="direction-summary">${card.summary}</p>
-      <${FlowDiagram} id=${card.id} flow=${card.flow} />
-      <${Markdown} text=${card.says} />
-    </section>
-    ${card.standards.map((s) => html`<section class="level level-standard"
-      aria-label=${`Standard ${s.id}`}>
-      <div class="level-head"><span class="level-tag standard">Standard</span>
-        <code>${s.id}</code></div>
-      <${Markdown} text=${s.says} />
-      ${s.rules.map((r) => html`<section class="level level-rule" aria-label=${`Rule ${r.id}`}>
-        <div class="level-head"><span class="level-tag rule">Rule</span><code>${r.id}</code>
-          <span class="checker">${r.checkedBy ? html`checked by <strong>${r.checkedBy}</strong>`
-            : 'checked by the decider of the result'}</span></div>
-        <${Markdown} text=${r.says} />
-      </section>`)}
-    </section>`)}
   </div>`
 }

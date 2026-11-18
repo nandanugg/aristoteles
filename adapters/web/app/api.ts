@@ -2,9 +2,12 @@
 // acts of the person, and the toast at the bottom of the page.
 import { Data, Effect, Schema } from 'effect'
 import type { OnboardingAct } from '../../../src/domain/onboarding.ts'
+import type { What } from '../../../src/domain/work-acts.ts'
 import {
   ActAnswer,
   ApiError as ApiErrorBody,
+  type Dash,
+  DashMessage,
   type PageAct,
   PageMessage,
   ServerMessage,
@@ -68,6 +71,40 @@ export const post = (act: PageAct): Promise<ActOut> =>
     }),
   )
 
+// An act of the work model (POST /api/act): the person's act on the seq and the build of the
+// Dash that showed it. A refusal (the words say why) means the page reads the Dash again.
+export type WorkOut =
+  | { readonly ok: true }
+  | { readonly refused: string; readonly words: string }
+const WorkAnswer = Schema.Struct({
+  ok: Schema.optionalKey(Schema.Boolean),
+  refused: Schema.optionalKey(Schema.String),
+  words: Schema.optionalKey(Schema.String),
+  error: Schema.optionalKey(Schema.String),
+})
+export type WhatJson = (typeof What)['Encoded']
+const postAct = async (body: object): Promise<WorkOut> => {
+  try {
+    const res = await fetch('/api/act', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const answer = Schema.decodeUnknownOption(WorkAnswer)(await res.json().catch(() => ({})))
+    const a = answer._tag === 'Some' ? answer.value : {}
+    if (res.ok && a.ok) return { ok: true }
+    return { refused: a.refused ?? 'refused', words: a.words ?? a.error ?? res.statusText }
+  } catch (e) {
+    return { refused: 'network', words: e instanceof Error ? e.message : String(e) }
+  }
+}
+export const postWork = (what: WhatJson, dash: Dash): Promise<WorkOut> =>
+  postAct({ act: what, on: dash.header.seq, build: dash.header.build })
+// The person confirms a forwarded act (on the page's build) or drops it.
+export const postForward = (op: 'confirm' | 'drop', id: string, dash: Dash): Promise<WorkOut> =>
+  postAct(op === 'confirm' ? { confirm: id, build: dash.header.build } : { drop: id })
+
 // An act of the onboarding pages (POST /api/onboarding): it writes the files, or approve all roles
 // starts the store. The page sends the plain JSON; the server decodes it.
 export type OnboardingActJson = (typeof OnboardingAct)['Encoded']
@@ -81,8 +118,11 @@ export const postOnboarding = (act: OnboardingActJson): Promise<ActOut> =>
   )
 
 // What the page hears: a server message, or its own "open" when the socket connects.
-export type Heard = typeof ServerMessage.Type | { readonly type: 'open' }
-const decodeMessage = Schema.decodeUnknownOption(ServerMessage)
+export type Heard =
+  | typeof ServerMessage.Type
+  | typeof DashMessage.Type
+  | { readonly type: 'open' }
+const decodeMessage = Schema.decodeUnknownOption(Schema.Union([ServerMessage, DashMessage]))
 type Listener = (message: Heard) => void
 
 // One websocket for the page. A lost socket connects again; a message sent before it opens waits.

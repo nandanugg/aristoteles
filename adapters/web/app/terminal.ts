@@ -4,8 +4,7 @@ import type { Terminal as XTerminal } from '@xterm/xterm'
 import { Schema } from 'effect'
 import { html } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { PositiveInt } from '../../../src/domain/ids.ts'
-import type { TerminalRef } from '../../../src/domain/ui-model.ts'
+import { PositiveInt, type SessionId } from '../../../src/domain/ids.ts'
 import { socket } from './api.ts'
 import { ICONS, icon } from './icons.ts'
 
@@ -53,7 +52,12 @@ const REPLY = /^(?:\x1b\[[?>][\d;]*c|\x1b\[\d+;\d+R|\x1b\][^\x07\x1b]*(?:\x07|\x
 // columns are wider than the box, the font gets smaller until they fit, as tmux shows them
 // (Nanda, 2026-11-15); below MIN_FONT the box scrolls sideways. Returns the size that would fill
 // the box now at the full font, for the resize button, and the cleanup.
-type Session = TerminalRef['terminal']['session']
+type Session = SessionId
+interface TerminalProps {
+  readonly label: string
+  readonly session: SessionId
+  readonly live: boolean
+}
 interface OpenTerminal {
   readonly fill: () => { readonly cols: number; readonly rows: number } | undefined
   readonly close: () => void
@@ -129,26 +133,19 @@ function openTerminal(
   }
 }
 
-// The state of a terminal in plain words.
-export const SEEN_WORDS = {
-  Unknown: 'no reading yet',
-  Live: 'runs',
-  Ended: 'ended',
-  Closed: 'closed',
-} as const
-export function Terminal({ terminal }: { terminal: TerminalRef | null }) {
+// The terminal of one session: its label, and whether its pane lives (the page's own words).
+export function Terminal({ label, session, live }: TerminalProps) {
   const box = useRef<HTMLDivElement>(null)
   const opened = useRef<OpenTerminal>()
   const [state, setState] = useState('connecting')
-  const sessionId = terminal?.terminal.session
   useEffect(() => {
     const el = box.current
-    if (!sessionId || !el) return undefined
+    if (!el) return undefined
     // A box that closes before xterm.js loads opens no terminal.
     let closed = false
     xtermLoaded()
       .then(() => {
-        if (!closed) opened.current = openTerminal(el, sessionId, setState)
+        if (!closed) opened.current = openTerminal(el, session, setState)
       })
       .catch((error: unknown) => setState(error instanceof Error ? error.message : String(error)))
     return () => {
@@ -156,13 +153,7 @@ export function Terminal({ terminal }: { terminal: TerminalRef | null }) {
       opened.current?.close()
       opened.current = undefined
     }
-  }, [sessionId])
-  if (!terminal) {
-    const words = 'This task has no terminal: no real agent works on it yet.'
-    return html`<div style="padding: 16px; color: var(--faint)">${words}</div>`
-  }
-  const { session } = terminal.terminal
-  const live = terminal.terminal._tag === 'Live'
+  }, [session])
   // Page Up and Page Down for the tool in the terminal: Claude scrolls its own view with them.
   // A press keeps the focus in the terminal, so that the person types on.
   const page = (key: string) =>
@@ -178,8 +169,8 @@ export function Terminal({ terminal }: { terminal: TerminalRef | null }) {
     const rows = Schema.decodeUnknownSync(PositiveInt)(Math.max(24, fills.rows))
     socket.send({ type: 'term.resize', session, cols, rows })
   }
-  const words = SEEN_WORDS[terminal.terminal._tag]
-  return html`<div class="term-bar"><span>${terminal.a} · session <code>${session}</code>
+  const words = live ? 'runs' : 'inactive'
+  return html`<div class="term-bar"><span>${label} · session <code>${session}</code>
     </span><span class="grow"></span>
       ${live ? html`<button class="btn small" onMouseDown=${keep} onClick=${fitBox}
         title="Set the terminal to the size of this box, at least 80 x 24">Fit to box</button>`

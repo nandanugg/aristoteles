@@ -290,7 +290,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     )
     const folded = foldWork(events)
     if (folded === null) return undefined
-    const { state, hostPane } = folded
+    const { state, hostPane, forwards } = folded
     const now = Date.parse(clock())
     const terminals = pump?.status() ?? {}
     const persistent = [HOST, PIPE, ...[...state.cards.keys()].map(roleActor)]
@@ -318,6 +318,7 @@ export function startServer(options: ServerOptions): ServerHandle {
         : { name: pipe[0], model: pipe[1].model },
       terminals,
       tails,
+      forwards,
       markers: readMarkers(env, dir, now),
       principles: Object.fromEntries(
         [...(old?.directions ?? [])].map(([id, d]) => [`dir:${id}`, d.from]),

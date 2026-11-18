@@ -73,6 +73,7 @@ const input = (state: WorkState, over: Partial<DashInput> = {}): DashInput => ({
   terminals: live(),
   tails: {},
   markers: [],
+  forwards: [],
   principles: { 'dir:d1': ['clarity'] },
   ...over,
 })
@@ -277,6 +278,18 @@ describe('the sidebar', () => {
     const [dir] = dashOf(input({ ...start(), items })).directions
     expect(dir?.first).toHaveLength(3)
     expect(dir?.standards).toHaveLength(4)
+  })
+})
+
+describe('the forwards', () => {
+  test('a forwarded act shows with its quote and the words of its step', () => {
+    const s = atPerson()
+    const forward = { id: 'f1', what: { _tag: 'Accept', fix: 't1' } as What, on: 1, quote: 'ok' }
+    const d = dashOf(input(s, { forwards: [forward] }))
+    expect(d.forwards).toHaveLength(1)
+    expect(d.forwards[0]).toMatchObject({ id: 'f1', quote: 'ok' })
+    expect(d.forwards[0]?.words.length).toBeGreaterThan(0)
+    expect(dashOf(input(s)).forwards).toEqual([])
   })
 })
 

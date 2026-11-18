@@ -3,10 +3,11 @@
 // page draws from a whole copy of it (browser.qnt). No clock here: `now` comes in.
 import type { TerminalReading, WaitMarker } from '../../core/schema/outside.ts'
 import type { Recorded } from '../../core/schema/index.ts'
-import { dos } from '../../core/derived/work/obligations.ts'
+import { dos, type Step } from '../../core/derived/work/obligations.ts'
 import { sessionOf } from '../../core/effects/engine.ts'
 import { verOf } from '../../core/state/work/items.ts'
 import { epOf, liveMaker } from '../../core/state/work/reads.ts'
+import type { PendingForward } from '../../core/state/work/fold.ts'
 import type { Actor, ItemKey, ItemRec, Task, WorkState } from '../../core/state/work/types.ts'
 import { EDIT, HOST, PERSON, PIPE, roleActor } from '../../core/state/work/types.ts'
 import { stepWords } from '../words/work.ts'
@@ -38,6 +39,8 @@ export interface DashInput {
   readonly terminals: Readonly<Record<string, TerminalReading>>
   readonly tails: Readonly<Record<string, string>>
   readonly markers: ReadonlyArray<WaitMarker>
+  // The acts that the host forwarded and the person has not confirmed or dropped.
+  readonly forwards: ReadonlyArray<PendingForward>
   // The principle tags of each direction (`dir:<id>`), from the old Work direction record.
   readonly principles: Readonly<Record<ItemKey, ReadonlyArray<string>>>
 }
@@ -212,6 +215,12 @@ const directionsOf = (i: DashInput) => {
   })
 }
 
+// The step that a forwarded act is, for its words.
+const stepOfForward = (w: PendingForward['what']): Step => ({
+  tag: w._tag,
+  target: 'fix' in w ? w.fix : 'task' in w ? w.task : 'asker' in w ? w.asker : null,
+})
+
 // --- the dashboard -------------------------------------------------------------------------------
 
 export const dashOf = (i: DashInput): Dash => {
@@ -239,6 +248,11 @@ export const dashOf = (i: DashInput): Dash => {
       tag: x.tag,
       target: x.target,
       words: stepWords(s, x, i.events),
+    })),
+    forwards: i.forwards.map((f) => ({
+      id: f.id,
+      quote: f.quote,
+      words: stepWords(s, stepOfForward(f.what), i.events),
     })),
     directions: directionsOf(i),
   }
