@@ -46,7 +46,7 @@ module core {
   // person may reject a result.
   const C: { causes: Set[int], causes1: Set[int], maxPerson: int, maxMistakes: int, slips: bool,
              forms: Set[int], testsFail: bool, reject: bool, maxExits: int,
-             personBound: bool, sendBacks: int }
+             personBound: bool, sendBacks: int, maxAsks: int }
   import work(OPT = CFG).* from "./work"
 
   var s: Store
@@ -54,8 +54,9 @@ module core {
   var mistakes: int     // the pipeline role's mistakes so far
   var chg: bool         // flips at each agent change (AgentChangesStop)
   var exits: int        // the exits so far (C.maxExits)
+  var asked: int        // the questions asked so far (C.maxAsks)
 
-  val vars = (s, persons, mistakes, chg, exits)
+  val vars = (s, persons, mistakes, chg, exits, asked)
   pure val VERDICTS = Set(Pass, Fail, RaiseTries, RaiseNoRule, RaiseMisses)
   pure val LEVELS = Set(Split, Fit, Principle, Direct, Standard)
   pure val BOOLS = Set(true, false)
@@ -121,7 +122,7 @@ module core {
            passDefect: st.g.passDefect } }
 
   action commitE(ns: Store, np: int, nm: int, ne: int): bool = all {
-    s' = canon(ns), persons' = np, mistakes' = nm, exits' = ne,
+    s' = canon(ns), persons' = np, mistakes' = nm, exits' = ne, asked' = asked,
     chg' = if (ns.agentChanges > s.agentChanges) not(chg) else chg,
   }
   action commit(ns: Store, np: int, nm: int): bool = commitE(ns, np, nm, exits)
@@ -130,7 +131,7 @@ module core {
     nondet c0 = causes.oneOf()
     nondet c1 = C.causes1.map(n => CAUSE_OF(n)).oneOf()
     all { s' = initStore(Map(0 -> c0, 1 -> c1)), persons' = 0, mistakes' = 0, chg' = false,
-          exits' = 0 }
+          exits' = 0, asked' = 0 }
   }
 
   // ---- acts. An act as its sender builds it on the current store (its basis is current).
@@ -197,6 +198,17 @@ module core {
     val a = base(HARNESS, Exit(k))
     all { accept(s, a), commitE(take(s, a), persons, mistakes, exits + 1) },
   }
+  // An agent asks the person a factual question (Nanda's ruling, 2026-11-18): the role, the
+  // pipeline role or a maker, at most maxAsks in a run; not fair. The person's answer is one
+  // of the person's acts (Answer, in dos(PERSON)); asking blocks nothing else.
+  action askStep = all {
+    asked < C.maxAsks,
+    nondet k = Set(ROLE, PIPE).union(s.makers.keys()).oneOf()
+    val a = base(k, Ask(k))
+    all { accept(s, a), G3(fresh(a)),
+          s' = canon(take(s, a)), persons' = persons, mistakes' = mistakes, exits' = exits,
+          chg' = chg, asked' = asked + 1 },
+  }
   // The person: what the person is told (accept, send back, take as is, end, start the
   // host), and a reject of a result. Not fair; at most maxPerson acts (-1: no count). With
   // personBound (DESIGN.md 13.2, an assumption about the person, contract.qnt
@@ -228,7 +240,7 @@ module core {
   action step = any {
     agentStep(HOST), agentStep(ROLE), agentStep(PIPE), agentStep(HARNESS),
     nondet m = makers.oneOf() agentStep(m),
-    personStep, exitHappens,
+    personStep, exitHappens, askStep,
   }
 
   // ---- properties
@@ -301,6 +313,8 @@ module core {
   val NoRefixAtSameLevel: bool = not(s.g.refix)
   val NoEscalationWithoutPerson: bool = not(s.g.escalatedNoPerson)
   val NoAgentChangeAtTop: bool = not(s.g.topNoPerson)
+  // Witness (TLC/simulator must break it): a run is Final with a question still open.
+  val NoFinalWithAsk: bool = not(s.asks != Set() and finalOf(s) and not(s.top.ended))
   // The convergence flag: agent changes stay within the bound the config gives.
   val Converges: bool = not(pastBound(s))
 }
@@ -317,7 +331,7 @@ module coreCfgs {
     maxMakers: 6 }
   pure val ENV_C = { causes: Set(0, 5), causes1: Set(0, 5), maxPerson: 1, maxMistakes: 0, slips: false,
                      forms: Set(1, 2), testsFail: true, reject: false, maxExits: 0,
-                     personBound: true, sendBacks: 1 }
+                     personBound: true, sendBacks: 1, maxAsks: 0 }
 }
 // ---- instances (tlc.sh keeps only the one it checks: quint's TLA+ export of a file with
 // many instances overflows).
@@ -380,6 +394,13 @@ module corePersonUnbounded {
   import core(CFG = { ...FIXED_C, slots: Set(0) },
               C = { ...ENV_C, causes: Set(4), causes1: Set(0), maxPerson: -1,
                     personBound: false }).* from "./core"
+}
+// coreTwo with one question: an agent may ask the person a factual question (Ask), the person
+// answers it (Answer, a person act). A state owing only the answer is Final.
+module coreAsk {
+  import coreCfgs.*
+  import core(CFG = FIXED_C, C = { ...ENV_C, causes: Set(5), causes1: Set(0), testsFail: false,
+                                   maxAsks: 1, maxPerson: 2 }).* from "./core"
 }
 // The simulator only (too big for TLC): two tasks, every cause, the person's acts.
 module coreAll {

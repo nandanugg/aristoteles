@@ -184,6 +184,7 @@ flight; 6 person acts.
 |---|---|
 | 1 Person | `PERSON`: `Reject`, `Accept`, `SendBack`, `Decide`, `EndProject`, `MoveHost` (run continue); workenv `personActs` |
 | 1 Host | `HOST`: `SendTask`, `Reassign`, `TopDone` (agents never remake the top, DESIGN.md 13.1); its wait finds the top only through `hostFinds` |
+| G4 the agent's question | `Ask(k)` (the role, the pipeline role or a live maker `k`; one open question each, `Store.asks`), `Answer(k)` (the person; told for each open question); `AnswerOb(k)`, a person obligation (`isPersonOb`): a state owing only answers is Final. Asking blocks nothing else. Nanda's ruling, 2026-11-18 |
 | 1 Persistent role | `ROLE`: `AssignDo`, `Review` (its verdict is the decision), `Resume`; `card` |
 | 1 Maker subagent | `Maker`, a fresh id per `AssignDo`; `ReadBrief`, `Report`; it lives inside the role's process (workenv `killed`, `Exit` of the role) |
 | 1 Pipeline role | `PIPE`: `Evaluate`, `Advance`, `WriteRule`, `RunTest`, `Ship`, `LoopReview`, `RecheckDone` |
@@ -243,7 +244,9 @@ holds. `cause` on `Evaluate` (split): the real cause of the new task part. `hits
 `Ship` and `Accept`, the person's too (ghost, the environment's truth): the tasks whose work
 the change breaks, raised tasks included; their result becomes bad (`Task.broken`, `rBad`)
 until it is made again under the new versions. A recheck judges only that (`broken`), not a
-defect the person took as it is (`Task.taken`). `vers` on `Evaluate` and `EditDirection`: the
+defect the person took as it is (`Task.taken`). `Ask(k)` and `Answer(k)` carry no content:
+`k` is the asker's actor id (the role, the pipeline role or a maker), and the basis of both is
+their legality (an open question for `Answer`). `vers` on `Evaluate` and `EditDirection`: the
 item versions the sender says its content is built on (the draft's `base`, compared and set at
 the append with rebase); `realVers` (ghost): the versions it really is built on (`trueBase`,
 which NoLostUpdate reads; they differ only for a Byzantine sender).
@@ -728,7 +731,11 @@ test command's behaviour, a rule that contradicts the other rule, what a change 
 cause of a split part); the person (accept, send back, reject, take as is, end, start the
 host again; at most `maxPerson` acts; never assumed to act); a bounded number of process
 ends (`maxExits`: work.qnt's Exit, then Revive by the harness, Resume by the role, the host's
-revival by the person). An act takes effect in one step on the current state (G3).
+revival by the person); a bounded number of questions (`maxAsks`, 0 except in `coreAsk`: an
+agent's `Ask`, the person's `Answer` is one of its `maxPerson` acts; Nanda's ruling,
+2026-11-18: a question waiting for the person is a wait on the person, so a state owing only
+`AnswerOb` is Final; `NoFinalWithAsk` is its witness, the simulator breaks it). An act takes
+effect in one step on the current state (G3).
 
 Abstracted: tmux, terminals, processes (G1), the network and old views (G3), the page (G4),
 time, the person's direction edit (EditDirection) and run continue (MoveHost).

@@ -111,10 +111,11 @@ module work {
   type DKind = DDir | DRole
   type What =
     | EndProject | MoveHost | EditDirection | Reject(int) | Accept(int) | SendBack(int)
-    | Decide(int)                                                              // person
+    | Decide(int) | Answer(int)                                                // person
     | SendTask(int) | Reassign | TopDone                                       // host
     | AssignDo(int) | Review(int) | Resume(int)                                // role
     | ReadBrief(int) | Report(int)                                             // maker
+    | Ask(int)                                       // role, pipeline role or maker: itself
     | Evaluate(int) | Advance(int) | WriteRule(int) | RunTest(int) | Ship(int)
     | LoopReview(int) | RecheckDone(int)                                      // pipeline
     | Revive(int) | Exit(int) | RunRule(int)                                   // harness
@@ -184,6 +185,9 @@ module work {
     ver: Item -> int, ruleForm: int -> Form, card: int, changes: int, agentChanges: int,
     fixDepth: Item -> int,
     down: Set[int], ep: int -> int, nextMaker: int, g: Ghost,
+    // The open questions (DESIGN.md G4; Nanda's ruling, 2026-11-18): an agent's factual question
+    // to the person, by the asker's actor id (one open question per asker).
+    asks: Set[int],
   }
 
   pure val ZERO: Item -> int = ITEMS.mapBy(x => 0)
@@ -212,7 +216,7 @@ module work {
     fixes: FIXIDS.mapBy(i => CLOSED), ver: ZERO, ruleForm: Set(0, 1).mapBy(j => Ref), card: 0,
     changes: 0, agentChanges: 0,
     fixDepth: ITEMS.mapBy(x => -1), down: Set(), ep: PERSISTENT.mapBy(k => 0), nextMaker: 3,
-    g: NOGHOST,
+    g: NOGHOST, asks: Set(),
   }
 
   // ---- reads
@@ -279,7 +283,7 @@ module work {
     | Ship(i) => fx(s, i).step
     | LoopReview(i) => fx(s, i).step
     | RecheckDone(i) => tk(s, i).rid
-    | _ => -1
+    | _ => -1   // Ask, Answer: the basis is the legality (an open question)
   }
   // Acts whose judgement depends on the item versions (with basis, an older view is refused).
   def dirBased(x: What): bool = match x {
@@ -294,6 +298,8 @@ module work {
     | Accept(_) => a.who == PERSON
     | SendBack(_) => a.who == PERSON
     | Decide(_) => a.who == PERSON
+    | Answer(_) => a.who == PERSON
+    | Ask(k) => a.who == k
     | SendTask(_) => a.who == HOST
     | Reassign => a.who == HOST
     | TopDone => a.who == HOST
@@ -338,6 +344,10 @@ module work {
     | Accept(i) => atPerson(s, i)
     | SendBack(i) => atPerson(s, i)
     | Decide(i) => not(free(i)) and fx(s, i).stage == SAtPerson
+    | Answer(k) => s.asks.contains(k)
+    // The role, the pipeline role or a live maker asks while it has no open question.
+    | Ask(k) => (k == ROLE or k == PIPE or (isMaker(s, k) and not(mk(s, k).ended)))
+        and not(s.down.contains(k)) and not(s.asks.contains(k))
     | SendTask(i) => tk(s, i).st == Unsent
     | Reassign => FIXIDS.exists(i => fx(s, i).stage == SAccepted)
     | TopDone => allDone(s) and not(s.top.done)
@@ -386,7 +396,8 @@ module work {
   def setF(s: Store, i: int, f: Fix => Fix): Store = { ...s, fixes: s.fixes.setBy(i, f) }
   def setM(s: Store, m: int, f: Maker => Maker): Store =
     if (isMaker(s, m)) { ...s, makers: s.makers.setBy(m, f) } else s
-  def endMaker(s: Store, m: int): Store = setM(s, m, y => { ...y, ended: true, claim: false })
+  def endMaker(s: Store, m: int): Store =
+    { ...setM(s, m, y => { ...y, ended: true, claim: false }), asks: s.asks.exclude(Set(m)) }
   def ghost(s: Store, f: Ghost => Ghost): Store = { ...s, g: f(s.g) }
   def bump(s: Store, i: int): Store = setF(s, i, f => { ...f, step: f.step + 1 })
   def newEp(s: Store, k: int): Store = { ...s, ep: s.ep.put(k, epOf(s, k) + 1) }
@@ -778,6 +789,8 @@ module work {
             if (xs.contains(x)) s.ver.get(x) else z.checked.get(x)) })
         else { ...setT(s, i, z => { ...z, st: Sent, tries: 0, maker: -1, pend: Set() }),
                top: { ...s.top, done: false } }
+    | Ask(k) => { ...s, asks: s.asks.union(Set(k)) }
+    | Answer(k) => { ...s, asks: s.asks.exclude(Set(k)) }
     | Revive(k) => newEp({ ...s, down: s.down.exclude(Set(k)) }, k)
     // An exit, appended by the pump or a hook. A maker is a subagent inside the role's
     // process: the role's exit is the exit of its makers too. Every exit ends a claim.
@@ -849,7 +862,8 @@ module work {
       val drafts = FIXIDS.filter(i => fx(s, i).stage == SAtPerson)
       val decide = SLOTS.filter(i => legal(s, { ...NOACT, what: Decide(i) })).map(i => Decide(i))
       end.union(drafts.map(i => Accept(i))).union(drafts.map(i => SendBack(i)))
-        .union(decide).union(if (s.down.contains(HOST)) Set(Revive(HOST)) else Set())
+        .union(decide).union(s.asks.map(k => Answer(k)))
+        .union(if (s.down.contains(HOST)) Set(Revive(HOST)) else Set())
     else if (k == HOST)
       if (not(hostFinds(s))) Set() else
       val sends = SLOTS.filter(i => tk(s, i).st == Unsent).map(i => SendTask(i))
@@ -880,7 +894,7 @@ module work {
   // ---- obligations: what must happen next, from the protocol's state alone
   type Ob = EndOb | TopDoneOb | SendOb(int) | AssignOb(int) | MakeOb(int)
           | ResumeOb(int) | ReviewOb(int) | PipeOb(int) | DraftOb(int) | DecideOb(int)
-          | ReassignOb | ReviveOb(int) | RecheckOb(int) | RuleRunOb(int)
+          | ReassignOb | ReviveOb(int) | RecheckOb(int) | RuleRunOb(int) | AnswerOb(int)
   def slotObs(s: Store, i: int): Set[Ob] =
     val t = tk(s, i)
     val st = fx(s, i).stage
@@ -912,7 +926,9 @@ module work {
     val frees = FIXIDS.filter(i => free(i))
       .fold(Set(), (acc, i) => acc.union(freeFixObs(s, i)))
     val top = if (allDone(s)) Set(if (s.top.done) EndOb else TopDoneOb) else Set()
-    SLOTS.fold(revive.union(frees).union(top), (acc, i) => acc.union(slotObs(s, i)))
+    val answers = s.asks.map(k => AnswerOb(k))
+    SLOTS.fold(revive.union(frees).union(top).union(answers),
+               (acc, i) => acc.union(slotObs(s, i)))
   def discharges(ob: Ob, k: int, x: What): bool = match ob {
     | EndOb => x == EndProject
     | TopDoneOb => x == TopDone
@@ -929,12 +945,14 @@ module work {
     | ReviveOb(p) => x == Revive(p)
     | RecheckOb(i) => x == RecheckDone(i)
     | RuleRunOb(i) => x == RunRule(i)
+    | AnswerOb(k) => x == Answer(k)
   }
   def isPersonOb(ob: Ob): bool = match ob {
     | EndOb => true
     | ReviveOb(p) => p == HOST
     | DraftOb(_) => true
     | DecideOb(_) => true
+    | AnswerOb(_) => true
     | _ => false
   }
   def toldAny(s: Store, ob: Ob): Set[int] =
