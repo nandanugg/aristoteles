@@ -298,3 +298,18 @@ test('Report needs a claim and a fresh brief; ReadBrief only a live maker', () =
   expect(refusal(old, act(who, { _tag: 'ReadBrief', maker: 'm1' }))).toBeNull()
   expect(refusal(withTask({ maker: 'm2' }), act(who, rep, { seen: 4 }))).toBe('legal')
 })
+
+test('Exit of an unknown actor is illegal; of a known up actor it passes', () => {
+  const s = withTask({})
+  expect(refusal(s, act(HARNESS, { _tag: 'Exit', who: roleActor('ghost') }))).toBe('legal')
+  expect(refusal(s, act(HARNESS, { _tag: 'Exit', who: makerActor('m99') }))).toBe('legal')
+  expect(refusal(s, act(HARNESS, { _tag: 'Exit', who: roleActor('writer') }))).toBeNull()
+  expect(refusal(s, act(HARNESS, { _tag: 'Exit', who: makerActor('m1') }))).toBeNull()
+})
+
+test('an old build is refused as build before the basis is looked at', () => {
+  const s = inReview()
+  const stale = act(roleActor('writer'), review(), { seen: 1, old: true })
+  expect(refusal(s, stale)).toBe('build')
+  expect(refusal(s, { ...stale, old: false })).toBe('basis')
+})

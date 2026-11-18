@@ -3,7 +3,6 @@
 // such a direction whose `where` meets the task's sections (no `where`: every task); a rule of
 // such a standard.
 import type { ItemKey, ItemRec, Task, Versions, WorkState } from './types.ts'
-import { hasMech } from './types.ts'
 
 export const verOf = (v: Versions, x: ItemKey): number => v.get(x) ?? 0
 
@@ -31,7 +30,6 @@ export const briefOld = (s: WorkState, brief: Versions, t: Task): boolean =>
 
 // A rule the harness alone rechecks: a test command and no reader.
 export const testRule = (s: WorkState, x: ItemKey): boolean => s.items.get(x)?.form === 'mech'
-export const mechRule = (r: ItemRec | undefined): boolean => r !== undefined && hasMech(r.form)
 
 // The items a draft's content changes (classify: the store diffs the records).
 const same = (a: ItemRec | undefined, b: ItemRec | null): boolean =>

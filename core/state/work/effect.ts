@@ -325,7 +325,13 @@ const evaluate = (s: WorkState, a: Act, w: Of<'Evaluate'>): WorkState => {
   const s1 = bump(s, i)
   if (w.level === 'Split') {
     const t = tk(s, i)
-    const s2 = setT(s1, i, (z) => ({ ...z, st: 'Split', maker: null }))
+    const s2 = setT(s1, i, (z) => ({
+      ...z,
+      st: 'Split',
+      maker: null,
+      pend: new Set(),
+      caught: new Set(),
+    }))
     const s3 = w.parts.reduce((acc, p) => addTask(acc, p, t), s2)
     return setF(s3, i, (f) => ({ ...CLOSED, step: f.step }))
   }

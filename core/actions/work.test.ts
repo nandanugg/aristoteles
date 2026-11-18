@@ -8,8 +8,8 @@ import { Effect, Exit, Layer, type Scope } from 'effect'
 import { Dir, Env, Now, Store, StoreLive, Tokens } from '../services/index.ts'
 import type { Time } from '../schema/index.ts'
 import { foldWork } from '../state/work/fold.ts'
-import type { What } from '../state/work/types.ts'
-import { type ActCall, dispatchAct, openTop } from './work.ts'
+import { EDIT, type What } from '../state/work/types.ts'
+import { type ActCall, dispatchAct, openTop, recordHostPane } from './work.ts'
 import { eventsOf, h, NANDA } from './fixture.test.ts'
 
 // The fixture with the pipeline role, and a direction whose rules give evidence: no-code-proof a
@@ -188,5 +188,38 @@ describe('work acts through the store', () => {
     expect(await refused(call('host', { _tag: 'TopDone' }, { ep: 1 }))).toBe(
       'TopDone is not legal in this state',
     )
+  }, 90000)
+})
+
+describe('the basis of an act', () => {
+  test('a host pane event is no act: --on the current seq is accepted', async () => {
+    const { p } = await h.started({ 'aristoteles.yaml': PIPED })
+    const at = p.now()
+    value(await run(p.dir, at, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['intro'] })))
+    value(await run(p.dir, at, recordHostPane(NANDA, { socket: 's', pane: '%1' })))
+    const step = async (c: ActCall) => value(await run(p.dir, at, dispatchAct(c)))
+    await step(call('host', send('t')))
+    await step(call('role:section-lead', { _tag: 'AssignDo', task: 't1' }, {}, 'b2'))
+    await step(call('maker:m1', { _tag: 'ReadBrief', maker: 'm1' }))
+    const seqNow = () => foldWork(eventsOf(p.dir))?.state.seq ?? -1
+    const report: What = { _tag: 'Report', maker: 'm1', output: 'o', files: [], caught: new Set() }
+    await step(call('maker:m1', report, { on: seqNow() }))
+    const review: What = { _tag: 'Review', task: 't1', v: 'Pass', points: [] }
+    await step(call('role:section-lead', review, { on: seqNow() }, 'b2'))
+    expect(foldWork(eventsOf(p.dir))?.state.tasks.get('t1')?.st).toBe('Done')
+  }, 90000)
+
+  test('an EditDirection with no --on is built on the current versions', async () => {
+    const { p } = await h.started({ 'aristoteles.yaml': PIPED })
+    const at = p.now()
+    value(await run(p.dir, at, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['intro'] })))
+    const items = foldWork(eventsOf(p.dir))?.state.items ?? new Map()
+    const [key, rec] = [...items].find(([x]) => x.startsWith('dir:')) ?? ['', undefined]
+    if (rec === undefined) throw new Error('no direction item')
+    const draft = new Map([[key, { ...rec, says: 'edited' }]])
+    value(await run(p.dir, at, dispatchAct(call('person', { _tag: 'EditDirection', draft }))))
+    const state = foldWork(eventsOf(p.dir))?.state
+    expect(state?.ver.size).toBeGreaterThan(0)
+    expect(state?.fixes.get(EDIT)?.base).toEqual(state?.ver)
   }, 90000)
 })

@@ -275,10 +275,15 @@ export const legal = (s: WorkState, a: Act): boolean => {
     }
     case 'Revive':
       return isPersistent(w.who) && s.down.has(w.who)
+    // A known actor: the host, the pipeline role, a role of the cards, a maker.
     case 'Exit':
-      return !s.down.has(w.who)
+      return !s.down.has(w.who) && known(s, w.who)
   }
 }
+
+const known = (s: WorkState, k: string): boolean =>
+  k === HOST || k === PIPE || [...s.cards.keys()].some((r) => roleActor(r) === k) ||
+  [...s.makers.keys()].some((m) => makerActor(m) === k)
 
 export const basisOk = (s: WorkState, a: Act): boolean => {
   const c = cur(s, a.what)
@@ -296,10 +301,10 @@ export const refusal = (s: WorkState, a: Act): Refusal | null =>
     ? 'epoch'
     : !legal(s, a)
     ? 'legal'
-    : !basisOk(s, a)
-    ? 'basis'
     : a.old
     ? 'build'
+    : !basisOk(s, a)
+    ? 'basis'
     : null
 
 export const accept = (s: WorkState, a: Act): boolean => refusal(s, a) === null

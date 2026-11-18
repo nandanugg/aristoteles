@@ -142,6 +142,13 @@ describe('caughtOn and pendingHold', () => {
     expect([...(await run(caughtOn(s, 't1', [file('c.txt', 'TODO\n')])))]).toEqual(['rule:old'])
     expect((await run(caughtOn(s, 't1', [file('d.txt', 'fine\n')]))).size).toBe(0)
   })
+  test('only a mech rule blocks a pass: a both rule that prints is not caught', async () => {
+    const both = rec('rule', 'std:s1', 'both', TODO)
+    const s0 = base()
+    const s = { ...s0, items: new Map(s0.items).set('rule:both', both) }
+    const caught = await run(caughtOn(s, 't1', [file('g.txt', 'TODO\n')]))
+    expect([...caught]).toEqual(['rule:old'])
+  })
   test('pendingHold: true when the pending test rules print nothing', async () => {
     const s = base()
     expect(await run(pendingHold(s, 't1', [file('e.txt', 'fine\n')]))).toBe(true)

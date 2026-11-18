@@ -121,6 +121,29 @@ describe('the task cycle', () => {
   })
 })
 
+describe('a split clears the pend and the caught of the parent', () => {
+  test('a raised task that kept pend is split clean, and its parts then finish it', () => {
+    const s0 = raised(start(), 't1', 'm1')
+    const t = { ...tk(s0, 't1'), pend: new Set(['std:s1']), caught: new Set(['rule:r1']) }
+    const kept = { ...s0, tasks: new Map(s0.tasks).set('t1', t) }
+    const parts = ['a', 'b'].map((x) => ({ name: x, goal: 'g', sections: [x], role: 'qa' }))
+    const s1 = go(kept, {
+      _tag: 'Evaluate',
+      task: 't1',
+      level: 'Split',
+      parts,
+      roleDraft: null,
+      summary: '',
+    })
+    expect(tk(s1, 't1').st).toBe('Split')
+    expect(tk(s1, 't1').pend.size).toBe(0)
+    expect(tk(s1, 't1').caught.size).toBe(0)
+    const finish = (st: WorkState, id: string): WorkState =>
+      ({ ...st, tasks: new Map(st.tasks).set(id, { ...tk(st, id), st: 'Done' }) })
+    expect(allDone(finish(finish(s1, 't2'), 't3'))).toBe(true)
+  })
+})
+
 describe('changes in effect', () => {
   test('a standard ship takes effect at once', () => {
     const s0 = twoTasks()

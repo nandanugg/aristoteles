@@ -120,11 +120,13 @@ const makesToken = (s: WorkState, a: Act): Actor | null => {
   }
 }
 
-// The view an act was derived from: the state after the first `on` acts.
+// The view an act was derived from: the state after the first `on` acts (Acted events only;
+// the bookkeeping events of the Work group are no acts).
 const viewAt = (events: ReadonlyArray<Recorded>, on: number): WorkState | null => {
   let n = 0
   const prefix = events.filter(({ event: e }) =>
-    e._tag === 'Work' && (e.create._tag === 'Opened' || n++ < on)
+    e._tag === 'Work' &&
+    (e.create._tag === 'Opened' || (e.create._tag === 'Acted' && n++ < on))
   )
   return foldWork(prefix)?.state ?? null
 }
@@ -182,7 +184,7 @@ export const dispatchAct = (call: ActCall) =>
           return yield* Effect.fail(WORK.noBasis(call.act.what._tag))
         }
         const act: Act = {
-          ...viewed(call.on === null ? null : viewAt(events, call.on), call.act),
+          ...viewed(call.on === null ? folded.state : viewAt(events, call.on), call.act),
           old: call.build !== null && call.build !== call.current,
         }
         const check = refusal(now, act)

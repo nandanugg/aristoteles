@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { Data, Effect } from 'effect'
 import { fx, tk } from '../state/work/reads.ts'
-import { appliesTo, mechRule, testRule } from '../state/work/items.ts'
+import { appliesTo, testRule } from '../state/work/items.ts'
 import type { ItemKey, ItemRec, WorkState } from '../state/work/types.ts'
 import type { Recorded } from '../schema/index.ts'
 import { Dir, Files, Spawn } from '../services/index.ts'
@@ -193,7 +193,7 @@ export const caughtOn = (
     const caught = new Set<ItemKey>()
     for (const x of appliesTo(s, tk(s, taskId))) {
       const r = s.items.get(x)
-      if (r === undefined || r.kind !== 'rule' || !mechRule(r) || r.test === null) continue
+      if (r === undefined || r.kind !== 'rule' || !testRule(s, x) || r.test === null) continue
       if ((yield* runOn(r.test, checked)).length > 0) caught.add(x)
     }
     return caught
