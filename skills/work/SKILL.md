@@ -1,15 +1,15 @@
 ---
 name: work
-description: Do code or document work under review with the work CLI. Use when a parent gives you a command that starts with "work brief", when you give work to a subagent, or when the person asks you to set up a project, a task, or a role. The brief that the CLI prints tells each agent what to do next.
+description: Do code or document work under review with the work CLI. Use when your prompt gives you a token that starts with "w." and says to run work wait, when you are the host of a project, or when you start a maker for a persistent role. Each step that work wait prints tells you what to do next.
 ---
 
 # work
 
 `work` records AI work under review: tasks, roles, directions, results, reviews. When `work`
-is not on the PATH, `work …` means:
+is not on the PATH, `work ...` means:
 
 ```
-bun <the aristoteles folder>/bin/work.js …
+bun <the aristoteles folder>/bin/work.js ...
 ```
 
 Work in the project folder that your prompt names (the folder with `aristoteles.yaml`), and run
@@ -17,267 +17,153 @@ every command there. When your prompt names no folder, your current folder is th
 The CLI also finds the nearest `aristoteles.yaml` above the current folder, and `WORK_DIR`
 overrides both.
 
-## You got a command from your parent
+## Your token and your loop
 
-Run exactly that command. It is `work brief <token>`. The brief tells you your model, your
-role, the task, the rules, what is open, and the only commands that you may run. Read the
-brief, not this file, for anything about your task.
+Your prompt gives you a token: `w.<actor>.<ep>.<secret>`. The actor is `host`, `pipe` (the
+pipeline role), `role:<name>` (a persistent role), or `maker:<id>` (a maker). The token is your
+identity. Pass it as the first word of every command. Do not show it to another agent, and do not
+use another token.
 
-- The token (`a7.k3f9q`) is your identity. Pass it first in every command. Do not show it
-  to other agents, and do not use another token.
-- A refusal ends with a `next:` line. Do what it says. When the refusal names a flag or a word
-  that you left out, run the same command again with it. Else an agent whose role assigns nothing never
-  tries other commands; it escalates. Do not run a refused command again unchanged.
-- When work passes a limit (the attempts of a maker, the size of a brief or of a result, the
-  rules of a review), do the action of that limit in `work guide limits`. Do not ask the person
-  about a limit.
-- The exit code says what failed: 1 a refusal (do the `next:` line); 2 a mistake in the
-  command line (write the command again as the message says); 3 a failure outside the work (a
-  file, git, or a damaged store: tell your parent, and the host records it with
-  `work problem`); 70 a bug of `work` (stop, and tell your parent; the host tells the person).
-- A subagent stops where its brief says STOP. A terminal (a persistent agent, a host) never
-  stops: it runs `work wait` again.
+The loop never changes:
 
-## Keep a `work wait` running: it is how work reaches you
+1. Run `work wait <token>`. It returns at once when you owe a step. Else it blocks until you do.
+2. It prints ONE step: a few plain lines, then the exact command, with `--on <n>` where the act
+   has a basis. Run that command, with your words in place of the `<...>`.
+3. Run `work wait <token>` again, at once. Never act without a step, and never end your turn
+   without a running `work wait`: nothing else reaches you.
 
-The UI types nothing into your terminal. When you run in a terminal of your own (the UI started
-it, or you are the host of a project), you hear of new work only from `work wait`:
-
-```
-work wait <token>
-```
-
-- It returns at once when you have work that you did not see yet. Else it blocks until your next
-  steps change: a child reported, your question has its answer, a decision waits for your words.
-  Then it prints your next steps, and you do them.
-- After 9 minutes with no change it returns with `nothing changed; run work wait <token>
-  again.` Run it again. `--seconds=<n>` sets another time.
+- After 9 minutes with no change `work wait` returns with `nothing changed`. Run it again.
+  `--seconds=<n>` sets another time.
 - Run it in the background when your AI CLI allows it, so that the person can still talk to you.
-  When it returns, do its steps, then run `work wait` again at once. Never end your turn without
-  a running `work wait`: nothing else can reach you, and the work stops.
-- Read every return yourself. Never wrap `work wait` in a loop or a filter of your own (for
-  example a `while` loop that keeps only some kinds of step): each return names work for you,
-  and a step that the filter drops stops the work.
-- A subagent does not wait: it stops where its brief says STOP, and its parent starts it again.
+- Read every return yourself. Never wrap `work wait` in a loop or a filter of your own.
+- The UI types nothing into your terminal. A first prompt that restarts you gives your token
+  and says to run `work wait`: do that.
+- A refusal ends with a `next:` line. Do what it says. Do not run a refused command again
+  unchanged. The `--on <n>` of a command is its basis: when the state moved, the CLI refuses it;
+  run `work wait` again for the new step.
+- The exit code says what failed: 1 a refusal (do the `next:` line); 2 a mistake in the command
+  line (write it again as the message says); 3 a failure outside the work (a file, git, or a
+  damaged store: tell the person); 70 a bug of `work` (stop, and tell the person).
+- A maker that is done with its report waits; it ends when its task is done or raised.
 
-### A persistent agent
+## The host
 
-A persistent agent has a terminal of its own for the whole project, and holds many assignments
-one after the other. Its first input is "Use the work skill. You are p1: run work wait --by=p1,
-and do what it prints." Its loop:
+You are the host of a project (the `aristoteles` skill got you here). You hold the top task for
+the person. Your steps:
 
-1. Run `work wait --by=<your agent>` (for example `p1`). It runs only in your own terminal. It
-   returns when you have a new assignment, and prints each one: `a5 is yours: <task> <name>, as
-   <role>. Your command: work brief a5.<secret>`.
-2. Keep one token for each assignment that you hold. Run the brief of each, and do its steps
-   with that token. The wait prints the steps of each open assignment under its id.
-3. `work wait <token>` still waits for one assignment only. When an assignment is finished, it
-   prints `a5 is finished; run work wait --by=p1 for the next work of p1.`
-4. After each step (a report, a review, an escalation), run `work wait --by=<your agent>` again at
-   once, in the background when your AI CLI allows it. Never end your turn without it. After a restart, your first input says "System message, not from the
-   person": do its command, `work wait --by=<your agent>`.
+- **Send a task** to a persistent role:
+  `work send <token> --name="<...>" --goal="<...>" --sections=a,b --role=<role>`. Cover the
+  sections of the top; each part owns a strict part of them; one section is the smallest task.
+  Choose the role whose description names this kind of work.
+- **Reassign** (`work reassign <token>`) after a change that is more than a role change: it
+  sends the work that the change touches again.
+- **Return the top** when every task is done: `work top-done <token>`.
+- **A question of an agent** (`work ask`) goes to the person, who answers it on the page. When
+  the person says the answer in the chat, forward it (below). To ask the person a fact yourself:
+  `work ask <token> --question="<...>"`. Never ask with your AI CLI's own question tool.
+- **Carry the person's words.** When the person says an act in the chat, forward it with their
+  exact words: `work forward <token> <accept|send-back|reject|decide|answer|end ...> --on <n>
+  --quote="<words>"` (for example `work forward <token> answer <asker> --text="<...>"
+  --quote="<words>"`). It counts after the person confirms it on the page.
+- The person opens the top, accepts or sends back a draft, decides a raised task, and ends the
+  project. You never run those commands. The page shows the person what is theirs to do.
 
-You are in the terminal of one agent, so you start the subagents of your disposable roles. Your
-own subagents start none (below).
+## A persistent role
 
-## You are the host of a project (the UI)
+A persistent role has a terminal for the whole project and holds one task at a time.
 
-The person triggered you in their AI CLI (the `aristoteles` skill), and you started or continued a
-run (`h<n>`) in your own tmux pane; the page shows this terminal. A project is your session: you
-talk with the person, then you run its top task.
+- **Assign a maker** for the task: `work assign <token> <task>`. It prints the token of the
+  maker (`maker:<id>: w.maker:...`). Start a subagent with this prompt, and nothing else: "Use
+  the work skill. Your token is <the maker token>. Run work wait <it>, and do what it prints."
+  You are in a terminal, so you start it; a maker starts no subagent.
+- **Review the result** when the maker reports: `work review <token> <task> pass|fail|raise-tries|
+  raise-no-rule|raise-misses --points="<...>" --on <n>`. Read the result and the rules that
+  apply; one point for each rule that the result breaks or each thing that is wrong.
+  - `pass`: the task is done.
+  - `fail`: the maker gets the points and works again, with its context, while tries remain.
+  - `raise-tries`: the tries are used up.
+  - `raise-no-rule`: something is wrong and no rule says it.
+  - `raise-misses`: a rule says it, and the maker missed it again.
+  A raise goes to the pipeline role. A pass needs no evidence beyond your reading, and a
+  rule with a `test` runs by the harness.
+- **Resume** a maker that is down: `work resume <token> <maker>`.
+- Do not start a subagent for any other work. A question that you cannot settle goes to the
+  person: `work ask <token> --question="<...>"`.
 
-1. **Talk.** Ask the person what they want, in their terminal (here). Read the directions
-   (`work direction show <id>`, `work search <words>`) and the dir. Do not start any work yet.
-2. **Draft the top task.** Choose its role: run `work role list`, and take the role that splits whose
-   description names this kind of work; when two fit, ask the person which one. Draft only when
-   you can say the top task in one sentence: its output, where the output goes, and when it is
-   done. When you cannot, ask the person one question about the part that is missing. Write a
-   task file with that role (`work task open` with no file prints the form; add
-   `role: <role>`), then `work task draft --file=<file> --by=<your run>`. A project is large:
-   for example a whole TSD.
-3. **Wait for the person to open it** on the page: run `work wait --by=<your run>` here, in your
-   own pane. It returns when the person opens the top task, with the command of its host
-   assignment: `work brief <token>`. From then on you are the host of the top task, that brief
-   tells you what to do, and you wait with `work wait <token>`. When the person remakes the top
-   task, the `work wait` of the old token gives you the command of the new assignment.
-4. **Everything else is yours.** Only these decisions reach the person: a system problem, a
-   direction problem, the end of the project, their words that you relayed as an act, new words
-   of a role, an adjustment, and a question that you ask them. The page also shows the person
-   anything that only the person can move (an evaluation that waits for the owner's accept, a
-   draft with no reviewer, a brief over its limit with no role above it that splits); you never relay
-   those. You do everything else:
-   - ask the person only with `work ask <token> --to=owner --text="..."` (for a choice, one
-     `--option="..."` per answer, two or more). The page shows it, the person answers there,
-     and `work wait` returns with the answer. An option is an act that you can do after the
-     answer. When the step is a person command (a task remake, a grant, a config change), you
-     cannot run it: the option says "You run: <the full command>", never "I run it".
-     After the talk of step 1, never ask the person
-     with your AI CLI's own question tool (such as AskUserQuestion).
-   - a question of a model comes to you: answer it from the directions (`work answer <token>
-     <q> --text=...`). When it shows that a direction can be read in two ways, draft the change
-     of the direction (`work direction revise`). Polish it first with each question of
-     `work guide direction-review`; the person accepts it.
-   - a terminal of a child stops at a prompt of its AI CLI (a permission dialog), or fails its 3
-     restarts: your `work wait` returns with that step. Answer a prompt with
-     `work send <token> <child> --text=<input>`: this is the only text that goes into a
-     terminal. You cannot restart a child: for a failure, record a system problem, and the person
-     resumes it. When a system the work needs does not work (a cluster, a VPN, an account limit),
-     record it: `work problem <token> <the task that it stops> --says="<what happened, and how to
-     fix it>"`. While it is open, your next steps show it: test it once when your current step
-     ends, and record the fix with `work problem <token> <sp..> --fixed`.
-   - before the person sees a decision, write its words, so that the person can decide from
-     them alone: your `work wait` returns with that step. Read `work guide decision-words` first,
-     then `work note <token> words --on=<sp.., d.., h..> --text="..."` (a direction problem also
-     takes `--hope`). Write them within `hostWaitMinutes` (10 by default): after that time, the
-     person sees the decision with no words.
-   - text in your terminal comes from the person. Only a restart of a terminal gives a first
-     prompt that starts with "System message, not from the person": do its command.
+## A maker
 
-### Persistent agents and subagents
+You are a subagent for one task.
 
-Model and persistence are apart. Each role says in `aristoteles.yaml` whether it is persistent.
+1. Run `work wait <token>`: your first step is to read your brief, `work brief <token>`. It
+   gives the task, its sections, what applies (directions, standards, rules with their evidence),
+   and the points of an earlier review.
+2. Do the work, in the files that the brief names.
+3. Report it: `work report <token> --output="<what you made>" --files=a.md,b.md --on <n>`.
+   `--files` names the files of the project that you changed.
+4. Run `work wait <token>`. If the review fails, it gives you the points: work again, and
+   report again. When the task is done or raised, your wait ends: stop.
 
-- A **persistent** role (of any model) runs as an agent in a terminal of its own, which the person
-  can inspect. Do not start it yourself: `work assign` prints that the assignment runs in its
-  agent (`a2 runs in p1, the persistent <role> agent of h1`), and the UI starts the terminal when
-  the agent has none. The agent gets the assignment through `work wait --by=p1`. Then run
-  `work wait <your token>`: it returns when the work of the child changes your next steps.
-- A role that is not persistent runs as a **subagent** inside your own session: start it as
-  below. It does a short job, so it needs no terminal of its own.
-- **Only a terminal starts subagents:** the host, and a persistent agent. A subagent starts none;
-  `work assign` by a subagent is refused. When its work needs more agents, it tells the agent
-  above it with `work ask <token> --text="<what the work needs>"`, and stops. When you start a
-  subagent, tell it this rule in its prompt. The launch command of a persistent agent sets
-  `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` for Claude Code; the host sets it for itself.
+A maker starts no subagent. When the work needs more agents, hand the need back with
+`work ask <token> --question="<...>"` and wait.
 
-## You give work to a subagent
+## The pipeline role
 
-1. `work assign <your token> <task> --role=<role>` prints the subagent's model and its whole
-   prompt, for example:
+You are `pipe`. You run every evaluation, the direction pipeline, and the review loop of drafts.
 
-   ```
-   Start a subagent on <model> with this prompt, and nothing else:
-     Use the work skill. In /path/to/project, run: work brief a7.<secret>
-   ```
-
-2. Start that subagent on the model that the line names, with exactly that prompt. The model is
-   the one that the role names (`model:`), an entry of the `models` table. Keep the token: a later attempt of the same assignment uses
-   the same command.
-3. When it stops, run `work next <your token>`. It lists the steps that are ready, with
-   each command filled in (a redo, a checker to start, an escalation to resolve, an answer,
-   the finish steps). `work waiting --for=<your id>` lists what waits for you.
-
-Read a child's brief with `work assignment show <id>` (it takes no snapshot). If a child
-stopped in the middle of an attempt, `work free <your token> <child id>` frees it for a new
-subagent.
-
-## Adjust the roles and the directions
-
-After the store starts, onboarding is over, and a change of the roles or of the directions is an
-event that the person accepts (an adjustment). Work in progress keeps what it started with.
-
-- An agent whose role fits roles (the `fit` act, with its token), or the host outside any task (`--by=<your run>`), drafts one
-  change with `work adjust`:
-  - `work adjust <token> add-role <role> --file=<role.yaml>` (the keys of one role, with its
-    `persistence` and `icon`) and `work adjust <token> remove-role <role>`;
-  - `work adjust <token> model <role> --model=<a name of the models table>`;
-  - `work adjust <token> persistence <role> --persistent=true|false --why=<words>`;
-  - `work adjust <token> retire <direction>`;
-  The role that the host plays for a top task (it splits) stays persistent.
-- The person shows and decides it: `work adjust show <event>`, `work adjust accept <event>`,
-  `work adjust reject <event> --reason=<words>`, or on the page. A rejected adjustment shows its
-  reason in `work waiting`.
-- The person says what to change in words: `work suggest roles --says="<the change>"` for the
-  roles, `work suggest <direction> --says="<the change>"` for a direction. Draft the adjustment
-  that answers it.
-
-## Escalations
-
-An agent escalates when it cannot go on (`work escalate <token> --reason="..."`), or when it
-cannot decide on a result (`--result=<r>`). The escalation goes to the nearest open assignment
-above it, or to the person when none is open. An escalation with no result is a question
-(`q<n>`): its answerer answers it with `work answer`. An escalation of a result (`v<n>`) is
-resolved in words:
-`work resolve [<token>] <escalation> --resolution="<the agreement, or the direction>"`.
-
-- A resolve accepts and rejects nothing. The deciders of the result then accept or reject it
-  with `work review`, as for any result.
-- A decider's Reject is a fault of the maker: it uses an attempt. A point of a Reject that no
-  rule covers shows that the direction needs a change: it waits for a draft that changes the
-  direction and answers that point.
-- There is no waiver. Each rule of a result gets its evidence, or its direction changes.
+- **Evaluate a raised task.** Name the level of the deepest cause:
+  `work evaluate <token> <task> split|fit|principle|direction|standard --summary="<...>"
+  [--parts=<file>] [--role-draft=<file>] --on <n>`.
+  - `split`: the task is too big. The parts file is a list of `{ name, goal, sections, role }`;
+    each part owns a strict part of the sections.
+  - `fit`: the role has the wrong words. The role-draft file has `role`, `words`, `model`.
+  - `principle`: the cause is a principle. The person decides.
+  - `direction`: the direction is wrong or silent here.
+  - `standard`: a standard or a rule is missing or wrong.
+  The step says which levels are open for the task (its floor). A cause that repeats at one
+  level rises one level.
+- **Climb the pipeline.** From a level, run each stage below it, in order:
+  `work advance <token> <fix> --on <n>` takes the fix to its next stage (principle, direction
+  assessment, standard assessment, rule assessment).
+- **Write each rule with its evidence:** `work rule <token> <fix> <rule-file> --on <n>`. The file
+  has `id`, `standard`, `says`, `examples` (`{ fits: follows|breaks, sample: <text> }`, at least
+  one of each), and the evidence: `test` (a command; no output means the result holds, each
+  printed line is a point; it gets the files of the extracted sections as arguments), and/or
+  `ref` (`file#anchor:lines`, which must exist). Optional: `where` (a list of sections).
+- **Test it:** `work rule-test <token> <fix> --on <n>`. The test must print on each `breaks`
+  sample and stay silent on each `follows` sample, of its own rule and of the other rules of the
+  direction. A rule that contradicts another does not ship.
+- **Ship the draft:** `work ship <token> <fix> <draft-file> --on <n>`. The file maps item keys
+  (`dir:<id>`, `std:<id>`, `rule:<id>`) to the whole record, or to `null` to remove one. Read
+  `work guide writing` for how to write each, and `work guide direction-review` to polish it.
+- **Review loop:** `work loop <token> <fix> person|revise --on <n>`: hand the draft to the
+  person, or revise it once more. The person accepts it, or sends it back.
+- **Recheck** a done task after items changed: `work recheck <token> <task> holds|fails --on <n>`.
+  A task is rechecked only for what changed: a direction change rechecks every active and done
+  task, a standard change the tasks in its `where`, a rule change the tasks it applies to.
 
 ## One source of instructions
 
 The instructions of the work are the directions in aristoteles and the roles in
 `aristoteles.yaml`. The project can still keep its own copy of one (a skill, a standard, a
 README, an agent prompt); nothing updates that copy. When the work shows that an instruction
-must change, change it only in aristoteles:
-
-- a direction, a standard, or a rule: a role that directs drafts the change
-  (`work direction revise`), and its owner accepts it. A lower role escalates it. The host,
-  outside any task, revises with `--by=<your run>`; it revises a direction that it did not
-  draft too.
-- the words of a role (`description`, `intro`, `responsibilities`, `output`): a role that fits
-  roles drafts the new words (`work role draft <token> <role> --file=<words.yaml>`), and the person
-  accepts them or rejects them with a reason (`work waiting` shows the reason; draft again). A lower role escalates it. Never edit `aristoteles.yaml`: an edit
-  stops every write until the person applies it.
-
-Never fix an instruction in the project's own copy. A task whose output is such a file (for
-example a task that writes the README) changes it as its task says.
+must change, change it only in aristoteles: through an evaluation (the pipeline role writes the
+draft, the person accepts it), or, for a new direction, through `work direction new` (the host,
+`assess`). Never edit `aristoteles.yaml` by hand: an edit stops every write until the person
+applies it (`work config apply`). Never fix an instruction in the project's own copy. A task
+whose output is such a file (for example a task that writes the README) changes it as its task
+says.
 
 ## Acts that belong to the person
 
-The person runs commands with no token, at a terminal. An agent never runs a person command.
+The person runs commands with no token, at a terminal, or acts on the page. An agent never runs a
+person command: `work top open`, `work direction accept|reject <draft>` (before a top is open),
+`work accept`, `work send-back`, `work reject`, `work decide`, `work answer`, `work end`,
+`work config apply|restore`, `work init`, and `work run continue` in the host pane.
 
-- When the person says a decision in the conversation, the top agent (a lead, with
-  no parent) records it with their exact words:
-  `work forward <token> <person> reject|ask|comment|accept|resolve <id> --quote="<words>"`.
-  An accept of a draft (`d<n>`) gives `--evidence` too: where the person read, and what they
-  saw.
-- A forwarded reject, question, or comment counts at once, because it only stops work or
-  informs. A forwarded accept or resolve moves work forward, so it waits until the person
-  confirms it: with the Confirm button on the page, or with `work confirm <event>` at a
-  terminal; both show them the act. The person accepts no result: a lead decides it, and the
-  person rejects a result only after its deciders accept it.
-- An escalation to the person waits for the person's resolve: `work resolve <escalation>
-  --resolution="..."` at a terminal, or their words in the conversation, forwarded as
-  `work forward <token> <person> resolve <escalation> --quote="<words>"` and confirmed.
-- To bring a fact from the person to the work, ask with `work ask <token> --to=owner
-  --text="..."` (with `--option="..."` for each choice). The person answers on the page (or
-  `work answer <q>` at a terminal); it counts at once, and your `work wait` returns with it.
-  Never ask with your AI CLI's own question tool. Ask the person only for a fact that no
-  direction, rule, or guide gives, and that stops the work. Never ask the person about a limit
-  (`work guide limits`), or about a choice that a rule or a guide settles: decide it.
-- A permission (`work grant`, `work revoke`), a confirm, and a config change are the person's
-  alone. Ask; do not do them.
-
-## The person sets up a project
-
-0. In a new dir, start with onboarding (the `aristoteles` skill, then the `assess` skill): the
-   host drafts the config, the directions, and the roles as files with `work onboard`, the person
-   checks each one on the page, and `work onboard approve-roles` starts the store. Then go to
-   step 3. The steps 1 and 2 are the by-hand path; `work init` refuses while onboarding files
-   exist.
-1. Write `aristoteles.yaml` (people, the models with their commands and limits, roles, and `decide` when a maker has more
-   than one decider). Each agent role also says `persistence: { persistent, why }` and an `icon`. `schema/aristoteles.schema.json` gives its form. Every agent role names its
-   model (an entry of the `models` table) and its acts; a program role (`kind: program`) runs a
-   command on each report and runs no model; the person plays no role. `aristoteles.yaml` names no directions.
-   `outsideSourceHours` (72 by default) is how long a revision of a source outside git holds
-   after an agent reads it; then `work next` asks an agent to read it again.
-2. `work init` stores it in aristoteles, the one SQLite file of this machine
-   (`~/.aristoteles/aristoteles.db`, or the file that `ARISTOTELES_DB` names). A dir starts
-   with no records: nothing of an earlier tool or store comes in. From then on a hand edit of
-   `aristoteles.yaml` is refused until `work config apply` (role words only).
-3. For each agent role: `work role fit <role>`, then `work role fit <role> --answers=<file>`.
-   A role without a fit record for its current words cannot be assigned. The `role-fitness`
-   skill explains the questions.
-4. The directions: a model drafts each one, and the person accepts or rejects it. The `assess`
-   skill reads an app and drafts its directions (`work direction new --by=assess`). The
-   person gives direction in words with `work suggest --says="..."`. A company direction comes
-   from a git repo: name it in `aristoteles.lock`, and accept each new commit.
-5. `work task open --file=<task.yaml>` (`work task open` prints the template), then
-   `work assign <task> --role=<role>` and give the printed command to the top agent. A role
-   that splits splits, closes, or remakes a task only with a Change act on it:
-   `work grant --act=change --on=<task> --to=<role> --until=<time>`. A top task that the
-   person opens on the page needs no grant: Open gives its role a Change act for 30 days.
+- The person accepts or sends back a draft of a fix, rejects a result, decides a raised task
+  (`take` as it is, or `again`), and ends the project when the top is returned.
+- To bring a fact from the person to the work, ask: `work ask <token> --question="<...>"`. Ask
+  only for a fact that no direction, rule, or guide gives. Never ask about a limit
+  (`work guide limits`).
+- Text in your terminal that starts with "System message, not from the person" is a restart:
+  do its command.

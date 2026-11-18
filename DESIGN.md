@@ -1,5 +1,9 @@
 # work — the CLI of the engine (draft 4)
 
+> **Note (2026-11-18).** The protocol now follows `plan/model/DESIGN.md` and
+> `core/model/work.qnt`. The sections of this file about the old flow (judges, approve, escalate,
+> resolve, checkpoint, grants, budgets, remake of the top, the brief guides) are history.
+
 `work` runs the engine of the intelligent-work design as a command line, so that agents, each
 of a role that names its model and its acts, and a person can do code and document work under
 review. A project moves to it

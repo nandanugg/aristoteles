@@ -13,8 +13,10 @@ is enough for the model that reads only that piece.
 - **Standard**: how the output looks. A standard follows from the words of its direction. A
   standard that its direction does not say needs a change of the direction first.
 - **Rule**: one check that a reviewer can do on one result of a maker (its output form in
-  `aristoteles.yaml`), and give evidence for. One rule is one check. The role that checks it is
-  in the draft (`checkedBy`), or, for a company direction, in `aristoteles.lock`.
+  `aristoteles.yaml`). One rule is one check, and it carries its evidence: a `test` (a command;
+  no output means the result holds, each printed line is a point) and/or a `ref`
+  (`file#anchor:lines`). The role that checks it is in the draft (`checkedBy`), or, for a
+  company direction, in `aristoteles.lock`.
 - `from` names the one or two principles that ground the direction: the ones whose question it
   answers.
   - Logos: can we explain the requirement and its reasoning?
@@ -75,7 +77,8 @@ its marked steps).
 
 A marked step of the flow has its examples inside it (`examples:` under the step): an output that
 follows the direction and one that breaks it, at least one of each. A step that makes something
-gives its output; a step that checks or decides gives its input and its output. A sample is real (a file, a line, a short excerpt of the file as it is today; stale when the excerpt
+gives its output; a step that checks or decides gives its input and its output. A sample is real
+(a file, a line, a short excerpt of the file as it is today; stale when the excerpt
 leaves the file) or, when the project has none, written: `{ written: <the output> }`.
 
 ```yaml
@@ -109,17 +112,19 @@ leaves the file) or, when the project has none, written: `{ written: <the output
 
 ## Where the words go
 
-- A new direction: `work direction new [<token>] --file=<direction.yaml> [--by=<model run>]`.
-  The file holds the whole direction; `says: |` holds markdown. `work direction new` with no
-  file prints its form.
-- A change of a direction: `work direction revise <token> <direction> --file=<edit.yaml>
-  --answers=<the Rejects and suggestions that it answers> --why=<reason> --why-words="<fact>"`.
+- A new direction, from a model that is not in the pipeline (the host, `assess`):
+  `work direction new [<token>] --file=<direction.yaml> [--by=<model run>]`. The file holds the
+  whole direction; `says: |` holds markdown. `work direction new` with no file prints its form.
+  The owner accepts it with `work direction accept <draft>`, or rejects it with
+  `work direction reject <draft> --reason=<why>`, before a top task is open.
+- A change of a direction: `work direction revise [<token>] <direction> --file=<edit.yaml>`.
   The file adds, replaces, or removes standards.
-- The reason (`--why`) names what a draft corrects. It is one of five: `Correct the rule`,
-  `Correct the standard`, `Correct the direction`, `Correct the reviewer` (the role that
-  checks a rule), `Shorten`. `--why-words` gives the fact behind it. Both show at the end of
-  `work direction show <draft>`, where the deciders read the draft. `work direction new` takes
-  them too.
+- A change that the pipeline role makes after a raised task: it writes a draft file, a map from
+  item keys (`dir:<id>`, `std:<id>`, `rule:<id>`) to the whole record (`says`, `where`, `test`,
+  `ref`, `examples`), or `null` to remove one. It sends it with `work ship <token> <fix> <file>`.
+  An example is `{ fits: follows|breaks, sample: <text> }`. A test must print lines on each
+  `breaks` sample and none on a `follows` sample, of its own rule and of the other rules of
+  the direction.
 - A company direction: a folder in its repo, with one file for each entry:
   `direction.md`, `<standard id>/standard.md`, and `<standard id>/<rule id>.md`. It changes in
   its repo, with a pull request.

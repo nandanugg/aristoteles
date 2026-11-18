@@ -1,6 +1,6 @@
 ---
 name: assess
-description: Read a project (a repo of code or documents) and onboard it into aristoteles with the work CLI - draft its roles and its directions as files, with real examples, so that the person accepts or rejects each one on the page. Also drafts a new direction after the store exists. Use when the person asks to assess an app, to turn the agent harness of an app into aristoteles, to find or suggest the directions of an app, to onboard a dir, or when work waiting shows a suggestion that asks for a new direction.
+description: Read a project (a repo of code or documents) and onboard it into aristoteles with the work CLI - draft its roles and its directions as files, with real examples, so that the person accepts or rejects each one on the page. Also drafts a new direction after the store exists. Use when the person asks to assess an app, to turn the agent harness of an app into aristoteles, to find or suggest the directions of an app, to onboard a dir, or when the person asks for a new direction.
 ---
 
 # assess
@@ -30,10 +30,12 @@ again. The store starts at the end, with only the accepted result.
    holds), then run `work onboard config --file=.work/drafts/config.yaml`. The command runs the
    checks of `work config check` on it, and prints `next: start the page (work start --detach)`,
    then `found` and `draft` for each topic. Until the store starts, you may change any part of
-   the config draft (people, the models with their commands and limits, roles): send the whole file again
+   the config draft (people, the models with their commands and limits, roles): send the whole
+   file again
    with `work onboard config`, or one role with `work onboard role <role>`. A change clears only
    the accepts that it touches: a role's own block or its card words clear that role, the entry of
-   a model (its commands or its limits) clears the roles that name it, and the people clear none. The
+   a model (its commands or its limits) clears the roles that name it, and the people clear none.
+   The
    person then accepts those roles again.
 3. **Open the page** now, after the config: `work start --detach`. It keeps running when this AI
    CLI ends. Tell the person to read it: each role waits there as a card, and each direction
@@ -74,17 +76,18 @@ again. The store starts at the end, with only the accepted result.
    (it asks for the typed word `approve`). That starts the store. Never run the approve
    yourself. When the accepted files cannot start a store (two directions use one rule id, a rule
    names a role that is gone, no persistent role that splits), `work onboard status` says
-   "the store cannot start", what blocks it, and your step; `work onboard wait` returns with it. Do that
+   "the store cannot start", what blocks it, and your step; `work onboard wait` returns with it.
+   Do that
    step (draft the named direction again, or write the named role), and the person accepts it
    again. Then do the next line that it prints: `work role fit <role>` for each agent role
    (the `role-fitness` skill: a role "fits" when its words pass the static checks and each of the
    seven questions of `guides/fitness.yaml` gets a yes with one real example of the role's work;
    the fit record is that answer file, in `.work/fit/<role>.yaml`, then
    `work role fit <role> --answers=.work/fit/<role>.yaml --by=assess`). A role with no fit record
-   gets no work. A role that does not fit needs new words: write them in a file, run
-   `work role draft <role> --file=<words.yaml> --by=assess`, and ask the person to accept them on
-   the page; then record its fit again. Another model or another persistence is an adjustment
-   (`work adjust`, the `work` skill).
+   gets no work. A role that does not fit needs new words: write the role file again and run
+   `work onboard role <role> --file=<role.yaml>` before the store starts. After the store starts,
+   new words of a role come from an evaluation of the pipeline role (a fit cause), and the
+   person accepts them.
 
 ## Read the project
 
@@ -107,34 +110,26 @@ one weak sign, and name it in your report. Read `work guide writing` and
 ## The config draft
 
 The file has the keys of the form that `work onboard config` prints, and the keys of
-`aristoteles.yaml` (`schema/aristoteles.schema.json`): `people`, `models`, `roles`, `decide`.
+`aristoteles.yaml` (`schema/aristoteles.schema.json`): `people`, `models`, `roles`.
 
 - `people`: the exact name that `git config user.name` gives in the dir is the person. When it
   gives none, ask the person for the name to set there.
 - `models`: each model that a role names, by its name, with the commands of the AI CLI (the
-  part "The models" below) and its `limits`. A limit has a part (`Assignment`, `Review`,
-  `Result`) and a key. Size the brief to the context window of the model. The brief (the text
-  that `work brief` prints to an agent) counts the guide text of the role, so a limit needs room
-  above it: about 6000 for a role that assigns nothing, 12000 for a lead, 16000 for a role that
-  splits.
-- `decide`: needed when a maker has more than one decider.
+  part "The models" below) and its `limits`. The limit that matters is `Assignment.attempts`:
+  the tries of a task before a raise (three when no model sets it; `work guide limits`).
 - `roles`: read `work guide roles` (the checks of work on the roles). Each agent role names its
   `model` and its `acts`. Choose the model by the care that the work needs: a stronger model for
-  a role that splits, directs or decides results, a smaller one for a role that does one unit
-  from its brief. A dir has:
-  - a role that splits (`split`) for each kind of top task (the whole job of a project, for
-    example one TSD; an example role is `architect`). The host drafts a top task for it, and the
-    person opens it on the page. This role splits the top task, gives the parts to the roles of
-    its `assign` act, decides their results, and decides the result of the top task last; then
-    the end of the project comes to the person. It usually holds `direct` (it drafts direction
-    changes) and `fit` (it fits roles) too;
-  - a lead (`{ assign: [<roles>] }`) that runs a part with a full review cycle (for example
-    `lead`);
+  a role that reviews, splits, or directs, a smaller one for a maker that does one unit from
+  its brief. A dir has:
+  - one persistent role with `pipeline: true`, on a strong model: it evaluates raised tasks,
+    runs the direction pipeline, and reviews drafts. The top task cannot open without it;
+  - one persistent role with `split` (the config start checks it). The host sends it tasks of
+    the top. It usually holds `direct` and `fit` too;
+  - persistent roles that run a part (`{ assign: [<makers>] }`, `{ review: [<makers>] }`): each
+    gets a task, assigns a maker, and reviews the result itself;
   - makers that assign nothing, each with its `output` form (the form of one result:
     `<file>#<section>` for one section of a file, or `<repo>@<commit>` for a commit; the schema,
-    under `roles.<role>.output`, lists them), and checkers that assign nothing;
-  - a program role (`kind: program`, explained in "An app with its own harness") for each check
-    program that the work runs on a report (no model, no persistence).
+    under `roles.<role>.output`, lists them). A maker is a subagent of its persistent role.
 
 Each role has the keys of a role of `aristoteles.yaml`, and two more for its card:
 
@@ -145,8 +140,9 @@ roles:
     description: <what the role does, in one line>
     intro: <the first words of its brief>
     responsibilities: [<one exact output or command>]
-    acts: [{ do: <its work> }]   # or { review: [<role>] }, { approve: [<role>] }, { assign: [<role>] }, split, direct, fit
+    acts: [{ do: <its work> }]   # or { review: [<role>] }, { assign: [<role>] }, split, direct, fit
     persistence: { persistent: true | false, why: <one line> }
+    pipeline: true   # only the one pipeline role
     icon: <a name of the list below>
     summary: <the one line of its card>
     found: <where the project has this role, such as .claude/agents/<role>.md>   # leave it out for a new role
@@ -162,12 +158,11 @@ pen-tool, puzzle, scale, search, shield-check, sparkles, telescope, terminal, us
 
 ### The words of a role
 
-A task is done, reviewed, approved, or changed: these four acts are the standard workflow, and a
-role does not choose them. Its words give principles that work as criteria for its kind of work:
-what a good unit of it is, so that the role can do it, a reviewer can review it, a lead can
-approve it, and the role that directs can change it. A responsibility that gives no criterion is
-not enough: say the exact output and the exact command (`work guide roles` lists the static
-checks, and `guides/fitness.yaml` the seven questions).
+A task is made, reviewed, and raised: this is the standard workflow, and a role does not choose
+it. Its words give principles that work as criteria for its kind of work: what a good unit of it
+is, so that the role can do it and a reviewer can review it. A responsibility that gives no
+criterion is not enough: say the exact output and the exact command (`work guide roles` lists
+the static checks, and `guides/fitness.yaml` the seven questions).
 
 ### Persistence, and the Rumsfeld matrix
 
@@ -182,9 +177,8 @@ does not show it.
 - Unknown knowns and unknown unknowns: a big agent, disposable by default. Make it persistent
   when the project needs it again and again, for example an advisor with the knowledge of its
   domain.
-- The host plays the role that splits each top task, and the host is a terminal. Make at least
-  one role that splits persistent, or the store start is refused. The person has no toggle for
-  that role.
+- Make at least one role that splits persistent, or the store start is refused. The pipeline
+  role is persistent too. The person has no toggle for them.
 - A disposable agent that starts disposable agents shows repetitive work: only a terminal (the
   host, or a persistent agent) starts subagents. A role that is not persistent hands a need for
   more agents back to the terminal above it. Write that in its `responsibilities`.
@@ -208,17 +202,17 @@ models:
     launch: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 claude --model {model} --session-id {session} {prompt}
     resume: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 claude --model {model} --resume {session} {prompt}
     skills: .claude/skills
-    limits: { Assignment: { briefChars: 16000 }, Review: { rules: 20 } }
+    limits: { Review: { rules: 20 } }
   sonnet:
     # the same launch, resume, and skills
-    limits: { Assignment: { briefChars: 12000 }, Review: { rules: 12 } }
+    limits: { Review: { rules: 12 } }
   haiku:
     # the same launch, resume, and skills
-    limits: { Assignment: { briefChars: 6000, attempts: 3 }, Review: { rules: 5 } }
+    limits: { Assignment: { attempts: 3 }, Review: { rules: 5 } }
 ```
 
-The start words of a persistent agent have a default ("Use the work skill. You are {agent}: run
-work wait --by={agent}, and do what it prints."); leave `start` out.
+The start words of a persistent agent have a default (its token, and "run work wait <token>");
+leave `start` out.
 
 ### One role
 
@@ -229,55 +223,38 @@ answer to a Revise. It clears the request of the role.
 ## An app with its own harness
 
 Some apps run their own agents already: instruction docs, check programs, agent prompts (a
-writer, a judge, a lead), a loop that writes and checks, a web app, a publish step. Map each
+writer, a reviewer, a lead), a loop that writes and checks, a web app, a publish step. Map each
 piece as below. The roles go into the config draft, the directions into direction drafts.
 
-- **Instruction and standard docs** → directions, standards, and rules, in the owner's own
+- **Instruction and standard docs** -> directions, standards, and rules, in the owner's own
   words (`work guide writing`). A rule is one check that a reviewer can do on one result, so a
   list of checks in a doc becomes one rule for each check. A sentence that no reviewer can
   check on one result (for example "write for the reader") is no rule: say its idea in the
   words of the direction or the standard, or name it in the report.
-- **Check programs** (validators, linters, test scripts) → roles of `kind: program`: `run`
-  (the words of the command, with no shell; `{output}` and `{workspace.path}` are filled in),
-  `on: report`, `checks` (its rules), and `acts: [{ review: [<the maker>] }]`. A program has
-  no model. Each thing that it checks is one rule with `checkedBy: <the program>`. Exit 0
-  accepts all of its checks; any other exit rejects the result. A check that needs the
-  judgment of a model is a role that reviews and assigns nothing. When the program reads other arguments than
-  `{output}` or `{workspace.path}`, say in the report what to change.
-- **Agents** → roles, each with its model, its acts, its persistence, and its icon. Take the
+- **Check programs** (validators, linters, test scripts) -> the `test` of a rule: a command whose
+  output is empty when the result holds, and one line for each point when it does not. The
+  command gets the files of the extracted sections as arguments. Name the program and its
+  arguments in the report. A check that needs the judgment of a model is a rule that a role
+  reviews, with a `ref` as evidence.
+- **Agents** -> roles, each with its model, its acts, its persistence, and its icon. Take the
   `description`, the `intro`, and the `responsibilities` from the prompt file of the agent, and
   put its path in `found`.
   - a writer: a role with `do` and its `output` form (`<file>#<section>` for one section
     of a markdown file; a maker of code reports `<repo>@<commit>`, one commit);
-  - a judge or a checker: a role with `review: [<the writer>]`; each thing that it checks is
-    a rule with `checkedBy: <the judge>`;
-  - a lead that runs one section and decides it: a role with `approve: [<the writer>]` and
-    `assign: [<the writer>, <the judge>]`;
-  - an orchestrator that splits the work: the role with `split` that splits the top task and decides
-    the results of its parts (`approve: [<the writer>]`). Give it no `do` act on the file of the
-    parts: a maker keeps its file until it finishes, so each maker of a part would wait for
-    it. It may split a task only when it holds the permission to change that task (a "Change
-    act"): the person's Open of the top task on the page gives it that permission for 30 days. Do
-    not ask the person for a permission (`work grant`).
-- **The loop** → tasks, reviewers, and deciders:
-  - a write and a check for each section: the role that splits splits the top task into one part for
-    each section (`context: { section: <heading id> }`); a standard for one section only has
-    `where: { section: <heading id> }`, and a standard for some sections lists them:
-    `where: { section: [<heading id>, <heading id>] }`;
-  - the tries of the loop: `models.<model>.limits.Assignment.attempts`, of the model of the maker;
-  - more than one decider of a maker: `decide: [{ resultsOf: <the writer>, by: { order:
-    [<the lead>, <the role that splits>] } }]` (`or`: any one of them; `and`: each one; `order`: each
-    one, in turn);
-  - a step where the person says yes to each section: the deciders accept the section instead,
-    and the person accepts no result. The person reads each result after its deciders accept
-    it, and can reject it then;
-  - a step that puts the parts together: after every part is accepted, `work next` asks the
-    role that splits to give the top task to a maker. Give that job a role of its own (for
-    example `assembler`), so that its deciders are not those of a part;
-  - a review of the whole result: the role that splits and approves that maker. A rule with no
-    `where` is checked on each part too, and no `where` holds a rule to the whole result
-    alone. So put each check of the whole result in the `responsibilities` of that role, and
-    name it in the report.
+  - a reviewer or a checker: a persistent role with `review: [<the writer>]` and
+    `assign: [<the writer>]`; each thing that it checks is a rule with `checkedBy: <it>`;
+  - an orchestrator that splits the work: the persistent role with `split`, which the host
+    sends the tasks of the top to;
+  - the evaluator of failures: the role with `pipeline: true`.
+- **The loop** -> tasks, reviews, and raises:
+  - a write and a check for each section: the top task names its sections, and the host sends
+    one task for each part; a standard for one section only has `where: { section: <heading id> }`,
+    and a standard for some sections lists them: `where: { section: [<heading id>, <heading id>] }`;
+  - the tries of the loop: `models.<model>.limits.Assignment.attempts`;
+  - a step where the person says yes to each section: the person reads each result and can
+    reject it; the review of the role decides it first;
+  - a step that puts the parts together: a task of its own for a maker with a role of its own
+    (for example `assembler`).
 - **The publish step, the web app, and other integrations** stay outside the work. The work
   ends with the end of the project; then the person runs the publish step as before. Name
   each one in the report, with the command that the person runs.
@@ -317,7 +294,7 @@ standards:
       <how the output looks; one idea; headers for its pieces>
     rules:
       - id: <rule id, unique in the project>
-        checkedBy: <a role of the config draft that reviews or approves the maker>
+        checkedBy: <a role of the config draft that reviews the maker>
         says: |
           <one check, in its first sentence; reasons and examples under headers>
 ```
@@ -467,28 +444,27 @@ the public example: https://github.com/nandanugg/aristoteles-example-direction.
 The store exists after `work onboard approve-roles`; then `work onboard` is over, and a change is
 an event.
 
-- A new direction (a suggestion that asks for one, or the person's words): read `work waiting`
-  (each such suggestion shows as `s<n> asks for a new direction`) and `work search <words>`
-  (a direction can exist already, also a company direction). Write the draft in the form that
-  `work direction new` with no file prints, and send it:
-  `work direction new --file=<file> --by=assess`, with `--answers=<s ids>` for the suggestions
-  that it answers. A standard that belongs under a direction with a version goes into
-  `work direction revise <direction id> --file=<edit.yaml> --by=assess`. Its owner accepts it.
+- A new direction (the person's words): read `work search <words>` (a direction can exist
+  already, also a company direction). Write the draft in the form that `work direction new` with
+  no file prints, and send it: `work direction new --file=<file> --by=assess`. A standard that
+  belongs under a direction with a version goes into
+  `work direction revise <direction id> --file=<edit.yaml> --by=assess`. Its owner accepts it with
+  `work direction accept <draft>`, or rejects it with `work direction reject <draft>
+  --reason=<why>`, before a top task is open.
 - The flow of a company draft (its steps marked, each with its examples), before its accept:
   `work direction examples <draft> --file=<flow.yaml> --by=assess`.
-- A role or a direction that must change: `work adjust` (the `work` skill, part "Adjust the roles
-  and the directions"); the person accepts each adjustment.
-- When the owner rejects a draft, `work waiting` shows the Reject and the command. Write a new
-  draft that answers it (`--answers=<the Reject>`) and proposes something else. Name what it
-  corrects with `--why=<reason> --why-words="<the fact>"` (`work guide writing` lists the five
-  reasons).
+- When a top task is open, the pipeline role changes directions through a raised task (the `work`
+  skill, part "The pipeline role"); the person accepts that draft.
+- When the owner rejects a draft, write a new draft that answers the reason and proposes
+  something else.
 
 ## The report
 
 End with one list for the person:
 
 - each direction: its id, its summary, and the evidence (the outputs of its examples);
-- each role that you drafted: its model, its acts, its persistence and why, and where the project has it;
+- each role that you drafted: its model, its acts, its persistence and why, and where the
+  project has it;
 - for an app with its own harness: each piece of the harness and where it went (a role, a rule,
   a key of the config, or outside the work, with the command that the person runs);
 - each topic that you left out, and why;

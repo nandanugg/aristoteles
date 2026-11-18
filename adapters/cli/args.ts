@@ -200,7 +200,7 @@ export const USAGE: ReadonlyArray<string> = [
   'status:  work status set --kind=working|thinking|applied|feedback|waiting --text=<words> [<token>|--by=<run>] (the AI on the dir pages)',
   'read:    work direction show <id>[@<n>][#<standard|rule|header>]|<draft> | log [--last=<n>]',
   '         work search <words> (aristoteles) | config check (the config draft merged into aristoteles.yaml; it writes nothing)',
-  '         work guide writing|direction-review|decision-words|roles|limits',
+  '         work guide writing|direction-review|roles|limits',
   'onboard: work onboard add --principle=<words> [--example=<words>] | company --repo=<repo> --path=<folder>',
   '         work onboard answer <id> --options=A,B,... | accept <id> | revise <id> --words=<words> | remove <id>',
   '         work onboard approve-directions | accept-role <role> | revise-role <role> --words=<words> | remove-role <role>',

@@ -7,15 +7,17 @@ accepts only the directions and their changes. aristoteles is the store of this 
 SQLite file that links each task to the version of the direction that it used.
 
 - **Direction**: what the work is for. **Standard**: how the output looks. **Rule**: one check
-  that a reviewer does on one result. Each one is one entry in aristoteles, in free markdown.
-- **Roles** (`aristoteles.yaml`): the makers and the reviewers of a project. Each role names its
-  model (an entry of the `models` table, with its commands and its limits) and its acts: what it
-  does, reviews, approves, and which roles it assigns; `split`, `direct` and `fit` give it the
-  authority to split tasks, draft directions, and fit roles. A model gets one
-  command, `work brief <token>`, and the brief (the text that it prints: the role, the task, the
-  rules, and the commands to run next) says what to do.
-- **Top task**: the whole job of one project, for example one TSD. The host drafts it with you,
-  and you open it on the page; the role that splits then gives its parts to the roles it assigns.
+  of a result, with its evidence: a test command (no output = it holds; each line is a point)
+  and/or a reference (`file#anchor:lines`). Each has its own version.
+- **Roles** (`aristoteles.yaml`): each persistent role has a terminal; it gives a task to a maker
+  subagent, reviews the result itself, and raises what it cannot pass. One role is the pipeline
+  role (`pipeline: true`): it evaluates every raise and runs the direction pipeline. The host is
+  your own AI session. Each agent runs `work wait <token>`, which prints one step: the exact
+  command to run next.
+- **Top task**: the whole job of one project, for example one TSD, with its sections. You open
+  it (`work top open`); the host sends tasks that cover its sections to the roles.
+- The design: `plan/model/DESIGN.md` is locked by the person, and `core/model/` holds it as
+  Quint specs checked by TLC; the code follows `core/model/work.qnt`.
 - **Company directions**: a git repo with one folder for each direction. A project names a
   folder in its `aristoteles.lock`. The first command of each day fetches the repo, and a new
   commit comes in as a draft that its owner accepts.
@@ -114,10 +116,11 @@ In a dir (a folder of your work):
 3. A model drafts each direction with the `assess` skill (`skills/assess`), or with
    `work direction new --file=<direction.yaml> --by=<name>` (a lower-case name that the model
    gives itself).
-4. The owner reads each draft (`work waiting`, `work direction show <draft>`) and accepts or
-   rejects it (`work review <draft> accept --evidence=...` or `reject --reason=...`).
-5. The person opens a task and assigns it to a role: `work task open --file=<task.yaml>`,
-   `work assign <task> --role=<role>`.
+4. The owner reads each draft (`work direction show <draft>`) and accepts or rejects it
+   (`work direction accept <draft>` or `work direction reject <draft> --reason=...`).
+5. Open the top: `work top open --name=... --goal=... --sections=a,b`. In your own tmux pane,
+   start your AI CLI and have it run `work run continue`: that session is the host. `work start`
+   starts the pipeline role and the roles in their terminals.
 
 `work` with no command prints all the commands. It exits 0 on success, 1 on a refusal, 2 on a
 mistake in the command line, 3 when something outside fails (git, tmux, a fetch, a busy or
@@ -131,8 +134,9 @@ start from that file. A build that fails changes nothing: that call runs the cod
 
 ## The UI: `work start`
 
-`work start` in a dir opens its page in the browser: a canvas with a card for each task, its
-work and its reviews, and the real terminal of each AI agent. It needs `bun install` once in the
+`work start` in a dir opens its page in the browser: the dashboard (the task queue, the host,
+a column per role with its status Working, Waiting or Inactive, the pipeline row with the
+escalations that wait for you), and the real terminal of each AI agent. It needs `bun install` once in the
 aristoteles folder, and tmux for the terminals.
 
 It prints the page's address, `http://127.0.0.1:<port>/`, and the addresses for other machines
@@ -167,17 +171,12 @@ over ssh) only prints the addresses.
 ## Guides and skills
 
 - `work guide writing`: how to write a direction for retrieval.
-- `work guide direction-review`: the questions for the review of a direction.
-- `work guide decision-words`: how a host writes the words of a decision, so that the person can
-  decide.
+- `work guide direction-review`: the pipeline role's review loop of a direction draft.
 - `work guide roles`: the checks of work on the roles of a dir, and the files that work adds to
   it.
-- `work guide limits`: the action when work passes a limit, so that no agent asks the person
-  about a limit.
-- `guides/split.yaml`, `assign.yaml`, `unit.yaml`: the words of a brief, chosen by the acts of the
-  role (a role that splits, a lead, a role that assigns nothing). They count in the size of the
-  brief, so the limits of each model leave room above them.
-- `skills/work`: the skill that a model reads to do work under review.
+- `work guide limits`: the tries before a raise and the other limits of the config.
+- `skills/work`: the skill that each agent reads: the host, a persistent role, a maker, the
+  pipeline role (`work wait <token>` prints one step at a time).
 - `skills/aristoteles`: the skill that the person triggers in their AI CLI; that session is the
   host. `work skill install` links it into a dir.
 - `skills/assess`: the skill that reads an app and onboards it: its roles and its directions,

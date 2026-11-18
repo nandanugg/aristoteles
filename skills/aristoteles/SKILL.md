@@ -1,6 +1,6 @@
 ---
 name: aristoteles
-description: Start aristoteles in this dir and be its host. Install this skill in the dir, onboard a new dir (draft its directions and roles with the person, then start the store), start its page, then start a new project or continue one with the person. Use when the person asks to start aristoteles, to work on a project with aristoteles, or to continue a project of it.
+description: Start aristoteles in this dir and be its host. Install this skill in the dir, onboard a new dir (draft its directions and roles with the person, then start the store), start its page, then run the project with the person. Use when the person asks to start aristoteles, to work on a project with aristoteles, or to continue a project of it.
 ---
 
 # aristoteles: you are the host
@@ -25,8 +25,8 @@ works for aristoteles; any other session of the dir still uses the old files of 
 3. **A new dir.** Run `work onboard status`. When the dir has no `aristoteles.yaml`, or onboarding
    files wait, do the onboarding of the `assess` skill (its part "Onboarding a new dir"). The
    person checks each direction and each role on the page, and the store starts only when the
-   person approves all roles (`work onboard approve-roles` is the same act at a terminal). Come
-   back to step 4 when the store exists.
+   person approves all roles (`work onboard approve-roles` is the same act at a terminal). One
+   role of the config is `pipeline: true`. Come back to step 4 when the store exists.
 4. **Record the fit of each agent role** (the `role-fitness` skill), as the last line of
    `work onboard approve-roles` says. A role fits when its words pass the static checks and each
    of seven questions (`guides/fitness.yaml`) gets a yes with a real example; the answers are its
@@ -35,42 +35,35 @@ works for aristoteles; any other session of the dir still uses the old files of 
    address. It keeps running when this AI CLI ends. When it exits with 3, read the log file
    that it names, tell the person the cause, and do not start it again until the person
    answers.
-6. **Ask the person:** a new project, or continue one? Show them the projects of
-   `work run list` (each run, its state, and its top task). When it shows no run, start a new
-   project.
-   - A new project: `work run start`. Then follow the `work` skill, part "You are the host of a
-     project": talk with the person, and draft the top task (the whole job of the project, for
-     example one TSD).
-   - Continue a project: `work run continue <run> --quote="<the words of the person>"`, with
-     the words that the person said to choose it. When those words name no one run, show the
-     list again and ask which one. When the project has an open top task, the output gives you
-     the command of its host assignment: run it. The window of the old host closes.
-7. From then on, follow the `work` skill, part "You are the host of a project". The UI types
-   nothing into this terminal: when you have nothing to do, run `work wait --by=<your run>`
-   (before the top task opens; your run is the project that `work run start` made, with an id
-   such as `h1`, and `work run list` shows it) or `work wait <token>` (after), in the background when your AI
-   CLI allows it, so that the person can still talk to you here. When the work shows that an
-   instruction must change, change it only in aristoteles, never in the project's own copy
-   (the `work` skill, part "One source of instructions").
-8. **Subagents.** Only a terminal starts subagents: you, and each persistent agent. A role that
-   is not persistent runs as a subagent, and `work assign` prints the prompt to give it. Your own
-   session has no limit on the depth of subagents, so tell each subagent that you start: it
-   starts no subagent; when its work needs more agents, it hands the need back with `work ask`.
-   Do not start the terminal of a persistent agent yourself: the UI starts it.
-9. **Ask the person on the page.** After the first talk (before the top task exists), never ask
-   the person with your AI CLI's own question tool (such as AskUserQuestion): ask with
-   `work ask <token> --to=owner --text="..."`, and one `--option="..."` per answer for a choice.
-   The person answers on the page, and `work wait` returns with the answer. Never ask the person
-   about a limit.
-10. **On the directions and agents pages,** the page shows no terminal: tell the person what you
-    do with `work status set --by=<your run> --kind=working|thinking|applied|feedback|waiting
-    --text="<a few words>"` (`--by=host` before the store), each time it changes. A question
-    that you ask with `work ask` shows there in its place.
-11. **When the person does not answer,** do not poll and do not ask again. Say what waits for
-    them, with the command that shows it (`work waiting`), and run `work wait`. When the AI CLI
-    ends, the person triggers a host again, and continues the project there.
-12. **After the store starts, a change is an adjustment.** A role or a direction of the project
-    changes in aristoteles. The person says it in words (`work suggest roles --says="<the
-    change>"`, or `work suggest <direction> --says="<the change>"`), and you draft it (the
-    `work` skill, part "Adjust the roles and the directions"). The person accepts it on the
-    page.
+6. **Talk with the person** about the project. Read the directions (`work direction show <id>`,
+   `work search <words>`) and the dir. Help them say the top task in one sentence: its name,
+   its goal (its output, where it goes, and when it is done), and its sections. Do not start any
+   work yet.
+7. **The person opens the top task:** on the page, or with `work top open --name="<...>"
+   --goal="<...>" --sections=a,b` at a terminal. It is the person's act: you never run it.
+   Tell them what to open, then wait for it.
+8. **Start your host:** in this pane, run `work run continue`. It records this pane as the
+   host, and prints your token (`host: w.host.<ep>.<secret>`) with your first words. When you
+   are already the host of an open project, it moves the host to this pane, and gives a new
+   token. Use the newest token only.
+9. From then on, follow the `work` skill, part "You are the host of a project". Run
+   `work wait <your token>` (in the background when your AI CLI allows it, so that the person can
+   still talk to you): it prints one step with its exact command. Do it, then run `work wait`
+   again. The page types nothing into this terminal.
+10. **Subagents.** Only a terminal starts subagents: you, and each persistent role. A maker runs
+    as a subagent of its persistent role, so the role starts it, not you. Tell each subagent
+    that you start: it starts no subagent; when its work needs more agents, it hands the need
+    back with `work ask`.
+11. **Ask the person on the page.** After the first talk, never ask the person with your AI
+    CLI's own question tool (such as AskUserQuestion): ask with
+    `work ask <token> --question="<the fact that you need>"`. The person answers on the page,
+    and `work wait` returns with the answer. Ask only for a fact that no direction gives.
+12. **Carry the person's words.** When the person says an act in this chat (accept, send back,
+    reject, decide, answer, end), forward it with their exact words:
+    `work forward <your token> <the act as the person would run it> --on <n> --quote="<words>"`.
+    It waits for the person to confirm on the page.
+13. **When the person does not answer,** do not poll and do not ask again. Say what waits for
+    them, and run `work wait`. When the AI CLI ends, the person triggers a host again, and
+    runs `work run continue` there.
+14. **Show what you do** on the pages that have no terminal: `work status set
+    --kind=working|thinking|applied|feedback|waiting --text="<a few words>" --by=<your name>`.

@@ -75,16 +75,15 @@ describe('a new direction', () => {
     expect((await p.agent('direction revise tsd-writing --file=edit.yaml --by=host')).err).toContain('tsd-writing has no version yet')
   })
 
-  test('work guide prints how to write a direction, how to review one, and the words of a decision', async () => {
+  test('work guide prints how to write a direction, how to review one, the roles and the limits', async () => {
     const p = await fresh()
     expect(ok(await p.agent('guide writing')).out).toContain('## Write for contextual retrieval')
     expect(ok(await p.agent('guide direction-review')).out).toContain('6. **Negative parallelism.**')
-    expect(ok(await p.agent('guide decision-words')).out).toContain('1. **No ids and no words of the tool.**')
-    // Each limit of a tier has its action, so that no agent asks the person about a limit.
+    // Each limit has its action, so that no agent asks the person about a limit.
     const limits = ok(await p.agent('guide limits')).out
-    for (const limit of ['Assignment.attempts', 'Assignment.briefChars', 'Review.rules', 'Result.size', 'maxStandards']) expect(limits).toContain(`### \`${limit}\``)
+    for (const limit of ['Assignment.attempts', 'Review.rules', 'maxStandards']) expect(limits).toContain(`### \`${limit}\``)
     expect(limits.replace(/\s+/g, ' ')).toContain('Do not ask the person about a limit')
-    expect((await p.agent('guide other')).err).toContain('work guide <name>: the guides are decision-words, direction-review, limits, roles, writing')
+    expect((await p.agent('guide other')).err).toContain('work guide <name>: the guides are direction-review, limits, roles, writing')
   })
 
   test('aristoteles.yaml names no directions', async () => {
