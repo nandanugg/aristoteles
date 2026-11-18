@@ -63,6 +63,7 @@ export const initState = (
   fixDepth: new Map(),
   down: NONE,
   ep: new Map(),
+  asks: new Map(),
   nextTask: 1,
   nextMaker: 1,
   maxTries,

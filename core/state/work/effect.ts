@@ -71,8 +71,15 @@ const setM = (s: WorkState, m: string | null, f: (y: Maker) => Maker): WorkState
   const y = m === null ? undefined : s.makers.get(m)
   return m === null || y === undefined ? s : { ...s, makers: put(s.makers, m, f(y)) }
 }
-export const endMaker = (s: WorkState, m: string | null): WorkState =>
-  setM(s, m, (y) => ({ ...y, ended: true, claim: false }))
+const unask = (s: WorkState, k: Actor): WorkState => {
+  const asks = new Map(s.asks)
+  asks.delete(k)
+  return { ...s, asks }
+}
+export const endMaker = (s: WorkState, m: string | null): WorkState => {
+  const s1 = setM(s, m, (y) => ({ ...y, ended: true, claim: false }))
+  return m === null ? s1 : unask(s1, makerActor(m))
+}
 const bump = (s: WorkState, i: string): WorkState => setF(s, i, (f) => ({ ...f, step: f.step + 1 }))
 export const newEp = (s: WorkState, k: Actor): WorkState => ({
   ...s,
@@ -587,6 +594,10 @@ export const effect = (s: WorkState, a: Act): WorkState => {
         caught: w.caught,
       }))
     }
+    case 'Ask':
+      return { ...s, asks: put(s.asks, w.asker, s.seq) }
+    case 'Answer':
+      return unask(s, w.asker)
     case 'Evaluate':
       return evaluate(s, a, w)
     case 'Advance':

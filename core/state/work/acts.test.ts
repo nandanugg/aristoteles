@@ -29,6 +29,8 @@ const SAMPLES: { readonly [T in WhatTag]: Extract<What, { _tag: T }> } = {
   Accept: { _tag: 'Accept', fix: 't1' },
   SendBack: { _tag: 'SendBack', fix: 'edit', points: ['p', 'q'] },
   Decide: { _tag: 'Decide', task: 't1', take: true },
+  Answer: { _tag: 'Answer', asker: 'maker:m1', answer: 'a' },
+  Ask: { _tag: 'Ask', asker: 'maker:m1', question: 'q' },
   SendTask: { _tag: 'SendTask', spec },
   Reassign: { _tag: 'Reassign' },
   TopDone: { _tag: 'TopDone' },

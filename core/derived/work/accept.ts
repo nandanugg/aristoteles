@@ -12,7 +12,9 @@ import {
   free,
   hasMech,
   hasRef,
+  isMakerActor,
   isPersistent,
+  isRoleActor,
   makerActor,
   roleActor,
 } from '../../state/work/types.ts'
@@ -62,7 +64,10 @@ export const authority = (s: WorkState, a: Act): boolean => {
     case 'Accept':
     case 'SendBack':
     case 'Decide':
+    case 'Answer':
       return a.who === PERSON
+    case 'Ask':
+      return a.who === w.asker
     case 'SendTask':
     case 'Reassign':
     case 'TopDone':
@@ -184,6 +189,16 @@ const makerOk = (s: WorkState, m: Maker): boolean => {
   return t !== undefined && m.claim && !briefOld(s, m.brief, t)
 }
 
+// The role, the pipeline role or a live maker asks.
+const askerOk = (s: WorkState, k: string): boolean => {
+  const m = isMakerActor(k) ? s.makers.get(k.slice('maker:'.length)) : undefined
+  return (
+    k === PIPE ||
+    (isRoleActor(k) && s.cards.has(k.slice('role:'.length))) ||
+    (m !== undefined && !m.ended)
+  )
+}
+
 export const legal = (s: WorkState, a: Act): boolean => {
   const w = a.what
   switch (w._tag) {
@@ -204,6 +219,10 @@ export const legal = (s: WorkState, a: Act): boolean => {
       return fx(s, w.fix).stage === 'SAtPerson'
     case 'Decide':
       return s.tasks.has(w.task) && !free(w.task) && fx(s, w.task).stage === 'SAtPerson'
+    case 'Answer':
+      return s.asks.has(w.asker)
+    case 'Ask':
+      return askerOk(s, w.asker) && !s.down.has(w.asker) && !s.asks.has(w.asker)
     case 'SendTask':
       return sendOk(s, w.spec)
     case 'Reassign':

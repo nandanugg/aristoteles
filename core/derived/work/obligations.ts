@@ -68,7 +68,9 @@ const ageOfTarget = (s: WorkState, fixTarget: boolean, target: string | null): n
 const makerAge = (s: WorkState, m: string | null): number =>
   m === null ? 0 : ageOfTarget(s, false, s.makers.get(m)?.task ?? null)
 const stepAge = (s: WorkState, x: Step): number =>
-  x.tag === 'ReadBrief' || x.tag === 'Report' || x.tag === 'Resume'
+  x.tag === 'Answer'
+    ? s.asks.get(x.target ?? '') ?? 0
+    : x.tag === 'ReadBrief' || x.tag === 'Report' || x.tag === 'Resume'
     ? makerAge(s, x.target)
     : ageOfTarget(s, FIX_TAGS.has(x.tag), x.target)
 
@@ -89,6 +91,7 @@ export const dos = (s: WorkState, k: Actor): ReadonlyArray<Step> => {
     const decide = drafts.filter(([i]) => s.tasks.has(i))
     return byAge(s, [
       ...(s.top.done && allDone(s) ? [step('EndProject')] : []),
+      ...[...s.asks.keys()].map((a) => step('Answer', a)),
       ...drafts.map(([i]) => step('Accept', i)),
       ...drafts.map(([i]) => step('SendBack', i)),
       ...decide.map(([i]) => step('Decide', i)),
@@ -151,8 +154,10 @@ export type ObTag =
   | 'ReviveOb'
   | 'RecheckOb'
   | 'RuleRunOb'
+  | 'AnswerOb'
 // target: a task, a maker (MakeOb, ResumeOb), a fix (PipeOb, DraftOb, DecideOb), an actor
-// (ReviveOb); null for SendOb (the host owes a task while sections are uncovered), EndOb,
+// (ReviveOb, AnswerOb: the asker); null for SendOb (the host owes a task while sections are
+// uncovered), EndOb,
 // TopDoneOb and ReassignOb. MakeOb of a working task with no maker has a null target.
 export type Ob = { readonly tag: ObTag; readonly target: string | null }
 const ob = (tag: ObTag, target: string | null = null): Ob => ({ tag, target })
@@ -173,6 +178,7 @@ export const obligationsOf = (s: WorkState): ReadonlyArray<Ob> => {
   if (s.top.ended) return []
   const out: Ob[] = [
     ...[...s.down].filter(isPersistent).map((p) => ob('ReviveOb', p)),
+    ...[...s.asks.keys()].map((k) => ob('AnswerOb', k)),
     ...[...s.fixes.keys()].filter(free).flatMap((i) => fixObs(s, i)),
     ...(uncovered(s).length > 0 ? [ob('SendOb')] : []),
     ...(allDone(s) ? [ob(s.top.done ? 'EndOb' : 'TopDoneOb')] : []),
@@ -242,6 +248,8 @@ export const discharges = (o: Ob, k: Actor, x: Step): boolean => {
       return x.tag === 'RecheckDone' && same
     case 'RuleRunOb':
       return x.tag === 'RunRule' && same
+    case 'AnswerOb':
+      return x.tag === 'Answer' && same
   }
 }
 
@@ -249,6 +257,7 @@ export const isPersonOb = (o: Ob): boolean =>
   o.tag === 'EndOb' ||
   o.tag === 'DraftOb' ||
   o.tag === 'DecideOb' ||
+  o.tag === 'AnswerOb' ||
   (o.tag === 'ReviveOb' && o.target === HOST)
 
 const roleOfTask = (s: WorkState, i: string | null): Actor => {
@@ -294,6 +303,8 @@ export const ageOf = (s: WorkState, o: Ob): number => {
     case 'RecheckOb':
     case 'RuleRunOb':
       return ageOfTarget(s, false, o.target)
+    case 'AnswerOb':
+      return s.asks.get(o.target ?? '') ?? 0
     default:
       return 0
   }

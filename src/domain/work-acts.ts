@@ -58,6 +58,8 @@ export const What = Schema.Union([
   Schema.TaggedStruct('Accept', { fix: Str }),
   Schema.TaggedStruct('SendBack', { fix: Str, points: Strs }),
   Schema.TaggedStruct('Decide', { task: Str, take: Schema.Boolean }),
+  Schema.TaggedStruct('Answer', { asker: Str, answer: Str }),
+  Schema.TaggedStruct('Ask', { asker: Str, question: Str }),
   Schema.TaggedStruct('SendTask', { spec: TaskSpec }),
   Schema.TaggedStruct('Reassign', {}),
   Schema.TaggedStruct('TopDone', {}),

@@ -188,6 +188,8 @@ export interface WorkState {
   readonly fixDepth: ReadonlyMap<ItemKey, number>
   readonly down: ReadonlySet<Actor>
   readonly ep: ReadonlyMap<Actor, number>
+  // The open question of each asker: the seq it was asked (its age); one per asker.
+  readonly asks: ReadonlyMap<Actor, number>
   readonly nextTask: number
   readonly nextMaker: number
   // The tries of a task before a raise (config); seq: the acts taken so far.
@@ -217,6 +219,8 @@ export type What =
   | { readonly _tag: 'SendBack'; readonly fix: string; readonly points: ReadonlyArray<string> }
   // take: take the result as it is; else back to evaluation.
   | { readonly _tag: 'Decide'; readonly task: string; readonly take: boolean }
+  // The person answers an agent's open question.
+  | { readonly _tag: 'Answer'; readonly asker: Actor; readonly answer: string }
   | { readonly _tag: 'SendTask'; readonly spec: TaskSpec }
   | { readonly _tag: 'Reassign' }
   | { readonly _tag: 'TopDone' }
@@ -229,6 +233,8 @@ export type What =
   }
   | { readonly _tag: 'Resume'; readonly maker: string }
   | { readonly _tag: 'ReadBrief'; readonly maker: string }
+  // The asker (the role, the pipe or a live maker) asks the person a factual question: itself.
+  | { readonly _tag: 'Ask'; readonly asker: Actor; readonly question: string }
   // caught (A): the test-command rules that print lines on this result.
   | {
     readonly _tag: 'Report'
