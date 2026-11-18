@@ -294,6 +294,10 @@
             }
           }
         },
+        "pipeline": {
+          "description": "true on the one persistent agent role that is the pipeline (PIPE, not a role card); at most one role has it. A top cannot open without it.",
+          "const": true
+        },
         "icon": {
           "description": "The icon of the role on its card.",
           "enum": [

@@ -23,6 +23,7 @@ import {
   type Work,
   usesProblem,
   whereRecord,
+  RuleRef,
 } from '../schema/index.ts'
 import { readApprovedBy, readDirection, readFlow } from '../services/index.ts'
 import { decidersOf } from '../state/decisions.ts'
@@ -200,10 +201,15 @@ const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refus
           if (typeof r?.id !== 'string' || typeof r?.says !== 'string') {
             return yield* bad(`rule ${j + 1} of ${s.id} needs an id and says`)
           }
+          if (r.ref !== undefined && !Schema.is(RuleRef)(r.ref)) {
+            return yield* bad(`rule ${r.id}: ref is file#anchor:lines, e.g. docs/x.md#tables:10-20`)
+          }
           rules.push({
             id: r.id,
             says: r.says,
             ...(r.checkedBy !== undefined ? { checkedBy: String(r.checkedBy) } : {}),
+            ...(r.test !== undefined ? { test: String(r.test) } : {}),
+            ...(r.ref !== undefined ? { ref: String(r.ref) } : {}),
             supersedes: list(r.supersedes).map(String),
           })
         }
@@ -277,12 +283,14 @@ const asRevise = (w: Work, file: DirectionFile, name: string): Effect.Effect<Rev
       readonly id: string
       readonly says: string
       readonly checkedBy?: string
+      readonly test?: string
+      readonly ref?: string
     }>
   }) =>
     JSON.stringify([
       s.says,
       s.where ?? null,
-      s.rules.map((r) => [r.id, r.says, r.checkedBy ?? null]),
+      s.rules.map((r) => [r.id, r.says, r.checkedBy ?? null, r.test ?? null, r.ref ?? null]),
     ])
   const shapeOf = (s: (typeof was)[number]) =>
     shape({
@@ -291,7 +299,13 @@ const asRevise = (w: Work, file: DirectionFile, name: string): Effect.Effect<Rev
       rules: s.rules.map((e) => {
         const r = ruleAt(w, e)
         const checkedBy = r.checkedBy._tag === 'Role' ? r.checkedBy.role : undefined
-        return { id: r.id, says: r.says, ...(checkedBy ? { checkedBy } : {}) }
+        return {
+          id: r.id,
+          says: r.says,
+          ...(checkedBy ? { checkedBy } : {}),
+          ...(r.test === undefined ? {} : { test: r.test }),
+          ...(r.ref === undefined ? {} : { ref: r.ref }),
+        }
       }),
     })
   const standard = (s: DirectionFile['standards'][number]) => ({

@@ -53,7 +53,9 @@ export interface Harness {
   readonly solToken: (p: Project, opened: string, run?: string, where?: object) => Promise<string>
   readonly init: (p: Project) => Promise<void>
   readonly project: (files?: Record<string, string>, name?: string) => Project
-  readonly started: () => Promise<{ readonly p: Project; readonly lead: string }>
+  readonly started: (
+    files?: Record<string, string>,
+  ) => Promise<{ readonly p: Project; readonly lead: string }>
   readonly withWriter: () => Promise<{
     readonly p: Project
     readonly lead: string

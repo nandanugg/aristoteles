@@ -316,6 +316,8 @@ interface RuleOfFile {
   readonly id: string
   readonly says: string
   readonly checkedBy?: string | undefined
+  readonly test?: string | undefined
+  readonly ref?: string | undefined
   readonly supersedes: ReadonlyArray<string>
 }
 interface StandardOfFile {
@@ -365,7 +367,12 @@ const rulesOfFile = (
     if (r.supersedes.includes(r.id)) guard(DRAFT.supersedesItself(r.id))
     const checkedBy = checkerOf(roles, r.id, r.checkedBy, guard)
     const same = older.findLast(
-      (x) => x.id === r.id && x.says === r.says && sameChecker(x.checkedBy, checkedBy),
+      (x) =>
+        x.id === r.id &&
+        x.says === r.says &&
+        x.test === r.test &&
+        x.ref === r.ref &&
+        sameChecker(x.checkedBy, checkedBy),
     )
     if (same && r.supersedes.length === 0) return { id: r.id, entry: same.entry }
     for (const id of r.supersedes) {

@@ -9,6 +9,7 @@ import {
   type ConfigFile,
   type DeciderFile,
   DirectionFile,
+  RuleRef,
   Flow,
   type FlowStep,
   type RoleFile,
@@ -187,6 +188,15 @@ const readRoles = (raw: Raw, models: ReadonlyArray<string>): Record<string, Role
       }
       if (list(r.responsibilities).length === 0) fail(where, 'responsibilities must list at least one')
       readPersistence(where, r.persistence)
+      if (r.pipeline !== undefined && r.pipeline !== true) {
+        fail(where, 'pipeline is true on the one role that is the pipeline, or absent')
+      }
+      if (r.pipeline === true && !r.persistence.persistent) {
+        fail(where, 'the pipeline role is persistent: set persistence.persistent to true')
+      }
+    }
+    if (r.kind === 'program' && r.pipeline !== undefined) {
+      fail(where, 'a program is never the pipeline role: remove pipeline')
     }
     readIcon(where, r.icon)
     const acts = list(r.acts).map((a) => readAct(where, a, names))
@@ -212,8 +222,13 @@ const readRoles = (raw: Raw, models: ReadonlyArray<string>): Record<string, Role
       checks: list(r.checks),
       ...some('timeout', r.timeout),
       ...some('persistence', r.persistence),
+      ...some('pipeline', r.pipeline),
       icon: r.icon,
     } as unknown as RoleFile
+  }
+  const piped = Object.entries<Raw>(raw).filter(([, r]) => r?.pipeline === true)
+  if (piped.length > 1) {
+    fail(CONFIG, `at most one role is the pipeline; ${piped.map(([n]) => n).join(', ')} all are`)
   }
   return roles
 }
@@ -507,6 +522,20 @@ const flowOf = (file: string, value: unknown): ReadonlyArray<FlowStep> => {
 export const readFlow = (file: string, value: unknown): Effect.Effect<ReadonlyArray<FlowStep>, Refused> =>
   refusing(() => flowOf(file, value))
 
+// The evidence of a rule file (DESIGN 4): test is a command, ref is file#anchor:lines.
+const evidenceOf = (file: string, r: Raw): { test?: string; ref?: string } => {
+  if (r.test !== undefined && (typeof r.test !== 'string' || !r.test.trim())) {
+    fail(file, `rule ${r.id}: test is a shell command (no output = the rule holds)`)
+  }
+  if (r.ref !== undefined && !Schema.is(RuleRef)(r.ref)) {
+    fail(file, `rule ${r.id}: ref is file#anchor:lines, e.g. docs/x.md#tables:10-20`)
+  }
+  return {
+    ...(r.test === undefined ? {} : { test: r.test }),
+    ...(r.ref === undefined ? {} : { ref: r.ref }),
+  }
+}
+
 export const readDirection = (
   file: string,
   raw: unknown,
@@ -538,6 +567,7 @@ export const readDirection = (
           id: r.id,
           says: r.says,
           ...(r.checkedBy !== undefined ? { checkedBy: r.checkedBy } : {}),
+          ...evidenceOf(file, r),
           supersedes: list(r.supersedes),
         }
       })

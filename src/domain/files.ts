@@ -80,6 +80,8 @@ export const RoleFile = Schema.Union([
     acts: Schema.Array(ActFile),
     checks: Schema.Array(Key),
     persistence: PersistenceFile,
+    // The pipeline role (DESIGN 1): the one persistent role that is PIPE, not a role card.
+    pipeline: Schema.optionalKey(Schema.Boolean),
     icon: RoleIcon,
   }),
   Schema.Struct({
@@ -233,10 +235,25 @@ export const PartFile = Schema.Struct({
 })
 export type PartFile = typeof PartFile.Type
 
+// The evidence of a rule (DESIGN 4). test: a shell command; no output means the rule holds, each
+// printed line is a point. ref: file#anchor:lines (docs/x.md#tables:10-20). A rule with neither is
+// judged by a reader only.
+export const RuleTest = NonBlank
+export const RuleRef = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (s: string) =>
+        /^[^#\s]+#[^:\s]+:\d+(-\d+)?$/.test(s) ||
+        'a ref is file#anchor:lines, e.g. docs/x.md#tables:10-20',
+    ),
+  ),
+)
 // A rule and a standard, as a direction file or a revise file writes them.
 export const RuleFile = Schema.Struct({
   id: Key,
   says: Schema.String,
+  test: Schema.optionalKey(RuleTest),
+  ref: Schema.optionalKey(RuleRef),
   checkedBy: Schema.optionalKey(RoleName),
   supersedes: Schema.Array(Key),
 })

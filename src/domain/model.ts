@@ -333,6 +333,8 @@ export interface Rule {
   readonly entry: RuleEntry // not on the page: its entry in aristoteles (rule 1)
   readonly id: Text // e.g. 'no-ticket-ids': one rule in the project; every file has it
   readonly says: Text
+  readonly test?: string // a shell command: no output = the rule holds, each line a point
+  readonly ref?: string // file#anchor:lines
   // page: checkedBy?; none: the decider of the result checks it.
   readonly checkedBy:
     | { readonly _tag: 'Decider' }

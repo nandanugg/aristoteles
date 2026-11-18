@@ -8,6 +8,9 @@ import {
   type Author,
   create,
   type Draft,
+  type FlowStep,
+  isMarked,
+  isSpot,
   type Work,
   writtenBy,
 } from '../schema/index.ts'
@@ -19,6 +22,7 @@ import { epOf } from '../state/work/reads.ts'
 import type {
   Act,
   Actor,
+  Example,
   ItemKey,
   ItemRec,
   RoleDraft,
@@ -57,6 +61,12 @@ export interface Acted {
 export const WORK = {
   noTop: () =>
     no('no top is open', 'Wait', 'the person opens the top (work open), then act again'),
+  noPipeline: () =>
+    no(
+      'no role is the pipeline',
+      'Escalate',
+      'the person marks one persistent role with pipeline: true in aristoteles.yaml',
+    ),
   open: () => no('the top is open already', 'Pick', 'act on the open top'),
   // The words of each check of `refusal`, and what the actor does next.
   checks: (c: Check, who: Actor, tag: string): Refusal => {
@@ -172,8 +182,26 @@ export interface Opened {
 
 const none = { test: null, ref: null, form: 'none', examples: [] } as const
 
-// The items of the official directions: dir:<id>, std:<entry>, rule:<entry>. A rule has no test
-// command yet, so its form is a reference.
+// The examples that the marked steps of a flow give to the ids they use: a written text, or the
+// excerpt of a spot.
+const examplesOf = (
+  flow: ReadonlyArray<FlowStep>,
+  ...ids: ReadonlyArray<string>
+): ReadonlyArray<Example> =>
+  flow.filter(isMarked).flatMap((s) =>
+    s.uses.some((u) => ids.includes(u))
+      ? s.examples.map((e) => ({
+          fits: e.fit === 'Follows' ? ('follows' as const) : ('breaks' as const),
+          sample: isSpot(e.output) ? e.output.excerpt : e.output.written,
+        }))
+      : [],
+  )
+
+// The form of a rule by its evidence: none means a reader alone judges it (WriteRule refuses it).
+const formOf = (test: string | undefined, ref: string | undefined): ItemRec['form'] =>
+  test !== undefined ? (ref !== undefined ? 'both' : 'mech') : ref !== undefined ? 'ref' : 'none'
+
+// The items of the official directions: dir:<id>, std:<entry>, rule:<entry>.
 const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
   [...w.directions.keys()].flatMap((id) => {
     if (officialAt(w, id) === undefined) return []
@@ -185,6 +213,7 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
       name: w.directions.get(id)?.name ?? id,
       says: v.says,
       where: null,
+      examples: examplesOf(v.flow, id),
     }
     const parts = v.standards.flatMap((entry) => {
       const std = w.standards.get(entry)
@@ -197,6 +226,7 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
         name: std.id,
         says: std.says,
         where: sections ?? null,
+        examples: examplesOf(v.flow, std.id),
       }
       const rules = std.rules.flatMap((r) => {
         const rule = w.rules.get(r)
@@ -208,7 +238,10 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
           name: rule.id,
           says: rule.says,
           where: null,
-          form: 'ref',
+          test: rule.test ?? null,
+          ref: rule.ref ?? null,
+          form: formOf(rule.test, rule.ref),
+          examples: examplesOf(v.flow, rule.id),
         }
         return [[`rule:${r}`, rr] as const]
       })
@@ -217,10 +250,11 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
     return [[`dir:${id}`, d] as const, ...parts]
   })
 
-// The cards of the persistent agent roles: the role's intro and model.
+// The cards of the persistent agent roles but the pipeline role (it is PIPE): the role's intro
+// and model.
 const cardsOf = (w: Work): ReadonlyArray<readonly [string, RoleDraft]> =>
   Object.entries(w.config.roles).flatMap(([role, f]) =>
-    f.kind === 'agent' && f.persistence.persistent
+    f.kind === 'agent' && f.persistence.persistent && f.pipeline !== true
       ? [[role, { role, words: f.intro, model: f.model }] as const]
       : [],
   )
@@ -252,6 +286,10 @@ export const openTop = (call: OpenCall) =>
           return yield* Effect.fail(WORK.open())
         }
         const work = yield* folding(() => fold(events))
+        const roles = Object.values(work.config.roles)
+        if (!roles.some((f) => f.kind === 'agent' && f.pipeline === true)) {
+          return yield* Effect.fail(WORK.noPipeline())
+        }
         const items = itemsOf(work)
         const cards = cardsOf(work)
         const actors = [HOST, PIPE, ...cards.map(([role]) => roleActor(role))]

@@ -12,6 +12,18 @@ import type { Act, What } from '../state/work/types.ts'
 import { type ActCall, dispatchAct, openTop } from './work.ts'
 import { eventsOf, h, NANDA } from './fixture.test.ts'
 
+// The fixture with the pipeline role, and a direction whose rules give evidence: no-code-proof a
+// test, no-ticket-ids a test and a ref, repeatable none.
+const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
+const EVIDENT = h.DIRECTION.replace(
+  'checkedBy: linter }\n      - { id: no-ticket-ids',
+  "checkedBy: linter, test: 'grep -n :[0-9] docs/tsd.md' }\n      - { id: no-ticket-ids",
+).replace(
+  'no-ticket-ids, says: "No ticket ids and no chat-thread citations"',
+  "no-ticket-ids, test: 'grep -n TCK- docs/tsd.md', ref: 'docs/tsd.md#design:1-4', " +
+    'says: "No ticket ids and no chat-thread citations"',
+)
+
 const layer = (dir: string, at: string) => {
   let n = 0
   return Layer.mergeAll(
@@ -54,12 +66,47 @@ const call = (
 })
 const send = (id: string): What => ({
   _tag: 'SendTask',
-  spec: { name: id, goal: 'g', sections: ['intro'], role: 'architect' },
+  spec: { name: id, goal: 'g', sections: ['intro'], role: 'section-lead' },
+})
+
+describe('the items of openTop', () => {
+  test('a rule has its form by its evidence, and examples from the flow', async () => {
+    const { p } = await h.started({
+      'aristoteles.yaml': PIPED,
+      'directions/tsd-writing.yaml': EVIDENT,
+    })
+    value(await run(p.dir, p.now(), openTop({ by: NANDA, name: 'T', goal: 'g', sections: [] })))
+    const items = foldWork(eventsOf(p.dir))?.state.items
+    const rule = (x: string) => [...(items ?? [])].find(([, r]) => r.name === x)?.[1]
+    expect(rule('no-code-proof')).toMatchObject({ form: 'mech', ref: null })
+    expect(rule('no-ticket-ids')).toMatchObject({
+      form: 'both',
+      test: 'grep -n TCK- docs/tsd.md',
+      ref: 'docs/tsd.md#design:1-4',
+    })
+    expect(rule('no-code-proof')?.examples.map((e) => e.fits)).toEqual(['follows', 'breaks'])
+    const repeatable = [...(items ?? [])].find(([, r]) => r.name === 'repeatable')?.[1]
+    expect(repeatable).toMatchObject({ form: 'none', test: null })
+    expect(repeatable?.examples).toEqual([
+      { fits: 'follows', sample: '## Introduction' },
+      { fits: 'breaks', sample: '## Introduction and design, in one section' },
+    ])
+    const dir = [...(items ?? [])].find(([, r]) => r.kind === 'dir')?.[1]
+    expect(dir?.examples.length).toBe(2)
+  }, 90000)
+
+  test('no pipeline role: the top is refused', async () => {
+    const { p } = await h.started()
+    const top = openTop({ by: NANDA, name: 'T', goal: 'g', sections: [] })
+    const exit = await run(p.dir, p.now(), top)
+    expect(failed(exit)?.message).toBe('no role is the pipeline')
+    expect(foldWork(eventsOf(p.dir))).toBeNull()
+  }, 90000)
 })
 
 describe('work acts through the store', () => {
-  test('no top is refused; openTop makes items, cards, tokens; a second one is refused', async () => {
-    const { p } = await h.started()
+  test('no top is refused; openTop makes items, cards, tokens; a second is refused', async () => {
+    const { p } = await h.started({ 'aristoteles.yaml': PIPED })
     const at = p.now()
     const before = eventsOf(p.dir).length
     expect(failed(await run(p.dir, at, dispatchAct(call('host', send('s')))))?.message).toBe(
@@ -69,17 +116,12 @@ describe('work acts through the store', () => {
       await run(p.dir, at, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['intro'] })),
     )
     expect(top.seq).toBe(before + 1)
-    expect(top.secrets.map((s) => s.actor)).toEqual([
-      'host',
-      'pipe',
-      'role:architect',
-      'role:section-lead',
-    ])
+    expect(top.secrets.map((s) => s.actor)).toEqual(['host', 'pipe', 'role:section-lead'])
     const folded = foldWork(eventsOf(p.dir))
     expect(folded?.state.top.directions.length).toBeGreaterThan(0)
     expect([...(folded?.state.items.keys() ?? [])].map((x) => x.split(':')[0])).toContain('rule')
     expect(folded?.state.maxTries).toBe(3)
-    expect([...(folded?.state.cards.keys() ?? [])]).toEqual(['architect', 'section-lead'])
+    expect([...(folded?.state.cards.keys() ?? [])]).toEqual(['section-lead'])
     expect(folded?.tokens.get('host')?.length).toBe(1)
     const db = new Database(join(p.dir, '.work', 'aristoteles.db'), { readonly: true })
     const rows = db.query('SELECT item, version, seq FROM item_version').all()
@@ -91,7 +133,7 @@ describe('work acts through the store', () => {
   }, 90000)
 
   test('accepted acts append, a copy appends nothing, each check refuses in words', async () => {
-    const { p } = await h.started()
+    const { p } = await h.started({ 'aristoteles.yaml': PIPED })
     const at = p.now()
     value(await run(p.dir, at, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['intro'] })))
     const count = () => eventsOf(p.dir).length
@@ -107,13 +149,14 @@ describe('work acts through the store', () => {
 
     const refused = async (c: ActCall) => failed(await run(p.dir, at, dispatchAct(c)))?.message
     const assign: What = { _tag: 'AssignDo', task: 't1' }
-    expect(await refused(call('role:architect', assign, {}, 'b1'))).toBe(
+    expect(await refused(call('role:section-lead', assign, {}, 'b1'))).toBe(
       'the act comes from an old build of the page',
     )
     expect(await refused(call('host', assign))).toBe('host does not act AssignDo')
     expect(count()).toBe(stored)
 
-    const made = value(await run(p.dir, at, dispatchAct(call('role:architect', assign, {}, 'b2'))))
+    const act = dispatchAct(call('role:section-lead', assign, {}, 'b2'))
+    const made = value(await run(p.dir, at, act))
     expect(made.token).toMatchObject({ actor: 'maker:m1', ep: 0 })
     const brief = call('maker:m1', { _tag: 'ReadBrief', maker: 'm1' })
     value(await run(p.dir, at, dispatchAct(brief)))

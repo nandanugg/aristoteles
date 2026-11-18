@@ -98,6 +98,7 @@ export {
   Settings,
   Snapshot,
   isSpot,
+  RuleRef,
   Sample,
   Spot,
   spotsOf,

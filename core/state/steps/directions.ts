@@ -91,7 +91,12 @@ const buildStandard = (
         ? { _tag: 'Decider' }
         : { _tag: 'Role', role: r.checkedBy as RoleName }
     const same = older.findLast(
-      (x) => x.id === r.id && x.says === r.says && sameChecker(x.checkedBy, checkedBy),
+      (x) =>
+        x.id === r.id &&
+        x.says === r.says &&
+        x.test === r.test &&
+        x.ref === r.ref &&
+        sameChecker(x.checkedBy, checkedBy),
     )
     if (same && r.supersedes.length === 0) return same.entry
     const supersedes = r.supersedes.flatMap((id) => {
@@ -99,7 +104,15 @@ const buildStandard = (
       return old ? [old.entry] : []
     })
     const ruleEntry = `${entry}/${r.id}` as RuleEntry
-    const rule = { entry: ruleEntry, id: r.id, says: r.says, checkedBy, supersedes }
+    const rule = {
+      entry: ruleEntry,
+      id: r.id,
+      says: r.says,
+      ...(r.test === undefined ? {} : { test: r.test }),
+      ...(r.ref === undefined ? {} : { ref: r.ref }),
+      checkedBy,
+      supersedes,
+    }
     scratch.rules.set(ruleEntry, rule)
     return ruleEntry
   })
