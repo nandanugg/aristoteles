@@ -1,90 +1,19 @@
-// The derived states of onboarding (BUILD.md section 3, W1): a persistent agent, a drafted
-// adjustment, a retired direction, an example, a direction of onboarding; and what waitingFor and
-// nextFor make of them. The stores come from the harness (temp dirs); an event that a later
-// wave's command writes is appended as the store appends any checked event.
+// The derived states of onboarding (BUILD.md section 3, W1): an example and a direction of
+// onboarding, and the flow that holds the examples.
 import { describe, expect, test } from 'bun:test'
-import { join } from 'node:path'
-import { Effect, Layer, Schema } from 'effect'
+import { Schema } from 'effect'
+import { decodeRecorded } from '../../src/domain/events.ts'
 import {
-  type AssignmentId,
   type Author,
-  type DirectionId,
-  type Event,
   Example,
-  type EventRef,
   Flow,
   FlowStep,
   OnboardingDirection,
   type Time,
 } from '../schema/index.ts'
-import { decodeRecorded } from '../../src/domain/events.ts'
-import { Env, Store, StoreLive } from '../services/index.ts'
-import {
-  derive,
-  exampleStateOf,
-  onboardingStateOf,
-  waitingFor,
-} from './index.ts'
-import { momentOf } from './support.test.ts'
-// @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
-import * as harnessJs from '../../test/harness.js'
+import { exampleStateOf, onboardingStateOf } from './index.ts'
 
-interface Ran {
-  readonly code: number
-  readonly out: string
-  readonly err: string
-}
-interface Project {
-  readonly dir: string
-  readonly nanda: (line: string, typed?: string) => Promise<Ran>
-  readonly agent: (line: string) => Promise<Ran>
-  readonly ui: (line: string, typed?: string) => Promise<Ran>
-  readonly run: (line: string, options: object) => Promise<Ran>
-  readonly write: (path: string, text: string) => void
-  readonly now: () => string
-}
-const h = harnessJs as {
-  readonly project: (files?: Record<string, string>) => Project
-  readonly init: (p: Project) => Promise<void>
-  readonly started: () => Promise<{ readonly p: Project; readonly lead: string }>
-  readonly HOST: object
-  readonly TASK_WHOLE: string
-}
-
-// --- appended events ----------------------------------------------------------------------------
-
-const append = (p: Project, author: Author, event: Event): Promise<EventRef> =>
-  Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const opened = yield* (yield* Store).open(p.dir, { create: false })
-        const draft = { at: p.now() as Time, author, event }
-        const seq = yield* opened.write(() => Effect.succeed({ draft, rows: [] }))
-        return `e${seq}` as EventRef
-      }),
-    ).pipe(
-      Effect.provide(
-        StoreLive.pipe(
-          Layer.provide(
-            Layer.succeed(Env, { vars: { ARISTOTELES_DB: dbOf(p.dir) } }),
-          ),
-        ),
-      ),
-    ),
-  )
-const dbOf = (dir: string) => join(dir, '.work', 'aristoteles.db')
-const NANDA: Author = { _tag: 'Person', name: 'Nanda', channel: 'ui' }
 const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
-const drafted = (adjustment: unknown) =>
-  ({ _tag: 'Adjustment', create: { _tag: 'Drafted', adjustment } }) as Event
-const accepted = (draft: EventRef, p: Project) => {
-  const w = momentOf(p.dir, p.now() as Time).work
-  const move = { _tag: 'Accepted', hashes: w.hashes, texts: w.texts }
-  return { _tag: 'Adjustment', id: draft, move } as Event
-}
-const rejected = (draft: EventRef) =>
-  ({ _tag: 'Adjustment', id: draft, move: { _tag: 'Rejected', reason: 'not now' } }) as Event
-const derivedOf = (p: Project) => derive(momentOf(p.dir, p.now() as Time))
 
 // Nanda, 2026-11-15: an example is an output of a marked step, real or written by the host.
 const SPOT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
@@ -246,56 +175,4 @@ describe('onboardingStateOf', () => {
     }
     expect(Schema.decodeUnknownOption(OnboardingDirection)(old)._tag).toBe('None')
   })
-})
-
-// --- states of a store --------------------------------------------------------------------------
-
-describe('AgentState', () => {
-})
-
-describe('adjustments', () => {
-  const RETIRE = { _tag: 'RetireDirection', direction: 'tsd-writing' }
-  test('Waiting, Accepted, Rejected, Replaced; Retired; who they wait for', async () => {
-    const { p } = await h.started()
-    const setModel = (model: string) => ({ _tag: 'SetModel', role: 'writer', model })
-    const first = await append(p, HOST_RUN, drafted(setModel('sonnet')))
-    const second = await append(p, HOST_RUN, drafted(setModel('opus')))
-    const retire = await append(p, HOST_RUN, drafted(RETIRE))
-    const accept = await append(p, NANDA, accepted(retire, p))
-    const lead = { _tag: 'Agent', assignment: 'a1' } as Author
-    const remove = await append(p, lead, drafted({ _tag: 'RemoveRole', role: 'linter' }))
-    const reject = await append(p, NANDA, rejected(remove))
-    const d = derivedOf(p)
-    expect(d.states.adjustments.get(first)).toEqual({ _tag: 'Replaced', by: second })
-    expect(d.states.adjustments.get(second)).toEqual({ _tag: 'Waiting' })
-    expect(d.states.adjustments.get(retire)).toEqual({ _tag: 'Accepted', by: accept })
-    expect<unknown>(d.states.adjustments.get(remove)).toEqual({
-      _tag: 'Rejected',
-      by: reject,
-      reason: 'not now',
-    })
-    expect(d.states.directions.get('tsd-writing' as DirectionId)).toEqual({
-      _tag: 'Retired',
-      by: accept,
-    })
-    // The person sees a waiting adjustment at once; a rejected one waits for its drafter.
-    const items = waitingFor(d, { _tag: 'Everyone' })
-    const waiting = items.filter((i) => i._tag === 'Adjustment')
-    expect(waiting.map((i) => [i.draft, i.for, i.hold])).toEqual([
-      [second, { _tag: 'Person', name: 'Nanda' }, { _tag: 'Shown' }],
-    ] as never)
-    const stepOf = waiting[0]?.step
-    expect(stepOf?._tag === 'Do' ? stepOf.intents.map((i) => i._tag) : []).toEqual([
-      'AcceptAdjustment',
-      'RejectAdjustment',
-    ])
-    const again = items.filter((i) => i._tag === 'AdjustmentRejected')
-    expect(again.map((i) => [i.draft, i.for])).toEqual([
-      [remove, { _tag: 'Assignment', assignment: 'a1' as AssignmentId }],
-    ] as never)
-  }, 60000)
-})
-
-describe('what reaches the host from no project', () => {
-
 })

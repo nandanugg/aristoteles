@@ -48,22 +48,12 @@ export const folding = <A>(run: () => A): Effect.Effect<A, StoreDamaged> =>
 const lastActAt = (w: Work): Time | undefined =>
   w.events.findLast(({ recorded }) => {
     const g = recorded.event._tag
-    return ![
-      'Workflow',
-      'Role',
-      'Agent',
-      'Run',
-      'TaskDraft',
-      'Problem',
-      'Terminal',
-      'Send',
-      'HostWords',
-    ].includes(g)
+    return !['Workflow', 'Role', 'Send'].includes(g)
   })?.recorded.at
 
 // N6 (I4): a model run that names itself as a person of the work is that person (the CLI word:
 // the person's own name in --by).
-export const personByName = <C extends ActionCall>(w: Work, call: C): C =>
+const personByName = <C extends ActionCall>(w: Work, call: C): C =>
   call.by._tag === 'ModelRun' && w.config.people.includes(call.by.name)
     ? { ...call, by: { _tag: 'Person', name: call.by.name, channel: 'terminal' } }
     : call

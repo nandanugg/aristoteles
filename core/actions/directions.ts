@@ -1,45 +1,29 @@
-// The actions of directions, suggestions, permissions and forwards. The content checks of a draft
-// are in drafts.ts.
+// The actions of directions, suggestions and sources: the drafts before a top (drafted, revised,
+// imported, with their examples), the owner's accept or reject of a draft, and what the host reads
+// of an outside source. The content checks of a draft are in drafts.ts.
 import { Effect, Schema } from 'effect'
-import type { Derived } from '../derived/index.ts'
-import { currentOf, draftAt, labelOf, ruleAt, standardAt, within } from '../derived/reads.ts'
-import type { ActionInput, InputOf, WhyInput } from '../schema/actions.ts'
+import { currentOf, draftAt, ruleAt, standardAt } from '../derived/reads.ts'
+import type { ActionInput, WhyInput } from '../schema/actions.ts'
 import type { Refusal } from '../schema/errors.ts'
 import {
-  type Author,
   CONTEXT_KEYS,
   create,
-  type Direction,
   type DirectionFile,
-  type Event,
-  type ForwardedAct,
   isNonBlank,
-  lookup,
   move,
   oneOf,
   REASONS,
   ReviseFile,
+  RuleRef,
+  usesProblem,
   type Why,
   type Work,
-  usesProblem,
   whereRecord,
-  RuleRef,
 } from '../schema/index.ts'
 import { readApprovedBy, readDirection, readFlow } from '../services/index.ts'
-import { decidersOf } from '../state/decisions.ts'
+import { answersFound, checkDrafted, checkImported, checkRevised, DRAFT } from './drafts.ts'
 import {
-  answersFound,
-  checkDrafted,
-  checkImported,
-  checkRevised,
-  DRAFT,
-  reviseAnswersFound,
-} from './drafts.ts'
-import { PERSON_ACTS } from './reviews.ts'
-import {
-  agentOf,
   allowed,
-  asPick,
   asWrite,
   blank,
   configUnchanged,
@@ -48,7 +32,7 @@ import {
   readYaml,
   type RefusalsOf,
 } from './support.ts'
-import type { Action, ActionServices } from './types.ts'
+import type { Action } from './types.ts'
 
 const WHY = {
   wordsNeedReason: (reasons: string) =>
@@ -65,7 +49,7 @@ const WHY = {
     ),
 } satisfies RefusalsOf
 
-export const REFUSALS = {
+const REFUSALS = {
   DraftDirection: {
     ...WHY,
     ...DRAFT,
@@ -100,49 +84,12 @@ export const REFUSALS = {
         'name a direction, a standard or a rule of a version',
       ),
   },
-  Grant: {
-    past: (until: string) => no(`--until=${until} is in the past`, 'Pick', 'give a time after now'),
-    noTarget: (id: string) =>
-      no(`there is no task ${id}`, 'Pick', 'name an official direction or a task'),
+  Accept: {},
+  Reject: {
+    noReason: (target: string) =>
+      no(`a reject of ${target} needs --reason="<why>"`, 'Write', `write why ${target} is wrong`),
   },
-  Revoke: {},
-  Forward: {
-    notPerson: (who: string) =>
-      no(`${who} is not in the people of aristoteles.yaml`, 'Pick', 'name a person of the work'),
-    noQuote: () =>
-      no(
-        'a forward needs --quote="<their exact words>"',
-        'Write',
-        "write the person's exact words",
-      ),
-    outsideTree: (target: string, a: string) =>
-      no(`${target} is outside the task tree of ${a}`, 'Pick', 'forward an act on your own tree'),
-    changed: (result: string) =>
-      no(
-        `the work changed after ${result} was reported`,
-        'Wait',
-        'the maker reports it again as a new attempt; forward the review of that result',
-      ),
-    could: (who: string, act: string, message: string, words: string) =>
-      no(`${who} could not ${act} now: ${message}`, 'Pick', words),
-    // The old next line of a forwarded answer that the person could not give.
-    notTheirs: (who: string) =>
-      no(
-        `that question is not ${who}'s`,
-        'Pick',
-        `to bring ${who}'s fact to the work, ask it yourself (work ask --to=owner); ` +
-          `${who} answers it on the page`,
-      ),
-    askEnded: (label: string) =>
-      no(
-        `${label} is finished, so it answers no question; ask an open assignment`,
-        'Pick',
-        'ask an open assignment',
-      ),
-  },
-  Confirm: {
-    could: (message: string, words: string) => no(message, 'Pick', words),
-  },
+  ReadSource: {},
 } satisfies Readonly<Record<string, RefusalsOf>>
 const R = REFUSALS
 
@@ -328,26 +275,13 @@ const asRevise = (w: Work, file: DirectionFile, name: string): Effect.Effect<Rev
   })
 }
 
-// The approvedBy of a file says what the direction's says: the owner (none named), or the same
-// deciders.
-const sameApprovedBy = (
-  w: Work,
-  file: Parameters<typeof decidersOf>[0] | undefined,
-  now: Direction['approvedBy'],
-): boolean => {
-  if (file === undefined) return now._tag === 'Owner'
-  if (now._tag === 'Owner') return false
-  const roles = [...w.workflow.roles.keys()]
-  return JSON.stringify(decidersOf(file, roles)) === JSON.stringify(now.deciders)
-}
-
 // --- drafts -------------------------------------------------------------------------------------
 
 const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
     const w = d.moment.work
-    yield* configUnchanged(d, by)
+    yield* configUnchanged(d)
     yield* allowed(d, by, input)
     const { file, answers } = input.content
     const raw = yield* readYaml(d.moment.outside.cwd, file)
@@ -365,7 +299,6 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
       const keys = [
         ...(base.name !== existing.name ? ['name'] : []),
         ...(base.owner !== existing.owner.name ? ['owner'] : []),
-        ...(sameApprovedBy(w, approvedBy, existing.approvedBy) ? [] : ['approvedBy']),
       ]
       if (keys.length) return yield* fail(R.DraftDirection.frameChanged(base.id, keys.join(', ')))
       const revise: ActionInput = {
@@ -374,7 +307,7 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
         content: input.content,
       }
       yield* allowed(d, by, revise)
-      yield* reviseAnswersFound(w, by, answers)
+      yield* answersFound(w, answers)
       const revised = { direction: existing.id, edit: yield* asRevise(w, base, file), answers, why }
       yield* checkRevised(d, by, revised)
       return [create('Revision', { _tag: 'Revised', ...revised })]
@@ -389,11 +322,11 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
 const ReviseDirection: Action<'ReviseDirection'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
-    yield* configUnchanged(d, by)
+    yield* configUnchanged(d)
     yield* allowed(d, by, input)
     const { file, answers } = input.content
     const edit = yield* readRevise(file, yield* readYaml(d.moment.outside.cwd, file))
-    yield* reviseAnswersFound(d.moment.work, by, answers)
+    yield* answersFound(d.moment.work, answers)
     const why = yield* whyOf(input.content.why)
     const revised = { direction: input.target.direction, edit, answers, why }
     yield* checkRevised(d, by, revised)
@@ -432,7 +365,7 @@ const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
     return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow })]
   })
 
-// --- suggestions and permissions -----------------------------------------------------------------
+// --- suggestions, the owner's decision, sources --------------------------------------------------
 
 // What a suggestion is about, by its key: an official direction, else a standard of a current
 // version, else a rule of one.
@@ -465,174 +398,43 @@ const Suggest: Action<'Suggest'> = ({ by, input }) =>
     return [create('Suggestion', { _tag: 'Suggestion', about: made, says: says as never })]
   })
 
-const Grant: Action<'Grant'> = ({ by, input }) =>
+// The owner (the person) accepts or rejects a draft; the fold makes the version of an accept.
+const Accept: Action<'Accept'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
-    const w = d.moment.work
+    yield* configUnchanged(d)
     yield* allowed(d, by, input)
-    const { act, to } = input.target
-    const { until } = input.content
-    if (Date.parse(until) <= Date.parse(d.moment.at)) return yield* fail(R.Grant.past(until))
-    // A change act covers official directions by their id, else tasks.
-    if (act._tag === 'Change') {
-      for (const id of act.changesOf) {
-        const official = w.directions.get(id as never)?._tag === 'Official'
-        if (!official && !w.tasks.has(id as never)) return yield* fail(R.Grant.noTarget(id))
-      }
-    }
-    return [create('Permission', { _tag: 'Granted', act, to, until })]
+    const { reason } = input.content
+    const comment = reason !== null && isNonBlank(reason) ? reason : null
+    const of = { _tag: 'Revision' as const, id: input.target.of.id, evidence: [] }
+    return [create('Review', { _tag: 'Accept', of, reason: comment })]
   })
 
-const Revoke: Action<'Revoke'> = ({ by, input }) =>
-  Effect.gen(function* () {
-    yield* allowed(yield* current, by, input)
-    return [move('Permission', input.target.permission, { _tag: 'Revoked' })]
-  })
-
-// --- forwards ------------------------------------------------------------------------------------
-
-// The CLI word of a forwarded act, for the words of its refusal.
-const forwardWord = (inner: ForwardedAct): string => {
-  if (inner._tag === 'Note') return 'comment'
-  if (inner._tag === 'Question') return 'move' in inner ? 'answer' : 'ask'
-  return inner.create._tag.toLowerCase()
-}
-// The record that an inner act is on, and the task of it.
-const innerTarget = (w: Work, inner: ForwardedAct): { id: string; task: string | undefined } => {
-  if (inner._tag === 'Note') return { id: inner.create.about, task: inner.create.about }
-  if (inner._tag === 'Question') {
-    if ('move' in inner) return { id: inner.id, task: w.questions.get(inner.id)?.stops }
-    const a = w.assignments.get(inner.create.to.assignment)
-    return { id: inner.create.to.assignment, task: a?.task }
-  }
-  const r = inner.create
-  if (r._tag === 'Resolve') {
-    const e = w.reviews.get(r.escalation)
-    const result = e?._tag === 'Escalate' ? w.results.get(e.of) : undefined
-    return { id: r.escalation, task: result?.task }
-  }
-  const of = r.of
-  if (of._tag === 'Revision') return { id: of.id, task: undefined }
-  if (of._tag === 'Task') return { id: of.id, task: of.id }
-  return { id: of.id, task: w.results.get(of.id)?.task }
-}
-// The person could do the forwarded act now (the old CLI's dry run, and its check at the
-// confirm): the person's own act runs with its checks of state and content, and its event is
-// dropped. A question to an agent is no act of the person: its agent must still be open.
-const personCould = (
-  d: Derived,
-  by: Author,
-  inner: ForwardedAct,
-): Effect.Effect<ReadonlyArray<Event>, Refusal, ActionServices> => {
-  const w = d.moment.work
-  if (inner._tag === 'Note') {
-    const { about, text } = inner.create
-    return PERSON_ACTS.Note({
-      by,
-      input: { _tag: 'Note', target: { task: about }, content: { kind: 'Message', text } },
-    })
-  }
-  if (inner._tag === 'Question') {
-    if ('move' in inner) {
-      const content = { text: inner.move.text }
-      return PERSON_ACTS.Answer({
-        by,
-        input: { _tag: 'Answer', target: { question: inner.id }, content },
-      })
-    }
-    const asked = inner.create.to.assignment
-    return Effect.gen(function* () {
-      yield* lookup(w, asked, ['a']).pipe(Effect.mapError(asPick))
-      if (d.states.assignments.get(asked)?._tag !== 'Ended') return []
-      return yield* fail(R.Forward.askEnded(labelOf(w, asked)))
-    })
-  }
-  const r = inner.create
-  switch (r._tag) {
-    case 'Resolve': {
-      const content = { resolution: r.resolution, evidence: r.evidence }
-      const input = { _tag: 'Resolve', target: { escalation: r.escalation }, content } as const
-      return PERSON_ACTS.Resolve({ by, input })
-    }
-    case 'Accept': {
-      const of =
-        r.of._tag === 'Result'
-          ? ({ _tag: 'Result', id: r.of.id } as const)
-          : ({ _tag: 'Revision', id: r.of.id } as const)
-      const content = { evidence: r.of.evidence, reason: r.reason }
-      return PERSON_ACTS.Accept({ by, input: { _tag: 'Accept', target: { of }, content } })
-    }
-    case 'Reject': {
-      const of = r.of
-      const reject = (input: InputOf<'Reject'>) => PERSON_ACTS.Reject({ by, input })
-      switch (of._tag) {
-        case 'Revision': {
-          const target = { of: { _tag: 'Revision', id: of.id } } as const
-          return reject({ _tag: 'Reject', target, content: { reason: of.reason } })
-        }
-        case 'Task': {
-          const target = { of: { _tag: 'Task', id: of.id } } as const
-          const points = of.points.map((p) => ({ text: p.text, breaks: null }))
-          return reject({ _tag: 'Reject', target, content: { points } })
-        }
-        case 'Result': {
-          const target = { of: { _tag: 'Result', id: of.id } } as const
-          return reject({ _tag: 'Reject', target, content: { points: of.points } })
-        }
-      }
-    }
-  }
-}
-
-const Forward: Action<'Forward'> = ({ by, input }) =>
+const Reject: Action<'Reject'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
-    const w = d.moment.work
+    yield* configUnchanged(d)
     yield* allowed(d, by, input)
-    const { act } = input.target
-    const { person, quote, channel } = input.content
-    const a = agentOf(w, by)
-    if (!isNonBlank(person) || !w.config.people.includes(person)) {
-      return yield* fail(R.Forward.notPerson(person))
-    }
-    if (blank(quote)) return yield* fail(R.Forward.noQuote())
-    const target = innerTarget(w, act)
-    if (a !== undefined && target.task !== undefined && !within(w, target.task as never, a.task)) {
-      return yield* fail(R.Forward.outsideTree(target.id, a.id))
-    }
-    // Evidence is about the reported work, so that work must be unchanged.
-    const accepted =
-      act._tag === 'Review' && act.create._tag === 'Accept' ? act.create.of : undefined
-    if (accepted?._tag === 'Result' && d.moment.outside.changed.has(accepted.id)) {
-      return yield* fail(R.Forward.changed(accepted.id))
-    }
-    const asPerson: Author = { _tag: 'Person', name: person, channel: 'ui' }
-    const what = `${forwardWord(act)} ${target.id}`
-    // An answer that the person could not give is asked of the owner, on the page.
-    const choiceOf = (r: Refusal) =>
-      forwardWord(act) === 'answer' ? R.Forward.notTheirs(person).choice.words : r.choice.words
-    yield* personCould(d, asPerson, act).pipe(
-      Effect.mapError((r) => R.Forward.could(person, what, r.message, choiceOf(r))),
-    )
-    return [
-      create('Forward', { _tag: 'Forwarded', person, quote: quote as never, channel, inner: act }),
-    ]
+    const { id } = input.target.of
+    const { reason } = input.content
+    if (blank(reason)) return yield* fail(R.Reject.noReason(id))
+    const of = { _tag: 'Revision' as const, id, reason: reason as never }
+    return [create('Review', { _tag: 'Reject', of })]
   })
 
-// N10 (C6): a confirm of a forward whose target was decided makes no event.
-const Confirm: Action<'Confirm'> = ({ by, input }) =>
+// An outside source that the host read: a new revision moves it; the same one only renews it.
+const ReadSource: Action<'ReadSource'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
-    const { forward } = input.target
-    if (d.states.forwards.get(forward)?._tag === 'Irrelevant') return []
     yield* allowed(d, by, input)
-    const f = d.moment.work.forwards.get(forward)
-    if (f?._tag === 'Confirmable' && by._tag === 'Person') {
-      yield* personCould(d, by, f.inner).pipe(
-        Effect.mapError((r) => R.Confirm.could(r.message, r.choice.words)),
-      )
+    const { name } = input.target
+    const { revision } = input.content
+    const now = d.moment.work.sources.get(name)
+    if (now?._tag === 'Outside' && now.revision === revision) {
+      return [move('Source', name as never, { _tag: 'Checked' })]
     }
-    return [move('Forward', forward, { _tag: 'Confirmed' })]
+    const source = { _tag: 'Outside' as const, name, revision }
+    return [create('Source', { _tag: 'Moved', source })]
   })
 
 export const ACTIONS = {
@@ -641,8 +443,7 @@ export const ACTIONS = {
   ImportCompany,
   AddExamples,
   Suggest,
-  Grant,
-  Revoke,
-  Forward,
-  Confirm,
+  Accept,
+  Reject,
+  ReadSource,
 }

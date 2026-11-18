@@ -9,10 +9,9 @@
 //   browser can neither act nor read a terminal.
 //
 // The server holds the WorkCache (a SubscriptionRef of the folded Work, renewed from the store,
-// which other processes write) and sends `changed` on each value of its changes, and when the
-// clock passes the next edge of the last read (a hold ends, F4). A read derives the Work and
-// renders the views of view.ts; a person's act dispatches its action as the person of git
-// user.name (acts.ts).
+// which other processes write) and sends `changed` on each value of its changes. A read derives
+// the Work and renders the views of view.ts; a person's act dispatches its action as the person
+// of git user.name (acts.ts).
 import { existsSync, type FSWatcher, readdirSync, statSync, watch } from 'node:fs'
 import { networkInterfaces } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -26,7 +25,7 @@ import {
   dropForward,
   pageActId,
 } from '../../core/actions/work.ts'
-import { type Derived, derive, nextChangeAt } from '../../core/derived/index.ts'
+import { type Derived, derive } from '../../core/derived/index.ts'
 import { checkHost, tmuxPaneExists } from '../../core/effects/host-check.ts'
 import {
   type Author,
@@ -48,7 +47,6 @@ import {
   onboardingExists,
   pathOf,
   personAct,
-  Readings,
   readOnboarding,
   readSettings,
   SpawnLive,
@@ -67,7 +65,6 @@ import { readingsLive } from '../live/readings.ts'
 import { readStatus, statusStamp } from '../live/status.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { readMarkers } from '../live/waiting.ts'
-import { withBriefMeasure } from '../words/index.ts'
 import { suggestionMover } from '../words/shared.ts'
 import { callOf, type SuggestAct, refusedOf, type WorkPost, workPostOf, wordsOf } from './acts.ts'
 import { PAGE_FILES, pageBundle } from './bundle.ts'
@@ -117,9 +114,6 @@ const gzipped = async (req: Request, res: Response): Promise<Response> => {
   headers.set('content-encoding', 'gzip')
   return new Response(Bun.gzipSync(text), { status: res.status, headers })
 }
-
-// The longest delay of a timer (2^31 - 1 ms, about 24 days): a later edge waits in steps.
-const MAX_TIMER = 2 ** 31 - 1
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
 
@@ -198,16 +192,8 @@ export function startServer(options: ServerOptions): ServerHandle {
     Layer.succeed(Env, { vars: env }),
     Layer.succeed(Now, { read: Effect.sync(() => clock() as Time) }),
     Layer.succeed(Tokens, { random: Effect.sync(tokenSecret) }),
-    // The readings of the outside, with the terminals of the pump and the measure of a brief
-    // (ruling 10.9, as the CLI measures it).
-    Layer.effect(
-      Readings,
-      Readings.useSync((base) => ({
-        read: (work: Work, at: Time) =>
-          Effect.map(base.read(work, at), (o) => withBriefMeasure(o, at)),
-      })),
-    ).pipe(
-      Layer.provide(readingsLive({ terminals: () => pump?.status() ?? {} })),
+    // The readings of the outside, with the terminals of the pump.
+    readingsLive({ terminals: () => pump?.status() ?? {} }).pipe(
       Layer.provide(Layer.mergeAll(dirLayer, Layer.succeed(Env, { vars: env }))),
     ),
   )
@@ -239,29 +225,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     const at = yield* (yield* Now).read
     return derive(yield* momentOf(work, at))
   })
-  // F4: the next clock edge of the last read (nextChangeAt). When the clock passes it, the page
-  // hears `changed` and reads again, which arms the next edge. A timer waits for it; the check
-  // every 3 seconds catches a clock that no timer follows (a test's).
-  let edge: number | null = null
-  let edgeTimer: ReturnType<typeof setTimeout> | undefined
-  const passEdge = () => {
-    clearTimeout(edgeTimer)
-    if (edge === null) return
-    const wait = edge - Date.parse(clock())
-    if (wait > 0) {
-      edgeTimer = setTimeout(passEdge, Math.min(wait, MAX_TIMER))
-      return
-    }
-    edge = null
-    send({ type: 'changed' })
-  }
-  const readDerived = (): Derived | undefined => {
-    const d = runSync(derivedNow)
-    const next = d === undefined ? null : nextChangeAt(d)
-    edge = next === null ? null : Date.parse(next)
-    passEdge()
-    return d
-  }
+  const readDerived = (): Derived | undefined => runSync(derivedNow)
   const context = (): ViewContext => ({ dir, settings: runSync(readSettings(dir)) })
 
   // --- the dashboard (DESIGN 10): built whole from the store and the terminals -----------------
@@ -796,7 +760,6 @@ export function startServer(options: ServerOptions): ServerHandle {
   armAssess()
   const poll = setInterval(() => {
     check()
-    passEdge()
     armAssess()
     const now = stamp()
     if (now !== seen) onboardingChanged()
@@ -810,7 +773,6 @@ export function startServer(options: ServerOptions): ServerHandle {
     clearInterval(poll)
     clearInterval(rebuild)
     clearTimeout(timer)
-    clearTimeout(edgeTimer)
     clearTimeout(onboardTimer)
     fileWatch?.close()
     dirWatch.close()

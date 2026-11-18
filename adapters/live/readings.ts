@@ -1,7 +1,6 @@
 // ReadingsLive (package P7a): git, the files of the dir, the settings and the markers of work wait,
 // read for one Work at one time (the ports of the old outsideOf and onBase). The CLI has no
-// terminals; the server gives the pump's status through `terminals`. Core imports no words, so the measure of a brief
-// is 0 here; each adapter puts it in (adapters/words withBriefMeasure).
+// terminals; the server gives the pump's status through `terminals`.
 //
 // The changed results, the stale sources and the commits on their base are the rule of an output
 // (core/services/outputs.ts), which the report of a new output reads too.

@@ -76,7 +76,7 @@ describe('the WorkCache of the long process', () => {
       yield* Deferred.await(ready)
       expect(yield* cache.refresh).toBe(first)
       // Another process (the CLI, with its own connection) writes the store.
-      ok(yield* Effect.promise(() => p.nanda('task open --file=task.yaml')))
+      ok(yield* Effect.promise(() => p.nanda('suggest --says="a direction for reels"')))
       const next = folded(yield* cache.refresh)
       const events = yield* eventsOf(p.dir)
       expect(next.seq).toBe(lastSeq(events) ?? -1)

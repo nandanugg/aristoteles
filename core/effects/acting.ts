@@ -1,22 +1,12 @@
 // What the effects share: the acts of the supervisor (through the Dispatcher), the typing of a
-// host's send (the only text that goes into a terminal, ruling 10.1), the memory of the
-// terminals, and the newest Derived.
-import { Cause, Effect, Ref } from 'effect'
+// host's send (the only text that goes into a terminal, ruling 10.1), and the newest Derived.
+import { Cause, Effect } from 'effect'
 import type { ActionCall, InputOf } from '../actions/types.ts'
 import { type Derived, derive } from '../derived/index.ts'
-import {
-  type Author,
-  type DropReason,
-  type EventRef,
-  isNonBlank,
-  type SessionId,
-  type TerminalState,
-  type Work,
-} from '../schema/index.ts'
-import { Dir, Now, Pump, type Readings, readSettings, readSettingsOf } from '../services/index.ts'
+import type { Author, DropReason, EventRef, SessionId } from '../schema/index.ts'
+import { Now, Pump, type Readings } from '../services/index.ts'
 import { momentOf, WorkCache } from '../state/index.ts'
-import { foldTerminals, refOf } from './terminals.ts'
-import { Dispatcher, EffectLog, type Memory, Supervision, SupervisorMemory } from './types.ts'
+import { Dispatcher, EffectLog, Supervision } from './types.ts'
 
 // --- the log, and a step that fails alone -------------------------------------------------------
 
@@ -40,74 +30,35 @@ export const step = <A, E, R>(
     ),
   )
 
-// --- the clock and the settings -----------------------------------------------------------------
+// --- the clock ----------------------------------------------------------------------------------
 
 export const nowMs: Effect.Effect<number, never, Now> = Now.use((now) =>
   Effect.map(now.read, (at) => Date.parse(at)),
 )
-
-// The models of the settings now: they can change after work start (the page, the roles that
-// the person accepts). Settings that do not read have no models, and the log says why.
-export const modelsNow = Effect.gen(function* () {
-  const { cwd } = yield* Dir
-  return yield* readSettings(cwd).pipe(
-    Effect.map((s) => s.models),
-    Effect.catch((e) =>
-      Effect.as(logLine(`the settings: ${e.message}`), readSettingsOf({}).models),
-    ),
-  )
-})
 
 // --- the acts -----------------------------------------------------------------------------------
 
 export const supervisor: Effect.Effect<Author, never, Supervision> = Supervision.useSync(
   (s): Author => ({ _tag: 'Supervisor', name: s.person }),
 )
-export const personOnPage: Effect.Effect<Author, never, Supervision> = Supervision.useSync(
-  (s): Author => ({ _tag: 'Person', name: s.person, channel: 'ui' }),
-)
-
 export const act = (call: ActionCall) => Dispatcher.use((d) => d.dispatch(call))
 
-// An act of the supervisor; the ref of its event, or null when the act made none (it was done).
+// An act of the supervisor.
 export const supervise = <K extends ActionCall['input']['_tag']>(input: InputOf<K>) =>
   Effect.gen(function* () {
-    const acted = yield* act({ by: yield* supervisor, input })
-    const seq = acted.dispatched.seq
-    return seq === null ? null : refOf(seq)
+    yield* act({ by: yield* supervisor, input })
   })
 
-type Start = Extract<InputOf<'SupervisorSend'>, { content: { keys: { _tag: 'StartPrompt' } } }>
-type LineReason = Exclude<InputOf<'SupervisorSend'>, Start>['target']['reason']
-const keysOf = (text: string) =>
-  isNonBlank(text) ? ({ _tag: 'Line', text } as const) : ({ _tag: 'Enter' } as const)
-
-// A line of the supervisor, stored as a Send that waits for its terminal.
-export const sendLine = (reason: LineReason, text: string) =>
-  supervise<'SupervisorSend'>({
-    _tag: 'SupervisorSend',
-    target: { reason },
-    content: { keys: keysOf(text) },
-  })
-export const sendStart = (reason: Start['target']['reason']) =>
-  supervise<'SupervisorSend'>({
-    _tag: 'SupervisorSend',
-    target: { reason },
-    content: { keys: { _tag: 'StartPrompt' } },
-  })
 export const delivered = (send: EventRef) =>
   supervise<'SendDelivered'>({ _tag: 'SendDelivered', target: { send }, content: {} })
 export const dropped = (send: EventRef, why: DropReason) =>
   supervise<'SendDropped'>({ _tag: 'SendDropped', target: { send }, content: { why } })
 
-export const to = (session: SessionId) =>
-  ({ _tag: 'Terminal', session, via: { _tag: 'Tmux' } }) as const
-
 // --- typing -------------------------------------------------------------------------------------
 
 // A host's send for an AI tool: the text, then Enter as its own key a moment later. In one read,
 // an interactive tool takes the Enter as part of a paste, and the line stays unsent.
-export const typeLine = (sid: SessionId, text: string) =>
+const typeLine = (sid: SessionId, text: string) =>
   Effect.gen(function* () {
     const pump = yield* Pump
     const { timing } = yield* Supervision
@@ -127,25 +78,6 @@ export const deliver = (send: EventRef, sid: SessionId, text: string) =>
     }
     yield* delivered(send)
   })
-
-// --- the memory of the terminals ----------------------------------------------------------------
-
-// The states of the terminals with the new stored events folded in (D13).
-export const terminalsOf = (work: Work) =>
-  Effect.gen(function* () {
-    const { ref } = yield* SupervisorMemory
-    return yield* Ref.modify(ref, (m): [Memory['terminals'], Memory] => {
-      const fresh = work.events.filter((l) => l.recorded.seq > m.folded)
-      if (fresh.length === 0) return [m.terminals, m]
-      const terminals = foldTerminals(m.terminals, work, fresh)
-      const folded = work.events.at(-1)?.recorded.seq ?? m.folded
-      return [terminals, { ...m, terminals, folded }]
-    })
-  })
-export const stateIn = (
-  terminals: Memory['terminals'],
-  sid: SessionId,
-): TerminalState | undefined => terminals.get(sid)?.state
 
 // --- the newest Derived ------------------------------------------------------------------------
 

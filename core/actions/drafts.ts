@@ -7,18 +7,11 @@ import type { Derived } from '../derived/index.ts'
 import {
   directionAt,
   draftAt,
-  isOpenTask,
-  isPersonStop,
-  type Item,
-  itemAt,
   officialAt,
-  reviewItems,
+  type Rejection,
+  rejectionAt,
   ruleAt,
   standardAt,
-  stopRefAnswered,
-  taskAt,
-  taskOfTarget,
-  within,
 } from '../derived/reads.ts'
 import type { Refusal } from '../schema/errors.ts'
 import {
@@ -30,8 +23,8 @@ import {
   type DirectionId,
   type EventOf,
   type Limit,
-  type PositiveInt,
   lookup,
+  type PositiveInt,
   type Recorded,
   type Revision,
   type RoleName,
@@ -39,39 +32,32 @@ import {
   type RuleEntry,
   type StandardEntry,
   type Suggestion,
-  type TaskId,
   usesProblem,
   type Work,
 } from '../schema/index.ts'
 import { foldStep } from '../state/index.ts'
 import {
-  applicableIn,
   type Content,
   contentNow,
-  directionIdsOf,
   sameChecker,
-  sameFor,
-  sameRule,
   sameWords,
 } from '../state/versions.ts'
-import { agentOf, asPick, no, type RefusalsOf } from './support.ts'
+import { asPick, no, type RefusalsOf } from './support.ts'
 
 export const DRAFT = {
   // --- the answers ---
   notAnswer: (id: string) =>
     no(
-      `${id} is not a Reject point or a suggestion; --answers takes points (v<n>.<m>, or v<n> ` +
-        'for all of them) and suggestions (s<n>)',
+      `${id} is not a Reject of a draft or a suggestion; --answers takes Rejects (v<n>) and ` +
+        'suggestions (s<n>)',
       'Pick',
-      'answer a Reject point or a suggestion',
+      'answer a Reject of a draft or a suggestion',
     ),
-  answerOutside: (id: string, a: string) =>
-    no(`${id} is outside the task tree of ${a}`, 'Pick', 'answer a point of your own tree'),
   onlyAnswers: () =>
     no(
-      'a draft answers Rejects and suggestions only',
+      'a draft answers Rejects of drafts and suggestions only',
       'Pick',
-      'answer the Rejects and the suggestions that the draft changes',
+      'answer the Rejects of drafts and the suggestions that the draft changes',
     ),
   // --- the rules of a standard ---
   supersedesItself: (rule: string) =>
@@ -151,39 +137,6 @@ export const DRAFT = {
       'Pick',
       `answer a Reject of a draft of ${name}`,
     ),
-  notOfTask: (reason: string) =>
-    no(
-      `"${reason}" is not a Reject of a result or a task`,
-      'Pick',
-      'answer a Reject of a result or a task',
-    ),
-  waitsForEvaluation: (reason: string, task: string) =>
-    no(
-      `"${reason}" waits for an evaluation of ${task} first: what is wrong, why, and what to ` +
-        'improve',
-      'Wait',
-      'the evaluation comes first',
-    ),
-  namesRule: (reason: string, rule: string) =>
-    no(
-      `"${reason}" names the rule ${rule}; changed work with evidence answers it, not a ` +
-        'direction change',
-      'Pick',
-      'answer it with changed work',
-    ),
-  notADirectionOf: (name: string, task: string, reason: string) =>
-    no(
-      `${name} is not a direction of ${task}, so it cannot answer "${reason}"`,
-      'Pick',
-      `revise a direction of ${task}`,
-    ),
-  saysTheSame: (name: string, task: string, reason: string) =>
-    no(
-      `this change of ${name} says the same to ${task} as before, so it cannot answer ` +
-        `"${reason}"`,
-      'Write',
-      `write a change that says something new to ${task}`,
-    ),
   asksNew: (words: string, name: string) =>
     no(
       `${words} asks for a new direction; a draft of ${name} does not answer it`,
@@ -218,9 +171,9 @@ export const DRAFT = {
     ),
   aboutRoles: (words: string) =>
     no(
-      `${words} is about the roles; an adjustment of a role answers it, not a direction`,
+      `${words} is about the roles; a draft of a direction does not answer it`,
       'Pick',
-      'draft the adjustment that it asks for with work adjust',
+      'leave it for the person to settle in the roles',
     ),
   uses: (problem: string) =>
     no(problem, 'Write', 'give uses: only the ids of the direction, its standards and its rules'),
@@ -255,61 +208,28 @@ const failIf = (r: Refusal | undefined): Effect.Effect<void, Refusal> =>
 
 // --- the answers ---------------------------------------------------------------------------------
 
-// N1 (I1): a point of a closed or replaced task blocks no work, so a revise does not answer it.
-// The event keeps the ids as given (the fold drops the same ones); the checks read the rest.
-export const openAnswers = (w: Work, ids: ReadonlyArray<AnswerId>): ReadonlyArray<AnswerId> =>
-  ids.filter((id) => {
-    const items = reviewItems(w).filter((i) => i.id === id || i.group === id)
-    return !(
-      items.length > 0 &&
-      items.every((i) => {
-        const task = taskOfTarget(w, i.of)
-        const t = task === undefined ? undefined : w.tasks.get(task)
-        return t !== undefined && !isOpenTask(t)
-      })
-    )
-  })
-
-// What an id of --answers names: the points of a Reject, one point, a review, or a suggestion.
+// What an id of --answers names: a Reject of a draft, or a suggestion. Any other id (an accept)
+// is none: a draft does not answer it.
 type Answer =
-  | { readonly _tag: 'Item'; readonly item: Item }
+  | { readonly _tag: 'Reject'; readonly reject: Rejection }
   | { readonly _tag: 'Suggestion'; readonly suggestion: Suggestion }
+  | { readonly _tag: 'Other'; readonly id: string }
 const answersOf = (w: Work, ids: ReadonlyArray<AnswerId>): ReadonlyArray<Answer> =>
   ids.flatMap((id): ReadonlyArray<Answer> => {
-    const points = reviewItems(w).filter((i) => i.group === id)
-    if (points.length > 0) return points.map((item) => ({ _tag: 'Item', item }))
     const suggestion = w.suggestions.get(id as never)
     if (suggestion !== undefined) return [{ _tag: 'Suggestion', suggestion }]
-    const item = itemAt(w, id)
-    return item === undefined ? [] : [{ _tag: 'Item', item }]
+    const reject = rejectionAt(w, id)
+    return [reject === undefined ? { _tag: 'Other', id } : { _tag: 'Reject', reject }]
   })
-// A Reject (one of its points, or a Reject of a draft) or a suggestion: a recheck or a resolve is
-// no Reject, so a draft does not answer it.
-const isAnswer = (a: Answer): boolean =>
-  a._tag === 'Suggestion' || (a.item.decision === 'Reject' && a.item.review._tag === 'Reject')
-const answerId = (a: Answer): string => (a._tag === 'Suggestion' ? a.suggestion.id : a.item.id)
+const isAnswer = (a: Answer): boolean => a._tag !== 'Other'
+const answerId = (a: Answer): string =>
+  a._tag === 'Suggestion' ? a.suggestion.id : a._tag === 'Reject' ? a.reject.id : a.id
 
 // Each id names a record (the words of lookup).
 export const answersFound = (w: Work, ids: ReadonlyArray<AnswerId>) =>
   Effect.forEach(ids, (id) => lookup(w, id, ['v', 's']).pipe(Effect.mapError(asPick)), {
     discard: true,
   })
-// A revise answers the open answers that it names, each in the reviser's own tree.
-export const reviseAnswersFound = (w: Work, by: Author, ids: ReadonlyArray<AnswerId>) =>
-  Effect.gen(function* () {
-    const open = openAnswers(w, ids)
-    yield* answersFound(w, open)
-    const a = agentOf(w, by)
-    if (a === undefined) return
-    for (const id of open) {
-      const item = itemAt(w, id) ?? reviewItems(w).find((i) => i.group === id)
-      const task = item === undefined ? undefined : taskOfTarget(w, item.of)
-      if (task !== undefined && !within(w, task, a.task)) {
-        return yield* fail(DRAFT.answerOutside(id, a.id))
-      }
-    }
-  })
-
 // --- the rules and the standards of a file ----------------------------------------------------
 
 interface RuleOfFile {
@@ -456,12 +376,6 @@ const sameProposal = (w: Work, x: Content, y: Content): boolean =>
   x.standards.every((s) =>
     y.standards.some((t) => sameWords(w, standardAt(w, s), standardAt(w, t))),
   )
-// The rules that a task would follow with the change.
-const rulesUnder = (w: Work, task: TaskId, from: Content, to: Content) =>
-  directionIdsOf(w, task).flatMap((x) =>
-    applicableIn(w, x === from.of ? to : contentNow(w, x), task).flatMap((s) => s.rules),
-  )
-
 // A suggestion is answered at its level: one about a rule by a change of its standard, one about
 // a standard by a change of that standard, one about a direction by a change of what it says.
 const suggestionAnswered = (
@@ -493,44 +407,20 @@ const suggestionAnswered = (
   }
   return undefined
 }
-// A Reject of a result or a task is answered only by a real change in a direction that its task
-// follows. A point that names a rule is answered by changed work with evidence.
-const rejectAnswered = (w: Work, r: Item, from: Content, to: Content): Refusal | undefined => {
-  const reason = r.reason ?? ''
-  const task = taskOfTarget(w, r.of)
-  if (task === undefined) return DRAFT.notOfTask(reason)
-  if (isPersonStop(w, r) && !stopRefAnswered(w, { _tag: 'Item', item: r, at: r.at })) {
-    return DRAFT.waitsForEvaluation(reason, task)
-  }
-  const breaks = r.breaks
-  if (
-    breaks !== undefined &&
-    rulesUnder(w, task, from, to).some((x) => sameRule(ruleAt(w, x), ruleAt(w, breaks)))
-  ) {
-    return DRAFT.namesRule(reason, ruleAt(w, breaks).id)
-  }
-  const name = directionAt(w, from.of).name
-  const t = taskAt(w, task)
-  if (!t.descriptionAi.directions.includes(from.of)) {
-    return DRAFT.notADirectionOf(name, t.name, reason)
-  }
-  return sameFor(w, to, from, task) ? DRAFT.saysTheSame(name, task, reason) : undefined
-}
 // A Reject of an earlier draft of this direction is answered by a draft that proposes another.
 const draftRejectAnswered = (
   w: Work,
-  r: Item,
+  r: Rejection,
   from: Content,
   to: Content,
 ): Refusal | undefined => {
-  const reason = r.reason ?? ''
-  const rejected = draftAt(w, r.of.id as never)
+  const rejected = draftAt(w, r.draft)
   if (rejected.of !== from.of) {
     const other = directionAt(w, rejected.of).name
-    return DRAFT.otherDirection(reason, other, directionAt(w, from.of).name)
+    return DRAFT.otherDirection(r.reason, other, directionAt(w, from.of).name)
   }
   return sameProposal(w, to, contentOfDraft(rejected))
-    ? DRAFT.sameProposal(rejected.id, reason)
+    ? DRAFT.sameProposal(rejected.id, r.reason)
     : undefined
 }
 
@@ -580,13 +470,11 @@ export const checkDrafted = (
       }
       continue
     }
-    const of = a.item.of
-    const reason = a.item.reason ?? ''
-    if (of._tag !== 'Revision' || draftAt(w, of.id).of !== file.id) {
-      return fail(DRAFT.notOwnReject(reason, file.name))
-    }
-    if (sameProposal(work, to, contentOfDraft(draftAt(w, of.id)))) {
-      return fail(DRAFT.sameProposal(of.id, reason))
+    if (a._tag !== 'Reject') continue
+    const { draft: of, reason } = a.reject
+    if (draftAt(w, of).of !== file.id) return fail(DRAFT.notOwnReject(reason, file.name))
+    if (sameProposal(work, to, contentOfDraft(draftAt(w, of)))) {
+      return fail(DRAFT.sameProposal(of, reason))
     }
   }
   return Effect.void
@@ -603,7 +491,7 @@ export const checkRevised = (
   const official = officialAt(w, data.direction)
   if (official === undefined) return Effect.void
   const base = contentNow(w, official.id)
-  const answers = answersOf(w, openAnswers(w, data.answers))
+  const answers = answersOf(w, data.answers)
   const roles = w.config.roles
   const problem = firstOf((guard) => {
     const wrong = answers.find((a) => !isAnswer(a))
@@ -637,9 +525,9 @@ export const checkRevised = (
     const refused =
       a._tag === 'Suggestion'
         ? suggestionAnswered(work, a.suggestion, base, to)
-        : a.item.of._tag === 'Revision'
-          ? draftRejectAnswered(work, a.item, base, to)
-          : rejectAnswered(work, a.item, base, to)
+        : a._tag === 'Reject'
+          ? draftRejectAnswered(work, a.reject, base, to)
+          : undefined
     if (refused !== undefined) return fail(refused)
   }
   return Effect.void

@@ -4,7 +4,7 @@
 // run one at a time. What a restart must keep is in the store; the rest is the memory of this
 // one. Ruling 10.1: the watcher types nothing but a host's `work send` into the terminal of its
 // child.
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Ref } from 'effect'
+import { Cause, Effect, Exit, Layer, ManagedRuntime } from 'effect'
 import {
   DispatcherLive,
   EFFECTS,
@@ -12,33 +12,26 @@ import {
   backoffMemory,
   engineTick,
   latest,
-  NO_MEMORY,
   reconcile,
   Supervision,
-  SupervisorMemory,
   TIMING,
 } from '../../core/effects/index.ts'
-import {
-  type Time,
-  type Work,
-} from '../../core/schema/index.ts'
+import type { Time } from '../../core/schema/index.ts'
 import {
   Dir,
   Env,
   FilesLive,
   Now,
   pathOf,
-  Readings,
   SpawnLive,
   StoreLive,
   Tokens,
 } from '../../core/services/index.ts'
 import { workCacheLayer } from '../../core/state/index.ts'
 import { pumpLayerOf } from '../live/pump.ts'
-import { ReadingsLive } from '../live/readings.ts'
+import { readingsLive } from '../live/readings.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { stopHookSettings } from '../live/stop-hook.ts'
-import { withBriefMeasure } from '../words/index.ts'
 import { launchWords, workTokenOf } from '../words/work.ts'
 import type { Watcher, WatcherOptions } from './frozen.ts'
 
@@ -67,18 +60,8 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     Layer.succeed(Now, { read: Effect.sync(() => new Date(clock()).toISOString() as Time) }),
     Layer.succeed(Tokens, { random: Effect.sync(tokenSecret) }),
   )
-  // The readings of the outside, with the terminals of this pump, the agents that wait, and the
-  // measure of a brief (ruling 10.9, as the CLI measures it).
-  const readings = Layer.effect(
-    Readings,
-    Readings.useSync((base) => ({
-      read: (work: Work, at: Time) =>
-        Effect.map(base.read(work, at), (outside) =>
-          withBriefMeasure({ ...outside, terminals: pump.status() }, at),
-        ),
-    })),
-  ).pipe(
-    Layer.provide(ReadingsLive),
+  // The readings of the outside, with the terminals of this pump.
+  const readings = readingsLive({ terminals: () => pump.status() }).pipe(
     Layer.provide(
       Layer.mergeAll(Layer.succeed(Dir, { cwd: dir }), Layer.succeed(Env, { vars: env })),
     ),
@@ -87,16 +70,8 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
   const layer = Layer.mergeAll(
     services,
     pumpLayerOf(pump),
-    Layer.effect(
-      SupervisorMemory,
-      Effect.map(Ref.make(NO_MEMORY), (ref) => ({ ref })),
-    ),
     Layer.succeed(EffectLog, { line: (text) => Effect.sync(() => log(text)) }),
-    Layer.succeed(Supervision, {
-      timing: { ...TIMING, ...options.timing },
-      person,
-      startedAt: clock(),
-    }),
+    Layer.succeed(Supervision, { timing: { ...TIMING, ...options.timing }, person }),
     workCacheLayer(dir).pipe(Layer.provide(store)),
     DispatcherLive.pipe(Layer.provide(services)),
   )

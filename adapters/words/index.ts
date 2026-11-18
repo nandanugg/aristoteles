@@ -5,7 +5,6 @@ import type { Refusal } from '../../core/schema/errors.ts'
 import type { Logged, Work } from '../../core/schema/index.ts'
 import { logLine as logLineOf } from './log.ts'
 
-export { withBriefMeasure } from './measure.ts'
 export {
   exampleLines,
   pieceNames,

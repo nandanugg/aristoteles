@@ -1,15 +1,6 @@
-// The words of the supervisor (as the old watcher said them). Ruling 10.1: nothing is typed into a
-// terminal, so these are the first prompt and the retry prompt of a launch or a resume (arguments
-// of its command), the text of a problem that the supervisor records, and the text of the
-// person's ask to try a problem again (stored, never typed). They are the content of
-// stored records, so they live with the effects, not in adapters/words.
+// The words of a launch (ruling 10.1: nothing is typed into a terminal; the first prompt is an
+// argument of the launch command), and the cleaning of a text from a terminal or the store.
 import { createHash } from 'node:crypto'
-import type { ProblemId } from '../schema/index.ts'
-
-export const SYSTEM = 'System message, not from the person.'
-// The prompt of a resumed terminal (the settings' default retryInput, src/config/settings.ts):
-// the agent's own wait (ruling 9), or the host's wait by its run.
-export const DEFAULT_RETRY = `${SYSTEM} Run work wait --by={agent}, and do what it prints.`
 
 export const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
 type Key = 'session' | 'agent' | 'model' | 'prompt'
@@ -50,23 +41,3 @@ export const clean = (text: string, max = 160): string => {
     .trim()
   return `«${one.length > max ? `${one.slice(0, max)}…` : one}»`
 }
-
-// The problems that the supervisor records for a host itself: the person acts in its terminal.
-export const hostPromptSays = (line: string): string =>
-  `Your AI CLI waits for your answer: ${line}. Answer it in the terminal of your AI ` +
-  'CLI. The project goes on after that.'
-
-export const hostStuckSays = (why: 'error' | 'silent', last: string): string =>
-  `The host ${why === 'silent' ? 'is silent' : 'shows an error'}, and it does not wait for ` +
-  `work. Its last lines: ${last} Tell it in its terminal to go on.`
-
-// P8: the host's wait returned and it has not waited since: the person brings it back.
-export const hostGoneSays = (run: string, at: string): string =>
-  `${run} stopped waiting at ${at} and has not come back. Its work waits for it. In its ` +
-  `terminal, tell it to run work wait again; if the terminal is gone, start your AI CLI and ` +
-  `run work run continue ${run}.`
-
-// The person's Fixed of a problem that its host recorded: stored as the host's ask, never typed.
-export const problemRetryLine = (problem: ProblemId, says: string): string =>
-  `${SYSTEM} ${problem} is not fixed: ${clean(says, 300)} Test it once, when your ` +
-  `current step ends. When it works, run work problem <your token> ${problem} --fixed.`

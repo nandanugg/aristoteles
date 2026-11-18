@@ -291,7 +291,7 @@ const decideDraft = (call: Call, word: 'accept' | 'reject', ref: string) =>
     const done = yield* act(
       by,
       word === 'accept'
-        ? { _tag: 'Accept', target: { of }, content: { evidence: [], reason: reason ?? null } }
+        ? { _tag: 'Accept', target: { of }, content: { reason: reason ?? null } }
         : { _tag: 'Reject', target: { of }, content: { reason: wordsOf(call.args.one('reason')) } },
     )
     const w = done.work
@@ -368,13 +368,6 @@ const source: Command = (call) =>
     yield* verifyWork(folded, call.token)
     const by: Author = { _tag: 'System' }
     const done = yield* act(by, { _tag: 'ReadSource', target: { name }, content: { revision } })
-    // I4: the revision of a git source comes from git, so the act stores nothing (seq null).
-    if (done.seq === null) {
-      return [
-        `${name} is a git source: the CLI reads the base of each commit from git, and a new ` +
-          'commit on it asks for no recheck; nothing is recorded.',
-      ]
-    }
     const event = done.work.events.at(-1)?.recorded.event
     const checked = event?._tag === 'Source' && 'move' in event
     return [checked ? `${name} is still at ${revision}; seen now.` : `${name} is at ${revision}.`]

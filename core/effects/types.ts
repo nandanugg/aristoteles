@@ -8,16 +8,14 @@
 // Ruling 10.1 (2026-11-13): no effect types into a terminal. Only a host's `work send` (the answer
 // to a permission dialog of a child's AI CLI) is typed. A wake, a word to a host, a request for
 // the words of a decision, a retry line and a problem retry are derived steps of the actor now
-// (core/derived/notices.ts), and its `work wait` returns on them.
+// (core/derived/work), and its `work wait` returns on them.
 //
-// The memory of the supervisor (what the pump sees every few seconds: the activity of a live
-// terminal) is in SupervisorMemory, not in the fold. TerminalState (ui-model part 2) is made from
-// it and the stored terminal moves. EFFECTS and reconcile live in index.ts.
-import { Context, type Effect, type Ref } from 'effect'
+// EFFECTS and reconcile live in index.ts.
+import { Context, type Effect } from 'effect'
 import type { ActionCall, Dispatched } from '../actions/types.ts'
 import type { Derived, PendingSend } from '../derived/index.ts'
 import type { Refusal } from '../schema/errors.ts'
-import type { OutsideFailed, SessionId, StoreDamaged, Supervised } from '../schema/index.ts'
+import type { OutsideFailed, StoreDamaged } from '../schema/index.ts'
 import type {
   Dir,
   Env,
@@ -41,20 +39,6 @@ export const EFFECT_ORDER: ReadonlyArray<EffectName> = ['DeliverSends']
 export interface Selected {
   readonly DeliverSends: ReadonlyArray<PendingSend>
 }
-
-// The memory of the supervisor. Lost on a restart: what must survive one is in the store.
-export interface Memory {
-  // The state of each terminal: its stored moves, refined by what the pump saw (D13).
-  readonly terminals: ReadonlyMap<SessionId, Supervised>
-  // The last stored event folded into terminals.
-  readonly folded: number
-}
-export const NO_MEMORY: Memory = { terminals: new Map(), folded: 0 }
-
-export class SupervisorMemory extends Context.Service<
-  SupervisorMemory,
-  { readonly ref: Ref.Ref<Memory> }
->()('aristoteles/SupervisorMemory') {}
 
 // The log of the watcher (its `log` option): what an effect did, and each failure it caught.
 export class EffectLog extends Context.Service<
@@ -86,20 +70,14 @@ export interface Timing {
 // enterPause: the pause between a line and its Enter (Nanda, 2026-11-15: more room, safer).
 export const TIMING: Timing = { enterPause: 1000 }
 
-// The supervisor of one start: its times, the person whose UI it is (the author of its acts), and
-// when it started (an act or a send this much older was handled before it).
+// The supervisor of one start: its times, and the person whose UI it is (the author of its acts).
 export class Supervision extends Context.Service<
   Supervision,
-  {
-    readonly timing: Timing
-    readonly person: string
-    readonly startedAt: number
-  }
+  { readonly timing: Timing; readonly person: string }
 >()('aristoteles/Supervision') {}
 
 export type EffectServices =
   | Pump
-  | SupervisorMemory
   | EffectLog
   | Dispatcher
   | Supervision

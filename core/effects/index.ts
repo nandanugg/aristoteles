@@ -15,14 +15,6 @@ import {
 } from './types.ts'
 
 export * from './types.ts'
-export {
-  closeRun,
-  fixedProblem,
-  type Opened,
-  openDraft,
-  resumeSession,
-  stopSession,
-} from './person.ts'
 export { latest } from './acting.ts'
 export { backoffMemory, engineTick, type Words } from './engine.ts'
 

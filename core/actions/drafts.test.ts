@@ -1,13 +1,12 @@
-// The content checks of a draft, an import and a forward (package P5b, gap 2): the cases of the
-// old engine's tests, through the actions over a scenario store of the harness. Each
-// invalid input gets the old engine's words and a real choice; a valid one makes its event.
+// The content checks of a draft and an import (package P5b, gap 2): the cases of the old engine's
+// tests, through the actions over a scenario store of the harness. Each invalid input gets the old
+// engine's words and a real choice; a valid one makes its event.
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { Exit } from 'effect'
-import { type Derived, waitingFor } from '../derived/index.ts'
+import type { Derived } from '../derived/index.ts'
 import type { Author, Time } from '../schema/index.ts'
 import {
   act,
-  agent,
   derivedIn,
   derivedOf,
   dispatchIn,
@@ -60,32 +59,22 @@ standards:
       - { id: one-flow-only, says: "The reel shows one flow", checkedBy: section-lead }
 `
 
-// The reported scenario, with a Reject of r1 by the lead (a point with no rule, and one that
-// names repeatable), three suggestions of the person, and the person's Reject of a first draft
-// of a new direction, Reels.
+// The started scenario, three suggestions of the person (about a rule, a direction, and a new
+// direction), and the person's Reject of a first draft of a new direction, Reels.
 describe('a draft of a direction', () => {
   let p: Project
   let d: Derived
-  let reject = ''
   let reelsDraft = ''
   let reelsReject = ''
   beforeAll(async () => {
-    const s = await h.reported()
-    p = s.p
-    const rejected = ok(
-      await p.agent(
-        `review ${s.lead} r1 reject --point="the reader cannot see the cost" ` +
-          '--point="no repro steps" --breaks=repeatable',
-      ),
-    )
-    reject = /^(v\d+): reject/m.exec(rejected.out)?.[1] ?? ''
+    p = (await h.started()).p
     ok(await p.nanda('suggest repeatable --says="cannot be met"'))
     ok(await p.nanda('suggest tsd-writing --says="say the cost first"'))
     ok(await p.nanda('suggest --says="a direction for reels"'))
     p.write('reels.yaml', REELS)
     const drafted = ok(await p.agent('direction new --file=reels.yaml --by=assess')).out
     reelsDraft = /^(d\d+) drafted/m.exec(drafted)?.[1] ?? ''
-    const no = ok(await p.nanda(`review ${reelsDraft} reject --reason="too thin"`))
+    const no = ok(await p.nanda(`direction reject ${reelsDraft} --reason="too thin"`))
     reelsReject = /\b(v\d+)\b/.exec(no.out)?.[1] ?? ''
     d = derivedIn(p)
   }, 60000)
@@ -109,11 +98,7 @@ describe('a draft of a direction', () => {
   }
 
   test('the setup has its ids', () => {
-    expect([reject, reelsDraft, reelsReject].map((x) => /^[vd]\d+$/.test(x))).toEqual([
-      true,
-      true,
-      true,
-    ])
+    expect([reelsDraft, reelsReject].map((x) => /^[vd]\d+$/.test(x))).toEqual([true, true])
   })
 
   test('a revise names only standards that exist, and adds none twice', () => {
@@ -178,23 +163,14 @@ describe('a draft of a direction', () => {
     expect(events(act(d, SUGGESTER(p), revise('a4.yaml', says, ['s2'])))).toHaveLength(1)
   })
 
-  test('a Reject of a result is answered only by a real change in a direction of its task', () => {
-    const elsewhere =
-      'add:\n  - { id: design-only, says: Design only., where: { section: design } }\n'
-    expect(refusedWith(d, SUGGESTER(p), revise('b1.yaml', elsewhere, [`${reject}.1`]))).toBe(
-      'this change of TSD writing says the same to t1 as before, so it cannot answer ' +
-        '"the reader cannot see the cost"',
+  test('a Reject of a draft is answered by a draft of its own direction', () => {
+    expect(refusedWith(d, SUGGESTER(p), revise('b1.yaml', 'says: Plain.\n', [reelsReject]))).toBe(
+      '"too thin" rejects a draft of Reels, not of TSD writing',
     )
-    expect(refusedWith(d, SUGGESTER(p), revise('b2.yaml', 'says: Plain.\n', [`${reject}.2`]))).toBe(
-      '"no repro steps" names the rule repeatable; changed work with evidence answers it, not a ' +
-        'direction change',
+    expect(refusedWith(d, SUGGESTER(p), revise('b2.yaml', 'says: Plain.\n', ['v1']))).toBe(
+      'v1 is not a Reject of a draft or a suggestion; --answers takes Rejects (v<n>) and ' +
+        'suggestions (s<n>)',
     )
-    expect(refusedWith(d, SUGGESTER(p), revise('b3.yaml', 'says: Plain.\n', ['v1']))).toBe(
-      'v1 is not a Reject point or a suggestion; --answers takes points (v<n>.<m>, or v<n> for ' +
-        'all of them) and suggestions (s<n>)',
-    )
-    const cost = 'says: The reader understands, decides, and sees the cost.\n'
-    expect(events(act(d, SUGGESTER(p), revise('b4.yaml', cost, [`${reject}.1`])))).toHaveLength(1)
   })
 
   test('a new direction answers suggestions for it and the Rejects of its own drafts', () => {
@@ -205,12 +181,8 @@ describe('a draft of a direction', () => {
       '"say the cost first" is about something that exists; a new direction answers only ' +
         'suggestions that ask for a new direction',
     )
-    expect(refusedWith(d, ASSESS(p), draft('n3.yaml', REELS, [`${reject}.1`]))).toBe(
-      '"the reader cannot see the cost" is not a Reject of a draft of Reels; a new direction ' +
-        'answers suggestions for a new direction, and the Rejects of its own drafts',
-    )
     expect(refusedWith(d, ASSESS(p), draft('n4.yaml', REELS, ['v1']))).toBe(
-      'a draft answers Rejects and suggestions only',
+      'a draft answers Rejects of drafts and suggestions only',
     )
     const better = REELS.replace('A reel shows one flow.', 'A reel shows one flow, end to end.')
     const made = events(act(d, ASSESS(p), draft('n5.yaml', better, [reelsReject, 's3'])))
@@ -237,21 +209,17 @@ describe('a draft of a direction', () => {
   })
 })
 
-// N8: a whole direction drafted again by a high agent is its revise, with the revise's checks.
-describe('a whole direction drafted again by an agent', () => {
+// N8: a whole direction drafted again by a model is its revise, with the revise's checks.
+describe('a whole direction drafted again by a model', () => {
   test('runs the checks of a revise', async () => {
     const { p } = await h.started()
-    await h.changeDirection(p, 'add:\n  - { id: short, says: Keep it short. }\n', {
-      accept: false,
-    })
-    const arch = (p as Project & { arch: string }).arch
     p.write('again.yaml', h.DIRECTION.replace('checkedBy: section-lead }', 'checkedBy: Human }'))
     const input = {
       _tag: 'DraftDirection',
       target: {},
       content: { file: 'again.yaml', answers: [], why: NO_WHY },
     } as const
-    expect(refusedWith(derivedIn(p), agent(arch), input)).toBe(
+    expect(refusedWith(derivedIn(p), HOST_RUN, input)).toBe(
       'rule repeatable is checked by Human; the person approves directions and standards, not ' +
         'results: name the role that reviews it',
     )
@@ -299,7 +267,7 @@ describe('an import of a company commit', () => {
         ? {
             _tag: 'Accept',
             target: { of: { _tag: 'Revision', id: draft as never } },
-            content: { evidence: [], reason: null },
+            content: { reason: null },
           }
         : {
             _tag: 'Reject',
@@ -340,55 +308,10 @@ describe('an import of a company commit', () => {
     const third = write(REFRESH, importOf(3, plain))
     write(NANDA, review(String(third[0]), false))
     expect(now().states.revisions.get(third[0] as never)?._tag).toBe('Vetoed')
-    const vetoed = () =>
-      waitingFor(now(), { _tag: 'Everyone' }).filter((i) => i._tag === 'DraftVetoed')
-    expect(vetoed().map((i) => i.draft)).toEqual([third[0] as never])
     const [again] = write(REFRESH, importOf(3, plain))
     expect(now().states.revisions.get(again as never)?._tag).toBe('Waiting')
     expect(refusedWith(now(), REFRESH, importOf(3, plain))).toBe(
       'commit 3333333 of acme is in already',
     )
-    // The new import is the refresh's new draft: the vetoed one waits no more.
-    expect(vetoed()).toEqual([])
   }, 60000)
-})
-
-// The person could do a forwarded act now: the forward runs it as the person's own act, with its
-// checks of state and of content (the old CLI's dry run).
-describe('a forward of the person', () => {
-  let p: Project
-  let d: Derived
-  let lead: Author
-  beforeAll(async () => {
-    const s = await h.reported()
-    p = s.p
-    lead = agent(s.lead)
-    ok(await p.agent(`ask ${s.linter} --text="which merchant is it?"`))
-    ok(await p.nanda('finish a2'))
-    d = derivedIn(p)
-  }, 60000)
-  const forward = (inner: object): ActionInput => ({
-    _tag: 'Forward',
-    target: { act: inner as never },
-    content: { person: 'Nanda', quote: 'as Nanda said', channel: 'chat' },
-  })
-
-  test('an answer that is not the person\'s: ask the owner on the page', () => {
-    const answer = { _tag: 'Question', id: 'q1', move: { _tag: 'Answered', text: 'M-104' } }
-    const r = realChoice(refused(act(d, lead, forward(answer))))
-    expect(r.message).toStartWith('Nanda could not answer q1 now: ')
-    expect(r.message).toContain('answers this question, not Nanda')
-    expect(r.choice.words).toContain('--to=owner')
-  })
-
-  test('a question goes to an open assignment only', () => {
-    const ask = forward({
-      _tag: 'Question',
-      create: { _tag: 'Asked', text: 'why?', to: { _tag: 'Agent', assignment: 'a2' } },
-    })
-    expect(refusedWith(d, lead, ask)).toBe(
-      'Nanda could not ask a2 now: a2 (writer) is finished, so it answers no question; ask an ' +
-        'open assignment',
-    )
-  })
 })

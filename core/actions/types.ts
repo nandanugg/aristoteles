@@ -20,18 +20,8 @@ import type {
 } from '../schema/index.ts'
 import type { Dir, Files, Now, Readings, Spawn, Store, Tokens } from '../services/index.ts'
 
-export type {
-  ActionInput,
-  ActionTag,
-  InputOf,
-  Intent,
-  FilePath,
-  Words,
-  RawSecret,
-} from '../schema/actions.ts'
-export { intentOf } from '../schema/actions.ts'
+export type { ActionInput, ActionTag, InputOf } from '../schema/actions.ts'
 export { Refusal, refusal } from '../schema/errors.ts'
-export type { Choice, ChoiceKind } from '../schema/errors.ts'
 
 // Who acts, and what. The author is the store's (actor.ts Author): an agent by its assignment,
 // the person with a channel, a model run, the supervisor, the system, a program, the refresh.
@@ -45,7 +35,7 @@ export class Current extends Context.Service<Current, { readonly derived: Derive
   'aristoteles/Current',
 ) {}
 
-export type ActionServices = Current | Files | Spawn | Now | Tokens
+type ActionServices = Current | Files | Spawn | Now | Tokens
 
 export type Action<K extends ActionTag> = (
   call: ActionCall<K>,
