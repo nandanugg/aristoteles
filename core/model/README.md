@@ -11,42 +11,26 @@ agents, no reminder, is the fix.
 
 ## How to run
 
-- `bun run spec`: typechecks every `.qnt` file, then simulates the design with every proposed
-  check: 7 holds modules, 400 runs of 300 steps each, a fixed seed and one thread (so the
-  answer is the same every time). No violation is expected, and the coverage gate (keys.sh)
-  must pass: each checked property has a key witness (a state that exercises what it guards),
-  and the holds module must reach it, else "no violation" would mean nothing. Then the quint
-  test `workenv_test.qnt`. About 17 minutes: run it on the check machine.
+- `bun run spec`: typechecks every `.qnt` file, then simulates the small models (core.qnt's
+  holds modules, terminals.qnt, store.qnt, browser.qnt): 400 runs each, a fixed seed and one
+  thread (so the answer is the same every time). No violation is expected.
 - `bun run spec:check`: the same, and each mutant must break its property with its recorded
   seed (the script turns quint's failure into a pass).
-- `bun run spec:stress`: for the check machine. The holds modules in 3000 runs of 300 steps
-  with the coverage gate; a seed search for each mutant (one thread, so a seed reproduces; it
-  prints the `breaksW` lines for spec.sh); and the witness sweep (every witness over the
-  witness modules, printing the ones never reached).
-- spec.sh runs its jobs in parallel (`JOBS`, default the number of cores), each with a
-  fixed seed and one thread: the same answer every time. On the check machine `spec:check`
-  takes about 7.5 minutes.
+- spec.sh runs its jobs in parallel (`JOBS`, default the number of cores).
+- `bun run spec:tlc` (tlc.sh): TLC on the small models (section "The small models").
 - None is part of `bun test`.
 - What each tool covers: the simulator (`quint run`) only its random runs (samples x steps);
-  TLC every reachable state within the model's bounds, any run length; Apalache every run up
-  to a depth bound. TLC and Apalache were tried in the stress phase (Results). For TLC: `tlcCalm` and `tlcCrash`
-  (one task, every counter capped: `ENV.bounded`), fairness per process, `AgentChangesStop`,
-  and `NotAtCap`. At a cap every action is off, the fair ones too: the run stops there,
-  `Progress` does not judge it, and the invariant `NotAtCap` reports it (a cap is a bound of the
-  model, never a success). tlcCalm and tlcCrash have two person acts and caps above what
-  their runs reach: `NotAtCap` holds there (spec.sh 400 runs, stress.sh 3000 runs of 300
-  steps), so TLC checks the design, not the caps. Dead processes stay in the process map (a
-  history, not state): the cap on processes counts them.
+  TLC every reachable state within the model's bounds, any run length.
+- The large simulator model (workenv.qnt, with tmux.qnt, its stress.sh, keys.sh and tlc/
+  harness) is retired: the small models carry the proofs.
 - Heavy runs go to the check machine (below).
 
 ## Files and status
 
-work.qnt (store, protocol), tmux.qnt, workenv.qnt (environment, properties, witnesses,
-instances), workenv_test.qnt (a regression test), keys.sh (the coverage gate), spec.sh,
-stress.sh, tlc/ (the TLC and Apalache harness, Results). The small models, proven by TLC
-(section "The small models"): contract.qnt (G1, G3, G4, each written once), core.qnt (the
-protocol core, G2), terminals.qnt (G1), store.qnt (G3), browser.qnt (G4), tlc.sh (`bun run
-spec:tlc`). Status: sixth review round.
+work.qnt (store, protocol), core.qnt (the protocol core, G2, and its instances),
+contract.qnt (G1, G3, G4, each written once), terminals.qnt (G1), store.qnt (G3),
+browser.qnt (G4), tlc.sh (`bun run spec:tlc`), spec.sh. The small models are proven by TLC
+(section "The small models").
 
 ## Words
 
@@ -94,55 +78,17 @@ spec:tlc`). Status: sixth review round.
 
 - `work.qnt`, module `work`: the store and the protocol, pure (no variables). The store's check
   `accept` (= `authority` + `epochOk` + `legal` + `basisOk` + the build check), `effect` (and
-  `take`), the told steps `dos`, the obligations `obligationsOf`, `finalOf`, `pastBound`.
-- `tmux.qnt`, module `tmux`: tmux as its own machine, pure: the agents' server, the pump, each
-  pane's input line.
-- `workenv.qnt`, module `workenv`: the environment and all properties. Variables: `s` (store),
-  `net`, `procs` (every process), `tm` (tmux), `page`, `faults`, `merged`, `lastEvent`, `told`,
-  `obligations`, `silence` (wait markers), `quiet` (terminal output). Module `cfgs`: the
-  configurations `DESIGN`, `FIXED`, `HONEST`, `CALM`, `DEEP` (every starting state).
-- Instances: `designHonest`, `designMaker`, `designRole`, `designPipe`, `designHost` (the design
-  as written, one Byzantine class at a time, every fault); the same five as `fixed*` (every
-  proposed check on, from every starting state; `fixedRole` and `fixedPipe` on a calm run);
-  `fixedCalm`; `fixedMakerTake`, `fixedHostTake` (fixedMaker and fixedHost from the take-as-is
-  starts 8 and 11: spec.sh reaches their rare key witnesses wDecideFought and wDecideRecheck
-  there); `tlcCalm`, `tlcCrash` (for TLC); `noRecheckBasis`, `noDecideRecheck`,
-  `noListOnAttach`, `noLadderRoute` (one check off on the fixed ones); `convFixed`, `convNoCross`, `convNoRaise`, `convNeither`,
-  `convNoScope`, `convNoSplitLimits` (how the loop ends, DESIGN.md 13);
-  `editAlways`, `editNever` (editBack 0 and 2); `beforeMove` (the live fault before e4e49ff);
-  the mutants `mutPage`, `mutDup`, `mutCrash`, `mutCrashHi`, `mutTmux`, `mutMaker`, `mutRace`,
-  `mutAccept`, `mutBuild` (the design as written on a calm run, one fault class each),
-  `mutRole`, `mutPipe`, `mutRecheck` (honest except lies) and `mutPipeByz`, `mutRefByz` (a
-  Byzantine pipeline role, where a lie is too rare); the witness modules `witnessCalm`,
-  `witnessDone`, `witnessCrash`, `witnessFaults`, `witnessByz`.
-- Environments (`cfgs`): `HONEST` (every fault, honest agents, every real cause); `CALM` (no
-  fault, no reject, no duplicate sends, 10 person acts). `ENV.causes` limits the real causes a
-  task may get. `ENV.starts`: the starting states a run may begin in (`START_OF`): 0 two new
-  tasks; 1 both done and the top returned; 2 a standards draft about to ship, on items already
-  fixed once at standard level; 3 a direction draft at the person; 4 rules with only a test
-  command in effect; 5 a task taken as is with a recheck pending (not broken); 6 a done task
-  with a recheck pending (its work broken by a change); 7 a done task with a recheck pending
-  that the change did not break, and a direction draft of the other task at the person (its
-  accept may break the done task while a recheck is in flight); 8 a direction draft of task 0
-  at the person while a standards draft on task 0's standard is about to ship; 9 task 0 in
-  revision, its maker holding its claim after one failed review; 10 near the change bound
-  (task 0 a one-section split part with a standard cause, task 1 done after its standard
-  change); 11 task 0's direction draft at the person while task 1's fighting reference-only
-  rule is about to ship; 12 both tasks at the top rung, task 0's principle draft (a fighting
-  reference-only rule) about to ship. `DEEP` is all of them. `ENV.dups`: the network may deliver an
-  act twice (a fault). `ENV.liars`, `maxLies`, `lieOn`: actors honest except for lies (an act
-  with any content, a budget of its own, only on the act kinds named, `KIND_OF`).
-  `ENV.misjudge`: an honest pipeline role may evaluate shallower than the real cause (a
-  mistake). `ENV.printsOften`: the timing assumption that a live terminal prints or renews its
-  wait beat within x ticks. `ENV.bounded`, `maxProcs`, `maxVer`, `maxStep`: every counter
-  stops at its cap (for TLC).
+  `take`), the told steps `dos`, the obligations `obligationsOf`, `finalOf`, `pastBound`, the
+  waits `waitsFor`.
+- `core.qnt`: the protocol core (`core`, G2), its fixed configurations (`coreCfgs`) and its
+  instances and mutants (`coreTwo`, `coreTwoDir`, `coreTwoExit`, `coreLoops`, `coreAsks`,
+  `coreAskRogue`, `coreAskReverse`, `coreCrossOnly`, `coreAll`, the `coreNo*` mutants).
 
 Sizes: two tasks (`CFG.slots`); one host, one persistent role, one pipeline role; maker ids
-from 3 (at most `maxMakers` with `ENV.bounded`; unbounded otherwise); 3 tries; 2 sections per
-task; no cap on review-loop revisions or rule rewrites (the ladder, DESIGN.md 13.2); 1 run continue; 3 environment faults; 3 acts in
-flight; 6 person acts.
+from 3; 2 tries; 2 sections per task; no cap on review-loop revisions or rule rewrites (the
+ladder, DESIGN.md 13.2).
 
-## Options (`CFG`; README of `cfgs` in workenv.qnt)
+## Options (`CFG`, work.qnt `OPT`)
 
 | Field | Meaning | `DESIGN` | `FIXED` |
 |---|---|---|---|
@@ -182,195 +128,51 @@ flight; 6 person acts.
 
 | DESIGN.md | Quint (work.qnt unless named) |
 |---|---|
-| 1 Person | `PERSON`: `Reject`, `Accept`, `SendBack`, `Decide`, `EndProject`, `MoveHost` (run continue); workenv `personActs` |
-| 1 Host | `HOST`: `SendTask`, `Reassign`, `TopDone` (agents never remake the top, DESIGN.md 13.1); its wait finds the top only through `hostFinds` |
-| 16 ask is the one primitive: a question | `Ask(q)`, `Answer(q)`, `Hear(q)` with `Q = { from, to }` (any actor to any actor: the person, the host, a role, a live maker); `Store.asks` (open), `Store.answered` (answered, not yet heard by the asker); the answer is the asker's told step `Hear` (its wait); `AnswerOb(q)` (the `to`'s; a person obligation when `to` is the person: a state owing only answers is Final), `HearOb(q)` (the asker's). A question never blocks its asker: no other `legal` or `dos` reads `asks`. `endMaker` drops the questions of a maker |
-| 16 execute, check, evaluate, decide as asks | a view of the protocol's state, no new acts: `openAsks` (execute host -> role for a task sent, working or in review; execute role -> maker; check as the role's own obligation; evaluate role -> pipeline role; decide pipeline role -> person at `SAtPerson`; the questions); `waitsFor` (an edge per open execute, evaluate or decide ask, none for a question or a check, each from parent to child); `waitClosure`; core.qnt `NoWaitCycle` |
-| 16 one open ask per pair; alternation; repeats | one open or answered question per (from, to); the answerer alternates an answer with a step of its own (`Store.justAnswered`, `ownDos`: `Answer` is legal and told only if the answerer has no step of its own, or its last act was not an answer; `EveryObligationToldOnce` allows an answer deferred this way); `ASK_CAP` asks per pair (`Store.askCount`, `AskCap`); the ask past it is refused, and a maker's `AskRaise` raises its working task like `RaiseNoRule` |
-| 1 Persistent role | `ROLE`: `AssignDo`, `Review` (its verdict is the decision), `Resume`; `card` |
-| 1 Maker subagent | `Maker`, a fresh id per `AssignDo`; `ReadBrief`, `Report`; it lives inside the role's process (workenv `killed`, `Exit` of the role) |
+| 1 Person | `PERSON`: `Ask` Execute -> pipeline role (a reject of a result, an edit), `Answer` to a Decide (`Reply`: accept, send back, take as is, again), `EndProject`, `MoveHost` (run continue) |
+| 1 Host | `HOST`: `Ask` Execute host -> role (a task sent), `Reassign`, `TopDone` (agents never remake the top, DESIGN.md 13.1); its wait finds the top only through `hostFinds` |
+| 16 ask is the one act | `Ask(r)`, `Answer(r)`, `Hear(r)`, `AskRaise(r)` with `r = { typ, from, to, about }` (`typ`: `Question` any actor to any actor, `Execute`, `Check`, `Decide`; `about`: the task slot or fix id, -1 for a question); `Store.asks` (open), `Store.answered` (a question's answer not yet heard by the asker). An Answer closes its ask; a protocol Answer's own effect carries the result (no extra step) |
+| 16 execute, check, decide as asks | host -> role: `Ask` Execute (replaces `SendTask`); role -> maker: `Ask` Execute (replaces `AssignDo`; the store gives the fresh maker its id); the maker's result: its `Answer` to that Execute (replaces `Report`), which opens `Check` maker -> role; the role's `Answer` to the Check carries the verdict (replaces `Review`: `Pass` also closes the host's Execute, `Fail` opens a new Execute role -> the same maker, a raise opens an Execute role -> pipeline role); a reject or an edit: `Ask` Execute person -> pipeline role; the draft after the pipeline: `Decide` pipeline role -> person, opened and withdrawn with the fix's stage (`sweep`), answered by Accept, SendBack, take as is or again (`Reply`). The pipeline's stage steps, `Reassign`, `TopDone`, `Resume`, `Revive`, `Exit`, `RunRule`, `EndProject`, `MoveHost` stay steps (not asks). `waitsFor` = the open asks that are not questions, except those from the person (it is not event-driven); `NoWaitCycle` tests its closure |
+| 16 one open ask; alternation; repeats | the asks are a set: one open ask per (typ, from, to, about); a question has about -1, one open or answered per (from, to); the answerer of a question alternates its answer with a step of its own (`Store.justAnswered`, `ownDos`); questions per pair are counted (`ASK_CAP`), the next from a maker is `AskRaise`: it raises the maker's task (`askRaised`) |
+| 1 Persistent role | `ROLE`: `Ask` Execute role -> maker, `Answer` to a Check (its verdict is the decision), `Resume`; `card` |
+| 1 Maker subagent | `Maker`, a fresh id per Execute role -> maker; `ReadBrief`, `Answer` to its Execute; it lives inside the role's process (`Exit` of the role) |
 | 1 Pipeline role | `PIPE`: `Evaluate`, `Advance`, `WriteRule`, `RunTest`, `Ship`, `LoopReview`, `RecheckDone` |
-| 2 the loop | `SendTask` -> `AssignDo` -> `ReadBrief` -> `Report` -> `Review`: `Pass` (done), `Fail` (revision to the same maker, `revs + 1`), raise |
-| 2.6 raise | `RaiseTries` (only when tries are used up), `RaiseNoRule`, `RaiseMisses`, the person's `Reject`; `raise` |
+| 2 the loop | Execute host -> role, Execute role -> maker, `ReadBrief`, the maker's `Answer`, Check, the role's `Answer`: `Pass` (done), `Fail` (revision to the same maker, `revs + 1`), raise |
+| 2.6 raise | `RaiseTries` (only when tries are used up), `RaiseNoRule`, `RaiseMisses`, the person's reject (Execute person -> pipeline role); `raise` |
 | 3 the five levels | `Evaluate` with `Level`; `Split` (a new task generation, one section less), `Fit` (role draft), `Principle`, `Direct`, `Standard` (`entryOf`); the real cause: `Task.cause`, `resolves` |
 | 4 stages | `SPrinciple` -> `SDirAssess` -> `SStdAssess` -> `SRuleAssess` -> `STest` -> `SDraft`; `nextStage` |
 | 4 rule forms | `Form`: `Mech` (test command), `Ref` (reference), `Both`; `WriteRule` (`flag`: the test's real behaviour, `flag2`: the reference exists); `RunTest` |
 | 5 only a standard change? | `Ship`: the draft names `items` (content: `real`); no direction among them: `shipStandard` (in effect at once, back to the role); else `SLoop` |
-| 5 review loop, change by human | `LoopReview`, `Accept`, `SendBack` |
-| 5 role draft, only a role change? | `Evaluate` `Fit` -> `SLoop`; `Accept`: role-only -> `cardInEffect`, `backToRole`; else `SAccepted` -> `Reassign` |
+| 5 review loop, change by human | `LoopReview`, the person's `Answer` to a Decide (accept, send back) |
+| 5 role draft, only a role change? | `Evaluate` `Fit` -> `SLoop`; accept: role-only -> `cardInEffect`, `backToRole`; else `SAccepted` -> `Reassign` |
 | 6 C1, D7 | settled: DESIGN.md 12 (the host keeps the top; agents never remake it, 13.1) and DESIGN.md 13 (no budgets) |
 | 13, 13.1 how the loop ends | `crossTest` (`Fix.fights`, `RunTest`); no agreeing rule: a contradiction found at `RunTest` goes at once to direction assessment (13.1), and a second contradiction of a draft already at direction goes on to the person (`Fix.contradicted`; a rule that fails its own examples is always written again); `raiseLevel` (`Task.floor` per task; `Store.fixDepth` per item, `refixed`, `raiseUp`); `ladderRoute`; `strictScope` (`Task.sections`); `changeBound`, `NoRefixAtSameLevel`, `NoAgentChangeAtTop` |
 | 12 lifetimes | the host holds the top for the whole project (`Top` has no "hosted"; `TopDone` keeps it); roles never end |
-| 7 Store | `accept`, `take`; workenv `storeTakes`, `storeRefuses` |
-| 8 tmux | tmux.qnt; workenv `serverKilled`, `socketLost`, `serverRecreated`, `pumpStolen`, `pageServerRestarts`, `pumpAttaches`, `personTypes`, `personClears`, `promptRead`, `procReads` (output) |
-| 10.1 the person's edit, the pipeline row | `EditDirection` (a pipeline entry `EDIT` at direction assessment; `wrote`), `shipEdit` (editBack), `atPerson` (acceptCheck); workenv `rowShown`, `DashRowMatches` |
-| 10 dashboard | workenv `card` (the terminal's status: Inactive from tmux, the usage-limit message, or neither a wait poll nor output for x ticks), `cards`, `queue`, `escOf`, `rowShown`, `silence`, `quiet`, `tick`, `procPolls`, `procPrints`, `hitsLimit`; `LiveNotInactive`, `DashInactiveReal`, and the staleness properties |
-| 11 take as is | `Decide` (the person, instead of the draft at the person) with `decideRecheck`: done with `pend` = the items that moved (`oldFor`); `RecheckDone` (with `recheckBasis` it names what it judged), `RunRule` |
+| 7 Store | `accept`, `take` |
+| 10.1 the person's edit, the pipeline row | the edit (an Execute person -> pipeline role about `EDIT`, at direction assessment; `wrote`), `shipEdit` (editBack), `atPerson` (acceptCheck) |
+| 11 take as is | the reply take as is to a Decide (instead of the draft at the person) with `decideRecheck`: done with `pend` = the items that moved (`oldFor`); `RecheckDone` (with `recheckBasis` it names what it judged), `RunRule` |
 | 9 per-item versions, scoped recheck | `Item`, `ITEMS`, `applies`, `Store.ver`, `Fix.items`/`real`, `itemsInEffect` (scope), `Task.pend`, `RecheckDone` (pipeline role), `RunRule` (harness), `Maker.brief` and `Task.checked` (snapshots `{item: version}`) |
-
-## The environment to Quint (workenv.qnt)
-
-| Fault | Quint |
-|---|---|
-| store refuses an act | `storeRefuses` |
-| act late, out of order | `net` is a set; `storeTakes(k)` picks any act of sender k |
-| act sent twice | `storeTakesKept` (taken; a copy stays in flight; only with `ENV.dups`); `procRepeats` (a resumed process sends its last act again) |
-| page shows an old state | `page.view`, `pageRefreshes`; the person acts on what the view shows (`personWhats`) |
-| page from an old build | `pageDeploys`, `pageReloads`; `Act.old` (names no basis) |
-| process ends at any step | `crashes`; the role's end is its makers' end (`killed`) |
-| process comes back by itself | `selfResumes` (its old epoch; with or without context) |
-| restart or resume, with or without context | `procsAfter` on `Resume`, `Revive`, `MoveHost`; `Proc.ctx`, `Proc.stale` |
-| agent acts on an old view or old brief | honest: `procReads` then `procActs` (the view can age between); stale: `Proc.stale` |
-| agent reads only the first lines, or drops the output | `procReads` with `Head` (`headOf`, `rank`) or `Drop` |
-| agent: any act at any time, misreads, skips, repeats | `byzActs` (own token, any content and basis): a step it is told, any act of its own authority, or any act at all; `byzStep` gives it its own branch |
-| agent stops without waiting | `byzStops`, `byzWakes`; with idleSeen the pump reports it |
-| tmux server killed | `serverKilled`: every agents' pane ends; the host's pane (person's tmux) does not |
-| machine reboot | `machineReboots`: the agents' server and the person's tmux (the host's pane) end at once |
-| an end the pump did not see | `Proc.unseen`: a process that ended while the pump was not attached; seen later only with listOnAttach |
-| usage limit | `hitsLimit`: the AI CLI shows its usage-limit message and stops (`Proc.limited`); a limited process does not hear; `limitLifts` (fair) ends the limit |
-| terminal output | `quiet` (ticks since the terminal printed), `procPrints`, every act and read prints |
-| socket gone, processes run | `socketLost`: processes run on; the pump cannot see them; a new server (`serverRecreated`) does not have them |
-| pump detached / page server restart | `pumpStolen`, `pageServerRestarts`, `pumpAttaches` |
-| input line | `personTypes`, `personClears`. A revive passes its prompt as an argument (promptArg), so no engine text is typed; with promptArg off (`mutTmux`) it is typed (`queuePrompt`) and merges with a line the person had already started (`promptRead`) |
-| wait markers, time | `silence` (per persistent role, ticks since its last poll), `tick`, `procPolls`, `procReads` |
-| person acts any time or never | `personActs`; not fair |
 
 ## Act content
 
-`flag` and `flag2` mean, per act: `Report` flag: the maker slipped; `WriteRule` flag: the test
+`flag` and `flag2` mean, per act: `Answer` to a maker's Execute, flag: the maker slipped; `Answer` to a Check: `v`, the verdict; `WriteRule` flag: the test
 command really behaves on its examples, flag2: the reference exists; `RunTest` flag: the
 pipeline role's claim of the outcome, flag2: its claim that the test failed on another rule's
 example (a contradiction); `Evaluate` with `Fit` flag: the label "only a role change", flag2: the content; `LoopReview` flag: hand the
-draft to the person; `Decide` flag: take the result as it is; `RecheckDone` flag: it still
+draft to the person; `RecheckDone` flag: it still
 holds. `cause` on `Evaluate` (split): the real cause of the new task part. `hits` on
-`Ship` and `Accept`, the person's too (ghost, the environment's truth): the tasks whose work
+`Ship` and the person's accept (ghost, the environment's truth): the tasks whose work
 the change breaks, raised tasks included; their result becomes bad (`Task.broken`, `rBad`)
 until it is made again under the new versions. A recheck judges only that (`broken`), not a
-defect the person took as it is (`Task.taken`). An ask is `{ type, to, body }` (DESIGN.md 16); the body stays abstract. `Ask(q)`, `Answer(q)`, `Hear(q)` and
-`AskRaise(q)` carry only the pair `q = { from, to }` (the sender is `from`, or `to` for `Answer`); their basis is
-their legality (an open question for `Answer`, an answered one for `Hear`, the cap for `AskRaise`). `vers` on `Evaluate` and `EditDirection`: the
+defect the person took as it is (`Task.taken`). An ask is `{ typ, from, to, about }` (DESIGN.md 16); the body stays abstract. `Ask(r)`,
+`Answer(r)`, `Hear(r)` and `AskRaise(r)` carry the request `r` (the sender is `from`, or `to` for
+`Answer`); the basis of a protocol ask is the old target's (`cur`: a result's id for the Check
+and a reject, the maker's revision for the maker's Answer, the fix's step for a Decide); a
+question's is its legality (an open question for `Answer`, an answered one for `Hear`, the cap
+for `AskRaise`). `rep` (the person's Answer to a Decide): accept, send back, take as is,
+again (`Decide` flag is gone). `vers` on `Evaluate` and `EditDirection`: the
 item versions the sender says its content is built on (the draft's `base`, compared and set at
 the append with rebase); `realVers` (ghost): the versions it really is built on (`trueBase`,
 which NoLostUpdate reads; they differ only for a Byzantine sender).
-
-## Properties
-
-Each property is the negation of one history flag (`s.g.*`, a ghost the store never reads).
-For each: its tier, its kind, and its mutant (the module where it must break, with a seed in
-spec.sh `--check`, found by `bun run spec:stress`). "Not seen" = the mutant is defined but no
-violation came in the runs given.
-
-Kind: **guard** = the flag is set on exactly the act a store check refuses, so the property is
-a regression check of that check (it fails the moment the check is switched off, and says
-nothing more). **guard (option)** = the flag compares with a truth (the content, what the page
-showed, the test command's real result) that the store reads through that option; with the
-option on (FIXED) it is true by construction; its mutant shows the option is needed.
-**content** = the flag compares with a truth the store cannot read even with every check on
-(the real cause, the quality of a result, what a change really breaks, what a lost context or
-tmux did, a Byzantine sender's real base, the count of agent changes); these are the
-properties that say the design is right.
-
-Tier 1, safety under Byzantine agents and faults:
-
-| Property | Kind | The impossible state | Mutant (the check it shows needed) |
-|---|---|---|---|
-| NoActByEnded | guard | an act of a maker that is not the task's live maker was taken | mutMaker (endedCheck) |
-| NoClaimByEnded | guard | a claim held by a maker the store ended or holds as down | none: endedCheck also covers ReadBrief |
-| NoReviewOfOtherResult | guard | a review was applied to another result than the one read | mutDup (basis) |
-| NoPassUnderOtherVersion | guard | a pass by a reviewer whose view had other item versions | mutRace (basis) |
-| NoStaleReport | guard | a report answered another revision than the one it was made for | mutDup (basis) |
-| NoStalePipelineAct | guard | a pipeline act applied to a stage it was not made for | mutDup (basis) |
-| NoSplitBrain | guard | an act of an older epoch of its actor was taken | mutCrash (epochs) |
-| EveryRuleHasForm | guard | a rule took effect with neither evidence form | mutPipeByz (formCheck) |
-| NoBadReference | guard | a rule took effect with a reference that does not exist | mutRefByz (refCheck) |
-| NoRejectedDraftInEffect | guard | a draft the person sent back took effect by an earlier accept | mutAccept (acceptCheck) |
-| NoAcceptNotWaiting | guard | an accept took effect on an escalation that did not wait for the person at its append | mutAccept (acceptCheck) |
-| NoUnrevisedResubmit | guard | a draft the person sent back reached the person unchanged | mutPipe (reviseCheck) |
-| NoUnacceptedEditChange | guard | the person's edit put into effect items the person did not write and did not accept | editNever (editBack) |
-| HostBoundToRunSession | guard | the host's assignment of the top is on another session than the run's | beforeMove (rebind, e4e49ff) |
-| NoWrittenDropped | guard (classify) | the person's edit took effect without an item the person wrote | mutPipeByz (classify); true by construction with classify on (the store reads the content) |
-| NoUnseenReject | guard (basis, build) | the person's reject hit a result the page did not show | mutBuild (build); mutPage (basis): not seen in 1000 runs |
-| NoUnseenAccept | guard (basis) | the person's accept hit a draft the page did not show | mutPage (basis) |
-| NoLostUpdate | content | a draft took effect built on an older version of an item it changes (`trueBase`) | mutRace (rebase) |
-| NoFailedTestInEffect | guard (harnessTest) | a rule took effect whose test command fails its examples | mutPipeByz (harnessTest) |
-| NoDeepChangeWithoutPerson | guard (classify) | a change of the direction took effect without the person | mutPipe (classify) |
-| NoRoleChangeMisjudged | guard (classify) | a role draft that changes more went back to the card without the host's reassign | mutPipeByz (classify) |
-| NoUnrecheckedScope | guard (classify) | a change missed a task its content touches | mutPipe (classify) |
-| NoPassOfBrokenResult | guard (passTests) | a pass of a result a test-command rule catches | mutRole (passTests) |
-| NoPassOfBadResult | content | a pass (or a passed recheck) of a bad result | mutRole, mutRecheck, noRecheckBasis (recheckBasis; start 7); breaks in fixedRole (and in principle fixedPipe; not seen there in 1000 runs) by design: no store check judges quality |
-| NoShallowEvaluation | content | an evaluation at a level that cannot remove the real cause | mutPipeByz; breaks in fixedPipe and convFixed (misjudge) by design: no store check knows the cause |
-| RevisionHasContext | content | a revision worked by a maker that lost its context | mutCrash (fullBrief; start 9); mutCrashHi from a fresh start (3000 runs of 250 steps) |
-| NoMergedInput | content | a typed prompt merged with the person's typing was read | mutTmux (promptArg) |
-| DoneIsCurrent | content | a done task with nothing left to recheck is under an old version of an item that applies to it | noDecideRecheck (decideRecheck, DESIGN.md 11) |
-| NoDoneBrokenAtEnd | content | the project ended with a done task whose work a change broke (`hits`) | mutRecheck (a lying recheck) |
-| NoTakenUndone | content | a recheck undid a task the person took as is, though the change broke nothing (DESIGN.md 11) | mutRecheck |
-| NoRefixAtSameLevel | guard (raiseLevel) | an item or a task fixed again at the same or a lower level (DESIGN.md 13.2) | convNoRaise, convNeither (raiseLevel) |
-| NoEscalationWithoutPerson | guard (ladderRoute) | a draft raised to direction or principle took effect without the person | noLadderRoute (a lying pipeline role names only standards) |
-| Converges | derived (raiseLevel, strictScope, ladderRoute) | the agents made more than `changeBound` changes (standard changes and splits) | convNoSplitLimits (strictScope and raiseLevel off) |
-| NoAgentChangeAtTop | guard (raiseLevel, ladderRoute) | a change of a task already at the top rung (floor principle) took effect without the person | noLadderRoute (start 12) |
-
-`changeBound` is derived from the config: per task, sections - 1 splits and then one standard
-change (the task's floor then goes to direction, which reaches the person); slots x sections,
-4 with 2 tasks and 2 sections. It does not depend on the number of items. Under FIXED it
-follows from three store checks (an evaluation below the task's floor is refused, a split at
-one section is refused, a raised draft goes to the person): a derived property; its value is
-that those checks imply the bound. Past the top rung the person is the end (DESIGN.md 13):
-a task at principle may change again, one principle change through the person per new
-fight (start 12 shows it); nothing bounds that count but the person, who can send the draft
-back or take the task as is. NoAgentChangeAtTop checks that each such change goes through the
-person. It is a check of the model, not a budget of the design: the design has none.
-
-Removed: NoDraftDropped and the kept-draft handling (agents never remake the top, DESIGN.md
-13.1); C1aConfirmed and C1bHosted (DESIGN.md 12: the host keeps the top); NoDoneUnderOldVersion
-(merged into DoneIsCurrent); ChangesWithinBudget (no budgets); LiveNotInactive and
-DashInactiveReal (they restate the model's own assumption and definition).
-
-Store-shape sanity (`Sane`; a violation is a bug of the model): `DoneIsClosed`,
-`OneMakerPerTask`, `RaiseHasOwner`.
-
-Dashboard staleness (not in the holds runs; see "Simplified"): DashNoFalseWorking,
-DashQueueActive, DashEscalationMatches, DashRowMatches (mutPage). PageOffersPersonObs holds by
-the page's definition: the quint test `workenv_test.qnt`.
-
-Tier 2, told once: `EveryObligationToldOnce` (beforeMove; mutTmux (pumpReattach);
-noListOnAttach (listOnAttach)), `ToldIsAllowed`, `SomethingOwed`. A process held by a usage
-limit hears nothing; the engine owes it nothing until the limit lifts (a fair step).
-
-Convergence (DESIGN.md 13 and 13.1), 600 steps per run:
-
-- convFixed (crossTest, raiseLevel, strictScope on; a pipeline role that can misjudge the
-  level; rules that can contradict): holds.
-- convNoRaise (raiseLevel off): breaks NoRefixAtSameLevel (a misjudged standard fix repeats
-  at the same level) and Converges.
-- convNeither (crossTest and raiseLevel off): breaks NoRefixAtSameLevel (two rules ping-pong)
-  and Converges.
-- convNoCross (crossTest off, raiseLevel on, a person with 40 acts): holds Converges and
-  NoAgentChangeAtTop. A contradiction is raised
-  to direction and principle, which go to the person: more work for the person, not an
-  endless loop. Whether the person's direction change resolves a contradiction is the
-  environment's choice at the accept (`flag3`); if not, the rule still fights.
-- convNoScope (strictScope off): holds. The split floor (with raiseLevel on, a split part
-  cannot be split again; its next fix is a standard or higher) already ends splits; strict scope and the floor overlap.
-- convNoSplitLimits (strictScope and raiseLevel off): breaks Converges (splits never end) and
-  NoRefixAtSameLevel.
-
-Tier 3, progress: `FairProgress` and `AgentChangesStop` (temporal, with per-process fairness)
-are not run on this model (too big for TLC's liveness check). They are proven on the small
-models instead (section "The small models").
-
-Holds (no violation, every key witness of keys.sh reached): fixedHonest, fixedMaker,
-fixedHost, fixedCalm, convFixed (except NoShallowEvaluation), fixedRole (except
-NoPassOfBadResult, NoDoneBrokenAtEnd), fixedPipe (except NoShallowEvaluation,
-NoPassOfBadResult, NoDoneBrokenAtEnd). spec.sh: 400 runs of 300 steps; stress.sh: 3000 runs
-of 300 steps (convFixed 600), on c2b4405 (2026-11-17): every module held, every key witness
-was reached, and the witness sweep reached every witness. tlcCalm and tlcCrash: NotAtCap
-held in 3000 runs of 300 steps.
-
-## Witnesses
-
-One per action and per fault; the five witness modules together reach each in > 0 runs
-(numbers in the review report). Each `w*` in workenv.qnt names what it covers.
-
 
 ## Simplified or left out on purpose (declared)
 
@@ -448,89 +250,9 @@ One per action and per fault; the five witness modules together reach each in > 
   checked by the store (NoUnseenReject, NoUnseenAccept, NoAcceptNotWaiting).
 - No text, no timing, no store, page or CLI as code.
 
-## Results (stress phase, 2026-11-17, arch-temp)
-
-Run with `OUT=~/stress/run1 JOBS=12 sh stress.sh` at 3f26b07 (one thread per quint process),
-about 40 minutes.
-
-- Holds, with the coverage gate (every key witness reached), 3000 random runs each: fixedHonest,
-  fixedMaker, fixedHost, fixedCalm, fixedMakerTake, fixedHostTake (only their two take-as-is
-  witnesses gated), fixedRole (without NoPassOfBadResult, NoDoneBrokenAtEnd), fixedPipe
-  (without NoShallowEvaluation, NoPassOfBadResult, NoDoneBrokenAtEnd), at 300 steps; convFixed
-  (without NoShallowEvaluation) at 600 steps, wNearBound reached. 25 to 40 minutes each.
-- NotAtCap holds in tlcCalm and tlcCrash, 3000 runs of 300 steps.
-- Holds checks named as mutants in the review list: convNoCross keeps Converges and
-  NoAgentChangeAtTop (1000 runs of 600 steps), as the Properties section says.
-- Seeds: a new seed for each of the 47 `--check` lines, and one more, mutCrashHi
-  RevisionHasContext (now in spec.sh). Not seen: mutPage NoUnseenReject (1000x120; mutBuild
-  breaks it), fixedPipe NoPassOfBadResult (1000x120; fixedRole breaks it), convNoScope
-  Converges (1000x600; its spec.sh line was dropped before).
-- The witness sweep: all 84 witnesses reached in at least one witness module (1000 runs of 200
-  steps each).
-
-### TLC (cut-down modules, safety only)
-
-The TLA+ comes from `quint verify --backend=tlc` (tlc/grab.sh): quint writes the .tla for TLC
-and the copy is taken before TLC runs. Two obstacles and their fixes: quint serializes the
-table of every module in workenv.qnt (5 GB; its JSON writer fails), so tlc/extract.sh copies
-the model with only `workenv`, `cfgs` and the one instance module (the translation then takes
-about 1 minute); tlc/prune.js keeps only the table entries of that module. tlc/run.sh runs TLC
-with its own MC.tla and MC.cfg: Spec = init, step and the model's Fairness; each invariant by
-name; DEPTH (a state constraint on TLC's level) and VIEW (tlc/view.sh) optional. The scripts
-expect ~/stress/tlc on arch-temp.
-
-Invariants checked: Sane, EveryObligationToldOnce, ToldIsAllowed, SomethingOwed, DoneIsCurrent,
-NoDoneBrokenAtEnd, NoPassOfBadResult, NoLostUpdate, NoTakenUndone, NoClaimByEnded,
-NoRefixAtSameLevel, NoEscalationWithoutPerson, NotAtCap. No violation in any run below.
-
-| module | mode | distinct states | depth | time (workers) | ended |
-|---|---|---|---|---|---|
-| tlcCalm | full BFS (earlier run) | 0.73M | 6 | 6 min (8) | stopped: 10M generated by depth 6 |
-| tlcTiny | full BFS | 0.63M | 17 | 18 min (2) | stopped: each level ~1.3x the last |
-| tlcStd | full BFS | 0.67M | 18 | 5 min (8) | stopped |
-| tlcMini | full BFS | 1.35M | 28 | 6 min (12) | stopped, queue growing |
-| tlcTiny | every state within 18 steps | 1,104,552 | 19 | 9 min (12) | complete |
-| tlcTiny | every state within 21 steps | 1,608,784 | 21 | 10.5 min (12) | complete |
-| tlcTiny | full BFS, VIEW ev,dead,timers,page | 0.51M at 10:25, queue shrinking | 65 | 10 min so far (12) | running at the write-up: final line in ~/stress/tlc/tlcTiny/safety-full/tlc.log |
-
-What multiplies the states (tlcTiny, every state within 18 steps, distinct states by VIEW;
-tlc/probes.sh). A VIEW makes TLC compare states on a part of them. "Sound" means the dropped
-part is read by no action guard or effect on the rest and by no invariant checked, so the
-states TLC skips behave like the ones it keeps:
-
-| VIEW drops | distinct | sound for the invariants above? |
-|---|---|---|
-| nothing | 1,104,552 | - |
-| lastEvent (ev) | 507,871 | yes: only the witnesses and AgentChangesStop read it |
-| ev + dead processes (a down process, not its actor's latest, kept as actor, up, unseen) | 507,119 | yes without ENV.crash |
-| ev, dead + each process's view kept as its version map | 510,463 | probe (unsound) |
-| ev, dead + the store's history flags | 509,255 | probe (unsound) |
-| ev, dead + the acts in flight | 511,425 | probe (unsound) |
-| ev, dead + the page | 155,957 | yes with maxPerson 0 and ENV.page off |
-| ev, dead + silence and quiet (the wait and output markers) | 2,046 | yes: only tick, polls, prints (which change only them) and the card read them |
-| ev, dead + each process's todo and last | 4,120 | probe (unsound: todo drives acts) |
-
-told and obligations are functions of the store (commitS), so they add no states. The
-multipliers are the time markers (silence, quiet: x 250), then the steps each process holds
-(todo, last), the page's copy (x 3) and lastEvent (x 2.2). The process views, the history
-flags and the acts in flight add almost nothing at this size. Dead processes add almost
-nothing: tlcTiny has few. The caps (maxProcs, maxVer, maxStep) cut nothing: NotAtCap holds.
-
-Not done: liveness (FairProgress with the 41 weak-fairness conditions, AgentChangesStop), the
-sanity runs where Progress must fail (tlcNoList, tlcMutTmux; the simulator breaks
-EveryObligationToldOnce in both at once), tlcStd, tlcConv to the end. TLC ignores a VIEW in
-liveness checking, so liveness needs the time markers and the page out of the model itself.
-
-### Apalache
-
-apaHonest (fixedHonest with one task, start 0), depth 3, the content invariants: 13 minutes
-to translate and preprocess, then each transition of a step is checked on its own (step 1:
-32 transitions in 25 minutes); step 2 was not finished after the 1-hour timeout. Depth 20-30
-is out of reach at this size. apaMaker and apaHost were not run.
-
 ## The small models (assume-guarantee, DESIGN.md 14)
 
-The big model (workenv.qnt) is too big for TLC's liveness check (Results). So the question
+The question
 "does every run end, or wait only on the person, who is shown the wait?" is split, and each
 part is a model small enough for TLC to visit every reachable state, liveness included:
 
@@ -544,8 +266,8 @@ part is a model small enough for TLC to visit every reachable state, liveness in
 | browser.qnt | G4: what the person owes is in the end shown on the page | fairness of the engine parts only |
 | core.qnt | G2: every run reaches Final; agent changes stop | G1 (with A), G3, G4, engine fairness |
 
-A (an agent that hears its step takes it) is not provable: it is assumed, bounded (tries,
-the ladder, the person) and shown safe without it in the big model (Byzantine runs).
+A (an agent that hears its step takes it) is not provable: it is assumed and bounded (tries,
+the ladder, the person).
 
 ### The contract (contract.qnt)
 
@@ -678,18 +400,17 @@ computed by the store at the append, from the current store, so it is not stale:
 
 | Acts | What refuses a stale or second copy |
 |---|---|
-| Review, Reject, RecheckDone | the result's id (`rid`); RecheckDone also the judged versions |
-| Report | the maker's revision, the brief's versions (briefCheck), the live maker (endedCheck) |
-| Evaluate, Advance, WriteRule, RunTest, Ship, LoopReview, Accept, SendBack, Decide | the fix's step |
-| SendTask, AssignDo, TopDone, EndProject, Reassign, EditDirection | `legal`: the state they change (Unsent, Sent, not done, open, an accepted fix, the edit closed) |
+| Answer to a Check (the verdict), Ask Execute person -> pipeline role about a slot (reject), RecheckDone | the result's id (`rid`); RecheckDone also the judged versions |
+| Answer to a maker's Execute | the maker's revision, the brief's versions (briefCheck), the live maker (endedCheck) |
+| Evaluate, Advance, WriteRule, RunTest, Ship, LoopReview, Answer to a Decide (accept, send back, take, again) | the fix's step |
+| Ask Execute host -> role, Ask Execute role -> maker, TopDone, EndProject, Reassign, the edit | `legal`: the state they change (Unsent, Sent, not done, open, an accepted fix, the edit closed) |
+| a question | `legal`: an open question (Answer), an answered one (Hear), the cap |
 | Resume, Revive, Exit, RunRule | `legal`: the exit record or the pending rule they change |
 | RecheckDone (its own second copy) | `legal`: the pending items it clears, or the task sent back; a copy of a passed recheck excludes the same items again (no effect) |
 | MoveHost (run continue) | nothing: `legal` is always true. A second copy moves the host twice. A finding (P2: give it a basis, the session it moves from) |
 
 What store.qnt does not show (R6-11): it checks the mechanism on items with versions, not
-work.qnt's accept itself; the table above is the mapping, by reading. The big model checks
-work.qnt's accept against stale and repeated acts by simulation (NoStaleReport,
-NoReviewOfOtherResult, NoStalePipelineAct, NoSplitBrain, NoLostUpdate).
+work.qnt's accept itself; the table above is the mapping, by reading. 
 
 ### browser.qnt (G4)
 
@@ -726,29 +447,34 @@ acts and a three-state escalation passed 3 million states).
 ### core.qnt (G2)
 
 Contains: work.qnt's protocol, imported, not restated; the actors around it: each agent takes
-a step it is told with honest content (work.qnt `honestOf`, moved there from workenv.qnt so
-both models use one copy); a bounded number of mistakes (the pipeline role evaluates
-shallower than the real cause, `maxMistakes`); the environment's truths (a maker's slip, a
-test command's behaviour, a rule that contradicts the other rule, what a change breaks, the
-cause of a split part); the person (accept, send back, reject, take as is, end, start the
-host again; at most `maxPerson` acts; never assumed to act); a bounded number of process
-ends (`maxExits`: work.qnt's Exit, then Revive by the harness, Resume by the role, the host's
-revival by the person); a bounded number of questions (`maxAsks`, 0 except where named; `askMode`: 0 an agent asks the
-person, 1 any asker to any target above it, 2 among the agents, 3 among the agents in both
-directions; Answer and Hear are the told steps of the answerer and the asker, the person's
-Answer one of its `maxPerson` acts); a rogue maker (`rogue`: it asks its role again and again, and past `ASK_CAP` raises its task;
-unbounded, the ladder and the person must bound the raises). Invariants `NoWaitCycle` (the
-closure of `waitsFor` has no cycle) and `AskCap`; temporal `AnswererFinishes` (the role is
-again and again owed no step of its own, or Final: alternation). Modules: `coreAskCross` (one task: every cause, the person's two acts, a slip, a shallow
-evaluation, a failing test command; and two questions between any actors in both
-directions, the person a target too: role -> host and host -> role, maker -> role and role ->
-maker; no wait cycle, no deadlock; the person's answer and `NoFinalWithAsk` live here),
-`coreAskRogue` (the same task and an unbounded rogue maker; its liveness is unchecked until TLC
-runs). Witnesses the simulator breaks: `NoFinalWithAsk`, `NoCrossing`, `NoCapReached`,
-`NoAskRaise`. The two ask jobs are in tlc.sh and are not run on TLC yet. Deleted (Nanda: only
-the latest model is tested): `coreAsk`, `coreOneAsk`, `coreAskAgents` and `coreOne`, whose runs
-are all runs of coreAskCross (it may ask nothing, or only among agents). An act takes
-effect in one step on the current state (G3).
+a step it is told with honest content (work.qnt `honestOf`); a bounded number of mistakes
+(the pipeline role evaluates shallower than the real cause, `maxMistakes`); the environment's
+truths (a maker's slip, a test command's behaviour, a rule that contradicts the other rule,
+what a change breaks, the cause of a split part); the person (reply to a Decide: accept, send
+back, take as is, again; reject, end, start the host again; at most `maxPerson` acts; never
+assumed to act); a bounded number of process ends (`maxExits`: work.qnt's Exit, then Revive
+by the harness, Resume by the role, the host's revival by the person); a bounded number of
+questions (`maxAsks`, 0 except where named: any agent asks any actor, the person a target
+too, both ways; Answer and Hear are the told steps of the answerer and the asker, the
+person's Answer one of its `maxPerson` acts); a rogue maker (`rogue`: it asks its role again
+and again, and past `ASK_CAP` raises its task with `AskRaise`; unbounded, the ladder and the
+person must bound the raises); a mutant of the wait order (`reverse`: a maker asks its role
+to execute, injected past the store's check).
+
+Invariants `NoWaitCycle` (the closure of `waitsFor`, the open asks that are not questions and
+not from the person, has no cycle: it tests the real sequences of asks), `AskCap`, and
+`AsksFollowState` (in `Sane`: the open protocol asks are those the tasks and fixes imply);
+temporal `AnswererFinishes` (the role is again and again owed no step of its own, or Final:
+alternation). Modules: `coreAsks` (one task, causes none and principle, so that the waits
+host -> role -> maker and role -> pipeline role -> person arise; two questions crossing
+between any actors in both directions while executes, checks and decides are open: no wait
+cycle, no deadlock; the person's answers and `NoFinalWithAsk` live here), `coreAskRogue` (one
+task, a rogue maker: the cap, `AskRaise`, the role's own work still finishes),
+`coreAskReverse` (the mutant: `NoWaitCycle` must break). Witnesses the simulator breaks:
+`NoFinalWithAsk`, `NoCrossing`, `NoWaitChain` (host -> role -> maker), `NoCapReached`,
+`NoAskRaise`. The three ask jobs are in tlc.sh and are not run on TLC yet. Replaced and
+deleted: `coreAskCross` (by `coreAsks`; with the asks as acts a task already has wait edges
+with no cause). An act takes effect in one step on the current state (G3).
 
 Abstracted: tmux, terminals, processes (G1), the network and old views (G3), the page (G4),
 time, the person's direction edit (EditDirection) and run continue (MoveHost).
@@ -764,11 +490,9 @@ that apply to task i (a choice of this model, to cut states).
 Reused from work.qnt (imported): every type, the store, `accept`, `take`/`effect`, `dos`,
 `obligationsOf`, `toldAny`, `finalOf`, `changeBound`/`pastBound`, `initStore`, `honestOf`,
 `basisOk`, `epochOk`, `recheckCurrent`. Restated (and why): the CFG record type (quint needs
-the const's type in the module), the FIXED values (`coreCfgs`: importing workenv's `cfgs`
-pulls workenv.qnt into the TLA+ export), `CAUSE_OF` (3 lines of workenv), the property
-one-liners (Sane's parts, DoneIsCurrent, the flags: as in workenv), EveryObligationToldOnce
-without the hearing part (every actor hears here: G1), ToldIsAllowed on core's own content
-choices (`choices`: smaller than workenv's `variants`).
+the const's type in the module), the FIXED values (`coreCfgs`), `CAUSE_OF`, the property one-liners (Sane's parts,
+DoneIsCurrent, the flags), EveryObligationToldOnce without the hearing part (every actor
+hears here: G1), ToldIsAllowed on core's own content choices (`choices`).
 
 Properties: invariants Sane, EveryObligationToldOnce, ToldIsAllowed, SomethingOwed,
 DoneIsCurrent, NoDoneBrokenAtEnd, NoLostUpdate, NoTakenUndone, NoPassOfBadResult,

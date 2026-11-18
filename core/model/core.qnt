@@ -6,7 +6,7 @@
 // puts in an act (honestOf). This file adds only the actors around it:
 // - each agent takes a step it is told, with honest content (a bounded number of mistakes:
 //   the pipeline role may evaluate shallower than the real cause); the act takes effect in
-//   one step (no network, no stale views: those couplings are the big model's, workenv.qnt);
+//   one step (no network, no stale views: those couplings are store.qnt's and browser.qnt's);
 // - the environment's truths: a maker's slip, a test command's real behaviour, whether a
 //   new rule contradicts the other rule (fights), what a change breaks (hits), the real
 //   cause of a split part;
@@ -34,7 +34,7 @@ module core {
     idleSeen: bool, silentSteps: int, reviewSubagents: bool, editBack: int, acceptCheck: bool,
     decideRecheck: bool, briefCheck: bool, strictScope: bool, sections: int,
     listOnAttach: bool, ladderRoute: bool, ruleLadder: bool, loopLadder: bool, maxTries: int,
-    maxMakers: int,
+    maxMakers: int, makerAsks: bool,
   }
   // causes: the real causes task 0 may start with, and a split part may get (0 none,
   // 1 split, 2 fit, 3 principle, 4 direct, 5 standard); causes1: those of task 1.
@@ -145,7 +145,12 @@ module core {
   // The contents an honest agent may choose, and the environment's truths, per act. Only
   // the fields the act uses vary (honestOf then filters).
   def choices(b: Act): Set[Act] = match b.what {
-    | Review(_) => VERDICTS.map(v => { ...b, v: v })
+    // The role's verdict on a check; a maker's result to its Execute (it may slip).
+    | Answer(q) =>
+        if (q.typ == Check) VERDICTS.map(v => { ...b, v: v })
+        else if (q.typ == Execute)
+          (if (C.slips) BOOLS.map(f => { ...b, flag: f }) else Set({ ...b, flag: false }))
+        else Set(b)
     | Evaluate(_) => LEVELS.fold(Set(), (acc, l) => acc.union(
         if (l == Fit) BOOLS.map(f => { ...b, level: l, flag: f, flag2: f })
         else if (l == Split) causes.map(c => { ...b, level: l, cause: c })
@@ -160,12 +165,12 @@ module core {
         { ...b, flag: f, flag2: f2 })))
     | RecheckDone(_) => BOOLS.map(f => { ...b, flag: f })
     | LoopReview(_) => BOOLS.map(f => { ...b, flag: f })
-    | Report(_) => if (C.slips) BOOLS.map(f => { ...b, flag: f }) else Set({ ...b, flag: false })
     | _ => Set(b)
   }
   // A new maker gets its task's id (canon).
   def prep(a: Act): Store = match a.what {
-    | AssignDo(i) => { ...s, nextMaker: makerOf(i) }
+    | Ask(q) => if (q.typ == Execute and q.from == ROLE) { ...s, nextMaker: makerOf(q.about) }
+                else s
     | _ => s
   }
   def honestNow(a: Act): bool = honestOf(s, a, mistakes < C.maxMistakes)
@@ -175,7 +180,9 @@ module core {
     basisCurrent: basisOk(s, a),
     judgedCurrent: match a.what { | RecheckDone(i) => recheckCurrent(s, i, a) | _ => true },
     firstTime: true, currentEpoch: epochOk(s, a), currentBuild: not(a.old),
-    waitsIfAccept: match a.what { | Accept(i) => fx(s, i).stage == SAtPerson | _ => true },
+    waitsIfAccept: match a.what {
+      | Answer(q) => q.typ != Decide or a.rep != RAccept or fx(s, q.about).stage == SAtPerson
+      | _ => true },
   }
   def makers: Set[int] = SLOTS.map(i => makerOf(i))
   // An agent (or the harness) takes a step it is told, with honest content; not while its
@@ -211,7 +218,7 @@ module core {
     asked < C.maxAsks,
     nondet k = Set(HOST, ROLE, PIPE).union(s.makers.keys()).oneOf()
     nondet j = Set(PERSON, HOST, ROLE, PIPE).union(s.makers.keys()).oneOf()
-    putAsk(base(k, Ask({ from: k, to: j })), asked + 1),
+    putAsk(base(k, Ask(question(k, j))), asked + 1),
   }
   // The rogue maker (C.rogue > 0): it asks its role again and again, whenever the store takes
   // it (not fair, not counted by maxAsks: the cap, ASK_CAP, bounds it), and past the cap it
@@ -220,9 +227,16 @@ module core {
     C.rogue,
     nondet m = s.makers.keys().oneOf()
     any {
-      putAsk(base(m, Ask({ from: m, to: ROLE })), asked),
-      putAsk(base(m, AskRaise({ from: m, to: ROLE })), asked),
+      putAsk(base(m, Ask(question(m, ROLE))), asked),
+      putAsk(base(m, AskRaise(question(m, ROLE))), asked),
     },
+  }
+  // The mutant of the wait order (CFG.makerAsks): a maker asks its role to execute, the
+  // reverse of the role's own Execute to it. The store takes it only in the mutant.
+  action reverseStep = all {
+    CFG.makerAsks,
+    nondet m = s.makers.keys().filter(j => not(mk(s, j).ended)).oneOf()
+    putAsk(base(m, Ask(exec(m, ROLE, mk(s, m).slot))), asked),
   }
   // The person: what the person is told (accept, send back, take as is, end, start the
   // host), and a reject of a result. Not fair; at most maxPerson acts (-1: no count). With
@@ -231,23 +245,31 @@ module core {
   // are not counted in maxPerson.
   def personMoves: Set[What] = dos(s, PERSON).union(if (not(C.reject)) Set() else
     SLOTS.filter(i => tk(s, i).rid >= 0 and (tk(s, i).st == InReview or tk(s, i).st == Done))
-      .map(i => Reject(i)))
+      .map(i => Ask(exec(PERSON, PIPE, i))))
+  def replies(x: What): Set[Reply] = match x {
+    | Answer(q) => if (q.typ != Decide) Set(RAccept)
+                   else if (free(q.about)) Set(RAccept, RSendBack)
+                   else Set(RAccept, RSendBack, RTake, RAgain)
+    | _ => Set(RAccept)
+  }
   action personStep = all {
     nondet x = personMoves.oneOf()
-    val counted = match x { | SendBack(_) => not(C.personBound) | _ => true }
+    // The reply to a decide: accept, send back, and for a slot's raise take as is or again.
+    nondet rep = replies(x).oneOf()
+    val counted = rep != RSendBack or not(C.personBound)
     // sendBacks: the send-backs a run of this instance explores per draft (at most P).
     val cap = if (C.sendBacks < PERSON_SEND_BACKS) C.sendBacks else PERSON_SEND_BACKS
-    val bounded = match x { | SendBack(i) => not(C.personBound) or fx(s, i).backs < cap
-                            | _ => true }
-    // flag: take as is (Decide); flag3: the accepted direction change resolves a
-    // contradiction; hits: the tasks the accepted change breaks.
-    val fs = match x { | Decide(_) => BOOLS | _ => Set(true) }
-    val rs = match x { | Accept(_) => BOOLS | _ => Set(false) }
-    val hs = match x { | Accept(i) => others(i) | _ => Set(Set()) }
-    nondet f = fs.oneOf()
+    val bounded = match x {
+      | Answer(q) => rep != RSendBack or not(C.personBound) or fx(s, q.about).backs < cap
+      | _ => true }
+    // flag3: the accepted direction change resolves a contradiction; hits: the tasks the
+    // accepted change breaks.
+    val rs = if (rep == RAccept) BOOLS else Set(false)
+    val hs = match x { | Answer(q) => if (rep == RAccept) others(q.about) else Set(Set())
+                       | _ => Set(Set()) }
     nondet r = rs.oneOf()
     nondet h = hs.oneOf()
-    val a = { ...base(PERSON, x), flag: f, flag3: r, hits: h }
+    val a = { ...base(PERSON, x), rep: rep, flag3: r, hits: h }
     all { not(counted) or C.maxPerson < 0 or persons < C.maxPerson, bounded,
           accept(s, a), G3(fresh(a)),
           commit(take(s, a), persons + if (counted and C.maxPerson >= 0) 1 else 0, mistakes) },
@@ -255,7 +277,7 @@ module core {
   action step = any {
     agentStep(HOST), agentStep(ROLE), agentStep(PIPE), agentStep(HARNESS),
     nondet m = makers.oneOf() agentStep(m),
-    personStep, exitHappens, askStep, rogueStep,
+    personStep, exitHappens, askStep, rogueStep, reverseStep,
   }
 
   // ---- properties
@@ -314,11 +336,14 @@ module core {
     s.makers.keys().filter(m => mk(s, m).slot == i and not(mk(s, m).ended)).size() <= 1)
   val RaiseHasOwner: bool =
     SLOTS.forall(i => (tk(s, i).st == Raised) iff (fx(s, i).stage != SClosed))
-  val Sane: bool = DoneIsClosed and OneMakerPerTask and RaiseHasOwner
+  // The open protocol asks are those the tasks and fixes imply.
+  val AsksFollowState: bool = asksMatchState(s)
+  val Sane: bool = DoneIsClosed and OneMakerPerTask and RaiseHasOwner and AsksFollowState
   // Every obligation is told to exactly one actor (everyone hears here: G1).
   // An answer deferred by alternation is told later: its answerer is told its own step now.
   def deferred(ob: Ob): bool = match ob {
-    | AnswerOb(q) => s.justAnswered.contains(q.to) and ownDos(s, q.to) != Set()
+    | AskOb(q) => q.typ == Question and s.justAnswered.contains(q.to)
+        and ownDos(s, q.to) != Set()
     | _ => false
   }
   val EveryObligationToldOnce: bool =
@@ -339,22 +364,27 @@ module core {
   val NoEscalationWithoutPerson: bool = not(s.g.escalatedNoPerson)
   val NoAgentChangeAtTop: bool = not(s.g.topNoPerson)
   // Witness (TLC/simulator must break it): a run is Final with a question still open.
-  val NoFinalWithAsk: bool = not(s.asks != Set() and finalOf(s) and not(s.top.ended))
+  val NoFinalWithAsk: bool =
+    not(s.asks.exists(q => q.typ == Question) and finalOf(s) and not(s.top.ended))
   // DESIGN.md 16: no cycle of waits (work.qnt waitsFor); an asker asks a pair at most ASK_CAP
   // times.
   val NoWaitCycle: bool = not(waitClosure(s).exists(e => e._1 == e._2))
   val AskCap: bool = s.askCount.keys().forall(e => s.askCount.get(e) <= ASK_CAP)
   // Witnesses (the simulator must break them): questions cross (an ask each way at once);
   // an asker reaches the cap; a repeat raised its task.
-  val NoCrossing: bool =
-    not(s.asks.exists(q => s.asks.exists(r => r.from == q.to and r.to == q.from)))
+  val NoCrossing: bool = not(s.asks.exists(q => q.typ == Question
+    and s.asks.exists(r => r.typ == Question and r.from == q.to and r.to == q.from)))
+  // Witness: a wait chain of length 2 or more (host -> role -> maker).
+  val NoWaitChain: bool = not(waitClosure(s).exists(e => e._1 == HOST and e._2 >= 3))
+  // Witness: the full chain host -> role -> pipeline role -> person.
+  val NoLongWaitChain: bool = not(waitClosure(s).exists(e => e._1 == HOST and e._2 == PERSON))
   val NoCapReached: bool = s.askCount.keys().forall(e => s.askCount.get(e) < ASK_CAP)
   val NoAskRaise: bool = not(s.g.askRaised)
   // The convergence flag: agent changes stay within the bound the config gives.
   val Converges: bool = not(pastBound(s))
 }
 
-// FIXED as in workenv.qnt (every proposed check on).
+// FIXED: every proposed check on.
 module coreCfgs {
   pure val FIXED_C = { crossTest: true, raiseLevel: true, recheckBasis: true, slots: Set(0, 1),
     basis: true, build: true, rebase: true, harnessTest: true, classify: true,
@@ -363,8 +393,9 @@ module coreCfgs {
     promptArg: true, idleSeen: true, silentSteps: 3, reviewSubagents: false, editBack: 1,
     acceptCheck: true, decideRecheck: true, briefCheck: true, strictScope: true, sections: 2,
     listOnAttach: true, ladderRoute: true, ruleLadder: true, loopLadder: true, maxTries: 2,
-    maxMakers: 6 }
-  pure val ENV_C = { causes: Set(0, 5), causes1: Set(0, 5), maxPerson: 1, maxMistakes: 0, slips: false,
+    maxMakers: 6, makerAsks: false }
+  pure val ENV_C = { causes: Set(0, 5), causes1: Set(0, 5), maxPerson: 1, maxMistakes: 0,
+                     slips: false,
                      forms: Set(1, 2), testsFail: true, reject: false, maxExits: 0,
                      personBound: true, sendBacks: 1, maxAsks: 0, rogue: false }
 }
@@ -421,26 +452,34 @@ module corePersonUnbounded {
               C = { ...ENV_C, causes: Set(4), causes1: Set(0), maxPerson: -1,
                     personBound: false }).* from "./core"
 }
-// One task as coreAskRogue's, with no rogue, and questions that cross: two between any actors in both directions, the person a target too (role
-// -> host and host -> role, maker -> role and role -> maker, anyone -> person): no wait cycle,
-// no deadlock (NoWaitCycle, CoreProgress); the person's Answer and NoFinalWithAsk live here.
-module coreAskCross {
+// One task, the causes that make wait edges (none: host -> role -> maker; split: the task
+// again after a split; principle: a raise to the pipeline role and the draft at the person),
+// no slips or mistakes (coreAskRogue has them). Two questions that cross between any actors
+// in both directions, the person a target too, while executes, checks and decides are open:
+// no wait cycle, no deadlock (NoWaitCycle, CoreProgress, CoreSettles); the person's answers
+// and NoFinalWithAsk live here.
+module coreAsks {
   import coreCfgs.*
-  // Only the causes that make wait edges: none (execute), split (nested execute), principle
-  // (evaluate, then the person's decide). Slips and mistakes are coreAskRogue's.
   import core(CFG = { ...FIXED_C, slots: Set(0) },
               C = { ...ENV_C, causes: Set(0, 1, 3), causes1: Set(0), maxPerson: 2,
-                    reject: true, sendBacks: 0, maxAsks: 2 }).* from "./core"
+                    sendBacks: 0, maxAsks: 2 }).* from "./core"
 }
-// One task, every real cause, the ladder to the person, the person's acts (two), a maker that
-// slips, one shallow evaluation, a test command that may fail, and a rogue maker: it asks its
-// role again and again (the cap, then a raise); the role's own work still finishes
-// (AnswererFinishes, CoreProgress, CoreSettles).
+// One task, causes none and principle, the person's reject, a maker that slips, one shallow
+// evaluation, and a rogue maker: it asks its role again and again (the cap, then a raise); the
+// role's own work still finishes (AnswererFinishes, CoreProgress, CoreSettles).
 module coreAskRogue {
   import coreCfgs.*
   import core(CFG = { ...FIXED_C, slots: Set(0) },
-              C = { ...ENV_C, causes: 0.to(5), causes1: Set(0), maxPerson: 2, maxMistakes: 1,
-                    slips: true, reject: true, sendBacks: 0, rogue: true }).* from "./core"
+              C = { ...ENV_C, causes: Set(0, 3), causes1: Set(0), maxPerson: 2,
+                    maxMistakes: 1, slips: true, reject: true, sendBacks: 0,
+                    rogue: true }).* from "./core"
+}
+// The mutant of the wait order: the store lets a maker ask its role to execute (the reverse
+// of the role's Execute to it), the normal steps run: NoWaitCycle must break.
+module coreAskReverse {
+  import coreCfgs.*
+  import core(CFG = { ...FIXED_C, slots: Set(0), makerAsks: true },
+              C = { ...ENV_C, causes: Set(0), causes1: Set(0), maxPerson: 0 }).* from "./core"
 }
 // The simulator only (too big for TLC): two tasks, every cause, the person's acts.
 module coreAll {

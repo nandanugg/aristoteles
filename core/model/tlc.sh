@@ -75,8 +75,9 @@ browser.qnt browserNoReconnect breaks - G4All
 browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All
 browser.qnt browserNoPoll breaks - G4All
-core.qnt coreAskCross holds $SAFE $LIVE
+core.qnt coreAsks holds $SAFE $LIVE
 core.qnt coreAskRogue holds $SAFE $LIVE,AnswererFinishes
+core.qnt coreAskReverse breaks NoWaitCycle -
 core.qnt coreTwo holds $SAFE $LIVE
 core.qnt coreTwo breaks - CoreProgressNoPipe
 core.qnt coreTwoExit holds $SAFE $LIVE
