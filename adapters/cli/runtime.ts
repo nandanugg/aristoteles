@@ -1,6 +1,6 @@
 // The runtime of one CLI call (plan/rebuild/BUILD.md 3.1): the Layers from io, a read (fold the
 // store, read the outside, derive) and an act (dispatch, then the Derived of the new Work). The
-// CLI gives no terminals; its measure is the length of the brief that adapters/words prints.
+// CLI gives no terminals.
 import { Effect, Layer, type Scope } from 'effect'
 import { dispatch } from '../../core/actions/index.ts'
 import type { ActionCall } from '../../core/actions/types.ts'
@@ -8,7 +8,6 @@ import { derive, type Derived } from '../../core/derived/index.ts'
 import type { ActionInput } from '../../core/schema/actions.ts'
 import type {
   Author,
-  CreatedId,
   OutsideFailed,
   Refused,
   StoreDamaged,
@@ -17,7 +16,6 @@ import type {
 } from '../../core/schema/index.ts'
 import {
   Dir,
-  Env,
   FilesLive,
   layerOfIo,
   Now,
@@ -29,18 +27,6 @@ import {
 } from '../../core/services/index.ts'
 import { loadWork, momentOf } from '../../core/state/index.ts'
 import { ReadingsLive } from '../live/index.ts'
-import { withBriefMeasure } from '../words/index.ts'
-
-// The live readings, with the measure of a brief (ruling 10.9), at the time of the read.
-const readingsOfCli: Layer.Layer<Readings, never, Dir | Env> = Layer.effect(
-  Readings,
-  Effect.gen(function* () {
-    const live = yield* Readings.pipe(Effect.provide(ReadingsLive))
-    return {
-      read: (work, at) => Effect.map(live.read(work, at), (o) => withBriefMeasure(o, at)),
-    }
-  }),
-)
 
 export const layerOf = (io: WorkIo) => {
   const ioLayer = layerOfIo(io)
@@ -49,7 +35,7 @@ export const layerOf = (io: WorkIo) => {
     FilesLive,
     SpawnLive,
     StoreLive.pipe(Layer.provide(ioLayer)),
-    readingsOfCli.pipe(Layer.provide(ioLayer)),
+    ReadingsLive.pipe(Layer.provide(ioLayer)),
   )
 }
 
@@ -108,5 +94,3 @@ export const derivedAfter = (work: Work): Effect.Effect<Derived, never, Readings
 
 // One act: dispatch, in one store write.
 export const act = (by: Author, input: ActionInput) => dispatch({ by, input } as ActionCall)
-
-export const firstCreated = (created: ReadonlyArray<CreatedId>): string => String(created[0])

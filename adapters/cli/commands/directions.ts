@@ -2,7 +2,7 @@
 // flags and prints the words.
 import { join } from 'node:path'
 import { Effect } from 'effect'
-import { currentOf, draftAt } from '../../../core/derived/reads.ts'
+import { currentOf, draftAt, versionAt, versionNumberOf } from '../../../core/derived/reads.ts'
 import type { SuggestAbout } from '../../../core/schema/actions.ts'
 import {
   type AnswerId,
@@ -13,14 +13,14 @@ import {
   type RevisionId,
   type SuggestionId,
   refuse,
-  Time,
   type VersionId,
   versionIdOf,
   type RejectId,
   spotsOf,
   examplesOfFlow,
 } from '../../../core/schema/index.ts'
-import { Dir, Files, Now } from '../../../core/services/index.ts'
+import { Dir, Files, Now, Store } from '../../../core/services/index.ts'
+import { foldWork } from '../../../core/state/work/fold.ts'
 import {
   exampleLines,
   draftWaitsText,
@@ -32,9 +32,10 @@ import {
 } from '../../words/index.ts'
 import { suggestionMover } from '../../words/shared.ts'
 import { type Args, textOf, wordsOf } from '../args.ts'
-import { authorOf, callerOf, isPerson, personAuthor, agentCallerOf } from '../caller.ts'
+import { isPerson, personAuthor, verifyWork } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { lookupKind } from '../lookups.ts'
+import { followCommit } from '../refresh.ts'
 import { act, derivedAfter, peekWork, readWork } from '../runtime.ts'
 import {
   FLOW_FORM,
@@ -155,33 +156,24 @@ const answersOf = (work: Parameters<typeof lookup>[0], text: string | undefined)
 // A new direction (Nanda, 2026-11-10): a model writes the whole of it, and its owner accepts it.
 const newDirection = (call: Call) =>
   Effect.gen(function* () {
-    const { args, token } = call
+    const { args } = call
     const runName = textOf(args.one('by'))
-    if (token === null && (yield* isPerson)) {
+    if (yield* isPerson) {
       return yield* refuse(
         'the person gives direction in words: work suggest --says="<the direction that is missing>"; a model drafts it, and you accept or reject it',
       )
     }
     const file = textOf(args.one('file'))
     if (!file) return yield* refuse('a new direction needs --file=<direction.yaml>', DIRECTION_TEMPLATE)
-    if (token !== null && runName !== undefined) {
-      return yield* refuse(
-        '--by names a model run outside any task; an assignment is named by its token',
-      )
-    }
-    if (token === null && !/^[a-z][a-z0-9-]*$/.test(String(runName ?? ''))) {
+    if (!/^[a-z][a-z0-9-]*$/.test(String(runName ?? ''))) {
       return yield* refuse(
         'a model run outside any task names itself: --by=<its name in lower case>',
         `run it again with --by, for example: work direction new --file=${file} --by=assess`,
       )
     }
-    // A run outside any task has no token; its id is the time of its act.
-    const run = token === null ? { name: String(runName), id: yield* (yield* Now).read } : undefined
+    // A model run has no token; its id is the time of its act.
     const { work } = yield* peekWork
-    const by: Author =
-      token !== null
-        ? authorOf(yield* agentCallerOf(work, token))
-        : { _tag: 'ModelRun', name: String(run?.name), at: run?.id as Time }
+    const by: Author = { _tag: 'ModelRun', name: String(runName), at: yield* (yield* Now).read }
     const answers = yield* answersOf(work, textOf(args.one('answers')))
     const done = yield* act(by, {
       _tag: 'DraftDirection',
@@ -189,28 +181,27 @@ const newDirection = (call: Call) =>
       content: { file, answers, why: whyOf(args) },
     })
     const did = String(done.created[0])
-    const after = yield* derivedAfter(done.work)
     const { revision: draft } = yield* lookupKind('Revision', ['d'], done.work, did)
     const direction = done.work.directions.get(draft.of)
     const answering = draft.answers.length ? `, answering ${draft.answers.join(', ')}` : ''
-    const writer = run ? `, by ${run.name} (a model run outside any task)` : ''
+    const writer = `, by ${runName} (a model run)`
     // N8: the file of a direction with a version made its revise.
     const what =
       draft._tag === 'Change'
         ? `${did} drafted, built on ${draft.base}`
         : `${did} drafted: the new direction ${draft.of} (${direction?.name})`
     return [
-      `${what}${writer}${answering}; it waits for the accept of ${draftWaitsText(after, draft.id)}.`,
-      `next: work direction show ${did}; ${direction?.owner.name} runs work review ${did} accept [--reason="<a comment>"], or reject --reason="<why>"`,
+      `${what}${writer}${answering}; it waits for the accept of ${draftWaitsText(done.work, draft.id)}.`,
+      `next: work direction show ${did}; ${direction?.owner.name} accepts or rejects it on the page`,
     ]
   })
 
 const reviseDirection = (call: Call, rest: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const { args, token } = call
+    const { args } = call
     const runName = textOf(args.one('by'))
     // A model writes each draft: the person gives direction in words, then accepts or rejects.
-    if (token === null && (yield* isPerson)) {
+    if (yield* isPerson) {
       return yield* refuse(
         'the person gives direction in words: work suggest <direction, standard, or rule> --says="<the change>"; ' +
           'a role that directs writes the draft, and you accept or reject it',
@@ -218,26 +209,16 @@ const reviseDirection = (call: Call, rest: ReadonlyArray<string>) =>
     }
     const directionId = DirectionId.make(String(rest[0]))
     const { work } = yield* peekWork
-    if (token !== null && runName !== undefined) {
-      return yield* refuse(
-        '--by names a model run outside any task; an assignment is named by its token',
-      )
-    }
-    const caller = token === null ? undefined : yield* agentCallerOf(work, token)
     const file = textOf(args.one('file'))
     if (!file) return yield* refuse('a revise needs --file=<edit.yaml>', REVISE_TEMPLATE)
-    // A host outside any task revises a direction too (ruling 2026-11-14): it names itself, as
-    // for a new direction.
-    if (caller === undefined && !/^[a-z][a-z0-9-]*$/.test(String(runName ?? ''))) {
+    // A host revises a direction too (ruling 2026-11-14): it names itself, as for a new direction.
+    if (!/^[a-z][a-z0-9-]*$/.test(String(runName ?? ''))) {
       return yield* refuse(
         'a model run outside any task names itself: --by=<its name in lower case>',
         `run it again with --by, for example: work direction revise ${directionId} --file=${file} --by=host`,
       )
     }
-    const by: Author =
-      caller !== undefined
-        ? authorOf(caller)
-        : { _tag: 'ModelRun', name: String(runName), at: yield* (yield* Now).read }
+    const by: Author = { _tag: 'ModelRun', name: String(runName), at: yield* (yield* Now).read }
     const answers = yield* answersOf(work, textOf(args.one('answers')))
     const done = yield* act(by, {
       _tag: 'ReviseDirection',
@@ -245,45 +226,35 @@ const reviseDirection = (call: Call, rest: ReadonlyArray<string>) =>
       content: { file, answers, why: whyOf(args) },
     })
     const did = String(done.created[0])
-    const after = yield* derivedAfter(done.work)
     const { revision: draft } = yield* lookupKind('Revision', ['d'], done.work, did)
     const direction = done.work.directions.get(draft.of)
     const answering = draft.answers.length ? `, answering ${draft.answers.join(', ')}` : ''
     if (draft._tag !== 'Change') return yield* Effect.die(`the revise ${did} changes no version`)
     // The action keeps no answer about a closed task: such a point blocks no work.
     const dropped = answers.filter((a) => !draft.answers.includes(a))
-    const writer = caller === undefined ? `, by ${runName} (a model run outside any task)` : ''
-    // A run has no task tree, so any decider may accept its draft.
-    const decider = caller === undefined ? 'a decider' : 'a decider outside the tree of its reviser'
+    const writer = `, by ${runName} (a model run)`
     return [
-      `${did} drafted, built on ${draft.base}${writer}${answering}; it waits for the accept of ${draftWaitsText(after, draft.id)}.`,
+      `${did} drafted, built on ${draft.base}${writer}${answering}; it waits for the accept of ${draftWaitsText(done.work, draft.id)}.`,
       ...(dropped.length
         ? [`${dropped.join(', ')}: a point of a closed task blocks no work, so ${did} does not answer it.`]
         : []),
-      `next: work direction show ${did}; ${decider} runs work review [<token>] ${did} accept ` +
-        `--evidence="<where you read in ${did}> | <what you saw there>" (work waiting --for=${direction?.owner.name} shows it to the owner)`,
+      `next: work direction show ${did}; ${direction?.owner.name} accepts or rejects it on the page`,
     ]
   })
 
 // A model gives a company draft of a new direction its flow and examples before the accept (P10 rejected,
-// onboarding 2026-11-14): an agent that directs, with its token, or a model run outside any task (--by).
+// onboarding 2026-11-14): a model run (--by).
 const draftExamples = (call: Call, rest: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const { args, token } = call
+    const { args } = call
     const runName = textOf(args.one('by'))
     const id = String(rest[0])
     const file = textOf(args.one('file'))
     if (!file) return yield* refuse('the flow of a draft needs --file=<flow.yaml>', FLOW_TEMPLATE)
     const { work } = yield* peekWork
-    if (token !== null && runName !== undefined) {
-      return yield* refuse(
-        '--by names a model run outside any task; an assignment is named by its token',
-      )
-    }
     let by: Author
-    if (token !== null) by = authorOf(yield* agentCallerOf(work, token))
     // The person is refused by canAct: a model drafts, the person says it in words.
-    else if (yield* isPerson) by = yield* personAuthor(work)
+    if (yield* isPerson) by = yield* personAuthor(work)
     else if (!/^[a-z][a-z0-9-]*$/.test(runName ?? '')) {
       return yield* refuse(
         'a model run outside any task names itself: --by=<its name in lower case>',
@@ -296,11 +267,42 @@ const draftExamples = (call: Call, rest: ReadonlyArray<string>) =>
       target: { draft: draft.id },
       content: { file },
     })
-    const after = yield* derivedAfter(done.work)
     const owner = done.work.directions.get(draft.of)?.owner.name
     return [
-      `${draft.id} has its flow and examples; it waits for the accept of ${draftWaitsText(after, draft.id)}.`,
-      `next: work direction show ${draft.id}; ${owner} runs work review ${draft.id} accept, or reject --reason="<why>"`,
+      `${draft.id} has its flow and examples; it waits for the accept of ${draftWaitsText(done.work, draft.id)}.`,
+      `next: work direction show ${draft.id}; ${owner} accepts or rejects it on the page`,
+    ]
+  })
+
+// work direction accept|reject <draft>: before a top is open, the owner (the person) decides a
+// draft directly (Nanda's ruling Q6a). An accept makes it official.
+const decideDraft = (call: Call, word: 'accept' | 'reject', ref: string) =>
+  Effect.gen(function* () {
+    const { work, d } = yield* peekWork
+    const { revision } = yield* lookupKind('Revision', ['d'], work, ref)
+    const reason = textOf(call.args.one('reason'))
+    const by = yield* personAuthor(
+      work,
+      word === 'accept'
+        ? { word, show: `accept ${ref}:\n${renderDraft(d, revision.id)}` }
+        : undefined,
+    )
+    const of = { _tag: 'Revision', id: revision.id } as const
+    const done = yield* act(
+      by,
+      word === 'accept'
+        ? { _tag: 'Accept', target: { of }, content: { evidence: [], reason: reason ?? null } }
+        : { _tag: 'Reject', target: { of }, content: { reason: wordsOf(call.args.one('reason')) } },
+    )
+    const w = done.work
+    const vid = String(done.created[0])
+    const state = (yield* derivedAfter(w)).states.revisions.get(revision.id)
+    if (word === 'reject') return [`${vid}: reject of ${ref}; ${ref} is ended.`]
+    if (state?._tag !== 'Official') return [`${vid}: accept of ${ref}.`]
+    const version = versionAt(w, revision.of, versionNumberOf(state.version))
+    return [
+      `${vid}: accept of ${ref}. ${ref} is official: ${state.version}.`,
+      ...(yield* followCommit(w, version)),
     ]
   })
 
@@ -310,21 +312,22 @@ const direction: Command = (call) =>
     if (sub === 'show') return yield* showDirection(rest)
     if (sub === 'new') return yield* newDirection(call)
     if (sub === 'examples') return yield* draftExamples(call, rest)
+    if (sub === 'accept' || sub === 'reject') return yield* decideDraft(call, sub, String(rest[0]))
     if (sub !== 'revise') {
       return yield* refuse(
-        'use work direction show|new|revise|examples; a draft is accepted or rejected with work review <draft> accept|reject',
+        'use work direction show|new|revise|examples|accept|reject',
       )
     }
     return yield* reviseDirection(call, rest)
   })
 
-// --- suggest, grant, revoke -------------------------------------------------------------------
+// --- suggest, source -------------------------------------------------------------------
 
 const suggest: Command = (call) =>
   Effect.gen(function* () {
     const about = call.args.positional[0]
     const { work } = yield* peekWork
-    const caller = yield* callerOf(work, call.token)
+    const by = yield* personAuthor(work)
     // The action finds what the key names: a direction, a standard, or a rule; the word roles is
     // about the roles of the workflow (P7).
     const target: SuggestAbout =
@@ -333,7 +336,7 @@ const suggest: Command = (call) =>
         : about
           ? { _tag: 'Standard', key: about }
           : { _tag: 'NewDirection' }
-    const done = yield* act(authorOf(caller), {
+    const done = yield* act(by, {
       _tag: 'Suggest',
       target: { about: target },
       content: { says: wordsOf(call.args.one('says')) },
@@ -353,4 +356,28 @@ const suggest: Command = (call) =>
     ]
   })
 
-export const commands: Commands = { direction, suggest }
+// work source <token> <source>@<revision>: the host read an outside source again.
+const source: Command = (call) =>
+  Effect.gen(function* () {
+    const [name = '', revision] = String(call.args.positional[0] ?? '').split('@')
+    if (!revision) return yield* refuse('use work source <token> <source>@<revision>')
+    const { cwd } = yield* Dir
+    const store = yield* (yield* Store).open(cwd, { create: false })
+    const folded = foldWork(yield* store.events)
+    if (folded === null) return yield* refuse(`no top is open in ${cwd}`, 'the person opens it')
+    yield* verifyWork(folded, call.token)
+    const by: Author = { _tag: 'System' }
+    const done = yield* act(by, { _tag: 'ReadSource', target: { name }, content: { revision } })
+    // I4: the revision of a git source comes from git, so the act stores nothing (seq null).
+    if (done.seq === null) {
+      return [
+        `${name} is a git source: the CLI reads the base of each commit from git, and a new ` +
+          'commit on it asks for no recheck; nothing is recorded.',
+      ]
+    }
+    const event = done.work.events.at(-1)?.recorded.event
+    const checked = event?._tag === 'Source' && 'move' in event
+    return [checked ? `${name} is still at ${revision}; seen now.` : `${name} is at ${revision}.`]
+  })
+
+export const commands: Commands = { direction, suggest, source }

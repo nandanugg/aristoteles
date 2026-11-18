@@ -1,6 +1,6 @@
 // The checks of test/dash.test.js, in a process of its own: the columns, the pipeline row and its
-// hover strip, the escalation modal with its review, the folded sidebar, the poll that repairs a
-// lost push, and the reload on a new build.
+// hover strip, the escalation modal with its review, the folded sidebar and its DIR / PROJECT
+// picker, the poll that repairs a lost push, and the reload on a new build.
 import { expect } from 'bun:test'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
@@ -39,6 +39,11 @@ const texts = (page, sel) => page.locator(sel).allTextContents()
     await page.click('.fold')
     await page.waitForSelector('.crumb', { state: 'visible' })
     expect(await page.isVisible('.direction-card')).toBe(true)
+    // The DIR / PROJECT picker at the top: this dir with its project; the current one is marked.
+    expect(await texts(page, '.picker .pick')).toEqual([(await page.textContent('h1')) ?? ''])
+    expect(await page.getAttribute('.picker .pick', 'aria-current')).toBe('true')
+    await page.click('.picker .pick')
+    expect(new URL(page.url()).pathname).toBe('/')
     await page.click('.fold')
     await page.waitForSelector('.crumb', { state: 'hidden' })
     // No escalation waits: the row is hidden, the strip at the bottom edge shows it.

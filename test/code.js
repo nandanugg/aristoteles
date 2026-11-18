@@ -8,5 +8,3 @@ export { recordOf, workStartDetached } from '../adapters/web/start.ts'
 // The two helpers of work start that test/settings.test.js checks (ruling 10.12).
 export { linkSkills } from '../adapters/web/skills.ts'
 export { excludeFromGit } from '../adapters/live/git-exclude.ts'
-// The hook of invariant 4.2 (next => canAct; test/harness.js calls it when WORK_CHECK_NEXT=1).
-export { checkNextCanAct } from '../adapters/cli/invariants.ts'

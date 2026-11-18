@@ -7,8 +7,7 @@ import { networkInterfaces } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from './code.js'
 import {
-  HOST,
-  INTRO_V1,
+  initiated,
   ok,
   ONBOARD_CONFIG,
   ONBOARD_DIRECTION,
@@ -16,9 +15,7 @@ import {
   ONBOARD_QUESTIONS,
   onboardingProject,
   project,
-  tokenIn,
   withModels,
-  withWriter,
 } from './harness.js'
 import { gitPerson } from './outside.js'
 
@@ -46,24 +43,12 @@ const serve = (p) => {
   }
   return { s, get, onboard, act }
 }
-// The writer reported r1, and the linter rejected it on the rule no-ticket-ids.
-const rejected = async () => {
-  const { p, lead, writer } = await withWriter()
-  ok(await p.agent(`brief ${writer}`))
-  p.write('docs/tsd.md', INTRO_V1)
-  ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-  const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-  ok(await p.agent(`brief ${linter}`))
-  ok(await p.agent(`review ${linter} r1 reject --point="the first line cites ABC-2964" --breaks=no-ticket-ids`))
-  return { p, lead, writer, linter }
-}
-
 describe('the server, read only', () => {
   // Nanda, 2026-11-15: the address has no key, and the page needs no cookie (was: a key, and a
   // cookie for each request). A request that names another host in its Host header is refused,
   // so a page of a name that points to 127.0.0.1 (DNS rebinding) reads nothing.
   test('the address has no key; the page answers only a request that names this server', async () => {
-    const { p } = await rejected()
+    const { p } = await initiated()
     const { s } = serve(p)
     const base = `http://127.0.0.1:${s.port}`
     expect(s.url).toBe(`${base}/`)
@@ -80,7 +65,7 @@ describe('the server, read only', () => {
   // Nanda, 2026-11-15: the server listens on every interface (a personal project), so another
   // machine opens the page at a network address of this one; an act from that page is its own.
   test('the page answers at a network address of the machine, and takes its acts', async () => {
-    const { p } = await rejected()
+    const { p } = await initiated()
     const { s } = serve(p)
     const address = Object.values(networkInterfaces()).flat().find((a) => a?.family === 'IPv4' && !a.internal)?.address
     if (address === undefined) return // a machine with no network: nothing to reach
@@ -110,61 +95,9 @@ describe('the server, read only', () => {
     expect((await fetch(`${base}/h1`, { method: 'POST' })).status).toBe(404)
   })
 
-  test('the dir lists its projects; a top task opened at a terminal is a project too', async () => {
-    const { p } = await rejected()
-    ok(await p.run('run start', HOST))
-    const { get } = serve(p)
-    const dir = await get('/api/dir')
-    expect(dir).toMatchObject({ name: 'report-export', path: p.dir, theme: 'light', sound: false, initialized: true })
-    expect(dir.projects.map((x) => [x.id, x.kind, x.title, x.state])).toEqual([
-      ['h1', 'host', 'a new project', 'talks'], ['t1', 'task', 'The Introduction', 'works']])
-  })
-
-  test('the canvas: the task card says what it does now; the work and its reviews are cards of their own', async () => {
-    const { p } = await rejected()
-    const { get } = serve(p)
-    const view = await get('/api/project/t1')
-    expect(view.rows).toHaveLength(1)
-    const [row] = view.rows
-    expect(row.task).toMatchObject({ id: 't1', name: 'The Introduction', words: 'works', attempt: { now: 2, max: 3 },
-      owner: { a: 'a1', role: 'section-lead', model: 'sonnet', terminal: { _tag: 'None' }, inside: null } })
-    // Only the latest attempt (Nanda, 2026-11-11): r1 was rejected and the writer has tries
-    // left, so its work card is attempt 2, in work, with no review yet.
-    expect(row.work).toEqual([{
-      a: 'a2', role: 'writer', model: 'haiku', attempt: { now: 2, max: 3 }, terminal: { _tag: 'None' }, inside: 'a1',
-      now: { state: 'works' },
-    }])
-  })
-
-  test('the panel: the words, the reviews with their evidence, the time line, the directions, and the files', async () => {
-    const { p } = await rejected()
-    const { get } = serve(p)
-    const panel = await get('/api/task/t1')
-    expect(panel).toMatchObject({ id: 't1', name: 'The Introduction', text: 'Write the Introduction from the agreed facts.' })
-    expect(panel.results[0]).toMatchObject({ id: 'r1', by: 'a2', output: 'docs/tsd.md#introduction' })
-    expect(panel.results[0].reviews[0]).toMatchObject({ id: 'v2.1', by: 'a3', decision: 'Reject', breaks: 'no-ticket-ids' })
-    expect(panel.timeline.map((x) => x.line.replace(/^e\d+ \S+ /, ''))).toEqual([
-      'Nanda (terminal) task.open -> t1',
-      'Nanda (terminal) assign section-lead on t1 -> a1',
-      'a1 (agent) brief',
-      'a1 (agent) assign writer on t1 -> a2',
-      'a2 (agent) brief',
-      'a2 (agent) report docs/tsd.md#introduction -> r1',
-      'a1 (agent) assign linter on t1 -> a3',
-      'a3 (agent) brief',
-      'a3 (agent) review r1 reject: "the first line cites ABC-2964" breaks no-ticket-ids -> v2',
-    ])
-    expect(panel.top.directions.map((d) => [d.id, d.version, d.standards.map((s) => s.id)])).toEqual([['tsd-writing', 'tsd-writing@1', ['facts-not-proof', 'intro-story']]])
-    expect(panel.files).toEqual([{ file: 'docs/tsd.md', added: 1, removed: 1 }])
-    const { diff } = await get('/api/diff/t1?file=docs/tsd.md')
-    expect(diff).toContain('--- a/docs/tsd.md')
-    expect(diff).toContain('-TODO')
-    expect(diff).toContain('+ABC-2964: the export ran twice for one merchant.')
-  })
-
   // Nanda, 2026-11-15: it needs the origin of the page (was: and the key).
   test('a websocket tells the page about a new act; it needs the origin of the page', async () => {
-    const { p, lead } = await rejected()
+    const { p } = await initiated()
     const { s } = serve(p)
     const refused = new WebSocket(`ws://127.0.0.1:${s.port}/ws`)
     const why = await new Promise((done) => {
@@ -176,7 +109,6 @@ describe('the server, read only', () => {
     await new Promise((done) => { ws.onopen = done })
     // P8: the first message of a socket is the server's build; then the changes.
     const message = new Promise((done) => { ws.onmessage = (m) => JSON.parse(m.data).type !== 'hello' && done(JSON.parse(m.data)) })
-    ok(await p.agent(`next ${lead}`))
     ok(await p.ui('suggest --says="one rule for each check"'))
     expect(await message).toEqual({ type: 'changed' })
     ws.close()
@@ -204,7 +136,11 @@ describe('the server, read only', () => {
   test('a dir with no store yet says so', async () => {
     const p = project()
     const { get } = serve(p)
-    expect(await get('/api/dir')).toMatchObject({ name: 'report-export', initialized: false, projects: [] })
+    expect(await get('/api/dir')).toMatchObject({
+      name: 'report-export',
+      initialized: false,
+      picks: [{ dir: 'report-export', project: null, path: '/' }],
+    })
   })
 })
 
@@ -316,7 +252,6 @@ describe('the onboarding pages', () => {
       icon: 'compass', summary: 'Keeps the TSD on its directions.', launch: null,
       persistence: { persistent: true, why: 'It holds the TSD for the whole project and starts the lower roles.' },
     })
-    expect(view.adjustments).toEqual([])
   })
 
   test('each act of the page writes the files through the module, and stores nothing', async () => {

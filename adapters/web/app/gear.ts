@@ -1,7 +1,6 @@
 // The gear (ruling 13): the settings, and one entry for the directions and one for the agents.
-// Each entry shows the current items, a text box that stores a suggestion (about a direction, a
-// new one, or the roles: P7), and the adjustments that wait for the person. A model drafts the
-// adjustment from the suggestion; the person accepts or rejects it here (ruling 14).
+// Each entry shows the current items and a text box that stores a suggestion (about a direction,
+// a new one, or the roles: P7); a model drafts what answers it.
 import { Schema } from 'effect'
 import { html } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
@@ -18,7 +17,6 @@ import { RoleGrid } from './agents.ts'
 import { api, attempt, post } from './api.ts'
 import { DirectionReview } from './direction.ts'
 import { ICONS, icon } from './icons.ts'
-import { Item } from './item.ts'
 
 type DirData = typeof DirView.Type
 type OnboardingData = typeof OnboardingView.Type
@@ -170,22 +168,11 @@ function Suggest({ targets }: { targets: ReadonlyArray<readonly [string, Target]
   </div>`
 }
 
-const isDirectionAdjustment = (tag: string) => tag === 'RetireDirection'
-
 function Entry({ view, kind }: { view: OnboardingData; kind: 'directions' | 'agents' }) {
-  const mine = (tag: string) => isDirectionAdjustment(tag) === (kind === 'directions')
-  const adjustments = view.adjustments.filter(
-    (d) => d._tag === 'Adjustment' && mine(d.adjustment._tag),
-  )
-  const waiting = html`<div class="section-title">Adjustments that wait</div>
-    ${adjustments.length
-      ? adjustments.map((d) => html`<${Item} key=${d.id} item=${d} />`)
-      : html`<p class="muted">None waits for you.</p>`}`
   if (kind === 'agents') {
     return html`<div>
       <${RoleGrid} roles=${view.roles} />
       <${Suggest} targets=${[['the roles', { _tag: 'Roles' }]]} />
-      ${waiting}
     </div>`
   }
   const targets: ReadonlyArray<readonly [string, Target]> = [
@@ -198,7 +185,6 @@ function Entry({ view, kind }: { view: OnboardingData; kind: 'directions' | 'age
   return html`<div>
     <${CurrentDirections} directions=${view.directions} />
     <${Suggest} targets=${targets} />
-    ${waiting}
   </div>`
 }
 

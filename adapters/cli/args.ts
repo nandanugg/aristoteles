@@ -46,8 +46,8 @@ export const textOf = (value: string | true | undefined): string | undefined =>
 export const wordsOf = (value: string | true | undefined): string =>
   typeof value === 'string' ? value : ''
 
-// The token as the CLI reads it: a7.<secret>.
-// The work model's token is w.<actor>.<epoch>.<secret>.
+// The token as the CLI reads it: w.<actor>.<epoch>.<secret>. A word of the old form a7.<secret>
+// counts too, so that a command refuses it by name.
 export const isToken = (word: string | undefined): word is string =>
   /^a\d+\./.test(word ?? '') || /^w\..+\.\d+\.[a-z0-9]+$/.test(word ?? '')
 
@@ -67,42 +67,19 @@ type FlagTable = ReadonlyArray<string> | Readonly<Record<string, ReadonlyArray<s
 // is a mistake (a typo, or a flag of another act), so the command is refused before it stores
 // anything.
 export const FLAGS: Readonly<Record<string, FlagTable>> = {
-  task: {
-    open: ['file'],
-    draft: ['file', 'by'],
-    split: ['file', 'review'],
-    close: ['reason'],
-    remake: ['file', 'reason', 'review'],
-    show: [],
-    tree: [],
-    describe: ['text'],
-  },
   direction: {
     new: ['file', 'answers', 'why', 'why-words', 'by'],
     revise: ['file', 'answers', 'why', 'why-words', 'by'],
     examples: ['file', 'by'],
-    show: [],
-  },
-  review: { accept: ['evidence', 'reason'], reject: ['point', 'breaks', 'reason'] },
-  forward: {
-    end: ['quote'],
-    answer: ['text', 'quote'],
-    accept: ['on', 'quote'],
-    'send-back': ['points', 'on', 'quote'],
-    reject: ['points', 'on', 'quote'],
-    decide: ['on', 'quote'],
-  },
-  role: {
-    fit: ['answers', 'as', 'by'],
-    draft: ['file', 'by'],
     accept: [],
     reject: ['reason'],
-    list: [],
     show: [],
   },
-  assign: ['dry-run', 'max-attempts', 'role'],
-  report: ['made-from', 'output', 'files', 'on'],
+  role: { fit: ['answers', 'by'], list: [], show: [] },
+  assign: [],
+  report: ['output', 'files', 'on'],
   // The acts of the work model (adapters/cli/commands/acts.ts): --on is the basis of the step.
+  review: ['points', 'on'],
   accept: ['on'],
   'send-back': ['points', 'on'],
   reject: ['points', 'on'],
@@ -115,23 +92,25 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   recheck: ['on'],
   top: { open: ['name', 'goal', 'sections'] },
   hook: { stopped: [] },
-  ask: ['text', 'to', 'option'],
-  answer: ['text', 'option'],
-  note: ['text', 'on', 'hope'],
+  ask: ['question', 'text'],
+  answer: ['text'],
   suggest: ['says'],
-  waiting: ['for'],
   status: ['kind', 'text', 'by'],
   search: [],
   guide: [],
   log: ['last'],
-  evaluate: ['improve', 'level', 'why', 'wrong', 'summary', 'parts', 'role-draft', 'on'],
-  evaluation: { show: [] },
-  run: { start: [], continue: ['quote'], done: [], close: [], list: [] },
-  session: ['id', 'token'],
-  problem: ['says', 'fixed'],
-  event: ['kind', 'text', 'tries'],
-  send: ['text', 'name', 'goal', 'sections', 'role'],
+  evaluate: ['summary', 'parts', 'role-draft', 'on'],
+  run: { continue: [] },
+  send: ['name', 'goal', 'sections', 'role'],
   wait: ['by', 'seconds'],
+  forward: {
+    end: ['quote'],
+    answer: ['text', 'quote'],
+    accept: ['on', 'quote'],
+    'send-back': ['points', 'on', 'quote'],
+    reject: ['points', 'on', 'quote'],
+    decide: ['on', 'quote'],
+  },
   // Onboarding, before the store (BUILD.md 1e): the host's acts, then the person's.
   onboard: {
     config: ['file'],
@@ -155,38 +134,23 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
     persistence: ['persistent'],
     'approve-roles': [],
   },
-  // After the store starts, a change of a role or a direction (ruling 14).
-  adjust: {
-    'add-role': ['file', 'by'],
-    'remove-role': ['by'],
-    model: ['model', 'by'],
-    persistence: ['persistent', 'why', 'by'],
-    retire: ['by'],
-    show: [],
-    accept: [],
-    reject: ['reason'],
-  },
   skill: { install: [] },
 }
 
 // The flags that stand alone, with no value.
-export const SWITCHES: ReadonlyArray<string> = ['dry-run', 'token', 'fixed']
+export const SWITCHES: ReadonlyArray<string> = []
 
 // The word that names the act of a command with several acts.
 const first = (words: ReadonlyArray<string>) => words[0]
 type ActOf = (words: ReadonlyArray<string>) => string | undefined
 export const ACT_OF: Readonly<Record<string, ActOf>> = {
-  task: first,
   top: first,
   hook: first,
   direction: first,
-  role: first,
-  evaluation: first,
   run: first,
+  role: first,
   onboard: first,
-  adjust: first,
   skill: first,
-  review: (words) => words.find((w) => w === 'accept' || w === 'reject'),
   forward: first,
 }
 
@@ -211,10 +175,8 @@ export const USAGE: ReadonlyArray<string> = [
   '         work onboard found <id> | draft <id> --file=<direction.yaml> | ask <id> --file=<questions.yaml>',
   '         work onboard company <id> --repo=<repo> --path=<folder> | status | show <id>|<role> | wait [--seconds=<n>]',
   '         (onboarding works on files before any store; it stores nothing until approve-roles)',
-  'agents:  work brief <token>   (your brief lists the commands that you may run)',
-  '         work next <token> | ask <token> --text=<question> | forward ...',
-  '         (the work model: a step names its own command, with --on <n> where it has a basis;',
-  '         after an act run work wait <token> again)',
+  'agents:  work wait <token> (when you have nothing to do: it blocks until you have a step, then prints it)',
+  '         the step names its own command, with --on <n> where it has a basis; after an act run work wait again',
   '         work send <token> --name= --goal= --sections=a,b --role=<role> | reassign <token> | ' +
     'top-done <token>',
   '         work assign <token> <task> | review <token> <task> ' +
@@ -227,39 +189,27 @@ export const USAGE: ReadonlyArray<string> = [
     '<fix> | ship <token> <fix> <draft-file>',
   '         work loop <token> <fix> person|revise | recheck <token> <task> holds|fails (each ' +
     'with --on=<n>)',
-  '         work ask <token> --to=owner --text=<question> [--option=<words> ...] (the person answers it on the page)',
+  '         work ask <token> --question=<words> (the person answers it on the page)',
   '         work direction new [<token>] --file=<direction.yaml> [--by=<model run>] (a model drafts a new direction)',
   '         work direction revise [<token>] <direction> --file=<edit.yaml> [--by=<model run>] (a model drafts a change of a direction)',
   '         work direction examples [<token>] <draft> --file=<flow.yaml> [--by=<model run>] (the flow of a company draft, its marked steps with their examples, before its accept)',
+  '         work direction accept <draft> | reject <draft> --reason=<why> (the owner, before a top is open)',
   '         work role fit <role> --answers=<file> --by=<model run> (the host that drafted the roles records their fits)',
-  '         work role draft [<token>] <role> --file=<words.yaml> [--by=<model run>] (new words of a role; the person accepts or rejects them)',
-  '         work adjust [<token>] add-role <role> --file=<role.yaml> | remove-role <role> | model <role> --model=<name>',
-  '         work adjust [<token>] persistence <role> --persistent=true|false --why=<words> | retire <direction>',
-  "         work start --detach | run start | run continue <run> --quote=<the person's words> (the host, in its own tmux pane)",
-  '         work wait <token> | wait --by=<run>|<agent> [--seconds=<n>] (when you have nothing to do:',
-  '         it blocks until you have work, then prints your next steps)',
+  '         work source <token> <source>@<revision> (a source of the project is read again)',
+  '         work run continue (the host, in its own tmux pane)',
   'status:  work status set --kind=working|thinking|applied|feedback|waiting --text=<words> [<token>|--by=<run>] (the AI on the dir pages)',
-  'read:    work status | waiting [--for=<who>] | blockers <result> | task show|tree <task> | evaluation show <ev>',
-  '         work direction show <id>[@<n>][#<standard|rule|header>]|<draft> | role list|show <role> | log [--last=<n>]',
-  '         work assignment show <a> | adjust show <event>',
-  '         work question show <q> | result show <r> | search <words> (aristoteles)',
-  '         work config check (the config draft merged into aristoteles.yaml, as the store start reads it; it writes nothing)',
-  '         work guide writing|direction-review|decision-words|roles|limits (how to write a direction, how to review one, the words of a decision, the checks of the roles, and the action when work passes a limit)',
+  'read:    work direction show <id>[@<n>][#<standard|rule|header>]|<draft> | log [--last=<n>]',
+  '         work search <words> (aristoteles) | config check (the config draft merged into aristoteles.yaml; it writes nothing)',
+  '         work guide writing|direction-review|decision-words|roles|limits',
   'onboard: work onboard add --principle=<words> [--example=<words>] | company --repo=<repo> --path=<folder>',
   '         work onboard answer <id> --options=A,B,... | accept <id> | revise <id> --words=<words> | remove <id>',
   '         work onboard approve-directions | accept-role <role> | revise-role <role> --words=<words> | remove-role <role>',
   '         work onboard persistence <role> --persistent=true|false | approve-roles (the store starts with the accepted result)',
-  'person:  work start (the UI of this dir, in the browser) | work init | config apply|restore | task open|split|close | assign <task> --role=<role>',
-  '         top open --name= --goal= --sections=a,b | accept <fix> --on= | send-back <fix> ' +
-    '--points= --on=',
-  '         reject <task> --points= --on= | decide <task> take|again --on= | answer <asker> ' +
-    '--text= | end',
-  '         confirm <event> | answer <q> --text=<t>|--option=<n> | review <r> reject ... (after its deciders accept it)',
-  '         review <draft>|<ev> accept --evidence= | reject --reason=',
-  '         suggest [<direction|standard|rule>|roles] --says= (a role that directs writes the draft) | free|finish <a>',
-  '         evaluate <stop>|<task> --wrong= --why= --improve= --level= | role fit <role> --answers=<file>',
-  '         role show <draft> | role accept <draft> | role reject <draft> --reason= (new words of a role)',
-  '         adjust accept <event> | adjust reject <event> --reason= (an adjustment of a role or a direction)',
+  'person:  work init | config apply|restore | top open --name= --goal= --sections=a,b',
+  '         accept <fix> --on= | send-back <fix> --points= --on= | reject <task> --points= --on=',
+  '         decide <task> take|again --on= | answer <asker> --text= | end',
+  '         suggest [<direction|standard|rule>|roles] --says= (a role that directs writes the draft)',
+  '         role fit <role> --answers=<file> (the fit of a role)',
 ]
 
 // Every command, so that a name with no command is "unknown".
@@ -268,32 +218,18 @@ export const COMMAND_NAMES = [
   'config',
   'role',
   'run',
-  'problem',
-  'event',
   'send',
-  'session',
   'status',
-  'waiting',
-  'blockers',
-  'next',
   'log',
   'search',
   'guide',
-  'question',
-  'result',
-  'assignment',
-  'evaluation',
-  'task',
   'assign',
-  'free',
-  'finish',
   'brief',
   'report',
   'review',
   'recheck',
   'ask',
   'answer',
-  'note',
   'evaluate',
   'resume',
   'end',
@@ -317,7 +253,6 @@ export const COMMAND_NAMES = [
   'forward',
   'wait',
   'onboard',
-  'adjust',
   'skill',
 ] as const
 export type CommandName = (typeof COMMAND_NAMES)[number]

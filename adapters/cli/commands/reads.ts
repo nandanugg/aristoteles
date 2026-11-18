@@ -1,33 +1,17 @@
-// The commands status, waiting, blockers, next, log, search, guide, question, result, assignment,
-// evaluation. Each one reads the state at the time of its one reading of the clock and renders
-// it with adapters/words.
+// The commands status (set), log, search, guide: the reads of the kept data. Each one reads the
+// state at the time of its one reading of the clock and renders it with adapters/words.
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Effect } from 'effect'
-import { nextFor, waitingFor } from '../../../core/derived/index.ts'
-import {
-  type AssignmentId,
-  lookupAssignment,
-  lookupResult,
-  refuse,
-} from '../../../core/schema/index.ts'
+import { refuse } from '../../../core/schema/index.ts'
 import { Dir, Env, Files, Now, Store } from '../../../core/services/index.ts'
-import {
-  logLine,
-  nextLines,
-  renderAssignment,
-  renderBlockers,
-  renderEvaluation,
-  renderQuestion,
-  renderResult,
-  renderStatus,
-  waitingLines,
-} from '../../words/index.ts'
+import { foldWork } from '../../../core/state/work/fold.ts'
+import { logLine } from '../../words/index.ts'
 import { textOf } from '../args.ts'
-import { agentCallerOf, isUnit, tokenOfCall } from '../caller.ts'
+import { verifyWork } from '../caller.ts'
 import type { Command, Commands } from '../command.ts'
-import { GUIDES, lookupKind } from '../lookups.ts'
-import { peekWork, readWork } from '../runtime.ts'
+import { GUIDES } from '../lookups.ts'
+import { readWork } from '../runtime.ts'
 import { isStatusKind, STATUS_KINDS, STATUS_WORDS, writeStatus } from '../../live/status.ts'
 
 // P8, ruling 3: work status set --kind=<kind> --text=<words> tells the person what the AI does
@@ -41,13 +25,15 @@ const setStatus = (call: Parameters<Command>[0]) =>
     const usage = `work status set --kind=${STATUS_KINDS.join('|')} --text="<what you do now>" --by=<run>`
     if (!isStatusKind(kind)) return yield* refuse(`--kind is one of ${STATUS_KINDS.join(', ')}`, usage)
     if (!text) return yield* refuse('a status needs --text="<what you do now>"', usage)
+    const { cwd } = yield* Dir
     let actor: string
     if (call.token !== null) {
-      const { work } = yield* peekWork
-      actor = (yield* agentCallerOf(work, call.token)).assignment
+      const store = yield* (yield* Store).open(cwd, { create: false })
+      const folded = foldWork(yield* store.events)
+      if (folded === null) return yield* refuse('no top is open yet', 'the person opens it')
+      actor = (yield* verifyWork(folded, call.token)).who
     } else if (by !== undefined && /^[a-z][a-z0-9-]*$/.test(by)) actor = by
     else return yield* refuse('a status names its AI: --by=<run> (the host), or the token first', usage)
-    const { cwd } = yield* Dir
     const { vars } = yield* Env
     const at = Date.parse(yield* (yield* Now).read)
     writeStatus(vars, cwd, { by: actor, kind, text, at })
@@ -55,52 +41,9 @@ const setStatus = (call: Parameters<Command>[0]) =>
   })
 
 const status: Command = (call) =>
-  Effect.gen(function* () {
-    if (call.args.positional[0] === 'set') return yield* setStatus(call)
-    const { d } = yield* readWork
-    return renderStatus(d)
-  })
-
-const waiting: Command = (call) =>
-  Effect.gen(function* () {
-    const { d } = yield* readWork
-    const forWho = textOf(call.args.one('for')) ?? null
-    // --for names a person, or an assignment (aN): the list of that actor's own items.
-    const items =
-      forWho === null
-        ? waitingFor(d, { _tag: 'Everyone' })
-        : /^a\d+$/.test(forWho)
-          ? waitingFor(d, { _tag: 'Everyone' }).filter(
-              (i) => i.for._tag === 'Assignment' && i.for.assignment === forWho,
-            )
-          : waitingFor(d, { _tag: 'Person', name: forWho })
-    return waitingLines(d, items, forWho)
-  })
-
-const blockers: Command = (call) =>
-  Effect.gen(function* () {
-    const { work, d } = yield* readWork
-    const result = yield* lookupResult(work, String(call.args.positional[0]))
-    return renderBlockers(d, result.id)
-  })
-
-const next: Command = (call) =>
-  Effect.gen(function* () {
-    const { work, d } = yield* readWork
-    const caller = yield* agentCallerOf(work, tokenOfCall(call))
-    const { assignment: a, token } = caller
-    const task = work.assignments.get(a)?.task ?? ''
-    if (d.states.assignments.get(a)?._tag === 'Ended') {
-      return [`${a} is finished; there is nothing more for it.`]
-    }
-    // A persistent agent (runs Agent) holds many units; a subagent of a role of one unit has one.
-    if (work.assignments.get(a)?.runs._tag !== 'Agent' && isUnit(work, a)) {
-      return [`a role that assigns nothing has one unit: work brief ${token} shows it.`]
-    }
-    const actor = { _tag: 'Agent', assignment: a } as const
-    const lines = nextLines(d, nextFor(d, actor), token)
-    return lines.length ? lines : [`nothing is ready in ${task}; work waiting shows what waits.`]
-  })
+  call.args.positional[0] === 'set'
+    ? setStatus(call)
+    : refuse('use work status set --kind=<kind> --text="<what you do now>"')
 
 const log: Command = (call) =>
   Effect.gen(function* () {
@@ -116,8 +59,7 @@ const placeOf = (row: Readonly<Record<string, unknown>>) => ({
 })
 
 // A search in aristoteles (SQLite full-text search) over the words of directions, standards,
-// rules, suggestions, and reasons: each match with its place, the versions that hold it, and
-// the tasks that read those versions.
+// rules, suggestions, and reasons: each match with its place and the versions that hold it.
 const search: Command = (call) =>
   Effect.gen(function* () {
     const words = call.args.positional.join(' ').trim()
@@ -164,16 +106,6 @@ const search: Command = (call) =>
                 : []
         return rows.map((v) => String(v.id))
       })
-    const tasksOf = (versions: ReadonlyArray<string>) =>
-      versions.length
-        ? opened.query(
-            `SELECT DISTINCT t.id, t.name FROM brief b
-        JOIN assignment a ON a.project = b.project AND a.id = b.assignment JOIN task t ON t.project = a.project AND t.id = a.task
-        WHERE b.project = ? AND b.version IN (${versions.map(() => '?').join(', ')}) ORDER BY t.id`,
-            p,
-            ...versions,
-          )
-        : Effect.succeed([])
     const last = (place: string) => place.split('/').at(-1)
     const label = (x: ReturnType<typeof placeOf>) =>
       ({
@@ -188,12 +120,10 @@ const search: Command = (call) =>
     ]
     for (const x of found) {
       const versions = yield* versionsOf(x)
-      const tasks = yield* tasksOf(versions)
       lines.push(`  ${label(x)}: ${x.text.replaceAll('\n', ' ')}`)
       if (versions.length) {
         const pieces = x.kind === 'draft' ? versions : versions.map((v) => `${v}#${last(x.place)}`)
-        const readBy = tasks.map((t) => `${String(t.id)} (${String(t.name)})`).join(', ')
-        lines.push(`    in ${pieces.join(', ')}${tasks.length ? ` · read by ${readBy}` : ''}`)
+        lines.push(`    in ${pieces.join(', ')}`)
       }
     }
     return lines
@@ -217,56 +147,4 @@ const guide: Command = (call) =>
     return [(text ?? '').trimEnd()]
   })
 
-const question: Command = (call) =>
-  Effect.gen(function* () {
-    const [sub, id] = call.args.positional
-    if (sub !== 'show') return yield* refuse('use work question show <question>')
-    const { work, d } = yield* readWork
-    const { question: q } = yield* lookupKind('Question', ['q'], work, String(id))
-    return renderQuestion(d, q.id)
-  })
-
-const result: Command = (call) =>
-  Effect.gen(function* () {
-    const [sub, id] = call.args.positional
-    if (sub !== 'show') return yield* refuse('use work result show <result>')
-    const { work, d } = yield* readWork
-    const found = yield* lookupResult(work, String(id))
-    return renderResult(d, found.id)
-  })
-
-const assignment: Command = (call) =>
-  Effect.gen(function* () {
-    const [sub, id] = call.args.positional
-    if (sub !== 'show') return yield* refuse('use work assignment show <assignment>')
-    const { work, d } = yield* readWork
-    const a = yield* lookupAssignment(work, String(id))
-    return renderAssignment(d, a.id as AssignmentId)
-  })
-
-const evaluation: Command = (call) =>
-  Effect.gen(function* () {
-    const [sub, id] = call.args.positional
-    if (sub !== 'show') {
-      return yield* refuse(
-        'use work evaluation show <evaluation>; the owner accepts or rejects one with work review <evaluation> accept|reject',
-      )
-    }
-    const { work, d } = yield* readWork
-    const { evaluation: e } = yield* lookupKind('Evaluation', ['ev'], work, String(id))
-    return renderEvaluation(d, e.id)
-  })
-
-export const commands: Commands = {
-  status,
-  waiting,
-  blockers,
-  next,
-  log,
-  search,
-  guide,
-  question,
-  result,
-  assignment,
-  evaluation,
-}
+export const commands: Commands = { status, log, search, guide }

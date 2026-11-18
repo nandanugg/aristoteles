@@ -76,11 +76,6 @@ export interface WatcherOptions {
 export interface Watcher {
   readonly tick: () => Promise<void>
   readonly stop: () => void
-  readonly open: (proposal: string) => Promise<string>
-  readonly stopSession: (session: string) => Promise<void>
-  readonly resumeSession: (session: string) => Promise<void>
-  readonly fixed: (problem: string) => Promise<string>
-  readonly close: (run: string, reason: string) => Promise<void>
 }
 
 // --- the server ----------------------------------------------------------------------------------

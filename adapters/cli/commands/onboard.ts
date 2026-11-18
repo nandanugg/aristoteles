@@ -53,10 +53,10 @@ import {
   onboardShowDirection,
   onboardShowRole,
   onboardStatus,
-  short,
   startRefusal,
   waitsForHost,
 } from '../../words/index.ts'
+import { short } from '../../words/common.ts'
 import { textOf } from '../args.ts'
 import { type Confirm, personChannel, personOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'

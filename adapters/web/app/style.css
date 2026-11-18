@@ -139,6 +139,11 @@ button { font: inherit; color: inherit; }
   min-width: 0;
 }
 .sidebar-list { display: flex; flex-direction: column; gap: 4px; }
+.picker { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pick { width: 100%; text-align: left; background: none; border: 1px solid transparent;
+  border-radius: 6px; padding: 5px 8px; color: inherit; font: inherit; cursor: pointer; }
+.pick:hover, .pick[aria-current] { border-color: var(--line, currentColor); }
+.pick-project { opacity: 0.7; }
 @media (prefers-reduced-motion: reduce) {
   .sidebar, .crumb, .sidebar-list, .sidebar.folded .crumb, .sidebar.folded .sidebar-list {
   transition: none;

@@ -19,35 +19,27 @@ import {
   takeToken,
   USAGE,
 } from './args.ts'
-import { agentCallerOf, isPerson, isUnit } from './caller.ts'
+import { isPerson } from './caller.ts'
 import type { Call, Command, Commands } from './command.ts'
-import { commands as acts, sharing } from './commands/acts.ts'
-import { commands as adjust } from './commands/adjust.ts'
+import { commands as acts } from './commands/acts.ts'
 import { commands as directions } from './commands/directions.ts'
 import { commands as onboard } from './commands/onboard.ts'
 import { commands as reads } from './commands/reads.ts'
 import { commands as setup } from './commands/setup.ts'
-import { commands as tasks } from './commands/tasks.ts'
-import { commands as ui } from './commands/ui.ts'
 import { commands as waits } from './commands/wait.ts'
-import { commands as work } from './commands/work.ts'
 import { refresh } from './refresh.ts'
-import { layerOf, readWork } from './runtime.ts'
+import { layerOf } from './runtime.ts'
 
 export type { WorkIo } from '../../core/services/index.ts'
 
-const OLD: Commands = {
+const COMMANDS: Commands = {
   ...setup,
-  ...ui,
   ...reads,
-  ...tasks,
-  ...work,
   ...directions,
   ...waits,
   ...onboard,
-  ...adjust,
+  ...acts,
 }
-const COMMANDS: Commands = { ...OLD, ...sharing(OLD), ...acts }
 
 const usage = (message: string, next: string | null = null) =>
   Effect.fail(new UsageError({ message, next }))
@@ -125,26 +117,10 @@ const nextFor = (argv: ReadonlyArray<string>) =>
         return 'next: work onboard status shows what waits'
       }
       return (yield* isPerson)
-        ? 'next: work waiting shows what waits for you'
-        : 'next: check the ids with work status or work log; an agent passes its token first'
+        ? 'next: the page shows what waits for you'
+        : 'next: an agent passes its token first, then runs work wait <token>'
     }
-    if (token.startsWith('w.')) return `next: run work wait ${token} and do the step it prints`
-    return yield* Effect.scoped(
-      Effect.gen(function* () {
-        const { work: now } = yield* readWork
-        const a = yield* agentCallerOf(now, token)
-        // A flag that the agent left out is its own fix, not a reason to escalate.
-        return isUnit(now, a.assignment)
-          ? `next: when the refusal names a flag or a word that you left out, run the command again with it; else do not try other commands: run work escalate ${token} --reason="<the refusal, and what you tried>"`
-          : `next: when the refusal names a command, run that; else run work next ${token} and do its first step. Do not run the same command again unchanged`
-      }),
-    ).pipe(
-      Effect.catch(() =>
-        Effect.succeed(
-          'next: check the token that your parent gave you; if it is wrong, tell your parent',
-        ),
-      ),
-    )
+    return `next: run work wait ${token} and do the step it prints`
   })
 
 const runCli = (argv: ReadonlyArray<string>) => {

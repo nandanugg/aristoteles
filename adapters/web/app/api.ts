@@ -61,7 +61,7 @@ export const api = <S extends Schema.Top & { readonly DecodingServices: never }>
   schema: S,
 ): Promise<S['Type']> => run(request(path, schema))
 
-// An act of the person: the server runs the CLI on the ui channel, or a method of the terminals.
+// An act of the gear: the settings, or a suggestion.
 export const post = (act: PageAct): Promise<ActOut> =>
   run(
     request('/api/act', ActAnswer, {

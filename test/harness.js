@@ -2,11 +2,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { checkNextCanAct, main } from './code.js'
-
-// WORK_CHECK_NEXT=1: after each act that exits 0, every step that work next offers must pass
-// canAct (BUILD.md 4.2). Without it, nothing here changes.
-const CHECK_NEXT = process.env.WORK_CHECK_NEXT === '1'
+import { main } from './code.js'
 
 // Ruling 2026-11-14 (brief limits leave room for the guide): the limits of a model sit above the
 // text of its guide, which counts in the brief. Ruling 7, onboarding 2026-11-14: each agent role
@@ -193,26 +189,7 @@ export const ONBOARD_QUESTIONS = `questions:
     options: ["each fact is one thing", "the facts together are one thing"]
 `
 
-export const TASK = `name: The Introduction
-text: Write the Introduction from the agreed facts.
-directions: [tsd-writing]
-context: { section: introduction }
-workspace:
-  - { source: tsd, path: docs/tsd.md, verify: "work-lint docs/tsd.md" }
-references: ["docs/facts.md#dedupe"]
-`
-
-// The same work with no section: a task with a section is one unit, so only this one splits.
-export const TASK_WHOLE = TASK.replace('context: { section: introduction }\n', '')
-
 export const FIT = [1, 2, 3, 4, 5, 6, 7].map((id) => `- { id: ${id}, yes: true, why: "seen in the Introduction run" }`).join('\n')
-
-// The check reads the time of the last act without moving the fake clock (io.now would move it).
-async function expectNextCanAct(dir, env, real, minute) {
-  const at = real ? new Date().toISOString() : new Date(Date.UTC(2026, 9, 25, 9, minute)).toISOString()
-  const violations = await checkNextCanAct(dir, env, at)
-  if (violations.length > 0) throw new Error(`next offers what canAct refuses:\n${violations.join('\n')}`)
-}
 
 // The documents of the fixture project: the examples of its directions point into them.
 const DOCS = {
@@ -223,7 +200,7 @@ const DOCS = {
 // The folder of a dir has the name that people read (the name of a dir is its folder name).
 export function project(files = {}, name = 'report-export') {
   return projectOf({
-    'aristoteles.yaml': WORK_YAML, 'directions/tsd-writing.yaml': DIRECTION, 'task.yaml': TASK, 'fit.yaml': FIT,
+    'aristoteles.yaml': WORK_YAML, 'directions/tsd-writing.yaml': DIRECTION, 'fit.yaml': FIT,
     ...DOCS, ...files,
   }, name)
 }
@@ -261,10 +238,7 @@ function projectOf(all, name) {
     const argv = split(line)
     // The project folder is new for each test; the golden text names it <project>.
     const clean = (lines) => lines.join('\n').replaceAll(dir, '<project>')
-    return main(argv, io).then(async (code) => {
-      if (CHECK_NEXT && code === 0) await expectNextCanAct(dir, io.env, real, Math.max(minute - 1, 0))
-      return { code, out: clean(out), err: clean(err) }
-    })
+    return main(argv, io).then((code) => ({ code, out: clean(out), err: clean(err) }))
   }
   // The person at a terminal, the person on the UI, and an agent in a shell with no terminal.
   const nanda = (line, typed) => run(line, { tty: true, typed })
@@ -300,29 +274,11 @@ export function split(line) {
   return out
 }
 
-export const tokenIn = (text) => text.match(/work brief (a\d+\.[a-z0-9]+)/)[1]
-
 // The host is the AI CLI that the person triggered, in a pane of the person's tmux server
 // (Nanda, 2026-11-13); tmux tells its shell the socket and the pane. A test of the CLI alone needs
 // no real pane: the shell of such a host has these two variables, and no terminal.
 export const HOST_PANE = { TMUX: '/tmp/ar-test-person.sock,1,0', TMUX_PANE: '%9' }
 export const HOST = { env: HOST_PANE }
-
-// The token of a host's assignment after the open of its top task: ruling 10.1, the host gets it from
-// `work wait --by=<run>` in its pane. The words of the open (_opened) do not hold it; the callers
-// pass them, so that each call shows the open that comes first.
-export async function solToken(p, _opened, run = 'h1', where = HOST) {
-  return tokenIn(ok(await p.run(`wait --by=${run} --seconds=1`, where)).out)
-}
-
-// The token of an agent after its assign: the assign of a disposable role prints it; a real agent
-// (a persistent role in a project of the UI) gets a new token in the launch command of the
-// terminal that the UI starts for it (ruling 10.1), as this does.
-export async function agentToken(p, assigned) {
-  if (/work brief a\d+\./.test(assigned)) return tokenIn(assigned)
-  const id = assigned.match(/^(a\d+) · /m)[1]
-  return tokenIn(ok(await p.ui(`session ${id} --id=s-${id} --token`)).out)
-}
 
 // A real pane of the person's tmux server, for a test of the terminals: a scratch server with no
 // config of the person (-f /dev/null) and no variable of the test's own tmux, so that a theme of
@@ -341,17 +297,10 @@ export function personPane(command) {
   return { socket, pane, env: { TMUX: `${socket},1,0`, TMUX_PANE: pane }, kill }
 }
 
-export const INTRO_V1 = '# TSD\n\n## Introduction\n\nABC-2964: the export ran twice for one merchant.\n\n## Design\n\nTODO\n'
-export const INTRO_V2 = '# TSD\n\n## Introduction\n\nThe export ran twice for one merchant, so the merchant got two files.\n\n## Design\n\nTODO\n'
 export const ok = (r) => {
   if (r.code !== 0) throw new Error(`expected success, got: ${r.err}`)
   return r
 }
-
-// init, fit every role, open t1, and give it to a section lead (a1).
-// The person evaluates a mistake of a task (Nanda, 2026-11-08), so that the work can go on.
-export const evaluated = async (p, task, level = 'standard') => ok(await p.nanda(`evaluate ${task} --wrong="the work misses what was asked" ` +
-  `--why="the directions do not say it" --improve="say it in a standard" --level=${level}`))
 
 // work init, then each direction of the fixture: a model run outside any task (assess, as the
 // skill that reads an app) drafts it, and Nanda accepts it. The directions are files of the
@@ -363,7 +312,7 @@ export async function init(p) {
   for (const file of [...new Bun.Glob(folder).scanSync({ cwd: p.dir })].sort()) {
     const drafted = ok(await p.agent(`direction new --file=${file} --by=assess`)).out
     const did = drafted.match(/^(d\d+) drafted/)[1]
-    ok(await p.nanda(`review ${did} accept --evidence="${file} | the whole direction, as the fixture gives it"`, 'accept'))
+    ok(await p.nanda(`direction accept ${did}`, 'accept'))
   }
 }
 
@@ -377,34 +326,8 @@ export async function initiated(files) {
   }
   return { p }
 }
-
-export async function started(files) {
-  const p = project(files)
-  await init(p)
-  for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
-    ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  }
-  ok(await p.nanda('task open --file=task.yaml'))
-  const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
-  ok(await p.agent(`brief ${lead}`))
-  return { p, lead }
-}
-// ... and the lead assigns a writer (a2).
-export async function withWriter(files) {
-  const s = await started(files)
-  const writer = tokenIn(ok(await s.p.agent(`assign ${s.lead} t1 --role=writer --max-attempts=3`)).out)
-  return { ...s, writer }
-}
-// ... the writer reports the second intro as r1, and the lead assigns a linter (a3) that read its brief.
-export async function reported(files) {
-  const s = await withWriter(files)
-  ok(await s.p.agent(`brief ${s.writer}`))
-  s.p.write('docs/tsd.md', INTRO_V2)
-  ok(await s.p.agent(`report ${s.writer} --output=docs/tsd.md#introduction`))
-  const linter = tokenIn(ok(await s.p.agent(`assign ${s.lead} t1 --role=linter`)).out)
-  ok(await s.p.agent(`brief ${linter}`))
-  return { ...s, linter }
-}
+// The tests of the work model's core read it by this name (core/actions/fixture.test.ts).
+export const started = initiated
 
 // A small code project: a lead, an implementer that reports <repo>@<commit>, and a gate. Ruling 7,
 // onboarding 2026-11-14: persistence and icon, as in WORK_YAML; the gate has an icon only.
@@ -458,72 +381,9 @@ roles:
     acts: [{ review: [implementer] }]
     icon: terminal
 `
-export const CODE_DIRECTION = `id: fixes
-name: Fixes
-owner: Nanda
-summary: A fix counts only with a test that ran on it.
-flow:
-  - { from: implementer, to: app/ok.txt, says: fixes the key }
-  - from: gate
-    to: app/ok.txt
-    says: runs the suite on the fix
-    uses: [fixes, proven, suite-passes]
-    examples:
-      - { fit: Follows, input: { file: app/ok.txt, line: 1, excerpt: ok }, output: { file: aristoteles.yaml, line: 43, excerpt: 'run: "test -f ok.txt"' } }
-      - { fit: Breaks, input: { file: app/ok.txt, line: 1, excerpt: ok }, output: { written: "Accept: the key is fixed, and no test ran on it." } }
-says: A fix is proven by a test that ran on it.
-standards:
-  - id: proven
-    says: The suite passes on the fix.
-    rules:
-      - { id: suite-passes, says: "The suite passes on the reported commit", checkedBy: gate }
-`
-export const CODE_TASK = `name: Fix the key
-text: Fix the key so that the test passes.
-directions: [fixes]
-workspace:
-  - { source: app, path: app, base: main }
-`
 // env: process.env, so that git is found on the PATH of test/preload.js.
 export const git = (dir, ...args) => {
   const argv = ['git', '-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]
   const run = Bun.spawnSync(argv, { env: process.env })
   return run.stdout.toString().trim()
-}
-
-// A code project with a git repo at app/: main has ok.txt; the lead (a1) and the implementer
-// (a2) have read their briefs.
-export async function codeStarted(files = {}) {
-  const p = project({ 'aristoteles.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': CODE_TASK, 'app/ok.txt': 'ok\n', ...files }, 'code')
-  const app = `${p.dir}/app`
-  git(app, 'init', '-q', '-b', 'main')
-  git(app, 'add', '.')
-  git(app, 'commit', '-q', '-m', 'base')
-  await init(p)
-  for (const role of ['lead', 'implementer']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  ok(await p.nanda('task open --file=task.yaml'))
-  const lead = tokenIn(ok(await p.nanda('assign t1 --role=lead')).out)
-  ok(await p.agent(`brief ${lead}`))
-  const impl = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=implementer`)).out)
-  ok(await p.agent(`brief ${impl}`))
-  return { p, app, lead, impl }
-}
-
-// A change of a direction: the high role (default architect) drafts it from
-// <yaml>, and the person accepts the draft (the reviser cannot review its own draft). Returns the
-// draft id and the reviser token; pass { accept: false } to leave the draft open. In a project with
-// other roles, pass { role, on, fit: true } (fit the role first).
-export async function changeDirection(p, yaml, opts = {}) {
-  const { flags = '', accept = true, direction = 'tsd-writing', role = 'architect' } = opts
-  const { fit = false } = opts
-  if (!p.arch) {
-    if (fit) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    p.arch = tokenIn(ok(await p.nanda(`assign t1 --role=${role}`)).out)
-    ok(await p.agent(`brief ${p.arch}`))
-  }
-  p.write('change.yaml', yaml)
-  const drafted = ok(await p.agent(`direction revise ${p.arch} ${direction} --file=change.yaml ${flags}`)).out
-  const draft = drafted.match(/^(d\d+) drafted/m)[1]
-  const out = accept ? ok(await p.nanda(`review ${draft} accept --evidence="change.yaml | the change is what was asked"`, 'accept')).out : drafted
-  return { draft, arch: p.arch, out }
 }

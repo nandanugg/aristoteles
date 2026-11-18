@@ -152,4 +152,37 @@ describe('the acts of the work model, by the CLI', () => {
     expect(refused.err).toContain('the token of maker:m1 is of an old epoch')
     expect(h.ok(await p.agent(`brief ${second}`)).out).toContain('Task t1: Intro')
   }, 120000)
+
+  test('an agent asks, the person answers by the asker; each needs its words', async () => {
+    const { p, t, seq } = await opened()
+    h.ok(
+      await p.agent(
+        `send ${t.host} --name=Intro --goal=g --sections=introduction --role=section-lead`,
+      ),
+    )
+    const maker = made(h.ok(await p.agent(`assign ${t['role:section-lead'] ?? ''} t1`)).out)
+    const asker = 'maker:m1'
+    const state = () => foldWork(eventsOf(p.dir))?.state
+    const bare = await p.agent(`ask ${maker}`)
+    expect(bare.code).toBe(2)
+    expect(bare.err).toContain('work ask needs --question=')
+    const none = await p.nanda(`answer ${asker} --text="the second"`)
+    expect(none.code).toBe(1)
+    expect(state()?.asks.has(asker)).toBe(false)
+
+    const asked = h.ok(await p.agent(`ask ${maker} --question="which section first?"`))
+    expect(asked.out).toContain('Ask taken')
+    expect(asked.out).toContain(`work wait ${maker} again`)
+    expect(state()?.asks.has(asker)).toBe(true)
+
+    expect((await p.agent(`answer ${maker} ${asker} --text=x`)).code).toBe(1)
+    const missing = await p.nanda(`answer ${asker}`)
+    expect(missing.err).toContain('work answer needs --text=')
+    const answered = h.ok(await p.nanda(`answer ${asker} --text="the second"`))
+    expect(answered.out).toContain('Answer taken')
+    expect(state()?.asks.has(asker)).toBe(false)
+    const before = seq()
+    expect((await p.nanda(`answer ${asker} --text="again"`)).code).toBe(1)
+    expect(seq()).toBe(before)
+  }, 120000)
 })

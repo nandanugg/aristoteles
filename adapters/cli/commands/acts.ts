@@ -46,7 +46,7 @@ import { HARNESS, HOST, kindOf, PERSON } from '../../../core/state/work/types.ts
 import { briefOf, hostWords } from '../../words/work.ts'
 import { type Args, textOf } from '../args.ts'
 import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
-import type { Call, CliServices, Command, Commands } from '../command.ts'
+import type { CliServices, Command, Commands } from '../command.ts'
 import { WORK } from '../../../core/actions/work.ts'
 
 type Failure = Expected | ReturnType<typeof WORK.noTop>
@@ -266,9 +266,12 @@ const SPECS: Readonly<Record<string, Spec>> = {
   ),
   resume: agent((c) => Effect.map(target('a maker')(c), (maker) => ({ _tag: 'Resume', maker }))),
   brief: agent((c) => Effect.map(makerOf(c), (maker) => ({ _tag: 'ReadBrief', maker }))),
-  ask: agent((c) =>
-    Effect.map(flag(c, 'text'), (question) => ({ _tag: 'Ask', asker: c.who, question }))
-  ),
+  ask: agent((c) => {
+    const question = textOf(c.args.one('question')) ?? textOf(c.args.one('text'))
+    return question === undefined
+      ? usage('work ask needs --question="<...>"')
+      : Effect.succeed({ _tag: 'Ask', asker: c.who, question })
+  }),
   report: agent((c) =>
     Effect.gen(function* () {
       const maker = yield* makerOf(c)
@@ -437,15 +440,23 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
 
 // --- the commands --------------------------------------------------------------------------------
 
-// The acts that no old command has.
-const NEW = [
+const ACTS = [
   'end',
+  'answer',
   'accept',
   'send-back',
   'reject',
   'decide',
+  'send',
   'reassign',
   'top-done',
+  'assign',
+  'review',
+  'resume',
+  'brief',
+  'ask',
+  'report',
+  'evaluate',
   'advance',
   'rule',
   'rule-test',
@@ -453,44 +464,13 @@ const NEW = [
   'ship',
   'loop',
   'recheck',
-  'resume',
 ] as const
-// The commands that the old CLI had: the work token (w.<actor>...) makes the new act, any other
-// call goes to the old command until phase 5 removes it.
-const SHARED = ['send', 'assign', 'review', 'brief', 'ask', 'report', 'evaluate'] as const
-
-const isWork = (call: Call): boolean => call.token?.startsWith('w.') === true
-
-// The person's answer to an agent's question names the asker, not a question id (q1).
-const answerIsNew = (call: Call): boolean => !/^q\d+$/.test(call.args.positional[0] ?? '')
-
-// The new `work run continue` has no run id (the old one names a run and the person's words).
-const isContinue = (call: Call): boolean =>
-  call.args.positional.length === 1 && call.args.positional[0] === 'continue'
 
 const fresh = (names: ReadonlyArray<string>): Commands =>
   Object.fromEntries(names.flatMap((n) => {
     const spec = SPECS[n]
     return spec === undefined ? [] : [[n, runAct(n, spec)] as const]
   }))
-
-// The old commands with the new acts beside them.
-export const sharing = (old: Commands): Commands => {
-  const both = (n: (typeof SHARED)[number]): Command => {
-    const was = old[n]
-    const now = runAct(n, SPECS[n] as Spec)
-    return (call) => (isWork(call) || was === undefined ? now(call) : was(call))
-  }
-  const answer = old.answer
-  const now = runAct('answer', SPECS.answer as Spec)
-  const oldRun = old.run
-  return {
-    ...Object.fromEntries(SHARED.map((n) => [n, both(n)] as const)),
-    run: (call) =>
-      oldRun === undefined || isContinue(call) ? runContinue(call) : oldRun(call),
-    answer: (call) => (answer === undefined || answerIsNew(call) ? now(call) : answer(call)),
-  }
-}
 
 // work top open --name= --goal= --sections=a,b: the person opens the top; each actor's token.
 const top: Command = (call) =>
@@ -594,4 +574,10 @@ const forward: Command = (call) =>
     return [`${id}: ${what._tag} waits for the person to confirm it on the page.`]
   })
 
-export const commands: Commands = { ...fresh(NEW), top, hook, forward }
+// work run continue is the only act of `run`; it lives here with the host's acts.
+const run: Command = (call) =>
+  call.args.positional.length === 1 && call.args.positional[0] === 'continue'
+    ? runContinue(call)
+    : usage('work run continue (the host, in its own tmux pane)')
+
+export const commands: Commands = { ...fresh(ACTS), run, top, hook, forward }

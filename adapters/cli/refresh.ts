@@ -144,7 +144,6 @@ export const refresh = (name: string): Effect.Effect<void, Expected | Refusal, C
     const terminal = yield* Terminal
     for (const note of yield* refreshCompany) yield* terminal.err(note)
   })
-
 // After the owner accepts a commit of a company direction, the lock follows it.
 export const followCommit = (
   work: Work,

@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import Ajv from 'ajv/dist/2020.js'
 import { startServer } from './code.js'
-import { CODE_YAML, ONBOARD_CONFIG, WORK_YAML, ok, onboardingProject, project, started, withModels } from './harness.js'
+import { CODE_YAML, ONBOARD_CONFIG, WORK_YAML, ok, initiated, onboardingProject, project, withModels } from './harness.js'
 import { act, api, dbOf, gitPerson, settingsOf } from './outside.js'
 
 // An act of the onboarding pages (POST /api/onboarding), with the key and the page's own origin.
@@ -126,7 +126,7 @@ describe('aristoteles.yaml', () => {
   })
 
   test('a write of the settings keeps every other line, and the stored config does not change', async () => {
-    const { p, lead } = await started({ 'aristoteles.yaml': `${SETTINGS}# the roles below are ours\n${WORK_YAML}` })
+    const { p } = await initiated({ 'aristoteles.yaml': `${SETTINGS}# the roles below are ours\n${WORK_YAML}` })
     const settings = { sound: true, theme: 'dark', models: { opus: { launch: 'other-tool --session-id {session}' } } }
     expect(await act(p, 'settings', { settings })).toEqual({ out: 'the settings are saved.' })
     const text = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
@@ -138,18 +138,16 @@ describe('aristoteles.yaml', () => {
     expect(now.models.opus.launch).toBe('other-tool --session-id {session}')
     expect(now.models.sonnet.launch).toBeUndefined()
     // The stored config is the mechanism only, so every command still runs.
-    ok(await p.agent(`next ${lead}`))
+    ok(await p.nanda('log'))
   })
 
   test('a restore writes back the stored mechanism and keeps the settings of now', async () => {
-    const { p, lead } = await started({ 'aristoteles.yaml': SETTINGS + WITH_MODELS })
+    const { p } = await initiated({ 'aristoteles.yaml': SETTINGS + WITH_MODELS })
     expect((await act(p, 'settings', { settings: { theme: 'dark' } })).out).toBe('the settings are saved.')
     p.write('aristoteles.yaml', readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8').replace('name: Nanda', 'name: Someone'))
-    expect((await p.agent(`brief ${lead}`)).err).toContain('aristoteles.yaml changed since the stored config')
     ok(await p.nanda('config restore', 'restore'))
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toContain('name: Nanda')
     expect((await settingsOf(p)).theme).toBe('dark')
-    ok(await p.agent(`next ${lead}`))
   })
 })
 
@@ -256,7 +254,7 @@ describe('the first start of a dir', () => {
     expect((await p.agent('config check')).err).toContain('aristoteles.draft.yaml: aristoteles.yaml: models.opus.launch has no {session}')
   })
 
-  test('the host records the fit of each role as a model run; the person and a role do not use --by', async () => {
+  test('the host records the fit of each role as a model run; the person does not use --by', async () => {
     const p = project()
     ok(await p.nanda('init'))
     // The host runs in a shell with no terminal, so the person's command is refused there.
@@ -266,7 +264,6 @@ describe('the first start of a dir', () => {
     expect(ok(await p.agent('log')).out).toMatch(/^e2 .* assess run \S+ \(run\) role\.fit$/m)
     // I4 (N6): the person's --by is not used: the person records the fit, with no refusal.
     expect(ok(await p.nanda('role fit architect --answers=fit.yaml --by=assess')).out).toBe('architect fits; recorded.')
-    expect((await p.agent('role fit architect --answers=fit.yaml --by=assess --as=a1.k0001')).err).toContain('a role that fits roles passes only --as=<its token>')
     expect((await p.agent('role fit architect --answers=fit.yaml --by=Host')).err).toContain('--by=<its name in lower case>')
   })
 })

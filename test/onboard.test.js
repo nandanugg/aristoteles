@@ -196,7 +196,7 @@ describe('a company direction in onboarding (ruling 6)', () => {
       repo: company.dir, path: company.folder, owner: 'Nanda', rules: { 'upper-snake': 'linter' }, commit: company.commit,
     })
     // The refresh of the next command finds the folder as the store holds it: no new draft.
-    expect(ok(await p.nanda('waiting')).err).not.toContain('came in')
+    expect(ok(await p.nanda('log')).err).not.toContain('came in')
   })
 
   test('the start refuses a company folder that changed since its draft', async () => {

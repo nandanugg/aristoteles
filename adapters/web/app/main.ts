@@ -86,14 +86,15 @@ function FirstStart({ dir }: { dir: DirData }) {
 interface SidebarProps {
   title: string
   dash: DashData | null
+  picks: DirData['picks']
   open: boolean
   onToggle: () => void
   onSettings: () => void
   onDirection: (key: string, edit: boolean) => void
 }
 // Folded by default (Nanda, 2026-11-15); the button on its edge opens it: dir / project at the
-// top, the direction cards, and the settings at the bottom.
-function Sidebar({ title, dash, open, onToggle, onSettings, onDirection }: SidebarProps) {
+// top (a dir has at most one project), the direction cards, and the settings at the bottom.
+function Sidebar({ title, dash, picks, open, onToggle, onSettings, onDirection }: SidebarProps) {
   return html`<nav class=${open ? 'sidebar' : 'sidebar folded'} aria-label="Directions">
     <div class="sidebar-head">
       <button class="icon-button fold" aria-expanded=${open}
@@ -101,7 +102,13 @@ function Sidebar({ title, dash, open, onToggle, onSettings, onDirection }: Sideb
         onClick=${onToggle}>${icon(ICONS.panel, 18)}</button>
       <div class="crumb">${icon(ICONS.folder)}<strong>${title}</strong></div>
     </div>
-    <div class="sidebar-list">${dash?.directions.map((d) => html`<${DirectionCard} key=${d.key}
+    <div class="sidebar-list">
+      <ul class="picker" aria-label="Dir and project">${picks.map((p) => html`<li><button
+        class="pick" aria-current=${p.path === location.pathname ? 'true' : undefined}
+        onClick=${() => p.path !== location.pathname && location.assign(p.path)}>
+        <span class="pick-dir">${p.dir}</span>${p.project === null ? '' : html`<span
+        class="pick-project"> / ${p.project}</span>`}</button></li>`)}</ul>
+      ${dash?.directions.map((d) => html`<${DirectionCard} key=${d.key}
       d=${d} onOpen=${(edit: boolean) => onDirection(d.key, edit)} />`)}</div>
     <div class="sidebar-foot">
       <button class="icon-button" aria-label="Settings"
@@ -184,7 +191,8 @@ function App() {
   const terminal = (card: DashTerminalCard) => setShown({ kind: 'terminal', card })
   const review = (id: string) => setShown({ kind: 'escalation', id })
   return html`<div class="layout">
-    <${Sidebar} title=${title} dash=${dash} open=${sidebar} onToggle=${() => setSidebar(!sidebar)}
+    <${Sidebar} title=${title} dash=${dash} picks=${dir.picks} open=${sidebar}
+      onToggle=${() => setSidebar(!sidebar)}
       onSettings=${() => setSettings(true)}
       onDirection=${(key: string, edit: boolean) => setShown({ kind: 'direction', key, edit })} />
     <main class="canvas">

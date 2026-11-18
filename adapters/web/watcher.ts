@@ -1,36 +1,24 @@
 // createWatcher (frozen; package P6): the engine of the terminals. tick() runs engineTick (the
 // revives of the work model, from the store alone), then renews the Work from the store (its own
-// WorkCache), reads the outside, derives, and runs reconcile(EFFECTS) once (core/effects). The
-// person's acts on the terminals (open, stop, resume, fixed, close) dispatch actions (core/effects
-// person.ts); they and the tick run one at a time (bug 14). What a restart must keep is in the
-// store; the rest is the memory of this one. Ruling 10.1: the watcher types nothing but a host's
-// `work send` into the terminal of its child. The person's acts go through core/actions dispatch,
-// not the CLI.
+// WorkCache), reads the outside, derives, and runs reconcile(EFFECTS) once (core/effects). Ticks
+// run one at a time. What a restart must keep is in the store; the rest is the memory of this
+// one. Ruling 10.1: the watcher types nothing but a host's `work send` into the terminal of its
+// child.
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Ref } from 'effect'
 import {
-  closeRun,
   DispatcherLive,
   EFFECTS,
   EffectLog,
   backoffMemory,
   engineTick,
-  fixedProblem,
   latest,
   NO_MEMORY,
-  type Opened,
-  openDraft,
   reconcile,
-  resumeSession,
-  stopSession,
   Supervision,
   SupervisorMemory,
   TIMING,
 } from '../../core/effects/index.ts'
 import {
-  type ProblemId,
-  type RunId,
-  SessionId,
-  type TaskDraftId,
   type Time,
   type Work,
 } from '../../core/schema/index.ts'
@@ -58,24 +46,6 @@ export type { Watcher, WatcherOptions, WatcherTiming } from './frozen.ts'
 
 // The timer of the ticks.
 const TICK_MS = 2000
-
-// The words of an Open on the page, as `work task open <td>` writes them. No token: the host gets
-// the token of its assignment from its own `work wait --by=<run>` (ruling 10.1).
-const openWords = (opened: Opened): string => {
-  const w = opened.acted.dispatched.work
-  const task = opened.task === null ? undefined : w.tasks.get(opened.task)
-  const head = `${opened.task ?? ''} opened: ${task?.name ?? ''}`
-  const { host } = opened
-  if (host === null) return head
-  const a = w.assignments.get(host.assignment)
-  const role = a === undefined ? undefined : w.workflow.roles.get(a.role)
-  const model = role?._tag === 'Model' ? role.model : 'program'
-  return [
-    head,
-    `${host.assignment} · ${a?.role ?? ''} (${model}) on ${a?.task ?? ''} ${task?.name ?? ''}`,
-    `${host.assignment} is the host of ${host.run}; the host gets its token from work wait.`,
-  ].join('\n')
-}
 
 export const createWatcher = (options: WatcherOptions): Watcher => {
   const { dir, pump, log = () => {}, clock = () => Date.now() } = options
@@ -190,12 +160,5 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
   return {
     tick,
     stop: () => clearInterval(timer),
-    open: (draft) =>
-      serial(() => run(openDraft(draft as TaskDraftId)).then((opened) => openWords(opened))),
-    stopSession: (sid) => serial(() => run(stopSession(SessionId.make(sid)))),
-    // Every model has its commands (ruling 10): a persistent agent of any model has a terminal.
-    resumeSession: (sid) => serial(() => run(resumeSession(SessionId.make(sid)))),
-    fixed: (problem) => serial(() => run(fixedProblem(problem as ProblemId))),
-    close: (runId, reason) => serial(() => run(closeRun(runId as RunId, reason))),
   }
 }

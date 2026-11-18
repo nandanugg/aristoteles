@@ -12,7 +12,7 @@
 // which other processes write) and sends `changed` on each value of its changes, and when the
 // clock passes the next edge of the last read (a hold ends, F4). A read derives the Work and
 // renders the views of view.ts; a person's act dispatches its action as the person of git
-// user.name (acts.ts) or goes to the watcher (the terminals).
+// user.name (acts.ts).
 import { existsSync, type FSWatcher, readdirSync, statSync, watch } from 'node:fs'
 import { networkInterfaces } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -29,7 +29,6 @@ import {
 import { type Derived, derive, nextChangeAt } from '../../core/derived/index.ts'
 import { checkHost, tmuxPaneExists } from '../../core/effects/host-check.ts'
 import {
-  type AssignmentId,
   type Author,
   type SuggestionId,
   OnboardingAct,
@@ -70,32 +69,26 @@ import { tokenSecret } from '../live/tokens.ts'
 import { readMarkers } from '../live/waiting.ts'
 import { withBriefMeasure } from '../words/index.ts'
 import { suggestionMover } from '../words/shared.ts'
-import { type ActionAct, callOf, refusedOf, type WorkPost, workPostOf, wordsOf } from './acts.ts'
+import { callOf, type SuggestAct, refusedOf, type WorkPost, workPostOf, wordsOf } from './acts.ts'
 import { PAGE_FILES, pageBundle } from './bundle.ts'
 import {
   ACTS,
   Dash,
   DashMessage,
-  DiffView,
   DirView,
   OnboardingView,
   PageAct,
   PageMessage,
-  ProjectView,
   PersonView,
-  TaskPanel,
 } from './contract.ts'
 import { dashOf } from './dash.ts'
-import type { ServerHandle, ServerOptions, Watcher } from './frozen.ts'
+import type { ServerHandle, ServerOptions } from './frozen.ts'
 import { onboardingWords, startStore } from './onboard.ts'
 import {
   dirView,
-  fileDiff,
   onboardingFilesView,
   onboardingStoreView,
   personView,
-  projectView,
-  taskPanel,
   type ViewContext,
 } from './view.ts'
 
@@ -269,18 +262,12 @@ export function startServer(options: ServerOptions): ServerHandle {
     passEdge()
     return d
   }
-  // The terminals of a read are those that its derive read (one `tmux list-panes`, not two).
-  const context = (d: Derived | undefined, person: string): ViewContext => ({
-    dir,
-    settings: runSync(readSettings(dir)),
-    terminals: d?.moment.outside.terminals ?? pump?.status() ?? {},
-    person,
-  })
+  const context = (): ViewContext => ({ dir, settings: runSync(readSettings(dir)) })
 
   // --- the dashboard (DESIGN 10): built whole from the store and the terminals -----------------
 
-  const dashNow = (): typeof Dash.Type | undefined => {
-    const events = runSync(
+  const storeEvents = () =>
+    runSync(
       Effect.scoped(
         Effect.gen(function* () {
           const opened = yield* (yield* Store).open(dir, { create: false })
@@ -288,6 +275,12 @@ export function startServer(options: ServerOptions): ServerHandle {
         }).pipe(Effect.catchTag('Refused', () => Effect.succeed([]))),
       ),
     )
+  // The DIR / PROJECT picker (DESIGN 10.1): this dir with its top task, when it has one.
+  const picksNow = (): typeof DirView.Type['picks'] => [
+    { dir: basename(dir), project: foldWork(storeEvents())?.state.top.name ?? null, path: '/' },
+  ]
+  const dashNow = (): typeof Dash.Type | undefined => {
+    const events = storeEvents()
     const folded = foldWork(events)
     if (folded === null) return undefined
     const { state, hostPane, forwards } = folded
@@ -461,40 +454,16 @@ export function startServer(options: ServerOptions): ServerHandle {
     }
     return by
   }
-  const actAs = async (act: ActionAct): Promise<Response> => {
+  const suggest = async (act: SuggestAct): Promise<Response> => {
     const by = await member()
     if (by instanceof Response) return by
     try {
       const done = await dispatched(callOf(act, by))
       const out = wordsOf(act, done.created)
       // P1 (D3): a suggestion names the one that drafts its answer.
-      const d = act.act === 'suggest' ? readDerived() : undefined
+      const d = readDerived()
       const id = done.created[0] as SuggestionId
       return json({ out: d ? `${out} Next: ${suggestionMover(d, id, false)}.` : out })
-    } catch (error) {
-      return failed(error)
-    }
-  }
-
-  // The person's assign on the page (P1): a terminal of the project starts the agent of a run; an
-  // agent of no run starts in the person's AI CLI with its token.
-  const assign = async (b: Extract<PageAct, { readonly act: 'assign' }>): Promise<Response> => {
-    const by = await member()
-    if (by instanceof Response) return by
-    const secret = tokenSecret()
-    const content = { maxAttempts: null, secret }
-    try {
-      const done = await dispatched({
-        by,
-        input: { _tag: 'Give', target: { task: b.task, role: b.role }, content },
-      })
-      const a = readState()?.assignments.get(done.created[0] as AssignmentId)
-      if (a === undefined) return json({ out: `${b.role} assigned on ${b.task}.` })
-      const where =
-        a.runs._tag === 'Agent' || a.runs._tag === 'Host'
-          ? 'its terminal starts here'
-          : `start it in your AI CLI: work brief ${a.id}.${secret}`
-      return json({ out: `${a.id} · ${a.role} on ${a.task}; ${where}.` })
     } catch (error) {
       return failed(error)
     }
@@ -567,49 +536,10 @@ export function startServer(options: ServerOptions): ServerHandle {
     return res
   }
 
-  // The watcher runs the acts of the terminals; without tmux there is none.
-  const terminals = (use: (w: Watcher) => Promise<Response>) =>
-    watcher ? use(watcher) : json({ error: 'the terminals need tmux' }, 400)
   const act = async (b: PageAct): Promise<Response> => {
     switch (b.act) {
-      case 'open':
-        return terminals(async (w) => json({ out: await w.open(b.draft) }))
-      case 'close':
-        return terminals(async (w) => {
-          await w.close(b.run, b.reason || 'closed by the person in the UI')
-          return json({ out: `${b.run} is closed.` })
-        })
-      case 'stop':
-        return terminals(async (w) => {
-          await w.stopSession(b.session)
-          return json({ out: `${b.session} stopped.` })
-        })
-      case 'resume':
-        return terminals(async (w) => {
-          await w.resumeSession(b.session)
-          return json({ out: `${b.session} resumed.` })
-        })
-      // Fixed: the UI tries the problem at once (the decision of 2026-11-11); the watcher holds
-      // the words of the try.
-      case 'fixed':
-        return terminals(async (w) => json({ out: await w.fixed(b.problem) }))
-      case 'accept-draft':
-      case 'reject-draft':
-      case 'confirm':
-      case 'answer':
-      case 'end':
-      case 'reject-task':
-      case 'accept-words':
-      case 'reject-words':
-      case 'accept-adjustment':
-      case 'reject-adjustment':
       case 'suggest':
-      case 'resolve':
-      case 'accept-evaluation':
-      case 'reject-evaluation':
-        return actAs(b)
-      case 'assign':
-        return assign(b)
+        return suggest(b)
       case 'settings':
         runSync(writeSettings(dir, b.settings))
         send({ type: 'changed' })
@@ -639,7 +569,7 @@ export function startServer(options: ServerOptions): ServerHandle {
 
   // --- the reads (GET /api/...) ----------------------------------------------------------------
 
-  const api = async (path: string, url: URL): Promise<Response | undefined> => {
+  const api = async (path: string): Promise<Response | undefined> => {
     // The person reads no derived state, so it derives nothing (a derive with its readings costs
     // about 35 ms on a store of 2,000 events).
     if (path === '/api/person') {
@@ -653,55 +583,31 @@ export function startServer(options: ServerOptions): ServerHandle {
         ? json({ error: `no work store in ${dir}` }, 404)
         : answer(Dash, dash)
     }
-    // The git process of the person's name runs while the request derives.
-    const [d, person] = await Promise.all([Promise.resolve().then(readDerived), gitName(dir)])
-    const ctx = context(d, person)
     if (path === '/api/dir') {
-      const view = dirView(
-        d,
-        {
-          name: basename(dir),
-          path: dir,
-          settings: ctx.settings,
-          onboarding: runSync(onboardingExists(dir)),
-          hasConfig: existsSync(join(dir, CONFIG)),
-          startPrompt: startPrompt(dir),
-          status: readStatus(env, dir),
-          now: Date.parse(clock()),
-        },
-        ctx,
-      )
+      const view = dirView(readState() !== undefined, {
+        name: basename(dir),
+        path: dir,
+        settings: context().settings,
+        onboarding: runSync(onboardingExists(dir)),
+        hasConfig: existsSync(join(dir, CONFIG)),
+        startPrompt: startPrompt(dir),
+        status: readStatus(env, dir),
+        now: Date.parse(clock()),
+        picks: picksNow(),
+      })
       return answer(DirView, view)
     }
     // One view before and after the store: the onboarding files, then the store (the gear). A
     // file that does not read is the page's error, with its words.
     if (path === '/api/onboarding') {
-      if (d) return answer(OnboardingView, onboardingStoreView(d, ctx))
+      const d = readDerived()
+      if (d) return answer(OnboardingView, onboardingStoreView(d, context()))
       try {
         const files = runSync(readOnboarding(dir))
-        return answer(OnboardingView, onboardingFilesView(files, ctx.settings, dir))
+        return answer(OnboardingView, onboardingFilesView(files, context().settings, dir))
       } catch (error) {
         return json({ error: messageOf(error) }, 400)
       }
-    }
-    if (!d) return json({ error: `no work store in ${dir}` }, 404)
-    let m = path.match(/^\/api\/project\/([a-z]+\d+)$/)
-    if (m) {
-      const view = projectView(d, m[1] as string, ctx)
-      return view ? answer(ProjectView, view) : json({ error: `no project ${m[1]}` }, 404)
-    }
-    m = path.match(/^\/api\/task\/(t\d+)$/)
-    if (m) {
-      const panel = taskPanel(d, m[1] as string, ctx)
-      return panel ? answer(TaskPanel, panel) : json({ error: `no task ${m[1]}` }, 404)
-    }
-    m = path.match(/^\/api\/diff\/(t\d+)$/)
-    if (m) {
-      const file = url.searchParams.get('file')
-      return answer(DiffView, {
-        file,
-        diff: fileDiff(d, m[1] as string, file ?? '', ctx) ?? '',
-      })
     }
     return undefined
   }
@@ -749,7 +655,7 @@ export function startServer(options: ServerOptions): ServerHandle {
           return new Response(`${messageOf(error)}\n`, { status: 500 })
         }
       }
-      // A place of the page (/h1, /h1/t1, /h1/t1/diff) is the page, which reads its own path, so
+      // A place of the page (/, /h1, /h1/t1) is the page, which reads its own path, so
       // a reload or a bookmark opens the same place (Nanda, 2026-11-15).
       const place = req.method === 'GET' && PAGE_PATH.test(url.pathname)
       const file = PAGE_FILES[place ? '/' : url.pathname]
@@ -772,7 +678,7 @@ export function startServer(options: ServerOptions): ServerHandle {
         try {
           const own = await extend.api?.(req, url, { readState, send })
           if (own) return own
-          const res = (await api(url.pathname, url)) ?? json({ error: 'no such address' }, 404)
+          const res = (await api(url.pathname)) ?? json({ error: 'no such address' }, 404)
           return gzipped(req, res)
         } catch (error) {
           return json({ error: messageOf(error) }, 500)

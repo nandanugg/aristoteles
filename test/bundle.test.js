@@ -18,7 +18,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { onboardingProject, reported } from './harness.js'
+import { initiated, onboardingProject } from './harness.js'
 
 const ROOT = join(import.meta.dir, '..')
 
@@ -38,7 +38,7 @@ const copy = () => {
 describe('bin/work.js', () => {
   test('the words of the sources; a new bundle after a change; none if a build fails', async () => {
     const code = copy()
-    const { p } = await reported()
+    const { p } = await initiated()
     const db = join(p.dir, '.work', 'aristoteles.db')
     const env = { ...process.env, WORK_DIR: p.dir, ARISTOTELES_DB: db }
     for (const key of ['TMUX', 'TMUX_PANE', 'TMUX_SOCKET']) delete env[key]
@@ -49,7 +49,7 @@ describe('bin/work.js', () => {
     const cache = join(code, '.cache', 'cli')
     const bundles = () => (existsSync(cache) ? readdirSync(cache) : [])
     // The words of the sources (bin/main.ts, the entry of the bundle) and of bin/work.js.
-    const calls = [['status'], ['waiting'], ['guide', 'limits']]
+    const calls = [['log'], ['help'], ['guide', 'limits']]
     const sources = calls.map((argv) => run('bin/main.ts', ...argv))
     const same = () => expect(calls.map((argv) => run('bin/work.js', ...argv))).toEqual(sources)
     expect(sources.map((r) => r.code)).toEqual([0, 0, 0])
@@ -85,7 +85,7 @@ describe('bin/work.js', () => {
     rmSync(join(code, '.cache'), { recursive: true })
     const at = (argv) =>
       Bun.spawn(['bun', join(code, 'bin', 'work.js'), ...argv], { env, cwd: p.dir, stdout: 'pipe' })
-    const started = [0, 1, 2, 3].map(() => at(['status']))
+    const started = [0, 1, 2, 3].map(() => at(['log']))
     const words = await Promise.all(started.map((s) => new Response(s.stdout).text()))
     expect(words).toEqual(started.map(() => sources[0].out))
     expect(bundles()).toEqual([second])

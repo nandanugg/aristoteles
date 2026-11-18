@@ -1,51 +1,27 @@
-// The show views: a task and its tree, a result with its reviews, a direction, a draft, one piece
-// of them, a question, an evaluation, an assignment, the examples of a direction, an adjustment. Golden text, as the old CLI showed them. Every
-// state a view prints comes from Derived: the end of a task, the state of a draft, an escalation,
-// an evaluation. Findings that change a view: C1 (an assignment of an ended task), S6/S7 (a draft
-// that is Outdated or Conflicted: Conflicted has no old words, so its line says nothing of it),
-// EscalationState Irrelevant (ruling 10.7: printed as irrelevant, never open).
+// The show views: a direction, a draft, one piece of them, the examples of a direction. Golden
+// text, as the old CLI showed them. Every state a view prints comes from Derived. Finding S6/S7: a
+// draft that is Outdated or Conflicted says nothing of it (Conflicted has no old words).
 import {
-  assignmentAt,
   directionAt,
   draftAt,
-  evaluationDecision,
-  isAssignment,
-  itemAt,
-  itemsOf,
   officialAt,
-  partsOf,
-  resultAt,
   ruleAt,
   standardAt,
-  stopTask,
-  taskAt,
   versionAt,
 } from '../../core/derived/reads.ts'
-import { sameWords } from '../../core/state/versions.ts'
-import { adjustmentDraftAt, type Derived, spotCurrent } from '../../core/derived/index.ts'
+import { type Derived, spotCurrent } from '../../core/derived/index.ts'
 import {
-  type Adjustment,
-  type AssignmentId,
-  type By,
   type Direction,
   type DirectionId,
-  isMarked,
-  type EventRef,
-  type EvaluationId,
   type Example,
-  isSpot,
-  type QuestionId,
-  type ResultId,
-  type Review,
-  type Revision,
-  replacesOf,
-  type RevisionId,
   type FlowStep,
-  type Rule,
+  isMarked,
+  isSpot,
+  type Revision,
+  type RevisionId,
   type Sample,
   type Spot,
   type StandardEntry,
-  type TaskId,
   type Version,
   type VersionId,
   versionIdOf,
@@ -53,30 +29,10 @@ import {
   whereRecord,
   type Work,
 } from '../../core/schema/index.ts'
-import { answererOfQuestion, renderBlockers } from './blockers.ts'
-import { briefOf } from './brief.ts'
-import {
-  checkerOf,
-  forwardedOf,
-  headersOf,
-  indented,
-  latestResult,
-  optionLines,
-  short,
-  stateWord,
-  who,
-} from './common.ts'
-import { drafterWords } from './role-words.ts'
-import { answerText, draftWaitsText, drafterOf, stopIdOf } from './shared.ts'
+import { checkerOf, headersOf, indented, short, who } from './common.ts'
+import { answerText, draftWaitsText, drafterOf } from './shared.ts'
 
 // --- one record in words ------------------------------------------------------------------------
-
-// A reviewer as a view names it: an assignment with its role, a person, a model run.
-const byWords = (work: Work, by: By, record: string): string =>
-  isAssignment(by) ? `${by} (${assignmentAt(work, by).role})` : who(work, by, record)
-const quoteOf = (work: Work, id: string): string | undefined => forwardedOf(work, id)?.quote
-const ruleKey = (work: Work, entry: string): string => ruleAt(work, entry as never).id
-const byName = (by: By): string => (typeof by === 'string' ? by : by.name)
 
 // What a draft or a version holds: its summary, its flow, its words and its standards.
 interface Words {
@@ -90,98 +46,6 @@ interface Words {
 const versionOfId = (work: Work, id: VersionId): Version<Direction> => {
   const at = id.lastIndexOf('@')
   return versionAt(work, id.slice(0, at) as DirectionId, Number(id.slice(at + 1)))
-}
-
-// --- a result and its reviews --------------------------------------------------------------
-
-// A result and each review of it, with the evidence and the points: what a decider reads
-// before it decides on its checkers' work.
-export const renderResult = (d: Derived, id: ResultId): ReadonlyArray<string> => {
-  const work = d.moment.work
-  const result = resultAt(work, id)
-  const from = result.madeFrom.flatMap((m) =>
-    m._tag === 'Git'
-      ? [`${m.name}@${m.commit}`]
-      : m._tag === 'Outside'
-        ? [`${m.name}@${m.revision}`]
-        : [],
-  )
-  const lines = [
-    `${id} on ${result.task} by ${byWords(work, result.by, id)}: ${result.output}` +
-      `${from.length ? ` (made from ${from.join(', ')})` : ''}`,
-  ]
-  const items = itemsOf(work, id)
-  for (const v of items) {
-    const q = quoteOf(work, v.id)
-    const words = q ? ` (their words: "${q}")` : ''
-    const by = byWords(work, v.by, v.id)
-    if (v.redo) lines.push(`${v.id} recheck by ${by}: "${v.reason}"`)
-    else if (v.decision === 'Escalate') {
-      const first = v.review._tag === 'Escalate' ? v.review.answerBy : undefined
-      const to = first === undefined ? '' : byWords(work, answererOfQuestion(d, v.id, first), v.id)
-      const state = d.states.escalations.get(v.id as never)
-      // Ruling 10.7: an escalation whose result or task ended is irrelevant, never open.
-      const how =
-        state?._tag === 'Resolved'
-          ? `resolved by ${state.by}`
-          : state?._tag === 'Irrelevant'
-            ? 'irrelevant'
-            : 'open'
-      lines.push(`${v.id} escalation by ${by}, for ${to}: "${v.reason}" (${how})`)
-    } else if (v.decision === 'Reject') {
-      lines.push(
-        `${v.id} reject by ${by}${v.breaks ? `, breaks ${ruleKey(work, v.breaks)}` : ''}: ` +
-          `"${v.reason}"${words}`,
-      )
-    } else {
-      lines.push(
-        `${v.id} ${v.resolves ? `resolve by ${by}, resolves ${v.resolves}` : `accept by ${by}`}` +
-          `${v.reason ? `: "${v.reason}"` : ''}${words}`,
-        ...v.evidence.map(
-          (e) => `  ${e.meets ? `${ruleKey(work, e.meets)} | ` : ''}${e.at} | ${e.says}`,
-        ),
-      )
-    }
-  }
-  if (items.length === 0) lines.push('no reviews yet')
-  return [...lines, ...renderBlockers(d, id)]
-}
-
-// --- the task tree --------------------------------------------------------------------------
-
-export const renderTaskTree = (d: Derived, task: TaskId, depth = 0): ReadonlyArray<string> => {
-  const work = d.moment.work
-  const pad = '  '.repeat(depth)
-  const t = taskAt(work, task)
-  const r = latestResult(work, task)
-  let suffix = ''
-  if (r && d.moment.outside.changed.has(r.id)) suffix = ` (${r.id} changed after it was reported)`
-  else if (r && itemsOf(work, r.id).some((v) => v.decision === 'Reject')) {
-    suffix = ` (${r.id} rejected)`
-  }
-  const lines = [`${pad}${task} ${t.name} · ${stateWord(d, task)}${suffix}`]
-  for (const part of partsOf(work, task)) lines.push(...renderTaskTree(d, part.id, depth + 1))
-  return lines
-}
-
-// `work task show`: the task, its words, and what stops its latest result.
-export const renderTask = (d: Derived, id: TaskId): ReadonlyArray<string> => {
-  const work = d.moment.work
-  const task = taskAt(work, id)
-  const t = task.descriptionAi
-  const latest = latestResult(work, id)
-  const replaced = replacesOf(work, id)
-  const state = d.states.tasks.get(id)
-  return [
-    `${task.id} ${task.name} · ${stateWord(d, id)} · owner ${task.owner.name}`,
-    `text: ${t.text}`,
-    ...(t.partOf ? [`part of: ${t.partOf}`] : []),
-    `directions: ${t.directions.join(', ') || 'none'}`,
-    ...(task.needs.length ? [`needs: ${task.needs.join(', ')}`] : []),
-    ...(replaced ? [`replaces ${replaced}`] : []),
-    ...(state?._tag === 'Replaced' ? [`closed as replaced by ${state.next}`] : []),
-    ...(latest ? renderBlockers(d, latest.id) : []),
-  ]
 }
 
 // --- directions and drafts --------------------------------------------------------------------
@@ -287,7 +151,7 @@ export const renderDirection = (d: Derived, version: VersionId): string => {
     `made from ${draft.id}, drafted by ` +
       `${
         draft.origin._tag === 'Written'
-          ? who(work, draft.origin.by)
+          ? who(draft.origin.by)
           : draft.origin._tag === 'Onboarded'
             ? drafterOf(work, draft)
             : 'refresh'
@@ -305,10 +169,7 @@ export const renderDirection = (d: Derived, version: VersionId): string => {
         : state._tag === 'Outdated'
           ? ' (built on an old version, so it stopped)'
           : ''
-    const reviews = itemsOf(work, x.id).map((r) => r.decision)
-    lines.push(
-      `draft: ${x.id}${end}; reviews: ${reviews.join(', ') || 'none'}; work direction show ${x.id}`,
-    )
+    lines.push(`draft: ${x.id}${end}; work direction show ${x.id}`)
   }
   return lines.join('\n')
 }
@@ -375,50 +236,7 @@ export const pieceNames = (work: Work, v: VersionId | RevisionId): ReadonlyArray
   ]
 }
 
-// Two rules are the same when they have the same id, words, and checker.
-const sameRule = (a: Rule, b: Rule): boolean =>
-  a.entry === b.entry ||
-  (a.id === b.id &&
-    a.says === b.says &&
-    (a.checkedBy._tag === 'Decider'
-      ? b.checkedBy._tag === 'Decider'
-      : b.checkedBy._tag === 'Role' && a.checkedBy.role === b.checkedBy.role))
-
-// What a draft changes from an earlier draft that was rejected: + new, ~ changed, - dropped.
-const sinceLines = (work: Work, x: Words, earlier: Words): ReadonlyArray<string> => {
-  const lines: Array<string> = []
-  const mine = x.standards.map((e) => standardAt(work, e))
-  const was = earlier.standards.map((e) => standardAt(work, e))
-  for (const s of mine) {
-    const old = was.find((y) => y.id === s.id)
-    if (!old) lines.push(`+ ${s.id}: ${s.says}`)
-    if (!old || sameWords(work, s, old)) continue
-    lines.push(`~ ${s.id}: ${s.says}`)
-    if (s.says !== old.says) lines.push(`  was: ${old.says}`)
-    const [where, whereWas] = [
-      JSON.stringify(whereRecord(s.where) ?? {}),
-      JSON.stringify(whereRecord(old.where) ?? {}),
-    ]
-    if (where !== whereWas) lines.push(`  where: ${where}, was ${whereWas}`)
-    const rules = s.rules.map((e) => ruleAt(work, e))
-    const oldRules = old.rules.map((e) => ruleAt(work, e))
-    for (const r of rules) {
-      if (!oldRules.some((q) => sameRule(r, q)))
-        lines.push(`+   ${r.id}: ${r.says} (${checkerOf(r)})`)
-    }
-    for (const q of oldRules) {
-      if (!rules.some((r) => sameRule(r, q))) lines.push(`-   ${q.id}: ${q.says} (${checkerOf(q)})`)
-    }
-  }
-  for (const s of was.filter((y) => !mine.some((z) => z.id === y.id))) {
-    lines.push(`- ${s.id}: ${s.says}`)
-  }
-  if (x.says !== earlier.says) lines.push(`says: ${x.says}`, `says was: ${earlier.says}`)
-  return lines
-}
-
-// A draft: what it changes in its base, who drafted it, what it answers, its reviews, and
-// where it ends.
+// A draft: what it changes in its base, who drafted it, what it answers, and where it ends.
 export const renderDraft = (d: Derived, id: RevisionId): string => {
   const work = d.moment.work
   const x: Revision<Direction> = draftAt(work, id)
@@ -432,28 +250,13 @@ export const renderDraft = (d: Derived, id: RevisionId): string => {
         ? 'ended by a Reject'
         : state?._tag === 'Outdated'
           ? `built on an old version, so it stopped (${state.current} is current)`
-          : `waits for the accept of ${draftWaitsText(d, id)}`
-  // A draft that answers the Reject of an earlier draft also shows what changed since that draft.
-  const since = x.answers.flatMap((a) => {
-    const y = itemAt(work, a)
-    if (y === undefined || y.review._tag !== 'Reject' || y.of._tag !== 'Revision') return []
-    return [
-      `since ${y.of.id}, which ${a} rejected:`,
-      ...sinceLines(work, x, draftAt(work, y.of.id)).map((l) => `  ${l}`),
-    ]
-  })
+          : `waits for the accept of ${draftWaitsText(work, id)}`
   const on = base ? `built on ${x._tag === 'Change' ? x.base : ''}` : 'a new direction'
   return [
     `${id} a draft of ${dir.name} (owner ${dir.owner.name}), ${on} · ${end}`,
     `drafted by ${drafterOf(work, x)}`,
     ...x.answers.map((a) => `answers: ${answerText(work, a)}`),
     ...contentLines(work, x, base),
-    ...since,
-    ...itemsOf(work, id).map(
-      (r) =>
-        `review: ${r.id} ${r.decision} by ${who(work, r.by, r.id)}: ` +
-        `${r.reason ?? r.evidence.map((e) => `${e.at} | ${e.says}`).join('; ')}`,
-    ),
   ].join('\n')
 }
 
@@ -461,72 +264,6 @@ export const renderDraft = (d: Derived, id: RevisionId): string => {
 // ruling, 2026-11-12): the reason, then the reviser's words; nothing when none was given.
 export const whyLines = (why: Why): ReadonlyArray<string> =>
   why._tag === 'NoneGiven' ? [] : [`why: ${why.reason}`, ...(why.words === null ? [] : [why.words])]
-
-// --- a question, an evaluation, an assignment ---------------------------------------------
-
-// `work question show`: who asked, for whom, and the answer. C2: the answer is read from the
-// state, so a question of an ended task reads as no answer.
-export const renderQuestion = (d: Derived, id: QuestionId): ReadonlyArray<string> => {
-  const q = d.moment.work.questions.get(id)
-  const state = d.states.questions.get(id)
-  if (q === undefined) throw new Error(`the work has no question ${id}`)
-  return [
-    `${id} asked by ${byName(q.from)}, for ${byName(q.answerBy)}:`,
-    q.text,
-    ...optionLines(q.options),
-    '',
-    state?._tag === 'Answered' ? `answer: ${state.answer}` : 'no answer yet',
-  ]
-}
-
-// `work evaluation show`: the stop it answers, its level, its words, and whether the owner
-// decided it.
-export const renderEvaluation = (d: Derived, id: EvaluationId): ReadonlyArray<string> => {
-  const work = d.moment.work
-  const e = work.evaluations.get(id)
-  if (e === undefined) throw new Error(`the work has no evaluation ${id}`)
-  const task = work.tasks.get(stopTask(work, e.answers))
-  const decided = evaluationDecision(work, e)
-  // The owner decides an evaluation with one accept, or one reject with a reason.
-  const words = (r: Review) =>
-    r._tag === 'Accept'
-      ? (r.reason ?? r.of.evidence.map((x) => x.says).join('; '))
-      : r._tag === 'Reject' && 'reason' in r.of
-        ? r.of.reason
-        : ''
-  const tail = decided
-    ? ` · ${decided._tag === 'Accept' ? 'accepted' : 'rejected'}: ${words(decided)}`
-    : d.states.evaluations.get(id)?._tag === 'Counts'
-      ? ''
-      : ' · waits for the person'
-  return [
-    `${id} · ${task?.id ?? ''} ${task?.name ?? ''} · answers ${stopIdOf(e.answers)} · ` +
-      `level ${e.level} · by ${byName(e.by)}${tail}`,
-    `wrong:   ${e.wrong}`,
-    `why:     ${e.why}`,
-    ...e.improve.map((x) => `improve: ${x}`),
-  ]
-}
-
-// `work assignment show`: the brief with no snapshot and no claim, or the line of a program.
-export const renderAssignment = (d: Derived, id: AssignmentId): ReadonlyArray<string> => {
-  const work = d.moment.work
-  const a = assignmentAt(work, id)
-  const config = work.config.roles[a.role]
-  // A program reads no brief: it runs its command on each report and records its checks.
-  if (config?.kind === 'program') {
-    const task = work.tasks.get(a.task)
-    return [
-      `${a.id} · ${a.role} (program) on ${a.task} ${task?.name ?? ''}`,
-      `runs "${config.run}" on ${config.on}; checks ${config.checks.join(', ') || 'nothing'}; ` +
-        'the CLI starts it, not a subagent',
-    ]
-  }
-  return [briefOf(d, a.id, `${a.id}.<token>`), '', '(read-only: no snapshot, no claim)']
-}
-
-
-// --- the examples of a direction, and an adjustment (onboarding) --------------------------------
 
 // One example (Nanda, 2026-11-15): its fit, its input when it has one, and its output; a real
 // sample with its place and its excerpt, stale when the excerpt is no longer in its file, and the
@@ -557,54 +294,3 @@ export const exampleLines = (
       ? [`  step ${i + 1} · ${whoOfStep(s)}`, ...s.examples.flatMap((e) => exampleOneLines(e, textOf))]
       : [],
   )
-
-// What an adjustment changes, in one line.
-export const adjustmentWords = (a: Adjustment): string => {
-  switch (a._tag) {
-    case 'AddRole': {
-      const kind =
-        a.file.kind === 'program'
-          ? 'a program'
-          : `${a.file.model}, ${a.file.persistence.persistent ? 'persistent' : 'disposable'}`
-      return `add the role ${a.role} (${kind})`
-    }
-    case 'RemoveRole':
-      return `remove the role ${a.role}`
-    case 'SetModel':
-      return `${a.role} runs on ${a.model}`
-    case 'SetPersistence':
-      return (
-        `${a.role} becomes ${a.persistence.persistent ? 'persistent' : 'disposable'}: ` +
-        `"${short(a.persistence.why, 120)}"`
-      )
-    case 'RetireDirection':
-      return `retire the direction ${a.direction}`
-  }
-}
-
-// The state of an adjustment in words.
-const adjustmentState = (d: Derived, ref: EventRef): string => {
-  const state = d.states.adjustments.get(ref)
-  switch (state?._tag) {
-    case 'Waiting':
-      return `waits for the accept of ${d.moment.work.workflow.owner.name}`
-    case 'Accepted':
-      return `accepted (${state.by})`
-    case 'Rejected':
-      return `rejected (${state.by}): "${state.reason}"`
-    case 'Replaced':
-      return `replaced by ${state.by}`
-    case undefined:
-      return 'unknown'
-  }
-}
-
-// work adjust show <event>: its head line, then what it holds (a new role).
-export const renderAdjustment = (d: Derived, ref: EventRef): ReadonlyArray<string> | undefined => {
-  const x = adjustmentDraftAt(d.moment.work, ref)
-  if (x === undefined) return undefined
-  const a = x.adjustment
-  const head = `${ref} ${adjustmentWords(a)}, drafted by ${drafterWords(x.by)} · ${adjustmentState(d, ref)}`
-  if (a._tag === 'AddRole') return [head, ...JSON.stringify(a.file, null, 2).split('\n')]
-  return [head]
-}

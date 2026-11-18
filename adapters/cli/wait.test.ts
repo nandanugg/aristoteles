@@ -14,7 +14,7 @@ import { readMarkers } from '../live/waiting.ts'
 const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
 
 const setup = async () => {
-  const { p } = await h.started({ 'aristoteles.yaml': PIPED })
+  const { p } = await h.initiated({ 'aristoteles.yaml': PIPED })
   const at = p.now()
   let k = 0
   const layer = Layer.mergeAll(

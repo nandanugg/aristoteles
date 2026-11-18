@@ -2,10 +2,8 @@
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { staticFit } from '../../../core/actions/config.ts'
-import { roleWordsDraftAt } from '../../../core/derived/index.ts'
 import {
   type Author,
-  type EventRef,
   OutsideFailed,
   Refused,
   refuse,
@@ -28,10 +26,9 @@ import {
 } from '../../../core/services/index.ts'
 import { configProblems } from '../../live/config-problems.ts'
 import { installSkill, SKILL_FILE } from '../../live/skill-install.ts'
-import { renderRoleWords } from '../../words/index.ts'
-import { textOf, wordsOf } from '../args.ts'
-import { agentCallerOf, callerOf, authorOf, isPerson, personAuthor } from '../caller.ts'
-import type { Call, Command, Commands } from '../command.ts'
+import { textOf } from '../args.ts'
+import { isPerson, personAuthor } from '../caller.ts'
+import type { Command, Commands } from '../command.ts'
 import { GUIDES } from '../lookups.ts'
 import { act, peekWork, readWork } from '../runtime.ts'
 
@@ -57,7 +54,7 @@ const init: Command = () =>
       `store made for ${config.project} in aristoteles: ${roles.length} roles, and no direction yet.`,
       `next: work role fit <role> for each role (${withModel.join(', ')}); ` +
         'a model drafts each direction (work direction new --file=<direction.yaml> --by=<model>), and you accept it; ' +
-        'then work task open --file=<task.yaml>',
+        'then the person opens a top: work top open --name= --goal= --sections=a,b',
     ]
   })
 
@@ -129,98 +126,12 @@ const Fitness = Schema.Struct({
   ),
 })
 
-// The file of new words of a role (ruling 2026-11-14).
-const WORDS_TEMPLATE = `write a file like this (any of the keys), then run the draft again:
-  description: <what the role does, in one line>
-  intro: <the first words of its brief>
-  responsibilities:
-    - <one exact output or command>
-  output: <the output form of a maker>`
-
-// work role draft (ruling 2026-11-14): a role that fits roles (its token) or a model run outside any task
-// (--by) drafts new words of a role. The draft waits in the store for the person, so
-// aristoteles.yaml stays as stored and no write stops.
-const draftRole = (call: Call, key: string) =>
-  Effect.gen(function* () {
-    const { args, token } = call
-    const runName = textOf(args.one('by'))
-    if (token === null && (yield* isPerson)) {
-      return yield* refuse(
-        `the person writes the words of ${key} in ${CONFIG}, then runs work config apply`,
-        `change the words of ${key} in ${CONFIG}; work config apply stores them`,
-      )
-    }
-    const file = textOf(args.one('file'))
-    if (!file) {
-      return yield* refuse('a draft of role words needs --file=<words.yaml>', WORDS_TEMPLATE)
-    }
-    if (token !== null && runName !== undefined) {
-      return yield* refuse(
-        '--by names a model run outside any task; an assignment is named by its token',
-      )
-    }
-    if (token === null && !/^[a-z][a-z0-9-]*$/.test(runName ?? '')) {
-      return yield* refuse(
-        'a model run outside any task names itself: --by=<its name in lower case>',
-        `run it again with --by, for example: work role draft ${key} --file=${file} --by=host`,
-      )
-    }
-    const { work } = yield* peekWork
-    const by: Author =
-      token !== null
-        ? authorOf(yield* agentCallerOf(work, token))
-        : { _tag: 'ModelRun', name: String(runName), at: yield* (yield* Now).read }
-    const done = yield* act(by, {
-      _tag: 'DraftRoleWords',
-      target: { role: RoleName.make(key) },
-      content: { file },
-    })
-    if (done.seq === null) return yield* Effect.die('a draft of role words stored no event')
-    const draft = `e${done.seq}`
-    const owner = work.workflow.owner.name
-    const fitter = token !== null ? '--as=<your token>' : `--by=${runName}`
-    return [
-      `${draft}: new words of ${key}; they wait for the accept of ${owner}.`,
-      `next: ${owner} accepts or rejects them on the page, or with work role accept|reject ` +
-        `${draft}; after an accept, record the fit of the new words: ` +
-        `work role fit ${key} --answers=<file> ${fitter}`,
-    ]
-  })
-
-// work role accept|reject <draft> (ruling 2026-11-14): the person decides new words of a role.
-// The accept writes them into aristoteles.yaml, so the person reads them and types the word.
-const decideRole = (call: Call, word: string, ref: string) =>
-  Effect.gen(function* () {
-    const { work, d } = yield* peekWork
-    const draft = roleWordsDraftAt(work, ref as EventRef)
-    if (draft === undefined) {
-      return yield* refuse(`${ref} is no draft of the words of a role`, 'work waiting lists them')
-    }
-    if (word === 'reject') {
-      yield* act(yield* personAuthor(work), {
-        _tag: 'RejectRoleWords',
-        target: { draft: draft.ref },
-        content: { reason: wordsOf(call.args.one('reason')) },
-      })
-      return [`${draft.ref} is rejected; work waiting shows the reason to its drafter.`]
-    }
-    const show = (renderRoleWords(d, draft.ref) ?? []).join('\n')
-    const by = yield* personAuthor(work, { word: 'accept', show })
-    yield* act(by, { _tag: 'AcceptRoleWords', target: { draft: draft.ref }, content: {} })
-    return [
-      `${draft.ref} is accepted: the new words of ${draft.role} are in ${CONFIG}; ` +
-        `${draft.role} needs a new work role fit.`,
-    ]
-  })
-
 const role: Command = (call) =>
   Effect.gen(function* () {
     const { args } = call
     const [sub, roleName] = args.positional
-    if (sub === 'draft') return yield* draftRole(call, String(roleName))
-    if (sub === 'accept' || sub === 'reject') return yield* decideRole(call, sub, String(roleName))
     const { cwd } = yield* Dir
-    const { work, d } = yield* readWork
+    const { work } = yield* readWork
     if (sub === 'list') {
       // The name column fits the longest name; it is never narrower than the old 14 columns.
       const roles = Object.entries(work.config.roles)
@@ -235,14 +146,11 @@ const role: Command = (call) =>
     }
     const key = String(roleName)
     if (sub === 'show') {
-      // A draft of new words, by its event (ruling 2026-11-14).
-      const draft = /^e\d+$/.test(key) ? renderRoleWords(d, key as EventRef) : undefined
-      if (draft !== undefined) return draft
       const stored = roleIn(work.config.roles, key)
       if (!stored) return yield* refuse(`there is no role "${key}"`)
       return [JSON.stringify(stored, null, 2)]
     }
-    if (sub !== 'fit') return yield* refuse('use work role list|show|fit|draft|accept|reject')
+    if (sub !== 'fit') return yield* refuse('use work role list|show|fit')
     const file = textOf(args.one('answers'))
     if (!file) {
       // Fitness reads the role from aristoteles.yaml, so new words are fitted before config apply.
@@ -266,16 +174,10 @@ const role: Command = (call) =>
         `then: work role fit ${key} --answers=<file>`,
       ]
     }
-    // Who records it: the person, a role that fits roles (--as=<its token>), or a model run outside any
-    // task (--by=<its name>), such as the host that drafted the roles (Nanda, 2026-11-13).
-    const token = textOf(args.one('as')) ?? null
+    // Who records it: the person, or a model run outside any task (--by=<its name>), such as the
+    // host that drafted the roles (Nanda, 2026-11-13).
     const runName = textOf(args.one('by'))
     let by: Author
-    if (runName !== undefined && token !== null) {
-      return yield* refuse(
-        '--by names a model run outside any task; a role that fits roles passes only --as=<its token>',
-      )
-    }
     if (runName !== undefined && (yield* isPerson)) {
       // N6: the person's own --by is ignored; the person records the fit.
       by = yield* personAuthor(work)
@@ -285,7 +187,7 @@ const role: Command = (call) =>
       }
       by = { _tag: 'ModelRun', name: runName, at: yield* (yield* Now).read }
     } else {
-      by = authorOf(yield* callerOf(work, token))
+      by = yield* personAuthor(work)
     }
     yield* act(by, {
       _tag: 'FitRole',

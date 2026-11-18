@@ -1,5 +1,4 @@
-// Who calls: the person checks and the agent checks, each with its words. The words are the ones
-// that the old caller gave (pinned at the switch, 2026-11-14); a next line that changed says why.
+// Who calls: the person checks and the work token checks, each with its words.
 import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,30 +7,13 @@ import { Effect, Exit } from 'effect'
 import type { Work } from '../../core/schema/index.ts'
 import { type IoServices, layerOfIo, sha, type WorkIo } from '../../core/services/index.ts'
 import type { WorkFolded } from '../../core/state/work/fold.ts'
-import { callerOf, isToken, personOf, verify, verifyWork, workTokenOf } from './caller.ts'
+import { isToken } from './args.ts'
+import { personAuthor, personOf, verifyWork, workTokenOf } from './caller.ts'
 import { main } from './main.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harnessJs from '../../test/harness.js'
 
-interface Ran {
-  readonly code: number
-  readonly out: string
-  readonly err: string
-}
-interface Agent {
-  readonly agent: (line: string) => Promise<Ran>
-  readonly nanda: (line: string) => Promise<Ran>
-  readonly write: (path: string, text: string) => void
-}
-const harness = harnessJs as {
-  readonly WORK_YAML: string
-  readonly INTRO_V2: string
-  readonly ok: (r: Ran) => Ran
-  readonly tokenIn: (text: string) => string
-  readonly started: () => Promise<{ readonly p: Agent; readonly lead: string }>
-  readonly withWriter: () => Promise<{ readonly p: Agent; readonly lead: string; writer: string }>
-}
-const { ok, tokenIn } = harness
+const harness = harnessJs as { readonly WORK_YAML: string }
 
 interface Options {
   readonly tty?: boolean
@@ -162,13 +144,13 @@ describe('the person, as init checks it', () => {
   })
 
   test('the page is the person too, and a terminal with a name of the people passes', async () => {
-    const ui = await runEffect(callerOf(fakeWork({}), null), makeDir(), { channel: 'ui' })
+    const ui = await runEffect(personAuthor(fakeWork({})), makeDir(), { channel: 'ui' })
     expect(Exit.isSuccess(ui.exit) && ui.exit.value).toEqual({
       _tag: 'Person',
       name: 'Nanda',
       channel: 'ui',
     })
-    const tty = await runEffect(callerOf(fakeWork({}), null), makeDir(), { tty: true })
+    const tty = await runEffect(personAuthor(fakeWork({})), makeDir(), { tty: true })
     expect(Exit.isSuccess(tty.exit) && tty.exit.value).toEqual({
       _tag: 'Person',
       name: 'Nanda',
@@ -191,7 +173,7 @@ describe('the typed confirmation', () => {
     const options: Options = { tty: true, ...(typed === undefined ? {} : { typed }) }
     const before = await runCli(dir, ['config', 'restore'], options)
     expect(before.err).toBe(
-      'refused: not confirmed; nothing was stored\nnext: work waiting shows what waits for you',
+      'refused: not confirmed; nothing was stored\nnext: the page shows what waits for you',
     )
     expect(before.out).toBe('restore aristoteles.yaml to the stored text')
     expect(before.prompts).toEqual(['Type "restore" to confirm: '])
@@ -212,34 +194,9 @@ describe('the typed confirmation', () => {
   })
 })
 
-describe('the agent, as its token is checked', () => {
-  const work: Work = fakeWork({
-    assignments: new Map([['a1', { id: 'a1', role: 'architect', task: 't1' }]]),
-    meta: new Map([['a1', { id: 'a1', secret: sha('k0001'), claim: { _tag: 'Free' } }]]),
-  })
-
-  test.each<[string, string | null, string]>([
-    [
-      'no token',
-      null,
-      'this command needs your assignment token (a7.<secret>), from the command that your ' +
-        'parent gave you',
-    ],
-    ['a word', 'x', '"x" is not an assignment token (a7.<secret>)'],
-    ['an id', 'a1', 'a1 is an id; the command needs the token that assign printed (a1.<secret>)'],
-    ['a wrong secret', 'a1.wrong', 'the token of a1 is wrong'],
-    ['an assignment that does not exist', 'a9.k0001', 'there is no assignment a9'],
-  ])('%s', async (_name, token, message) => {
-    const { exit } = await runEffect(verify(work, token), makeDir())
-    expect(failureOf(exit).message).toBe(message)
-  })
-
-  test('the right token gives the assignment', async () => {
-    const { exit } = await runEffect(verify(work, 'a1.k0001'), makeDir())
-    expect<unknown>(Exit.isSuccess(exit) && exit.value.assignment).toBe('a1')
-  })
-
-  test('a token is a7. and then the secret', () => {
+describe('a token', () => {
+  test('is w.<actor>.<epoch>.<secret>; a7.<secret> is the old form, named to be refused', () => {
+    expect(isToken('w.host.0.k0001')).toBe(true)
     expect(isToken('a7.k0001')).toBe(true)
     expect(isToken('a7')).toBe(false)
     expect(isToken('b7.k0001')).toBe(false)
@@ -288,71 +245,4 @@ describe('the work token, as its epoch is checked', () => {
   ])('%s is refused', async (_name, token, message) => {
     expect(failureOf(await check(token)).message).toBe(message)
   })
-})
-
-// The claim of a brief and the end of an assignment, in the words of the CLI. switch 2026-11-14:
-// these are refusals of canAct now, and the next line of each is its choice (D10).
-describe('the claim, as canAct refuses an agent act', () => {
-  test('a writer that did not read its brief, in the words of report', async () => {
-    const { p, writer } = await harness.withWriter()
-    const line = `report ${writer} --output=docs/tsd.md#introduction`
-    // The old next line: "work brief a2.k0002; it takes the snapshot that your work follows".
-    expect(refusalOf((await p.agent(line)).err)).toEqual({
-      message: 'you have no brief in this attempt',
-      next: 'read your brief first; your work follows it',
-    })
-  }, 30000)
-
-  test('a low agent whose one unit is done is told to stop', async () => {
-    const { p, writer } = await harness.withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', harness.INTRO_V2)
-    const line = `report ${writer} --output=docs/tsd.md#introduction`
-    ok(await p.agent(line))
-    // The old next line: "STOP: your parent continues. Run work brief a2.k0002 only if your
-    // parent gives you this token again".
-    expect(refusalOf((await p.agent(line)).err)).toEqual({
-      message: 'your unit is done; this assignment has no open brief',
-      next: 'STOP: your parent continues, and gives you this token again if there is more',
-    })
-  }, 30000)
-
-  test('a review is a unit too; a medium agent has no unit, so it only has no brief', async () => {
-    const { p, lead, writer } = await harness.withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', harness.INTRO_V2)
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter}`))
-    const point = '--point="ABC-2964 is a ticket id" --breaks=no-ticket-ids'
-    const reject = `review ${linter} r1 reject ${point}`
-    ok(await p.agent(reject))
-    expect(refusalOf((await p.agent(reject)).err)).toEqual({
-      message: 'your unit is done; this assignment has no open brief',
-      next: 'STOP: your parent continues, and gives you this token again if there is more',
-    })
-    const second = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    expect(refusalOf((await p.agent(`assign ${second} t1 --role=writer`)).err).message).toBe(
-      'you have no brief in this attempt',
-    )
-  }, 30000)
-
-  test('a finished assignment is refused, and the agent tells its parent', async () => {
-    const { p, lead, writer } = await harness.withWriter()
-    ok(await p.agent(`finish ${lead} a2`))
-    expect(refusalOf((await p.agent(`brief ${writer}`)).err)).toEqual({
-      message: 'a2 is finished',
-      next: 'do no more work for it; tell your parent',
-    })
-  }, 30000)
-
-  test('an assignment that the person gave tells the person', async () => {
-    const { p } = await harness.started()
-    const lead = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.nanda('finish a2'))
-    expect(refusalOf((await p.agent(`brief ${lead}`)).err)).toEqual({
-      message: 'a2 is finished',
-      next: 'do no more work for it; tell the person',
-    })
-  }, 30000)
 })
