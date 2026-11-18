@@ -1,8 +1,6 @@
-// DeliverSends (C5, ruling 10.1): the only text that goes into a terminal is a host's `work send`
-// (the answer to a permission dialog of its child's AI CLI): typed at once while the terminal
-// runs, dropped when it is not live. A send whose SendState is not Pending (an Irrelevant one:
-// its owner ended) is never typed. The supervisor types nothing: a line of an older watcher that
-// still waits is dropped.
+// DeliverSends (C5, ruling 10.1): the only text that goes into a terminal is the person's `work
+// send`: typed at once while the terminal runs, dropped when it is not live. A send whose
+// SendState is not Pending is never typed. The supervisor types nothing of its own.
 import { Effect } from 'effect'
 import { type PendingSend, sendsPending } from '../derived/index.ts'
 import type { Send } from '../schema/index.ts'
@@ -14,7 +12,6 @@ export const textOfKeys = (send: Send): string => (send.keys._tag === 'Line' ? s
 
 const deliverOne = (x: PendingSend, send: Send) =>
   Effect.gen(function* () {
-    if (send.from._tag === 'Supervisor') return yield* dropped(x.send, { _tag: 'BeforeRestart' })
     const reading = (yield* (yield* Pump).status)[x.to]
     if (reading?._tag !== 'Live') return yield* dropped(x.send, { _tag: 'TerminalNotLive' })
     yield* deliver(x.send, x.to, textOfKeys(send))

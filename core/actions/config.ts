@@ -24,7 +24,6 @@ import {
   Files,
   onboardedOf,
   type OnboardingFiles,
-  readApprovedBy,
   readConfig,
   restoreConfig,
   roleHash,
@@ -233,11 +232,6 @@ export const defineWorkflow = (
     if (!config.people.includes(name)) return yield* fail(R.DefineWorkflow.notInPeople(name))
     const problem = startProblem(config, directions)
     if (problem !== undefined) return yield* fail(problem.refusal)
-    for (const { direction } of directions) {
-      yield* readApprovedBy(direction.id, direction, config.roles, config.people).pipe(
-        Effect.mapError(asWrite(direction.id)),
-      )
-    }
     return [create('Workflow', { _tag: 'Defined', config, hashes, texts, directions })]
   })
 

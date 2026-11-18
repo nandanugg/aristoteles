@@ -40,18 +40,18 @@ const run = <A>(effect: Effect.Effect<A, unknown>) => Effect.runPromise(effect)
 const failure = (effect: Effect.Effect<unknown, unknown>) => Effect.runPromise(Effect.flip(effect))
 
 const event = Schema.decodeUnknownSync(Event)
-// An agent: it writes both kinds of these tests (events.ts WRITTEN_BY).
-const AGENT = { _tag: 'Agent', assignment: 'a1' as never } as const
+// The engine: it writes both kinds of these tests (events.ts WRITTEN_BY).
+const SYSTEM = { _tag: 'System' } as const
 const draftOf = (minute: number, data: unknown): Draft => ({
   at: `2026-10-25T09:${String(minute).padStart(2, '0')}:00.000Z` as Draft['at'],
-  author: AGENT,
+  author: SYSTEM,
   event: event(data),
 })
 const SOURCE = {
   _tag: 'Source',
   create: { _tag: 'Moved', source: { _tag: 'Outside', name: 'page', revision: 'v4' } },
 }
-const freed = (a: string) => ({ _tag: 'Assignment', id: a, move: { _tag: 'Freed' } })
+const checked = (name: string) => ({ _tag: 'Source', id: name, move: { _tag: 'Checked' } })
 const written = (draft: Draft, rows: ReadonlyArray<ReaderRow> = []) =>
   Effect.succeed({ draft, rows })
 
@@ -67,21 +67,23 @@ const tableOf = (file: string, sql: string) => {
 describe('a new store', () => {
   test('create makes the file and the dir; a write appends at the next seq', async () => {
     const { dir, file } = newDir()
-    const task = {
+    const suggestion = {
       project: dir,
-      id: 't1',
-      name: 'Intro',
-      text: 'Write it.',
-      serves: null,
-      owner: 'Nanda',
+      id: 's1',
+      about: null,
+      says: 'A direction for reels.',
+      by: 'Nanda',
+      at: '2026-10-25T09:01:00.000Z',
     }
     const seqs = await run(
       withStore(file, dir, true, (store) =>
         Effect.gen(function* () {
-          const first = yield* store.write(() => written(draftOf(1, SOURCE), [['task', task]]))
+          const first = yield* store.write(() =>
+            written(draftOf(1, SOURCE), [['suggestion', suggestion]]),
+          )
           // The second write sees the first event, and adds a row that is there already.
-          const second = yield* store.write((events) =>
-            written(draftOf(2, freed(`a${events.length}`)), [['task', task]]),
+          const second = yield* store.write(() =>
+            written(draftOf(2, checked('page')), [['suggestion', suggestion]]),
           )
           return [first, second]
         }),
@@ -90,25 +92,25 @@ describe('a new store', () => {
     expect(seqs).toEqual([1, 2])
     const events = await run(withStore(file, dir, false, (store) => store.events))
     expect<unknown>(events).toEqual([
-      { seq: 1, at: '2026-10-25T09:01:00.000Z', author: AGENT, event: SOURCE },
-      { seq: 2, at: '2026-10-25T09:02:00.000Z', author: AGENT, event: freed('a1') },
+      { seq: 1, at: '2026-10-25T09:01:00.000Z', author: SYSTEM, event: SOURCE },
+      { seq: 2, at: '2026-10-25T09:02:00.000Z', author: SYSTEM, event: checked('page') },
     ])
     // The record and the member of each event are columns of their own.
     expect(tableOf(file, 'SELECT seq, record, member FROM event')).toEqual([
       { seq: 1, record: 'Source', member: 'Moved' },
-      { seq: 2, record: 'Assignment', member: 'Freed' },
+      { seq: 2, record: 'Source', member: 'Checked' },
     ])
     expect(tableOf(file, 'SELECT * FROM project')).toEqual([
       { name: dir, folder: dir, made_at: '2026-10-25T09:01:00.000Z' },
     ])
-    expect(tableOf(file, 'SELECT * FROM task')).toEqual([task])
-    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 3 }])
+    expect(tableOf(file, 'SELECT * FROM suggestion')).toEqual([suggestion])
+    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 4 }])
     const found = await run(
       withStore(file, dir, false, (store) =>
-        store.query('SELECT id, name FROM task WHERE project = ?', dir),
+        store.query('SELECT id, says FROM suggestion WHERE project = ?', dir),
       ),
     )
-    expect(found).toEqual([{ id: 't1', name: 'Intro' }])
+    expect(found).toEqual([{ id: 's1', says: 'A direction for reels.' }])
   })
 
   test('a build that writes nothing stores nothing', async () => {
@@ -185,7 +187,7 @@ describe('the files of a store', () => {
     const write = (n: number) => (s: DirStore) => s.write(() => written(draftOf(n, SOURCE)))
     const seq = await run(withStore(file, dir, true, write(1)))
     expect(seq).toBe(1)
-    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 3 }])
+    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 4 }])
   })
 
   test('an empty file is not filled by a command that does not create', async () => {
@@ -251,14 +253,15 @@ describe('the files of a store', () => {
     const { dir, file } = newDir()
     await run(withStore(file, dir, true, (s) => s.write(() => written(draftOf(1, SOURCE)))))
     const db = new Database(file)
-    db.exec('DROP TABLE run_host')
+    db.exec('DROP TABLE answer')
     db.close()
     const seq = await run(
       withStore(file, dir, false, (s) => s.write(() => written(draftOf(2, SOURCE)))),
     )
     expect(seq).toBe(2)
     const after = new Database(file, { readonly: true })
-    expect(after.query("SELECT name FROM sqlite_master WHERE name = 'run_host'").all()).toEqual([{ name: 'run_host' }])
+    const found = after.query("SELECT name FROM sqlite_master WHERE name = 'answer'").all()
+    expect(found).toEqual([{ name: 'answer' }])
     after.close()
   })
 
@@ -267,7 +270,7 @@ describe('the files of a store', () => {
     ['a database of the old work (a table act)', sqlite('CREATE TABLE act (seq INTEGER)')],
     ['a database of another program', sqlite('CREATE TABLE notes (text TEXT)')],
     ['a database of another format', sqlite('PRAGMA user_version = 7')],
-    ['a database of format 2', sqlite('CREATE TABLE event (x); PRAGMA user_version = 2')],
+    ['a database of format 3', sqlite('CREATE TABLE event (x); PRAGMA user_version = 3')],
     ['a database of format 1 with tables', sqlite('CREATE TABLE event (x); PRAGMA user_version = 1')],
   ])('%s is refused, with the way to start fresh, and is left as it was', async (_name, make) => {
     const { dir, file } = fileWith(make)
@@ -286,10 +289,10 @@ describe('a stored event that does not decode', () => {
     const { dir, file } = newDir()
     await run(withStore(file, dir, true, (store) => store.write(() => written(draftOf(1, SOURCE)))))
     const db = new Database(file)
-    const agent = JSON.stringify({ _tag: 'Agent', assignment: 'a1' })
+    const supervisor = JSON.stringify({ _tag: 'Supervisor', name: 'Nanda' })
     const at = '2026-10-25T09:02:00.000Z'
-    const data = JSON.stringify(freed('b1'))
-    db.run(INSERT_EVENT, [dir, 2, at, agent, 'Assignment', 'Freed', data, null])
+    const data = JSON.stringify({ _tag: 'Send', id: 'b1', move: { _tag: 'Delivered' } })
+    db.run(INSERT_EVENT, [dir, 2, at, supervisor, 'Send', 'Delivered', data, null])
     db.close()
     const damage = (await failure(withStore(file, dir, false, (store) => store.events))) as {
       readonly _tag: string
@@ -299,24 +302,26 @@ describe('a stored event that does not decode', () => {
     expect(damage).toMatchObject({ _tag: 'StoreDamaged', seq: 2 })
     // A move and a creation of one record share its tag: the words say why each one fails.
     expect(damage.issue).toStartWith('the stored event does not decode: ')
-    expect(damage.issue).toContain('Expected a string matching the RegExp ^a\\d+$ at ["event"]["id"]')
+    expect(damage.issue).toContain(
+      'Expected a string matching the RegExp ^e\\d+$ at ["event"]["id"]',
+    )
   })
 
   test('a row whose record and member columns differ from its event is damaged too', async () => {
     const { dir, file } = newDir()
     await run(withStore(file, dir, true, (store) => store.write(() => written(draftOf(1, SOURCE)))))
     const db = new Database(file)
-    const [person, at] = [JSON.stringify(AGENT), '2026-10-25T09:02:00.000Z']
-    const data = JSON.stringify(freed('a1'))
-    db.run(INSERT_EVENT, [dir, 2, at, person, 'Assignment', 'Finished', data, null])
+    const [system, at] = [JSON.stringify(SYSTEM), '2026-10-25T09:02:00.000Z']
+    const data = JSON.stringify(checked('page'))
+    db.run(INSERT_EVENT, [dir, 2, at, system, 'Source', 'Moved', data, null])
     db.close()
     expect(await failure(withStore(file, dir, false, (store) => store.events))).toEqual(
       expect.objectContaining({
         _tag: 'StoreDamaged',
         seq: 2,
         issue:
-          'the columns record and member say Assignment Finished, ' +
-          'and the event is Assignment Freed',
+          'the columns record and member say Source Moved, ' +
+          'and the event is Source Checked',
       }),
     )
   })

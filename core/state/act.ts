@@ -14,27 +14,21 @@ import {
   type Work,
 } from '../schema/index.ts'
 
-// An act as the records keep it: who (an assignment, or a person or a run) and when.
+// An act as the records keep it: who (a person or a run) and when.
 export interface Act {
   readonly by: By
   readonly when: Time
 }
 
-// Who did a stored act, from its author (as the old replay said it): an agent or a program by its
-// assignment; the person and the supervisor by name; the CLI's own acts as a person named
-// system; a host run before its assignment, a model run and the refresh as runs.
+// Who did a stored act, from its author: the person and the supervisor by name; the engine's own
+// acts as a person named system; a model run and the refresh as runs.
 const byOf = (author: Author): By => {
   switch (author._tag) {
-    case 'Agent':
-    case 'Program':
-      return author.assignment
     case 'Person':
     case 'Supervisor':
       return human(author.name)
     case 'System':
       return human('system')
-    case 'Host':
-      return { _tag: 'Agent', name: 'host', run: author.run }
     case 'ModelRun':
       return { _tag: 'Agent', name: author.name, run: author.at }
     case 'Refresh':

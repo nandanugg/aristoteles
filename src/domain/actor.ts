@@ -2,7 +2,7 @@
 // stand for the other. Author is who wrote a stored event, as the store keeps it: the page says
 // "the channel of each act goes to the record of the tool", and Author is that record.
 import { Schema } from 'effect'
-import { AssignmentId, RunId, Time } from './ids.ts'
+import { Time } from './ids.ts'
 
 // page: Human. One actor on every channel, such as Nanda.
 export const Human = Schema.TaggedStruct('Human', { name: Schema.String })
@@ -27,17 +27,11 @@ export type PersonChannel = typeof PersonChannel.Type
 // Who wrote a stored event. Was two strings, who and channel, whose kinds the readers told
 // apart by the shape of who (bug 7: a person named a1 read as an agent).
 export const Author = Schema.Union([
-  // An agent by its token.
-  Schema.TaggedStruct('Agent', { assignment: AssignmentId }),
-  // A check program's review, by the assignment that the CLI gave it.
-  Schema.TaggedStruct('Program', { assignment: AssignmentId }),
   // The person at a terminal or on the page.
   Schema.TaggedStruct('Person', { name: Schema.String, channel: PersonChannel }),
-  // A host run of the UI, before it has an assignment (its task draft).
-  Schema.TaggedStruct('Host', { run: RunId }),
   // A model run outside any task, such as the skill that reads an app.
   Schema.TaggedStruct('ModelRun', { name: Schema.String, at: Time }),
-  // The CLI's own assign and finish of a program.
+  // The engine and the host's own acts.
   Schema.TaggedStruct('System', {}),
   // The supervisor of the terminals of the UI (ui/watcher.js), in the UI of the person named:
   // the sessions that it starts, the failures, prompts and closes that it sees, the sends that it
@@ -53,14 +47,8 @@ export type Author = typeof Author.Type
 // "assess run <time>" "run").
 export const whoOf = (author: Author): { readonly who: string; readonly channel: string } => {
   switch (author._tag) {
-    case 'Agent':
-      return { who: author.assignment, channel: 'agent' }
-    case 'Program':
-      return { who: author.assignment, channel: 'program' }
     case 'Person':
       return { who: author.name, channel: author.channel }
-    case 'Host':
-      return { who: author.run, channel: 'agent' }
     case 'ModelRun':
       return { who: `${author.name} run ${author.at}`, channel: 'run' }
     case 'System':

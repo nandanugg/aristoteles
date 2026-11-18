@@ -1,4 +1,4 @@
-// ReadingsLive on the harness scenario stores: the settings of the file in the dir, the terminals
+// ReadingsLive on the harness scenario stores: the terminals
 // that the caller gives, and the markers of work wait.
 import { describe, expect, test } from 'bun:test'
 import { Effect, Layer, Schema } from 'effect'
@@ -36,32 +36,7 @@ const placeOf = (dir: string) =>
     Layer.succeed(Dir, { cwd: dir }),
     Layer.succeed(Env, { vars: { ARISTOTELES_DB: `${dir}/.work/aristoteles.db` } }),
   )
-const readOf = (dir: string, work: Work, at: string) =>
-  Effect.runPromise(
-    Readings.use((r) => r.read(work, Schema.decodeUnknownSync(Time)(at))).pipe(
-      Effect.provide(ReadingsLive.pipe(Layer.provide(placeOf(dir)))),
-    ),
-  )
-
 describe('ReadingsLive', () => {
-  test('the settings come from aristoteles.yaml, else the defaults', async () => {
-    const { p } = await started()
-    const work = await workOf(p.dir)
-    expect((await readOf(p.dir, work, p.now())).settings).toEqual({
-      hostWaitMinutes: 10,
-      retryMinutes: 5,
-      outsideSourceHours: 72,
-    })
-    const yaml = await Bun.file(`${p.dir}/aristoteles.yaml`).text()
-    const tuned = 'hostWaitMinutes: 3\nretryMinutes: 2\noutsideSourceHours: 9\n'
-    p.write('aristoteles.yaml', tuned + yaml)
-    expect((await readOf(p.dir, work, p.now())).settings).toEqual({
-      hostWaitMinutes: 3,
-      retryMinutes: 2,
-      outsideSourceHours: 9,
-    })
-  }, 30000)
-
   test('the caller gives the terminals', async () => {
     const { p } = await started()
     const work = await workOf(p.dir)

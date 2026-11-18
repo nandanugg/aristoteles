@@ -1,44 +1,10 @@
 // What follows from one fact of a record: each one was a second field that could disagree with
 // the first (plan/types REVIEW-1 section 3). Small and pure; a state that the rules of the work
 // decide is core/derived's.
-import type {
-  Answerer,
-  Direction,
-  OfficialDirection,
-  Point,
-  Reject,
-  Review,
-  Role,
-  Source,
-  Task,
-  TaskPoint,
-  Version,
-} from './model.ts'
-import type { RoleFile } from './files.ts'
-import type {
-  DirectionId,
-  PointId,
-  RejectId,
-  RoleName,
-  RunId,
-  TaskId,
-  VersionId,
-} from './ids.ts'
-import type { Problem } from './ui-model.ts'
-import { pointId, rejectOf, versionId } from './ids.ts'
+import type { DirectionId, VersionId } from './ids.ts'
+import { versionId } from './ids.ts'
+import type { Direction, OfficialDirection, Review, Source, Version } from './model.ts'
 import type { Work } from './work.ts'
-
-// page: Role.playedBy. The role's model, or the program by its name; a person plays no role.
-export const playedBy = (role: Role): string =>
-  role._tag === 'Model' ? role.model : `program:${role.role}`
-
-// The words of a role as aristoteles.yaml wrote them: the Work's config keeps them once (a
-// Role keeps no copy). Every role of the workflow is in the config.
-export const roleFileOf = (work: Work, role: RoleName): RoleFile => {
-  const file = work.config.roles[role]
-  if (file === undefined) throw new Error(`the config of the work has no role ${role}`)
-  return file
-}
 
 // The id of a version, as the CLI prints it: tsd-writing@2.
 export const versionIdOf = (v: Version<Direction>): VersionId => versionId(v.of, v.number)
@@ -56,107 +22,8 @@ export const officialOf = (work: Work, id: DirectionId): OfficialDirection | und
   return d?._tag === 'Official' ? d : undefined
 }
 
-// The decision of a review in words (the reader table review.decision): a recheck is a Reject.
-export const decisionOf = (review: Review): 'Accept' | 'Reject' | 'Escalate' | 'Resolve' => {
-  switch (review._tag) {
-    case 'Accept':
-      return 'Accept'
-    case 'Reject':
-    case 'Recheck':
-      return 'Reject'
-    case 'Escalate':
-      return 'Escalate'
-    case 'Resolve':
-      return 'Resolve'
-  }
-}
+// The decision of a review in words (the reader table review.decision).
+export const decisionOf = (review: Review): 'Accept' | 'Reject' => review._tag
 
-// The id of what a review is about: its result, task, draft or evaluation; a Resolve is about
-// its escalation's result (none here: it names the escalation only).
-export const targetOf = (review: Review): string | undefined => {
-  switch (review._tag) {
-    case 'Accept':
-    case 'Reject':
-      return review.of.id
-    case 'Recheck':
-    case 'Escalate':
-      return review.of
-    case 'Resolve':
-      return undefined
-  }
-}
-
-// The old task that a remake replaced: the task whose end names this one as next.
-export const replacesOf = (work: Work, task: TaskId): TaskId | null => {
-  for (const t of work.tasks.values()) {
-    if (t.end._tag === 'Replaced' && t.end.next === task) return t.id
-  }
-  return null
-}
-
-// The parts above a part that it runs after: its needs that serve the same task (a split makes the
-// after of a part into needs on the earlier parts).
-export const afterOf = (work: Work, task: Task): ReadonlyArray<TaskId> => {
-  const serves = task.serves
-  if (serves._tag === 'TopTask') return []
-  return task.needs.filter((n) => {
-    const other = work.tasks.get(n)?.serves
-    return other?._tag === 'Serves' && other.task === serves.task
-  })
-}
-
-// One point of a Reject, with the Reject that holds it.
-export interface RejectPoint {
-  readonly reject: Reject
-  readonly id: PointId
-  readonly point: Point | TaskPoint
-}
-
-// The Reject that a point belongs to, and the point itself: v4.1 is the first point of v4.
-export const pointOf = (work: Work, id: PointId): RejectPoint | undefined => {
-  const reject = work.reviews.get(rejectOf(id))
-  if (reject?._tag !== 'Reject' || !('points' in reject.of)) return undefined
-  const points: ReadonlyArray<Point | TaskPoint> = reject.of.points
-  const point = points[Number(id.slice(id.lastIndexOf('.') + 1)) - 1]
-  return point === undefined ? undefined : { reject, id, point }
-}
-
-// The points of a Reject with their ids.
-export const pointsOf = (
-  reject: Reject,
-): ReadonlyArray<{ readonly id: PointId; readonly point: Point | TaskPoint }> =>
-  'points' in reject.of
-    ? (reject.of.points as ReadonlyArray<Point | TaskPoint>).map((point, i) => ({
-        id: pointId(reject.id, i + 1),
-        point,
-      }))
-    : []
-
-// The stored id of a Reject (all its points) or of one point: the record is a Reject.
-export const isRejectRef = (work: Work, id: RejectId | PointId): boolean =>
-  id.includes('.')
-    ? pointOf(work, id as PointId) !== undefined
-    : work.reviews.get(id as RejectId)?._tag === 'Reject'
-
-// The top task of a host run: the task opened from one of its drafts.
-export const topOfRun = (work: Work, run: RunId): TaskId | undefined => {
-  for (const d of work.taskDrafts.values()) {
-    if (d.run === run && d.opened._tag === 'Opened') return d.opened.task
-  }
-  return undefined
-}
-
-// Two answerers are the same: one assignment, or one person.
-export const sameAnswerer = (a: Answerer, b: Answerer): boolean =>
-  typeof a === 'string' || typeof b === 'string' ? a === b : a.name === b.name
-
-// Where a system problem shows: the parent of the task that it stops, else that task, so that
-// one cause shows once.
-export const problemTaskOf = (work: Work, problem: Problem): TaskId => {
-  const serves = work.tasks.get(problem.stopped)?.serves
-  return serves?._tag === 'Serves' ? serves.task : problem.stopped
-}
-
-// The revision of a source: a commit of a git source, the revision of an outside one.
-export const revisionOf = (source: Source): string =>
-  source._tag === 'Git' ? source.commit : source.revision
+// The revision of an outside source.
+export const revisionOf = (source: Source): string => source.revision

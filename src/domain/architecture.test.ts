@@ -55,6 +55,6 @@ describe('the moves of the records', () => {
 
   test('the check finds a literal state, and a copy with a new state', () => {
     const probe = join(import.meta.dir, 'moves.ts')
-    expect(writesOf(probe).length).toBeGreaterThan(10)
+    expect(writesOf(probe).length).toBeGreaterThan(2)
   })
 })

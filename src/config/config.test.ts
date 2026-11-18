@@ -207,75 +207,6 @@ describe('restoreConfig', () => {
   }
 })
 
-describe('readTask', () => {
-  const directions = [
-    { id: 'tsd', standards: [{ id: 's1', where: { section: 'x', system: 'y' } }, { id: 's2' }] },
-    { id: 'plain', standards: [] },
-  ]
-  const task = (o: Obj) => yaml({ name: 'N', text: 'T', ...o })
-  const cases: Array<[string, string]> = [
-    ['a minimal task', task({})],
-    ['an empty file', ''],
-    ['a task that does not parse', 'name: [1'],
-    ['no name', yaml({ text: 'T' })],
-    ['a blank text', task({ text: '  ' })],
-    ['a direction that has no version', task({ directions: ['ghost'] })],
-    ['a full task', task({ directions: ['tsd'], context: { section: 'a', system: 'b' }, needs: ['t1', 't2'], from: 'r3', references: ['a.md#b', 5], workspace: [{ source: 's', path: 'docs/a.md', base: 'main', verify: 'true' }] })],
-    ['the section key is free', task({ context: { section: 'a' } })],
-    ['a context key that no where uses', task({ directions: ['plain'], context: { system: 'a' } })],
-    ['a context key of a direction that the task does not name', task({ directions: ['plain'], context: { system: 'b' } })],
-    ['a workspace entry with no path', task({ workspace: [{ source: 's' }] })],
-    ['a workspace path that is absolute', task({ workspace: [{ source: 's', path: '/etc' }] })],
-    ['a workspace path with ..', task({ workspace: [{ source: 's', path: 'a/../b' }] })],
-    ['a workspace path that is not plain', task({ workspace: [{ source: 's', path: 'a//b/' }] })],
-    ['a workspace path ./a', task({ workspace: [{ source: 's', path: './a' }] })],
-    ['maxRounds', task({ maxRounds: 3 })],
-    ['a need that is no task id', task({ needs: ['x1'] })],
-    ['a numeric need', task({ needs: [4] })],
-    ['a from that is no result id', task({ from: 't1' })],
-    ['a from of a number', task({ from: 5 })],
-    ['a task that names only some keys', task({ needs: [] })],
-  ]
-  for (const [name, text] of cases) {
-    test(name, async () => {
-      const now = await runNew(next.readTask('task.yaml', text, directions))
-      expect(now).toMatchSnapshot()
-    })
-  }
-
-  // The context is closed (model.ts Context).
-  test('a context key that the closed Context does not know is refused, with the known keys', async () => {
-    const staged = [{ id: 'tsd', standards: [{ id: 's1', where: { stage: 'y' } }] }]
-    const text = task({ directions: ['tsd'], context: { stage: 'y' } })
-    expect(await runNew(next.readTask('task.yaml', text, staged))).toEqual({
-      refused:
-        'task.yaml: context key "stage" is not one of system, field, language, repo, section, audience',
-    })
-    const number = task({ context: { section: 3 } })
-    expect(await runNew(next.readTask('task.yaml', number, staged))).toEqual({
-      refused: 'task.yaml: context section is a text, like section: introduction',
-    })
-  })
-})
-
-describe('checkWorkspace', () => {
-  const cases: Array<[string, Obj[]]> = [
-    ['none', []],
-    ['a good list', [{ source: 'a', path: 'a/b.md' }, { source: 'b', path: '.' }]],
-    ['a null entry', [null]],
-    ['a path of a number', [{ source: 'a', path: 4 }]],
-    ['an absolute path', [{ source: 'a', path: '/x' }]],
-    ['a path with ..', [{ source: 'a', path: '../x' }]],
-    ['a trailing slash', [{ source: 'a', path: 'x/' }]],
-    ['a dot path with a slash', [{ source: 'a', path: './' }]],
-  ]
-  for (const [name, list] of cases) {
-    test(name, async () => {
-      expect(await runNew(next.checkWorkspace('w', list))).toMatchSnapshot()
-    })
-  }
-})
-
 const people = ['Nanda', 'Dewi']
 const roles = async (): Promise<Obj> =>
   ((await runNew(next.readConfig(dirWith(yaml(good()))))) as Obj).ok.config.roles
@@ -401,31 +332,6 @@ describe('readDirection', () => {
     const d = direction({ standards: [{ id: 's', says: 'a', where }] })
     expect(await runNew(next.readDirection('d.yaml', d, people))).toEqual({ refused: message })
   })
-})
-
-describe('readApprovedBy', () => {
-  const cases: Array<[string, Obj]> = [
-    ['no approvedBy', { owner: 'Nanda' }],
-    ['a role', { owner: 'Nanda', approvedBy: 'checker' }],
-    ['the owner', { owner: 'Nanda', approvedBy: 'Nanda' }],
-    ['a role then the owner', { owner: 'Nanda', approvedBy: { order: ['checker', 'Nanda'] } }],
-    ['the owner before a role', { owner: 'Nanda', approvedBy: { order: ['Nanda', 'checker'] } }],
-    ['the owner in an and', { owner: 'Nanda', approvedBy: { and: ['Nanda', 'boss'] } }],
-    ['a person who is not the owner', { owner: 'Nanda', approvedBy: 'Dewi' }],
-    ['two persons', { owner: 'Nanda', approvedBy: { and: ['Nanda', 'Dewi'] } }],
-    ['a low role', { owner: 'Nanda', approvedBy: 'writer' }],
-    ['a program', { owner: 'Nanda', approvedBy: 'linter' }],
-    ['a name that is nobody', { owner: 'Nanda', approvedBy: 'ghost' }],
-    ['a bad shape', { owner: 'Nanda', approvedBy: { nor: ['boss'] } }],
-    ['a name two times', { owner: 'Nanda', approvedBy: { or: ['boss', 'boss'] } }],
-    ['a number', { owner: 'Nanda', approvedBy: 7 }],
-  ]
-  for (const [name, d] of cases) {
-    test(name, async () => {
-      const r = await roles()
-      expect(await runNew(next.readApprovedBy('d.yaml', d, r, people))).toMatchSnapshot()
-    })
-  }
 })
 
 describe('checkerProblem', () => {

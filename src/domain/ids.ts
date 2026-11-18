@@ -1,66 +1,28 @@
-// The ids of the records, as the CLI prints them (t3, a7, r12, v4, v4.1). Each kind has its own
-// branded string, so a task id cannot go where a result id is wanted. The names of the kinds are
-// the page's (Review, Revision, Exhaustion, Permission) and the UI's
-// (TaskDraft, Problem, Run).
+// The ids of the records, as the CLI prints them (v4, d3, s2). Each kind has its own branded
+// string, so a draft id cannot go where a suggestion id is wanted. The names of the kinds are the
+// page's (Review, Revision, Suggestion).
 import { Schema } from 'effect'
 
 // A string that matches the pattern of its kind.
 const matching = (pattern: RegExp) => Schema.String.pipe(Schema.check(Schema.isPattern(pattern)))
 
-export const TaskId = matching(/^t\d+$/).pipe(Schema.brand('TaskId'))
-export type TaskId = typeof TaskId.Type
-export const AssignmentId = matching(/^a\d+$/).pipe(Schema.brand('AssignmentId'))
-export type AssignmentId = typeof AssignmentId.Type
-export const ResultId = matching(/^r\d+$/).pipe(Schema.brand('ResultId'))
-export type ResultId = typeof ResultId.Type
-// One Review record: an accept, a reject, a recheck, an escalation, a resolve (v4).
+// One Review record: an accept or a reject of a draft (v4).
 export const ReviewId = matching(/^v\d+$/).pipe(Schema.brand('ReviewId'))
 export type ReviewId = typeof ReviewId.Type
-// A Review that is a Reject: its id is a ReviewId too. A Reject of a result or a task has
-// points (v4.1, v4.2); a Reject of a draft or an evaluation has one reason and no points.
+// A Review that is a Reject: its id is a ReviewId too.
 export const RejectId = ReviewId.pipe(Schema.brand('RejectId'))
 export type RejectId = typeof RejectId.Type
-// An Escalate: a ReviewId too. The kinds share one pattern, so the fold
-// checks each stored reference against the record that it names.
-export const EscalationId = ReviewId.pipe(Schema.brand('EscalationId'))
-export type EscalationId = typeof EscalationId.Type
-// One point of a Reject: the Reject's id and its number.
-export const PointId = matching(/^v\d+\.\d+$/).pipe(Schema.brand('PointId'))
-export type PointId = typeof PointId.Type
-// A Permission: the CLI prints x3.
-export const PermissionId = matching(/^x\d+$/).pipe(Schema.brand('PermissionId'))
-export type PermissionId = typeof PermissionId.Type
-export const CheckpointId = matching(/^k\d+$/).pipe(Schema.brand('CheckpointId'))
-export type CheckpointId = typeof CheckpointId.Type
-export const QuestionId = matching(/^q\d+$/).pipe(Schema.brand('QuestionId'))
-export type QuestionId = typeof QuestionId.Type
-export const NoteId = matching(/^n\d+$/).pipe(Schema.brand('NoteId'))
-export type NoteId = typeof NoteId.Type
 export const SuggestionId = matching(/^s\d+$/).pipe(Schema.brand('SuggestionId'))
 export type SuggestionId = typeof SuggestionId.Type
 // A Revision of a direction: the CLI calls it a draft (d3).
 export const RevisionId = matching(/^d\d+$/).pipe(Schema.brand('RevisionId'))
 export type RevisionId = typeof RevisionId.Type
-export const ExhaustionId = matching(/^ex\d+$/).pipe(Schema.brand('ExhaustionId'))
-export type ExhaustionId = typeof ExhaustionId.Type
-export const EvaluationId = matching(/^ev\d+$/).pipe(Schema.brand('EvaluationId'))
-export type EvaluationId = typeof EvaluationId.Type
-export const RunId = matching(/^h\d+$/).pipe(Schema.brand('RunId'))
-export type RunId = typeof RunId.Type
-export const TaskDraftId = matching(/^td\d+$/).pipe(Schema.brand('TaskDraftId'))
-export type TaskDraftId = typeof TaskDraftId.Type
-export const ProblemId = matching(/^sp\d+$/).pipe(Schema.brand('ProblemId'))
-export type ProblemId = typeof ProblemId.Type
-// A persistent agent of a role in one project (onboarding): p1. It lives from the first
-// assignment of its role in the run to the end of the run (ruling 9).
-export const AgentId = matching(/^p\d+$/).pipe(Schema.brand('AgentId'))
-export type AgentId = typeof AgentId.Type
 // A stored act by its seq, as the person's confirm (work confirm) names it: e12.
 export const EventRef = matching(/^e\d+$/).pipe(Schema.brand('EventRef'))
 export type EventRef = typeof EventRef.Type
 
-// What a draft, a split or a remake answers: a Reject (all its points), one point, a suggestion.
-export const AnswerId = Schema.Union([RejectId, PointId, SuggestionId])
+// What a draft answers: a Reject, or a suggestion.
+export const AnswerId = Schema.Union([RejectId, SuggestionId])
 export type AnswerId = typeof AnswerId.Type
 
 // Names from the files. A direction id is lower case words with dashes, so that a version id
@@ -90,7 +52,6 @@ export const Time = matching(
   /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/,
 ).pipe(Schema.brand('Time'))
 export type Time = typeof Time.Type
-export const isTime = Schema.is(Time)
 
 // A whole number above zero: a limit, an attempt count.
 export const PositiveInt = Schema.Number.pipe(
@@ -117,90 +78,30 @@ export const NonBlank = Schema.String.pipe(
 export const isNonBlank = Schema.is(NonBlank)
 
 // The prefix of each kind of id.
-export const PREFIX = {
-  task: 't',
-  assignment: 'a',
-  result: 'r',
-  review: 'v',
-  permission: 'x',
-  checkpoint: 'k',
-  question: 'q',
-  note: 'n',
-  suggestion: 's',
-  revision: 'd',
-  exhaustion: 'ex',
-  evaluation: 'ev',
-  run: 'h',
-  taskDraft: 'td',
-  problem: 'sp',
-  agent: 'p',
-} as const
+export const PREFIX = { review: 'v', suggestion: 's', revision: 'd' } as const
 export type Counted = keyof typeof PREFIX
 export type Prefix = (typeof PREFIX)[Counted]
 
-// The noun of a prefix, as a refusal names it ("there is no task t9").
+// The noun of a prefix, as a refusal names it ("there is no draft d9").
 export const NOUN: { readonly [P in Prefix]: string } = {
-  t: 'task',
-  a: 'assignment',
-  r: 'result',
   v: 'review',
-  q: 'question',
-  x: 'permission',
-  k: 'checkpoint',
-  n: 'note',
   s: 'suggestion',
   d: 'draft',
-  ex: 'stop',
-  ev: 'evaluation',
-  h: 'run',
-  td: 'task draft',
-  sp: 'system problem',
-  p: 'agent',
 }
 export const isPrefix = (word: string): word is Prefix => Object.hasOwn(NOUN, word)
 
-// The letters before the number: "ex" of ex3, "v" of v4.1; undefined for a word.
+// The letters before the number: "v" of v4; undefined for a word.
 export const prefixOf = (id: string): string | undefined => /^[a-z]+/.exec(id)?.[0]
 
 export interface IdByKind {
-  readonly task: TaskId
-  readonly assignment: AssignmentId
-  readonly result: ResultId
   readonly review: ReviewId
-  readonly permission: PermissionId
-  readonly checkpoint: CheckpointId
-  readonly question: QuestionId
-  readonly note: NoteId
   readonly suggestion: SuggestionId
   readonly revision: RevisionId
-  readonly exhaustion: ExhaustionId
-  readonly evaluation: EvaluationId
-  readonly run: RunId
-  readonly taskDraft: TaskDraftId
-  readonly problem: ProblemId
-  readonly agent: AgentId
 }
 
 // The counters of the ids, one per kind.
 export type Counters = Readonly<Record<Counted, number>>
-export const noCounters: Counters = {
-  task: 0,
-  assignment: 0,
-  result: 0,
-  review: 0,
-  permission: 0,
-  checkpoint: 0,
-  question: 0,
-  note: 0,
-  suggestion: 0,
-  revision: 0,
-  exhaustion: 0,
-  evaluation: 0,
-  run: 0,
-  taskDraft: 0,
-  problem: 0,
-  agent: 0,
-}
+export const noCounters: Counters = { review: 0, suggestion: 0, revision: 0 }
 
 // The next id of a kind, and the counters after it. The order of the names
 // within one step is golden (BUILD.md, parity notes).
@@ -212,8 +113,5 @@ export const nextId = <K extends Counted>(
   return { id: `${PREFIX[kind]}${n}` as IdByKind[K], counters: { ...counters, [kind]: n } }
 }
 
-// The points of the Reject v4 are v4.1, v4.2...; a point names its Reject.
-export const pointId = (reject: RejectId, n: number): PointId => `${reject}.${n}` as PointId
-export const rejectOf = (point: PointId): RejectId => point.replace(/\.\d+$/, '') as RejectId
 export const versionId = (direction: DirectionId, n: number): VersionId =>
   `${direction}@${n}` as VersionId

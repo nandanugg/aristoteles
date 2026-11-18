@@ -1,11 +1,10 @@
 // The steps of directions: a draft (a new direction, a revise of the current version, a commit
-// of a company folder), the version that an accepted draft makes with its lessons, and a
-// suggestion. A draft is built as the old engine built it, without its checks: each standard and
-// rule is its own entry; a kept one keeps its entry, a new one is named after its draft.
+// of a company folder), the version that an accepted draft makes, and a suggestion. A draft is
+// built as the old engine built it, without its checks: each standard and rule is its own entry;
+// a kept one keeps its entry, a new one is named after its draft.
 import {
   type AnswerId,
   type By,
-  type Deciders,
   type Direction,
   type DirectionFile,
   type DirectionId,
@@ -36,17 +35,7 @@ import {
   type Work,
 } from '../../schema/index.ts'
 import { type Act, type Build, built, damaged, put } from '../act.ts'
-import { decidersOf } from '../decisions.ts'
-import { reviewItems, taskOfTarget } from '../items.ts'
-import {
-  currentOf,
-  directionAt,
-  draftAt,
-  officialAt,
-  ruleAt,
-  standardAt,
-  taskAt,
-} from '../records.ts'
+import { currentOf, directionAt, draftAt, officialAt, ruleAt, standardAt } from '../records.ts'
 import { type Content, contentOf, findRule, sameChecker, sameWords } from '../versions.ts'
 
 type StandardFile = DirectionFile['standards'][number]
@@ -175,9 +164,9 @@ interface DraftFields {
   readonly why: Why
   readonly origin: RevisionOrigin
 }
-// A model writes each draft: an assignment, or a run outside any task.
+// A model run writes each draft.
 const reviserOf = (by: By): Reviser => {
-  if (typeof by === 'string' || by._tag === 'Agent') return by
+  if (by._tag === 'Agent') return by
   throw new Error(`the person ${by.name} writes no draft`)
 }
 
@@ -191,7 +180,6 @@ const fresh = (
     readonly owner: Human
     readonly from: Direction['from']
     readonly maxStandards: Limit
-    readonly approvedBy: Deciders | undefined
     readonly source: Direction['source']
     readonly summary: string
     readonly flow: ReadonlyArray<FlowStep>
@@ -201,16 +189,8 @@ const fresh = (
   scratch: Scratch,
 ): Planned => {
   const existing = w.directions.get(input.id)
-  const { name, owner, approvedBy } = input
-  const fields = {
-    name,
-    from: input.from,
-    maxStandards: input.maxStandards,
-    approvedBy:
-      approvedBy === undefined
-        ? ({ _tag: 'Owner' } as const)
-        : ({ _tag: 'Deciders', deciders: approvedBy } as const),
-  }
+  const { name, owner } = input
+  const fields = { name, from: input.from, maxStandards: input.maxStandards }
   const direction: Direction =
     existing === undefined
       ? { _tag: 'NewDirection', id: input.id, owner, source: input.source, ...fields }
@@ -269,21 +249,6 @@ const revised = (
   return { direction: d, revision, scratch }
 }
 
-// A point of a closed task blocks no work, so a revise keeps only the answers that are not
-// about closed tasks (Nanda, 2026-11-13). (derived: a point of an ended task is moot; the
-// action of P5 drops these before it writes, and the fold keeps the rule for the old stores.)
-const openAnswerIds = (w: Work, ids: ReadonlyArray<AnswerId>): ReadonlyArray<AnswerId> =>
-  ids.filter((id) => {
-    const items = reviewItems(w).filter((i) => i.id === id || i.group === id)
-    return !(
-      items.length > 0 &&
-      items.every((i) => {
-        const task = taskOfTarget(w, i.of)
-        return task !== undefined && taskAt(w, task).end._tag !== 'NotEnded'
-      })
-    )
-  })
-
 // direction new: the whole of a new direction, drafted by a model.
 const planDrafted = (
   w: Work,
@@ -292,8 +257,6 @@ const planDrafted = (
   by: By,
 ): Planned => {
   const d = data.direction
-  const roles = [...w.workflow.roles.keys()]
-  const approvedBy = d.approvedBy === undefined ? undefined : decidersOf(d.approvedBy, roles)
   const scratch = scratchOf()
   const add = d.standards.map((s) =>
     buildStandard(w, s, undefined, entryIn(x.id, s.id), scratch),
@@ -304,7 +267,6 @@ const planDrafted = (
     owner: human(d.owner),
     from: d.from,
     maxStandards: limitOf(d.maxStandards),
-    approvedBy,
     source: { _tag: 'Local' } as const,
     summary: d.summary,
     flow: d.flow,
@@ -325,8 +287,6 @@ export const onboarded = (b: Build, od: OnboardedDirection, event: EventRef, whe
   const x = { id, when, at: b.tick() }
   const w = b.work
   const d = od.direction
-  const roles = [...w.workflow.roles.keys()]
-  const approvedBy = d.approvedBy === undefined ? undefined : decidersOf(d.approvedBy, roles)
   const scratch = scratchOf()
   const add = d.standards.map((s) => buildStandard(w, s, undefined, entryIn(id, s.id), scratch))
   const source =
@@ -339,7 +299,6 @@ export const onboarded = (b: Build, od: OnboardedDirection, event: EventRef, whe
     owner: human(d.owner),
     from: d.from,
     maxStandards: limitOf(d.maxStandards),
-    approvedBy,
     source,
     summary: d.summary,
     flow: d.flow,
@@ -384,7 +343,7 @@ const planRevised = (
     flow: edit.flow,
     says: edit.says,
     edit: { add, remove: edit.remove ?? [], replace },
-    answerIds: openAnswerIds(w, data.answers),
+    answerIds: data.answers,
     why: data.why,
     origin: { _tag: 'Written', by: reviserOf(by) } as const,
   }
@@ -427,7 +386,6 @@ const planImported = (
       owner: human(data.owner),
       from: [],
       maxStandards: { _tag: 'Unlimited' } as const,
-      approvedBy: undefined,
       source: { _tag: 'External', repo: source.repo, path: source.path } as const,
       summary,
       flow: [],
@@ -491,25 +449,7 @@ export const drafted = (
 
 // --- the version of an accepted draft ------------------------------------------------------------
 
-// The lessons of a new version: each new text of it (what it says, a new standard, a new rule of
-// a new standard), or that the direction changed.
-const lessonsOf = (w: Work, d: DirectionId, from: Content, to: Content): ReadonlyArray<string> => {
-  const oldRules = new Set(from.standards.flatMap((e) => standardAt(w, e).rules))
-  const newStandards = to.standards
-    .filter((s) => !from.standards.includes(s))
-    .map((e) => standardAt(w, e))
-  const newRules = newStandards.flatMap((s) =>
-    s.rules.filter((r) => !oldRules.has(r)).map((r) => ruleAt(w, r)),
-  )
-  const added = [
-    ...(to.says !== from.says ? [to.says] : []),
-    ...newStandards.map((s) => s.says),
-    ...newRules.map((r) => r.says),
-  ]
-  return added.length > 0 ? added : [`${directionAt(w, d).name} changed`]
-}
-// The draft becomes the next version (version 1 of a new direction). Each new text of a later
-// version becomes a lesson that later tasks can find.
+// The draft becomes the next version (version 1 of a new direction).
 export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
   const w = b.work
   const x = draftAt(w, draft)
@@ -527,13 +467,6 @@ export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
   }
   b.work = { ...w, directions: put(w.directions, d.id, Moves.makeOfficial(d, version)) }
   b.created.push(versionId(d.id, version.number))
-  if (from === undefined) return
-  for (const text of lessonsOf(b.work, d.id, contentOf(from), contentOf(version))) {
-    const id = b.name('note')
-    const rule = versionId(d.id, version.number)
-    const lesson = { _tag: 'Lesson' as const, id, from: x.answers, text, rule, when }
-    b.work = { ...b.work, notes: put(b.work.notes, id, lesson) }
-  }
 }
 
 // A model gives a company draft of a new direction its flow with its examples (P10 rejected,

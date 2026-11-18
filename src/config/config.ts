@@ -1,7 +1,7 @@
 // aristoteles.yaml and the files that people and models write: each reader checks the file and
 // refuses with the old words ("<file>: <problem>"). Parsing is Bun.YAML; reading is the Files
 // service. The settings of the UI are in settings.ts.
-import { basename, join, posix } from 'node:path'
+import { basename, join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import type { Refused } from '../domain/errors.ts'
 import {
@@ -13,9 +13,7 @@ import {
   Flow,
   type FlowStep,
   type RoleFile,
-  type TaskFile,
   usesProblem,
-  type Workspace,
 } from '../domain/files.ts'
 import { AUTHORITY, oneOf, PRINCIPLES, ROLE_ICONS } from '../domain/closed.ts'
 import { PositiveInt } from '../domain/ids.ts'
@@ -379,27 +377,6 @@ export const restoreConfig = (dir: string, stored: string): Effect.Effect<void, 
     yield* files.write(path, text).pipe(Effect.orDie)
   })
 
-// A workspace path is relative and stays inside the dir.
-const checkWorkspaceOf = (where: string, workspace: Raw[]): void => {
-  for (const w of workspace) {
-    if (typeof w?.source !== 'string' || typeof w?.path !== 'string') {
-      fail(where, 'each workspace entry needs a source and a path')
-    }
-    if (w.path.startsWith('/') || w.path.split('/').includes('..')) {
-      fail(where, `workspace ${w.path} is outside the dir`)
-    }
-    // One file has one name: the file queue and the same-files checks compare names.
-    const plain = posix.normalize(w.path).replace(/\/+$/, '') || '.'
-    if (plain !== w.path) {
-      fail(where, `workspace ${w.path} names ${plain}; write it as ${plain}, so that one file has one name`)
-    }
-  }
-}
-export const checkWorkspace = (
-  where: string,
-  workspace: ReadonlyArray<Workspace>,
-): Effect.Effect<void, Refused> => refusing(() => checkWorkspaceOf(where, [...workspace]))
-
 // One key of a context or a where: a key that model.ts Context knows, with a text value.
 const checkContextEntry = (where: string, what: string, key: string, value: unknown): void => {
   if (!(CONTEXT_KEYS as ReadonlyArray<string>).includes(key)) {
@@ -407,96 +384,6 @@ const checkContextEntry = (where: string, what: string, key: string, value: unkn
   }
   if (typeof value !== 'string') fail(where, `${what} ${key} is a text, like ${key}: introduction`)
 }
-
-// A task file: the text, the directions, the context, the workspace, the references. A task
-// names only a direction that has a version: directions holds those, with their standards.
-export const readTask = (
-  path: string,
-  text: string,
-  directions: ReadonlyArray<{ readonly id: string; readonly standards: ReadonlyArray<unknown> }>,
-): Effect.Effect<TaskFile, Refused> =>
-  refusing(() => {
-    const t = parseYaml(text)
-    for (const key of ['name', 'text']) {
-      if (typeof t[key] !== 'string' || !t[key].trim()) fail(path, `${key} is required`)
-    }
-    const ids = directions.map((d) => d.id)
-    for (const id of list(t.directions)) {
-      if (!ids.includes(id)) {
-        fail(
-          path,
-          `no direction "${id}" with a version; a model drafts it (work direction new), and its owner accepts it`,
-        )
-      }
-    }
-    const context = t.context ?? {}
-    const used = new Set(
-      directions
-        .filter((d) => list(t.directions).includes(d.id))
-        .flatMap((d) => d.standards.flatMap((s) => Object.keys((s as Raw).where ?? {}))),
-    )
-    for (const [key, value] of Object.entries(context)) {
-      // section is the CLI's own key (a report of <file>#<section>), so it needs no "where".
-      if (!used.has(key) && key !== 'section') {
-        fail(path, `context key "${key}" is used by no "where" of its directions`)
-      }
-      // The context is closed: only the known keys, each with a text (model.ts Context).
-      checkContextEntry(path, 'context', key, value)
-    }
-    checkWorkspaceOf(path, list(t.workspace))
-    // There are no rounds (Nanda, 2026-11-08): a maker has its tries, and a mistake is evaluated.
-    if (t.maxRounds !== undefined) {
-      fail(
-        path,
-        'maxRounds is gone: when the tries of a maker end on a fault, a role that splits evaluates the mistake; leave maxRounds out',
-      )
-    }
-    // The tasks that this task needs: their ids; each one is accepted before this task reports.
-    const needs = list(t.needs).map(String)
-    for (const id of needs) {
-      if (!/^t\d+$/.test(id)) fail(path, `needs names "${id}", which is not a task id (t..)`)
-    }
-    // The starting point: an earlier result that the maker starts from.
-    if (t.from !== undefined && !/^r\d+$/.test(String(t.from))) {
-      fail(path, `from names "${t.from}", which is not a result id (r..)`)
-    }
-    return {
-      name: t.name,
-      text: t.text,
-      directions: list(t.directions),
-      context,
-      needs,
-      // The keys that the file names: a remake keeps the others from the task that it replaces.
-      named: ['directions', 'context', 'needs', 'workspace'].filter((key) => t[key] !== undefined),
-      ...(t.from !== undefined ? { from: String(t.from) } : {}),
-      workspace: list(t.workspace),
-      references: list(t.references).map(String),
-    } as unknown as TaskFile
-  })
-
-// Who accepts the next versions of a direction (from its draft file): roles of aristoteles.yaml
-// and its owner. A version is reviewed by a lead (a role that assigns), and approved by the owner.
-export const readApprovedBy = (
-  file: string,
-  raw: unknown,
-  roles: Readonly<Record<string, RoleFile>>,
-  people: ReadonlyArray<string>,
-): Effect.Effect<DeciderFile | undefined, Refused> =>
-  refusing(() => {
-    const d = raw as Raw
-    if (d.approvedBy === undefined) return undefined
-    const approvedBy = readDeciders(file, d.approvedBy, [...Object.keys(roles), ...people], people)
-    for (const n of deciderNames(approvedBy)) {
-      const role = roles[n]
-      if (role && !role.acts.some((a) => typeof a !== 'string' && 'assign' in a)) {
-        fail(file, `approvedBy names ${n}, a role that reviews no direction (only a lead, a role that assigns, does)`)
-      }
-      if (people.includes(n) && n !== d.owner) {
-        fail(file, `approvedBy names ${n}, who is not the owner (${d.owner}); the owner approves`)
-      }
-    }
-    return approvedBy
-  })
 
 // The flow: key of a draft (Nanda, 2026-11-15: a direction has a flow): the steps from the first act
 // of an actor down to the output, each { from, to, says }, with its place where the project
@@ -626,12 +513,3 @@ export const readDirection = (
       return fail(file, (e as Error).message.replace(/\s*\n\s*/g, ' '))
     }
   })
-
-export const TASK_TEMPLATE = `name: <a short name>
-text: <what to make, in one or two sentences>
-directions: [<direction id>]
-context: {}            # keys that a standard's "where" uses, for example { section: introduction }
-workspace:
-  - { source: <name>, path: <file or folder>, base: <branch, for code>, verify: "<command; exit 0 when the work is ready>" }
-references: []         # files or sections to read, for example docs/facts.md#dedupe
-`

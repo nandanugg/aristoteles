@@ -10,6 +10,8 @@ import {
   SessionId,
   Settings,
   type DirectionCard as UiDirectionCard,
+  type DirView as UiDirView,
+  type OnboardingView as UiOnboardingView,
   type PageMessage as UiPageMessage,
   type RoleCard as UiRoleCard,
   type ServerMessage as UiServerMessage,
@@ -381,6 +383,8 @@ type Agree<A, B> =
         : false
 type Must<T extends true> = T
 export type Agreements = [
+  Must<Agree<typeof DirView.Type, UiDirView>>,
+  Must<Agree<typeof OnboardingView.Type, UiOnboardingView>>,
   Must<Agree<typeof DirectionCard.Type, UiDirectionCard>>,
   Must<Agree<typeof RoleCard.Type, UiRoleCard>>,
   Must<Agree<typeof ServerMessage.Type, UiServerMessage>>,
@@ -391,6 +395,8 @@ export type Agreements = [
 export type Mismatches = [
   // @ts-expect-error a message that the type lacks (term.size was missing from ui-model.ts)
   Must<Agree<typeof ServerMessage.Type, Exclude<UiServerMessage, { readonly type: 'term.size' }>>>,
+  // @ts-expect-error a field that the Schema lacks
+  Must<Agree<typeof DirView.Type, UiDirView & { readonly extra: string }>>,
   // @ts-expect-error a field that the Schema lacks
   Must<Agree<typeof RoleCard.Type, UiRoleCard & { readonly extra: string }>>,
   // @ts-expect-error an `any` on one side

@@ -1,9 +1,9 @@
 // The files that a person or a model writes, as config.ts reads them: aristoteles.yaml (the
-// mechanism and the settings), a task file, a direction file, a company folder. Their parsed
+// mechanism and the settings), a direction file, a company folder. Their parsed
 // forms are stored inside events, so each one is a Schema.
 import { Schema } from 'effect'
 import { Authority, Principle, RoleIcon } from './closed.ts'
-import { DirectionId, NonBlank, PositiveInt, ResultId, RoleName, TaskId } from './ids.ts'
+import { DirectionId, NonBlank, PositiveInt, RoleName } from './ids.ts'
 
 // The key of a standard or a rule in a file (Standard.id, Rule.id of the page).
 const Key = Schema.String
@@ -193,47 +193,6 @@ export const Settings = Schema.Struct({
   theme: Schema.Literals(['light', 'dark']),
 })
 export type Settings = typeof Settings.Type
-
-// One place of the workspace of a task: a source, its path in the dir, and for a repo its base.
-export const Workspace = Schema.Struct({
-  source: Schema.String,
-  path: Schema.String,
-  base: Schema.optionalKey(Schema.String),
-  verify: Schema.optionalKey(Schema.String),
-})
-export type Workspace = typeof Workspace.Type
-
-// The keys that a task file may leave out; a remake keeps them from the task it replaces.
-export const TaskFileKey = Schema.Literals(['directions', 'context', 'needs', 'workspace'])
-export type TaskFileKey = typeof TaskFileKey.Type
-
-// A task file after readTask.
-export const TaskFile = Schema.Struct({
-  name: Schema.String,
-  text: Schema.String,
-  directions: Schema.Array(DirectionId),
-  context: ContextFile,
-  needs: Schema.Array(TaskId),
-  // The keys that the file names. The migration fills it for an old remake that has none.
-  named: Schema.Array(TaskFileKey),
-  from: Schema.optionalKey(ResultId),
-  workspace: Schema.Array(Workspace),
-  references: Schema.Array(Schema.String),
-})
-export type TaskFile = typeof TaskFile.Type
-
-// One part of a split file.
-export const PartFile = Schema.Struct({
-  name: Schema.String,
-  text: Schema.String,
-  context: Schema.optionalKey(ContextFile),
-  from: Schema.optionalKey(ResultId),
-  workspace: Schema.optionalKey(Schema.Array(Workspace)),
-  references: Schema.optionalKey(Schema.Array(Schema.String)),
-  // The names of the earlier parts of the same split that this part runs after.
-  after: Schema.optionalKey(Schema.Array(Schema.String)),
-})
-export type PartFile = typeof PartFile.Type
 
 // The evidence of a rule (DESIGN 4). test: a shell command; no output means the rule holds, each
 // printed line is a point. ref: file#anchor:lines (docs/x.md#tables:10-20). A rule with neither is

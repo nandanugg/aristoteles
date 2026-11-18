@@ -3,7 +3,6 @@
 // file that carries it does not read.
 import { describe, expect, test } from 'bun:test'
 import { Schema } from 'effect'
-import { PointData, ReportedWork, EvidenceData } from './events.ts'
 import { Settings, ModelLimits, ReviseFile, DirectionFile } from './files.ts'
 import { AiQuestion } from './onboarding.ts'
 
@@ -48,20 +47,10 @@ describe('whole positive numbers', () => {
       refused(Settings, { ...settings, [key]: 0.5 })
     }
   })
-  test('the size of a reported file is whole, none or more', () => {
-    reads(ReportedWork, { _tag: 'File', digest: 'x', size: 0 })
-    refused(ReportedWork, { _tag: 'File', digest: 'x', size: -10 })
-  })
 })
 
 describe('words, not blanks', () => {
-  test('an evidence line, a point and a question have no blank part', () => {
-    reads(EvidenceData, { rule: null, where: 'a.md', what: 'it says so' })
-    for (const part of ['rule', 'where', 'what']) {
-      refused(EvidenceData, { rule: 'r', where: 'a.md', what: 'seen', [part]: ' ' })
-    }
-    reads(PointData, { text: 'wrong', breaks: null })
-    refused(PointData, { text: 'wrong', breaks: '' })
+  test('a question has no blank part', () => {
     const question = {
       says: 'Which?',
       example: { fit: 'Breaks', output: { written: 'w' } },

@@ -1,10 +1,9 @@
 // The door of the new tree to the owner's domain (plan/rebuild/BUILD.md, D3). Only this file and
 // core/services/index.ts import from src/. Each name is re-exported by name, so the new tree can
 // reach only what is here:
-//   - the stored states that core/derived replaces are NOT here (work.ts ForwardState,
-//     ui-model.ts SendState): core/derived has the new ones (BUILD.md D6, section 6);
-//   - the helpers of src/domain/derived.ts that work out a state again (topOfRun, problemTaskOf)
-//     are NOT here: core/derived owns those states.
+//   - the stored states that core/derived replaces are NOT here (ui-model.ts SendState):
+//     core/derived has the new ones (BUILD.md D6, section 6);
+//   - the helpers that work out a state again are NOT here: core/derived owns those states.
 // A package that needs another domain name adds it here by name (an additive change).
 
 // --- ids, actors, closed words, errors ---------------------------------------------------------
@@ -25,9 +24,6 @@ export {
 
 // --- the stored events (Schemas: the store's contract, R2) -------------------------------------
 export {
-  Adjustment as AdjustmentSchema,
-  ConfirmableAct,
-  CountedAct,
   create,
   dataOf,
   decodeRecorded,
@@ -36,35 +32,19 @@ export {
   encodeEvent,
   Enter,
   Event,
-  EvidenceData,
   FitAnswer,
-  ForwardedAct,
-  GrantedAct as GrantedActSchema,
   kindOf,
   Line,
   memberOf,
   move,
   OnboardedDirection,
-  PointData,
   Recorded,
-  ReportedWork,
-  remakeDataOf,
   ReviewWritten,
-  SourceSchema,
-  StartPrompt,
-  StartReason,
-  Stop as StopSchema,
-  SupervisorReason as SupervisorReasonSchema,
-  TaskData,
-  taskDataOf,
-  TaskPointData,
-  TerminalMove,
   Why as WhySchema,
   WRITTEN_BY,
   writtenBy,
 } from '../../src/domain/events.ts'
 export type {
-  Adjustment,
   Draft,
   EventGroup,
   EventOf,
@@ -92,7 +72,6 @@ export {
   FlowStep,
   isMarked,
   type MarkedStep,
-  PartFile,
   PersistenceFile,
   ReviseFile,
   RoleFile,
@@ -105,164 +84,72 @@ export {
   spotsOf,
   StandardFile,
   usesProblem,
-  TaskFile,
 } from '../../src/domain/files.ts'
 
-// --- the records of the work (model.ts), without the replaced states ---------------------------
+// --- the records of the work (model.ts) --------------------------------------------------------
 export type {
   Accept,
-  Act,
-  Answerer,
-  Assignment,
-  AssignmentEnd,
-  Attempt,
-  Blocker,
-  Breaks,
   By,
-  Change,
-  Checkpoint,
-  CheckpointPart,
   ConditionKey,
   Context,
-  DeciderLeaf,
-  Deciders,
   Direction,
   DirectionContent,
-  Escalate,
-  Evaluation,
-  EvaluationState,
-  Evidence,
-  Exhaustion,
   FactKey,
   Limit,
-  Limits,
-  Maker,
-  MadeFrom,
-  Meta,
   NonEmpty,
-  Note,
   OfficialDirection,
-  Permission,
-  PermissionState,
-  Persistence,
-  Point,
-  Question,
-  QuestionStatus,
-  Recheck,
   Reject,
-  Resolve,
-  Result,
   Review,
-  Reviewer,
   Revision,
   RevisionOrigin,
   Reviser,
-  Role,
   Rule,
-  Runs,
   Section,
   Source,
-  SourceState,
   Standard,
-  Stop,
   Suggestion,
   SuggestionAbout,
-  Task,
-  TaskEnd,
-  TaskPoint,
-  TaskState,
   Text,
-  Under,
   Version,
   Where,
   Why,
-  Workflow,
-  Workspace,
 } from '../../src/domain/model.ts'
 
-// --- the folded state (work.ts), without the stored ForwardState --------------------------------
-export type { CreatedId, Fit, Forward, Logged, Stepped, Work } from '../../src/domain/work.ts'
+// --- the folded state (work.ts) -----------------------------------------------------------------
+export type { CreatedId, Fit, Logged, Stepped, Work } from '../../src/domain/work.ts'
 
 // --- the UI records (ui-model.ts), without the stored SendState ---------------------------------
 export type {
-  Activity,
-  AgentSession,
-  AgentState,
-  Decision,
-  DecisionAct,
   DraftChange,
   DropReason,
-  Failure,
-  HostRun,
-  HostTerminal,
-  HostWords,
-  PageAct,
   PageMessage,
-  PersistentAgent,
-  Problem,
-  ProblemActor,
-  Run,
-  RunEnd,
-  RunState,
   Send,
-  SentPair,
   ServerMessage,
-  Supervised,
-  SupervisorReason,
-  TaskDraft,
-  TaskDraftState,
-  TerminalEvent,
-  TerminalReport,
-  TerminalState,
 } from '../../src/domain/ui-model.ts'
 // The view data of the page (ui-model.ts part 4): adapters/web/contract.ts checks its Schemas
 // against these.
 export type {
-  CanvasRow,
-  CardTerminal,
-  DiffView,
   DirectionCard,
   DirectionView,
   DirView,
   ExampleView,
   FlowStepView,
   OnboardingView,
-  Owner,
-  ProjectSummary,
-  ProjectView,
   QuestionView,
-  ResultView,
-  ReviewCard,
   RoleCard,
   SpotView,
   SuggestionTarget,
-  TaskCard,
-  TaskDraftView,
-  TaskPanel,
-  TerminalRef,
-  TerminalSeen,
-  WorkCard,
 } from '../../src/domain/ui-model.ts'
 
 // --- pure helpers of the domain: ids, text, context, lookup -------------------------------------
 export {
-  afterOf,
   currentVersion,
   decisionOf,
-  isRejectRef,
   officialDirections,
   officialOf,
-  playedBy,
-  pointOf,
-  pointsOf,
-  replacesOf,
   revisionOf,
-  roleFileOf,
-  sameAnswerer,
-  targetOf,
   versionIdOf,
 } from '../../src/domain/derived.ts'
-export type { RejectPoint } from '../../src/domain/derived.ts'
 // The files of onboarding (before the store) and their derived states.
 export {
   AiQuestion,

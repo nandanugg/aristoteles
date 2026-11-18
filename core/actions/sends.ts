@@ -2,19 +2,12 @@
 // that the supervisor records.
 import { Effect } from 'effect'
 import type { Derived } from '../derived/index.ts'
-import { create, type Event, move, type SessionId } from '../schema/index.ts'
+import { create, move, type SessionId } from '../schema/index.ts'
 import { allowed, current, no, type RefusalsOf } from './support.ts'
 import type { Action } from './types.ts'
 
 const REFUSALS = {
-  Send: {
-    noTerminal: (session: string) =>
-      no(
-        `${session} names no terminal of an agent`,
-        'Pick',
-        'send to a child that runs in its own terminal',
-      ),
-  },
+  Send: {},
   SendDelivered: {
     noSend: (send: string) => no(`${send} is no send`, 'Pick', 'name a send that waits'),
   },
@@ -31,12 +24,9 @@ const Send: Action<'Send'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
     yield* allowed(d, by, input)
-    const { session } = input.target
-    if (![...d.moment.work.sessions.values()].some((s) => s.session === session)) {
-      return yield* Effect.fail(R.Send.noTerminal(session))
-    }
-    const from = { _tag: 'Agent' as const, to: tmux(session) }
-    return [create('Send', { _tag: 'Sent', from, keys: input.content.keys } as never) as Event]
+    // A pane that is not live drops the send when the supervisor tries it (DeliverSends).
+    const from = { _tag: 'Person' as const, to: tmux(input.target.session) }
+    return [create('Send', { _tag: 'Sent', from, keys: input.content.keys })]
   })
 
 // A send that is no longer pending makes no event: it was delivered or dropped already (D12).

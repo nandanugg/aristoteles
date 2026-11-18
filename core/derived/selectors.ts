@@ -7,6 +7,5 @@ import type { SendsPending } from './types.ts'
 export const sendsPending: SendsPending = (d) =>
   d.moment.work.sends.flatMap((send) => {
     if (d.states.sends.get(send.id)?._tag !== 'Pending') return []
-    const to = sendSessionOf(send)
-    return to === undefined ? [] : [{ send: send.id, to }]
+    return [{ send: send.id, to: sendSessionOf(send) }]
   })

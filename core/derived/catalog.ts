@@ -113,12 +113,8 @@ export const sendStateOf: SendStateOf = (m, id) => {
   return { _tag: 'Pending' }
 }
 
-// The terminal that a send goes into: the person's own send names it. The supervisor's lines of
-// an older watcher name it only when they have a start, a wake or a retry; the others have none.
-export const sendSessionOf = (send: Work['sends'][number]): SessionId | undefined => {
-  if (send.from._tag === 'Agent') return send.from.to.session
-  return 'to' in send.from.reason ? send.from.reason.to.session : undefined
-}
+// The terminal that a send goes into: the one that the person named.
+export const sendSessionOf = (send: Work['sends'][number]): SessionId => send.from.to.session
 
 // derive: each state once, in the order of the edges.
 export const derive: Derive = (m) => {

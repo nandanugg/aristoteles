@@ -42,7 +42,7 @@ const partsOf = (logged: Logged, work: Work | undefined): string => {
   return ''
 }
 
-// The revision that an agent read again: the one of the latest move of the source before it.
+// The revision that the host read again: the one of the latest move of the source before it.
 const revisionBefore = (logged: Logged, work: Work | undefined, name: string): string => {
   const before = work?.events.filter((l) => l.recorded.seq < logged.recorded.seq) ?? []
   for (const l of before.reverse()) {
@@ -54,8 +54,7 @@ const revisionBefore = (logged: Logged, work: Work | undefined, name: string): s
   return ''
 }
 
-// One line for one stored event. Work: a resolve and a re-read source name what the event only
-// names by its id; without it they print that id.
+// One line for one stored event. Work: a re-read source names what the event only names by its id.
 export const logLine = (work: Work, logged: Logged): string => {
   const { seq, at, author, event } = logged.recorded
   const { who, channel } = whoOf(author)
@@ -73,73 +72,18 @@ const OLD_TYPE: Total<string> = {
   'Workflow.Defined': 'config',
   'Workflow.RoleWordsChanged': 'config.text',
   'Role.Fitted': 'role.fit',
-  'Role.WordsDrafted': 'role.draft',
-  'Role.WordsRejected': 'role.reject',
-  // New (onboarding): the start of an agent's terminal, and the adjustments.
-  'Agent.Started': 'agent.start',
-  'Adjustment.Drafted': 'adjust',
-  'Adjustment.Accepted': 'adjust.accept',
-  'Adjustment.Rejected': 'adjust.reject',
-  'Run.HostJoined': 'run.start',
-  'Run.HostStarted': 'run.start',
-  'Run.HostMoved': 'run.continue',
-  'Run.Done': 'run.done',
-  'Run.Closed': 'run.close',
-  'TaskDraft.Drafted': 'task.draft',
-  'Problem.Recorded': 'problem',
-  'Problem.Fixed': 'problem',
-  'Terminal.Started': 'session',
-  'Terminal.Failed': 'terminal.event',
-  'Terminal.Prompted': 'terminal.event',
-  'Terminal.Stopped': 'terminal.event',
-  'Terminal.Resumed': 'terminal.event',
-  'Terminal.Closed': 'terminal.event',
   'Send.Sent': 'send',
-  // New: the old supervisor kept the fate of a send in memory.
   'Send.Delivered': 'send.delivered',
   'Send.Dropped': 'send.dropped',
-  'HostWords.ProblemWords': 'note',
-  'HostWords.DraftWords': 'note',
-  'HostWords.EndWords': 'note',
-  'Task.Opened': 'task.open',
-  'Task.OpenedFromDraft': 'task.open',
-  'Task.Remade': 'task.remake',
-  'Task.Split': 'task.split',
-  'Task.Closed': 'task.close',
-  'Task.Described': 'task.describe', // new: the person's description of a task
-  'Assignment.GivenMaker': 'assign',
-  'Assignment.GivenReviewer': 'assign',
-  'Assignment.Briefed': 'brief',
-  'Assignment.BriefedToCheck': 'brief',
-  'Assignment.BriefedFirst': 'brief',
-  'Assignment.Freed': 'free',
-  'Assignment.Finished': 'finish',
-  'Result.Result': 'report',
   'Review.Accept': 'review',
   'Review.Reject': 'review',
-  'Review.Recheck': 'review',
-  'Review.Escalate': 'escalate',
-  'Review.Resolve': 'resolve',
-  // Inside a forward, the person's question to an agent was person.ask.
-  'Question.Asked': 'ask',
-  'Question.Escalated': 'escalate',
-  'Question.Answered': 'answer',
-  'Note.Message': 'note',
-  'Note.Finding': 'note',
-  'Evaluation.Evaluation': 'evaluate',
   'Suggestion.Suggestion': 'suggest',
   'Revision.Drafted': 'direction.new',
   'Revision.Revised': 'direction.revise',
   'Revision.Imported': 'company.import',
   'Revision.ExamplesAdded': 'direction.examples',
-  'Permission.Granted': 'grant',
-  'Permission.Revoked': 'revoke',
   'Source.Moved': 'source',
-  // New: the old CLI stored the same revision again as a source.
   'Source.Checked': 'source',
-  'Checkpoint.Checkpoint': 'checkpoint',
-  'Forward.Forwarded': 'forward',
-  'Forward.Confirmed': 'confirm',
   'Work.Opened': 'work.open',
   'Work.Acted': 'work.act',
   'Work.HostPane': 'work.host-pane',

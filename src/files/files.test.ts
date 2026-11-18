@@ -1,4 +1,4 @@
-// digest.ts and company.ts on files and git repos. A case table pins what each case gives (or the
+// company.ts on files and git repos. A case table pins what each case gives (or the
 // words of its refusal) in __snapshots__; a commit id is written as <full> or <short>.
 import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -8,7 +8,6 @@ import { Effect, Layer } from 'effect'
 import { runNew } from '../config/outcome.ts'
 import { FilesLive, SpawnLive } from '../services/outside.ts'
 import * as company from './company.ts'
-import * as digest from './digest.ts'
 
 // biome-ignore lint/suspicious/noExplicitAny: loose values of a test
 type Obj = any
@@ -30,63 +29,6 @@ const git = (cwd: string, ...args: string[]) => {
 const live = Layer.mergeAll(FilesLive, SpawnLive)
 const provide = <A, E>(e: Effect.Effect<A, E, never | Obj>) =>
   Effect.runPromise(e.pipe(Effect.provide(live)) as Effect.Effect<A, E>)
-
-const MD = '# Title\n\nintro\n\n## Part One\n\ntext one\n\n### Deep\n\ndeep text\n\n## Part Two\n\ntext two\n\n## Part One\n\nagain\n'
-
-describe('slug and sectionsOf', () => {
-  const headings = ['Hello World', '  Padded  ', 'Dots. And, Commas!', 'Under_score & More', 'a  b', 'UPPER-case', '']
-  for (const h of headings) {
-    test(`slug of "${h}"`, () => expect(digest.slug(h)).toMatchSnapshot())
-  }
-  const texts = ['', 'no heads', MD, '#nospace\n# a\n## b\n# c', '## first\n# second\n### third\n## fourth']
-  for (const t of texts) {
-    test(`sections of ${JSON.stringify(t.slice(0, 20))}`, () => {
-      expect(digest.sectionsOf(t)).toMatchSnapshot()
-    })
-  }
-})
-
-describe('checkOutput', () => {
-  const dir = tmp('dg-')
-  const outputs = ['a.md', 'a b.md', 'sub/a.md#part-one', 'repo@abcdef1', '/abs/a.md', '../a.md', 'a/../../b.md', 'a/../b.md', '$(x)', 'a;b', '', '#x', '@x', 'a\nb']
-  for (const o of outputs) {
-    test(`output ${JSON.stringify(o)}`, async () => {
-      expect(await runNew(digest.checkOutput(dir, o))).toMatchSnapshot()
-    })
-  }
-})
-
-describe('sectionsInside, snapshotOf', () => {
-  const dir = tmp('dg-')
-  put(dir, { 'a.md': MD, 'b.txt': 'one\ntwo\n', 'sub/c.md': '# C\nx', 'empty.md': '' })
-  mkdirSync(join(dir, 'folder'))
-  const repo = join(dir, 'repo')
-  mkdirSync(repo)
-  put(repo, { 'f.txt': 'hello' })
-  git(repo, 'init', '-q', '-b', 'main')
-  git(repo, 'add', '-A')
-  git(repo, 'commit', '-q', '-m', 'one')
-  const full = git(repo, 'rev-parse', 'HEAD')
-  // A value with the commit ids of this run written as words.
-  const words = (text: string) => text.replaceAll(full, '<full>').replaceAll(full.slice(0, 7), '<short>')
-  const hiding = (value: unknown): unknown => JSON.parse(words(JSON.stringify(value ?? null)))
-  const label = (output: string) => words(output)
-  const outputs = [
-    'a.md', 'b.txt', 'sub/c.md', 'empty.md', 'a.md#title', 'a.md#part-two', 'a.md#deep', 'a.md#part-one',
-    'a.md#nothing', 'missing.md', 'folder', 'sub/c.md#c', `repo@${full}`, `repo@${full.slice(0, 7)}`,
-    'repo@abcdef0', 'ghost@abcdef0', '../x.md', '/etc/passwd', 'bad;name',
-  ]
-  for (const o of outputs) {
-    test(`sectionsInside ${label(o)}`, async () => {
-      expect(hiding(await provide(digest.sectionsInside(dir, o)))).toMatchSnapshot()
-    })
-  }
-  for (const f of ['a.md', 'b.txt', 'folder', 'repo', 'missing.md', 'empty.md']) {
-    test(`snapshotOf ${f}`, async () => {
-      expect(hiding(await provide(digest.snapshotOf(dir, f)))).toMatchSnapshot()
-    })
-  }
-})
 
 describe('the lock', () => {
   const lockCases: Array<[string, string | null]> = [

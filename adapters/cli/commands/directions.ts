@@ -136,19 +136,13 @@ const whyOf = (args: Args) => ({
   words: textOf(args.one('why-words')) ?? null,
 })
 
-// The ids of --answers: each is a Reject point, a Reject, or a suggestion.
+// The ids of --answers: each is a Reject or a suggestion.
 const answersOf = (work: Parameters<typeof lookup>[0], text: string | undefined) =>
   Effect.gen(function* () {
     const out: Array<AnswerId> = []
     for (const id of text ? text.split(',') : []) {
       const found = yield* lookup(work, id, ['v', 's'])
-      out.push(
-        found._tag === 'Suggestion'
-          ? found.suggestion.id
-          : found._tag === 'Point'
-            ? found.id
-            : (id as RejectId),
-      )
+      out.push(found._tag === 'Suggestion' ? found.suggestion.id : (id as RejectId))
     }
     return out
   })

@@ -129,16 +129,11 @@ export const appendIn = (p: Project, author: Author, event: Event): EventRef =>
     ).pipe(Effect.provide(storeLayer(p.dir))),
   )
 
-// The outside of a test: nothing changed, nothing stale, the brief measures 0 (no limit bites).
+// The outside of a test: no terminal, no marker.
 export const quietOutside = (dir: string, more: Partial<Outside> = {}): Outside => ({
   cwd: dir,
-  settings: { hostWaitMinutes: 10, retryMinutes: 5, outsideSourceHours: 24 },
-  changed: new Set(),
-  stale: new Map(),
-  onBase: new Set(),
   terminals: {},
   markers: [],
-  measure: () => 0,
   ...more,
 })
 export const derivedOf = (
@@ -214,7 +209,3 @@ export const dispatchIn = (
 
 // The authors of the harness.
 export const NANDA: Author = { _tag: 'Person', name: 'Nanda', channel: 'terminal' }
-export const agent = (token: string): Author => ({
-  _tag: 'Agent',
-  assignment: token.split('.')[0] as never,
-})

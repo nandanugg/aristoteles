@@ -1,62 +1,37 @@
-// The records of the work: the owner's types of the design page (plan/intelligent-work, Part 2:
-// sharedTypes and the parts Workflow, Direction, Task, Assignment, Result, Review, Evaluation,
-// Checkpoint, Note), with their names, fields and structure. Types only: core/actions holds the
-// operations of the page (Workflow.define, Task.start, Review.decide...) and their refusals;
-// src/domain/moves.ts holds the moves of each record with a lifecycle.
+// The records of the work before a top: the owner's types of the design page
+// (plan/intelligent-work, Part 2: sharedTypes and the parts Direction and Review), with their
+// names, fields and structure.
+// Types only: core/actions holds the operations and their refusals; src/domain/moves.ts holds the
+// moves of each record with a lifecycle.
 //
-// Rule 1 (the one change of representation): a record names another record by its id, where
-// the page draws the record itself (needs: TaskId[] for the page's needs: Task[]). The Work is
-// immutable, so a record is replaced by a new copy when it changes, and a held object would go
-// stale. Each record carries its own id (the CLI's id: t3, a7). BUILD.md lists this for the owner.
-// Rule 2: a field marked "not on the page" is the old engine's, with its old name.
+// Rule 1 (the one change of representation): a record names another record by its id. The Work
+// is immutable, so a record is replaced by a new copy when it changes, and a held object would go
+// stale. Each record carries its own id (the CLI's id: d3, v4).
 // Rule 3: at is the old engine's clock, the place of a record among all records ("before" in
-// the rules compares at); when is the time of the act. The page's Time is the type of when.
+// the rules compares at); when is the time of the act.
 // Rule 4 (the owner's review, 2026-11-11): no field is optional. A missing value that something
 // reacts to is a tagged member; a value that only some records have is its own member; a value
-// that only adds words when given is `| null` (BUILD.md section 7 lists each field).
+// that only adds words when given is `| null`.
 // Rule 5 (the owner's rulings, 2026-11-12): `_tag` is the tag of every union; a fact lives in
-// one field, and what follows from it is derived (src/domain/derived.ts). The design page's old
-// names: its Raise is Escalate, its settles is Resolve, its Executive is Permission.
-//
-// The derived states at the end (TaskState of the page, and the additions of plan/types
-// PLAN.md section 5) are computed by the engine; nothing stores them.
+// one field, and what follows from it is derived (src/domain/derived.ts).
 import type { Actor, Agent, Human } from './actor.ts'
 import type { Level, Principle, Reason } from './closed.ts'
 // The Schemas of the stored events hold the shapes that a record keeps as they are, once.
-import type {
-  GrantedAct as GrantedActSchema,
-  ReportedWork,
-  SourceSchema,
-  Stop as StopSchema,
-  Why as WhySchema,
-} from './events.ts'
+import type { Outside, Why as WhySchema } from './events.ts'
 import type { ContextKey, FlowStep, Snapshot } from './files.ts'
 import type {
-  AgentId,
   AnswerId,
-  AssignmentId,
-  CheckpointId,
   DirectionId,
-  EscalationId,
-  EvaluationId,
   EventRef,
-  ExhaustionId,
   NonBlank,
-  NoteId,
-  PermissionId,
-  PointId,
   PositiveInt,
-  QuestionId,
   RejectId,
-  ResultId,
   ReviewId,
   RevisionId,
   RoleName,
   RuleEntry,
-  RunId,
   StandardEntry,
   SuggestionId,
-  TaskId,
   Time,
   VersionId,
 } from './ids.ts'
@@ -96,20 +71,13 @@ export type Where =
   | { readonly _tag: 'Everywhere' }
   | { readonly _tag: 'Where'; readonly conditions: NonEmptyMap<ConditionKey, NonEmpty<Text>> }
 
-// page: Source: a git source at a commit, or an outside source at a revision (events.ts).
-export type Source = typeof SourceSchema.Type
+// page: Source: an outside source at the revision that the host read (events.ts).
+export type Source = typeof Outside.Type
 
-// Who acts on a record: an assignment, or an actor (a person, or a model run outside any task).
-// page: "by: Assignment | Actor". The narrower kinds say who the old engine allows.
-export type By = AssignmentId | Actor
-// Who answers a question or decides an escalation: an assignment, or the owner.
-export type Answerer = AssignmentId | Human
-// Who writes a draft of a direction: a model (an assignment, or a run outside any task).
-export type Reviser = AssignmentId | Agent
-
-// The versions that an act read: the number of the version of each direction, so the key names
-// the direction once (derived.ts versionId gives the id: tsd-writing@2).
-export type Under = ReadonlyMap<DirectionId, PositiveInt>
+// Who acts on a record: a person, or a model run outside any top.
+export type By = Actor
+// Who writes a draft of a direction: a model run.
+export type Reviser = Agent
 
 // A limit of the page's Limits, and of a maker's attempts.
 export type Limit =
@@ -194,103 +162,7 @@ export type SuggestionAbout =
   | { readonly _tag: 'Direction'; readonly direction: DirectionId }
   | { readonly _tag: 'Standard'; readonly standard: StandardEntry }
   | { readonly _tag: 'Rule'; readonly rule: RuleEntry }
-  | { readonly _tag: 'Roles' } // P7: the roles of the workflow; a model drafts the adjustment
-
-// page: Permission. One act, for a time: it covers an act from its own time (when) to its until,
-// and before its revoke. No grant gives Do: a maker is a role. The CLI words: grant, revoke.
-export interface Permission {
-  readonly id: PermissionId // not on the page
-  readonly act: GrantedAct
-  readonly to: RoleName
-  readonly by: By // page: by: Actor; the engine lets a model give the acts of its assignment
-  readonly until: Time // the last time of an act that it covers
-  // page: revoked?: Time.
-  readonly revoked:
-    | { readonly _tag: 'NotRevoked' }
-    | { readonly _tag: 'Revoked'; readonly at: Time }
-  readonly when: Time
-  readonly at: number
-}
-
-// --- Workflow ----------------------------------------------------------------------------------
-
-// page: Workflow. The roles of one system, who plays them, their models, and the limits.
-export interface Workflow {
-  readonly system: Text // the work CLI uses the name of its project
-  // not on the page: the person who made the store owns the roles
-  readonly owner: Human
-  readonly roles: ReadonlyMap<RoleName, Role>
-  // The CLI sets no limit for the whole workflow (all Unlimited): each role has its model's.
-  readonly limits: Limits
-  // page: measure?: (a) => number. Not stored: the CLI gives it to each check (CheckContext).
-  // page: decide?: who decides the results of a maker, one entry per maker; a maker with none:
-  // any one role with an Approve act on it decides.
-  readonly decide: ReadonlyMap<RoleName, Deciders>
-}
-
-// page: Deciders = Role | Actor | Or | And | Order. A role by its name (rule 1); a person by
-// name too. A model run never decides.
-export type Deciders = DeciderLeaf | Or | And | Order
-export type DeciderLeaf = { readonly _tag: 'Role'; readonly role: RoleName } | Human
-// page: Or(items), And(items), Order(items). Each leaf once, one person, the person last in an
-// Order: the decoder of the file checks these (engine decidersOf).
-export interface Or {
-  readonly _tag: 'Or' // any one of them
-  readonly items: NonEmpty<Deciders>
-}
-export interface And {
-  readonly _tag: 'And' // each of them, in any order
-  readonly items: NonEmpty<Deciders>
-}
-export interface Order {
-  readonly _tag: 'Order' // each of them, in this order
-  readonly items: NonEmpty<Deciders>
-}
-
-// page: Limits. Each part reads only the limits under its name; every limit is there.
-export interface Limits {
-  readonly Assignment: { readonly briefChars: Limit; readonly attempts: Limit }
-  readonly Review: { readonly rules: Limit }
-  readonly Result: { readonly size: Limit }
-}
-
-// page: Role. A role that a model plays, or a check program.
-// page: playedBy: derived (derived.ts playedBy): the role's model, or the program's name; a
-// person plays no role. Its words are the Work's config (Work.config.roles), kept once.
-export type Role = RoleBase &
-  (
-    | { readonly _tag: 'Model'; readonly model: Text; readonly persistence: Persistence }
-    | { readonly _tag: 'Program' }
-  )
-interface RoleBase {
-  readonly role: RoleName // the system's own name: 'writer', 'linter'
-  readonly icon: Text // an icon of the page (closed.ts ROLE_ICONS), on the card of the role
-  readonly acts: ReadonlyArray<Act>
-  readonly limits: Limits // the CLI: those of its model; a program's are all Unlimited
-}
-
-// How a role of a model runs, apart from its model (ruling 7). The card of the role shows why.
-export type Persistence =
-  // a terminal of its own, for the whole project, so it can start subagents
-  | { readonly _tag: 'Persistent'; readonly why: NonBlank }
-  // a subagent of a terminal, with no terminal of its own, so it starts nothing
-  | { readonly _tag: 'Disposable'; readonly why: NonBlank }
-
-// page: Act. The work acts say on what; assign names the roles that the role gives work to;
-// split, direct and fit are the authority of a role (closed.ts AUTHORITY).
-export type Act =
-  | { readonly _tag: 'Do'; readonly work: Text }
-  | { readonly _tag: 'Review'; readonly resultsOf: ReadonlyArray<RoleName> }
-  | { readonly _tag: 'Approve'; readonly resultsOf: ReadonlyArray<RoleName> }
-  // A role's change act names directions by id before they exist; only an official direction
-  // counts.
-  | { readonly _tag: 'Change'; readonly changesOf: ReadonlyArray<DirectionId | TaskId> }
-  | { readonly _tag: 'Assign'; readonly roles: ReadonlyArray<RoleName> }
-  | { readonly _tag: 'Split' }
-  | { readonly _tag: 'Direct' }
-  | { readonly _tag: 'Fit' }
-// The acts that a permission gives: every act but Do (events.ts GrantedAct).
-export type GrantedAct = typeof GrantedActSchema.Type
+  | { readonly _tag: 'Roles' } // the roles of the workflow
 
 // --- Direction -----------------------------------------------------------------------------------
 
@@ -308,10 +180,6 @@ interface DirectionBase {
   readonly owner: Human // page: Actor; the CLI's owner is a person of aristoteles.yaml
   readonly from: ReadonlyArray<Principle>
   readonly maxStandards: Limit
-  // page: none: the owner; then a role that directs, with a Change act on it, accepts in the owner's place.
-  readonly approvedBy:
-    | { readonly _tag: 'Owner' }
-    | { readonly _tag: 'Deciders'; readonly deciders: Deciders }
   // not on the page: written in this dir, or a folder of a company repo (aristoteles.lock).
   readonly source:
     | { readonly _tag: 'Local' }
@@ -342,486 +210,24 @@ export interface Rule {
   readonly supersedes: ReadonlyArray<RuleEntry> // [] when it replaces none
 }
 
-// --- Task ----------------------------------------------------------------------------------------
-
-// page: Task. A remake is the old task's end (Replaced.next); the old task of a remake and the
-// parts that a part runs after are derived (derived.ts).
-export interface Task {
-  readonly id: TaskId
-  readonly name: Text
-  readonly owner: Human
-  // For people; its own fact. The text of the task file until the person writes it (work task
-  // describe).
-  readonly descriptionHuman: Text
-  readonly descriptionAi: {
-    readonly text: Text
-    // The text of the bigger task, after a split; only the brief prints it.
-    readonly partOf: Text | null
-    readonly directions: ReadonlyArray<DirectionId>
-    readonly references: ReadonlyArray<Text>
-    readonly notes: ReadonlyArray<NoteId>
-    readonly context: Context
-    readonly from: ResultId | null // the starting point: older accepted work; null: none
-    readonly workspace: ReadonlyArray<Workspace> // not on the page: the files of the work
-  }
-  // page: serves?: a part serves the task that it was split from; none: a top task.
-  readonly serves:
-    | { readonly _tag: 'TopTask' }
-    | { readonly _tag: 'Serves'; readonly task: TaskId }
-  readonly needs: ReadonlyArray<TaskId> // a remake moves the needs of other tasks to the new one
-  readonly when: Time // not on the page
-  readonly end: TaskEnd // page: closed?, with replacedBy for a remake
-  // not on the page: how each file looked at the first brief (a report equal to it is
-  // untouched work), and for a maker that writes in place, the text of each file then (the
-  // start of the task's own diff).
-  readonly untouched:
-    | { readonly _tag: 'NotBriefed' }
-    | {
-        readonly _tag: 'AtFirstBrief'
-        readonly files: Readonly<Record<string, Snapshot>>
-        readonly inPlace:
-          | { readonly _tag: 'NotInPlace' }
-          | {
-              readonly _tag: 'InPlace'
-              readonly texts: Readonly<Record<string, Text>>
-              readonly at: Time
-            }
-      }
-}
-
-// page: closed?: TaskClosed. Closed by the owner or a Change act, or replaced by a remake.
-export type TaskEnd =
-  | { readonly _tag: 'NotEnded' }
-  | { readonly _tag: 'Closed'; readonly by: By; readonly reason: NonBlank; readonly when: Time }
-  | {
-      readonly _tag: 'Replaced'
-      readonly by: By
-      readonly reason: NonBlank
-      readonly next: TaskId // page: replacedBy
-      readonly when: Time
-    }
-
-// not on the page: a workspace entry of a task file. A repo has the base that a commit is new
-// work against; a file or a folder has none. verify: a command, exit 0 when the work is ready;
-// only the brief prints it.
-export type Workspace =
-  | {
-      readonly _tag: 'Files'
-      readonly source: Text
-      readonly path: Text
-      readonly verify: Text | null
-    }
-  | {
-      readonly _tag: 'Repo'
-      readonly source: Text
-      readonly path: Text
-      readonly base: Text
-      readonly verify: Text | null
-    }
-
-// not on the page: the engine's changes, a split or a remake that answers Rejects.
-export interface Change {
-  readonly _tag: 'Split' | 'Remake'
-  readonly task: TaskId // the task split, or the old task of a remake
-  readonly answers: ReadonlyArray<RejectId | PointId>
-  readonly by: By
-  readonly when: Time
-  readonly at: number
-}
-
-// --- Assignment --------------------------------------------------------------------------------
-
-// page: Assignment. One actor in one workflow role on one task. A maker is an assignment of a
-// role with a Do act; any other (it reviews, approves or changes) has no attempts. The role
-// fixes which one when the assignment is given.
-export type Assignment = Maker | Reviewer
-interface AssignmentBase {
-  readonly id: AssignmentId // not on the page
-  readonly actor: Actor // the person, or the run that plays the role
-  readonly role: RoleName
-  readonly task: TaskId
-  // The snapshot: the version of each direction at the last brief read.
-  readonly under: Under
-  // page: parent?: the assignment that gave this one; none: the person gave it.
-  readonly parent:
-    | { readonly _tag: 'GivenByPerson' }
-    | { readonly _tag: 'Parent'; readonly id: AssignmentId }
-  readonly runs: Runs // where it runs, fixed at the give
-  readonly when: Time // not on the page
-  readonly end: AssignmentEnd // not on the page: the engine's finished
-}
-// page: Assignment.runs (onboarding). An open assignment keeps the model and the persistence of
-// its role at its give (ruling 13), so the members that no record holds keep the model (P2).
-export type Runs =
-  | { readonly _tag: 'Host'; readonly run: RunId } // the role that splits the top task of a run
-  | { readonly _tag: 'Agent'; readonly agent: AgentId } // the persistent agent of its role
-  | { readonly _tag: 'Subagent'; readonly model: Text } // a disposable role: inside a terminal
-  // a persistent role on a task that no run holds (opened at a terminal): no terminal starts
-  | { readonly _tag: 'NoRun'; readonly model: Text }
-  | { readonly _tag: 'Program' } // a check program, which the CLI runs
-export type Maker = AssignmentBase & {
-  readonly _tag: 'Maker'
-  // page: maxAttempts?: how many faults it may make: its parent's number, else its role's limit.
-  readonly maxAttempts: Limit
-}
-export type Reviewer = AssignmentBase & { readonly _tag: 'Reviewer' }
-// A finish ends an assignment, and so does a new maker of the task for the maker before it
-// (what waited for it goes up, as at a finish; nothing tells the two apart).
-export type AssignmentEnd =
-  | { readonly _tag: 'NotEnded' }
-  | { readonly _tag: 'Finished'; readonly when: Time }
-
-// not on the page: what only the CLI uses (the token and the claim). Who gave
-// the assignment and when are the Assignment's (parent, when).
-export interface Meta {
-  readonly secret: Text // the sha256 of the secret part of the token
-  // The brief that the agent works from now. "Your unit is done" stays the old scan (BUILD.md,
-  // parity note 8), not a third state.
-  readonly claim:
-    | { readonly _tag: 'Free' } // never briefed, freed, or its one low unit ended
-    | { readonly _tag: 'Held'; readonly since: Time }
-    // A low checker's claim names the result that it reviews.
-    | { readonly _tag: 'Checking'; readonly since: Time; readonly result: ResultId }
-  readonly briefs: number
-}
-
-// --- Result --------------------------------------------------------------------------------------
-
-// page: Result. What one attempt produced.
-export interface Result {
-  readonly id: ResultId // not on the page
-  readonly task: TaskId
-  readonly by: AssignmentId // one attempt of it
-  readonly output: Text
-  // page: Source[]: a result that it was made from also goes here.
-  readonly madeFrom: ReadonlyArray<MadeFrom>
-  // page: size?, digest?, patch?: a file (or a section) has a size; a commit has a patch.
-  readonly work: ReportedWork
-  readonly under: Under
-  readonly when: Time
-  readonly at: number // not on the page
-}
-export type MadeFrom = Source | { readonly _tag: 'Result'; readonly result: ResultId }
-
 // --- Review --------------------------------------------------------------------------------------
 
-// page: Review. One act of a reviewer on a result, a task, a draft, or an evaluation. The page's
-// decision is the tag (Accept, Reject, Escalate); the page's redo is a Recheck, and a Resolve
-// ends an escalation. Each member holds only the fields of its act, and an
-// Accept or a Reject holds the fields of its target (of). How a person's review came (typed,
-// forwarded, confirmed) is the forward's (Work.forwards). Who reviews depends on the target, so
-// by sits in each target's member: an agent by its assignment, or the person (a model run
-// outside any task reviews nothing).
-export type Review = Accept | Reject | Recheck | Escalate | Resolve
+// page: Review. One act of the owner on a draft: an accept makes its version, a reject ends it.
+// The page's decision is the tag.
+export type Review = Accept | Reject
 interface ReviewBase {
   readonly id: ReviewId // not on the page
-  readonly under: Under
+  readonly by: Human
   readonly when: Time // not on the page
   readonly at: number // not on the page
 }
 export type Accept = ReviewBase & {
   readonly _tag: 'Accept'
   readonly reason: Text | null // a comment; only words read it
-} & (
-    | {
-        readonly by: AssignmentId | Human
-        readonly of: {
-          readonly _tag: 'Result'
-          readonly id: ResultId
-          readonly evidence: NonEmpty<Evidence>
-        }
-      }
-    // The person's accept of a draft needs no evidence; a model's has some (the CLI's check).
-    | {
-        readonly by: Human
-        readonly of: {
-          readonly _tag: 'Revision'
-          readonly id: RevisionId
-          readonly evidence: ReadonlyArray<Evidence>
-        }
-      }
-    | {
-        readonly by: AssignmentId
-        readonly of: {
-          readonly _tag: 'Revision'
-          readonly id: RevisionId
-          readonly evidence: NonEmpty<Evidence>
-        }
-      }
-    // Only the owner of its task reviews an evaluation.
-    | {
-        readonly by: Human
-        readonly of: {
-          readonly _tag: 'Evaluation'
-          readonly id: EvaluationId
-          readonly evidence: NonEmpty<Evidence>
-        }
-      }
-  )
-// A Reject of a result or a task has points (v4.1, v4.2: one act, one stop for the person); a
-// Reject of a task names no rule. A Reject of a draft or an evaluation has one reason.
+  readonly of: { readonly _tag: 'Revision'; readonly id: RevisionId }
+}
 export type Reject = ReviewBase & {
   readonly _tag: 'Reject'
   readonly id: RejectId
-} & (
-    | {
-        readonly by: AssignmentId | Human
-        readonly of: {
-          readonly _tag: 'Result'
-          readonly id: ResultId
-          readonly points: NonEmpty<Point>
-        }
-      }
-    | {
-        readonly by: AssignmentId | Human
-        readonly of: {
-          readonly _tag: 'Task'
-          readonly id: TaskId
-          readonly points: NonEmpty<TaskPoint>
-        }
-      }
-    | {
-        readonly by: AssignmentId | Human
-        readonly of: {
-          readonly _tag: 'Revision'
-          readonly id: RevisionId
-          readonly reason: NonBlank
-        }
-      }
-    | {
-        readonly by: Human
-        readonly of: {
-          readonly _tag: 'Evaluation'
-          readonly id: EvaluationId
-          readonly reason: NonBlank
-        }
-      }
-  )
-// A point's id is its Reject's id and its place (ids.ts pointId): v4.1 is the first point of v4.
-export interface Point {
-  readonly text: NonBlank
-  readonly breaks: Breaks
+  readonly of: { readonly _tag: 'Revision'; readonly id: RevisionId; readonly reason: NonBlank }
 }
-export interface TaskPoint {
-  readonly text: NonBlank
-}
-// work recheck: a Reject that any later result answers (page: redo). Only an agent asks one.
-export type Recheck = ReviewBase & {
-  readonly _tag: 'Recheck'
-  readonly by: AssignmentId
-  readonly of: ResultId
-  readonly reason: NonBlank
-}
-// page: Escalate. A review that cannot decide: it tells the level above. answerBy is the first
-// one that it went to; who answers it now is derived (core/derived: it moves up as that one
-// finishes), and so is whether a Resolve closed it.
-export type Escalate = ReviewBase & {
-  readonly _tag: 'Escalate'
-  readonly by: AssignmentId // the reviewer that cannot decide
-  readonly id: EscalationId
-  readonly of: ResultId
-  readonly reason: NonBlank
-  readonly points: ReadonlyArray<PointId> // the change points it escalates (B6)
-  readonly answerBy: Answerer
-}
-// page: Resolve. It ends one escalation with an agreement or a direction, in words (the CLI's
-// --resolution). It has no verdict (the owner's ruling, 2026-11-12): it never accepts or rejects
-// the result, which its deciders review after it as usual. evidence: where it read, if anywhere.
-export type Resolve = ReviewBase & {
-  readonly _tag: 'Resolve'
-  readonly by: Answerer
-  readonly escalation: EscalationId
-  readonly resolution: NonBlank
-  readonly evidence: ReadonlyArray<Evidence>
-}
-// page: breaks?: the rule that a Reject says the result breaks. A Reject that names no rule is
-// answered by a change of a direction, a split or a remake, not by new work alone.
-export type Breaks =
-  | { readonly _tag: 'Rule'; readonly rule: RuleEntry }
-  | { readonly _tag: 'NoRule' }
-
-// page: Evidence.
-export interface Evidence {
-  readonly says: Text // what the reviewer saw
-  readonly meets: RuleEntry | null // the rule it supports; null: a line that names no rule
-  readonly at: Text // where it looked (a place, not a time)
-  // page: covers? is gone: the CLI never writes it, and nothing reads it.
-  readonly uses: ReadonlyArray<ResultId> // the results of other tasks it relies on; [] today
-}
-
-// --- Evaluation --------------------------------------------------------------------------------
-
-// page: Exhaustion. The last attempt of a maker ended on a fault: the task stops. Its maker and
-// its result follow from the fault (derived.ts).
-export interface Exhaustion {
-  readonly id: ExhaustionId // not on the page
-  readonly fault: PointId // the point of the Reject that used the last attempt
-  readonly when: Time // not on the page
-  readonly at: number // not on the page: the fault's at, or a new one when a finish made it
-}
-
-// What stops a task until an evaluation answers it: the last try of a maker, or a Reject of the
-// person (as a whole, or one point of it) (events.ts Stop).
-export type Stop = typeof StopSchema.Type
-
-// page: Evaluation.
-export interface Evaluation {
-  readonly id: EvaluationId // not on the page
-  readonly answers: Stop // the last attempt of a maker, or the person's Reject
-  readonly by: AssignmentId | Human // a role of the task's tree that splits, or the person
-  readonly wrong: NonBlank
-  readonly why: NonBlank
-  readonly improve: NonEmpty<NonBlank>
-  readonly level: Level
-  // not on the page: whether the owner rejected an evaluation of the task before it (the old
-  // needsPerson). When it counts is derived: an evaluation of the person, or of the level task
-  // or standard after no such reject, counts when written; else after the owner's accept.
-  readonly after:
-    | { readonly _tag: 'FirstTry' }
-    | { readonly _tag: 'OwnerRejected'; readonly reject: RejectId }
-  readonly when: Time // not on the page
-  readonly at: number // not on the page
-}
-
-// --- Checkpoint ---------------------------------------------------------------------------------
-
-// page: Checkpoint. A saved point where work can stop and continue later. The saved one has an
-// id (k3); the parts saved inside it have none.
-export interface Checkpoint extends CheckpointPart {
-  readonly id: CheckpointId // not on the page
-}
-export interface CheckpointPart {
-  readonly task: TaskId
-  readonly open: {
-    readonly blockers: ReadonlyArray<Blocker>
-    readonly rejects: ReadonlyArray<PointId>
-    readonly escalations: ReadonlyArray<EscalationId>
-    readonly unfinishedReviews: ReadonlyArray<AssignmentId>
-    readonly pendingApprovals: ReadonlyArray<AssignmentId>
-    readonly questions: ReadonlyArray<QuestionId>
-  }
-  readonly parts: ReadonlyArray<CheckpointPart> // the open smaller tasks
-  readonly seenOutside: ReadonlyArray<Source>
-  readonly next: Text
-  readonly when: Time // not on the page
-}
-
-// --- Note ----------------------------------------------------------------------------------------
-
-// page: Note. A message and a finding are about a task.
-export type Note =
-  | {
-      readonly _tag: 'Message'
-      readonly id: NoteId // not on the page
-      readonly about: TaskId
-      readonly text: Text
-      readonly by: By // not on the page: the engine keeps who wrote it
-      readonly when: Time // not on the page
-    }
-  | {
-      readonly _tag: 'Finding' // something seen; it changes no state
-      readonly id: NoteId
-      readonly about: TaskId
-      readonly text: Text
-      readonly when: Time
-    }
-  | {
-      readonly _tag: 'Lesson'
-      readonly id: NoteId
-      readonly from: ReadonlyArray<AnswerId>
-      readonly text: Text
-      // page: rule?: Version<Direction>; the CLI makes a lesson only with the version that has it
-      readonly rule: VersionId
-      readonly when: Time
-    }
-  | Question
-
-// page: Question.
-export interface Question {
-  readonly _tag: 'Question'
-  readonly id: QuestionId // not on the page
-  readonly text: NonBlank
-  readonly options: ReadonlyArray<NonBlank> // the answers to pick from; none: a free question
-  readonly stops: TaskId // only this task waits for the answer (every writer sets its own)
-  // The first one that it went to; who answers it now is derived (core/derived).
-  readonly answerBy: Answerer
-  readonly from: AssignmentId | Human // page: from?: Assignment; the person's forwarded question
-  // page: answer?: the question stays after the answer, which keeps who answered and when.
-  readonly status: QuestionStatus
-  readonly when: Time
-}
-export type QuestionStatus =
-  | { readonly _tag: 'Open' }
-  | {
-      readonly _tag: 'Answered'
-      readonly answer: NonBlank
-      readonly by: Answerer
-      readonly when: Time
-    }
-
-// --- derived states: computed by the engine, never stored --------------------------------------
-
-// page: Task.state(task, when). The old words (words/common.ts taskStateWord) are Open, In
-// review, Returned, Accepted, Closed; a task that waits for an evaluation has a Reject that is
-// not answered, so its word is Returned, and a replaced task's is Closed.
-export type TaskState =
-  | { readonly _tag: 'Open' }
-  | { readonly _tag: 'InReview' }
-  // A Reject of the task itself (the person's criticism) that no change answered.
-  | { readonly _tag: 'Returned'; readonly reject: PointId }
-  | { readonly _tag: 'Accepted' }
-  // No maker starts until an evaluation answers the stop (engine workStop).
-  | { readonly _tag: 'WaitsForEvaluation'; readonly stop: Stop }
-  | { readonly _tag: 'Closed' }
-  | { readonly _tag: 'Replaced'; readonly next: TaskId }
-
-// The page's blockers(result, when) as items: the engine's blockerItems, one tag each, in its
-// order. The words module writes the text (golden: "no evidence for ...", "rejected: ...").
-export type Blocker =
-  | {
-      readonly _tag: 'OldVersion'
-      readonly ref: DirectionId
-      readonly rules: ReadonlyArray<RuleEntry>
-    }
-  | { readonly _tag: 'Evidence'; readonly ref: RuleEntry; readonly rejects: ReadonlyArray<PointId> }
-  | { readonly _tag: 'OldEvidence'; readonly ref: RuleEntry }
-  // Accepted by its decider under an old version: the decider accepts it again.
-  | { readonly _tag: 'DeciderAcceptedUnderOld' }
-  // The deciders whose accept the result still waits for.
-  | { readonly _tag: 'DeciderWaits'; readonly leaves: NonEmpty<DeciderLeaf> }
-  // No decide entry: any one role with an Approve act on the maker decides.
-  | { readonly _tag: 'DeciderAnyApprover' }
-  | { readonly _tag: 'OldNeed'; readonly ref: TaskId; readonly newer: ResultId }
-  | { readonly _tag: 'Maker'; readonly ref: ReviewId | PointId } // reviewed by its own maker
-  | { readonly _tag: 'Recheck'; readonly ref: ReviewId } // the old kind redo
-  | { readonly _tag: 'Reject'; readonly ref: PointId }
-  | { readonly _tag: 'Unchanged'; readonly ref: PointId }
-  | { readonly _tag: 'Change'; readonly ref: PointId }
-  | { readonly _tag: 'Escalation'; readonly ref: EscalationId }
-  | { readonly _tag: 'Question'; readonly ref: QuestionId }
-
-// Addition (PLAN.md 5.3, MakerStatus; bug 9). One attempt count for the brief, next and the
-// page: number <= max.
-export interface Attempt {
-  readonly number: number
-  readonly max: Limit
-}
-// Addition (PLAN.md 5.3, GrantStatus). The state of a Permission at a time.
-export type PermissionState =
-  | { readonly _tag: 'NotYet' }
-  | { readonly _tag: 'Covers' }
-  | { readonly _tag: 'Ended' }
-  | { readonly _tag: 'Revoked' }
-
-// Addition (the owner's ruling, 2026-11-12). An outside source at a time: fresh within the limit
-// of aristoteles.yaml (outsideSourceHours, 72 by default) from when an agent last read it, then
-// expired, and work made from it waits for an agent to read it again (core/derived).
-export type SourceState =
-  | { readonly _tag: 'Fresh'; readonly seenAt: Time }
-  | { readonly _tag: 'Expired'; readonly seenAt: Time }
-
-// Addition. When an evaluation counts (the page's rules under Evaluation).
-export type EvaluationState =
-  | { readonly _tag: 'Counts' }
-  | { readonly _tag: 'WaitsForOwner' } // level direction or principle, or after a rejected one
-  | { readonly _tag: 'Rejected'; readonly by: RejectId } // the owner asks for a new one

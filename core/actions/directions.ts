@@ -20,7 +20,7 @@ import {
   type Work,
   whereRecord,
 } from '../schema/index.ts'
-import { readApprovedBy, readDirection, readFlow } from '../services/index.ts'
+import { readDirection, readFlow } from '../services/index.ts'
 import { answersFound, checkDrafted, checkImported, checkRevised, DRAFT } from './drafts.ts'
 import {
   allowed,
@@ -287,15 +287,12 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
     const raw = yield* readYaml(d.moment.outside.cwd, file)
     const people = w.config.people
     const base = yield* readDirection(file, raw, people).pipe(Effect.mapError(asWrite(file)))
-    const approvedBy = yield* readApprovedBy(file, raw, w.config.roles, people).pipe(
-      Effect.mapError(asWrite(file)),
-    )
     const why = yield* whyOf(input.content.why)
     const existing = w.directions.get(base.id as never)
     if (existing?.source._tag === 'External') return yield* fail(R.DraftDirection.company(base.id))
     if (existing?._tag === 'Official') {
-      // N8: the whole file of a direction with a version is its revise, by an agent or by a model
-      // run outside any task (a host revises a direction, ruling 2026-11-14).
+      // N8: the whole file of a direction with a version is its revise, by a model run (a host
+      // revises a direction, ruling 2026-11-14).
       const keys = [
         ...(base.name !== existing.name ? ['name'] : []),
         ...(base.owner !== existing.owner.name ? ['owner'] : []),
@@ -313,10 +310,9 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
       return [create('Revision', { _tag: 'Revised', ...revised })]
     }
     yield* answersFound(w, answers)
-    const direction = approvedBy === undefined ? base : { ...base, approvedBy }
-    const drafted = { direction, answers, why }
+    const drafted = { direction: base, answers, why }
     yield* checkDrafted(d, by, drafted)
-    return [create('Revision', { _tag: 'Drafted', direction, answers, why })]
+    return [create('Revision', { _tag: 'Drafted', ...drafted })]
   })
 
 const ReviseDirection: Action<'ReviseDirection'> = ({ by, input }) =>

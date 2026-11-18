@@ -122,31 +122,12 @@ const importViolations = (rel: string, text: string): ReadonlyArray<string> => {
 // --- (c), (d) the checker ------------------------------------------------------------------------
 
 // The state field of each record with a lifecycle (BUILD.md 4.1 (c)).
-const STATE_FIELDS = ['end', 'opened', 'status', 'fixed', 'revoked', 'claim', 'untouched', 'state']
+const STATE_FIELDS = ['state']
 // The records of the Work that own a state field, by the declaration that holds the field. A view
-// (ProjectSummary.state) or a derived value (SourceSeen.state) is a state already: allowed.
-const RECORDS = [
-  'Task',
-  'Assignment',
-  'AssignmentBase',
-  'Maker',
-  'Reviewer',
-  'Run',
-  'RunBase',
-  'HostRun',
-  'TaskDraft',
-  'Problem',
-  'Question',
-  'Permission',
-  'Meta',
-  'Forward',
-  'Send',
-]
-// The helpers of the domain that work out a state again: core/derived owns those states. (switch
-// 2026-11-14: the others went with the old engine, so the probe uses topOfRun, not madeBy.)
-const STATE_HELPERS = ['topOfRun', 'problemTaskOf']
-// The lists of the Work that only waitingFor turns into items for the person (invariant 3).
-const PERSON_LISTS = ['problems', 'forwards', 'questions', 'drafts']
+// (DirView) or a derived value is a state already: allowed.
+const RECORDS = ['Send']
+// The lists of the Work that no adapter lists for the person (invariant 3).
+const PERSON_LISTS = ['drafts']
 // What a list may still be asked: one record by its id.
 const LOOKUPS = ['get', 'has', 'size']
 
@@ -177,7 +158,7 @@ const propertyOf = (
 const lineOf = (file: ts.SourceFile, node: ts.Node): number =>
   file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1
 
-// (c): a read of a state field of a record, or a use of a helper that works a state out again.
+// (c): a read of a state field of a record.
 const stateReadViolations = (
   checker: ts.TypeChecker,
   file: ts.SourceFile,
@@ -211,8 +192,6 @@ const stateReadViolations = (
           flag(node, `destructures ${field} of a record: read the derived state`)
       }
     }
-    if (ts.isIdentifier(node) && STATE_HELPERS.includes(node.text))
-      flag(node, `uses ${node.text}: core/derived owns that state`)
     ts.forEachChild(node, visit)
   }
   visit(file)
@@ -234,7 +213,7 @@ const personListViolations = (
         node.parent.expression === node &&
         LOOKUPS.includes(node.parent.name.text)
       if (!lookup && propertyOf(checker, type, node.name.text, ['Work']))
-        found.push(`${rel}:${lineOf(file, node)}: lists work.${node.name.text}: use waitingFor`)
+        found.push(`${rel}:${lineOf(file, node)}: lists work.${node.name.text}`)
     }
     ts.forEachChild(node, visit)
   }
@@ -247,31 +226,21 @@ const personListViolations = (
 // Each fixture breaks one rule; the real run never reads them.
 const PROBES: Readonly<Record<string, string>> = {
   'core/actions/probe-reads.ts': `
-import type { Assignment, Meta, Permission, Question, Task } from '../../src/domain/model.ts'
-import type { Problem, Run, Send, TaskDraft } from '../../src/domain/ui-model.ts'
-import type { Forward } from '../../src/domain/work.ts'
-import { topOfRun } from '../../src/domain/derived.ts'
-export const reads = (
-  task: Task, a: Assignment, q: Question, p: Problem, d: TaskDraft, s: Send, f: Forward,
-  perm: Permission, m: Meta, r: Run,
-) => [
-  task.end._tag, a.end._tag, q.status, p.fixed._tag, d.opened, s.state, f, perm.revoked, m.claim,
-  r.end, task.untouched, task['end'],
-]
-export const destructures = (task: Task) => { const { end } = task; return end }
-export const helper = topOfRun
+import type { Send } from '../../src/domain/ui-model.ts'
+export const reads = (s: Send) => [s.state, s['state']]
+export const destructures = (s: Send) => { const { state } = s; return state }
 `,
   'core/actions/probe-allowed.ts': `
-import type { Task } from '../../src/domain/model.ts'
-import type { ProjectSummary } from '../../src/domain/ui-model.ts'
+import type { DirView } from '../../src/domain/ui-model.ts'
+import type { Direction } from '../../src/domain/model.ts'
 interface SourceSeen { readonly state: string }
-export const fine = (t: Task, view: ProjectSummary, seen: SourceSeen) =>
-  [t.id, t.name, view.state, seen.state]
+export const fine = (d: Direction, view: DirView, seen: SourceSeen) =>
+  [d.id, d.name, view.name, seen.state]
 `,
   'adapters/cli/probe-lists.ts': `
 import type { Work } from '../../src/domain/work.ts'
 export const lists = (work: Work) => [
-  ...work.problems.values(), ...work.questions, work.forwards.size, work.drafts.get('x' as never),
+  ...work.drafts.values(), work.drafts.size, work.drafts.get('x' as never),
 ]
 `,
 }
@@ -365,8 +334,8 @@ describe('(b) the two doors to src/', () => {
     const symbol = checker.getSymbolAtLocation(door)
     if (symbol === undefined) throw new Error('core/schema/index.ts is not a module')
     const names = checker.getExportsOfModule(symbol).map((s) => s.name)
-    // The stored ForwardState and SendState stay the facts; core/derived has the states.
-    const forbidden = [...STATE_HELPERS, 'ForwardState', 'SendState']
+    // The stored SendState stays a fact; core/derived has the states.
+    const forbidden = ['SendState']
     expect(names.filter((n) => forbidden.includes(n))).toEqual([])
     expect(names.length).toBeGreaterThan(50)
   })
@@ -376,7 +345,7 @@ describe('(c) no read of a state field outside core/derived and core/state', () 
   const owners = ['core/derived/', 'core/state/']
   const outside = FILES.filter((f) => !owners.some((o) => f.startsWith(o)))
 
-  test('no file reads the state of a record, or uses a helper that works a state out', () => {
+  test('no file reads the state of a record', () => {
     const found = outside.flatMap((f) => stateReadViolations(checker, sourceOf(f), f))
     expect(found).toEqual([])
   })
@@ -385,38 +354,27 @@ describe('(c) no read of a state field outside core/derived and core/state', () 
     const found = stateReadViolations(checker, sourceOf(READS), READS)
     for (const field of STATE_FIELDS)
       expect(found.some((v) => v.includes(`reads .${field} of a record`))).toBe(true)
-    expect(found.some((v) => v.includes("['end']"))).toBe(true)
-    expect(found.some((v) => v.includes('destructures end'))).toBe(true)
-    expect(found.some((v) => v.includes('uses topOfRun'))).toBe(true)
+    expect(found.some((v) => v.includes("['state']"))).toBe(true)
+    expect(found.some((v) => v.includes('destructures state'))).toBe(true)
   })
 
   test('a field of a view or of a derived value is not flagged', () => {
     expect(stateReadViolations(checker, sourceOf(ALLOWED), ALLOWED)).toEqual([])
   })
 
-  test('each helper that works a state out is flagged by name', () => {
-    for (const name of STATE_HELPERS) {
-      const text = `export const x = ${name}(1)`
-      const file = parse('core/actions/p.ts', text)
-      expect(stateReadViolations(checker, file, 'core/actions/p.ts')).toHaveLength(1)
-    }
-  })
 })
 
 describe('(d) no adapter lists the Work for the person', () => {
   const adapters = FILES.filter((f) => f.startsWith('adapters/'))
 
-  test('no adapter iterates problems, forwards, questions or drafts', () => {
+  test('no adapter iterates the drafts', () => {
     const found = adapters.flatMap((f) => personListViolations(checker, sourceOf(f), f))
     expect(found).toEqual([])
   })
 
   test('a fixture that iterates, spreads or reads a size is flagged; a lookup is not', () => {
     const found = personListViolations(checker, sourceOf(LISTS), LISTS)
-    expect(found.map((v) => v.split(': ').slice(1).join(': '))).toEqual([
-      'lists work.problems: use waitingFor',
-      'lists work.questions: use waitingFor',
-    ])
+    expect(found.map((v) => v.split(': ').slice(1).join(': '))).toEqual(['lists work.drafts'])
   })
 })
 

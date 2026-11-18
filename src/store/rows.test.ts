@@ -1,33 +1,22 @@
-// rowsOf on a hand-built Work: each table gets the columns and the words of the old rowsOf, and
-// every row goes into the reader tables. The row-for-row compare with the old code on real
-// stores is part (c), after the engine (P3) and the replay (P4).
+// rowsOf on a hand-built Work: each table gets its columns and its words, and every row goes into
+// the reader tables.
 import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 import type {
-  AssignmentId,
   DirectionId,
-  EvaluationId,
-  ExhaustionId,
-  PointId,
   PositiveInt,
-  ProblemId,
   RejectId,
-  ResultId,
   ReviewId,
   RevisionId,
   RoleName,
   RuleEntry,
-  RunId,
-  SessionId,
   StandardEntry,
   SuggestionId,
-  TaskDraftId,
-  TaskId,
   Time,
 } from '../domain/ids.ts'
 import { whereOf } from '../domain/context.ts'
 import { noCounters } from '../domain/ids.ts'
-import type { Direction, Limits, Revision } from '../domain/model.ts'
+import type { Direction, Revision } from '../domain/model.ts'
 import type { Work } from '../domain/work.ts'
 import { rowsOf } from './rows.ts'
 import { READER_TABLES } from './schema.ts'
@@ -40,12 +29,6 @@ const d1 = 'd1' as RevisionId
 const d2 = 'd2' as RevisionId
 const standard = 'd1/facts-not-proof' as StandardEntry
 const rule = 'd1/facts-not-proof/no-ticket-ids' as RuleEntry
-const t1 = 't1' as TaskId
-const t2 = 't2' as TaskId
-const a1 = 'a1' as AssignmentId
-const a2 = 'a2' as AssignmentId
-const r1 = 'r1' as ResultId
-const h1 = 'h1' as RunId
 const nanda = { _tag: 'Human', name: 'Nanda' } as const
 const assess = { _tag: 'Agent', name: 'assess', run: '2026-10-25T09:00:00.000Z' } as const
 const one = 1 as PositiveInt
@@ -63,7 +46,6 @@ const official: Direction = {
   owner: nanda,
   from: ['Pathos', 'Logos'],
   maxStandards: { _tag: 'Unlimited' },
-  approvedBy: { _tag: 'Owner' },
   versions: [
     {
       of: tsd,
@@ -86,7 +68,6 @@ const drafted: Direction = {
   owner: nanda,
   from: [],
   maxStandards: { _tag: 'Unlimited' },
-  approvedBy: { _tag: 'Owner' },
   source: { _tag: 'Local' },
 }
 const revision = (
@@ -106,12 +87,6 @@ const revision = (
   at: 1,
   ...more,
 } as Revision<Direction>)
-const unlimited: Limits = {
-  Assignment: { briefChars: { _tag: 'Unlimited' }, attempts: { _tag: 'Unlimited' } },
-  Review: { rules: { _tag: 'Unlimited' } },
-  Result: { size: { _tag: 'Unlimited' } },
-}
-
 const work: Work = {
   config: {
     project: 'report-export',
@@ -122,13 +97,6 @@ const work: Work = {
   },
   hashes: {},
   texts: {},
-  workflow: {
-    system: 'report-export',
-    owner: nanda,
-    roles: new Map(),
-    limits: unlimited,
-    decide: new Map(),
-  },
   fits: new Map(),
   directions: new Map<DirectionId, Direction>([
     [tsd, official],
@@ -146,8 +114,8 @@ const work: Work = {
     [
       d2,
       revision(d2, hld, {
-        origin: { _tag: 'Written', by: a1 },
-        answers: ['v2.1' as PointId],
+        origin: { _tag: 'Written', by: assess },
+        answers: ['v2' as RejectId],
         why: { _tag: 'Given', reason: 'Correct the standard', words: null },
       }),
     ],
@@ -189,107 +157,15 @@ const work: Work = {
       },
     ],
   ]),
-  tasks: new Map([
-    [
-      t1,
-      {
-        id: t1,
-        name: 'The Introduction',
-        owner: nanda,
-        descriptionHuman: 'Write the Introduction.',
-        descriptionAi: {
-          text: 'Write the Introduction.',
-          partOf: null,
-          directions: [tsd],
-          references: [],
-          notes: [],
-          context: { section: { _tag: 'NoSection' }, facts: new Map() },
-          from: null,
-          workspace: [],
-        },
-        serves: { _tag: 'TopTask' },
-        needs: [],
-        when: at(4),
-        end: { _tag: 'Replaced', by: nanda, reason: 'the scope grew', next: t2, when: at(20) },
-        untouched: {
-          _tag: 'AtFirstBrief',
-          files: {},
-          inPlace: { _tag: 'InPlace', texts: { 'docs/tsd.md': '# TSD\n' }, at: at(5) },
-        },
-      },
-    ],
-  ]),
-  changes: [],
-  assignments: new Map([
-    [
-      a1,
-      {
-        _tag: 'Reviewer',
-        id: a1,
-        actor: { _tag: 'Agent', name: 'Sol', run: 'a1' },
-        role: 'architect' as RoleName,
-        task: t1,
-        under: new Map([[tsd, 1 as PositiveInt]]),
-        parent: { _tag: 'GivenByPerson' },
-        runs: { _tag: 'Host', run: h1 },
-        when: at(5),
-        end: { _tag: 'Finished', when: at(25) },
-      },
-    ],
-    [
-      a2,
-      {
-        _tag: 'Maker',
-        id: a2,
-        actor: { _tag: 'Agent', name: 'Luna', run: 'a2' },
-        role: 'writer' as RoleName,
-        task: t1,
-        under: new Map(),
-        maxAttempts: { _tag: 'AtMost', max: 3 as PositiveInt },
-        parent: { _tag: 'Parent', id: a1 },
-        runs: { _tag: 'Subagent', model: 'haiku' },
-        when: at(6),
-        end: { _tag: 'NotEnded' },
-      },
-    ],
-  ]),
-  results: new Map([
-    [
-      r1,
-      {
-        id: r1,
-        task: t1,
-        by: a2,
-        output: 'docs/tsd.md#introduction',
-        madeFrom: [],
-        work: { _tag: 'File', digest: 'abc', size: 3 },
-        under: new Map([[tsd, 1 as PositiveInt]]),
-        when: at(7),
-        at: 7,
-      },
-    ],
-  ]),
   reviews: new Map([
     [
       'v1' as ReviewId,
       {
         id: 'v1' as ReviewId,
         _tag: 'Accept',
-        of: {
-          _tag: 'Revision',
-          id: d1,
-          evidence: [
-            {
-              says: 'the whole direction',
-              meets: null,
-              at: 'directions/tsd-writing.yaml',
-              uses: [],
-            },
-          ],
-        },
+        of: { _tag: 'Revision', id: d1 },
         by: nanda,
         reason: null,
-        under: new Map(),
         when: at(2),
         at: 2,
       },
@@ -299,112 +175,18 @@ const work: Work = {
       {
         id: 'v2' as RejectId,
         _tag: 'Reject',
-        of: {
-          _tag: 'Result',
-          id: r1,
-          points: [{ text: 'cites ABC-2964', breaks: { _tag: 'Rule', rule } }],
-        },
-        by: a1,
-        under: new Map([[tsd, 1 as PositiveInt]]),
+        of: { _tag: 'Revision', id: d2, reason: 'too thin' },
+        by: nanda,
         when: at(8),
         at: 8,
       },
     ],
   ]),
-  questions: new Map(),
-  notes: new Map(),
-  exhaustions: new Map(),
-  evaluations: new Map([
-    [
-      'ev1' as EvaluationId,
-      {
-        id: 'ev1' as EvaluationId,
-        answers: { _tag: 'Exhaustion', id: 'ex1' as ExhaustionId },
-        by: a1,
-        wrong: 'r1 cites the ticket',
-        why: 'the facts name it first',
-        improve: ['ids are not facts', 'say it in a standard'],
-        level: 'principle',
-        after: { _tag: 'FirstTry' },
-        when: at(9),
-        at: 9,
-      },
-    ],
-  ]),
-  permissions: new Map(),
-  checkpoints: new Map(),
-  meta: new Map(),
-  forwards: new Map(),
   sources: new Map(),
-  resultFiles: new Map([[r1, ['docs/tsd.md']]]),
-  after: new Map(),
-  runs: new Map([
-    [
-      h1,
-      {
-        _tag: 'Host',
-        id: h1,
-        session: 's-host' as SessionId,
-        terminal: { _tag: 'Window' },
-        formerSessions: [],
-        startedAt: at(0),
-        end: { _tag: 'Closed', at: at(30) },
-      },
-    ],
-  ]),
-  sessions: new Map([
-    [a1, { assignment: a1, session: 's-host' as SessionId, at: at(5) }],
-    [a2, { assignment: a2, session: 's-writer' as SessionId, at: at(6) }],
-  ]),
-  agents: new Map(),
-  taskDrafts: new Map([
-    [
-      'td1' as TaskDraftId,
-      {
-        id: 'td1' as TaskDraftId,
-        run: h1,
-        task: {
-          name: 'The Introduction',
-          text: 'Write the Introduction.',
-          directions: [tsd],
-          context: {},
-          needs: [],
-          from: null,
-          workspace: [],
-          references: [],
-        },
-        role: 'architect',
-        at: at(1),
-        opened: { _tag: 'Opened', task: t1 },
-      },
-    ],
-  ]),
-  problems: new Map([
-    [
-      'sp1' as ProblemId,
-      {
-        id: 'sp1' as ProblemId,
-        stopped: t1,
-        says: 'the cluster is down',
-        recordedBy: { _tag: 'Host', assignment: a1 },
-        at: at(10),
-        fixed: { _tag: 'Fixed', by: nanda, at: at(11) },
-      },
-    ],
-  ]),
-  terminalEvents: [
-    {
-      session: 's-writer' as SessionId,
-      report: { _tag: 'Failed', why: 'silent', lastLines: 'no output' },
-      at: at(12),
-    },
-    { session: 's-host' as SessionId, report: { _tag: 'Closed' }, at: at(31) },
-  ],
   sends: [],
-  hostWords: new Map(),
   events: [],
   counters: noCounters,
-  clock: 31,
+  clock: 8,
 }
 
 const rows = rowsOf(work, DIR)
@@ -468,12 +250,12 @@ describe('the rows of a Work', () => {
         direction: 'hld-writing',
         base: null,
         says: 'The reader decides from the page.',
-        by: 'a1',
+        by: 'assess run 2026-10-25T09:00:00.000Z',
         why: 'Correct the standard',
         at: at(1),
       },
     ])
-    expect(rowsIn('answer')).toEqual([{ project: DIR, draft: 'd2', answers: 'v2.1' }])
+    expect(rowsIn('answer')).toEqual([{ project: DIR, draft: 'd2', answers: 'v2' }])
     expect(rowsIn('standard')).toEqual([
       {
         project: DIR,
@@ -498,11 +280,11 @@ describe('the rows of a Work', () => {
       [rule, 'rule'],
       ['d2', 'draft'],
       ['s1', 'suggestion'],
-      ['v2.1', 'reason'],
+      ['v2', 'reason'],
     ])
   })
 
-  test('suggestions, reviews and their evidence', () => {
+  test('suggestions and reviews', () => {
     expect(rowsIn('suggestion')).toEqual([
       { project: DIR, id: 's1', about: standard, says: 'Shorter.', by: 'Nanda', at: at(3) },
     ])
@@ -513,127 +295,18 @@ describe('the rows of a Work', () => {
         of: 'd1',
         decision: 'Accept',
         reason: null,
-        breaks: null,
         by: 'Nanda',
         at: at(2),
       },
       {
         project: DIR,
-        id: 'v2.1',
-        of: 'r1',
+        id: 'v2',
+        of: 'd2',
         decision: 'Reject',
-        reason: 'cites ABC-2964',
-        breaks: rule,
-        by: 'a1',
+        reason: 'too thin',
+        by: 'Nanda',
         at: at(8),
       },
-    ])
-    expect(rowsIn('evidence')).toEqual([
-      {
-        project: DIR,
-        review: 'v1',
-        n: 0,
-        rule: null,
-        place: 'directions/tsd-writing.yaml',
-        says: 'the whole direction',
-      },
-    ])
-  })
-
-  test('tasks, assignments, results and an evaluation', () => {
-    expect(rowsIn('task')).toEqual([
-      {
-        project: DIR,
-        id: 't1',
-        name: 'The Introduction',
-        text: 'Write the Introduction.',
-        serves: null,
-        owner: 'Nanda',
-      },
-    ])
-    expect(rowsIn('task_direction')).toEqual([
-      { project: DIR, task: 't1', direction: 'tsd-writing' },
-    ])
-    expect(rowsIn('task_closed')).toEqual([
-      { project: DIR, task: 't1', reason: 'the scope grew', replaced_by: 't2', at: at(20) },
-    ])
-    expect(rowsIn('assignment')).toEqual([
-      { project: DIR, id: 'a1', task: 't1', role: 'architect', parent: null, at: at(5) },
-      { project: DIR, id: 'a2', task: 't1', role: 'writer', parent: 'a1', at: at(6) },
-    ])
-    expect(rowsIn('assignment_finished')).toEqual([{ project: DIR, assignment: 'a1' }])
-    expect(rowsIn('brief')).toEqual([{ project: DIR, assignment: 'a1', version: 'tsd-writing@1' }])
-    expect(rowsIn('result')).toEqual([
-      {
-        project: DIR,
-        id: 'r1',
-        task: 't1',
-        assignment: 'a2',
-        output: 'docs/tsd.md#introduction',
-        at: at(7),
-      },
-    ])
-    expect(rowsIn('result_version')).toEqual([
-      { project: DIR, result: 'r1', version: 'tsd-writing@1' },
-    ])
-    expect(rowsIn('result_file')).toEqual([{ project: DIR, result: 'r1', file: 'docs/tsd.md' }])
-    expect(rowsIn('task_before')).toEqual([
-      { project: DIR, task: 't1', file: 'docs/tsd.md', text: '# TSD\n' },
-    ])
-    expect(rowsIn('evaluation')).toEqual([
-      {
-        project: DIR,
-        id: 'ev1',
-        answers: 'ex1',
-        wrong: 'r1 cites the ticket',
-        why: 'the facts name it first',
-        improve: 'ids are not facts\nsay it in a standard',
-        level: 'principle',
-        by: 'a1',
-        at: at(9),
-      },
-    ])
-  })
-
-  test('the UI: a run, its task draft, a problem, terminal events and a session', () => {
-    expect(rowsIn('run')).toEqual([
-      { project: DIR, id: 'h1', kind: 'host', session: 's-host', at: at(0) },
-    ])
-    expect(rowsIn('run_closed')).toEqual([{ project: DIR, run: 'h1', at: at(30) }])
-    expect(rowsIn('run_task')).toEqual([{ project: DIR, run: 'h1', task: 't1' }])
-    expect(rowsIn('task_draft')).toEqual([
-      {
-        project: DIR,
-        id: 'td1',
-        run: 'h1',
-        name: 'The Introduction',
-        text: 'Write the Introduction.',
-        role: 'architect',
-        opened_as: 't1',
-        at: at(1),
-      },
-    ])
-    expect(rowsIn('problem')).toEqual([
-      {
-        project: DIR,
-        id: 'sp1',
-        task: 't1',
-        stopped: 't1',
-        says: 'the cluster is down',
-        by: 'a1',
-        at: at(10),
-      },
-    ])
-    expect(rowsIn('problem_fixed')).toEqual([
-      { project: DIR, problem: 'sp1', by: 'Nanda', at: at(11) },
-    ])
-    expect(rowsIn('terminal_event')).toEqual([
-      { project: DIR, on_id: 'a2', kind: 'silent', tries: 3, text: 'no output', at: at(12) },
-      { project: DIR, on_id: 'h1', kind: 'closed', tries: 0, text: '', at: at(31) },
-    ])
-    expect(rowsIn('assignment_session')).toEqual([
-      { project: DIR, assignment: 'a1', session: 's-host', at: at(5) },
-      { project: DIR, assignment: 'a2', session: 's-writer', at: at(6) },
     ])
   })
 })
