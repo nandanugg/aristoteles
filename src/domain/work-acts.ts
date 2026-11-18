@@ -67,7 +67,7 @@ export const What = Schema.Union([
   Schema.TaggedStruct('Review', { task: Str, v: Verdict, points: Strs }),
   Schema.TaggedStruct('Resume', { maker: Str }),
   Schema.TaggedStruct('ReadBrief', { maker: Str }),
-  Schema.TaggedStruct('Report', { maker: Str, output: Str, caught: Keys }),
+  Schema.TaggedStruct('Report', { maker: Str, output: Str, files: Strs, caught: Keys }),
   Schema.TaggedStruct('Evaluate', {
     task: Str,
     level: Level,

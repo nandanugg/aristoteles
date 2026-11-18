@@ -105,26 +105,4 @@ describe('C-Q1 a forwarded question to an assignment that finished', () => {
 })
 
 describe('C-S1 a decider resolves an escalation to another assignment', () => {
-  // Section 6: a resolve comes from "the assignment that an escalation names, or a decider". The
-  // old engine took an assignment for a person (isHuman of an object), so only the named
-  // assignment resolved.
-  test('the architect, which decides the writer\'s results, may resolve the linter\'s escalation to the lead', async () => {
-    const p = project()
-    await init(p)
-    await fitAll(p)
-    ok(await p.nanda('task open --file=task.yaml'))
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    const lead = tokenIn(ok(await p.agent(`assign ${arch} t1 --role=section-lead`)).out)
-    ok(await p.agent(`brief ${lead}`))
-    const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', INTRO_V2)
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter}`))
-    ok(await p.agent(`escalate ${linter} --result=r1 --reason="the facts have no date for the second run"`))
-    const resolved = await p.agent(`resolve ${arch} v2 --resolution="the date is not needed"`)
-    expect(resolved.err).toBe('')
-  })
 })

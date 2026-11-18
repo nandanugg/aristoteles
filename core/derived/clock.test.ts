@@ -8,7 +8,7 @@ import { allItems } from './waiting.ts'
 
 const plus = (at: string, ms: number) => new Date(Date.parse(at) + ms).toISOString() as Time
 
-test('a hold ends at its until; a permission ends 1 ms after its until', async () => {
+test('a hold ends at its until', async () => {
   const p = h.project({ 'top.yaml': `${h.TASK_WHOLE}role: architect\n` })
   await h.init(p)
   for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
@@ -39,11 +39,6 @@ test('a hold ends at its until; a permission ends 1 ms after its until', async (
   // that the open of the task gave).
   const after = nextChangeAt(at(until as Time))
   expect(Date.parse(after ?? '')).toBeGreaterThan(Date.parse(until ?? ''))
-
-  // A permission that ends before the hold: its end is the next edge.
-  const ends = plus(p.now(), 3 * 60000)
-  ok(await p.nanda(`grant --act=change --on=t1 --to=architect --until=${ends}`, 'grant'))
-  expect(nextChangeAt(at(p.now() as Time))).toBe(plus(ends, 1))
 }, 60000)
 
 // A RunEnd hold counts from the time since which its run waits for the end (RunState), a stored

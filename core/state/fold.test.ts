@@ -17,7 +17,6 @@ import {
   type Event,
   type EventRef,
   type FlowStep,
-  type Kind,
   kindOf,
   type OnboardedDirection,
   type Recorded,
@@ -145,7 +144,6 @@ const pinnedLines = (name: string): ReadonlyArray<string> => {
   return (end < 0 ? body.trimEnd() : body.slice(0, end)).split('\n')
 }
 
-const seen = new Set<Kind>()
 // The store start of onboarding (Question 20, option A): the first event holds the config of the
 // file and the accepted directions. The CLI writes it in a later wave; this writes it as the
 // start would.
@@ -187,7 +185,6 @@ const { flow: FLOW } = Bun.YAML.parse(harness.DIRECTION) as {
 // The fold of the store of the dir gives the Work of the old replay.
 const sameAsReplay = async (dir: string, name: string): Promise<Work> => {
   const events = await eventsOf(dir)
-  for (const r of events) seen.add(kindOf(r.event))
   const now = fold(events)
   expect(linesOf(now, dir)).toEqual(pinnedLines(name))
   expect(now.events.map((l) => l.recorded)).toEqual([...events])
@@ -206,8 +203,6 @@ const sameAsReplay = async (dir: string, name: string): Promise<Work> => {
 
 // --- the scenarios -------------------------------------------------------------------------------
 
-const TSD = (handler: string, flags: string) =>
-  `# TSD\n\n## Introduction\n\n${handler}\n\n## Design\n\n${flags}\n`
 const PARTS =
   '- { name: Flags and env, text: Write the feature flag and how the env vars are read., ' +
   'context: { section: design } }\n' +
@@ -216,10 +211,6 @@ const PARTS =
 const LINT = (where: string) =>
   `--evidence="no-code-proof | ${where} | no paths or hashes there" ` +
   `--evidence="no-ticket-ids | ${where} | no ticket ids there"`
-const STANDARD =
-  'add:\n  - id: typed-config\n    says: Configuration is read in one typed place.\n    rules:\n' +
-  '      - { id: typed-env, says: "Env vars are read through one typed function", ' +
-  'checkedBy: linter }\n'
 const COSTS =
   'replace:\n  - { id: facts-not-proof, with: { id: facts-not-proof, says: "The body states ' +
   'facts, with what the problem costs.", rules: [ { id: no-code-proof, says: "No file paths ' +
@@ -273,102 +264,6 @@ describe('fold gives the Work of the old replay', () => {
     const a1 = work.assignments.get('a1' as AssignmentId)
     expect(a1?.runs).toEqual({ _tag: 'NoRun', model: 'sonnet' })
   }, 30000)
-
-  test('reported, then a review round: reject, report again, accept, escalate, ask', async () => {
-    const { p, lead, writer, linter } = await harness.reported()
-    const cites = '--point="the first line cites ABC" --breaks=no-ticket-ids'
-    ok(await p.agent(`review ${linter} r1 reject ${cites}`))
-    ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`free ${lead} a2`))
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', harness.INTRO_V2.replace('two files.', 'two files that night.'))
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    ok(await p.agent(`brief ${linter}`))
-    const why = '--reason="is the date needed?"'
-    const esc = ok(await p.agent(`escalate ${linter} --result=r2 ${why}`)).out.match(/v\d+/)?.[0]
-    ok(await p.agent(`resolve ${lead} ${esc} --resolution="the date is not needed"`))
-    ok(await p.agent(`brief ${linter}`))
-    ok(await p.agent(`review ${linter} r2 accept ${LINT('the introduction')}`))
-    ok(await p.agent(`escalate ${writer} --reason="the facts file names no merchant"`))
-    ok(await p.agent(`answer ${lead} q1 --text="use merchant m-17"`))
-    ok(await p.agent(`ask ${lead} --text="Is the retry part of the export?" --to=owner`))
-    ok(await p.nanda('answer q2 --text="no, keep it out"'))
-    ok(await p.agent(`note ${lead} message --text="the facts file is short"`))
-    ok(await p.agent(`note ${lead} finding --text="the export runs at night"`))
-    ok(await p.nanda('task describe t1 --text="The first section of the TSD."'))
-    const accept = '--evidence="repeatable | the introduction | I can repeat the double export"'
-    ok(await p.agent(`review ${lead} r2 accept ${accept}`))
-    ok(await p.agent(`recheck ${lead} r2 --reason="the facts file changed"`))
-    ok(await p.agent(`checkpoint ${lead} t1 --next="close the section"`))
-    ok(await p.agent(`finish ${lead} a3`))
-    await sameAsReplay(p.dir, 'review round')
-  }, 30000)
-
-  test('a split, a last try on a fault, an evaluation, a new version with lessons', async () => {
-    const { p, lead } = await harness.started({ 'task.yaml': TASK_WHOLE })
-    p.write('parts.yaml', PARTS)
-    ok(await p.nanda('task split t1 --file=parts.yaml'))
-    const flags = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=writer`)).out)
-    const one = `assign ${lead} t3 --role=writer --max-attempts=1`
-    const handler = tokenIn(ok(await p.agent(one)).out)
-    ok(await p.agent(`brief ${flags}`))
-    p.write('docs/tsd.md', TSD('TODO', 'The flag is read from the env var EXPORT_V2.'))
-    ok(await p.agent(`report ${flags} --output=docs/tsd.md#design`))
-    const linter = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter}`))
-    ok(await p.agent(`review ${linter} r1 accept ${LINT('the design')}`))
-    const named = '--evidence="docs/tsd.md#design | the flag is named"'
-    ok(await p.agent(`review ${lead} r1 accept ${named}`))
-    ok(await p.agent(`finish ${lead} a2`))
-    ok(await p.agent(`brief ${handler}`))
-    const design = 'The flag is read from the env var EXPORT_V2.'
-    p.write('docs/tsd.md', TSD('The handler compares EXPORT_V2 with "true".', design))
-    ok(await p.agent(`report ${handler} --output=docs/tsd.md#introduction`))
-    const linter3 = tokenIn(ok(await p.agent(`assign ${lead} t3 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter3}`))
-    const point = '--point="the handler parses a string flag by hand" --breaks=no-code-proof'
-    ok(await p.agent(`review ${linter3} r2 reject ${point}`))
-    const grant =
-      'grant --act=change --on=tsd-writing,t1 --to=architect --until=2026-12-31T00:00:00Z'
-    ok(await p.nanda(grant, 'grant'))
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    ok(
-      await p.agent(
-        `evaluate ${arch} t3 --wrong="r2 parses the flag by hand" --why="A2 reads the env ` +
-          `vars where they are used" --improve="env vars are read through one typed function" ` +
-          '--level=standard',
-      ),
-    )
-    p.write('typed.yaml', STANDARD)
-    ok(await p.agent(`direction revise ${arch} tsd-writing --file=typed.yaml`))
-    const seen = '--evidence="directions/tsd-writing.yaml | one typed place for config"'
-    ok(await p.nanda(`review d2 accept ${seen}`, 'accept'))
-    ok(await p.agent(`brief ${handler}`))
-    ok(await p.nanda('revoke x1', 'revoke'))
-    ok(await p.nanda('suggest typed-config --says="name the typed function"'))
-    ok(await p.nanda('task close t1 --reason="the TSD moves to another dir"', 'close'))
-    await sameAsReplay(p.dir, 'split')
-  }, 30000)
-
-  test('code: a program gate reviews a commit; sources; a checkpoint with blockers', async () => {
-    const { p, app, lead, impl } = await harness.codeStarted()
-    git(app, 'checkout', '-q', '-b', 'fix')
-    writeFileSync(`${app}/fix.txt`, 'fixed\n')
-    git(app, 'add', '.')
-    git(app, 'commit', '-q', '-m', 'fix')
-    const fix = git(app, 'rev-parse', 'HEAD').slice(0, 12)
-    git(app, 'checkout', '-q', 'main')
-    ok(await p.agent(`report ${impl} --output=app@${fix}`))
-    ok(await p.agent(`source ${lead} page@v4`))
-    ok(await p.agent(`source ${lead} page@v4`))
-    ok(await p.agent(`source ${lead} page@v5`))
-    ok(await p.agent(`checkpoint ${lead} t1 --next="wait for the gate"`))
-    const work = await sameAsReplay(p.dir, 'code')
-    // The CLI runs the gate: a program runs nowhere else.
-    const gate = [...work.assignments.values()].find((a) => a.role === 'gate')
-    expect(gate?.runs).toEqual({ _tag: 'Program' })
-  }, 60000)
 
   test('a relay: forwarded acts that count at once, and confirmed ones', async () => {
     const { p, lead, linter } = await harness.reported()
@@ -489,55 +384,6 @@ describe('fold gives the Work of the old replay', () => {
     } as Draft)
     await sameAsReplay(p.dir, 'page run')
   }, 60000)
-
-  test('deciders: a vetoed draft, an approvedBy order, a decide order of two roles', async () => {
-    // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
-    const proofreader =
-      '  proofreader:\n    model: haiku\n    description: Reads one section and decides it.\n' +
-      '    intro: You read one section.\n    responsibilities:\n' +
-      '      - Accept or reject the section with work review.\n' +
-      '    acts: [{ approve: [writer] }]\n' +
-      '    persistence: { persistent: false, why: It decides one section once. }\n' +
-      '    icon: eye\n'
-    const decide =
-      'decide:\n  - { resultsOf: writer, by: { order: [section-lead, proofreader] } }\n'
-    const p = harness.project({ 'aristoteles.yaml': `${harness.WORK_YAML}${proofreader}${decide}` })
-    ok(await p.nanda('init'))
-    ok(await p.agent('direction new --file=directions/tsd-writing.yaml --by=assess'))
-    ok(await p.nanda('review d1 reject --reason="the intro standard has no rule for the order"'))
-    const order = 'from: [Pathos, Logos]\napprovedBy: { order: [architect, Nanda] }\n'
-    const again = harness.DIRECTION.replace('in plain words.', 'then the cause, in plain words.')
-      .replace('from: [Pathos, Logos]\n', order)
-    p.write('again.yaml', again)
-    ok(await p.agent('direction new --file=again.yaml --by=assess --answers=v1'))
-    const read = '--evidence="d2 | the intro standard says the order"'
-    ok(await p.nanda(`review d2 accept ${read}`, 'accept'))
-    for (const role of ['architect', 'section-lead', 'writer', 'linter', 'proofreader']) {
-      ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    }
-    ok(await p.nanda('task open --file=task.yaml'))
-    const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
-    ok(await p.agent(`brief ${lead}`))
-    const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', harness.INTRO_V2)
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter}`))
-    ok(await p.agent(`review ${linter} r1 accept ${LINT('the introduction')}`))
-    const repeatable = '--evidence="repeatable | the introduction | a reviewer can repeat it"'
-    ok(await p.agent(`review ${lead} r1 accept ${repeatable}`))
-    ok(await p.agent(`checkpoint ${lead} t1 --next="the proofreader decides"`))
-    const work = await sameAsReplay(p.dir, 'deciders')
-    // The branches that this scenario is for were reached.
-    expect(work.workflow.decide.get('writer' as RoleName)?._tag).toBe('Order')
-    const vetoes = [...work.reviews.values()].filter(
-      (v) => v._tag === 'Reject' && v.of._tag === 'Revision',
-    )
-    expect(vetoes).toHaveLength(1)
-    const blockers = [...work.checkpoints.values()].flatMap((k) => k.open.blockers)
-    expect(blockers.map((b) => b._tag)).toContain('DeciderWaits')
-  }, 30000)
 
   test('the role words change; the store keeps the new words', async () => {
     const { p } = await harness.started()
@@ -705,77 +551,4 @@ describe('fold gives the Work of the old replay', () => {
       why,
     })
   }, 30000)
-
-  // Every kind of event that a scenario above wrote; the kinds that none writes are listed, so a
-  // gap of the differential test is visible here. It reads what the tests above saw, so it runs
-  // last and only in a run of the whole file (a -t filter makes it fail).
-  test('the scenarios cover the kinds of events', () => {
-    const all: ReadonlyArray<Kind> = [
-      'Workflow.Defined',
-      'Workflow.RoleWordsChanged',
-      'Role.Fitted',
-      'Agent.Started',
-      'Adjustment.Drafted',
-      'Adjustment.Accepted',
-      'Adjustment.Rejected',
-      'Run.HostJoined',
-      'Run.HostStarted',
-      'Run.HostMoved',
-      'Run.Done',
-      'Run.Closed',
-      'TaskDraft.Drafted',
-      'Problem.Recorded',
-      'Problem.Fixed',
-      'Terminal.Started',
-      'Terminal.Failed',
-      'Terminal.Prompted',
-      'Terminal.Stopped',
-      'Terminal.Resumed',
-      'Terminal.Closed',
-      'Send.Sent',
-      'Send.Delivered',
-      'Send.Dropped',
-      'HostWords.ProblemWords',
-      'HostWords.DraftWords',
-      'HostWords.EndWords',
-      'Task.Opened',
-      'Task.OpenedFromDraft',
-      'Task.Remade',
-      'Task.Split',
-      'Task.Closed',
-      'Task.Described',
-      'Assignment.GivenMaker',
-      'Assignment.GivenReviewer',
-      'Assignment.Briefed',
-      'Assignment.BriefedToCheck',
-      'Assignment.BriefedFirst',
-      'Assignment.Freed',
-      'Assignment.Finished',
-      'Result.Result',
-      'Review.Accept',
-      'Review.Reject',
-      'Review.Recheck',
-      'Review.Escalate',
-      'Review.Resolve',
-      'Question.Asked',
-      'Question.Escalated',
-      'Question.Answered',
-      'Note.Message',
-      'Note.Finding',
-      'Evaluation.Evaluation',
-      'Suggestion.Suggestion',
-      'Revision.Drafted',
-      'Revision.Revised',
-      'Revision.Imported',
-      'Revision.ExamplesAdded',
-      'Permission.Granted',
-      'Permission.Revoked',
-      'Source.Moved',
-      'Source.Checked',
-      'Checkpoint.Checkpoint',
-      'Forward.Forwarded',
-      'Forward.Confirmed',
-    ]
-    expect(all.filter((k) => !seen.has(k))).toEqual([])
-  })
 })

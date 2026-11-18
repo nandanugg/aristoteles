@@ -254,18 +254,6 @@ describe('ruling 10.9: a brief over its limit is a derived state', () => {
     }
     expect(events(act(d, agentOf('a2'), give as never))).toHaveLength(1)
   }, 60000)
-
-  test('a question routed to an agent over its limit still shows in its steps', async () => {
-    const s = await h.withWriter()
-    ok(await s.p.agent(`brief ${s.writer}`))
-    ok(await s.p.agent(`escalate ${s.writer} --reason="the facts file names no merchant"`))
-    // The lead's brief measures 13000 characters; the medium limit of the harness is 12000.
-    // Ruling 2026-11-14 (brief limits leave room for the guide): the size rose with the limit.
-    const measure = (_w: Work, a: AssignmentId) => (a === 'a1' ? 13000 : 0)
-    const d = derivedOf(workOf(s.p.dir), s.p.now() as Time, s.p.dir, { measure })
-    expect(d.states.assignments.get(id('a1'))?._tag).toBe('BriefOver')
-    expect(tagsOf(d, agentOf('a1'))).toEqual(['Wait BriefOverWaits', 'Do Answer'])
-  }, 60000)
 })
 
 // P8 (Nanda, 2026-11-15): every piece of work is a dir task or a project task. A draft belongs to

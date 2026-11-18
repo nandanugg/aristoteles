@@ -359,15 +359,12 @@ describe('a forward of the person', () => {
   let p: Project
   let d: Derived
   let lead: Author
-  let escalation = ''
   beforeAll(async () => {
     const s = await h.reported()
     p = s.p
     lead = agent(s.lead)
     ok(await p.agent(`ask ${s.linter} --text="which merchant is it?"`))
-    ok(await p.agent(`escalate ${s.lead} --result=r1 --reason="only Nanda decides this"`))
     ok(await p.nanda('finish a2'))
-    escalation = [...workOf(p.dir).reviews.values()].find((v) => v._tag === 'Escalate')?.id ?? ''
     d = derivedIn(p)
   }, 60000)
   const forward = (inner: object): ActionInput => ({
@@ -382,19 +379,6 @@ describe('a forward of the person', () => {
     expect(r.message).toStartWith('Nanda could not answer q1 now: ')
     expect(r.message).toContain('answers this question, not Nanda')
     expect(r.choice.words).toContain('--to=owner')
-  })
-
-  test('the content of the act is checked too: the rules that its evidence names', () => {
-    const resolve = (evidence: ReadonlyArray<object>) =>
-      forward({
-        _tag: 'Review',
-        create: { _tag: 'Resolve', escalation, resolution: 'go on', evidence },
-      })
-    const named = [{ rule: 'nope', where: 'docs/tsd.md', what: 'the introduction reads well' }]
-    expect(refusedWith(d, lead, resolve(named))).toBe(
-      `Nanda could not resolve ${escalation} now: there is no rule "nope" in an official version`,
-    )
-    expect(events(act(d, lead, resolve([])))).toHaveLength(1)
   })
 
   test('a question goes to an open assignment only', () => {

@@ -35,33 +35,6 @@ describe('planted faults: the checker brief', () => {
 })
 
 describe('generated runs: next has a way on', () => {
-  // seed 10: a high agent delegated a part to a lead it did not assign, and the lead it did
-  // assign saw a checker of its parent that it could not start, so nothing moved the part.
-  // P9: one linter checks t2 at a time, so the lead does not assign a second one; the architect
-  // that gave the linter has the step to start it.
-  test('next names only the caller\'s own lead, and the giver of a checker starts it', async () => {
-    const p = await fresh({ 'task.yaml': TSD_TASK })
-    const other = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
-    ok(await p.agent(`brief ${other}`))
-    ok(await p.nanda('grant --act=change --on=t1 --to=architect --until=2026-12-31T00:00:00Z', 'grant'))
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    p.write('parts.yaml', '- { name: Design, text: Write the design., context: { section: design } }\n')
-    ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
-    ok(await p.agent(`assign ${arch} t2 --role=linter`))
-    const lead = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=section-lead`)).out)
-    ok(await p.agent(`brief ${lead}`))
-    const writer = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=writer`)).out)
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', '# TSD\n\n## Introduction\n\nTODO\n\n## Design\n\nOne file per merchant per day.\n')
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#design`))
-    const leadNext = ok(await p.agent(`next ${lead}`)).out
-    expect(leadNext).toContain('check r1: a2 starts a3, the subagent it gave')
-    const archNext = ok(await p.agent(`next ${arch}`)).out
-    expect(archNext).toContain('check r1: give a new subagent the command of a3')
-    expect(archNext).toContain('a4 (section-lead) runs t2')
-    expect(archNext).not.toContain('a1 (section-lead) runs t2')
-  })
 })
 
 describe('generated runs: a Reject of a task is shown', () => {
@@ -175,20 +148,6 @@ describe('live code run: the findings of run 2 (proofs.md section 3)', () => {
     expect(show).toContain('r1 (docs/tsd.md#introduction) is stopped by:')
   })
 
-  // Finding 9: a point with no rule went to the person only in chat, so the record said Accepted.
-  test('a point with no rule is escalated on the result, and the result waits for the person', async () => {
-    const { p, app, lead, impl } = await codeStarted()
-    git(app, 'checkout', '-q', '-b', 'fix')
-    writeFileSync(`${app}/fix.txt`, `fixed\n`)
-    git(app, 'add', '.')
-    git(app, 'commit', '-q', '-m', 'fix')
-    ok(await p.agent(`report ${impl} --output=app@${git(app, 'rev-parse', 'HEAD').slice(0, 12)}`))
-    expect(ok(await p.agent(`brief ${lead}`)).out).toContain(`first escalate it with work escalate ${lead} --result=r1 --reason="<the point>"`)
-    ok(await p.agent(`escalate ${lead} --result=r1 --reason="a comment in fix.txt is out of date, and no rule covers it"`))
-    expect(ok(await p.nanda('waiting')).out).toContain('a comment in fix.txt is out of date')
-    const accept = ok(await p.agent(`review ${lead} r1 accept --evidence="the files in app at the reported commit | the gate passed and the fix is small"`)).out
-    expect(accept).toContain('r1 still has 1 blocker(s)')
-  })
 })
 
 describe('model checks: the two links of a task (proofs.md section 4)', () => {
@@ -223,28 +182,6 @@ describe('model checks: the two links of a task (proofs.md section 4)', () => {
     ok(await p.agent(`review ${lead} ${rid} accept --evidence="the files in app at the reported commit | both parts are merged"`))
     return { p, app, lead, impl, parts, join: rid, brief }
   }
-
-  // F1: a need got a new accepted result, and the task that needs it stayed Accepted on old work.
-  test('a newer result of a need makes the result old, and its maker reports again with it', async () => {
-    const { p, app, lead, impl, parts, join, brief } = await acceptedTree()
-    expect(brief).toContain('Their work is done. Merge their accepted commits with git merge (a squash or a copy is refused)')
-    ok(await p.agent(`recheck ${lead} ${parts.t2.rid} --reason="the key must also hold the currency"`))
-    ok(await p.agent(`brief ${parts.t2.maker}`))
-    const sha = commit(app, 'key', 'key', 'key.txt', 'key-with-currency')
-    const r4 = reportedId(await p.agent(`report ${parts.t2.maker} --output=app@${sha}`))
-    ok(await p.agent(`review ${lead} ${r4} accept --evidence="the files in app at the reported commit | the key holds the currency"`))
-    const show = ok(await p.agent('task show t1')).out
-    expect(show).toContain('t1 Fix the key · In review')
-    expect(show).toContain(`${join} was made before ${r4} of t2 (Key); the maker reports again with that work`)
-    expect(ok(await p.agent(`next ${lead}`)).out).toContain(`work recheck ${lead} ${join} --reason="${r4} of t2 is newer; use it"`)
-    ok(await p.agent(`recheck ${lead} ${join} --reason="${r4} of t2 is newer; use it"`))
-    ok(await p.agent(`brief ${impl}`))
-    git(app, 'checkout', '-q', 'join')
-    git(app, 'merge', '-q', '--no-edit', 'key')
-    const again = reportedId(await p.agent(`report ${impl} --output=app@${git(app, 'rev-parse', 'HEAD').slice(0, 12)}`))
-    ok(await p.agent(`review ${lead} ${again} accept --evidence="the files in app at the reported commit | the merge has the new key"`))
-    expect(ok(await p.agent('task show t1')).out).toContain('t1 Fix the key · Accepted')
-  }, 60000)
 
   // F3: a need of another tree; next and waiting named nothing while it was open.
   test('a need in another tree shows in next and in waiting', async () => {

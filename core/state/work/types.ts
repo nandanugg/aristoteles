@@ -235,11 +235,13 @@ export type What =
   | { readonly _tag: 'ReadBrief'; readonly maker: string }
   // The asker (the role, the pipe or a live maker) asks the person a factual question: itself.
   | { readonly _tag: 'Ask'; readonly asker: Actor; readonly question: string }
-  // caught (A): the test-command rules that print lines on this result.
+  // files: the paths the maker changed; caught (A): the test-command rules that print lines on
+  // them.
   | {
     readonly _tag: 'Report'
     readonly maker: string
     readonly output: string
+    readonly files: ReadonlyArray<string>
     readonly caught: ReadonlySet<ItemKey>
   }
   // parts: for Split; roleDraft: for Fit; summary: the cause, for the escalation card.

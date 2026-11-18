@@ -78,20 +78,4 @@ describe('D6 a command refuses a flag that it does not read', () => {
 })
 
 describe('D7 the person\'s answer reaches the low maker', () => {
-  test('after a new lead, the new writer\'s brief does not show the person\'s answer about its task', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`escalate ${writer} --reason="which merchant is it?"`))
-    ok(await p.agent(`ask ${lead} --text="The writer asks which merchant it is." --to=owner`))
-    ok(await p.nanda('answer q2 --text="M-104"'))
-    ok(await p.agent(`answer ${lead} q1 --text="see the owner's answer"`))
-    // The lead's subagent stops; the person finishes it and gives t1 to a new lead.
-    ok(await p.nanda('finish a2'))
-    ok(await p.nanda('finish a1'))
-    const lead2 = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
-    expect(ok(await p.agent(`brief ${lead2}`)).out).toContain('M-104')
-    const writer2 = tokenIn(ok(await p.agent(`assign ${lead2} t1 --role=writer`)).out)
-    // Correct: the writer of t1 reads the person's answer about t1, as the first writer did.
-    expect(ok(await p.agent(`brief ${writer2}`)).out).toContain('M-104')
-  })
 })

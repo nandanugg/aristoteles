@@ -367,6 +367,14 @@ export async function init(p) {
   }
 }
 
+// A project with a store and the roles' fits: nothing is assigned (the work model opens its own top).
+export async function initiated(files) {
+  const p = project(files)
+  await init(p)
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  return { p }
+}
+
 export async function started(files) {
   const p = project(files)
   await init(p)
@@ -496,15 +504,14 @@ export async function codeStarted(files = {}) {
   return { p, app, lead, impl }
 }
 
-// A change of a direction: the high role (default architect) with a change grant drafts it from
+// A change of a direction: the high role (default architect) drafts it from
 // <yaml>, and the person accepts the draft (the reviser cannot review its own draft). Returns the
 // draft id and the reviser token; pass { accept: false } to leave the draft open. In a project with
 // other roles, pass { role, on, fit: true } (fit the role first).
 export async function changeDirection(p, yaml, opts = {}) {
-  const { flags = '', accept = true, direction = 'tsd-writing', role = 'architect', on = 'tsd-writing,t1', fit = false } = opts
+  const { flags = '', accept = true, direction = 'tsd-writing', role = 'architect', fit = false } = opts
   if (!p.arch) {
     if (fit) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.nanda(`grant --act=change --on=${on} --to=${role} --until=2026-12-31T00:00:00Z`, 'grant'))
     p.arch = tokenIn(ok(await p.nanda(`assign t1 --role=${role}`)).out)
     ok(await p.agent(`brief ${p.arch}`))
   }

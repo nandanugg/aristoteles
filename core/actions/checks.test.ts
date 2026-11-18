@@ -5,8 +5,7 @@
 // and nextFor offers no step of that act to that actor.
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { canAct, type Derived, nextFor } from '../derived/index.ts'
-import { candidatesOf } from '../derived/steps.ts'
-import type { AssignmentId, Author, RevisionId } from '../schema/index.ts'
+import type { Author } from '../schema/index.ts'
 import { act, agent, derivedIn, h, NANDA, ok, refused } from './fixture.test.ts'
 import { type ActionInput, type ChoiceKind, intentOf } from './types.ts'
 
@@ -142,74 +141,6 @@ describe('the checks of a role, its acts and a top', () => {
       lead,
       { _tag: 'FitRole', target: { role: 'writer' as never }, content: { answers: 'fit.yaml' } },
       'a person or a role that fits roles records role fitness',
-      'Escalate',
-    )
-  })
-})
-
-// A role that assigns nothing reviews results only. With a change grant on the direction, the linter is a
-// candidate reviewer of the open draft d2 (the owner's leaf): its step now waits, as canAct
-// refuses it, where before nextFor offered an accept that the action refused.
-describe('a role that assigns nothing reviews no draft and no evaluation', () => {
-  let d: Derived
-  let linter: AssignmentId
-  let draft: RevisionId
-  let evaluation: string
-  beforeAll(async () => {
-    const s = await h.reported()
-    const { p } = s
-    const change = 'add:\n  - { id: short, says: Keep it short. }\n'
-    draft = (await h.changeDirection(p, change, { accept: false })).draft as RevisionId
-    const grant = '--until=2026-12-31T00:00:00Z'
-    ok(await p.nanda(`grant --act=change --on=tsd-writing --to=linter ${grant}`, 'grant'))
-    ok(await p.nanda('review t1 reject --point="the scope is wrong"'))
-    const evaluated = ok(
-      await p.nanda(
-        'evaluate t1 --wrong="the work misses what was asked" --why="the directions do not ' +
-          'say it" --improve="say it in a standard" --level=standard',
-      ),
-    )
-    evaluation = /\b(ev\d+)\b/.exec(evaluated.out)?.[1] ?? ''
-    linter = s.linter.split('.')[0] as AssignmentId
-    d = derivedIn(p)
-  }, 60000)
-
-  test('an accept or a reject of a draft', () => {
-    const by: Author = { _tag: 'Agent', assignment: linter }
-    const of = { _tag: 'Revision', id: draft } as const
-    const words = 'linter assigns nothing, so it does not review drafts of directions'
-    lockstep(
-      d,
-      by,
-      { _tag: 'Accept', target: { of }, content: { evidence: [], reason: null } },
-      words,
-      'Escalate',
-    )
-    lockstep(
-      d,
-      by,
-      { _tag: 'Reject', target: { of }, content: { reason: 'unclear' } },
-      words,
-      'Escalate',
-    )
-    // The candidate step is there, and it waits: no intent of it passes canAct.
-    const review = candidatesOf(d, linter).find((c) => c.what._tag === 'ReviewDraft')
-    expect(review?.intents.map((i) => i._tag)).toEqual(['Accept', 'Reject'])
-    const step = nextFor(d, by).find((x) => x.what._tag === 'ReviewDraft')
-    expect(step?._tag).toBe('Wait')
-  })
-
-  test('a reject of an evaluation', () => {
-    expect(evaluation).toMatch(/^ev\d+$/)
-    lockstep(
-      d,
-      { _tag: 'Agent', assignment: linter },
-      {
-        _tag: 'Reject',
-        target: { of: { _tag: 'Evaluation', id: evaluation as never } },
-        content: { reason: 'not this' },
-      },
-      'linter assigns nothing, so it does not review evaluations',
       'Escalate',
     )
   })

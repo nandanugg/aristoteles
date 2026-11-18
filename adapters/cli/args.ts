@@ -19,12 +19,15 @@ export const parseArgs = (argv: ReadonlyArray<string>): Args => {
   const flags: Array<readonly [string, string | true]> = []
   // A word that starts with -- but is no flag, such as --max_attempts=1.
   const broken: Array<string> = []
-  for (const arg of argv) {
+  argv.forEach((arg, i) => {
+    // The basis of a step is printed as `--on <n>`: the number after it is its value.
     const m = /^--([a-z-]+)(?:=(.*))?$/s.exec(arg)
-    if (m) flags.push([m[1] ?? '', m[2] ?? true])
+    if (arg === '--on' && /^\d+$/.test(argv[i + 1] ?? '')) flags.push(['on', argv[i + 1] ?? ''])
+    else if (i > 0 && argv[i - 1] === '--on' && /^\d+$/.test(arg)) return
+    else if (m) flags.push([m[1] ?? '', m[2] ?? true])
     else if (arg.startsWith('--')) broken.push(arg)
     else positional.push(arg)
-  }
+  })
   return {
     positional,
     flags,
@@ -44,7 +47,9 @@ export const wordsOf = (value: string | true | undefined): string =>
   typeof value === 'string' ? value : ''
 
 // The token as the CLI reads it: a7.<secret>.
-export const isToken = (word: string | undefined): word is string => /^a\d+\./.test(word ?? '')
+// The work model's token is w.<actor>.<epoch>.<secret>.
+export const isToken = (word: string | undefined): word is string =>
+  /^a\d+\./.test(word ?? '') || /^w\..+\.\d+\.[a-z0-9]+$/.test(word ?? '')
 
 // N3: the first token wherever it stands among the words, taken out of them.
 export const takeToken = (
@@ -79,8 +84,6 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
     show: [],
   },
   review: { accept: ['evidence', 'reason'], reject: ['point', 'breaks', 'reason'] },
-  // A resolve is its own act: it accepts and rejects nothing.
-  resolve: ['resolution', 'evidence'],
   forward: {
     reject: ['point', 'breaks', 'quote', 'channel'],
     accept: ['evidence', 'reason', 'quote', 'channel'],
@@ -98,9 +101,19 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
     show: [],
   },
   assign: ['dry-run', 'max-attempts', 'role'],
-  report: ['made-from', 'output'],
-  recheck: ['reason'],
-  escalate: ['point', 'reason', 'result'],
+  report: ['made-from', 'output', 'files', 'on'],
+  // The acts of the work model (adapters/cli/commands/acts.ts): --on is the basis of the step.
+  accept: ['on'],
+  'send-back': ['points', 'on'],
+  reject: ['points', 'on'],
+  decide: ['on'],
+  advance: ['on'],
+  rule: ['on'],
+  'rule-test': ['on'],
+  ship: ['on'],
+  loop: ['on'],
+  recheck: ['on'],
+  top: { open: ['name', 'goal', 'sections'] },
   ask: ['text', 'to', 'option'],
   answer: ['text', 'option'],
   note: ['text', 'on', 'hope'],
@@ -110,15 +123,13 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   search: [],
   guide: [],
   log: ['last'],
-  grant: ['act', 'on', 'to', 'until'],
-  checkpoint: ['next'],
-  evaluate: ['improve', 'level', 'why', 'wrong'],
+  evaluate: ['improve', 'level', 'why', 'wrong', 'summary', 'parts', 'role-draft', 'on'],
   evaluation: { show: [] },
   run: { start: [], continue: ['quote'], done: [], close: [], list: [] },
   session: ['id', 'token'],
   problem: ['says', 'fixed'],
   event: ['kind', 'text', 'tries'],
-  send: ['text'],
+  send: ['text', 'name', 'goal', 'sections', 'role'],
   wait: ['by', 'seconds'],
   // Onboarding, before the store (BUILD.md 1e): the host's acts, then the person's.
   onboard: {
@@ -165,6 +176,7 @@ const first = (words: ReadonlyArray<string>) => words[0]
 type ActOf = (words: ReadonlyArray<string>) => string | undefined
 export const ACT_OF: Readonly<Record<string, ActOf>> = {
   task: first,
+  top: first,
   direction: first,
   role: first,
   evaluation: first,
@@ -198,7 +210,15 @@ export const USAGE: ReadonlyArray<string> = [
   '         work onboard company <id> --repo=<repo> --path=<folder> | status | show <id>|<role> | wait [--seconds=<n>]',
   '         (onboarding works on files before any store; it stores nothing until approve-roles)',
   'agents:  work brief <token>   (your brief lists the commands that you may run)',
-  '         work next <token> | report | review | resolve | escalate | ask | answer | recheck | forward ...',
+  '         work next <token> | ask <token> --text=<question> | forward ...',
+  '         (the work model: a step names its own command, with --on <n> where it has a basis;',
+  '         after an act run work wait <token> again)',
+  '         work send <token> --name= --goal= --sections=a,b --role=<role> | reassign <token> | top-done <token>',
+  '         work assign <token> <task> | review <token> <task> pass|fail|raise-tries|raise-no-rule|raise-misses --points= --on=',
+  '         work resume <token> <maker> | brief <token> | report <token> --output= --files=a,b --on=',
+  '         work evaluate <token> <task> split|fit|principle|direction|standard --summary= [--parts=<file>] [--role-draft=<file>] --on=',
+  '         work advance <token> <fix> | rule <token> <fix> <rule-file> | rule-test <token> <fix> | ship <token> <fix> <draft-file>',
+  '         work loop <token> <fix> person|revise | recheck <token> <task> holds|fails (each with --on=<n>)',
   '         work ask <token> --to=owner --text=<question> [--option=<words> ...] (the person answers it on the page)',
   '         work direction new [<token>] --file=<direction.yaml> [--by=<model run>] (a model drafts a new direction)',
   '         work direction revise [<token>] <direction> --file=<edit.yaml> [--by=<model run>] (a model drafts a change of a direction)',
@@ -222,9 +242,10 @@ export const USAGE: ReadonlyArray<string> = [
   '         work onboard approve-directions | accept-role <role> | revise-role <role> --words=<words> | remove-role <role>',
   '         work onboard persistence <role> --persistent=true|false | approve-roles (the store starts with the accepted result)',
   'person:  work start (the UI of this dir, in the browser) | work init | config apply|restore | task open|split|close | assign <task> --role=<role>',
-  '         grant --act=approve|review|change --on=<ids> --to=<role> --until=<time> | revoke <x>',
+  '         top open --name= --goal= --sections=a,b | accept <fix> --on= | send-back <fix> --points= --on=',
+  '         reject <task> --points= --on= | decide <task> take|again --on= | answer <asker> --text= | end',
   '         confirm <event> | answer <q> --text=<t>|--option=<n> | review <r> reject ... (after its deciders accept it)',
-  '         resolve <escalation> --resolution= | review <t> reject ... | review <draft>|<ev> accept --evidence= | reject --reason=',
+  '         review <draft>|<ev> accept --evidence= | reject --reason=',
   '         suggest [<direction|standard|rule>|roles] --says= (a role that directs writes the draft) | free|finish <a>',
   '         evaluate <stop>|<task> --wrong= --why= --improve= --level= | role fit <role> --answers=<file>',
   '         role show <draft> | role accept <draft> | role reject <draft> --reason= (new words of a role)',
@@ -260,19 +281,28 @@ export const COMMAND_NAMES = [
   'report',
   'review',
   'recheck',
-  'escalate',
-  'resolve',
   'ask',
   'answer',
   'note',
   'evaluate',
-  'checkpoint',
   'resume',
+  'end',
+  'accept',
+  'send-back',
+  'reject',
+  'decide',
+  'reassign',
+  'top-done',
+  'advance',
+  'rule',
+  'rule-test',
+  'rule-run',
+  'ship',
+  'loop',
+  'top',
   'source',
   'direction',
   'suggest',
-  'grant',
-  'revoke',
   'forward',
   'confirm',
   'wait',

@@ -8,7 +8,6 @@ import type {
   Event,
   EventRef,
   QuestionId,
-  ResultId,
   RevisionId,
   TaskId,
   Time,
@@ -258,22 +257,6 @@ describe('N10 (C6): a confirm of an irrelevant forward makes no event', () => {
     const input = { _tag: 'Confirm', target: { forward: ref }, content: {} } as const
     expect(events(act(d, NANDA, input as never))).toEqual([])
     expect(d.states.revisions.get('d2' as RevisionId)?._tag).toBe('Official')
-  }, 60000)
-})
-
-describe('N11 (B6): a second escalation while one is open makes no event', () => {
-  test('of a result, and of a task', async () => {
-    const { p, linter, writer } = await h.reported()
-    ok(await p.agent(`escalate ${linter} --result=r1 --reason="the rule reads two ways"`))
-    const again = {
-      _tag: 'EscalateResult',
-      target: { result: 'r1' as ResultId },
-      content: { reason: 'the rule still reads two ways', points: [] },
-    } as const
-    expect(events(act(derivedIn(p), agent(linter), again))).toEqual([])
-    ok(await p.agent(`escalate ${writer} --reason="the facts do not say the cost"`))
-    const task = { _tag: 'EscalateTask', target: { task: 't1' }, content: { reason: 'still' } }
-    expect(events(act(derivedIn(p), agent(writer), task as never))).toEqual([])
   }, 60000)
 })
 

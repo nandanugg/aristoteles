@@ -1,191 +1,95 @@
-// work wait (ruling 10.1, 2026-11-13): an agent or a host blocks on this command until it has
-// work. It returns at once with ready work that its last wait did not print, when a step appears
-// because another process acted, or with "nothing changed" when the time passes. A host waits by
-// its run in its own pane, and the open of its top task gives it the token of its Sol. A
-// persistent agent waits by its id in its own terminal, and each new assignment gives it a token
-// (ruling 9). While it blocks, its marker tells the watcher that it waits.
-import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+// work wait <token> by the CLI: one step printed (words, then its command), a refusal with no
+// token or with an old token, the words of an old epoch, and the marker that the wait writes
+// while it blocks.
 import { join } from 'node:path'
+import { describe, expect, test } from 'bun:test'
+import { Effect, Layer, type Scope } from 'effect'
+import { dispatchAct, openTop } from '../../core/actions/work.ts'
+import { h, NANDA } from '../../core/actions/fixture.test.ts'
+import type { Time } from '../../core/schema/index.ts'
+import { Dir, Env, Now, Store, StoreLive, Tokens } from '../../core/services/index.ts'
+import type { What } from '../../core/state/work/types.ts'
 import { readMarkers } from '../live/waiting.ts'
-import { cleanUp, hosted, project, tokenIn } from '../../core/effects/support.test.ts'
 
-afterEach(cleanUp)
+const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
 
-// A section lead (a1) of t1 that read its brief, in a dir with no UI.
-const lead = async () => {
-  const p = await project()
-  await p.nanda('task open --file=top.yaml')
-  const token = tokenIn(await p.nanda('assign t1 --role=section-lead'))
-  await p.agent(`brief ${token}`)
-  return { p, token }
+const setup = async () => {
+  const { p } = await h.started({ 'aristoteles.yaml': PIPED })
+  const at = p.now()
+  let k = 0
+  const layer = Layer.mergeAll(
+    StoreLive.pipe(
+      Layer.provide(
+        Layer.succeed(Env, { vars: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') } }),
+      ),
+    ),
+    Layer.succeed(Dir, { cwd: p.dir }),
+    Layer.succeed(Now, { read: Effect.succeed(at as Time) }),
+    Layer.succeed(Tokens, { random: Effect.sync(() => `k${++k}`) }),
+  )
+  const run = <A, E>(e: Effect.Effect<A, E, Store | Dir | Now | Tokens | Scope.Scope>) =>
+    Effect.runPromise(Effect.scoped(e).pipe(Effect.provide(layer)))
+  const opened = await run(openTop({ by: NANDA, name: 'T', goal: 'g', sections: ['a', 'b'] }))
+  let n = 0
+  const act = (who: string, what: What, ep = 0) =>
+    run(
+      dispatchAct({
+        by: NANDA,
+        act: { id: `w${++n}`, who, ep, what },
+        on: null,
+        build: null,
+        current: 'b1',
+      }),
+    )
+  const send = (name: string, section: string) =>
+    act('host', {
+      _tag: 'SendTask',
+      spec: { name, goal: 'g', sections: [section], role: 'section-lead' },
+    })
+  const secret = (actor: string) => opened.secrets.find((s) => s.actor === actor)?.secret ?? ''
+  return { p, act, send, token: `w.role:section-lead.0.${secret('role:section-lead')}`, secret }
 }
-// The sessions whose wait runs now, by the one reader of the markers (P8).
-const waitingNow = (p: { env: Record<string, string>; dir: string }) =>
-  readMarkers(p.env, p.dir).flatMap((m) => (m.waits ? [m.session] : []))
-const timed = async <A>(run: () => Promise<A>) => {
-  const start = Date.now()
-  const value = await run()
-  return { value, ms: Date.now() - start }
-}
+const waitingNow = (p: { dir: string }) =>
+  readMarkers({ ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }, p.dir).some(
+    (m) => m.waits,
+  )
 
 describe('work wait', () => {
-  test('returns at once with ready work; the same work again waits until the time', async () => {
-    const { p, token } = await lead()
-    const first = await timed(() => p.agent(`wait ${token} --seconds=2`))
-    expect(first.ms).toBeLessThan(1000)
-    expect(first.value).toBe(
-      [
-        'make t1 The Introduction',
-        `  work assign ${token} t1 --role=writer`,
-        `Do the steps above, then run work wait ${token} again at once. Never end your turn without a running work wait: it is the only way new work reaches you.`,
-      ].join('\n'),
-    )
-    // The lead printed this work already: the next wait blocks, then says that nothing changed.
-    const second = await timed(() => p.agent(`wait ${token} --seconds=1`))
-    expect(second.ms).toBeGreaterThanOrEqual(1000)
-    expect(second.value.split('\n')[0]).toBe(`nothing changed; run work wait ${token} again.`)
-    expect(second.value).toContain(`work assign ${token} t1 --role=writer`)
-  }, 30000)
+  test('prints one step, the oldest, with its command', async () => {
+    const { p, send, token } = await setup()
+    await send('one', 'a')
+    await send('two', 'b')
+    const out = (await p.agent(`wait ${token}`)).out.split('\n')
+    expect(out.at(-1)).toBe(`work assign ${token} t1`)
+    expect(out.join('\n')).not.toContain('t2')
+    expect((await p.agent(`wait ${token}`)).out.split('\n').at(-1)).toBe(`work assign ${token} t1`)
+  }, 90000)
 
-  test('returns when a step appears because another process acts', async () => {
-    const { p, token } = await lead()
-    await p.agent(`ask ${token} --text="Is the retry part of the export?" --to=owner`)
-    expect(await p.agent(`wait ${token} --seconds=2`)).toContain(
-      'your question q1 waits for its answer.',
-    )
-    const waiting = timed(() => p.agent(`wait ${token} --seconds=20`))
-    await Bun.sleep(700)
-    await p.nanda('answer q1 --text="No: the retry is a task of its own."')
-    const { value, ms } = await waiting
-    expect(ms).toBeLessThan(10000)
-    expect(value.split('\n')[0]).toBe('your next steps changed.')
-    expect(value).toContain(`your question q1 has its answer.\n  work question show q1`)
-    expect(value).not.toContain('waits for its answer')
-  }, 30000)
+  test('no token, and an old token of the old store, are refused in words', async () => {
+    const { p } = await setup()
+    const none = await p.agent('wait')
+    expect(none.code).not.toBe(0)
+    expect(none.err).toContain('the person has no work wait')
+    const old = await p.agent('wait a7.abc123')
+    expect(old.code).not.toBe(0)
+    expect(old.err).toContain('this store is new')
+  }, 90000)
 
-  test('a host waits by its run in its own pane; the open gives it its Sol token', async () => {
-    const p = await project()
-    await p.inPane('run start')
-    const session = String(p.work().runs.get('h1' as never)?.session)
-    await p.inPane('task draft --file=top.yaml --by=h1')
-    // Only the terminal of the host waits as its run.
-    const other = await p.run(['wait', '--by=h1', '--seconds=1'], { pane: '%3' })
-    expect(other.code).toBe(1)
-    expect(other.err).toContain('work wait --by=h1 runs only in the terminal of its host (pane %9)')
-    // The host blocks: its marker says so, until the person opens its draft.
-    const waiting = p.inPane('wait --by=h1 --seconds=20', '%9')
-    await Bun.sleep(1200)
-    expect(waitingNow(p)).toEqual([session])
-    await p.ui('task open td1')
-    const out = await waiting
-    expect(waitingNow(p)).toEqual([])
-    const sol = tokenIn(out)
-    expect(out).toBe(
-      [
-        'h1: its top task t1 The Introduction is open, and you are its host (a1); an older token ' +
-          `stops working. Your command: work brief ${sol}`,
-        `Do the steps above, then run work wait ${sol} again at once. Never end your turn without a running work wait: it is the only way new work reaches you.`,
-      ].join('\n'),
-    )
-    expect(await p.agent(`brief ${sol}`)).toContain('a1')
-  }, 30000)
+  test('a token of an old epoch: the terminal is told to stop, with no step', async () => {
+    const { p, act, secret } = await setup()
+    await act('person', { _tag: 'MoveHost', fromSession: 0 })
+    const out = (await p.agent(`wait w.host.0.${secret('host')}`)).out
+    expect(out).toContain("this terminal's token is old")
+    expect(out).toContain('STOP')
+  }, 90000)
 
-  test('a low role, a finished agent, and a wrong time', async () => {
-    const { p, token } = await lead()
-    const writer = tokenIn(await p.agent(`assign ${token} t1 --role=writer`))
-    // Ruling 7, onboarding 2026-11-14: the refusal is for a low assignment that runs as a
-    // subagent (was: "a role that assigns nothing has one unit"); a persistent low agent waits like any agent.
-    expect(await p.agent(`wait ${writer}`)).toBe(
-      `a2 runs as a subagent and has one unit: work brief ${writer} shows it.`,
-    )
-    const zero = await p.run(['wait', token, '--seconds=0'])
-    expect(zero.code).toBe(1)
-    expect(zero.err).toContain('--seconds is a number of seconds above 0')
-    await p.nanda('finish a2')
-    await p.nanda('finish a1')
-    expect(await p.agent(`wait ${token} --seconds=1`)).toBe(
-      'a1 is finished; there is nothing more for it.',
-    )
-  }, 30000)
-
-  test('a persistent agent waits by its id only in its own terminal', async () => {
-    const { p, w, hostToken } = await hosted()
-    await p.agent(`assign ${hostToken} t1 --role=section-lead`)
-    const none = await p.run(['wait', '--by=p1', '--seconds=1'], { session: 's-any' })
-    expect(none.code).toBe(1)
-    expect(none.err).toContain('p1 has no terminal yet; the UI starts it when p1 has an assignment')
-    await w.tick()
-    const terminal = p.work().agents.get('p1' as never)?.terminal
-    const session = terminal?._tag === 'Started' ? terminal.session : ''
-    const other = await p.run(['wait', '--by=p1', '--seconds=1'], { session: 's-other' })
-    expect(other.code).toBe(1)
-    expect(other.err).toContain(`work wait --by=p1 runs only in the terminal of p1 (${session})`)
-    const wrong = await p.run(['wait', '--by=p9', '--seconds=1'], { session })
-    expect(wrong.err).toContain('there is no agent p9')
-  }, 30000)
-
-  test('a persistent agent gets each new assignment once, with a token', async () => {
-    const { p, w, hostToken } = await hosted()
-    await p.agent(`assign ${hostToken} t1 --role=section-lead`)
-    await w.tick()
-    const terminal = p.work().agents.get('p1' as never)?.terminal
-    const session = terminal?._tag === 'Started' ? terminal.session : ''
-    const given = await p.inSession('wait --by=p1 --seconds=1', session)
-    const token = tokenIn(given)
-    expect(given).toBe(
-      [
-        `a2 is yours: t1 The Introduction, as section-lead. Your command: work brief ${token}`,
-        'Keep one token for each assignment that you hold.',
-        'Do the steps above, then run work wait --by=p1 again at once. Never end your turn without a running work wait: it is the only way new work reaches you.',
-      ].join('\n'),
-    )
-    // The wait wrote the start of a2 in the agent's session, as a model run of p1.
-    const started = p.work().events.at(-1)?.recorded
-    expect(started?.event).toMatchObject({ _tag: 'Terminal', id: session, move: { for: 'a2' } })
-    expect(started?.author).toMatchObject({ _tag: 'ModelRun', name: 'p1' })
-    await p.agent(`brief ${token}`)
-    // a2 is not new now: the next wait prints the steps of each assignment that p1 holds.
-    expect(await p.inSession('wait --by=p1 --seconds=1', session)).toBe(
-      [
-        'Ready now: do these steps first.',
-        'a2 (t1 The Introduction):',
-        '  make t1 The Introduction',
-        '    work assign a2.<token> t1 --role=writer',
-        'Do the steps above, then run work wait --by=p1 again at once. Never end your turn without a running work wait: it is the only way new work reaches you.',
-      ].join('\n'),
-    )
-    const quiet = await p.inSession('wait --by=p1 --seconds=1', session)
-    expect(quiet.split('\n')[0]).toBe('nothing changed; run work wait --by=p1 again.')
-    expect(quiet).toContain('a2 (t1 The Introduction):')
-    // The end of a2 leaves p1 waiting for its next assignment; a2's own wait says so.
-    await p.agent(`finish ${hostToken} a2`)
-    expect(await p.agent(`wait ${token} --seconds=1`)).toBe(
-      'a2 is finished; run work wait --by=p1 for the next work of p1.',
-    )
-  }, 30000)
-
-  // P8, ruling 4: the installed code (here a git repo that ARISTOTELES_CODE names) gets a new
-  // commit while the wait blocks: the wait returns, so that the agent waits on the new code.
-  test('returns when aristoteles is updated', async () => {
-    const { p, token } = await lead()
-    const code = mkdtempSync(join(tmpdir(), 'ar-code-'))
-    const git = (...args: ReadonlyArray<string>) =>
-      Bun.spawnSync(['git', '-C', code, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
-        env: process.env,
-      })
-    git('init', '-q')
-    git('commit', '-q', '--allow-empty', '-m', 'one')
-    ;(p.env as Record<string, string>).ARISTOTELES_CODE = code
-    // The ready work is printed once; the next wait blocks.
-    await p.agent(`wait ${token} --seconds=1`)
-    const waiting = timed(() => p.agent(`wait ${token} --seconds=30`))
-    await Bun.sleep(1500)
-    git('commit', '-q', '--allow-empty', '-m', 'two')
-    const { value, ms } = await waiting
-    rmSync(code, { recursive: true, force: true })
-    expect(value).toBe(`aristoteles was updated; run work wait ${token} again.`)
-    expect(ms).toBeLessThan(15000)
-  }, 40000)
+  test('it blocks with its marker written, and prints the step that appears', async () => {
+    const { p, send, token } = await setup()
+    const waiting = p.agent(`wait ${token}`)
+    await Bun.sleep(1000)
+    expect(waitingNow(p)).toBe(true)
+    await send('one', 'a')
+    expect((await waiting).out.split('\n').at(-1)).toBe(`work assign ${token} t1`)
+    expect(waitingNow(p)).toBe(false)
+  }, 90000)
 })

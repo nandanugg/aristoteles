@@ -165,13 +165,6 @@ const accepted = async (): Promise<Scenario> => {
   return scenario('accepted', p)
 }
 
-// ... the lead escalates r1 to the person (an escalation that waits: EscalationState Open).
-const escalated = async (): Promise<Scenario> => {
-  const { p, lead } = await h.reported()
-  ok(await p.agent(`escalate ${lead} --result=r1 --reason="the rules do not say how long it is"`))
-  return scenario('escalated', p)
-}
-
 // A code project: a lead a1 and an implementer a2 that read their briefs.
 const code = async (): Promise<Scenario> => scenario('codeStarted', (await h.codeStarted()).p)
 
@@ -245,7 +238,6 @@ export const SCENARIOS: ReadonlyArray<readonly [string, () => Promise<Scenario>]
   ['reported', reported],
   ['rejectedOnce', rejectedOnce],
   ['accepted', accepted],
-  ['escalated', escalated],
   ['codeStarted', code],
   ['relay', () => relay(false)],
   ['relayDecided', () => relay(true)],

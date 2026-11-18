@@ -23,34 +23,6 @@ describe('the canvas shows only what runs now', () => {
     expect((await canvas(p, 't1')).state).toBe('done')
   })
 
-  test('an accepted part goes; its parent and the part that still runs stay', async () => {
-    const tsd = (design) => `# TSD\n\n## Introduction\n\nTODO\n\n## Design\n\n${design}\n\n## Failure\n\nTODO\n`
-    const p = project({
-      'task.yaml': 'name: The TSD\ntext: Write the TSD.\ndirections: [tsd-writing]\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n',
-      'docs/tsd.md': tsd('TODO'),
-      'parts.yaml': '- { name: Design, text: Write the design., context: { section: design } }\n' +
-        '- { name: Failure, text: Write the failure cases., context: { section: failure } }\n',
-    })
-    await init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.nanda('task open --file=task.yaml'))
-    ok(await p.nanda('grant --act=change --on=t1 --to=architect --until=2026-12-31T00:00:00Z', 'grant'))
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
-    expect((await cards(p)).map(([t]) => t)).toEqual(['t1', 't2', 't3'])
-    // The Design part is written, checked and accepted.
-    const writer = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=writer`)).out)
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', tsd('One file a day for each merchant.'))
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#design`))
-    const linter = tokenIn(ok(await p.agent(`assign ${arch} t2 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter}`))
-    ok(await p.agent(`review ${linter} r1 accept ${LINT('the design')}`))
-    ok(await p.agent(`review ${arch} r1 accept --evidence="docs/tsd.md, the design | the section says what the part asks"`))
-    expect((await cards(p)).map(([t]) => t)).toEqual(['t1', 't3'])
-  })
-
   test('a card offers Resume only for live work: a finished lead has nothing to resume', async () => {
     const { p, lead } = await reported()
     const owner = async () => (await canvas(p, 't1')).rows[0].task.owner

@@ -1,7 +1,6 @@
 // The marker of an actor that runs `work wait` (BUILD.md 10.1): a small file next to the store,
 // never an event. The wait process keeps it fresh while it blocks; the watcher reads it, so that
-// an agent that waits is not taken for a silent one. After a return the file keeps the step key
-// that the wait printed: the next wait returns at once only for ready work that is new.
+// an agent that waits is not taken for a silent one.
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { Effect } from 'effect'
@@ -19,14 +18,12 @@ interface Marker {
   // The wait process while it blocks; null after it returned.
   readonly pid: number | null
   readonly beat: number
-  // The step key that the last return printed.
-  readonly seen: string | null
 }
 
 export interface WaitPlace {
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cwd: string
-  // The run or the assignment that waits (h1, a2).
+  // The actor that waits (host, role:writer, maker:m1).
   readonly actor: string
 }
 
@@ -43,7 +40,6 @@ const read = (path: string): Marker | null => {
       session: typeof m.session === 'string' ? m.session : null,
       pid: typeof m.pid === 'number' ? m.pid : null,
       beat: typeof m.beat === 'number' ? m.beat : 0,
-      seen: typeof m.seen === 'string' ? m.seen : null,
     }
   } catch {
     return null
@@ -64,15 +60,11 @@ const write = (p: WaitPlace, marker: Marker): Effect.Effect<void> =>
     }
   })
 
-// The step key that the last return of this actor's wait printed; null before its first wait.
-export const seenOf = (p: WaitPlace): Effect.Effect<string | null> =>
-  Effect.sync(() => read(fileOf(p))?.seen ?? null)
+export const markWaiting = (p: WaitPlace, session: string | null) =>
+  write(p, { session, pid: process.pid, beat: Date.now() })
 
-export const markWaiting = (p: WaitPlace, session: string | null, seen: string | null) =>
-  write(p, { session, pid: process.pid, beat: Date.now(), seen })
-
-export const markReturned = (p: WaitPlace, session: string | null, seen: string) =>
-  write(p, { session, pid: null, beat: Date.now(), seen })
+export const markReturned = (p: WaitPlace, session: string | null) =>
+  write(p, { session, pid: null, beat: Date.now() })
 
 const alive = (pid: number): boolean => {
   try {

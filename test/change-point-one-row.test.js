@@ -25,22 +25,6 @@ const TWO = {
 }
 
 describe('a change point', () => {
-  test('a draft that answers the review answers each of its points', async () => {
-    const { p, v } = await rejected(TWO, 'standard')
-    expect(changeRows(ok(await p.agent('waiting --for=Nanda')).out)).toHaveLength(1)
-    ok(await p.nanda('grant --act=change --on=tsd-writing,t1 --to=architect ' +
-      '--until=2026-12-31T00:00:00Z', 'grant'))
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    p.write('cost.yaml', 'add:\n  - id: cost\n    where: { section: introduction }\n' +
-      '    says: The introduction names the cost.\n    rules:\n' +
-      '      - { id: says-cost, says: "The introduction names the cost", checkedBy: linter }\n')
-    ok(await p.agent(`direction revise ${arch} tsd-writing --file=cost.yaml --answers=${v} ` +
-      '--why="Correct the standard"'))
-    const out = ok(await p.agent('waiting --for=Nanda')).out
-    expect(changeRows(out).filter((l) => l.includes(`${v}.`))).toEqual([])
-  }, 30000)
-
   test('a point of a task with two directions shows once', async () => {
     const { p, v } = await rejected(TWO, 'standard')
     expect(changeRows(ok(await p.agent('waiting --for=Nanda')).out)).toEqual([

@@ -217,10 +217,10 @@ describe('ReadingsLive', () => {
     const work = await workOf(p.dir)
     const env = { ARISTOTELES_DB: `${p.dir}/.work/aristoteles.db` }
     const place = (actor: string) => ({ env, cwd: p.dir, actor })
-    await Effect.runPromise(markWaiting(place('a1'), 's-a1', null))
-    await Effect.runPromise(markReturned(place('h1'), 's-h1', 'k'))
+    await Effect.runPromise(markWaiting(place('a1'), 's-a1'))
+    await Effect.runPromise(markReturned(place('h1'), 's-h1'))
     // Another dir's marker is not this dir's.
-    await Effect.runPromise(markReturned({ env, cwd: '/elsewhere', actor: 'a9' }, 's-a9', 'k'))
+    await Effect.runPromise(markReturned({ env, cwd: '/elsewhere', actor: 'a9' }, 's-a9'))
     const at = Schema.decodeUnknownSync(Time)(p.now())
     const read = (layer: Layer.Layer<Readings>) =>
       Effect.runPromise(Readings.use((r) => r.read(work, at)).pipe(Effect.provide(layer)))

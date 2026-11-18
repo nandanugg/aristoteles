@@ -138,24 +138,6 @@ describe('D3 a code workspace with no base: no commit check runs', () => {
     expect(r.code).toBe(1)
   }, 20000)
 
-  // The high role with a change grant on the task: its remake drops the base, and the checks go.
-  test('an agent\'s remake drops the base; the base commit then passes as new work', async () => {
-    const p = project({ 'aristoteles.yaml': CODE_YAML, 'code-directions/fixes.yaml': CODE_DIRECTION, 'task.yaml': CODE_TASK, 'app/ok.txt': 'ok\n' })
-    const app = `${p.dir}/app`
-    git(app, 'init', '-q', '-b', 'main')
-    git(app, 'add', '.')
-    git(app, 'commit', '-q', '-m', 'base')
-    await init(p)
-    for (const role of ['tech-lead', 'lead', 'implementer']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.nanda('task open --file=task.yaml'))
-    ok(await p.nanda('grant --act=change --on=t1 --to=tech-lead --until=2026-12-31T00:00:00Z', 'grant'))
-    const lead = tokenIn(ok(await p.nanda('assign t1 --role=tech-lead')).out)
-    ok(await p.agent(`brief ${lead}`))
-    p.write('bare.yaml', CODE_TASK.replace(', base: main', ''))
-    const remake = await p.agent(`task remake ${lead} t1 --file=bare.yaml --reason="the fix is smaller"`)
-    // The fix (2026-11-07): an agent's remake keeps the workspace and its base.
-    expect(remake.err).toContain("an agent's remake keeps the directions, the context, and the workspace of t1")
-  }, 20000)
 })
 
 describe('D8 a report is new work: another task\'s commit', () => {

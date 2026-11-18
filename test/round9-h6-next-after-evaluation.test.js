@@ -31,58 +31,6 @@ const evaluate = (arch, level, improve) => `evaluate ${arch} t1 --wrong="r1 cite
   `--why="the task text asks for the facts of the ticket" --improve="${improve}" --level=${level}`
 
 describe('H6 work next after an evaluation', () => {
-  test('level standard: after the architect drafts d2, next still prints the revise, not the draft that waits', async () => {
-    const { p, arch } = await exhausted(TASK_WHOLE)
-    ok(await p.agent(evaluate(arch, 'standard', 'a standard says that ticket ids stay out of the body')))
-    expect(ok(await p.agent(`next ${arch}`)).out).toContain(`work direction revise ${arch} tsd-writing --file=<edit.yaml>`)
-    p.write('edit.yaml', 'add:\n  - id: plain\n    says: The body names no ticket.\n    rules:\n' +
-      '      - { id: no-ids-in-body, says: "No ticket ids in the body", checkedBy: linter }\n')
-    ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
-    // Correct: the change is drafted, so next says that d2 waits for its accept
-    // (as changeStep does), and does not ask for the same revise again (a second draft).
-    const next = ok(await p.agent(`next ${arch}`)).out
-    expect(next).toContain('d2 waits for the accept of Nanda')
-    expect(next).not.toContain(`work direction revise ${arch} tsd-writing --file=<edit.yaml>`)
-  }, 20000)
-
-  test('level task: after the architect splits t1 as next said, next still says to remake or split t1 (a remake closes the new parts)', async () => {
-    const { p, arch } = await exhausted(TASK_WHOLE)
-    ok(await p.agent(evaluate(arch, 'task', 'split the TSD into its sections')))
-    expect(ok(await p.agent(`next ${arch}`)).out).toContain(`work task split ${arch} t1 --file=<parts.yaml>`)
-    p.write('parts.yaml', '- { name: Intro, text: Write the introduction., context: { section: introduction } }\n' +
-      '- { name: Design, text: Write the design., context: { section: design } }\n')
-    ok(await p.agent(`task split ${arch} t1 --file=parts.yaml`))
-    // Correct: t1 now waits for its parts t2 and t3; the evaluation's change is made.
-    const next = ok(await p.agent(`next ${arch}`)).out
-    expect(next).not.toContain('remake or split it')
-    expect(next).not.toContain(`work task remake ${arch} t1`)
-  }, 20000)
-
-  test('level task on a task with a section: next offers work task split, which the split refuses', async () => {
-    const { p, arch } = await exhausted(TASK)
-    ok(await p.agent(evaluate(arch, 'task', 'the task text names no ticket')))
-    const next = ok(await p.agent(`next ${arch}`)).out
-    expect(next).toContain(`work task remake ${arch} t1`)
-    // Correct: a task with a section is one unit and is not split, so next offers only the remake.
-    expect(next).not.toContain(`work task split ${arch} t1`)
-  }, 20000)
-
-  test('level task, and the architect has no change act: next says escalate; the person answers; then nothing waits, and next says escalate again', async () => {
-    const { p, arch } = await exhausted(TASK, false)
-    ok(await p.agent(evaluate(arch, 'task', 'the task text names no ticket')))
-    const step = ok(await p.agent(`next ${arch}`)).out.match(/work escalate (\S+ --reason="[^"]*")/)
-    expect(step).not.toBeNull()
-    ok(await p.agent(`escalate ${step[1]}`))
-    // The person sees only the question; the remake that the evaluation asks for is not printed.
-    expect(ok(await p.nanda('waiting')).out).toContain('q1 for Nanda: t1 needs the remake that ev1 asks for')
-    ok(await p.nanda('answer q1 --text="yes, remake it"'))
-    // Correct: t1 still waits for a remake that only the person (or a change grant) can make, so
-    // work waiting gives the person that step; it is not "nothing waits".
-    const waiting = ok(await p.nanda('waiting')).out
-    expect(waiting).not.toBe('nothing waits.')
-    expect(waiting).toContain('work task remake t1')
-  }, 20000)
-
   test('the person rejects r1 with a rule; the evaluate command says a change must come first, while next says the maker redoes now', async () => {
     const { p, lead, linter } = await reported()
     ok(await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | the introduction | no paths or hashes there" ` +

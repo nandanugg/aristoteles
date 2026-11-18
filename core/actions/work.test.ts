@@ -8,7 +8,7 @@ import { Effect, Exit, Layer, type Scope } from 'effect'
 import { Dir, Env, Now, Store, StoreLive, Tokens } from '../services/index.ts'
 import type { Time } from '../schema/index.ts'
 import { foldWork } from '../state/work/fold.ts'
-import type { Act, What } from '../state/work/types.ts'
+import type { What } from '../state/work/types.ts'
 import { type ActCall, dispatchAct, openTop } from './work.ts'
 import { eventsOf, h, NANDA } from './fixture.test.ts'
 
@@ -56,11 +56,12 @@ let n = 0
 const call = (
   who: string,
   what: What,
-  more: Partial<Act> = {},
+  more: { readonly ep?: number; readonly on?: number | null } = {},
   build: string | null = null,
 ): ActCall => ({
   by: NANDA,
-  act: { id: `x${++n}`, who, ep: 0, what, seen: -1, seenVer: 0, vers: new Map(), ...more },
+  act: { id: `x${++n}`, who, ep: more.ep ?? 0, what },
+  on: more.on ?? null,
   build,
   current: 'b2',
 })
@@ -160,8 +161,15 @@ describe('work acts through the store', () => {
     expect(made.token).toMatchObject({ actor: 'maker:m1', ep: 0 })
     const brief = call('maker:m1', { _tag: 'ReadBrief', maker: 'm1' })
     value(await run(p.dir, at, dispatchAct(brief)))
-    const report: What = { _tag: 'Report', maker: 'm1', output: 'o', caught: new Set() }
-    expect(await refused(call('maker:m1', report, { seen: 7 }))).toBe(
+    const report: What = { _tag: 'Report', maker: 'm1', output: 'o', files: [], caught: new Set() }
+    const seqNow = () => foldWork(eventsOf(p.dir))?.state.seq ?? -1
+    expect(await refused(call('maker:m1', report))).toBe(
+      'Report needs the basis of its step',
+    )
+    expect(await refused(call('maker:m1', report, { on: seqNow() + 1 }))).toBe(
+      `--on ${seqNow() + 1} is ahead of the state (${seqNow()} acts taken)`,
+    )
+    expect(await refused(call('maker:m1', report, { on: 0 }))).toBe(
       'Report was built on a state that moved',
     )
     expect(foldWork(eventsOf(p.dir))?.tokens.get('maker:m1')?.map((t) => t.ep)).toEqual([0])

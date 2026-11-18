@@ -13,32 +13,6 @@ const REPEATABLE = '--evidence="repeatable | the introduction | a reviewer can r
 const WITH_DESIGN = INTRO_V2.replace('## Design\n\nTODO', '## Design\n\nOne file per merchant per day.')
 
 describe('F-Q3 a maker of a task that is split later holds the file for ever', () => {
-  test('the writer of t1 holds docs/tsd.md after the person splits t1; the part writer waits, and next never says to finish a2', async () => {
-    const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
-    // work next of the lead says "make t1", so the lead gives t1 to a writer (a2), which starts.
-    const whole = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer`)).out)
-    ok(await p.agent(`brief ${whole}`))
-    p.write('parts.yaml', '- { name: Intro, text: Write the introduction., context: { section: introduction } }\n' +
-      '- { name: Design, text: Write the design., context: { section: design } }\n')
-    ok(await p.nanda('task split t1 --file=parts.yaml'))
-    const intro = tokenIn(ok(await p.agent(`assign ${lead} t2 --role=writer`)).out)
-    // a2 can make no result now: t1 needs its parts, and its part t2 waits for a2's file.
-    p.write('docs/tsd.md', INTRO_V2)
-    const report = await p.agent(`report ${whole} --output=docs/tsd.md`)
-    expect(report.err).toContain('t1 needs t2 (Intro), which is not accepted')
-    ok(await p.agent(`escalate ${whole} --reason="t1 was split; my report is refused: t1 needs t2"`))
-    const next = ok(await p.agent(`next ${lead}`)).out
-    const brief = await p.agent(`brief ${intro}`)
-    // Correct: either the split ends the maker of t1 (a3 starts), or next tells the lead to
-    // finish a2, which can make no result while its parts wait for its file.
-    if (brief.code !== 0) {
-      expect(brief.err).toContain('a3 waits for docs/tsd.md: a2')
-      expect(next).toContain(`work finish ${lead} a2`)
-    } else {
-      expect(brief.out).toContain('work brief a3 · writer (haiku) · t2 Intro')
-      expect(brief.out).not.toContain('writes docs/tsd.md first')
-    }
-  })
 })
 
 describe('F-Q4 a needs that crosses the queue: the person criticises a part that a later part runs after', () => {

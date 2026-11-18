@@ -12,6 +12,7 @@ import {
   ACT_OF,
   FLAGS,
   isCommandName,
+  isToken,
   knownFlags,
   parseArgs,
   SWITCHES,
@@ -20,6 +21,7 @@ import {
 } from './args.ts'
 import { agentCallerOf, isPerson, isUnit } from './caller.ts'
 import type { Call, Command, Commands } from './command.ts'
+import { commands as acts, sharing } from './commands/acts.ts'
 import { commands as adjust } from './commands/adjust.ts'
 import { commands as directions } from './commands/directions.ts'
 import { commands as onboard } from './commands/onboard.ts'
@@ -34,7 +36,7 @@ import { layerOf, readWork } from './runtime.ts'
 
 export type { WorkIo } from '../../core/services/index.ts'
 
-const COMMANDS: Commands = {
+const OLD: Commands = {
   ...setup,
   ...ui,
   ...reads,
@@ -45,6 +47,7 @@ const COMMANDS: Commands = {
   ...onboard,
   ...adjust,
 }
+const COMMANDS: Commands = { ...OLD, ...sharing(OLD), ...acts }
 
 const usage = (message: string, next: string | null = null) =>
   Effect.fail(new UsageError({ message, next }))
@@ -113,7 +116,7 @@ const attempt = (argv: ReadonlyArray<string>) =>
 // A refusal of the adapter or a lookup ends with one next line that fits the caller.
 const nextFor = (argv: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const token = argv.find((a) => /^a\d+\.[a-z0-9]+$/.test(a))
+    const token = argv.find((a) => isToken(a))
     if (token === undefined) {
       // Before the store, the onboarding status is what the person and the host read (O3).
       const { cwd } = yield* Dir
@@ -125,6 +128,7 @@ const nextFor = (argv: ReadonlyArray<string>) =>
         ? 'next: work waiting shows what waits for you'
         : 'next: check the ids with work status or work log; an agent passes its token first'
     }
+    if (token.startsWith('w.')) return `next: run work wait ${token} and do the step it prints`
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const { work: now } = yield* readWork

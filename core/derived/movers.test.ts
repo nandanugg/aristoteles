@@ -200,8 +200,6 @@ describe('every wait has a mover', () => {
       built.push({ name: s.name, d: derive(momentOf(s.p.dir, s.at)) })
     }
     built.push({ name: 'p9', d: derivedOf(await rejected()) })
-    built.push({ name: 'b6-open', d: derivedOf(await pointEscalated()) })
-    built.push({ name: 'b6-resolved', d: derivedOf(await pointResolved()) })
   }, 240000)
 
   test('no open assignment only waits on itself', () => {
@@ -236,74 +234,6 @@ describe('every wait has a mover', () => {
     }
     expect(checked).toBeGreaterThan(0)
   })
-})
-
-// Live, 2026-11-15: the lead, the writer and the checkers each escalated the same point after
-// another had escalated it (and it was resolved). One escalation of a point serves everyone (B6).
-const why = '--reason="v2.1 needs a direction change"'
-// The linter a3 rejects r1 with a point that no rule covers (v2.1), and escalates it as v3.
-const pointEscalated = async (files?: Record<string, string>) => {
-  const s = await harness.reported(files)
-  ok(await s.p.agent(`review ${s.linter} r1 reject --point="the reader cannot see the cost"`))
-  ok(await s.p.agent(`escalate ${s.linter} --result=r1 --point=v2.1 ${why}`))
-  return s
-}
-// ... and the lead a1 resolves v3 with no draft.
-const pointResolved = async () => {
-  const s = await pointEscalated()
-  ok(await s.p.agent(`resolve ${s.lead} v3 --resolution="the cost is out of scope"`))
-  return s
-}
-const escalates = (d: Derived, id: string) =>
-  tags(nextFor(d, agent(id))).filter((x) => x.includes('EscalateForPoint'))
-
-describe('a point that one assignment escalated needs no escalation from another', () => {
-  test('the escalate step names the point', async () => {
-    const s = await harness.reported()
-    ok(await s.p.agent(`review ${s.linter} r1 reject --point="the reader cannot see the cost"`))
-    expect(ok(await s.p.agent(`next ${s.lead}`)).out).toContain(
-      `work escalate ${s.lead} --result=r1 --point=v2.1 ${why}`,
-    )
-  }, 30000)
-  test('while the escalation is open, the others wait for it', async () => {
-    const s = await pointEscalated()
-    const d = derivedOf(s)
-    for (const id of ['a1', 'a2', 'a3']) expect(escalates(d, id)).toEqual([])
-    expect(tags(nextFor(d, agent('a2')))).toEqual(['Wait ChangeWaitsForEscalation'])
-    expect(ok(await s.p.agent(`next ${s.lead}`)).out).toContain(
-      'v2.1 needs a direction change; it is escalated in v3; wait until it is resolved',
-    )
-    const again = await s.p.agent(`escalate ${s.lead} --result=r1 --point=v2.1 ${why}`)
-    expect(again.err).toContain('v2.1 is escalated in v3 already')
-  }, 30000)
-  test('an escalation that names no point leaves the point to escalate', async () => {
-    const s = await harness.reported()
-    ok(await s.p.agent(`review ${s.linter} r1 reject --point="the reader cannot see the cost"`))
-    ok(await s.p.agent(`escalate ${s.linter} --result=r1 --reason="the facts are thin"`))
-    expect(escalates(derivedOf(s), 'a2')).toEqual(['Do EscalateForPoint'])
-  }, 30000)
-  test('after its resolve, nobody escalates the point again; they wait on its owner', async () => {
-    const s = await pointResolved()
-    const d = derivedOf(s)
-    for (const id of ['a1', 'a2', 'a3']) expect(escalates(d, id)).toEqual([])
-    expect(tags(nextFor(d, agent('a2')))).toEqual(['Wait ChangeWaitsForDirector'])
-    const again = await s.p.agent(`escalate ${s.lead} --result=r1 --point=v2.1 ${why}`)
-    expect(again.err).toContain('v2.1 was escalated in v3, and it is resolved')
-    // No role of the tree directs: the person changes it.
-    expect(ok(await s.p.nanda('waiting')).out).toContain('v2.1 needs a change of tsd-writing')
-  }, 30000)
-  test('after its resolve, the role that directs drafts the change', async () => {
-    const s = await pointEscalated()
-    const arch = tokenIn(ok(await s.p.nanda('assign t1 --role=architect')).out)
-    ok(await s.p.agent(`brief ${arch}`))
-    ok(await s.p.agent(`resolve ${s.lead} v3 --resolution="the architect changes the direction"`))
-    const d = derivedOf(s)
-    const director = arch.split('.')[0] as string
-    expect(tags(nextFor(d, agent(director)))).toContain('Do ReviseForPoint')
-    const waits = nextFor(d, agent('a2')).map((x) => x.what)
-    const what = { _tag: 'ChangeWaitsForDirector', point: 'v2.1', director, first: false }
-    expect(waits).toEqual([what] as never)
-  }, 30000)
 })
 
 // Live, 2026-11-16: a judge read its brief again to check its review, was told another subagent

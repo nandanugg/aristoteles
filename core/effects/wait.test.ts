@@ -1,189 +1,110 @@
-// The wait loop of `work wait` (ruling 10.1), on a real store: the end that needs no steps. A host
-// whose Sol ended by a remake of the top task gets the new Sol of the run (the CLI gives it a new
-// token); a Sol with no new Sol has ended; ready work that the last wait printed does not end it.
-import { afterEach, describe, expect, test } from 'bun:test'
-import { Effect, Layer } from 'effect'
-import { Env, Now, Readings, StoreLive } from '../services/index.ts'
-import { workCacheLayer } from '../state/index.ts'
-import { nextChangeAt } from '../derived/index.ts'
-import { outsideNow } from '../derived/support.test.ts'
-import { cleanUp, clock, hosted, type Project, withLead } from './support.test.ts'
-import { look, stepsOf, waitFor, type Waiter, type WaitEnd } from './wait.ts'
+// The wait of work.qnt's channel on a real store: ONE step, the oldest owed; it blocks while
+// nothing is owed and returns when an act of another writer makes a step; no seen filter (the
+// same step comes back at once until it is done); an old epoch, the end of the project and a new
+// build end it.
+import { join } from 'node:path'
+import { describe, expect, test } from 'bun:test'
+import { Effect, Layer, Ref, type Scope } from 'effect'
+import { Dir, Env, Now, Store, StoreLive, Tokens } from '../services/index.ts'
+import type { Time } from '../schema/index.ts'
+import type { What } from '../state/work/types.ts'
+import { type ActCall, dispatchAct, openTop } from '../actions/work.ts'
+import { h, NANDA } from '../actions/fixture.test.ts'
+import { type WaitEnd, type WaitOptions, waitFor } from './wait.ts'
 
-afterEach(cleanUp)
+const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
+const LEAD = 'role:section-lead'
 
-const services = (p: Project) => {
-  const store = StoreLive.pipe(Layer.provide(Layer.succeed(Env, { vars: p.env })))
+const services = (dir: string, at: string) => {
+  let n = 0
   return Layer.mergeAll(
-    workCacheLayer(p.dir).pipe(Layer.provide(store)),
-    Layer.succeed(Readings, {
-      read: (work) => Effect.sync(() => outsideNow(work, p.dir)),
-    }),
-    Layer.succeed(Now, { read: Effect.sync(() => new Date(clock.now).toISOString() as never) }),
+    StoreLive.pipe(
+      Layer.provide(
+        Layer.succeed(Env, { vars: { ARISTOTELES_DB: join(dir, '.work', 'aristoteles.db') } }),
+      ),
+    ),
+    Layer.succeed(Dir, { cwd: dir }),
+    Layer.succeed(Now, { read: Effect.succeed(at as Time) }),
+    Layer.succeed(Tokens, { random: Effect.sync(() => `k${++n}`) }),
   )
 }
-const waited = (
-  p: Project,
-  waiter: Waiter,
-  seen: string | null = null,
-  times = { ms: 300, deriveMs: 100 },
-): Promise<WaitEnd> =>
-  Effect.runPromise(
-    waitFor(waiter, {
-      seen,
-      ...times,
-      pollMs: 50,
-      settleMs: 10,
-      lastSeq: Effect.succeed(0),
-      blocking: Effect.void,
-      build: Effect.succeed('b1'),
-      buildMs: 50,
-    }).pipe(Effect.provide(services(p))),
-  )
-const a = (id: string): Waiter => ({ _tag: 'Agent', assignment: id as never })
+
+let n = 0
+const call = (who: string, what: What, ep = 0): ActCall => ({
+  by: NANDA,
+  act: { id: `x${++n}`, who, ep, what },
+  on: null,
+  build: null,
+  current: 'b1',
+})
+const send = (name: string, section: string): What => ({
+  _tag: 'SendTask',
+  spec: { name, goal: 'g', sections: [section], role: 'section-lead' },
+})
+
+const setup = async () => {
+  const { p } = await h.started({ 'aristoteles.yaml': PIPED })
+  const at = p.now()
+  type Needs = Store | Dir | Now | Tokens | Scope.Scope
+  const run = <A, E>(e: Effect.Effect<A, E, Needs>) =>
+    Effect.runPromise(Effect.scoped(e).pipe(Effect.provide(services(p.dir, at))))
+  await run(openTop({ by: NANDA, name: 'T', goal: 'g', sections: ['a', 'b'] }))
+  const act = (c: ActCall) => run(dispatchAct(c))
+  const waited = (o: Partial<WaitOptions> & Pick<WaitOptions, 'actor'>): Promise<WaitEnd> =>
+    run(
+      Effect.gen(function* () {
+        const store = yield* (yield* Store).open(p.dir, { create: false })
+        return yield* waitFor(store, {
+          ep: 0,
+          pollMs: 20,
+          blocking: Effect.void,
+          build: Effect.succeed('b1'),
+          buildMs: 20,
+          ...o,
+        })
+      }),
+    )
+  return { act, waited }
+}
+const stepOf = (end: WaitEnd) => (end._tag === 'Step' ? [end.step.tag, end.step.target] : end._tag)
 
 describe('the wait loop', () => {
-  test("a remake of the top task hands the run's terminal to its new Sol", async () => {
-    const { p } = await hosted()
-    await p.nanda('task remake t1 --file=again.yaml --reason="the text asks for the cost"')
-    // The old Sol a1 ended with t1, and no Sol is on t2 yet: a1 has ended.
-    expect(await waited(p, a('a1'))).toMatchObject({ _tag: 'Ended' })
-    await p.nanda('assign t2 --role=architect')
-    expect(await waited(p, a('a1'))).toMatchObject({ _tag: 'Opened', run: 'h1', host: 'a2' })
-    expect(await waited(p, { _tag: 'Host', run: 'h1' as never })).toMatchObject({
-      _tag: 'Opened',
-      host: 'a2',
-    })
-  })
+  test('one step only, the oldest, and the same step again until it is done', async () => {
+    const { act, waited } = await setup()
+    await act(call('host', send('one', 'a')))
+    await act(call('host', send('two', 'b')))
+    expect(stepOf(await waited({ actor: LEAD }))).toEqual(['AssignDo', 't1'])
+    expect(stepOf(await waited({ actor: LEAD }))).toEqual(['AssignDo', 't1'])
+    await act(call(LEAD, { _tag: 'AssignDo', task: 't1' }))
+    expect(stepOf(await waited({ actor: LEAD }))).toEqual(['AssignDo', 't2'])
+  }, 90000)
 
-  // Owner, 2026-11-15: the person answers on the page, and the asker's work wait returns.
-  test("the person's answer changes the step key of the asker", async () => {
-    const { p, hostToken } = await hosted()
-    await p.agent(`ask ${hostToken} --to=owner --text="Which merchant?" --option=m-17 --option=m-18`)
-    const keyNow = async () => {
-      const d = await Effect.runPromise(look.pipe(Effect.provide(services(p))))
-      return d === null ? null : stepsOf(d, a('a1')).key
-    }
-    const before = await keyNow()
-    await p.ui('answer q1 --option=2')
-    expect(p.work().questions.get('q1' as never)?.status).toMatchObject({ answer: 'm-18' })
-    expect(await keyNow()).not.toBe(before)
-  })
+  test('it blocks while nothing is owed, and returns when another writer acts', async () => {
+    const { act, waited } = await setup()
+    const blocked = { value: false }
+    const blocking = Effect.sync(() => void (blocked.value = true))
+    const waiting = waited({ actor: LEAD, blocking })
+    await Bun.sleep(300)
+    expect(blocked.value).toBe(true)
+    await act(call('host', send('one', 'a')))
+    expect(stepOf(await waiting)).toEqual(['AssignDo', 't1'])
+  }, 90000)
 
-  // P8, ruling 4: no actor keeps waiting on old code.
+  test('a token of an old epoch ends it with no step', async () => {
+    const { act, waited } = await setup()
+    await act(call('host', send('one', 'a')))
+    await act(call(LEAD, { _tag: 'AssignDo', task: 't1' }))
+    await act(call('person', { _tag: 'MoveHost', fromSession: 0 }))
+    expect(await waited({ actor: 'host' })).toEqual({ _tag: 'Old', now: 1 })
+    expect(stepOf(await waited({ actor: 'host', ep: 1 }))).not.toBe('Old')
+  }, 90000)
+
   test('a new build of the installed code ends the wait', async () => {
-    const { p } = await hosted()
-    const first = await waited(p, a('a1'))
-    const seen = first._tag === 'Ready' ? first.steps.key : null
-    let reads = 0
-    const end = await Effect.runPromise(
-      waitFor(a('a1'), {
-        seen,
-        ms: 5000,
-        deriveMs: 3_600_000,
-        pollMs: 50,
-        settleMs: 10,
-        lastSeq: Effect.succeed(0),
-        blocking: Effect.void,
-        build: Effect.sync(() => (++reads < 3 ? 'b1' : 'b2')),
-        buildMs: 100,
-      }).pipe(Effect.provide(services(p))),
-    )
-    expect(end).toEqual({ _tag: 'Updated' })
-  }, 20000)
-
-  test('ready work that the last wait printed does not end it: the time does', async () => {
-    const { p } = await hosted()
-    const first = await waited(p, a('a1'))
-    expect(first._tag).toBe('Ready')
-    const seen = first._tag === 'Ready' ? first.steps.key : null
-    const d = await Effect.runPromise(look.pipe(Effect.provide(services(p))))
-    expect(d === null ? null : stepsOf(d, a('a1')).key).toBe(seen)
-    expect(await waited(p, a('a1'), seen)).toMatchObject({ _tag: 'Quiet' })
-  })
-
-  // Live, 2026-11-15: a lead printed "decide r8", waited again without deciding, and the run
-  // waited for it until the wait's time ran out. Ready work comes back after readyAgainMs.
-  test('ready work that is still there comes back after readyAgainMs', async () => {
-    const { p } = await hosted()
-    const first = await waited(p, a('a1'))
-    const seen = first._tag === 'Ready' ? first.steps.key : null
-    const again = await Effect.runPromise(
-      waitFor(a('a1'), {
-        seen,
-        ms: 5000,
-        deriveMs: 50,
-        pollMs: 20,
-        settleMs: 10,
-        readyAgainMs: 200,
-        build: Effect.succeed('b1'),
-        buildMs: 50,
-        lastSeq: Effect.succeed(0),
-        blocking: Effect.void,
-      }).pipe(Effect.provide(services(p))),
-    )
-    expect(again).toMatchObject({ _tag: 'Ready' })
-  })
-
-  // Live, 2026-11-15: a lead never started its subagent again, because "start your subagent"
-  // was a wait, and a wait is no ready work; the parent is the only one that can do it.
-  test("the start of the waiter's own subagent is ready work", async () => {
-    const { p, leadToken } = await withLead()
-    await p.agent(`brief ${leadToken}`)
-    await p.agent(`assign ${leadToken} t1 --role=writer`)
-    const d = await Effect.runPromise(look.pipe(Effect.provide(services(p))))
-    const steps = d === null ? null : stepsOf(d, a('a2'))
-    expect(steps?.next.some((s) => s.what._tag === 'GiveMakerCommand')).toBe(true)
-    expect(steps?.ready).toBe(true)
-  })
-
-  // P9 (live, 2026-11-15): an event written as the wait starts, before it reads the last seq,
-  // is in the steps of its first look, so the wait never misses it.
-  test('an event written as the wait starts is not missed', async () => {
-    const { p, hostToken } = await hosted()
-    const first = await waited(p, a('a1'))
-    const seen = first._tag === 'Ready' ? first.steps.key : null
-    let written = false
-    const lastSeq = Effect.promise(async () => {
-      if (!written) {
-        written = true
-        await p.agent(`ask ${hostToken} --to=owner --text="Which merchant?"`)
-      }
-      return 1
-    })
-    const start = Date.now()
-    const end = await Effect.runPromise(
-      waitFor(a('a1'), {
-        seen,
-        ms: 3000,
-        deriveMs: 3_600_000,
-        pollMs: 50,
-        settleMs: 10,
-        lastSeq,
-        blocking: Effect.void,
-        build: Effect.succeed('b1'),
-        buildMs: 50,
-      }).pipe(Effect.provide(services(p))),
-    )
-    expect(end._tag).not.toBe('Quiet')
-    expect('steps' in end ? end.steps.key : seen).not.toBe(seen)
-    expect(Date.now() - start).toBeLessThan(2000)
-  }, 20000)
-
-  // F4: the wait derives again when the clock passes the next edge (nextChangeAt), not only
-  // each deriveMs: here the end of the 30-day grant of the task open, which changes the steps.
-  test('the wait derives again at the next clock edge', async () => {
-    const { p } = await hosted()
-    const first = await waited(p, a('a1'))
-    const seen = first._tag === 'Ready' ? first.steps.key : null
-    const d = await Effect.runPromise(look.pipe(Effect.provide(services(p))))
-    const edge = Date.parse((d === null ? null : nextChangeAt(d)) ?? '')
-    expect(edge).toBeGreaterThan(clock.now)
-    const start = Date.now()
-    const wait = waited(p, a('a1'), seen, { ms: 8000, deriveMs: 3_600_000 })
-    await Bun.sleep(100)
-    clock.now = edge
-    expect(await wait).toMatchObject({ _tag: 'Changed' })
-    expect(Date.now() - start).toBeLessThan(2000)
-  }, 20000)
+    const { waited } = await setup()
+    const build = await Effect.runPromise(Ref.make('b1'))
+    const waiting = waited({ actor: LEAD, build: Ref.get(build) })
+    await Bun.sleep(200)
+    await Effect.runPromise(Ref.set(build, 'b2'))
+    expect(await waiting).toEqual({ _tag: 'Updated' })
+  }, 90000)
 })

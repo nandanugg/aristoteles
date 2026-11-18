@@ -63,6 +63,7 @@ const report = (output: string): What => ({
   _tag: 'Report',
   maker: 'm1',
   output,
+  files: [],
   caught: new Set(),
 })
 const review = (points: string[], v: 'Fail' | 'RaiseNoRule' = 'Fail'): What => ({

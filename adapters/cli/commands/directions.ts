@@ -1,4 +1,4 @@
-// The commands direction, suggest, grant, revoke, forward, confirm. The files are read by the
+// The commands direction, suggest, forward, confirm. The files are read by the
 // actions; the adapter reads the flags, builds the typed act of a forward, and prints the words.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
@@ -13,12 +13,10 @@ import {
   type FlowStep,
   type ForwardedAct,
   isNonBlank,
-  isTime,
   lookup,
   type Found,
   type NonBlank,
   type RevisionId,
-  RoleName,
   type SuggestionId,
   refuse,
   Time,
@@ -26,7 +24,6 @@ import {
   versionIdOf,
   whoOf,
   type RejectId,
-  type PermissionId,
   spotsOf,
   examplesOfFlow,
 } from '../../../core/schema/index.ts'
@@ -56,7 +53,6 @@ import {
   pointsOf,
   versionMadeBy,
 } from '../shared.ts'
-
 
 // The file of a new direction: the whole direction (guides/writing.md).
 const DIRECTION_TEMPLATE = `write a file like this, then run the command again:
@@ -371,76 +367,6 @@ const suggest: Command = (call) =>
     ]
   })
 
-const ACTS = ['approve', 'review', 'change'] as const
-
-// A permission: one act for a time. The person gives it at a terminal; an agent gives it
-// with its token. Nobody gives more than they may do.
-const grant: Command = (call) =>
-  Effect.gen(function* () {
-    const { args } = call
-    const actWord = textOf(args.one('act'))
-    const on = String(args.one('on') ?? '')
-      .split(',')
-      .filter(Boolean)
-    const until = textOf(args.one('until'))
-    const given = ACTS.find((a) => a === actWord)
-    if (!given) return yield* refuse('--act is approve, review, or change')
-    if (!on.length) {
-      return yield* refuse(
-        '--on names what the act covers: roles for approve and review, tasks or directions for change',
-      )
-    }
-    // A time is an ISO date, with its time of day and zone (a stored Time holds no other form).
-    if (!Number.isFinite(Date.parse(String(until))) || !isTime(String(until))) {
-      return yield* refuse(`--until=${until} is not a time (2026-10-27T18:00:00Z)`)
-    }
-    if (Date.parse(String(until)) <= Date.parse(yield* (yield* Now).read)) {
-      return yield* refuse(`--until=${until} is in the past`)
-    }
-    const to = RoleName.make(String(args.one('to')))
-    const { work } = yield* peekWork
-    const confirm =
-      call.token === null
-        ? {
-            word: 'grant',
-            show: `grant: ${args.one('to')} may ${actWord} ${on.join(', ')} until ${until}`,
-          }
-        : undefined
-    const caller = yield* callerOf(work, call.token, confirm)
-    const permitted =
-      given === 'change'
-        ? { _tag: 'Change' as const, changesOf: on as never }
-        : {
-            _tag: given === 'approve' ? ('Approve' as const) : ('Review' as const),
-            resultsOf: on.map((n) => RoleName.make(n)),
-          }
-    const done = yield* act(authorOf(caller), {
-      _tag: 'Grant',
-      target: { act: permitted, to },
-      content: { until: Time.make(String(until)) },
-    })
-    return [`${done.created[0]}: ${to} may ${actWord} ${on.join(', ')} until ${until}.`]
-  })
-
-// The giver ends a permission early; the acts before the revoke stay.
-const revoke: Command = (call) =>
-  Effect.gen(function* () {
-    const x = String(call.args.positional[0])
-    const { work } = yield* peekWork
-    const caller = yield* callerOf(
-      work,
-      call.token,
-      call.token === null ? { word: 'revoke' } : undefined,
-    )
-    const { permission } = yield* lookupKind('Permission', ['x'], work, x)
-    yield* act(authorOf(caller), {
-      _tag: 'Revoke',
-      target: { permission: permission.id as PermissionId },
-      content: {},
-    })
-    return [`${x} revoked; the acts before it stay.`]
-  })
-
 // --- forward and confirm -----------------------------------------------------------------------
 
 const FORWARD_ACTS = ['reject', 'accept', 'resolve', 'ask', 'answer', 'comment'] as const
@@ -701,4 +627,4 @@ const confirm: Command = (call) =>
     ]
   })
 
-export const commands: Commands = { direction, suggest, grant, revoke, forward, confirm }
+export const commands: Commands = { direction, suggest, forward, confirm }

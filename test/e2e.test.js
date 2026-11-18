@@ -62,12 +62,6 @@ describe('identity: tokens and the terminal', () => {
     expect(db.includes(writer.split('.')[1])).toBe(false)
   })
 
-  test('a grant needs the typed confirmation', async () => {
-    const { p } = await started()
-    const line = 'grant --act=change --on=t1 --to=architect --until=2026-10-26T00:00:00Z'
-    expect((await p.nanda(line, 'no')).err).toContain('not confirmed; nothing was stored')
-    expect(ok(await p.nanda(line, 'grant')).out).toContain('x1: architect may change t1')
-  })
 })
 
 describe('the claim of an attempt', () => {
@@ -214,43 +208,9 @@ describe('forwarded person acts', () => {
 })
 
 describe('directions change through review', () => {
-  test('a model does not review its own draft; a Reject with no rule is answered by the change', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', INTRO_V2)
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    ok(await p.agent(`review ${lead} r1 reject --point="the reader cannot see the cost of the double export"`))
-    ok(await p.nanda('grant --act=change --on=tsd-writing,t1 --to=architect --until=2026-10-26T00:00:00Z', 'grant'))
-    const architect = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${architect}`))
-    p.write('edit.yaml', 'add:\n  - id: cost-first\n    says: Say what the problem costs.\n    rules:\n' +
-      '      - { id: names-cost, says: "The introduction names the cost", checkedBy: linter }\n')
-    expect(ok(await p.agent(`direction revise ${architect} tsd-writing --file=edit.yaml --answers=v2.1 --why="Correct the standard"`)).out)
-      .toContain('d2 drafted, built on tsd-writing@1, answering v2.1; it waits for the accept of Nanda.')
-    const self = await p.agent(`review ${architect} d2 accept --evidence="edit.yaml | the cost rule"`)
-    expect(self.err).toContain('d2 is your own draft, or a draft from above you; another actor reviews it')
-    // The lead's accept is a review; the owner's accept makes the draft official.
-    expect(ok(await p.agent(`review ${lead} d2 accept --evidence="edit.yaml | it answers v2.1"`)).out)
-      .toContain('accept of d2; it waits for the accept of Nanda.')
-    expect(ok(await p.nanda('review d2 accept --evidence="edit.yaml | the cost rule"', 'accept')).out)
-      .toContain('d2 is official: tsd-writing@2.')
-    expect(ok(await p.agent('direction show tsd-writing')).out).toContain('names-cost: The introduction names the cost')
-    expect(ok(await p.agent('blockers r1')).out).toContain('r1 was checked under an old version of tsd-writing')
-  })
 })
 
 describe('a split task joins its parts', () => {
-  test('the joining result waits until every part is accepted', async () => {
-    const { p } = await started({ 'task.yaml': TASK_WHOLE })
-    ok(await p.nanda('grant --act=change --on=t1 --to=architect --until=2026-10-26T00:00:00Z', 'grant'))
-    const architect = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${architect}`))
-    p.write('docs/tsd.md', '# TSD\n\n## Problem\n\nTODO\n\n## Cost\n\nTODO\n')
-    p.write('parts.yaml', '- { name: Problem, text: Write the problem paragraph., context: { section: problem } }\n' +
-      '- { name: Cost, text: Write the cost paragraph., context: { section: cost } }\n')
-    expect(ok(await p.agent(`task split ${architect} t1 --file=parts.yaml`)).out).toContain('t1 split into t2, t3')
-    expect(ok(await p.agent('task tree t1')).out).toMatchSnapshot('task tree after split')
-  })
 })
 
 describe('programs run on each report', () => {

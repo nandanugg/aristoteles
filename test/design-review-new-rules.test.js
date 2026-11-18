@@ -15,17 +15,6 @@ const architect = async (p) => {
 }
 
 describe('a model gives a permission', () => {
-  test('a lead gives the architect its own Approve act; a linter has no act to give; only the giver revokes', async () => {
-    const { p, lead, linter } = await reported()
-    const until = '2026-10-26T09:00:00Z'
-    expect(ok(await p.agent(`grant ${lead} --act=approve --on=writer --to=architect --until=${until}`)).out)
-      .toContain(`x1: architect may approve writer until ${until}.`)
-    expect((await p.agent(`grant ${linter} --act=approve --on=writer --to=architect --until=${until}`)).err)
-      .toContain('may not give this act')
-    expect((await p.nanda('revoke x1', 'revoke')).err).toContain('only the giver revokes a permission')
-    expect(ok(await p.agent(`revoke ${lead} x1`)).out).toContain('x1 revoked; the acts before it stay.')
-    expect((await p.agent(`revoke ${lead} x1`)).err).toContain('already revoked')
-  })
 })
 
 describe('each stop gets its own evaluation', () => {

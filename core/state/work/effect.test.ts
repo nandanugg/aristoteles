@@ -41,7 +41,7 @@ const reported = (s: WorkState, task: string, maker: string, role = 'dev'): Work
   [
     { _tag: 'AssignDo', task },
     { _tag: 'ReadBrief', maker },
-    { _tag: 'Report', maker, output: 'o', caught: new Set<string>() },
+    { _tag: 'Report', maker, output: 'o', files: [], caught: new Set<string>() },
   ].reduce((acc, w) => go(acc, w as What), send(s, role))
 const done = (s: WorkState, task: string, maker: string): WorkState =>
   verdict(reported(s, task, maker), task, 'Pass')
@@ -72,7 +72,7 @@ describe('the task cycle', () => {
     expect(tk(s, 't1')).toMatchObject({ st: 'Working', maker: 'm1' })
     s = go(s, { _tag: 'ReadBrief', maker: 'm1' })
     expect(s.makers.get('m1')?.claim).toBe(true)
-    s = go(s, { _tag: 'Report', maker: 'm1', output: 'o', caught: new Set(['rule:r1']) })
+    s = go(s, { _tag: 'Report', maker: 'm1', output: 'o', files: [], caught: new Set(['rule:r1']) })
     expect(tk(s, 't1')).toMatchObject({ st: 'InReview', rid: 0, taken: false })
     expect(tk(s, 't1').caught.has('rule:r1')).toBe(true)
     s = verdict(s, 't1', 'Pass')

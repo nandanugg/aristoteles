@@ -1,45 +1,33 @@
-// The commands brief, report, review, resolve, recheck, escalate, ask, answer, note, evaluate,
-// checkpoint, resume, source. Each builds the ActionInput of its act, dispatches it, and prints the
+// The old commands brief, report, review, ask, answer, note, evaluate, source. Each builds the ActionInput of its act, dispatches it, and prints the
 // words of the act from the new Work.
 import { Effect } from 'effect'
-import { nextFor } from '../../../core/derived/index.ts'
 import {
   assignmentAt,
   evaluationCounts,
   evaluationWaits,
-  resultsOf,
   roleAt,
   stopTask,
   isUnit,
   usedBy,
-  within,
   workStop,
 } from '../../../core/derived/reads.ts'
 import { blockersOf } from '../../../core/derived/index.ts'
 import type { AcceptOf, InputOf } from '../../../core/schema/actions.ts'
 import {
-  type AssignmentId,
-  type CheckpointId,
-  type CreatedId,
-  type EscalationId,
   type Level,
   lookup,
   type NonBlank,
   type NonEmpty,
-  type PointId,
   type QuestionId,
   refuse,
-  revisionOf,
   type ResultId,
   type Stop,
   versionIdOf,
-  whoOf,
 } from '../../../core/schema/index.ts'
 import { isNonBlank } from '../../../core/schema/index.ts'
 import {
   briefOf,
   draftWaitsText,
-  nextLines,
   renderDraft,
   reviseAgainOf,
   stopIdOf,
@@ -51,7 +39,7 @@ import type { Call, Command, Commands } from '../command.ts'
 import { lookupKind } from '../lookups.ts'
 import { runPrograms } from '../programs.ts'
 import { followCommit } from '../refresh.ts'
-import { act, derivedAfter, firstCreated, peekWork, readWork } from '../runtime.ts'
+import { act, derivedAfter, firstCreated, peekWork } from '../runtime.ts'
 import { afterVersion, evidenceOf, pointsOf, versionMadeBy } from '../shared.ts'
 
 const upTo = (parent: boolean): string => (parent ? 'your parent' : 'the person')
@@ -264,90 +252,6 @@ const review: Command = (call) =>
 
 // --- resolve, recheck, escalate, ask, answer, note ----------------------------------------------
 
-const resolve: Command = (call) =>
-  Effect.gen(function* () {
-    const { args } = call
-    const escalationWord = String(args.positional[0])
-    const { work } = yield* peekWork
-    const caller = yield* callerOf(work, call.token)
-    const found = yield* lookup(work, escalationWord, ['v'])
-    if (found._tag !== 'Review' || found.review._tag !== 'Escalate') {
-      return yield* refuse(
-        `${escalationWord} is not an escalation; a resolve ends an escalation`,
-        'work waiting lists the escalations that wait for you',
-      )
-    }
-    const evidence = yield* evidenceOf(args.all('evidence'))
-    const done = yield* act(authorOf(caller), {
-      _tag: 'Resolve',
-      target: { escalation: found.review.id as EscalationId },
-      content: { resolution: wordsOf(args.one('resolution')), evidence },
-    })
-    const result = done.work.results.get(found.review.of)
-    if (!result) return yield* Effect.die('resolve: the escalation names no result')
-    const after = yield* derivedAfter(done.work)
-    const items = blockersOf(after.moment, result.id)
-    const state = taskStateWord(after.states.tasks.get(result.task) as never)
-    return [
-      `${firstCreated(done.created)}: resolves ${found.review.id} on ${result.id}.`,
-      items.length
-        ? `${result.id} still has ${items.length} blocker(s): work blockers ${result.id}`
-        : `${result.id} has no blockers; ${result.task} is ${state}.`,
-    ]
-  })
-
-// A decider asks for a new result after a change outside, or to reopen accepted work.
-const recheck: Command = (call) =>
-  Effect.gen(function* () {
-    const { work, caller, by } = yield* agentOfCall(call)
-    const found = yield* lookup(work, String(call.args.positional[0]), ['r'])
-    if (found._tag !== 'Result') return yield* Effect.die(`lookup gave a ${found._tag}`)
-    const done = yield* act(by, {
-      _tag: 'Recheck',
-      target: { result: found.result.id },
-      content: { reason: wordsOf(call.args.one('reason')) },
-    })
-    return [
-      `${firstCreated(done.created)} asks for a new result of ${found.result.task}; the gates run on the next report.`,
-      `next: work next ${caller.token}`,
-    ]
-  })
-
-const escalate: Command = (call) =>
-  Effect.gen(function* () {
-    const { work, caller, a, by } = yield* agentOfCall(call)
-    const result = textOf(call.args.one('result'))
-    const reason = wordsOf(call.args.one('reason'))
-    const points: Array<PointId> = []
-    for (const x of call.args.all('point').map(String)) {
-      const found = yield* lookup(work, x, ['v'])
-      if (found._tag !== 'Point') {
-        return yield* refuse(`${x} is not a point`, 'name a point of a Reject: --point=v4.1')
-      }
-      points.push(found.id)
-    }
-    if (points.length > 0 && !result) {
-      return yield* refuse('a point is escalated on its result', 'add --result=<the result>')
-    }
-    const done = result
-      ? yield* act(by, {
-          _tag: 'EscalateResult',
-          target: { result: (yield* lookupKind('Result', ['r'], work, result)).result.id },
-          content: { reason, points },
-        })
-      : yield* act(by, { _tag: 'EscalateTask', target: { task: a.task }, content: { reason } })
-    const owner = done.work.tasks.get(a.task)?.owner.name
-    const to = a.parent._tag === 'Parent' ? a.parent.id : owner
-    return [
-      `${firstCreated(done.created)} escalated to ${to}.`,
-      isUnit(roleAt(done.work, a.role))
-        ? 'STOP: your parent continues.'
-        : a.parent._tag === 'Parent'
-          ? `next: work next ${caller.token}`
-          : `next: ${to} answers it; work waiting --for=${to} shows it`,
-    ]
-  })
-
 const ask: Command = (call) =>
   Effect.gen(function* () {
     const { by } = yield* agentOfCall(call)
@@ -522,19 +426,6 @@ const evaluate: Command = (call) =>
     ]
   })
 
-const checkpoint: Command = (call) =>
-  Effect.gen(function* () {
-    const { work, by } = yield* agentOfCall(call)
-    const taskWord = String(call.args.positional[0])
-    const { task } = yield* lookupKind('Task', ['t'], work, taskWord)
-    const done = yield* act(by, {
-      _tag: 'Checkpoint',
-      target: { task: task.id },
-      content: { next: wordsOf(call.args.one('next')) },
-    })
-    return [`${firstCreated(done.created)} saved for ${taskWord}.`]
-  })
-
 const source: Command = (call) =>
   Effect.gen(function* () {
     const ref = call.args.positional[0]
@@ -554,76 +445,13 @@ const source: Command = (call) =>
     return [checked ? `${name} is still at ${revision}; seen now.` : `${name} is at ${revision}.`]
   })
 
-const resume: Command = (call) =>
-  Effect.gen(function* () {
-    const { work, d } = yield* readWork
-    const caller = yield* agentCallerOf(work, tokenOfCall(call))
-    const a = assignmentAt(work, caller.assignment)
-    const taskWord = String(call.args.positional[0])
-    const { task } = yield* lookupKind('Task', ['t'], work, taskWord)
-    if (!within(work, task.id, a.task)) {
-      return yield* refuse(`${taskWord} is outside the task tree of ${a.id}`)
-    }
-    const saved = [...work.checkpoints.values()].filter((k) => k.task === task.id).at(-1)
-    if (!saved?.id) {
-      return [`${taskWord} has no checkpoint; work next ${caller.token} shows what is ready.`]
-    }
-    const savedId = saved.id
-    const savedAt = work.events.find((l) => l.created.includes(savedId as CheckpointId as CreatedId))
-    const author = savedAt ? whoOf(savedAt.recorded.author).who : undefined
-    // The answers that came after the checkpoint, to questions about this tree.
-    const answeredSince = work.events
-      .filter((l) => l.recorded.seq > (savedAt?.recorded.seq ?? 0))
-      .flatMap(({ recorded: { event: e } }) =>
-        e._tag === 'Question' && 'move' in e && e.move._tag === 'Answered' ? [e.id] : [],
-      )
-      .filter((q) => {
-        const asked = work.questions.get(q)
-        return asked !== undefined && within(work, asked.stops, task.id)
-      })
-    const revision = (s: { readonly _tag: string }) => revisionOf(s as never)
-    const changedOutside = [...work.sources.values()].filter(
-      (now) =>
-        !saved.seenOutside.some((seen) => seen.name === now.name && revision(seen) === revision(now)),
-    )
-    // Only a result built on a revision that is no longer current needs a recheck.
-    const latest = resultsOf(work, task.id).at(-1)
-    const stale = resultsOf(work, task.id).filter(
-      (r) => r.id === latest?.id && d.moment.outside.stale.has(r.id),
-    )
-    const lines = nextLines(
-      d,
-      nextFor(d, { _tag: 'Agent', assignment: a.id as AssignmentId }),
-      caller.token,
-    )
-    return [
-      `resume ${taskWord} from ${savedId} (saved by ${author}): next was "${saved.next}"`,
-      `changed outside: ${changedOutside.map((c) => `${c.name}@${revision(c)}`).join(', ') || 'nothing'}`,
-      ...(answeredSince.length
-        ? [`answered since ${savedId}: ${answeredSince.join(', ')} (work question show <id>)`]
-        : []),
-      ...(stale.length
-        ? stale.map(
-            (r) =>
-              `check again: work recheck ${caller.token} ${r.id} --reason="${changedOutside.map((c) => c.name).join(', ')} changed"`,
-          )
-        : ['check again: nothing']),
-      ...lines,
-    ]
-  })
-
 export const commands: Commands = {
   brief,
   report,
   review,
-  resolve,
-  recheck,
-  escalate,
   ask,
   answer,
   note,
   evaluate,
-  checkpoint,
-  resume,
   source,
 }

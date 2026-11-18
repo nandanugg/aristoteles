@@ -290,7 +290,7 @@ test('Resume, Revive and Exit follow the recorded exits', () => {
 })
 
 test('Report needs a claim and a fresh brief; ReadBrief only a live maker', () => {
-  const rep: What = { _tag: 'Report', maker: 'm1', output: 'o', caught: new Set() }
+  const rep: What = { _tag: 'Report', maker: 'm1', output: 'o', files: [], caught: new Set() }
   const who = makerActor('m1')
   expect(refusal(withTask({}), act(who, rep, { seen: 4, seenVer: 0 }))).toBeNull()
   const old = { ...withTask({}), ver: new Map([['dir:d1', 1]]) }

@@ -38,7 +38,7 @@ const SAMPLES: { readonly [T in WhatTag]: Extract<What, { _tag: T }> } = {
   Review: { _tag: 'Review', task: 't1', v: 'RaiseNoRule', points: [] },
   Resume: { _tag: 'Resume', maker: 'm1' },
   ReadBrief: { _tag: 'ReadBrief', maker: 'm1' },
-  Report: { _tag: 'Report', maker: 'm1', output: 'o', caught: keys },
+  Report: { _tag: 'Report', maker: 'm1', output: 'o', files: ['a.md'], caught: keys },
   Evaluate: {
     _tag: 'Evaluate',
     task: 't1',

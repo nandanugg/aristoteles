@@ -26,115 +26,9 @@ import {
 const out = async (r) => ok(await r).out
 
 describe('escalate', () => {
-  test('with --result: the result waits for the answerer, and a low agent stops', async () => {
-    const { p, linter } = await reported()
-    const why = 'the facts have no date for the second run'
-    const r = await out(p.agent(`escalate ${linter} --result=r1 --reason="${why}"`))
-    expect(r).toBe('v2 escalated to a1.\nSTOP: your parent continues.')
-    const blockers = await out(p.agent('blockers r1'))
-    expect(blockers).toContain(`v2 escalated on r1: "${why}" (waits for a1)`)
-    expect(await out(p.agent('log --last=1'))).toContain(`escalate on r1 "${why}"`)
-  })
-
-  test('with no result: the task goes up as a question to the parent', async () => {
-    const { p, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    const r = await out(p.agent(`escalate ${writer} --reason="the facts file names no merchant"`))
-    expect(r).toBe('q1 escalated to a1.\nSTOP: your parent continues.')
-    const waiting = await out(p.agent('waiting --for=a1'))
-    expect(waiting).toContain('q1 for a1: the facts file names no merchant')
-  })
-
-  test('the top agent escalates to the person, who resolves it in words', async () => {
-    const { p, lead } = await reported()
-    const why = '--reason="only Nanda decides the date"'
-    const r = await out(p.agent(`escalate ${lead} --result=r1 ${why}`))
-    expect(r).toBe(
-      'v2 escalated to Nanda.\nnext: Nanda answers it; work waiting --for=Nanda shows it',
-    )
-    expect(await out(p.nanda('waiting'))).toContain(
-      'v2 escalated on r1 by a1 for Nanda: only Nanda decides the date\n' +
-        '    work resolve v2 --resolution="..."',
-    )
-  })
-
-  test('an escalation needs a reason', async () => {
-    const { p, linter } = await reported()
-    const r = await p.agent(`escalate ${linter} --result=r1 --reason=" "`)
-    expect(r.err).toStartWith('refused: an escalation needs a reason')
-    expect(r.code).toBe(1)
-  })
 })
 
 describe('resolve', () => {
-  test('the answerer resolves an escalation of its child; the deciders still decide', async () => {
-    const { p, lead, linter } = await reported()
-    ok(await p.agent(`escalate ${linter} --result=r1 --reason="is the date needed?"`))
-    expect(await out(p.agent(`next ${lead}`))).toContain(
-      `resolve v2 on r1: is the date needed?\n  work resolve ${lead} v2 --resolution=`,
-    )
-    const r = await out(p.agent(`resolve ${lead} v2 --resolution="the date is not needed"`))
-    expect(r).toStartWith('v3: resolves v2 on r1.\nr1 still has ')
-    // A resolve accepts and rejects nothing: the result still waits for its deciders.
-    expect(await out(p.agent('blockers r1'))).not.toContain('v2 escalated on r1')
-    const show = await out(p.agent('result show r1'))
-    expect(show).toContain(
-      'v2 escalation by a3 (linter), for a1 (section-lead): "is the date needed?" (resolved by v3)',
-    )
-    expect(show).toContain('v3 resolve by a1 (section-lead), resolves v2: "the date is not needed"')
-    expect(show).toContain('no accept yet by a role that decides r1')
-    expect(await out(p.agent('log --last=1'))).toContain('resolve v2 on r1')
-    // An escalation is resolved once.
-    const again = await p.agent(`resolve ${lead} v2 --resolution="again"`)
-    expect(again.err).toContain('v2 is resolved already')
-  })
-
-  test('a resolve keeps its evidence; an agent names the place in the result', async () => {
-    const { p, lead, linter } = await reported()
-    ok(await p.agent(`escalate ${linter} --result=r1 --reason="is the date needed?"`))
-    const words = '--resolution="the date is not needed"'
-    const chat = '--evidence="chat | the date is not there"'
-    const vague = await p.agent(`resolve ${lead} v2 ${words} ${chat}`)
-    expect(vague.err).toContain('name the place in docs/tsd.md#introduction')
-    // D10, I5: the choice is what the agent writes, not "run the review again" (BUILD.md 4.4).
-    expect(vague.err).toContain('next: write the place in docs/tsd.md#introduction where you looked')
-    const seen = '--evidence="the introduction | it gives no date for the second run"'
-    expect(await out(p.agent(`resolve ${lead} v2 ${words} ${seen}`))).toStartWith('v3: resolves v2')
-    expect(await out(p.agent('result show r1'))).toContain(
-      'v3 resolve by a1 (section-lead), resolves v2: "the date is not needed"\n' +
-        '  the introduction | it gives no date for the second run',
-    )
-  })
-
-  test('the person resolves an escalation to the person, with no token', async () => {
-    const { p, lead } = await reported()
-    ok(await p.agent(`escalate ${lead} --result=r1 --reason="only Nanda decides the date"`))
-    const agent = await p.agent(`resolve ${lead} v2 --resolution="I decided"`)
-    expect(agent.err).toContain('may not resolve "only Nanda decides the date"')
-    const person = await out(p.nanda('resolve v2 --resolution="the date is not needed"'))
-    expect(person).toStartWith('v3: resolves v2 on r1.')
-    expect(await out(p.nanda('waiting'))).not.toContain('v2 escalated on r1')
-  })
-
-  test('a blank or missing resolution is refused, and nothing is stored', async () => {
-    const { p, lead, linter } = await reported()
-    ok(await p.agent(`escalate ${linter} --result=r1 --reason="is the date needed?"`))
-    for (const flag of ['--resolution=" "', '']) {
-      const r = await p.agent(`resolve ${lead} v2 ${flag}`)
-      expect(r.err).toStartWith(
-        'refused: a resolve needs its words: --resolution="<the agreement, or the direction>"',
-      )
-      expect(r.code).toBe(1)
-    }
-    expect(await out(p.agent('waiting --for=a1'))).toContain('v2 escalated on r1')
-  })
-
-  test('a resolve names an escalation', async () => {
-    const { p, lead } = await reported()
-    const r = await p.agent(`resolve ${lead} r1 --resolution="the date is not needed"`)
-    expect(r.err).toContain('"r1" is not')
-    expect(r.code).toBe(1)
-  })
 })
 
 describe('forward and confirm', () => {
@@ -203,28 +97,6 @@ describe('forward and confirm', () => {
     const id = accept.match(/^(e\d+)/)[1]
     const confirmed = await out(p.nanda(`confirm ${id}`, 'confirm'))
     expect(confirmed).toContain('d2 is official: tsd-writing@2.')
-  })
-
-  test("a forwarded resolve is the person's resolve in their words; it waits", async () => {
-    const { p, lead } = await ready()
-    ok(await p.agent(`escalate ${lead} --result=r1 --reason="only Nanda decides the date"`))
-    const quote = '--quote="the date is not needed"'
-    const r = await out(p.agent(`forward ${lead} Nanda resolve v3 ${quote}`))
-    expect(r).toMatch(
-      /^e\d+: resolve v3 on r1 waits until Nanda runs work confirm e\d+ at a terminal\.$/,
-    )
-    const id = r.match(/^(e\d+)/)[1]
-    // Until the confirm, the escalation is open.
-    const waiting = await out(p.nanda('waiting'))
-    expect(waiting).toContain('v3 escalated on r1')
-    expect(waiting).toContain(`${id} forwarded by a1 for Nanda: resolve v3 on r1`)
-    const confirmed = await out(p.nanda(`confirm ${id}`, 'confirm'))
-    expect(confirmed).toEndWith(`${id} confirmed -> v4.`)
-    expect(await out(p.nanda('waiting'))).not.toContain('v3 escalated on r1')
-    // A confirmed act is the person's own act at the terminal, in the words that they gave.
-    expect(await out(p.agent('result show r1'))).toContain(
-      'v4 resolve by Nanda, resolves v3: "the date is not needed"',
-    )
   })
 
   test('a forwarded resolve names an escalation, and takes no --resolution', async () => {

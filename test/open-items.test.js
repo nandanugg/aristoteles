@@ -47,14 +47,6 @@ describe('flags and words', () => {
 })
 
 describe('the person\'s answer reaches the maker', () => {
-  test('the person\'s answer to the lead is in the next brief of the low maker', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`escalate ${writer} --reason="which merchant is it?"`))
-    ok(await p.agent(`ask ${lead} --text="The writer asks which merchant it is." --to=owner`))
-    ok(await p.nanda('answer q2 --text="M-104"'))
-    expect(ok(await p.agent(`brief ${writer}`)).out).toContain('M-104')
-  })
 })
 
 describe('parts in one document file', () => {

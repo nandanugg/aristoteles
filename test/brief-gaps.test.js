@@ -20,27 +20,6 @@ import {
 
 
 describe('the brief of an agent that escalated', () => {
-  test('a resolved escalation shows who resolved it and the words, in OPEN', async () => {
-    const { p, lead, linter } = await reported()
-    ok(await p.agent(`escalate ${linter} --result=r1 --reason="is the date needed?"`))
-    const waiting = ok(await p.agent('assignment show a3')).out
-    expect(waiting).not.toContain('resolution (')
-    ok(await p.agent(`resolve ${lead} v2 --resolution="the date is not needed"`))
-    const brief = ok(await p.agent('assignment show a3')).out
-    expect(brief).toContain('OPEN')
-    expect(brief).toContain('v2 escalated on r1: "is the date needed?" (resolved by a1)')
-    expect(brief).toContain('resolution (v3): the date is not needed')
-  }, 30000)
-
-  test('the answer of a question escalated with no result is shown as an answer', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`escalate ${writer} --reason="the facts file names no merchant"`))
-    ok(await p.agent(`answer ${lead} q1 --text="use merchant m-17"`))
-    const brief = ok(await p.agent(`brief ${writer}`)).out
-    expect(brief).toContain('q1 asked by a2: the facts file names no merchant')
-    expect(brief).toContain('answer (a1): use merchant m-17')
-  }, 30000)
 })
 
 describe('a review in a brief', () => {
@@ -85,14 +64,6 @@ describe('a review in a brief', () => {
 })
 
 describe('the first word of a reply', () => {
-  test('an id keeps its case at the start of a reply', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    const escalated = ok(await p.agent(`escalate ${writer} --reason="no merchant"`)).out
-    expect(escalated).toStartWith('q1 escalated to a1.')
-    const answered = ok(await p.agent(`answer ${lead} q1 --text="m-17"`)).out
-    expect(answered).toStartWith('q1 answered;')
-  }, 30000)
 })
 
 describe('send to an agent with no terminal', () => {

@@ -4,22 +4,6 @@ import { INTRO_V1, INTRO_V2, changeDirection, ok, started, tokenIn } from './har
 const INTRO_V3 = '# TSD\n\n## Introduction\n\nThe export ran twice, and the merchant got two files on one day.\n\n## Design\n\nTODO\n'
 
 describe('attempts: only a fault uses an attempt', () => {
-  test('a resolved escalation is not a review: the unreviewed result still uses the one attempt', async () => {
-    const { p, lead } = await started()
-    const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).out)
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', INTRO_V2)
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    // The checker cannot decide and escalates; the lead resolves it. Nobody reviewed r1.
-    const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter}`))
-    ok(await p.agent(`escalate ${linter} --result=r1 --reason="the facts file has no date for the second run"`))
-    expect(ok(await p.agent(`next ${lead}`)).out).toContain('resolve v2 on r1')
-    ok(await p.agent(`resolve ${lead} v2 --resolution="the date is not needed"`))
-    // r1 waits for its first review (a resolve is no review of the work), so the attempt is used.
-    expect(ok(await p.agent(`brief ${writer}`)).out).toContain('has used its 1 attempts')
-  })
-
   test('after an approved change resets the attempts, the next fault on the last try needs a new evaluation', async () => {
     const { p, lead } = await started()
     const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).out)

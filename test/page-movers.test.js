@@ -42,34 +42,6 @@ const hosted = async (files = {}) => {
 }
 
 describe('D1: an evaluation for the owner', () => {
-  test('shows on its task with accept and reject; the accept lets the tree move', async () => {
-    const { p, lead } = await started({ 'task.yaml': TASK_WHOLE })
-    gitPerson(p)
-    const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=1`)).out)
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', INTRO_V1)
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter}`))
-    ok(await p.agent(`review ${linter} r1 reject --point="cites a ticket id" --breaks=no-ticket-ids`))
-    const until = '--until=2026-12-31T00:00:00Z'
-    ok(await p.nanda(`grant --act=change --on=tsd-writing,t1 --to=architect ${until}`, 'grant'))
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    ok(await p.agent(`evaluate ${arch} t1 --wrong="r1 cites the ticket" --why="the spirit counts ids as facts" --improve="ids are not facts" --level=direction`))
-    expect(await card(p, 't1', 'evaluation')).toMatchObject({
-      id: 'ev1',
-      level: 'direction',
-      wrong: 'r1 cites the ticket',
-      improve: ['ids are not facts'],
-      acts: [{ _tag: 'Accept' }, { _tag: 'Reject' }],
-    })
-    expect(ok(await p.agent(`next ${arch}`)).out).toContain('ev1')
-    const out = await act(p, 'accept-evaluation', { evaluation: 'ev1', text: 'ids are no facts' })
-    expect(out).toEqual({ out: 'ev1 accepted; it counts now.' })
-    expect(await card(p, 't1', 'evaluation')).toBeUndefined()
-    expect(ok(await p.agent(`next ${arch}`)).out).toContain('work direction revise')
-  })
 })
 
 describe('BriefOver: a brief over its limit with no high role above it', () => {
@@ -166,26 +138,6 @@ describe('D3: a suggestion reaches an actor', () => {
 })
 
 describe('D2: a company draft of a new direction with no examples', () => {
-  test('any open high agent adds them; the page offers no accept while it waits', async () => {
-    const repo = mkdtempSync(join(tmpdir(), 'company-'))
-    git(repo, 'init', '-q', '-b', 'main')
-    await Bun.write(join(repo, 'directions/feature-flags/direction.md'), '# Feature flags\n\nEach critical change is under a feature flag.\n')
-    await Bun.write(join(repo, 'directions/feature-flags/naming/standard.md'), 'The flag name tells the project and the feature.\n')
-    await Bun.write(join(repo, 'directions/feature-flags/naming/upper-snake.md'), 'The flag is FF_<PROJECT>_<FEATURE>.\n')
-    git(repo, 'add', '-A')
-    git(repo, 'commit', '-q', '-m', 'flags')
-    const { p } = await started()
-    gitPerson(p)
-    ok(await p.nanda('grant --act=change --on=tsd-writing,t1 --to=architect --until=2026-12-31T00:00:00Z', 'grant'))
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    p.write('aristoteles.lock', `feature-flags:\n  repo: ${repo}\n  path: directions/feature-flags\n  owner: Nanda\n  checkedBy: linter\n`)
-    ok(await p.nanda('waiting'))
-    const draft = (await inbox(p)).find((d) => d.id === 'd2')
-    expect(draft.acts).toEqual([{ _tag: 'Reject' }])
-    expect(draft.waits).toBe('Its flow and examples come first: a2 (architect) adds them.')
-    expect(ok(await p.agent(`next ${arch}`)).out).toContain('d2 drafts the new direction "Feature flags"')
-  })
 })
 
 describe('F3: a decision with no task, and one of a task that ended', () => {

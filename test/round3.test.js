@@ -18,59 +18,9 @@ describe('the person, and only the person', () => {
     expect((await p.nanda('init')).err).toContain('roles.nanda: model names an entry of the models table (haiku, sonnet, opus)')
   })
 
-  // Every path by which an agent could act for the person, tried in one table.
-  test('invariant: an agent cannot resolve the person\'s escalation, or accept for the person', async () => {
-    const { p, lead } = await reported()
-    const escalation = ok(await p.agent(`escalate ${lead} --result=r1 --reason="only Nanda decides this"`)).out.match(/^(v\d+)/)[1]
-    expect((await p.agent(`resolve ${lead} ${escalation} --resolution="I decided it myself"`)).err).toContain('may not resolve')
-    expect((await p.agent(`forward ${lead} Nanda accept r1 --evidence="repeatable | the introduction | a reviewer can repeat it" --quote="fine"`)).err)
-      .toContain('Nanda approves directions and standards')
-  })
-
-  test('I-N6: the confirm of a forwarded accept shows the draft', async () => {
-    const { p } = await started()
-    const arch = await architect(p)
-    p.write('edit.yaml', 'remove: [intro-story]\n')
-    ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
-    const forwarded = ok(await p.agent(`forward ${arch} Nanda accept d2 --evidence="edit.yaml | the cleanup" --quote="yes, go ahead with the cleanup"`)).out
-    const id = forwarded.match(/^(e\d+)/)[1]
-    const r = ok(await p.nanda(`confirm ${id}`, 'confirm'))
-    expect(r.out).toContain('- intro-story: Tell the story first, in plain words.')
-  })
-
-  test('I-N10: a split does not answer the person\'s Reject', async () => {
-    const { p, lead } = await reported({ 'task.yaml': TASK_WHOLE })
-    ok(await p.agent(`review ${lead} r1 accept --evidence="docs/tsd.md, the introduction | the story is told there"`))
-    ok(await p.nanda('review r1 reject --point="the story does not say who was hurt"'))
-    await evaluated(p, 't1')
-    const arch = await architect(p, 't1')
-    p.write('one.yaml', '- { name: Introduction again, text: Write the Introduction again. }\n')
-    expect((await p.agent(`task split ${arch} t1 --file=one.yaml --review=v3`)).err).toContain("is the person's Reject; only that person's own split answers it")
-  })
 })
 
 describe('directions', () => {
-  test('I-N4: a revise refuses a second rule with an existing id', async () => {
-    const { p } = await started()
-    const arch = await architect(p)
-    p.write('edit.yaml', 'add:\n  - id: twin\n    says: A twin.\n    rules: [ { id: repeatable, says: "The section has a first sentence", checkedBy: linter } ]\n')
-    expect((await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`)).err).toContain('"repeatable" is already used')
-  })
-
-  test('I-N5: a medium does not accept a draft of a direction, even with a change grant', async () => {
-    const { p, lead } = await started()
-    ok(await p.nanda('grant --act=change --on=tsd-writing --to=section-lead --until=2026-10-26T00:00:00Z', 'grant'))
-    p.write('edit.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
-    const r = await p.agent(`review ${lead} d2 accept --evidence="edit.yaml | mine"`)
-    // DESIGN: a medium role changes no direction. Its accept is recorded, but only a high role
-    // with a Change act stands in for the owner, so the draft still waits for Nanda.
-    expect(ok(r).out).toContain('v2: accept of d2; it waits for the accept of Nanda.')
-    expect(ok(await p.nanda('direction show tsd-writing')).out).toContain('tsd-writing@1 TSD writing (owner Nanda) · current')
-  })
-
   test('I-N19: an official version lives in aristoteles, no file changes, and work goes on', async () => {
     const { p, writer } = await withWriter()
     const { out } = await changeDirection(p, 'add:\n  - { id: short, says: Keep it short. }\n', { flags: '--why="Correct the standard"' })
@@ -118,17 +68,6 @@ describe('real work only', () => {
     expect((await p.agent(`report ${impl} --output=app/fake@${sha}`)).err).toContain('is not in the workspace of t1')
   })
 
-  test('I-N11: a part may not report a section that a sibling part owns', async () => {
-    const p = project({ 'task.yaml': 'name: The whole TSD\ntext: Write the TSD.\ndirections: [tsd-writing]\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n' })
-    await init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.nanda('task open --file=task.yaml'))
-    const arch = await architect(p, 't1')
-    // Since round 5 (R5-5), the split itself is refused: in one file, every part has a section.
-    p.write('parts.yaml', '- { name: Intro, text: Write the intro., context: { section: introduction } }\n- { name: Design, text: Write the design. }\n')
-    expect((await p.agent(`task split ${arch} t1 --file=parts.yaml`)).err).toContain('and Design has no section; each part needs its own section of the file')
-  })
-
   test('I-N12: punctuation is not evidence', async () => {
     const { p, linter } = await reported()
     expect((await p.agent(`review ${linter} r1 accept --evidence="no-code-proof | introduction | - - -" --evidence="no-ticket-ids | introduction | . . ."`)).err)
@@ -149,15 +88,6 @@ describe('real work only', () => {
 })
 
 describe('claims and trees', () => {
-  test('I-N2: a checkpoint stays in its own tree; resume names who saved it', async () => {
-    const { p, lead } = await started()
-    p.write('t2.yaml', 'name: The Design\ntext: Write the Design.\ndirections: [tsd-writing]\nworkspace: [ { source: tsd, path: docs/tsd.md } ]\n')
-    ok(await p.nanda('task open --file=t2.yaml'))
-    expect((await p.agent(`checkpoint ${lead} t2 --next="close it"`)).err).toContain('t2 is outside the task tree of a1')
-    ok(await p.agent(`checkpoint ${lead} t1 --next="assign the writer"`))
-    expect(ok(await p.agent(`resume ${lead} t1`)).out).toContain('resume t1 from k1 (saved by a1)')
-  })
-
   test('I-N13: a low checker reviews the result its brief named; a newer one means escalate', async () => {
     const { p, writer, linter } = await reported()
     ok(await p.agent(`brief ${writer}`))
@@ -204,17 +134,6 @@ describe('claims and trees', () => {
 })
 
 describe('forward', () => {
-  test('I-N16: a forward names a real channel and a target in the tree; an impossible answer is refused at once', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`escalate ${writer} --reason="which merchant is it?"`))
-    expect((await p.agent(`forward ${lead} Nanda comment t1 --quote="use the merchant name" --channel=terminal`)).err).toContain('--channel is chat or github')
-    const r = await p.agent(`forward ${lead} Nanda answer q1 --quote="M-104"`)
-    expect(r.err).toContain('Nanda could not answer q1 now')
-    expect(r.err).toContain('--to=owner')
-    expect((await p.agent(`forward ${lead} Nanda ask zzz --quote="why the ticket?"`)).err).toContain('"zzz" is not')
-  })
-
   test('F-C6: a forwarded point shows the person\'s words', async () => {
     const { p, lead } = await reported()
     ok(await p.agent(`review ${lead} r1 accept --evidence="repeatable | the introduction | a reviewer can repeat it"`))
@@ -233,38 +152,9 @@ describe('advice', () => {
     expect(ok(await p.agent('waiting --for=Nanda')).out).toContain('v2.1 needs a change of tsd-writing')
   })
 
-  test('N3: long answers are cut in briefs, and question show prints them in full', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`escalate ${writer} --reason="which merchant?"`))
-    const long = 'M-104. '.repeat(60)
-    ok(await p.agent(`answer ${lead} q1 --text="${long}"`))
-    expect(ok(await p.agent(`brief ${writer}`)).out).toContain('(in full: work question show q1)')
-    expect(ok(await p.agent('question show q1')).out).toContain(long.trim())
-  })
-
   test('N11: the maker brief names the gate', async () => {
     const { p } = await codeStarted()
     expect(ok(await p.agent('assignment show a2')).out).toContain('gate: test -f ok.txt (runs on each report')
   })
 
-  test('N15: waiting hides an escalation on an old result', async () => {
-    const { p, lead, writer, linter } = await reported()
-    ok(await p.agent(`escalate ${linter} --result=r1 --reason="is two files a cost?"`))
-    expect(ok(await p.agent('waiting')).out).toContain('v2 escalated on r1')
-    ok(await p.agent(`review ${lead} r1 reject --point="names no cost" --breaks=no-ticket-ids`))
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', INTRO_V2.replace('two files', 'two files and a double export'))
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    expect(ok(await p.agent('waiting')).out).not.toContain('v2 escalated on r1')
-  })
-
-  test('N17: a high agent splits first', async () => {
-    const p = project({ 'task.yaml': TASK_WHOLE })
-    await init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.nanda('task open --file=task.yaml'))
-    const arch = await architect(p, 't1')
-    expect(ok(await p.agent(`next ${arch}`)).out).toContain(`split t1 first, then give each part to a lead`)
-  })
 })

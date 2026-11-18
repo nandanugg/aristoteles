@@ -26,7 +26,6 @@ import {
   assignmentStateOf,
   type Derived,
   derive,
-  escalationStateOf,
   forwardStateOf,
   hostOf,
   hostPanesOf,
@@ -51,7 +50,7 @@ const of = (name: string) => {
 }
 beforeAll(async () => {
   for (const [name, make] of SCENARIOS) {
-    if (!['uiRun', 'relay', 'relayDecided', 'vetoed', 'escalated'].includes(name)) continue
+    if (!['uiRun', 'relay', 'relayDecided', 'vetoed'].includes(name)) continue
     const s: Scenario = await make()
     const m = momentOf(s.p.dir, s.at)
     scenarios.set(name, { m, d: derive(m) })
@@ -149,26 +148,6 @@ describe('task -> question (C2)', () => {
     })
     expect(questionStateOf(m, q, { stops: CLOSED, answerer })._tag).toBe('Irrelevant')
     expect(questionStateOf(m, q, { stops: OPEN, answerer })).toEqual({ _tag: 'Open', answerer })
-  })
-})
-
-describe('result and task -> escalation', () => {
-  test('a later result, or the end of its task, makes an escalation Irrelevant', () => {
-    const { m } = of('escalated')
-    const e = [...m.work.reviews.values()].find((r) => r._tag === 'Escalate')
-    if (e?._tag !== 'Escalate') throw new Error('no escalation')
-    const answerer = { _tag: 'Human', name: 'Nanda' } as const
-    const later = { _tag: 'Superseded', by: id<ResultId>('r2') } as const
-    const inReview = { _tag: 'InReview' } as const
-    expect(escalationStateOf(m, e.id, { result: later, task: OPEN, answerer })).toEqual({
-      _tag: 'Irrelevant',
-      why: { _tag: 'ResultSuperseded', by: id('r2') },
-    })
-    expect(escalationStateOf(m, e.id, { result: inReview, task: CLOSED, answerer })).toEqual({
-      _tag: 'Irrelevant',
-      why: { _tag: 'TaskEnded', task: id('t1') },
-    })
-    expect(escalationStateOf(m, e.id, { result: inReview, task: OPEN, answerer })._tag).toBe('Open')
   })
 })
 

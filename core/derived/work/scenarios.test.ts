@@ -89,7 +89,7 @@ const send = (r: Run, sections: string[]) => r.go(HOST, { _tag: 'SendTask', spec
 const make = (r: Run, t: string, m: string) => {
   r.go(W, { _tag: 'AssignDo', task: t })
   r.go(makerActor(m), { _tag: 'ReadBrief', maker: m })
-  r.go(makerActor(m), { _tag: 'Report', maker: m, output: '', caught: new Set() })
+  r.go(makerActor(m), { _tag: 'Report', maker: m, output: '', files: [], caught: new Set() })
 }
 const review = (r: Run, t: string, v: 'Pass' | 'Fail' | 'RaiseTries' | 'RaiseNoRule') =>
   r.go(W, { _tag: 'Review', task: t, v, points: [] })
@@ -168,7 +168,7 @@ test('2 a raise by tries: standard fix in effect, the other done task is recheck
   pass(r, 't2')
   make(r, 't1', 'm2')
   review(r, 't1', 'Fail')
-  r.go(makerActor('m2'), { _tag: 'Report', maker: 'm2', output: '', caught: new Set() })
+  r.go(makerActor('m2'), { _tag: 'Report', maker: 'm2', output: '', files: [], caught: new Set() })
   review(r, 't1', 'RaiseTries')
   expect(obligationsOf(r.s)).toContainEqual({ tag: 'PipeOb', target: 't1' })
   evaluate(r, 't1', 'Standard')
@@ -260,7 +260,7 @@ test('6 G3 refusals at the store check', () => {
   send(r, ['a', 'b'])
   make(r, 't1', 'm1')
   review(r, 't1', 'Fail')
-  r.go(makerActor('m1'), { _tag: 'Report', maker: 'm1', output: '', caught: new Set() })
+  r.go(makerActor('m1'), { _tag: 'Report', maker: 'm1', output: '', files: [], caught: new Set() })
   const pass1: What = { _tag: 'Review', task: 't1', v: 'Pass', points: [] }
   expect(r.no(W, pass1, { seen: 0 })).toBe('basis')
   expect(r.no(W, pass1)).toBeNull()
@@ -270,7 +270,7 @@ test('6 G3 refusals at the store check', () => {
   expect(r.no(PERSON, mv)).toBe('legal')
   expect(r.no(HOST, { _tag: 'TopDone' }, { ep: 0 })).toBe('epoch')
   // an old-epoch maker after the revive of its role
-  const report: What = { _tag: 'Report', maker: 'm1', output: '', caught: new Set() }
+  const report: What = { _tag: 'Report', maker: 'm1', output: '', files: [], caught: new Set() }
   r.go(HARNESS, { _tag: 'Exit', who: W })
   r.go(HARNESS, { _tag: 'Revive', who: W })
   expect(r.no(makerActor('m1'), report)).toBe('legal')

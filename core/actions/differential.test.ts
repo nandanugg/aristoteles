@@ -376,28 +376,16 @@ const comparable = (e: Event): unknown => {
 
 // --- the scenarios -------------------------------------------------------------------------------
 
-// The acts that the scenarios of core/derived lack: notes, a question answered, an escalation
-// resolved, a suggestion, a grant revoked, a source read twice, a checkpoint, a description, a
-// free, a finish, a Reject of a task and its evaluation, and a split and a close.
+// The acts that the scenarios of core/derived lack: notes, a question answered, a suggestion, a
+// source read twice, a description, a free, a finish, a Reject of a task and its evaluation, and a split and a close.
 const more = async (): Promise<Project> => {
   const { p, lead, writer, linter } = await h.reported()
   ok(await p.agent(`note ${lead} finding --text="the facts name one merchant"`))
   ok(await p.agent(`ask ${writer} --text="which merchant is it?"`))
   ok(await p.agent(`answer ${lead} q1 --text="the merchant m1"`))
-  const up = ok(await p.agent(`escalate ${lead} --result=r1 --reason="the rules say no length"`))
-  const vid = /^(v\d+) escalated/.exec(up.out)?.[1] ?? ''
-  ok(await p.nanda(`resolve ${vid} --resolution="keep it to one paragraph"`))
   ok(await p.agent(`suggest ${lead} no-ticket-ids --says="name the event, not the ticket"`))
-  ok(
-    await p.nanda(
-      'grant --act=review --on=writer --to=architect --until=2026-12-31T00:00:00Z',
-      'grant',
-    ),
-  )
-  ok(await p.nanda('revoke x1', 'revoke'))
   ok(await p.agent(`source ${lead} facts@3`))
   ok(await p.agent(`source ${lead} facts@3`))
-  ok(await p.agent(`checkpoint ${lead} t1 --next="the linter checks r1"`))
   ok(await p.nanda('task describe t1 --text="The introduction of the TSD"'))
   ok(await p.agent(`free ${lead} ${linter.split('.')[0]}`))
   ok(await p.agent(`finish ${lead} ${linter.split('.')[0]}`))
@@ -455,7 +443,6 @@ const ui = async (): Promise<Project> => {
   ok(await p.agent(`note ${lead} message --text="the writer starts next"`))
   const writer = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=writer --max-attempts=3`)).out)
   ok(await p.agent(`brief ${writer}`))
-  ok(await p.agent(`escalate ${writer} --reason="the facts do not say the cost"`))
   ok(await p.ui('event a2 --kind=closed'))
   ok(await p.ui('run close h1'))
   return p
