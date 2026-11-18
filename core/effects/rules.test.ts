@@ -147,4 +147,23 @@ describe('caughtOn and pendingHold', () => {
     expect(await run(pendingHold(s, 't1', [file('e.txt', 'fine\n')]))).toBe(true)
     expect(await run(pendingHold(s, 't1', [file('f.txt', 'TODO\n')]))).toBe(false)
   })
+  test('only the task section is seen; a nested subsection stays inside it', async () => {
+    const s = base()
+    const doc = (a: string, b: string): string =>
+      `# Doc\n\n## A\n\ntext\n\n### Sub\n\n${a}\n\n## Other\n\n${b}\n`
+    expect([...(await run(caughtOn(s, 't1', [file('s1.md', doc('fine', 'TODO'))])))]).toEqual([])
+    expect([...(await run(caughtOn(s, 't1', [file('s2.md', doc('TODO', 'fine'))])))]).toEqual([
+      'rule:old',
+    ])
+    expect(await run(pendingHold(s, 't1', [file('s3.md', doc('fine', 'TODO'))]))).toBe(true)
+  })
+  test('a # line in a code fence is no heading: the section goes on past it', async () => {
+    const s = base()
+    const doc = '# Doc\n\n## A\n\n```\n# not a heading\n```\n\nTODO\n\n## Other\n\nfine\n'
+    expect([...(await run(caughtOn(s, 't1', [file('f.md', doc)])))]).toEqual(['rule:old'])
+  })
+  test('a file with no headings is passed whole', async () => {
+    const s = base()
+    expect([...(await run(caughtOn(s, 't1', [file('n.md', 'x\nTODO\n')])))]).toEqual(['rule:old'])
+  })
 })

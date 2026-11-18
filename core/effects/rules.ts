@@ -140,18 +140,60 @@ export const refExists = (dir: string, ref: string): Effect.Effect<boolean, neve
     })
   })
 
-// The rules that apply to the task, with a test command, that print on the paths.
+// The sections of a markdown text: each heading (any level) whose text or slug is a name, with
+// its body up to the next heading of the same or a higher level (subsections stay inside).
+const sectionsOf = (text: string, names: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const lines = text.split('\n')
+  // The heading level of each line; 0 for a plain line or a line inside a code fence.
+  let fenced = false
+  const levels = lines.map((l) => {
+    if (/^\s*(```|~~~)/.test(l)) fenced = !fenced
+    return fenced ? 0 : (/^(#{1,6})\s/.exec(l)?.[1]?.length ?? 0)
+  })
+  const out: string[] = []
+  lines.forEach((l, i) => {
+    const level = levels[i] ?? 0
+    if (level === 0) return
+    const title = l.replace(/^#+\s+/, '').trim()
+    if (!names.includes(title) && !names.includes(slug(title))) return
+    const end = levels.findIndex((m, j) => j > i && m > 0 && m <= level)
+    out.push(lines.slice(i, end < 0 ? lines.length : end).join('\n'))
+  })
+  return out
+}
+
+// The paths a test command gets: a temp file per section of the task in each file; a file with
+// none of them (not a sectioned document) whole.
+const checkPaths = (
+  s: WorkState,
+  taskId: string,
+  paths: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyArray<string>, RuleRunFailed, Files> =>
+  Effect.gen(function* () {
+    const names = tk(s, taskId).sections
+    const out: string[] = []
+    for (const p of paths) {
+      const text = yield* (yield* Files).read(p)
+      const found = text === null ? [] : sectionsOf(text, names)
+      if (found.length === 0) out.push(p)
+      else for (const f of found) out.push(yield* sampleFile(f))
+    }
+    return out
+  })
+
+// The rules that apply to the task, with a test command, that print on the paths' sections.
 export const caughtOn = (
   s: WorkState,
   taskId: string,
   paths: ReadonlyArray<string>,
-): Effect.Effect<ReadonlySet<ItemKey>, RuleRunFailed, Dir | Spawn> =>
+): Effect.Effect<ReadonlySet<ItemKey>, RuleRunFailed, Dir | Spawn | Files> =>
   Effect.gen(function* () {
+    const checked = yield* checkPaths(s, taskId, paths)
     const caught = new Set<ItemKey>()
     for (const x of appliesTo(s, tk(s, taskId))) {
       const r = s.items.get(x)
       if (r === undefined || r.kind !== 'rule' || !mechRule(r) || r.test === null) continue
-      if ((yield* runOn(r.test, paths)).length > 0) caught.add(x)
+      if ((yield* runOn(r.test, checked)).length > 0) caught.add(x)
     }
     return caught
   })
@@ -161,12 +203,13 @@ export const pendingHold = (
   s: WorkState,
   taskId: string,
   paths: ReadonlyArray<string>,
-): Effect.Effect<boolean, RuleRunFailed, Dir | Spawn> =>
+): Effect.Effect<boolean, RuleRunFailed, Dir | Spawn | Files> =>
   Effect.gen(function* () {
+    const checked = yield* checkPaths(s, taskId, paths)
     for (const x of tk(s, taskId).pend) {
       const test = s.items.get(x)?.test ?? null
       if (!testRule(s, x) || test === null) continue
-      if ((yield* runOn(test, paths)).length > 0) return false
+      if ((yield* runOn(test, checked)).length > 0) return false
     }
     return true
   })
