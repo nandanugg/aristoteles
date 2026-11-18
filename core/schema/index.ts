@@ -13,6 +13,15 @@ export * from '../../src/domain/actor.ts'
 export * from '../../src/domain/closed.ts'
 export * from '../../src/domain/errors.ts'
 
+// --- the acts of the work model (their stored form; the types are core/state/work/types.ts) ---
+export {
+  Act as ActSchema,
+  ItemRec as ItemRecSchema,
+  What as WhatSchema,
+  WorkActed,
+  WorkOpened,
+} from '../../src/domain/work-acts.ts'
+
 // --- the stored events (Schemas: the store's contract, R2) -------------------------------------
 export {
   Adjustment as AdjustmentSchema,

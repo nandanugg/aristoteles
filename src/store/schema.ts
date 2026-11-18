@@ -1,16 +1,19 @@
-// The SQL of the store (format 2). The reader tables are for the tests and for people with sqlite3.
+// The SQL of the store (format 3). The reader tables are for the tests and for people with sqlite3.
 // The acts are in the event table, one row per stored event: its author and the event as JSON of
 // src/domain/events.ts, and beside them the record that it happens to and its member (Task, Opened;
 // Review, Reject), so that a person with sqlite3 reads each kind of act with no JSON. The store
-// writes the two from the event, and a read checks that they agree with it.
+// writes the two from the event, and a read checks that they agree with it. act is the id of a
+// Work.Acted act (null for every other event): a second copy of an act id cannot be stored.
 
 // PRAGMA user_version of a store that this code reads.
-export const FORMAT = 2
+export const FORMAT = 3
 
 export const EVENT_TABLE = `
 CREATE TABLE IF NOT EXISTS event (
   project TEXT NOT NULL, seq INTEGER NOT NULL, at TEXT NOT NULL, author TEXT NOT NULL,
-  record TEXT NOT NULL, member TEXT NOT NULL, event TEXT NOT NULL, PRIMARY KEY (project, seq));
+  record TEXT NOT NULL, member TEXT NOT NULL, event TEXT NOT NULL, act TEXT,
+  PRIMARY KEY (project, seq));
+CREATE UNIQUE INDEX IF NOT EXISTS event_act ON event (project, act);
 `
 
 export const READER_TABLES = `
@@ -95,6 +98,9 @@ CREATE TABLE IF NOT EXISTS task_before (
   project TEXT NOT NULL, task TEXT NOT NULL, file TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY (project, task, file));
 CREATE TABLE IF NOT EXISTS result_file (
   project TEXT NOT NULL, result TEXT NOT NULL, file TEXT NOT NULL, PRIMARY KEY (project, result, file));
+CREATE TABLE IF NOT EXISTS item_version (
+  project TEXT NOT NULL, item TEXT NOT NULL, version INTEGER NOT NULL, seq INTEGER NOT NULL,
+  PRIMARY KEY (project, item, version));
 CREATE TABLE IF NOT EXISTS words (
   project TEXT NOT NULL, place TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY (project, place));
 CREATE VIRTUAL TABLE IF NOT EXISTS words_search USING fts5(project UNINDEXED, place UNINDEXED, kind UNINDEXED, text);

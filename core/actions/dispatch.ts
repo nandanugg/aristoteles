@@ -36,7 +36,7 @@ export const STORE = {
 } as const
 
 // A fold that throws StoreDamaged becomes a typed failure; any other throw is a bug.
-const folding = <A>(run: () => A): Effect.Effect<A, StoreDamaged> =>
+export const folding = <A>(run: () => A): Effect.Effect<A, StoreDamaged> =>
   Effect.suspend(() => {
     try {
       return Effect.succeed(run())

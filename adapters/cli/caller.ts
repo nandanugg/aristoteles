@@ -14,6 +14,8 @@ import {
   type Work,
 } from '../../core/schema/index.ts'
 import { Env, GitUser, sha, Terminal } from '../../core/services/index.ts'
+import type { WorkFolded } from '../../core/state/work/fold.ts'
+import type { Actor } from '../../core/state/work/types.ts'
 import { isToken } from './args.ts'
 
 export type Caller =
@@ -54,6 +56,35 @@ export const verify = (
       return yield* refuse(`the token of ${id} is wrong`)
     }
     return { assignment: assignment.id, token }
+  })
+
+// A token of the work model: w.<actor>.<ep>.<secret>. The actor may hold dots (a role name): the
+// epoch (digits) and the secret (no dots) are the last two parts.
+export const workTokenOf = (who: Actor, ep: number, secret: string): string =>
+  `w.${who}.${ep}.${secret}`
+
+// The actor and the epoch a work token names, when the secret matches the hash that the store
+// kept for that actor at that epoch. An old epoch's token verifies as that epoch, so that the
+// store's check refuses it as old (not as a wrong token).
+export const verifyWork = (
+  folded: WorkFolded,
+  token: string | null,
+): Effect.Effect<{ readonly who: Actor; readonly ep: number }, Refused> =>
+  Effect.gen(function* () {
+    if (token === null) {
+      return yield* refuse(
+        'this command needs your token (w.<actor>.<epoch>.<secret>), from the command that ' +
+          'your parent gave you',
+        'do not guess a token; when you have none, STOP and say so in your last words',
+      )
+    }
+    const m = /^w\.(.+)\.(\d+)\.([a-z0-9]+)$/.exec(token)
+    if (!m) return yield* refuse(`"${token}" is not a work token (w.<actor>.<epoch>.<secret>)`)
+    const [, who = '', epoch = '', secret = ''] = m
+    const ep = Number(epoch)
+    const hash = folded.tokens.get(who)?.find((t) => t.ep === ep)?.hash
+    if (hash !== sha(secret)) return yield* refuse(`the token of ${who} is wrong`)
+    return { who, ep }
   })
 
 export const agentCallerOf = (

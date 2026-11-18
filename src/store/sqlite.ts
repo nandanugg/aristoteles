@@ -141,15 +141,18 @@ const decodeRow = (row: EventRow): Recorded => {
 }
 
 export const INSERT_EVENT =
-  'INSERT INTO event (project, seq, at, author, record, member, event) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  'INSERT INTO event (project, seq, at, author, record, member, event, act) ' +
+  'VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 
-// The columns of one event: its author and the event as JSON, its record and its member.
+// The columns of one event: its author and the event as JSON, its record and its member, and the
+// id of its act (a Work.Acted).
 export const eventColumns = (r: { readonly author: Author; readonly event: Event }) =>
   [
     JSON.stringify(encodeAuthor(r.author)),
     r.event._tag,
     memberOf(r.event),
     JSON.stringify(encodeEvent(r.event)),
+    r.event._tag === 'Work' && r.event.create._tag === 'Acted' ? r.event.create.act.id : null,
   ] as const
 
 // The store of one dir on an open file.

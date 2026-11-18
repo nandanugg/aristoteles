@@ -58,6 +58,7 @@ import {
   TaskId,
   Time,
 } from './ids.ts'
+import { WorkActed, WorkOpened } from './work-acts.ts'
 
 const Text = Schema.String
 const NonEmpty = Schema.NonEmptyArray
@@ -700,6 +701,9 @@ const Forward = Schema.Union([
   moved('Forward', EventRef, ForwardMove),
 ])
 
+// The work model (core/state/work): the person opens the top; each accepted act is one event.
+const WorkEvent = created('Work', Schema.Union([WorkOpened, WorkActed]))
+
 // --- every event --------------------------------------------------------------------------------
 
 export const Event = Schema.Union([
@@ -726,6 +730,7 @@ export const Event = Schema.Union([
   ...Source.members,
   Checkpoint,
   ...Forward.members,
+  WorkEvent,
 ])
 export type Event = typeof Event.Type
 // The record that an event happens to.
@@ -836,9 +841,10 @@ export const WRITTEN_BY = {
     'Source.Checked',
     'Checkpoint.Checkpoint',
     'Forward.Forwarded',
+    'Work.Acted',
   ],
   // A check program's review.
-  Program: ['Review.Accept', 'Review.Reject'],
+  Program: ['Review.Accept', 'Review.Reject', 'Work.Acted'],
   // The person at a terminal or on the page.
   Person: [
     'Workflow.Defined',
@@ -873,9 +879,11 @@ export const WRITTEN_BY = {
     'Forward.Confirmed',
     'Adjustment.Accepted',
     'Adjustment.Rejected',
+    'Work.Opened',
+    'Work.Acted',
   ],
   // A host run before it has an assignment: its task draft.
-  Host: ['TaskDraft.Drafted'],
+  Host: ['TaskDraft.Drafted', 'Work.Acted'],
   // A model run outside any task: its draft of a new direction, its revise of a direction that
   // has a version (a host revises a direction, ruling 2026-11-14), the fit of a role (the host
   // that drafted the roles records their fits, Nanda 2026-11-13), new words of a role, the examples
@@ -892,9 +900,10 @@ export const WRITTEN_BY = {
     'Run.HostJoined',
     'Run.HostMoved',
     'Terminal.Started',
+    'Work.Acted',
   ],
   // The CLI's own assign and finish of a program.
-  System: ['Assignment.GivenReviewer', 'Assignment.Finished'],
+  System: ['Assignment.GivenReviewer', 'Assignment.Finished', 'Work.Acted'],
   // The supervisor of the terminals: its sessions, what it sees, its sends and their fate, the
   // problems that it records and fixes, and the start of a persistent agent's terminal.
   Supervisor: [
@@ -908,9 +917,10 @@ export const WRITTEN_BY = {
     'Send.Dropped',
     'Problem.Recorded',
     'Problem.Fixed',
+    'Work.Acted',
   ],
   // The daily refresh of the company directions.
-  Refresh: ['Revision.Imported'],
+  Refresh: ['Revision.Imported', 'Work.Acted'],
 } as const satisfies { readonly [A in Author['_tag']]: ReadonlyArray<Kind> }
 export type AuthorTag = Author['_tag']
 export type WrittenBy = { readonly [A in AuthorTag]: (typeof WRITTEN_BY)[A][number] }

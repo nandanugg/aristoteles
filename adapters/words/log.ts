@@ -211,6 +211,8 @@ const OLD_TYPE: Total<string> = {
   'Checkpoint.Checkpoint': 'checkpoint',
   'Forward.Forwarded': 'forward',
   'Forward.Confirmed': 'confirm',
+  'Work.Opened': 'work.open',
+  'Work.Acted': 'work.act',
 }
 export const oldType = (event: Event): string => OLD_TYPE[kindOf(event)]
 

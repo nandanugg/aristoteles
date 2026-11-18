@@ -7,7 +7,8 @@ import { join } from 'node:path'
 import { Effect, Exit } from 'effect'
 import type { Work } from '../../core/schema/index.ts'
 import { type IoServices, layerOfIo, sha, type WorkIo } from '../../core/services/index.ts'
-import { callerOf, isToken, personOf, verify } from './caller.ts'
+import type { WorkFolded } from '../../core/state/work/fold.ts'
+import { callerOf, isToken, personOf, verify, verifyWork, workTokenOf } from './caller.ts'
 import { main } from './main.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harnessJs from '../../test/harness.js'
@@ -243,6 +244,47 @@ describe('the agent, as its token is checked', () => {
     expect(isToken('a7')).toBe(false)
     expect(isToken('b7.k0001')).toBe(false)
     expect(isToken(undefined)).toBe(false)
+  })
+})
+
+describe('the work token, as its epoch is checked', () => {
+  const folded: WorkFolded = {
+    state: undefined as never,
+    ids: new Map(),
+    tokens: new Map([
+      ['host', [{ ep: 0, hash: sha('k0001') }]],
+      ['role:dev.v2', [{ ep: 0, hash: sha('old') }, { ep: 1, hash: sha('new') }]],
+    ]),
+  }
+  const check = async (token: string | null) =>
+    (await runEffect(verifyWork(folded, token), makeDir())).exit
+
+  test('the right secret gives the actor and the epoch, a role with a dot too', async () => {
+    const a = await check('w.host.0.k0001')
+    const b = await check(workTokenOf('role:dev.v2', 1, 'new'))
+    expect<unknown>(Exit.isSuccess(a) && a.value).toEqual({ who: 'host', ep: 0 })
+    expect<unknown>(Exit.isSuccess(b) && b.value).toEqual({ who: 'role:dev.v2', ep: 1 })
+  })
+
+  test('an old epoch verifies as that epoch', async () => {
+    const exit = await check('w.role:dev.v2.0.old')
+    expect<unknown>(Exit.isSuccess(exit) && exit.value).toEqual({ who: 'role:dev.v2', ep: 0 })
+  })
+
+  test.each<[string, string | null, string]>([
+    [
+      'no token',
+      null,
+      'this command needs your token (w.<actor>.<epoch>.<secret>), from the command that ' +
+        'your parent gave you',
+    ],
+    ['a word', 'x', '"x" is not a work token (w.<actor>.<epoch>.<secret>)'],
+    ['a wrong secret', 'w.host.0.nope', 'the token of host is wrong'],
+    ['a secret of another epoch', 'w.role:dev.v2.1.old', 'the token of role:dev.v2 is wrong'],
+    ['an epoch that was never made', 'w.host.1.k0001', 'the token of host is wrong'],
+    ['an actor with no token', 'w.pipe.0.k0001', 'the token of pipe is wrong'],
+  ])('%s is refused', async (_name, token, message) => {
+    expect(failureOf(await check(token)).message).toBe(message)
   })
 })
 
