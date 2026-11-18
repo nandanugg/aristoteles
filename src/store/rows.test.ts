@@ -11,7 +11,6 @@ import type {
   RoleName,
   RuleEntry,
   StandardEntry,
-  SuggestionId,
   Time,
 } from '../domain/ids.ts'
 import { whereOf } from '../domain/context.ts'
@@ -144,19 +143,6 @@ const work: Work = {
       },
     ],
   ]),
-  suggestions: new Map([
-    [
-      's1' as SuggestionId,
-      {
-        id: 's1' as SuggestionId,
-        about: { _tag: 'Standard', standard },
-        says: 'Shorter.',
-        by: nanda,
-        when: at(3),
-        at: 3,
-      },
-    ],
-  ]),
   reviews: new Map([
     [
       'v1' as ReviewId,
@@ -279,15 +265,11 @@ describe('the rows of a Work', () => {
       [standard, 'standard'],
       [rule, 'rule'],
       ['d2', 'draft'],
-      ['s1', 'suggestion'],
       ['v2', 'reason'],
     ])
   })
 
-  test('suggestions and reviews', () => {
-    expect(rowsIn('suggestion')).toEqual([
-      { project: DIR, id: 's1', about: standard, says: 'Shorter.', by: 'Nanda', at: at(3) },
-    ])
+  test('reviews', () => {
     expect(rowsIn('review')).toEqual([
       {
         project: DIR,

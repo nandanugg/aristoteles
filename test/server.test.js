@@ -16,6 +16,7 @@ import {
   onboardingProject,
   project,
   withModels,
+  WORK_YAML,
 } from './harness.js'
 import { gitPerson } from './outside.js'
 
@@ -109,7 +110,8 @@ describe('the server, read only', () => {
     await new Promise((done) => { ws.onopen = done })
     // P8: the first message of a socket is the server's build; then the changes.
     const message = new Promise((done) => { ws.onmessage = (m) => JSON.parse(m.data).type !== 'hello' && done(JSON.parse(m.data)) })
-    ok(await p.ui('suggest --says="one rule for each check"'))
+    p.write('aristoteles.yaml', WORK_YAML.replace('Writes one TSD section from its brief.', 'Writes one TSD section from its brief, in plain words.'))
+    ok(await p.ui('config apply', 'apply'))
     expect(await message).toEqual({ type: 'changed' })
     ws.close()
   })
@@ -355,10 +357,7 @@ describe('the onboarding pages', () => {
     expect(view.directions[0].draft.diff.direction).toBe('tsd-writing@1, the first version: every line is new')
     expect(view.roles.map((r) => [r.role, r.state, r.toggle])).toEqual(ROLES.map((r) => [r, 'current', false]))
     expect((await onboard({ act: 'add-direction', principle: 'one more' })).error).toBe('the store of this dir has started, so onboarding is over; a change now is an adjustment')
-    // P7: the text box of the gear stores a suggestion about the roles.
-    // P1 (D3): the answer names who drafts it; here no agent can yet.
-    expect((await act({ act: 'suggest', about: { _tag: 'Roles' }, says: 'add an editor' })).out).toBe('s1: a suggestion about the roles; an adjustment of a role answers it. ' +
-      'Next: no agent can draft it now; start a project in your AI CLI, and its host drafts it.')
+    expect((await act({ act: 'suggest' })).error).toBe('there is no act "suggest"')
     // BUILD.md 1c: the store start replaced the page act accept-roles.
     expect((await act({ act: 'accept-roles' })).error).toBe('there is no act "accept-roles"')
   })

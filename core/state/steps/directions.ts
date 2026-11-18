@@ -1,5 +1,5 @@
 // The steps of directions: a draft (a new direction, a revise of the current version, a commit
-// of a company folder), the version that an accepted draft makes, and a suggestion. A draft is
+// of a company folder), and the version that an accepted draft makes. A draft is
 // built as the old engine built it, without its checks: each standard and rule is its own entry;
 // a kept one keeps its entry, a new one is named after its draft.
 import {
@@ -36,7 +36,7 @@ import {
 } from '../../schema/index.ts'
 import { type Act, type Build, built, damaged, put } from '../act.ts'
 import { currentOf, directionAt, draftAt, officialAt, ruleAt, standardAt } from '../records.ts'
-import { type Content, contentOf, findRule, sameChecker, sameWords } from '../versions.ts'
+import { type Content, contentOf, sameChecker, sameWords } from '../versions.ts'
 
 type StandardFile = DirectionFile['standards'][number]
 type Seq = { readonly seq: number }
@@ -477,44 +477,3 @@ export const examplesAdded = (work: Work, e: EventOf<'Revision.ExamplesAdded'>, 
   const added = Moves.MOVES['Revision.ExamplesAdded'](x, e.move.flow)
   return { work: { ...work, drafts: put(work.drafts, e.id, added) }, created: [] }
 }
-
-// --- suggestions ---------------------------------------------------------------------------------
-
-// Feedback in words about a direction, a standard, or a rule of an official version now.
-const suggestionAbout = (w: Work, about: EventOf<'Suggestion.Suggestion'>['create']['about']) => {
-  switch (about._tag) {
-    case 'NewDirection':
-      return { _tag: 'NewDirection' } as const
-    case 'Direction':
-      return { _tag: 'Direction', direction: about.direction } as const
-    case 'Standard': {
-      for (const x of w.directions.values()) {
-        if (x._tag !== 'Official') continue
-        const s = currentOf(w, x.id)
-          .standards.map((e) => w.standards.get(e))
-          .find((s) => s?.id === about.key)
-        if (s) return { _tag: 'Standard', standard: s.entry } as const
-      }
-      return undefined
-    }
-    case 'Rule': {
-      const rule = findRule(w, about.key)
-      return rule === undefined ? undefined : ({ _tag: 'Rule', rule: rule.entry } as const)
-    }
-    case 'Roles':
-      return { _tag: 'Roles' } as const
-  }
-}
-export const suggested = (
-  work: Work,
-  e: EventOf<'Suggestion.Suggestion'>,
-  act: Act,
-  r: Seq,
-): Stepped =>
-  built(work, (b) => {
-    const d = e.create
-    const about = suggestionAbout(b.work, d.about) ?? damaged(r, 'a suggestion about nothing')
-    const id = b.name('suggestion')
-    const suggestion = { id, about, says: d.says, by: act.by, when: act.when, at: b.tick() }
-    b.work = { ...b.work, suggestions: put(b.work.suggestions, id, suggestion) }
-  })

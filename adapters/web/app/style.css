@@ -928,7 +928,6 @@ button { font: inherit; color: inherit; }
 .agents-page { display: flex; flex-direction: column; gap: 14px; }
 .gear .tabs { padding: 0; margin-bottom: 14px; }
 .gear .tab { display: inline-flex; align-items: center; gap: 6px; }
-.suggest { margin: 14px 0 0; }
 .gear-body .item { margin: 0 0 12px; }
 .modal.gear.wide { width: min(1400px, calc(100vw - 32px)); }
 .gear-directions { grid-template-columns: 240px minmax(0, 1fr); }

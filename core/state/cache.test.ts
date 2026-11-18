@@ -17,6 +17,7 @@ interface Ran {
 }
 interface Project {
   readonly dir: string
+  readonly write: (file: string, text: string) => void
   readonly nanda: (line: string, typed?: string) => Promise<Ran>
 }
 const harness = harnessJs as {
@@ -24,6 +25,7 @@ const harness = harnessJs as {
   readonly init: (p: Project) => Promise<void>
   readonly started: () => Promise<{ p: Project; lead: string }>
   readonly ok: (r: Ran) => Ran
+  readonly WORK_YAML: string
 }
 const { ok } = harness
 
@@ -76,7 +78,14 @@ describe('the WorkCache of the long process', () => {
       yield* Deferred.await(ready)
       expect(yield* cache.refresh).toBe(first)
       // Another process (the CLI, with its own connection) writes the store.
-      ok(yield* Effect.promise(() => p.nanda('suggest --says="a direction for reels"')))
+      p.write(
+        'aristoteles.yaml',
+        harness.WORK_YAML.replace(
+          'Writes one TSD section from its brief.',
+          'Writes one TSD section from its brief, in plain words.',
+        ),
+      )
+      ok(yield* Effect.promise(() => p.nanda('config apply', 'apply')))
       const next = folded(yield* cache.refresh)
       const events = yield* eventsOf(p.dir)
       expect(next.seq).toBe(lastSeq(events) ?? -1)

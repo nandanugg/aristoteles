@@ -105,7 +105,7 @@ describe('the examples of a new direction (P10 rejected, onboarding 2026-11-14)'
     const file = 'cases.yaml'
     const add: ActionInput = { _tag: 'AddExamples', target: { draft: d2 }, content: { file } }
     expect(refused(act(derivedIn(p), NANDA, add)).message).toBe(
-      'a model drafts the examples of a draft; the person says it in words',
+      'a model drafts the examples of a draft',
     )
     stored(p, HOST_RUN, add)
     stored(p, NANDA, accept)

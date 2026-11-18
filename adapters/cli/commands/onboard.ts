@@ -231,7 +231,7 @@ const noStoreYet = Effect.gen(function* () {
   if ((yield* loadWork(cwd))._tag === 'NoStore') return
   return yield* refuse(
     'the store of this dir has started, so onboarding is over',
-    'a change now is an adjustment: work suggest roles --says="<the change>", or work adjust (an agent that fits roles)',
+    'a change now is a role fit: work role fit <role> --answers=<file>',
   )
 })
 

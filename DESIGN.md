@@ -187,6 +187,11 @@ a waiver can end in a test. Two suggestions are on the page (Part 4): `next` off
 waived rule while the waiver lasts; the brief of a remade task shows the evaluation of the task
 that it replaces.
 
+**Ruling of 2026-11-18: `work suggest` is gone.** There is no suggestion: no command, act, event,
+id `s1`, or table. The person does not give direction in words to the store; a role that directs
+writes each draft, and the person accepts or rejects it. A draft answers only Rejects. The store
+format is 5. Where the history below speaks of suggestions, this ruling replaces it.
+
 **The design review of 2026-11-08.** Nanda reviewed the types of Part 2 and decided this model;
 the engine, the CLI, the tests, and the 20 page flows follow it.
 
@@ -497,7 +502,7 @@ tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 | `work task show <t>` / `work task tree <t>` | a task, its state, its parts, changed or rejected results |
 | `work direction show <id>[@<n>]\|<draft>[#<entry>[#<header>]]` | an official version (the draft that made it, and the open drafts), or a draft: its standards and rules, what it changes from its base, what it answers, its reviews, and whose accept it waits for ; with `#`, one standard, one rule, or the text under one header |
 | `work direction new [<token>] --file=<direction.yaml> [--by=<model run>] [--answers=]` | a model's draft of a new direction, as a whole; a role that directs, or a model run outside any task; the owner accepts version 1 |
-| `work search <words>` | the words of directions, standards, rules, suggestions, and reasons in aristoteles, with the versions that hold them and the tasks that read them |
+| `work search <words>` | the words of directions, standards, rules, and reasons in aristoteles, with the versions that hold them and the tasks that read them |
 | `work guide writing\|direction-review\|decision-words` | how to write a direction, the questions of the review of a draft, and how a host writes the words of a decision for the person |
 | `work evaluation show <ev>` | an evaluation: the stop that it answers, its level, what is wrong, why, what to improve, and its review |
 | `work blockers <r>` | what still stops that result, with ids |
@@ -522,8 +527,7 @@ tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 | `work ask <you> --text=<context first, then the question> [--to=parent\|owner] [--option=<words> ...]` | anyone; a role that assigns nothing asks only its parent; the host asks only the owner; `--option` (two or more) only with `--to=owner` |
 | `work answer <you> <q> --text=<text>\|--option=<n>` | the assignment that the question names |
 | `work note <you> finding\|message --text=<text>` | anyone |
-| `work suggest <you> [<rule\|standard\|direction>] --says=<the words>` | anyone, the person too; with nothing to be about, it asks for a new direction |
-| `work direction revise <you> <direction> --file=<edit.yaml> [--answers=<v, v.n, or s ids>] [--why=<why>]` | a role that directs (the person suggests); makes a draft `d1`; after a Reject of a draft, the next draft answers it |
+| `work direction revise <you> <direction> --file=<edit.yaml> [--answers=<v or v.n>] [--why=<why>]` | a role that directs; makes a draft `d1`; after a Reject of a draft, the next draft answers it |
 | `work review <you> <d> accept --evidence="<where in the draft> \| <what>" ...` / `reject --reason=<text>` | a lead, not the reviser or an actor below it; the person accepts with an optional `--reason` and no evidence; the accept that meets `approvedBy` (none: the owner, or a role with a Change act) makes the draft official, and the new version is written to its file |
 | `work evaluate <you> <stop>\|<t> --wrong= --why= --improve= --level=` | a role of the task's tree that splits; it answers one stop (a task id names its first waiting stop) |
 | `work grant <you> --act= --on= --to= --until=` / `work revoke <you> <x>` | an agent gives only an act that its assignment has; only the giver revokes |
@@ -538,8 +542,8 @@ tmux, a fetch, the files, a busy store) or a damaged store, 70 a bug.
 **Person (no token)**
 
 `work init`, `work config apply|restore`, `work task open --file=` (only the person opens a
-task; a role that splits splits), `work assign <t> --role=` (a lead), `work suggest` (the person
-does not revise; a role that directs writes the draft), `work review <d> accept|reject`, `work review <ev> accept|reject`
+task; a role that splits splits), `work assign <t> --role=` (a lead; the person
+does not revise: a role that directs writes the draft), `work review <d> accept|reject`, `work review <ev> accept|reject`
 (an evaluation of the owner's task), `work evaluate <stop>`,
 `work grant --act=approve|review|change --on=<ids> --to=<role> --until=<time>`,
 `work revoke <x>`, `work confirm <event>`, `work answer <q> --text=|--option=<n>`,
@@ -747,7 +751,7 @@ or the file that `ARISTOTELES_DB` names (each test uses its own). A project is t
 `aristoteles.yaml`; a second folder with the same name gets no store.
 
 - **Full SQL.** Everything that the work makes is in tables, with its links: `direction`,
-  `draft`, `standard`, `rule`, `draft_standard`, `standard_rule`, `version`, `suggestion`,
+  `draft`, `standard`, `rule`, `draft_standard`, `standard_rule`, `version`,
   `answer`, `review`, `evidence`, `task`, `task_direction`, `task_closed`, `assignment`,
   `assignment_finished`, `brief`, `result`, `result_version`, `evaluation`, and `words` (with
   full-text search). A task under an old version reaches that version's standards and rules with
@@ -777,14 +781,13 @@ or the file that `ARISTOTELES_DB` names (each test uses its own). A project is t
   <id>[@<n>]#<standard, rule, or header>[#<header>]` prints one piece, and a brief gives a rule
   with headers as its first paragraph and the address of each piece. `work guide writing` says
   how to write for that. `work search <words>` finds words of directions, standards, rules,
-  suggestions, and reasons, with the versions that hold each match and the tasks that read them.
+  and reasons, with the versions that hold each match and the tasks that read them.
 
 ### 9.1 Company directions
 
 - A company direction is a folder in a git repo (GitHub): `direction.md` (its first `# ` line is
   its name), `<standard id>/standard.md`, and `<standard id>/<rule id>.md`, each in any markdown.
-  It changes in its repo, with a pull request; `work direction revise` refuses it, and a
-  suggestion about it names its repo. A company standard has no `where` (my choice).
+  It changes in its repo, with a pull request; `work direction revise` refuses it. A company standard has no `where` (my choice).
 - A project names each company direction that it follows in `aristoteles.lock`, beside
   `aristoteles.yaml`, in the project's git:
 
@@ -1020,7 +1023,7 @@ Derived while building it (Nanda can change them):
 - Version 1 of a direction has only its owner as decider; `approvedBy` decides from version 2,
   because no task follows a direction with no version, so no role of it can work on the draft.
 - A model run outside any task names itself with `--by=<name>`; its run id is the time of its
-  act. A person at a terminal cannot draft (`work suggest`).
+  act. A person at a terminal cannot draft.
 - The act log stays as the order of the acts, beside the tables (section 9).
 - The checkers of a company direction are in its lock entry; a company standard has no `where`.
 - A commit of a company direction that came in once does not come in again, also after a Reject.
@@ -1083,7 +1086,7 @@ ids.
 - P8 (Nanda, 2026-11-15), in place of ruling 10.10 for drafts of no project:
   - Every piece of work is a dir task or a project task. A draft sits on the task of the Reject
     that it answers, else on the project of its author (a host's run, an agent's task). The
-    person's own change (a draft that answers a suggestion, a model run outside any task, an
+    person's own change (a model run outside any task, an
     onboarded draft) and the company refresh are dir work: they show at once on the dir view, and
     no host writes words about them.
   - Revive a dead session, never redirect its work. The markers of `work wait` (pid and a beat
@@ -1171,4 +1174,4 @@ stays for the first contact, because nothing has installed the skill yet.
 **After the store** (rulings 13, 14). A change of a role or a direction is an adjustment: a draft
 (`work adjust`: add or remove a role, change a model or a persistence, retire a direction, change
 cases) that the person accepts on the page or with `work adjust accept <event>`. Work in progress
-keeps what it started with. The person says what to change in words with `work suggest roles`.
+keeps what it started with.

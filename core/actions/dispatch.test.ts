@@ -20,16 +20,16 @@ describe('dispatch', () => {
     const { p } = await h.started()
     const before = eventsOf(p.dir).length
     const input = {
-      _tag: 'Suggest',
-      target: { about: { _tag: 'NewDirection' } },
-      content: { says: 'a direction for reels' },
+      _tag: 'ReadSource',
+      target: { name: 'page' },
+      content: { revision: 'r1' },
     } as const
-    const exit = dispatchIn(p.dir, NANDA, input as never, later(p))
+    const exit = dispatchIn(p.dir, { _tag: 'System' }, input as never, later(p))
     if (!Exit.isSuccess(exit)) throw new Error(String(exit.cause))
     const stored = eventsOf(p.dir)
     expect(stored.length).toBe(before + 1)
     expect(exit.value.seq).toBe(stored.at(-1)?.seq ?? -1)
-    expect(stored.at(-1)?.event._tag).toBe('Suggestion')
+    expect(stored.at(-1)?.event._tag).toBe('Source')
     expect(exit.value.work).toStrictEqual(workOf(p.dir))
   }, 60000)
 
@@ -43,7 +43,7 @@ describe('dispatch', () => {
     } as const
     const error = failure(dispatchIn(p.dir, NANDA, input as never, later(p)))
     expect(error?._tag).toBe('Refusal')
-    expect(error?.message).toStartWith('the person gives direction in words')
+    expect(error?.message).toStartWith('a model drafts a direction')
     expect(eventsOf(p.dir).length).toBe(before)
   }, 60000)
 

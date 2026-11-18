@@ -30,7 +30,7 @@ import {
   type Work,
 } from '../../core/schema/index.ts'
 import { checkerOf, headersOf, indented, short, who } from './common.ts'
-import { answerText, draftWaitsText, drafterOf } from './shared.ts'
+import { draftWaitsText, drafterOf } from './shared.ts'
 
 // --- one record in words ------------------------------------------------------------------------
 
@@ -255,7 +255,7 @@ export const renderDraft = (d: Derived, id: RevisionId): string => {
   return [
     `${id} a draft of ${dir.name} (owner ${dir.owner.name}), ${on} · ${end}`,
     `drafted by ${drafterOf(work, x)}`,
-    ...x.answers.map((a) => `answers: ${answerText(work, a)}`),
+    ...x.answers.map((a) => `answers: ${a}`),
     ...contentLines(work, x, base),
   ].join('\n')
 }

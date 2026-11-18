@@ -1,4 +1,4 @@
-// The SQL of the store (format 3). The reader tables are for the tests and for people with sqlite3.
+// The SQL of the store (format 5). The reader tables are for the tests and for people with sqlite3.
 // The acts are in the event table, one row per stored event: its author and the event as JSON of
 // src/domain/events.ts, and beside them the record that it happens to and its member (Revision,
 // Drafted; Review, Reject), so that a person with sqlite3 reads each kind of act with no JSON.
@@ -7,7 +7,7 @@
 // stored.
 
 // PRAGMA user_version of a store that this code reads.
-export const FORMAT = 4
+export const FORMAT = 5
 
 export const EVENT_TABLE = `
 CREATE TABLE IF NOT EXISTS event (
@@ -38,9 +38,6 @@ CREATE TABLE IF NOT EXISTS standard_rule (
 CREATE TABLE IF NOT EXISTS version (
   project TEXT NOT NULL, id TEXT NOT NULL, direction TEXT NOT NULL, number INTEGER NOT NULL,
   draft TEXT, source TEXT, at TEXT NOT NULL, PRIMARY KEY (project, id));
-CREATE TABLE IF NOT EXISTS suggestion (
-  project TEXT NOT NULL, id TEXT NOT NULL, about TEXT, says TEXT NOT NULL, by TEXT NOT NULL,
-  at TEXT NOT NULL, PRIMARY KEY (project, id));
 CREATE TABLE IF NOT EXISTS answer (
   project TEXT NOT NULL, draft TEXT NOT NULL, answers TEXT NOT NULL, PRIMARY KEY (project, draft, answers));
 CREATE TABLE IF NOT EXISTS review (

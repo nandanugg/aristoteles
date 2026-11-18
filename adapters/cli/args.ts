@@ -94,7 +94,6 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   hook: { stopped: [] },
   ask: ['question', 'text'],
   answer: ['text'],
-  suggest: ['says'],
   status: ['kind', 'text', 'by'],
   search: [],
   guide: [],
@@ -208,7 +207,6 @@ export const USAGE: ReadonlyArray<string> = [
   'person:  work init | config apply|restore | top open --name= --goal= --sections=a,b',
   '         accept <fix> --on= | send-back <fix> --points= --on= | reject <task> --points= --on=',
   '         decide <task> take|again --on= | answer <asker> --text= | end',
-  '         suggest [<direction|standard|rule>|roles] --says= (a role that directs writes the draft)',
   '         role fit <role> --answers=<file> (the fit of a role)',
 ]
 
@@ -249,7 +247,6 @@ export const COMMAND_NAMES = [
   'hook',
   'source',
   'direction',
-  'suggest',
   'forward',
   'wait',
   'onboard',

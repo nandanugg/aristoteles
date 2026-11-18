@@ -1,9 +1,8 @@
-// The commands direction and suggest. The files are read by the actions; the adapter reads the
+// The commands direction and source. The files are read by the actions; the adapter reads the
 // flags and prints the words.
 import { join } from 'node:path'
 import { Effect } from 'effect'
 import { currentOf, draftAt, versionAt, versionNumberOf } from '../../../core/derived/reads.ts'
-import type { SuggestAbout } from '../../../core/schema/actions.ts'
 import {
   type AnswerId,
   type Author,
@@ -11,7 +10,6 @@ import {
   type FlowStep,
   lookup,
   type RevisionId,
-  type SuggestionId,
   refuse,
   type VersionId,
   versionIdOf,
@@ -30,7 +28,6 @@ import {
   renderPiece,
   whyLines,
 } from '../../words/index.ts'
-import { suggestionMover } from '../../words/shared.ts'
 import { type Args, textOf, wordsOf } from '../args.ts'
 import { isPerson, personAuthor, verifyWork } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
@@ -136,13 +133,13 @@ const whyOf = (args: Args) => ({
   words: textOf(args.one('why-words')) ?? null,
 })
 
-// The ids of --answers: each is a Reject or a suggestion.
+// The ids of --answers: each is a Reject.
 const answersOf = (work: Parameters<typeof lookup>[0], text: string | undefined) =>
   Effect.gen(function* () {
     const out: Array<AnswerId> = []
     for (const id of text ? text.split(',') : []) {
-      const found = yield* lookup(work, id, ['v', 's'])
-      out.push(found._tag === 'Suggestion' ? found.suggestion.id : (id as RejectId))
+      yield* lookup(work, id, ['v'])
+      out.push(id as RejectId)
     }
     return out
   })
@@ -154,7 +151,7 @@ const newDirection = (call: Call) =>
     const runName = textOf(args.one('by'))
     if (yield* isPerson) {
       return yield* refuse(
-        'the person gives direction in words: work suggest --says="<the direction that is missing>"; a model drafts it, and you accept or reject it',
+        'a model drafts a direction; the person accepts or rejects the draft',
       )
     }
     const file = textOf(args.one('file'))
@@ -194,11 +191,10 @@ const reviseDirection = (call: Call, rest: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const { args } = call
     const runName = textOf(args.one('by'))
-    // A model writes each draft: the person gives direction in words, then accepts or rejects.
+    // A model writes each draft; the person accepts or rejects it.
     if (yield* isPerson) {
       return yield* refuse(
-        'the person gives direction in words: work suggest <direction, standard, or rule> --says="<the change>"; ' +
-          'a role that directs writes the draft, and you accept or reject it',
+        'a role that directs writes the draft of a change; the person accepts or rejects the draft',
       )
     }
     const directionId = DirectionId.make(String(rest[0]))
@@ -315,40 +311,7 @@ const direction: Command = (call) =>
     return yield* reviseDirection(call, rest)
   })
 
-// --- suggest, source -------------------------------------------------------------------
-
-const suggest: Command = (call) =>
-  Effect.gen(function* () {
-    const about = call.args.positional[0]
-    const { work } = yield* peekWork
-    const by = yield* personAuthor(work)
-    // The action finds what the key names: a direction, a standard, or a rule; the word roles is
-    // about the roles of the workflow (P7).
-    const target: SuggestAbout =
-      about === 'roles'
-        ? { _tag: 'Roles' }
-        : about
-          ? { _tag: 'Standard', key: about }
-          : { _tag: 'NewDirection' }
-    const done = yield* act(by, {
-      _tag: 'Suggest',
-      target: { about: target },
-      content: { says: wordsOf(call.args.one('says')) },
-    })
-    const sid = done.created[0] as SuggestionId
-    // P1: the next line names the one that really answers it.
-    const next = `next: ${suggestionMover(yield* derivedAfter(done.work), sid)}`
-    if (target._tag === 'Roles') {
-      return [
-        `${sid}: a suggestion about the roles; it stays open until an adjustment of a role answers it.`,
-        next,
-      ]
-    }
-    return [
-      `${sid}: a suggestion ${about ? `about ${about}` : 'for a new direction'}; it stays open until an official draft answers it.`,
-      next,
-    ]
-  })
+// --- source -------------------------------------------------------------------
 
 // work source <token> <source>@<revision>: the host read an outside source again.
 const source: Command = (call) =>
@@ -367,4 +330,4 @@ const source: Command = (call) =>
     return [checked ? `${name} is still at ${revision}; seen now.` : `${name} is at ${revision}.`]
   })
 
-export const commands: Commands = { direction, suggest, source }
+export const commands: Commands = { direction, source }

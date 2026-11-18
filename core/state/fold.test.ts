@@ -174,7 +174,7 @@ describe('fold gives the Work of a store', () => {
     expect(work.directions.get('tsd-writing' as DirectionId)?._tag).toBe('Official')
   }, 30000)
 
-  test('a company direction: imports of two commits, accepts, and a suggestion', async () => {
+  test('a company direction: imports of two commits, and accepts', async () => {
     const company = companyRepo()
     company.commit(FLAGS)
     const { p } = await harness.started()
@@ -195,7 +195,6 @@ describe('fold gives the Work of a store', () => {
     p.wait(24 * 60)
     ok(await p.nanda('log'))
     ok(await p.nanda('direction accept d3', 'accept'))
-    ok(await p.nanda('suggest naming --says="name the owner team in the flag"'))
     await foldsAlike(p.dir)
   }, 60000)
 

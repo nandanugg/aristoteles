@@ -107,8 +107,6 @@ export type {
   Section,
   Source,
   Standard,
-  Suggestion,
-  SuggestionAbout,
   Text,
   Version,
   Where,
@@ -138,7 +136,6 @@ export type {
   QuestionView,
   RoleCard,
   SpotView,
-  SuggestionTarget,
 } from '../../src/domain/ui-model.ts'
 
 // --- pure helpers of the domain: ids, text, context, lookup -------------------------------------

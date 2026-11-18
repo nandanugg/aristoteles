@@ -59,7 +59,7 @@ const placeOf = (row: Readonly<Record<string, unknown>>) => ({
 })
 
 // A search in aristoteles (SQLite full-text search) over the words of directions, standards,
-// rules, suggestions, and reasons: each match with its place and the versions that hold it.
+// rules, and reasons: each match with its place and the versions that hold it.
 const search: Command = (call) =>
   Effect.gen(function* () {
     const words = call.args.positional.join(' ').trim()
@@ -112,7 +112,6 @@ const search: Command = (call) =>
         standard: `standard ${last(x.place)}`,
         rule: `rule ${last(x.place)}`,
         draft: `what ${x.place} says`,
-        suggestion: `suggestion ${x.place}`,
         reason: `the reason of ${x.place}`,
       })[x.kind as 'standard'] ?? x.place
     const lines = [

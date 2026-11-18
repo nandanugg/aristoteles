@@ -1,15 +1,11 @@
 // The gear (ruling 13): the settings, and one entry for the directions and one for the agents.
-// Each entry shows the current items and a text box that stores a suggestion (about a direction,
-// a new one, or the roles: P7); a model drafts what answers it.
-import { Schema } from 'effect'
+// Each entry shows the current items.
 import { html } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { DirectionId, NonBlank } from '../../../src/domain/ids.ts'
 import {
   type DirView,
   OnboardingView,
   type SettingsChange,
-  SuggestionTarget,
   type ModelChange as ModelChangeSchema,
 } from '../contract.ts'
 import { AiToast } from './ai.ts'
@@ -21,7 +17,6 @@ import { ICONS, icon } from './icons.ts'
 type DirData = typeof DirView.Type
 type OnboardingData = typeof OnboardingView.Type
 type ModelChange = typeof ModelChangeSchema.Type
-type Target = typeof SuggestionTarget.Type
 
 // --- the settings --------------------------------------------------------------------------
 
@@ -145,46 +140,14 @@ function Settings({ dir, onClose }: { dir: DirData; onClose: () => void }) {
 
 // --- the directions and the agents ---------------------------------------------------------
 
-// A text box that stores a suggestion; a model drafts what answers it.
-function Suggest({ targets }: { targets: ReadonlyArray<readonly [string, Target]> }) {
-  const [says, setSays] = useState('')
-  const [chosen, setChosen] = useState(0)
-  const about = targets[chosen]?.[1]
-  const store = attempt(async () => {
-    if (!about) return undefined
-    const out = await post({ act: 'suggest', about, says: Schema.decodeUnknownSync(NonBlank)(says) })
-    setSays('')
-    return out
-  })
-  return html`<div class="suggest">
-    ${targets.length > 1 ? html`<label class="field"><span>About</span>
-      <select value=${String(chosen)} onChange=${(e: Event) => setChosen(Number(value(e)))}>
-        ${targets.map(([label], i) => html`<option value=${String(i)}>${label}</option>`)}
-      </select></label>` : ''}
-    <label class="field"><span>Your suggestion, in words (a model drafts the change)</span>
-      <textarea rows="2" value=${says} onInput=${(e: Event) => setSays(value(e))}></textarea>
-    </label>
-    <button class="btn" disabled=${!says.trim()} onClick=${store}>Store the suggestion</button>
-  </div>`
-}
-
 function Entry({ view, kind }: { view: OnboardingData; kind: 'directions' | 'agents' }) {
   if (kind === 'agents') {
     return html`<div>
       <${RoleGrid} roles=${view.roles} />
-      <${Suggest} targets=${[['the roles', { _tag: 'Roles' }]]} />
     </div>`
   }
-  const targets: ReadonlyArray<readonly [string, Target]> = [
-    ['a new direction', { _tag: 'NewDirection' }],
-    ...view.directions.map((x) => {
-      const direction = Schema.decodeUnknownSync(DirectionId)(x.id)
-      return [x.name, { _tag: 'Direction', direction }] as const
-    }),
-  ]
   return html`<div>
     <${CurrentDirections} directions=${view.directions} />
-    <${Suggest} targets=${targets} />
   </div>`
 }
 

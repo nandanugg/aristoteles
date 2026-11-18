@@ -31,7 +31,6 @@ import {
   type Rule,
   type RuleEntry,
   type StandardEntry,
-  type Suggestion,
   usesProblem,
   type Work,
 } from '../schema/index.ts'
@@ -48,16 +47,15 @@ export const DRAFT = {
   // --- the answers ---
   notAnswer: (id: string) =>
     no(
-      `${id} is not a Reject of a draft or a suggestion; --answers takes Rejects (v<n>) and ` +
-        'suggestions (s<n>)',
+      `${id} is not a Reject of a draft; --answers takes Rejects (v<n>)`,
       'Pick',
-      'answer a Reject of a draft or a suggestion',
+      'answer a Reject of a draft',
     ),
   onlyAnswers: () =>
     no(
-      'a draft answers Rejects of drafts and suggestions only',
+      'a draft answers Rejects of drafts only',
       'Pick',
-      'answer the Rejects of drafts and the suggestions that the draft changes',
+      'answer the Rejects of drafts that the draft changes',
     ),
   // --- the rules of a standard ---
   supersedesItself: (rule: string) =>
@@ -110,19 +108,12 @@ export const DRAFT = {
       `write ${owner} as the owner of ${name}`,
     ),
   // --- what a new direction answers ---
-  aboutExisting: (says: string) =>
-    no(
-      `"${says}" is about something that exists; a new direction answers only suggestions that ` +
-        'ask for a new direction',
-      'Pick',
-      'answer it with a revise of what it is about',
-    ),
   notOwnReject: (reason: string, name: string) =>
     no(
-      `"${reason}" is not a Reject of a draft of ${name}; a new direction answers suggestions ` +
-        'for a new direction, and the Rejects of its own drafts',
+      `"${reason}" is not a Reject of a draft of ${name}; a new direction answers only ` +
+        'the Rejects of its own drafts',
       'Pick',
-      `answer the suggestions for a new direction, or the Rejects of drafts of ${name}`,
+      `answer the Rejects of drafts of ${name}`,
     ),
   sameProposal: (draft: string, reason: string) =>
     no(
@@ -136,44 +127,6 @@ export const DRAFT = {
       `"${reason}" rejects a draft of ${other}, not of ${name}`,
       'Pick',
       `answer a Reject of a draft of ${name}`,
-    ),
-  asksNew: (words: string, name: string) =>
-    no(
-      `${words} asks for a new direction; a draft of ${name} does not answer it`,
-      'Pick',
-      'draft a new direction for it',
-    ),
-  aboutOther: (words: string, other: string, name: string) =>
-    no(`${words} is about ${other}, not ${name}`, 'Pick', `revise ${other} for it`),
-  aboutSpirit: (words: string, name: string) =>
-    no(
-      `${words} is about ${name} itself; a change of what it says answers it`,
-      'Write',
-      `change what ${name} says`,
-    ),
-  notInVersion: (words: string, says: string, name: string, n: string) =>
-    no(
-      `${words} is about "${says}", which is not in ${name} v${n}`,
-      'Pick',
-      `answer it with a revise of the direction that has "${says}"`,
-    ),
-  standardKept: (says: string) =>
-    no(
-      `a suggestion about the standard "${says}" is answered by a change of that standard`,
-      'Write',
-      `change the standard "${says}"`,
-    ),
-  ruleKept: (says: string) =>
-    no(
-      `a suggestion about the rule "${says}" is answered by a change of its standard`,
-      'Write',
-      `change the standard of the rule "${says}"`,
-    ),
-  aboutRoles: (words: string) =>
-    no(
-      `${words} is about the roles; a draft of a direction does not answer it`,
-      'Pick',
-      'leave it for the person to settle in the roles',
     ),
   uses: (problem: string) =>
     no(problem, 'Write', 'give uses: only the ids of the direction, its standards and its rules'),
@@ -208,26 +161,23 @@ const failIf = (r: Refusal | undefined): Effect.Effect<void, Refusal> =>
 
 // --- the answers ---------------------------------------------------------------------------------
 
-// What an id of --answers names: a Reject of a draft, or a suggestion. Any other id (an accept)
+// What an id of --answers names: a Reject of a draft. Any other id (an accept or a review)
 // is none: a draft does not answer it.
 type Answer =
   | { readonly _tag: 'Reject'; readonly reject: Rejection }
-  | { readonly _tag: 'Suggestion'; readonly suggestion: Suggestion }
   | { readonly _tag: 'Other'; readonly id: string }
 const answersOf = (w: Work, ids: ReadonlyArray<AnswerId>): ReadonlyArray<Answer> =>
   ids.flatMap((id): ReadonlyArray<Answer> => {
-    const suggestion = w.suggestions.get(id as never)
-    if (suggestion !== undefined) return [{ _tag: 'Suggestion', suggestion }]
     const reject = rejectionAt(w, id)
     return [reject === undefined ? { _tag: 'Other', id } : { _tag: 'Reject', reject }]
   })
 const isAnswer = (a: Answer): boolean => a._tag !== 'Other'
 const answerId = (a: Answer): string =>
-  a._tag === 'Suggestion' ? a.suggestion.id : a._tag === 'Reject' ? a.reject.id : a.id
+  a._tag === 'Reject' ? a.reject.id : a.id
 
 // Each id names a record (the words of lookup).
 export const answersFound = (w: Work, ids: ReadonlyArray<AnswerId>) =>
-  Effect.forEach(ids, (id) => lookup(w, id, ['v', 's']).pipe(Effect.mapError(asPick)), {
+  Effect.forEach(ids, (id) => lookup(w, id, ['v']).pipe(Effect.mapError(asPick)), {
     discard: true,
   })
 // --- the rules and the standards of a file ----------------------------------------------------
@@ -376,37 +326,6 @@ const sameProposal = (w: Work, x: Content, y: Content): boolean =>
   x.standards.every((s) =>
     y.standards.some((t) => sameWords(w, standardAt(w, s), standardAt(w, t))),
   )
-// A suggestion is answered at its level: one about a rule by a change of its standard, one about
-// a standard by a change of that standard, one about a direction by a change of what it says.
-const suggestionAnswered = (
-  w: Work,
-  s: Suggestion,
-  from: Content,
-  to: Content,
-): Refusal | undefined => {
-  const words = `"${s.says}"`
-  const name = directionAt(w, from.of).name
-  const about = s.about
-  if (about._tag === 'NewDirection') return DRAFT.asksNew(words, name)
-  if (about._tag === 'Roles') return DRAFT.aboutRoles(words)
-  if (about._tag === 'Direction') {
-    if (about.direction !== from.of) {
-      return DRAFT.aboutOther(words, directionAt(w, about.direction).name, name)
-    }
-    return to.says === from.says ? DRAFT.aboutSpirit(words, name) : undefined
-  }
-  const target: string = about._tag === 'Standard' ? about.standard : about.rule
-  const says =
-    about._tag === 'Standard' ? standardAt(w, about.standard).says : ruleAt(w, about.rule).says
-  const holder = from.standards.find(
-    (e) => e === target || standardAt(w, e).rules.some((r) => r === target),
-  )
-  if (holder === undefined) return DRAFT.notInVersion(words, says, name, String(from.number))
-  if (to.standards.includes(holder)) {
-    return holder === target ? DRAFT.standardKept(says) : DRAFT.ruleKept(says)
-  }
-  return undefined
-}
 // A Reject of an earlier draft of this direction is answered by a draft that proposes another.
 const draftRejectAnswered = (
   w: Work,
@@ -464,12 +383,6 @@ export const checkDrafted = (
   if (draft === undefined) return Effect.void
   const to = contentOfDraft(draft)
   for (const a of answers) {
-    if (a._tag === 'Suggestion') {
-      if (a.suggestion.about._tag !== 'NewDirection') {
-        return fail(DRAFT.aboutExisting(a.suggestion.says))
-      }
-      continue
-    }
     if (a._tag !== 'Reject') continue
     const { draft: of, reason } = a.reject
     if (draftAt(w, of).of !== file.id) return fail(DRAFT.notOwnReject(reason, file.name))
@@ -522,12 +435,7 @@ export const checkRevised = (
   if (draft === undefined) return Effect.void
   const to = contentOfDraft(draft)
   for (const a of answers) {
-    const refused =
-      a._tag === 'Suggestion'
-        ? suggestionAnswered(work, a.suggestion, base, to)
-        : a._tag === 'Reject'
-          ? draftRejectAnswered(work, a.reject, base, to)
-          : undefined
+    const refused = a._tag === 'Reject' ? draftRejectAnswered(work, a.reject, base, to) : undefined
     if (refused !== undefined) return fail(refused)
   }
   return Effect.void

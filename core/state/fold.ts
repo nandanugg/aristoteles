@@ -14,7 +14,7 @@ import {
   type Work,
 } from '../schema/index.ts'
 import { actOf, damaged, put, unchanged } from './act.ts'
-import { examplesAdded, drafted, suggested } from './steps/directions.ts'
+import { examplesAdded, drafted } from './steps/directions.ts'
 import { review } from './steps/reviews.ts'
 import { delivered, dropped, sent } from './steps/ui.ts'
 import { defined, roleFitted, roleWordsChanged } from './steps/workflow.ts'
@@ -30,7 +30,6 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
   'Send.Dropped': dropped,
   'Review.Accept': (w, e, r) => review(w, e.create, actOf(r)),
   'Review.Reject': (w, e, r) => review(w, e.create, actOf(r)),
-  'Suggestion.Suggestion': (w, e, r) => suggested(w, e, actOf(r), r),
   'Revision.Drafted': (w, e, r) => drafted(w, e, actOf(r), r),
   'Revision.Revised': (w, e, r) => drafted(w, e, actOf(r), r),
   'Revision.Imported': (w, e, r) => drafted(w, e, actOf(r), r),

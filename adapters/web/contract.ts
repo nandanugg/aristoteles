@@ -4,8 +4,6 @@
 // type differs from the wire, the Schema converts at its edge.
 import { Schema } from 'effect'
 import {
-  DirectionId,
-  NonBlank,
   PositiveInt,
   SessionId,
   Settings,
@@ -18,13 +16,6 @@ import {
 } from '../../core/schema/index.ts'
 
 const Text = Schema.String
-
-// What a suggestion of the gear is about.
-export const SuggestionTarget = Schema.Union([
-  Schema.TaggedStruct('NewDirection', {}),
-  Schema.TaggedStruct('Direction', { direction: DirectionId }),
-  Schema.TaggedStruct('Roles', {}),
-])
 
 const DraftChange = Schema.Struct({ direction: Text, lines: Schema.Array(Text) })
 
@@ -353,13 +344,10 @@ export const SettingsChange = Schema.Struct({
 })
 export type SettingsChange = typeof SettingsChange.Type
 
-// The page's acts that no work post carries: the settings, and the text box of the gear (P7).
-export const PageAct = Schema.Union([
-  Schema.Struct({ act: Schema.Literal('settings'), settings: SettingsChange }),
-  Schema.Struct({ act: Schema.Literal('suggest'), about: SuggestionTarget, says: NonBlank }),
-])
+// The page's acts that no work post carries: the settings.
+export const PageAct = Schema.Struct({ act: Schema.Literal('settings'), settings: SettingsChange })
 export type PageAct = typeof PageAct.Type
-export const ACTS = ['settings', 'suggest'] as const
+export const ACTS = ['settings'] as const
 
 // The answer of an act: { out }, or { error }.
 export const ActAnswer = Schema.Struct({ out: Schema.optionalKey(Text) })

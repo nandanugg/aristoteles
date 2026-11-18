@@ -87,11 +87,8 @@ its state, `work onboard accept <id>`, `revise <id> --words=<words>`, `remove <i
 `approve-directions`, and the role commands (`accept-role`, `revise-role`, `remove-role`,
 `persistence`).
 
-After the store starts, a change is an event that you accept. Say what to change in words
-(`work suggest roles --says=<words>`, or about a direction `work suggest <direction>
---says=<words>`); the host or a role that fits roles drafts it with `work adjust` (add or remove a role,
-change a model or a persistence, retire a direction), or with `work role draft` and
-`work direction revise` for words. Each draft waits for you on the page: accept it, or reject it
+After the store starts, a change of a direction is a draft that you accept. A role that directs
+drafts it with `work direction revise`, and it waits for you on the page: accept it, or reject it
 with your reason.
 
 Then the host asks: a new project, or continue one? After the first start, the `aristoteles`

@@ -30,13 +30,6 @@ import type {
 export type FilePath = string
 // Free words of the actor. The action refuses blank words with a Write choice.
 export type Words = string
-// What a suggestion is about, by the key that the person or agent typed (events.ts Suggestion).
-export type SuggestAbout =
-  | { readonly _tag: 'NewDirection' }
-  | { readonly _tag: 'Roles' }
-  | { readonly _tag: 'Direction'; readonly direction: DirectionId }
-  | { readonly _tag: 'Standard'; readonly key: string }
-  | { readonly _tag: 'Rule'; readonly key: string }
 // The target of an accept and of a reject: a draft of a direction, decided by its owner.
 export interface OfRevision {
   readonly _tag: 'Revision'
@@ -71,14 +64,13 @@ export type ActionInput =
   | In<'Send', { readonly session: SessionId }, { readonly keys: Keys }> // work send
   | In<'SendDelivered', { readonly send: EventRef }, None>
   | In<'SendDropped', { readonly send: EventRef }, { readonly why: typeof DropReason.Type }>
-  // --- directions, suggestions, sources ---------------------------------------------------------
+  // --- directions, sources ---------------------------------------------------------
   | In<'DraftDirection', None, { readonly file: FilePath; readonly answers: ReadonlyArray<AnswerId>; readonly why: WhyInput }>
   | In<'ReviseDirection', { readonly direction: DirectionId }, { readonly file: FilePath; readonly answers: ReadonlyArray<AnswerId>; readonly why: WhyInput }>
   | In<'ImportCompany', { readonly direction: DirectionId }, { readonly source: typeof ExternalSource.Type; readonly folder: typeof CompanyFolder.Type; readonly owner: string; readonly checkers: typeof CompanyCheckers.Type }>
   // A model gives a company draft of a new direction its flow and its examples; the file holds
   // flow: and examples:.
   | In<'AddExamples', { readonly draft: RevisionId }, { readonly file: FilePath }>
-  | In<'Suggest', { readonly about: SuggestAbout }, { readonly says: Words }>
   // The owner (the person) accepts or rejects a draft before a top is open.
   | In<'Accept', { readonly of: OfRevision }, { readonly reason: Words | null }>
   | In<'Reject', { readonly of: OfRevision }, { readonly reason: Words }>

@@ -28,7 +28,6 @@ const newWork = (event: Defined): Work => {
     drafts: new Map(),
     standards: new Map(),
     rules: new Map(),
-    suggestions: new Map(),
     reviews: new Map(),
     sources: new Map(),
     sends: [],

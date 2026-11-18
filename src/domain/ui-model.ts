@@ -9,7 +9,7 @@ import type {
   Line,
 } from './events.ts'
 import type { Settings } from './files.ts'
-import type { DirectionId, EventRef, PositiveInt, SessionId, Time } from './ids.ts'
+import type { EventRef, PositiveInt, SessionId, Time } from './ids.ts'
 import type { NonEmpty } from './model.ts'
 
 type Text = string
@@ -126,12 +126,6 @@ export type PageMessage =
       readonly cols: PositiveInt
       readonly rows: PositiveInt
     }
-
-// The text box of the gear stores a suggestion: about a direction, a new one, or the roles.
-export type SuggestionTarget =
-  | { readonly _tag: 'NewDirection' }
-  | { readonly _tag: 'Direction'; readonly direction: DirectionId }
-  | { readonly _tag: 'Roles' }
 
 // GET /api/onboarding: the directions page and the agents page (rulings 2, 3, 11). One view
 // serves both times: before the store it reads the onboarding files; after it, the store.

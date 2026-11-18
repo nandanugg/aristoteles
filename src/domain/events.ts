@@ -3,7 +3,7 @@
 //   - a move goes under the record that it moves, which it names once, by its id: { _tag:
 //     'Revision', id: 'd3', move: ExamplesAdded{...} }; the moves of a record are its <Record>Move
 //     union, in the past tense, and each has its typed transition (domain/moves.ts);
-//   - a record that is written once (a review, a suggestion) is a creation only.
+//   - a record that is written once (a review) is a creation only.
 // What is stored is what the actor wrote (its written input): the fold makes the id (one counter,
 // no stored id of a new record), the clock, when (the event's time), by (the author), and every
 // record that follows from the act (a version); it maps the words of a file to the records (a
@@ -154,24 +154,7 @@ export const ReviewWritten = Schema.Union([
 export type ReviewWritten = typeof ReviewWritten.Type
 const Review = created('Review', ReviewWritten)
 
-// --- suggestions, drafts of directions, sources -----------------------------------------------
-
-// A suggestion about a direction, a standard or a rule by its key, or about nothing (a new
-// direction); the fold finds the entry of the key in the official versions of that time.
-const Suggestion = created(
-  'Suggestion',
-  Schema.TaggedStruct('Suggestion', {
-    about: Schema.Union([
-      Schema.TaggedStruct('NewDirection', {}),
-      Schema.TaggedStruct('Direction', { direction: DirectionId }),
-      Schema.TaggedStruct('Standard', { key: Text }),
-      Schema.TaggedStruct('Rule', { key: Text }),
-      // The roles of the workflow: the person's words about them.
-      Schema.TaggedStruct('Roles', {}),
-    ]),
-    says: NonBlank,
-  }),
-)
+// --- drafts of directions, sources -------------------------------------------------------------
 
 // page: Revision.why (the owner's ruling, 2026-11-12): none given, or one of the five reasons
 // (the CLI word --why) with the reviser's words or none (--why-words).
@@ -235,7 +218,6 @@ export const Event = Schema.Union([
   Role,
   ...Send.members,
   Review,
-  Suggestion,
   ...Revision.members,
   ...Source.members,
   WorkEvent,
@@ -311,7 +293,6 @@ export const WRITTEN_BY = {
     'Send.Sent',
     'Review.Accept',
     'Review.Reject',
-    'Suggestion.Suggestion',
     'Work.Opened',
     'Work.HostPane',
     'Work.ForwardDropped',

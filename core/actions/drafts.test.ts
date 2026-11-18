@@ -21,9 +21,9 @@ import {
 import type { ActionInput, Refusal } from './types.ts'
 
 const NO_WHY = { reason: null, words: null }
-const SUGGESTER = (p: Project): Author => ({
+const REVISER = (p: Project): Author => ({
   _tag: 'ModelRun',
-  name: 'suggester',
+  name: 'reviser',
   at: p.now() as Time,
 })
 const ASSESS = (p: Project): Author => ({ _tag: 'ModelRun', name: 'assess', at: p.now() as Time })
@@ -34,7 +34,6 @@ const realChoice = (r: Refusal): Refusal => {
 const refusedWith = (d: Derived, by: Author, input: ActionInput): string =>
   realChoice(refused(act(d, by, input))).message
 
-const RULE_REPEATABLE = 'A reviewer can repeat the problem without the design'
 // A model run outside any task: the host that adds the examples of a company draft.
 const HOST_RUN = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' } as Author
 // P10 rejected, onboarding 2026-11-14: a new direction starts with its examples.
@@ -59,8 +58,7 @@ standards:
       - { id: one-flow-only, says: "The reel shows one flow", checkedBy: section-lead }
 `
 
-// The started scenario, three suggestions of the person (about a rule, a direction, and a new
-// direction), and the person's Reject of a first draft of a new direction, Reels.
+// The started scenario, and the person's Reject of a first draft of a new direction, Reels.
 describe('a draft of a direction', () => {
   let p: Project
   let d: Derived
@@ -68,9 +66,6 @@ describe('a draft of a direction', () => {
   let reelsReject = ''
   beforeAll(async () => {
     p = (await h.started()).p
-    ok(await p.nanda('suggest repeatable --says="cannot be met"'))
-    ok(await p.nanda('suggest tsd-writing --says="say the cost first"'))
-    ok(await p.nanda('suggest --says="a direction for reels"'))
     p.write('reels.yaml', REELS)
     const drafted = ok(await p.agent('direction new --file=reels.yaml --by=assess')).out
     reelsDraft = /^(d\d+) drafted/m.exec(drafted)?.[1] ?? ''
@@ -102,11 +97,11 @@ describe('a draft of a direction', () => {
   })
 
   test('a revise names only standards that exist, and adds none twice', () => {
-    expect(refusedWith(d, SUGGESTER(p), revise('r1.yaml', 'remove: [none]\n'))).toBe(
+    expect(refusedWith(d, REVISER(p), revise('r1.yaml', 'remove: [none]\n'))).toBe(
       'TSD writing has no standard "none"',
     )
     const twice = 'add:\n  - { id: facts-not-proof, says: Facts. }\n'
-    expect(refusedWith(d, SUGGESTER(p), revise('r2.yaml', twice))).toBe(
+    expect(refusedWith(d, REVISER(p), revise('r2.yaml', twice))).toBe(
       'TSD writing already has the standard "facts-not-proof"',
     )
   })
@@ -115,7 +110,7 @@ describe('a draft of a direction', () => {
     const yaml =
       'add:\n  - id: again\n    says: Again.\n    rules:\n' +
       '      - { id: repeatable, says: Another words }\n'
-    expect(refusedWith(d, SUGGESTER(p), revise('r3.yaml', yaml))).toBe(
+    expect(refusedWith(d, REVISER(p), revise('r3.yaml', yaml))).toBe(
       'the rule id "repeatable" is already used; a new rule needs a new id',
     )
   })
@@ -124,7 +119,7 @@ describe('a draft of a direction', () => {
     const rule = (file: string, r: string) =>
       refusedWith(
         d,
-        SUGGESTER(p),
+        REVISER(p),
         revise(file, `add:\n  - id: s\n    says: S.\n    rules:\n      - ${r}\n`),
       )
     expect(rule('r4.yaml', '{ id: self, says: s, supersedes: [self] }')).toBe(
@@ -141,51 +136,30 @@ describe('a draft of a direction', () => {
 
   test('a where names the closed context keys', () => {
     const yaml = 'add:\n  - { id: w1, says: x, where: { stage: y } }\n'
-    expect(refusedWith(d, SUGGESTER(p), revise('r7.yaml', yaml))).toBe(
+    expect(refusedWith(d, REVISER(p), revise('r7.yaml', yaml))).toBe(
       'r7.yaml: standard w1: where key "stage" is not one of system, field, language, repo, ' +
         'section, audience',
     )
   })
 
-  test('a suggestion is answered at its level', () => {
-    const other = 'add:\n  - { id: other, says: Other. }\n'
-    expect(refusedWith(d, SUGGESTER(p), revise('a1.yaml', other, ['s1']))).toBe(
-      `a suggestion about the rule "${RULE_REPEATABLE}" is answered by a change of its standard`,
-    )
-    expect(refusedWith(d, SUGGESTER(p), revise('a2.yaml', other, ['s2']))).toBe(
-      '"say the cost first" is about TSD writing itself; a change of what it says answers it',
-    )
-    expect(refusedWith(d, SUGGESTER(p), revise('a3.yaml', other, ['s3']))).toBe(
-      '"a direction for reels" asks for a new direction; a draft of TSD writing does not ' +
-        'answer it',
-    )
-    const says = 'says: The reader understands, decides, and sees the cost first.\n'
-    expect(events(act(d, SUGGESTER(p), revise('a4.yaml', says, ['s2'])))).toHaveLength(1)
-  })
-
   test('a Reject of a draft is answered by a draft of its own direction', () => {
-    expect(refusedWith(d, SUGGESTER(p), revise('b1.yaml', 'says: Plain.\n', [reelsReject]))).toBe(
+    expect(refusedWith(d, REVISER(p), revise('b1.yaml', 'says: Plain.\n', [reelsReject]))).toBe(
       '"too thin" rejects a draft of Reels, not of TSD writing',
     )
-    expect(refusedWith(d, SUGGESTER(p), revise('b2.yaml', 'says: Plain.\n', ['v1']))).toBe(
-      'v1 is not a Reject of a draft or a suggestion; --answers takes Rejects (v<n>) and ' +
-        'suggestions (s<n>)',
+    expect(refusedWith(d, REVISER(p), revise('b2.yaml', 'says: Plain.\n', ['v1']))).toBe(
+      'v1 is not a Reject of a draft; --answers takes Rejects (v<n>)',
     )
   })
 
-  test('a new direction answers suggestions for it and the Rejects of its own drafts', () => {
+  test('a new direction answers the Rejects of its own drafts', () => {
     expect(refusedWith(d, ASSESS(p), draft('n1.yaml', REELS, [reelsReject]))).toBe(
       `this draft proposes the same as ${reelsDraft}, so it cannot answer "too thin"`,
     )
-    expect(refusedWith(d, ASSESS(p), draft('n2.yaml', REELS, ['s2']))).toBe(
-      '"say the cost first" is about something that exists; a new direction answers only ' +
-        'suggestions that ask for a new direction',
-    )
     expect(refusedWith(d, ASSESS(p), draft('n4.yaml', REELS, ['v1']))).toBe(
-      'a draft answers Rejects of drafts and suggestions only',
+      'a draft answers Rejects of drafts only',
     )
     const better = REELS.replace('A reel shows one flow.', 'A reel shows one flow, end to end.')
-    const made = events(act(d, ASSESS(p), draft('n5.yaml', better, [reelsReject, 's3'])))
+    const made = events(act(d, ASSESS(p), draft('n5.yaml', better, [reelsReject])))
     expect(made).toHaveLength(1)
   })
 

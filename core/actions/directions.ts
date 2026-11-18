@@ -1,4 +1,4 @@
-// The actions of directions, suggestions and sources: the drafts before a top (drafted, revised,
+// The actions of directions and sources: the drafts before a top (drafted, revised,
 // imported, with their examples), the owner's accept or reject of a draft, and what the host reads
 // of an outside source. The content checks of a draft are in drafts.ts.
 import { Effect, Schema } from 'effect'
@@ -57,7 +57,7 @@ const REFUSALS = {
       no(
         `${id} is a company direction; it changes in its repo`,
         'Escalate',
-        `suggest the change of ${id}; its repo takes a pull request`,
+        `change ${id} in its repo, with a pull request`,
       ),
     frameChanged: (id: string, keys: string) =>
       no(
@@ -74,16 +74,6 @@ const REFUSALS = {
   },
   ImportCompany: { ...DRAFT },
   AddExamples: { uses: DRAFT.uses },
-  Suggest: {
-    noWords: () =>
-      no('a suggestion says something: give its words', 'Write', 'write what you suggest'),
-    noKey: (key: string) =>
-      no(
-        `there is no rule "${key}" in an official version`,
-        'Pick',
-        'name a direction, a standard or a rule of a version',
-      ),
-  },
   Accept: {},
   Reject: {
     noReason: (target: string) =>
@@ -361,38 +351,7 @@ const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
     return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow })]
   })
 
-// --- suggestions, the owner's decision, sources --------------------------------------------------
-
-// What a suggestion is about, by its key: an official direction, else a standard of a current
-// version, else a rule of one.
-const aboutOf = (w: Work, key: string) => {
-  const official = [...w.directions.values()].filter((x) => x._tag === 'Official')
-  if (official.some((x) => x.id === key)) {
-    return Effect.succeed({ _tag: 'Direction' as const, direction: key as never })
-  }
-  const standards = official.flatMap((x) =>
-    currentOf(w, x.id).standards.map((e) => standardAt(w, e)),
-  )
-  if (standards.some((s) => s.id === key)) return Effect.succeed({ _tag: 'Standard' as const, key })
-  const rules = standards.flatMap((s) => s.rules.map((e) => ruleAt(w, e)))
-  if (rules.some((r) => r.id === key)) return Effect.succeed({ _tag: 'Rule' as const, key })
-  return fail(R.Suggest.noKey(key))
-}
-
-const Suggest: Action<'Suggest'> = ({ by, input }) =>
-  Effect.gen(function* () {
-    const d = yield* current
-    yield* allowed(d, by, input)
-    const { about } = input.target
-    const { says } = input.content
-    if (blank(says)) return yield* fail(R.Suggest.noWords())
-    if (about._tag === 'Roles' || about._tag === 'NewDirection') {
-      return [create('Suggestion', { _tag: 'Suggestion', about, says: says as never })]
-    }
-    const key = about._tag === 'Direction' ? about.direction : about.key
-    const made = yield* aboutOf(d.moment.work, key)
-    return [create('Suggestion', { _tag: 'Suggestion', about: made, says: says as never })]
-  })
+// --- the owner's decision, sources -------------------------------------------------------
 
 // The owner (the person) accepts or rejects a draft; the fold makes the version of an accept.
 const Accept: Action<'Accept'> = ({ by, input }) =>
@@ -438,7 +397,6 @@ export const ACTIONS = {
   ReviseDirection,
   ImportCompany,
   AddExamples,
-  Suggest,
   Accept,
   Reject,
   ReadSource,

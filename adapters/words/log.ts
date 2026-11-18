@@ -14,26 +14,12 @@ import {
 } from '../../core/schema/index.ts'
 import { clock } from './common.ts'
 
-const cut = (t: string): string => (t.length > 60 ? `${t.slice(0, 57)}...` : t)
-
 // What the line says after the old type word, ('' when nothing).
 const partsOf = (logged: Logged, work: Work | undefined): string => {
   const e = logged.recorded.event
   if (e._tag === 'Revision' && 'create' in e && e.create._tag === 'Revised') {
     const d = e.create
     return `${d.direction}${d.answers.length ? ` answering ${d.answers.join(',')}` : ''}`
-  }
-  if (e._tag === 'Suggestion') {
-    const about = e.create.about
-    const name =
-      about._tag === 'NewDirection'
-        ? 'a new direction'
-        : about._tag === 'Roles'
-          ? 'the roles'
-          : about._tag === 'Direction'
-            ? about.direction
-            : about.key
-    return `${name}: "${cut(e.create.says)}"`
   }
   if (e._tag === 'Source') {
     if ('create' in e) return `${e.create.source.name}@${e.create.source.revision}`
@@ -77,7 +63,6 @@ const OLD_TYPE: Total<string> = {
   'Send.Dropped': 'send.dropped',
   'Review.Accept': 'review',
   'Review.Reject': 'review',
-  'Suggestion.Suggestion': 'suggest',
   'Revision.Drafted': 'direction.new',
   'Revision.Revised': 'direction.revise',
   'Revision.Imported': 'company.import',

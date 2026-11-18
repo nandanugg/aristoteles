@@ -31,7 +31,6 @@ import type {
   RoleName,
   RuleEntry,
   StandardEntry,
-  SuggestionId,
   Time,
   VersionId,
 } from './ids.ts'
@@ -140,29 +139,12 @@ export type Revision<T extends Versioned> = ContentOf<T> &
     readonly id: RevisionId // not on the page: d3
     readonly of: IdOf<T>
     readonly origin: RevisionOrigin // page: by
-    // The Rejects (or their points) and the suggestions that it answers.
+    // The Rejects (or their points) that it answers.
     readonly answers: ReadonlyArray<AnswerId>
     readonly why: Why
     readonly when: Time
     readonly at: number
   }
-
-// page: Suggestion. Feedback in words, from anyone.
-export interface Suggestion {
-  readonly id: SuggestionId // not on the page
-  readonly about: SuggestionAbout
-  readonly says: Text
-  readonly by: By
-  readonly when: Time // not on the page
-  readonly at: number
-}
-// page: about?: Direction | Standard | Rule, by id (rule 1); the page's "none" is NewDirection.
-export type SuggestionAbout =
-  | { readonly _tag: 'NewDirection' }
-  | { readonly _tag: 'Direction'; readonly direction: DirectionId }
-  | { readonly _tag: 'Standard'; readonly standard: StandardEntry }
-  | { readonly _tag: 'Rule'; readonly rule: RuleEntry }
-  | { readonly _tag: 'Roles' } // the roles of the workflow
 
 // --- Direction -----------------------------------------------------------------------------------
 

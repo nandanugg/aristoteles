@@ -61,7 +61,7 @@ export const api = <S extends Schema.Top & { readonly DecodingServices: never }>
   schema: S,
 ): Promise<S['Type']> => run(request(path, schema))
 
-// An act of the gear: the settings, or a suggestion.
+// An act of the gear: the settings.
 export const post = (act: PageAct): Promise<ActOut> =>
   run(
     request('/api/act', ActAnswer, {

@@ -1,6 +1,6 @@
 // The ids of the records, as the CLI prints them (v4, d3, s2). Each kind has its own branded
-// string, so a draft id cannot go where a suggestion id is wanted. The names of the kinds are the
-// page's (Review, Revision, Suggestion).
+// string, so a draft id cannot go where a review id is wanted. The names of the kinds are the
+// page's (Review, Revision).
 import { Schema } from 'effect'
 
 // A string that matches the pattern of its kind.
@@ -12,8 +12,6 @@ export type ReviewId = typeof ReviewId.Type
 // A Review that is a Reject: its id is a ReviewId too.
 export const RejectId = ReviewId.pipe(Schema.brand('RejectId'))
 export type RejectId = typeof RejectId.Type
-export const SuggestionId = matching(/^s\d+$/).pipe(Schema.brand('SuggestionId'))
-export type SuggestionId = typeof SuggestionId.Type
 // A Revision of a direction: the CLI calls it a draft (d3).
 export const RevisionId = matching(/^d\d+$/).pipe(Schema.brand('RevisionId'))
 export type RevisionId = typeof RevisionId.Type
@@ -21,8 +19,8 @@ export type RevisionId = typeof RevisionId.Type
 export const EventRef = matching(/^e\d+$/).pipe(Schema.brand('EventRef'))
 export type EventRef = typeof EventRef.Type
 
-// What a draft answers: a Reject, or a suggestion.
-export const AnswerId = Schema.Union([RejectId, SuggestionId])
+// What a draft answers: a Reject.
+export const AnswerId = RejectId
 export type AnswerId = typeof AnswerId.Type
 
 // Names from the files. A direction id is lower case words with dashes, so that a version id
@@ -78,14 +76,13 @@ export const NonBlank = Schema.String.pipe(
 export const isNonBlank = Schema.is(NonBlank)
 
 // The prefix of each kind of id.
-export const PREFIX = { review: 'v', suggestion: 's', revision: 'd' } as const
+export const PREFIX = { review: 'v', revision: 'd' } as const
 export type Counted = keyof typeof PREFIX
 export type Prefix = (typeof PREFIX)[Counted]
 
 // The noun of a prefix, as a refusal names it ("there is no draft d9").
 export const NOUN: { readonly [P in Prefix]: string } = {
   v: 'review',
-  s: 'suggestion',
   d: 'draft',
 }
 export const isPrefix = (word: string): word is Prefix => Object.hasOwn(NOUN, word)
@@ -95,13 +92,12 @@ export const prefixOf = (id: string): string | undefined => /^[a-z]+/.exec(id)?.
 
 export interface IdByKind {
   readonly review: ReviewId
-  readonly suggestion: SuggestionId
   readonly revision: RevisionId
 }
 
 // The counters of the ids, one per kind.
 export type Counters = Readonly<Record<Counted, number>>
-export const noCounters: Counters = { review: 0, suggestion: 0, revision: 0 }
+export const noCounters: Counters = { review: 0, revision: 0 }
 
 // The next id of a kind, and the counters after it. The order of the names
 // within one step is golden (BUILD.md, parity notes).

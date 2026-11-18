@@ -12,7 +12,6 @@ import type {
   RoleName,
   RuleEntry,
   StandardEntry,
-  SuggestionId,
   VersionId,
 } from './ids.ts'
 import type {
@@ -23,14 +22,13 @@ import type {
   Rule,
   Source,
   Standard,
-  Suggestion,
   Text,
 } from './model.ts'
 import type { Send } from './ui-model.ts'
 
 // An id that a step made, as the CLI prints it after "->" (state.created). A version made by
 // an accept is named too: tsd-writing@2.
-export type CreatedId = ReviewId | SuggestionId | RevisionId | VersionId
+export type CreatedId = ReviewId | RevisionId | VersionId
 
 // One stored event, and the ids that its step made (work log prints both).
 export interface Logged {
@@ -58,7 +56,6 @@ export interface Work {
   readonly drafts: ReadonlyMap<RevisionId, Revision<Direction>>
   readonly standards: ReadonlyMap<StandardEntry, Standard>
   readonly rules: ReadonlyMap<RuleEntry, Rule>
-  readonly suggestions: ReadonlyMap<SuggestionId, Suggestion>
   // Every Review by its id: the owner's accept or reject of a draft.
   readonly reviews: ReadonlyMap<ReviewId, Review>
   // The revision of each outside source now, by its name.

@@ -28,13 +28,12 @@ const notPerson = (c: Ctx, message: string, words: string): CanAct =>
 
 // --- directions ----------------------------------------------------------------------------------
 
-// A model drafts a direction; the person suggests it in words and accepts or rejects the draft.
+// A model drafts a direction; the person accepts or rejects the draft.
 const draftDirection: Check<'DraftDirection'> = (c) =>
   notPerson(
     c,
-    'the person gives direction in words: work suggest --says="<the direction that is ' +
-      'missing>"; a model drafts it, and you accept or reject it',
-    'suggest the direction in words; a model drafts it',
+    'a model drafts a direction; the person accepts or rejects the draft',
+    'leave the draft of the direction to a model',
   )
 
 const reviseDirection: Check<'ReviseDirection'> = (c, { target: { direction } }) => {
@@ -44,9 +43,9 @@ const reviseDirection: Check<'ReviseDirection'> = (c, { target: { direction } })
   if (d.source._tag === 'External') {
     return no(
       `${direction} is a company direction from ${d.source.repo} (${d.source.path}); it changes ` +
-        'there, with a pull request. Suggest the change',
+        'there, with a pull request',
       'Escalate',
-      `suggest the change of ${direction}; its repo takes a pull request`,
+      `change ${direction} in its repo, with a pull request`,
     )
   }
   if (d._tag !== 'Official') {
@@ -58,16 +57,16 @@ const reviseDirection: Check<'ReviseDirection'> = (c, { target: { direction } })
   }
   return notPerson(
     c,
-    `the person gives direction in words, as a suggestion about ${d.name}`,
-    `suggest the change of ${direction} in words; a model drafts it`,
+    `a model revises ${d.name}; the person accepts or rejects the draft`,
+    `leave the revise of ${direction} to a model`,
   )
 }
 
 const addExamples: Check<'AddExamples'> = (c, { target: { draft } }) => {
   const notModel = notPerson(
     c,
-    'a model drafts the examples of a draft; the person says it in words',
-    'say it in words: work suggest; a model drafts it',
+    'a model drafts the examples of a draft',
+    'leave the examples of the draft to a model',
   )
   if (notModel._tag === 'MayNot') return notModel
   const x = c.d.moment.work.drafts.get(draft)
@@ -161,7 +160,6 @@ const CHECKS: { readonly [K in ActionTag]: Check<K> } = {
   ReviseDirection: reviseDirection,
   ImportCompany: () => MAY,
   AddExamples: addExamples,
-  Suggest: () => MAY,
   Accept: (c, { target: { of } }) => reviewDraft(c, of.id, true),
   Reject: (c, { target: { of } }) => reviewDraft(c, of.id, false),
   ReadSource: () => MAY,

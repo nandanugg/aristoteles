@@ -4,7 +4,7 @@
 import type { Actor } from '../domain/actor.ts'
 import { whereRecord } from '../domain/context.ts'
 import { decisionOf, versionIdOf } from '../domain/derived.ts'
-import type { By, Direction, Review, SuggestionAbout } from '../domain/model.ts'
+import type { By, Direction, Review } from '../domain/model.ts'
 import type { Work } from '../domain/work.ts'
 import type { ReaderRow } from '../services/store.ts'
 
@@ -13,22 +13,6 @@ type Value = string | number | null
 // Who did an act: a person by name, a model run outside any top by its name and run.
 const actorText = (actor: Actor) => ('run' in actor ? `${actor.name} run ${actor.run}` : actor.name)
 const byText = (by: By) => actorText(by)
-
-// The id that a suggestion is about; null: it asks for a new direction; roles: the roles (P7).
-const aboutId = (about: SuggestionAbout): string | null => {
-  switch (about._tag) {
-    case 'NewDirection':
-      return null
-    case 'Roles':
-      return 'roles'
-    case 'Direction':
-      return about.direction
-    case 'Standard':
-      return about.standard
-    case 'Rule':
-      return about.rule
-  }
-}
 
 // The row of the review table for one Review: the draft that it decides, and its words.
 const reviewRow = (v: Review): { of: string; reason: string | null } =>
@@ -121,17 +105,6 @@ export const rowsOf = (work: Work, dir: string): ReadonlyArray<ReaderRow> => {
         at: v.when,
       })
     }
-  }
-
-  for (const y of work.suggestions.values()) {
-    add('suggestion', {
-      id: y.id,
-      about: aboutId(y.about),
-      says: y.says,
-      by: byText(y.by),
-      at: y.when,
-    })
-    words(y.id, 'suggestion', y.says)
   }
 
   for (const v of work.reviews.values()) {

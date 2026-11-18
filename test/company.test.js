@@ -124,7 +124,7 @@ describe('a company direction', () => {
     expect(readLock(p)['feature-flags'].refreshed).toBeUndefined()
   })
 
-  test('a company direction changes in its repo: a revise is refused, and a suggestion names the repo', async () => {
+  test('a company direction changes in its repo: a revise is refused and names the repo', async () => {
     const { p, company } = await following()
     ok(await p.nanda('log'))
     await addExamples(p, 'd2')
@@ -132,6 +132,5 @@ describe('a company direction', () => {
     p.write('edit.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
     expect((await p.agent('direction revise feature-flags --file=edit.yaml --by=host')).err)
       .toContain(`feature-flags is a company direction from ${company.dir} (directions/feature-flags); it changes there, with a pull request`)
-    ok(await p.nanda('suggest naming --says="name the owner team in the flag"'))
   })
 })

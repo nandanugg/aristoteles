@@ -49,11 +49,8 @@ describe('work search', () => {
     expect(out).toContain('in tsd-writing@1#no-ticket-ids')
   })
 
-  test('finds a suggestion; says when nothing matches', async () => {
+  test('says when nothing matches', async () => {
     const { p } = await started()
-    ok(await p.nanda('suggest facts-not-proof --says="the facts also say what the problem costs"'))
-    expect(ok(await p.agent('search costs')).out)
-      .toContain('suggestion s1: the facts also say what the problem [costs]')
     expect(ok(await p.agent('search kubernetes')).out)
       .toBe('nothing in report-export says "kubernetes".')
     expect((await p.agent('search')).err).toContain('a search needs its words')

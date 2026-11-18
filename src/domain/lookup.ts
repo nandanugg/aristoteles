@@ -3,13 +3,12 @@
 import { Effect } from 'effect'
 import { refuse, type Refused } from './errors.ts'
 import { isPrefix, NOUN, prefixOf } from './ids.ts'
-import type { Direction, Review, Revision, Suggestion } from './model.ts'
+import type { Direction, Review, Revision } from './model.ts'
 import type { Work } from './work.ts'
 
-// What an id names: v4 is a Review, s2 a suggestion, d3 a draft.
+// What an id names: v4 is a Review, d3 a draft.
 export type Found =
   | { readonly _tag: 'Review'; readonly review: Review }
-  | { readonly _tag: 'Suggestion'; readonly suggestion: Suggestion }
   | { readonly _tag: 'Revision'; readonly revision: Revision<Direction> }
 
 const get = <K, V>(map: ReadonlyMap<K, V>, id: string): V | undefined => map.get(id as K)
@@ -20,10 +19,6 @@ export const find = (work: Work, id: string): Found | undefined => {
     case 'v': {
       const review = get(work.reviews, id)
       return review === undefined ? undefined : { _tag: 'Review', review }
-    }
-    case 's': {
-      const suggestion = get(work.suggestions, id)
-      return suggestion === undefined ? undefined : { _tag: 'Suggestion', suggestion }
     }
     case 'd': {
       const revision = get(work.drafts, id)

@@ -67,23 +67,16 @@ const tableOf = (file: string, sql: string) => {
 describe('a new store', () => {
   test('create makes the file and the dir; a write appends at the next seq', async () => {
     const { dir, file } = newDir()
-    const suggestion = {
-      project: dir,
-      id: 's1',
-      about: null,
-      says: 'A direction for reels.',
-      by: 'Nanda',
-      at: '2026-10-25T09:01:00.000Z',
-    }
+    const row = { project: dir, place: 'd1', kind: 'draft', text: 'A direction for reels.' }
     const seqs = await run(
       withStore(file, dir, true, (store) =>
         Effect.gen(function* () {
           const first = yield* store.write(() =>
-            written(draftOf(1, SOURCE), [['suggestion', suggestion]]),
+            written(draftOf(1, SOURCE), [['words', row]]),
           )
           // The second write sees the first event, and adds a row that is there already.
           const second = yield* store.write(() =>
-            written(draftOf(2, checked('page')), [['suggestion', suggestion]]),
+            written(draftOf(2, checked('page')), [['words', row]]),
           )
           return [first, second]
         }),
@@ -103,14 +96,14 @@ describe('a new store', () => {
     expect(tableOf(file, 'SELECT * FROM project')).toEqual([
       { name: dir, folder: dir, made_at: '2026-10-25T09:01:00.000Z' },
     ])
-    expect(tableOf(file, 'SELECT * FROM suggestion')).toEqual([suggestion])
-    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 4 }])
+    expect(tableOf(file, 'SELECT * FROM words')).toEqual([row])
+    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 5 }])
     const found = await run(
       withStore(file, dir, false, (store) =>
-        store.query('SELECT id, says FROM suggestion WHERE project = ?', dir),
+        store.query('SELECT place, text FROM words WHERE project = ?', dir),
       ),
     )
-    expect(found).toEqual([{ id: 's1', says: 'A direction for reels.' }])
+    expect(found).toEqual([{ place: 'd1', text: 'A direction for reels.' }])
   })
 
   test('a build that writes nothing stores nothing', async () => {
@@ -187,7 +180,7 @@ describe('the files of a store', () => {
     const write = (n: number) => (s: DirStore) => s.write(() => written(draftOf(n, SOURCE)))
     const seq = await run(withStore(file, dir, true, write(1)))
     expect(seq).toBe(1)
-    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 4 }])
+    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 5 }])
   })
 
   test('an empty file is not filled by a command that does not create', async () => {

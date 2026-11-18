@@ -16,7 +16,6 @@ import { existsSync, type FSWatcher, readdirSync, statSync, watch } from 'node:f
 import { networkInterfaces } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, SubscriptionRef } from 'effect'
-import { dispatch } from '../../core/actions/index.ts'
 import { Refusal } from '../../core/actions/types.ts'
 import {
   atTerminal,
@@ -29,7 +28,6 @@ import { type Derived, derive } from '../../core/derived/index.ts'
 import { checkHost, tmuxPaneExists } from '../../core/effects/host-check.ts'
 import {
   type Author,
-  type SuggestionId,
   OnboardingAct,
   StoreDamaged,
   type Time,
@@ -65,8 +63,7 @@ import { readingsLive } from '../live/readings.ts'
 import { readStatus, statusStamp } from '../live/status.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { readMarkers } from '../live/waiting.ts'
-import { suggestionMover } from '../words/shared.ts'
-import { callOf, type SuggestAct, refusedOf, type WorkPost, workPostOf, wordsOf } from './acts.ts'
+import { refusedOf, type WorkPost, workPostOf } from './acts.ts'
 import { PAGE_FILES, pageBundle } from './bundle.ts'
 import {
   ACTS,
@@ -400,13 +397,6 @@ export function startServer(options: ServerOptions): ServerHandle {
     const name = await gitName(dir)
     return name === '' ? undefined : { _tag: 'Person', name, channel: 'ui' }
   }
-  // One action in one store write; then the cache renews.
-  const dispatched = async (call: Parameters<typeof dispatch>[0]) => {
-    const exit = await runtime.runPromiseExit(Effect.scoped(dispatch(call)))
-    runSync(refresh)
-    if (Exit.isSuccess(exit)) return exit.value
-    throw new Error(messageOf(Cause.squash(exit.cause)))
-  }
   const failed = (error: unknown) => json(refusalOf(error), 400)
   // Whoever git names must be a person of this work, as at the CLI.
   const member = async (): Promise<Person | Response> => {
@@ -418,21 +408,6 @@ export function startServer(options: ServerOptions): ServerHandle {
     }
     return by
   }
-  const suggest = async (act: SuggestAct): Promise<Response> => {
-    const by = await member()
-    if (by instanceof Response) return by
-    try {
-      const done = await dispatched(callOf(act, by))
-      const out = wordsOf(act, done.created)
-      // P1 (D3): a suggestion names the one that drafts its answer.
-      const d = readDerived()
-      const id = done.created[0] as SuggestionId
-      return json({ out: d ? `${out} Next: ${suggestionMover(d, id, false)}.` : out })
-    } catch (error) {
-      return failed(error)
-    }
-  }
-
   // --- the person's acts of the work model (POST /api/act with a What) ---------------------
 
   const workActed = async (post: WorkPost): Promise<Response> => {
@@ -502,8 +477,6 @@ export function startServer(options: ServerOptions): ServerHandle {
 
   const act = async (b: PageAct): Promise<Response> => {
     switch (b.act) {
-      case 'suggest':
-        return suggest(b)
       case 'settings':
         runSync(writeSettings(dir, b.settings))
         send({ type: 'changed' })

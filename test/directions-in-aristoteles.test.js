@@ -23,19 +23,12 @@ describe('a new direction', () => {
     expect(ok(await p.nanda('direction show tsd-writing')).out).toContain('made from d1, drafted by assess')
   })
 
-  test('the person gives direction in words; a model drafts it', async () => {
+  test('the person does not draft; a model drafts it', async () => {
     const p = await fresh()
     expect((await p.nanda('direction new --file=directions/tsd-writing.yaml')).err)
-      .toContain('the person gives direction in words: work suggest --says=')
+      .toContain('a model drafts a direction; the person accepts or rejects the draft')
     expect((await p.agent('direction new --file=directions/tsd-writing.yaml')).err)
       .toContain('a model run outside any task names itself: --by=<its name in lower case>')
-  })
-
-  test('a suggestion for a new direction is answered by a draft', async () => {
-    const p = await fresh()
-    expect(ok(await p.nanda('suggest --says="a direction for TSD writing: the reader decides from the page alone"')).out)
-      .toContain('next: no agent can draft it now; start a project in your AI CLI, and its host drafts it')
-    expect(ok(await p.agent('direction new --file=directions/tsd-writing.yaml --by=assess --answers=s1')).out).toContain('answering s1')
   })
 
   test('the owner rejects a draft; the run writes another one', async () => {
