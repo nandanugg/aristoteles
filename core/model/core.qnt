@@ -426,9 +426,11 @@ module corePersonUnbounded {
 // no deadlock (NoWaitCycle, CoreProgress); the person's Answer and NoFinalWithAsk live here.
 module coreAskCross {
   import coreCfgs.*
+  // Only the causes that make wait edges: none (execute), split (nested execute), principle
+  // (evaluate, then the person's decide). Slips and mistakes are coreAskRogue's.
   import core(CFG = { ...FIXED_C, slots: Set(0) },
-              C = { ...ENV_C, causes: 0.to(5), causes1: Set(0), maxPerson: 2, maxMistakes: 1,
-                    slips: true, reject: true, sendBacks: 0, maxAsks: 2 }).* from "./core"
+              C = { ...ENV_C, causes: Set(0, 1, 3), causes1: Set(0), maxPerson: 2,
+                    reject: true, sendBacks: 0, maxAsks: 2 }).* from "./core"
 }
 // One task, every real cause, the ladder to the person, the person's acts (two), a maker that
 // slips, one shallow evaluation, a test command that may fail, and a rogue maker: it asks its
