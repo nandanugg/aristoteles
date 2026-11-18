@@ -12,6 +12,7 @@ import {
   DispatcherLive,
   EFFECTS,
   EffectLog,
+  backoffMemory,
   engineTick,
   fixedProblem,
   latest,
@@ -108,7 +109,9 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     })),
   ).pipe(
     Layer.provide(ReadingsLive),
-    Layer.provide(Layer.mergeAll(Layer.succeed(Dir, { cwd: dir }), Layer.succeed(Env, { vars: env }))),
+    Layer.provide(
+      Layer.mergeAll(Layer.succeed(Dir, { cwd: dir }), Layer.succeed(Env, { vars: env })),
+    ),
   )
   const services = Layer.mergeAll(io, readings)
   const layer = Layer.mergeAll(
@@ -156,8 +159,9 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     hook: (actor: string, t: { readonly ep: number; readonly secret: string }) =>
       stopHookSettings(workTokenOf(actor, t.ep, t.secret)),
   }
+  const memory = Effect.runSync(backoffMemory)
   const round = Effect.gen(function* () {
-    for (const line of yield* engineTick(say).pipe(
+    for (const line of yield* engineTick(say, memory).pipe(
       Effect.catch((e) => Effect.succeed([`the engine: ${e.message}`])),
     )) {
       log(line)

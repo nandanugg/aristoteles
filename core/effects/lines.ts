@@ -22,7 +22,8 @@ export const cliSession = (session: string): string => {
   if (UUID.test(session)) return session
   const h = createHash('sha1').update(session).digest('hex')
   const variant = ((Number.parseInt(h[16] ?? '0', 16) & 0x3) | 0x8).toString(16)
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`
+  const tail = `${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${tail}`
 }
 
 // The values of a command: {session} as a UUID, {agent} and {model} as they are, {prompt} quoted

@@ -5,7 +5,7 @@
 // as an argument of the launch command; the pump's status is the mark. A pane's silence restarts
 // nothing. The host's pane is the person's: never revived here. The tick's words: what it did
 // and what it could not.
-import { Effect } from 'effect'
+import { Effect, Ref } from 'effect'
 import { folding } from '../actions/dispatch.ts'
 import { dispatchAct, type NewToken } from '../actions/work.ts'
 import { dos } from '../derived/work/obligations.ts'
@@ -16,6 +16,7 @@ import { foldWork } from '../state/work/fold.ts'
 import { epOf } from '../state/work/reads.ts'
 import type { Actor, What, WorkState } from '../state/work/types.ts'
 import { HARNESS, PIPE, roleActor } from '../state/work/types.ts'
+import { nowMs } from './acting.ts'
 import { fill, quote } from './lines.ts'
 import { ruleHolds } from './rules.ts'
 
@@ -33,12 +34,28 @@ export interface Words {
 export const sessionOf = (actor: Actor, ep: number): SessionId =>
   SessionId.make(`${actor.replaceAll(':', '-')}-e${ep}`)
 
+// The engine's memory (never the store): per actor, when its pane was last launched, the delay
+// before the next launch (doubles from 2 s to 5 min after a failed or short-lived launch; reset
+// after a pane has lived 60 s), until when the actor waits, and whether this wait is counted.
+export interface Backoff {
+  readonly launchedAt: number
+  readonly delay: number
+  readonly until: number
+  readonly bumped: boolean
+}
+export type Memory = ReadonlyMap<Actor, Backoff>
+export const backoffMemory = Ref.make<Memory>(new Map())
+const FRESH: Backoff = { launchedAt: -1, delay: 0, until: 0, bumped: false }
+const FIRST_MS = 2000
+const MAX_MS = 300_000
+const LIVED_MS = 60_000
+
 const persistent = (s: WorkState): ReadonlyArray<Actor> => [
   PIPE,
   ...[...s.cards.keys()].map(roleActor),
 ]
 
-export const engineTick = (say: Words) =>
+export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
   Effect.gen(function* () {
     const { cwd } = yield* Dir
     const pump = yield* Pump
@@ -62,6 +79,17 @@ export const engineTick = (say: Words) =>
           Effect.as(Effect.sync(() => lines.push(`${what._tag}: ${e.message}`)), null)
         ),
       )
+    const t = yield* nowMs
+    const recall = (k: Actor) => Effect.map(Ref.get(memory), (m) => m.get(k) ?? FRESH)
+    const remember = (k: Actor, f: (e: Backoff) => Backoff) =>
+      Ref.update(memory, (m) => new Map(m).set(k, f(m.get(k) ?? FRESH)))
+    // A failed or short-lived launch: the next one waits, twice as long as the last wait.
+    const back = (k: Actor) =>
+      Effect.gen(function* () {
+        const delay = Math.min(MAX_MS, Math.max(FIRST_MS, (yield* recall(k)).delay * 2))
+        yield* remember(k, (e) => ({ ...e, delay, until: t + delay, bumped: true }))
+        lines.push(`${k}: its pane failed or died at once; the next launch waits ${delay / 1000} s`)
+      })
     const alive = (sid: SessionId) =>
       Effect.map(pump.status, (status) => status[sid]?._tag === 'Live')
 
@@ -80,7 +108,16 @@ export const engineTick = (say: Words) =>
     for (const k of persistent(state)) {
       if (state.down.has(k)) continue
       const sid = sessionOf(k, epOf(state, k))
-      if (yield* alive(sid)) continue
+      const e = yield* recall(k)
+      if (yield* alive(sid)) {
+        if (e.delay > 0 && t - e.launchedAt >= LIVED_MS) yield* remember(k, () => FRESH)
+        continue
+      }
+      if (t < e.until) continue
+      if (!e.bumped && e.launchedAt >= 0) {
+        if (t - e.launchedAt < LIVED_MS) yield* back(k)
+        else yield* remember(k, () => FRESH)
+      }
       if ((yield* act(state, { _tag: 'Exit', who: k })) !== null) {
         yield* pump.forget(sid)
         lines.push(`${k}: no live pane ${sid}; its exit is recorded`)
@@ -117,6 +154,7 @@ export const engineTick = (say: Words) =>
         }
         yield* act(state, { _tag: 'RunRule', task: target, holds: holds.success })
       } else if (step.tag === 'Revive') {
+        if (t < (yield* recall(target)).until) continue
         const how = yield* Effect.result(launchOf(target))
         if (how._tag === 'Failure' || how.success === null) {
           lines.push(`${target}: no launch command for its model; it stays down`)
@@ -136,6 +174,12 @@ export const engineTick = (say: Words) =>
         const started = yield* Effect.result(
           pump.start(sid, { command, env: {}, cols: 160, rows: 48 }),
         )
+        if (started._tag === 'Success') {
+          yield* remember(target, (e) => ({ ...e, launchedAt: t, bumped: false }))
+        } else {
+          yield* remember(target, (e) => ({ ...e, launchedAt: t }))
+          yield* back(target)
+        }
         lines.push(
           started._tag === 'Success'
             ? `${target}: revived in ${sid}`

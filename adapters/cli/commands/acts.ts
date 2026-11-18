@@ -8,8 +8,8 @@ import { Effect, Schema } from 'effect'
 import { dispatchAct, formOf, openTop, recordHostPane } from '../../../core/actions/work.ts'
 import {
   caughtOn,
-  pendingHold,
   refExists,
+  ruleHolds,
   runTest,
   type RuleRunFailed,
 } from '../../../core/effects/rules.ts'
@@ -187,16 +187,6 @@ const checkFiles = (files: ReadonlyArray<string>): Run<void> =>
     }
   })
 
-// The paths of the last Report of a task.
-const filesOfLast = (s: WorkState, events: ReadonlyArray<Recorded>, task: string) =>
-  events.flatMap((r) =>
-    r.event._tag === 'Work' && r.event.create._tag === 'Acted' &&
-      r.event.create.act.what._tag === 'Report' &&
-      s.makers.get(r.event.create.act.what.maker)?.task === task
-      ? [r.event.create.act.what.files]
-      : []
-  ).at(-1) ?? []
-
 // --- the acts ------------------------------------------------------------------------------------
 
 const VERDICTS: Readonly<Record<string, Verdict>> = {
@@ -350,10 +340,7 @@ const SPECS: Readonly<Record<string, Spec>> = {
     parse: (c) =>
       Effect.gen(function* () {
         const task = yield* word(c, 0, 'a task')
-        const files = filesOfLast(c.state, c.events, task)
-        const holds = files.length === 0 || c.state.tasks.get(task) === undefined
-          ? true
-          : yield* ranRules(pendingHold(c.state, task, files))
+        const holds = yield* ranRules(ruleHolds(c.state, c.events, task))
         return { _tag: 'RunRule', task, holds }
       }),
   },

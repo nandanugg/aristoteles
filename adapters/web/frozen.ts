@@ -60,11 +60,6 @@ export interface Pump {
 // --- the watcher ---------------------------------------------------------------------------------
 
 export interface WatcherTiming {
-  readonly wakeGap: number
-  readonly outputWindow: number
-  readonly ready: number
-  readonly retryGap: number
-  readonly tick: number
   readonly enterPause: number
   readonly readyPause: number
 }

@@ -14,7 +14,7 @@ import { foldWork } from '../state/work/fold.ts'
 import { epOf } from '../state/work/reads.ts'
 import type { ItemRec, What } from '../state/work/types.ts'
 import { stopHookSettings } from '../../adapters/live/stop-hook.ts'
-import { engineTick, sessionOf } from './engine.ts'
+import { backoffMemory, engineTick, sessionOf } from './engine.ts'
 
 const CONFIG = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
   .replace('  opus:   {', '  opus:   { launch: "fake {session} {prompt}",')
@@ -58,6 +58,7 @@ const fakePump = () => {
 const setup = async (sections = ['a', 'b']) => {
   const { p } = await h.started({ 'aristoteles.yaml': CONFIG })
   const pump = fakePump()
+  const clock = { ms: Date.parse(p.now()) }
   let n = 0
   const layer = Layer.mergeAll(
     StoreLive.pipe(
@@ -66,7 +67,7 @@ const setup = async (sections = ['a', 'b']) => {
       ),
     ),
     Layer.succeed(Dir, { cwd: p.dir }),
-    Layer.succeed(Now, { read: Effect.succeed(p.now() as Time) }),
+    Layer.succeed(Now, { read: Effect.sync(() => new Date(clock.ms).toISOString() as Time) }),
     Layer.succeed(Tokens, { random: Effect.sync(() => `k${++n}`) }),
     FilesLive,
     SpawnLive,
@@ -75,11 +76,12 @@ const setup = async (sections = ['a', 'b']) => {
   const run = <A, E>(e: Effect.Effect<A, E, Layer.Success<typeof layer> | Scope.Scope>) =>
     Effect.runPromise(Effect.scoped(e).pipe(Effect.provide(layer)))
   await run(openTop({ by: NANDA, name: 'T', goal: 'g', sections }))
+  const memory = Effect.runSync(backoffMemory)
   const tick = () =>
     run(engineTick({
       prompt: (actor, words, t) => `${actor}|${t.ep}|${t.secret}|${words}`,
       hook: (actor, t) => stopHookSettings(`${actor}.${t.ep}.${t.secret}`),
-    }))
+    }, memory))
   const state = () => foldWork(eventsOf(p.dir))?.state
   const acts = (tag: string) =>
     eventsOf(p.dir).filter((r) =>
@@ -98,7 +100,8 @@ const setup = async (sections = ['a', 'b']) => {
       current: 'b',
     }))
   }
-  return { p, pump, tick, state, acts, go }
+  const later = (ms: number) => void (clock.ms += ms)
+  return { p, pump, tick, later, state, acts, go }
 }
 
 describe('engineTick', () => {
@@ -135,6 +138,7 @@ describe('engineTick', () => {
   test('a pane gone: its exit is recorded, then it is revived at the next epoch', async () => {
     const t = await setup()
     await t.tick()
+    t.later(61_000)
     t.pump.live.delete('pipe-e1')
     expect(await t.tick()).toEqual([
       'pipe: no live pane pipe-e1; its exit is recorded',
@@ -160,18 +164,37 @@ describe('engineTick', () => {
     expect(t.acts('Exit')).toBe(1)
   }, 90000)
 
-  test('a start that fails is a line; the next tick records the exit and tries again', async () => {
+  test('a failed start backs off 2 s, 4 s, ...; a pane that lives 60 s resets it', async () => {
     const t = await setup()
     t.pump.refuseStarts(true)
-    const lines = await t.tick()
-    expect(lines.map((l) => l.replace(/ in .*/, ''))).toEqual([
-      'pipe: its pane did not start: no tmux',
-      `${LEAD}: its pane did not start: no tmux`,
-    ])
+    const said = (lines: ReadonlyArray<string>) => lines.filter((l) => l.includes('waits'))
+    expect(said(await t.tick()).map((l) => l.slice(0, 5))).toEqual(['pipe:', 'role:'])
+    // Waiting: no Exit, no Revive, no line, tick after tick.
+    const stored = eventsOf(t.p.dir).length
+    t.later(1900)
+    expect(await t.tick()).toEqual([])
+    expect(eventsOf(t.p.dir).length).toBe(stored)
+    // 2 s passed: Exit and Revive again; the start fails and the wait doubles.
+    t.later(200)
+    expect(said(await t.tick())[0]).toContain('waits 4 s')
+    expect(t.acts('Exit')).toBe(2)
+    t.later(3900)
+    expect(await t.tick()).toEqual([])
     t.pump.refuseStarts(false)
+    t.later(200)
     await t.tick()
-    expect(epOf(t.state() ?? (undefined as never), 'pipe')).toBe(2)
-    expect(t.pump.live.has('pipe-e2')).toBe(true)
+    expect(t.pump.live.has('pipe-e3')).toBe(true)
+    // It dies at once: the wait doubles again (8 s); after 60 s of life it is reset.
+    t.pump.live.delete('pipe-e3')
+    expect(said(await t.tick())[0]).toContain('waits 8 s')
+    t.later(8100)
+    await t.tick()
+    expect(t.pump.live.has('pipe-e4')).toBe(true)
+    t.later(61_000)
+    expect(await t.tick()).toEqual([])
+    t.pump.live.delete('pipe-e4')
+    expect(said(await t.tick())).toEqual([])
+    expect(t.pump.live.has('pipe-e5')).toBe(true)
   }, 90000)
 
   test('the end of the project closes the live panes', async () => {

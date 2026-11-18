@@ -186,8 +186,8 @@ export const closeRun = (run: RunId, reason: string) =>
 
 // Open: the person opens the drafted top task, then gives it to the role of the draft, and
 // lets that role change it (its split) for 30 days (D11: three actions, as `work task open <td>`).
-// The host gets the token of its assignment from its own `work wait --by=<run>` (ruling 10.1): no token
-// is shown here, and nothing is typed. host: the assignment that the act made, or null.
+// The host gets the token of its assignment from its own `work wait --by=<run>` (ruling 10.1):
+// no token is shown here, and nothing is typed. host: the assignment that the act made, or null.
 export interface Opened {
   readonly acted: Acted
   readonly task: TaskId | null

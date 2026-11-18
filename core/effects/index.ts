@@ -24,7 +24,7 @@ export {
   stopSession,
 } from './person.ts'
 export { latest } from './acting.ts'
-export { engineTick, type Words } from './engine.ts'
+export { backoffMemory, engineTick, type Words } from './engine.ts'
 
 export const EFFECTS: Effects = {
   DeliverSends,
