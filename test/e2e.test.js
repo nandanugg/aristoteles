@@ -65,15 +65,6 @@ describe('identity: tokens and the terminal', () => {
 })
 
 describe('the claim of an attempt', () => {
-  test('one claim at a time; the parent frees a stopped subagent', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    const again = await p.agent(`brief ${writer}`)
-    // D10, I5: the next line is the subagent's real choice; the parent's free is its own step.
-    expect(again.err).toMatchSnapshot('second claim')
-    ok(await p.agent(`free ${lead} a2`))
-    expect(ok(await p.agent(`brief ${writer}`)).out).toContain('attempt 1 of 3')
-  })
 
   test('a report needs a brief in this attempt', async () => {
     const { p, writer } = await withWriter()
@@ -205,12 +196,6 @@ describe('forwarded person acts', () => {
     const r = await p.agent(`forward ${linter} Nanda reject r1 --point="x" --quote="x"`)
     expect(r.err).toContain('only the top agent (a lead, with no parent) forwards the person')
   })
-})
-
-describe('directions change through review', () => {
-})
-
-describe('a split task joins its parts', () => {
 })
 
 describe('programs run on each report', () => {

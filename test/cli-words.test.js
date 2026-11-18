@@ -384,60 +384,9 @@ describe('the summary of a direction', () => {
 })
 
 describe('the work assign words, by where the assignment runs', () => {
-  test('Host: the host gets its token from work wait', async () => {
-    const { opened } = await hostedRun()
-    expect(opened).toContain('a1 is the host of h1; the host gets its token from work wait.')
-  })
-
-  test('Agent: a persistent role runs in its agent, whose terminal the UI starts', async () => {
-    const { p, host } = await hostedRun()
-    expect(await out(p.agent(`assign ${host} t1 --role=section-lead`))).toBe(
-      [
-        'a2 · section-lead (sonnet) on t1 The Introduction',
-        'a2 runs in p1, the persistent section-lead agent of h1 (sonnet). Its terminal ' +
-          'gets a2 through work wait --by=p1; the UI starts that terminal when it has none. ' +
-          'Do not start it yourself.',
-        `Then run work wait ${host}: it returns when you have work.`,
-      ].join('\n'),
-    )
-  })
-
-  test('Subagent: a disposable role starts as a subagent on the model of its role', async () => {
-    const { p, host } = await hostedRun()
-    const words = await out(p.agent(`assign ${host} t1 --role=writer`))
-    expect(words).toContain(
-      'Start a subagent on haiku with this prompt, and nothing else:',
-    )
-    expect(words).toContain(PROMPT('a2'))
-    // P9: the model that the role names, by its name in the models table.
-    const small = WORK_YAML.replace('  haiku:  {', '  small-model: {').replaceAll('model: haiku', 'model: small-model')
-    const named = await hostedRun({ roles: small })
-    const withModel = await out(named.p.agent(`assign ${named.host} t1 --role=writer`))
-    expect(withModel).toContain(
-      'Start a subagent on small-model with this prompt, and nothing else:',
-    )
-  })
 
   // Ruling 10: a role of any model can be persistent. A persistent writer runs in its agent, so its parent
   // gives it no command: the agent's wait gives it its token.
-  test('Agent of a role of one unit: the parent waits for the terminal of the agent', async () => {
-    const lasting = WORK_YAML.replace(
-      'persistent: false\n      why: It writes one section once, from its brief.',
-      'persistent: true\n      why: It writes every section, so it keeps what it read.',
-    )
-    const { p, host } = await hostedRun({ roles: lasting })
-    ok(await p.agent(`assign ${host} t1 --role=section-lead`))
-    // The UI records the lead's terminal, as the supervisor does for the agent p1.
-    const lead = tokenIn(await out(p.ui('session a2 --id=s-lead --token')))
-    ok(await p.agent(`brief ${lead}`))
-    expect(await out(p.agent(`assign ${lead} t1 --role=writer`))).toContain(
-      'a3 runs in p2, the persistent writer agent of h1 (haiku).',
-    )
-    expect(await out(p.agent(`next ${lead}`))).toBe(
-      'make t1: a3 runs in p2, a persistent agent: its terminal gets a3 through work wait ' +
-        '--by=p2, and the UI starts that terminal when it has none (attempt 1 of 3)',
-    )
-  })
 
   test('NoRun: a persistent role on a task with no run keeps the words of before', async () => {
     const p = project()

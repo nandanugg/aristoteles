@@ -367,18 +367,23 @@ export async function init(p) {
   }
 }
 
-// A project with a store and the roles' fits: nothing is assigned (the work model opens its own top).
+// A project with a store and the roles' fits: nothing is assigned (the work model opens its own
+// top).
 export async function initiated(files) {
   const p = project(files)
   await init(p)
-  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
+    ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  }
   return { p }
 }
 
 export async function started(files) {
   const p = project(files)
   await init(p)
-  for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
+    ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
+  }
   ok(await p.nanda('task open --file=task.yaml'))
   const lead = tokenIn(ok(await p.nanda('assign t1 --role=section-lead')).out)
   ok(await p.agent(`brief ${lead}`))
@@ -509,7 +514,8 @@ export async function codeStarted(files = {}) {
 // draft id and the reviser token; pass { accept: false } to leave the draft open. In a project with
 // other roles, pass { role, on, fit: true } (fit the role first).
 export async function changeDirection(p, yaml, opts = {}) {
-  const { flags = '', accept = true, direction = 'tsd-writing', role = 'architect', fit = false } = opts
+  const { flags = '', accept = true, direction = 'tsd-writing', role = 'architect' } = opts
+  const { fit = false } = opts
   if (!p.arch) {
     if (fit) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
     p.arch = tokenIn(ok(await p.nanda(`assign t1 --role=${role}`)).out)

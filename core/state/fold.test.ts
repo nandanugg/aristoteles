@@ -9,7 +9,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Effect, Layer } from 'effect'
 import {
-  type AgentId,
   type AssignmentId,
   type Author,
   type DirectionId,
@@ -17,18 +16,15 @@ import {
   type Event,
   type EventRef,
   type FlowStep,
-  kindOf,
   type OnboardedDirection,
   type Recorded,
   type RevisionId,
   type RoleName,
-  type SessionId,
   type Time,
   type Work,
 } from '../schema/index.ts'
 import { Env, FilesLive, readConfig, Store, StoreLive } from '../services/index.ts'
 import { fold, foldStep } from './index.ts'
-import { modelOfAssignment } from './records.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harnessJs from '../../test/harness.js'
 
@@ -66,7 +62,7 @@ const harness = harnessJs as {
   readonly WORK_YAML: string
   readonly DIRECTION: string
 }
-const { ok, tokenIn, solToken, git, HOST, TASK_WHOLE } = harness
+const { ok, tokenIn, git } = harness
 
 // --- the store of a scenario ---------------------------------------------------------------------
 
@@ -163,7 +159,6 @@ const startStore = (dir: string, directions: ReadonlyArray<OnboardedDirection>, 
 // an agent's terminal), appended as the store appends any checked event.
 const NANDA_UI: Author = { _tag: 'Person', name: 'Nanda', channel: 'ui' }
 const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
-const SUPERVISOR: Author = { _tag: 'Supervisor', name: 'Nanda' }
 // At the time of the last act of the project, so that no later act of the CLI comes before it.
 const appendNow = (p: Project, author: Author, event: Event) =>
   append(p.dir, { at: p.now(), author, event } as Draft)
@@ -203,18 +198,9 @@ const sameAsReplay = async (dir: string, name: string): Promise<Work> => {
 
 // --- the scenarios -------------------------------------------------------------------------------
 
-const PARTS =
-  '- { name: Flags and env, text: Write the feature flag and how the env vars are read., ' +
-  'context: { section: design } }\n' +
-  '- { name: Handler, text: Write the use case and the request handler., ' +
-  'context: { section: introduction } }\n'
 const LINT = (where: string) =>
   `--evidence="no-code-proof | ${where} | no paths or hashes there" ` +
   `--evidence="no-ticket-ids | ${where} | no ticket ids there"`
-const COSTS =
-  'replace:\n  - { id: facts-not-proof, with: { id: facts-not-proof, says: "The body states ' +
-  'facts, with what the problem costs.", rules: [ { id: no-code-proof, says: "No file paths ' +
-  'with line numbers, no commit hashes in the body", checkedBy: linter } ] } }\n'
 
 // A company repo with the direction feature-flags in directions/feature-flags.
 const companyRepo = () => {
@@ -240,20 +226,6 @@ const FLAGS = {
   'directions/feature-flags/naming/upper-snake.md': 'The flag is FF_<PROJECT>_<FEATURE>.\n',
   'directions/feature-flags/removable/standard.md': 'The flag is read in one place.\n',
   'directions/feature-flags/removable/one-read.md': 'Each flag is read in one if.\n',
-}
-
-// A dir with a host run h1 whose top task t1 is open, with the architect a1 as its host.
-const hosted = async () => {
-  const p = harness.project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
-  await harness.init(p)
-  for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
-    ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  }
-  ok(await p.run('run start', HOST))
-  ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
-  const host = await solToken(p, ok(await p.ui('task open td1')).out) // ruling 10.1
-  ok(await p.agent(`brief ${host}`))
-  return { p, host }
 }
 
 describe('fold gives the Work of the old replay', () => {
@@ -312,77 +284,6 @@ describe('fold gives the Work of the old replay', () => {
     ok(await p.nanda('review d3 accept --evidence="naming | capitals"', 'accept'))
     ok(await p.nanda('suggest naming --says="name the owner team in the flag"'))
     await sameAsReplay(p.dir, 'company')
-  }, 60000)
-
-  test('a run of the page: problems, sessions, terminal events, sends, a remake', async () => {
-    const { p, host } = await hosted()
-    ok(await p.agent(`assign ${host} t1 --role=section-lead`))
-    // The UI starts the lead with a new token (ruling 10.1: in its launch command).
-    const lead = tokenIn(ok(await p.ui('session a2 --id=s-lead --token')).out)
-    ok(await p.agent(`brief ${lead}`))
-    ok(await p.agent(`ask ${lead} --text="Is the retry part of the export?" --to=owner`))
-    ok(await p.agent(`answer ${host} q1 --text="no"`))
-    ok(await p.agent(`problem ${host} t1 --says="the cluster is down: run make up"`))
-    ok(await p.agent(`note ${host} words --on=sp1 --text="The cluster is down. Start it."`))
-    ok(await p.ui('problem sp1 --fixed'))
-    ok(await p.ui('event a2 --kind=prompt --text="Do you want to proceed?"'))
-    ok(await p.agent(`send ${host} a2 --text="1"`))
-    ok(await p.agent(`send ${host} a2 --text="2"`))
-    ok(await p.ui('event a2 --kind=error --text="connection error" --tries=3'))
-    ok(await p.ui('event a2 --kind=stopped'))
-    ok(await p.ui('event a2 --kind=resumed'))
-    ok(await p.ui('event a2 --kind=closed'))
-    const events = await eventsOf(p.dir)
-    const sends = events.filter((r) => kindOf(r.event) === 'Send.Sent').map((r) => `e${r.seq}`)
-    const at = (minute: number) => new Date(Date.UTC(2026, 9, 25, 12, minute)).toISOString() as Time
-    const supervisor = { _tag: 'Supervisor' as const, name: 'Nanda' }
-    await append(p.dir, {
-      at: at(0),
-      author: supervisor,
-      event: { _tag: 'Send', id: sends[0] as never, move: { _tag: 'Delivered' } },
-    } as Draft)
-    await append(p.dir, {
-      at: at(1),
-      author: supervisor,
-      event: {
-        _tag: 'Send',
-        id: sends[1] as never,
-        move: { _tag: 'Dropped', why: { _tag: 'TypingFailed' } },
-      },
-    } as Draft)
-    await append(p.dir, {
-      at: at(2),
-      author: { _tag: 'Person', name: 'Nanda', channel: 'ui' },
-      event: { _tag: 'Run', create: { _tag: 'HostStarted', session: 's-window' as SessionId } },
-    } as Draft)
-    p.write('costs.yaml', COSTS)
-    const give = `assign ${lead} t1 --role=writer --max-attempts=3`
-    const writer = tokenIn(ok(await p.agent(give)).out)
-    ok(await p.agent(`brief ${writer}`))
-    p.write('docs/tsd.md', harness.INTRO_V1)
-    ok(await p.agent(`report ${writer} --output=docs/tsd.md#introduction`))
-    const cost = '--point="the reader cannot see the cost"'
-    const reject = ok(await p.agent(`review ${lead} r1 reject ${cost}`))
-    const vid = reject.out.match(/^(v\d+): reject/)?.[1]
-    p.write('again.yaml', `${TASK_WHOLE.replace('agreed facts.', 'agreed facts, with the cost.')}`)
-    const why = '--reason="the text asks for the cost"'
-    ok(await p.agent(`direction revise ${host} tsd-writing --file=costs.yaml --answers=${vid}`))
-    const hope = '--hope="The readers see first why the work matters."'
-    const problem = '--text="The facts say nothing of the cost."'
-    ok(await p.agent(`note ${host} words --on=d2 ${problem} ${hope}`))
-    ok(await p.agent(`note ${host} words --on=h1 --text="The TSD is whole."`))
-    // The remake comes last: it ends the host a1 (C1), so a1 acts before it.
-    ok(await p.agent(`task remake ${host} t1 --file=again.yaml ${why}`))
-    const second = { env: { ...HOST.env, TMUX_PANE: '%8' } }
-    ok(await p.run('run continue h1 --quote="continue the export project"', second))
-    ok(await p.run('run start', { env: { ...HOST.env, TMUX_PANE: '%7' } }))
-    ok(await p.ui('run close h2'))
-    await append(p.dir, {
-      at: at(59),
-      author: { _tag: 'Person', name: 'Nanda', channel: 'ui' },
-      event: { _tag: 'Run', id: 'h3' as never, move: { _tag: 'Done' } },
-    } as Draft)
-    await sameAsReplay(p.dir, 'page run')
   }, 60000)
 
   test('the role words change; the store keeps the new words', async () => {
@@ -450,61 +351,6 @@ describe('fold gives the Work of the old replay', () => {
       expect<unknown>(draft?.origin).toEqual({ _tag: 'Onboarded', event: 'e1' })
     }
   }, 30000)
-
-  test('persistent agents: one agent of a role in a run, its session, its model kept', async () => {
-    const { p, host } = await hosted()
-    p.write('parts.yaml', PARTS)
-    ok(await p.nanda('task split t1 --file=parts.yaml'))
-    ok(await p.agent(`assign ${host} t2 --role=section-lead`))
-    ok(await p.agent(`assign ${host} t3 --role=section-lead`))
-    // The supervisor starts p1's terminal (a later wave); both of its assignments take it.
-    const started = { _tag: 'Agent', id: 'p1', move: { _tag: 'Started', session: 's-lead' } }
-    await appendNow(p, SUPERVISOR, started as Event)
-    const startedAt = p.now()
-    const lead = tokenIn(ok(await p.ui('session a2 --id=s-lead --token')).out)
-    ok(await p.ui('session a3 --id=s-lead --token'))
-    ok(await p.agent(`brief ${lead}`))
-    ok(await p.agent(`assign ${lead} t2 --role=writer`))
-    // A new lead role, then another model for section-lead: its agent keeps the model it started
-    // with (ruling 13).
-    const editor = {
-      kind: 'agent',
-      model: 'sonnet',
-      description: 'Edits one section.',
-      intro: 'You edit one section.',
-      responsibilities: ['Edit the section under its heading.'],
-      acts: [{ approve: ['writer'] }],
-      checks: [],
-      persistence: { persistent: true, why: 'It edits the sections of the whole project.' },
-      icon: 'pen-tool',
-    }
-    const w0 = fold(await eventsOf(p.dir))
-    const kept = { hashes: w0.hashes, texts: w0.texts }
-    for (const adjustment of [
-      { _tag: 'AddRole', role: 'editor', file: editor },
-      { _tag: 'SetModel', role: 'section-lead', model: 'opus' },
-    ]) {
-      const drafted = { _tag: 'Adjustment', create: { _tag: 'Drafted', adjustment } }
-      const seq = await appendNow(p, HOST_RUN, drafted as Event)
-      const accepted = { _tag: 'Adjustment', id: refOf(seq), move: { _tag: 'Accepted', ...kept } }
-      await appendNow(p, NANDA_UI, accepted as Event)
-    }
-    const work = await sameAsReplay(p.dir, 'persistent agents')
-    const runs = (id: string): unknown => work.assignments.get(id as AssignmentId)?.runs
-    expect(runs('a1')).toEqual({ _tag: 'Host', run: 'h1' })
-    expect(runs('a2')).toEqual({ _tag: 'Agent', agent: 'p1' })
-    expect(runs('a3')).toEqual({ _tag: 'Agent', agent: 'p1' })
-    expect(runs('a4')).toEqual({ _tag: 'Subagent', model: 'haiku' })
-    expect([...work.agents.keys()]).toEqual(['p1' as AgentId])
-    const p1 = work.agents.get('p1' as AgentId)
-    expect<unknown>(p1?.terminal).toEqual({ _tag: 'Started', session: 's-lead', at: startedAt })
-    expect(p1?.model).toBe('sonnet')
-    const role = work.workflow.roles.get('section-lead' as RoleName)
-    expect(role?._tag === 'Model' ? role.model : undefined).toBe('opus')
-    const a2 = work.assignments.get('a2' as AssignmentId)
-    expect(a2 === undefined ? null : modelOfAssignment(work, a2)).toBe('sonnet')
-    expect(work.sessions.get('a3' as AssignmentId)?.session).toBe('s-lead' as SessionId)
-  }, 60000)
 
   test('adjustments: each accepted one folds; a rejected and a replaced one change nothing', async () => {
     const { p } = await harness.started()

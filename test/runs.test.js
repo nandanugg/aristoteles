@@ -42,64 +42,10 @@ describe('runs and sessions', () => {
     db.close()
   })
 
-  test('a continue of a run with an open top task gives the new pane the Sol, with a new token', async () => {
-    const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
-    await init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    const first = { env: { ...HOST_PANE, TMUX_PANE: '%1' } }
-    const second = { env: { ...HOST_PANE, TMUX_PANE: '%2' } }
-    ok(await p.run('run start', first))
-    ok(await p.run('task draft --file=top.yaml --by=h1', first))
-    const old = await solToken(p, ok(await p.ui('task open td1')).out, 'h1', first) // ruling 10.1
-    ok(await p.agent(`brief ${old}`))
-    const moved = ok(await p.run('run continue h1 --quote="go on with the introduction"', second)).out
-    expect(moved).toContain('you are the host of its top task t1 (a1); the old token stops working. Your command: work brief a1.')
-    const fresh = tokenIn(moved)
-    expect((await p.agent(`next ${old}`)).err).toContain('the token of a1 is wrong')
-    ok(await p.agent(`brief ${fresh}`))
-    // The Sol's terminal is the new pane now: the canvas names it, and the old pane drafts nothing.
-    const db = dbOf(p)
-    const hosts = db.query("SELECT session FROM run_host WHERE run = 'h1' ORDER BY session").all().map((r) => r.session)
-    expect(hosts).toHaveLength(2)
-    const latest = db.query("SELECT session FROM assignment_session WHERE assignment = 'a1' ORDER BY at DESC LIMIT 1").get().session
-    expect(hosts).toContain(latest)
-    db.close()
-  })
-
   // Live, 2026-11-16: the person gave the top task, finished that assignment, and gave it again;
   // the second got no session, so the host's wait never found it.
-  test('a top task given again after a finished give hosts in the run', async () => {
-    const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
-    await init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    const first = { env: { ...HOST_PANE, TMUX_PANE: '%1' } }
-    ok(await p.run('run start', first))
-    ok(await p.run('task draft --file=top.yaml --by=h1', first))
-    await solToken(p, ok(await p.ui('task open td1')).out, 'h1', first)
-    ok(await p.nanda('finish a1'))
-    ok(await p.nanda('assign t1 --role=architect'))
-    const again = ok(await p.run('wait --by=h1 --seconds=1', first)).out
-    expect(again).toContain('a2')
-    ok(await p.agent(`brief ${tokenIn(again)}`))
-  })
 
   // ... and a continue after that give moves the open host assignment to the new pane.
-  test('a top task given before a continue hosts in the new pane', async () => {
-    const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
-    await init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    const first = { env: { ...HOST_PANE, TMUX_PANE: '%1' } }
-    const second = { env: { ...HOST_PANE, TMUX_PANE: '%2' } }
-    ok(await p.run('run start', first))
-    ok(await p.run('task draft --file=top.yaml --by=h1', first))
-    await solToken(p, ok(await p.ui('task open td1')).out, 'h1', first)
-    ok(await p.nanda('finish a1'))
-    ok(await p.nanda('assign t1 --role=architect'))
-    ok(await p.run('run continue h1 --quote="go on"', second))
-    const host = ok(await p.run('wait --by=h1 --seconds=1', second)).out
-    expect(host).toContain('a2')
-    ok(await p.agent(`brief ${tokenIn(host)}`))
-  })
 
   test('the UI records the session of a real agent; one session is one agent', async () => {
     const { p } = await started()

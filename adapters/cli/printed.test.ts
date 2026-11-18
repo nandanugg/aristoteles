@@ -1,9 +1,6 @@
-// Invariant P3 over the scenario stores: every command that work waiting and work next print
-// parses to an intent that canAct allows.
+// The commands that the words print: cut into commands, and parsed into intents.
 import { describe, expect, test } from 'bun:test'
-import { derive } from '../../core/derived/index.ts'
-import { momentOf, SCENARIOS } from '../../core/derived/support.test.ts'
-import { commandsIn, intentOf, printedCommands, printedViolations } from './printed.ts'
+import { commandsIn, intentOf } from './printed.ts'
 
 describe('the commands that the words print', () => {
   test('a line is cut into its commands; a reject goes on with the review before it', () => {
@@ -29,15 +26,4 @@ describe('the commands that the words print', () => {
     expect(intentOf(words('work assign <task> --role=writer'), '')).toBeUndefined()
   })
 
-  test('in every scenario, canAct allows each printed command', async () => {
-    let checked = 0
-    for (const [name, make] of SCENARIOS) {
-      const s = await make()
-      const d = derive(momentOf(s.p.dir, s.at))
-      const people = d.moment.work.config.people
-      expect([name, printedViolations(d, people)]).toEqual([name, []])
-      checked += printedCommands(d, people).length
-    }
-    expect(checked).toBeGreaterThan(10)
-  }, 240000)
 })

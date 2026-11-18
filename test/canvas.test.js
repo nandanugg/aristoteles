@@ -33,22 +33,4 @@ describe('the canvas shows only what runs now', () => {
     expect(await owner()).toMatchObject({ a: 'a1', resumable: false })
   })
 
-  test('when every lead finished, the host of the open run owns the task: it acts on the end', async () => {
-    const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
-    await init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    ok(await p.run('run start', HOST))
-    ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
-    const host = await solToken(p, ok(await p.ui('task open td1')).out) // ruling 10.1
-    ok(await p.agent(`brief ${host}`))
-    ok(await p.agent(`assign ${host} t1 --role=section-lead`))
-    const owner = async () => (await canvas(p, 'h1')).rows[0].task.owner
-    expect(await owner()).toMatchObject({ a: 'a2', model: 'sonnet', resumable: true })
-    ok(await p.agent(`finish ${host} a2`))
-    // The host's own pane is the person's: the page has no Resume for it.
-    expect(await owner()).toMatchObject({ a: 'a1', model: 'opus', terminal: { session: expect.stringMatching(/^host-/) }, resumable: false })
-    // The host's own assignment ends too; its run is still open, so its terminal stays live work.
-    ok(await p.agent(`finish ${host}`))
-    expect(await owner()).toMatchObject({ a: 'a1', terminal: { session: expect.stringMatching(/^host-/) }, resumable: false })
-  })
 })

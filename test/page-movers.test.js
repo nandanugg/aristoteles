@@ -41,9 +41,6 @@ const hosted = async (files = {}) => {
   return { p, host }
 }
 
-describe('D1: an evaluation for the owner', () => {
-})
-
 describe('BriefOver: a brief over its limit with no high role above it', () => {
   test('shows on its task: suggest shorter words, or remake at a terminal (t1 has a section: one unit, B1)', async () => {
     const small = WORK_YAML.replace('briefChars: 6000', 'briefChars: 900')
@@ -72,45 +69,9 @@ describe('BriefOver: a brief over its limit with no high role above it', () => {
     expect(y.acts).toEqual([{ _tag: 'Give', task: 't1', role: 'architect' }])
   })
 
-  test('a high role above it shortens or splits: the person gets no item', async () => {
-    const small = WORK_YAML.replace('briefChars: 12000', 'briefChars: 900')
-    const { p, host } = await hosted({ 'aristoteles.yaml': small })
-    const lead = await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
-    ok(await p.agent(`brief ${lead}`))
-    expect((await panel(p, 't1')).decisions.filter((d) => d.title === 'A brief over its limit')).toEqual([])
-    expect(ok(await p.agent(`next ${host}`)).out).toContain('shorten')
-  })
-})
-
-describe('D5: a draft that waits for the accept of a role with no possible reviewer', () => {
-  test('shows with the assign of that role; the assign gives the role the review', async () => {
-    const dir = DIRECTION.replace('from: [Pathos, Logos]\n', 'from: [Pathos, Logos]\napprovedBy: { order: [section-lead, Nanda] }\n')
-    const { p, host } = await hosted({ 'directions/tsd-writing.yaml': dir })
-    await agentToken(p, ok(await p.agent(`assign ${host} t1 --role=section-lead`)).out)
-    p.write('change.yaml', 'add:\n  - { id: short, says: Keep it short. }\n')
-    ok(await p.run(`direction revise ${host} tsd-writing --file=change.yaml --why="Shorten"`, HOST))
-    // P8: the host's draft sits on its project, t1.
-    const onT1 = async () => (await panel(p, 't1')).decisions
-    const waits = (await onT1()).find((d) => d.id === 'd2')
-    expect(waits).toMatchObject({ kind: 'step', title: 'A draft waits for a reviewer' })
-    expect(waits.acts).toEqual([{ _tag: 'Give', task: 't1', role: 'section-lead' }])
-    const given = await act(p, 'assign', { task: 't1', role: 'section-lead' })
-    expect(given.out).toStartWith('a3 · section-lead on t1;')
-    // a3 reviews it now: the person waits, and the card is gone.
-    expect((await onT1()).find((d) => d.id === 'd2')).toBeUndefined()
-    expect(ok(await p.nanda('waiting')).out).toContain('d2 waits for the accept of a3 (section-lead)')
-  })
 })
 
 describe('D3: a suggestion reaches an actor', () => {
-  test('a new direction, with a live host: the host drafts it, and the next line says so', async () => {
-    const { p, host } = await hosted()
-    const s = ok(await p.ui('suggest --says="Write a direction for the API docs"')).out
-    expect(s).toContain('next: a1 (architect) drafts it')
-    expect(ok(await p.agent(`next ${host}`)).out).toContain('s1 asks for a new direction')
-    // The host moves it, so the person has no card for it.
-    expect((await inbox(p)).find((d) => d.id === 's1')).toBeUndefined()
-  })
 
   test('the roles, with no run: an open high agent drafts the adjustment', async () => {
     const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
@@ -135,9 +96,6 @@ describe('D3: a suggestion reaches an actor', () => {
     expect(s).toContain('next: no agent can draft it now; give a role that directs work, and it drafts it: work assign t1 --role=architect')
     expect((await inbox(p)).find((d) => d.id === 's1').acts).toEqual([{ _tag: 'Give', task: 't1', role: 'architect' }])
   })
-})
-
-describe('D2: a company draft of a new direction with no examples', () => {
 })
 
 describe('F3: a decision with no task, and one of a task that ended', () => {

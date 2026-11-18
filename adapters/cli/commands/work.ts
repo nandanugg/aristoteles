@@ -1,5 +1,5 @@
-// The old commands brief, report, review, ask, answer, note, evaluate, source. Each builds the ActionInput of its act, dispatches it, and prints the
-// words of the act from the new Work.
+// The old commands brief, report, review, ask, answer, note, evaluate, source. Each builds the
+// ActionInput of its act, dispatches it, and prints the words of the act from the new Work.
 import { Effect } from 'effect'
 import {
   assignmentAt,

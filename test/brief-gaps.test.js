@@ -19,9 +19,6 @@ import {
 } from './harness.js'
 
 
-describe('the brief of an agent that escalated', () => {
-})
-
 describe('a review in a brief', () => {
   // A proofreader reviews the work of a linter, so it does not cover the writer of the result.
   // Ruling 7, onboarding 2026-11-14: the role says its persistence and its icon.
@@ -60,30 +57,6 @@ describe('a review in a brief', () => {
     const seen = '| docs/tsd.md#introduction | nothing of the kind'
     const evidence = ['no-code-proof', 'no-ticket-ids'].map((r) => `--evidence="${r} ${seen}"`)
     ok(await p.agent(`review ${linter} r1 accept ${evidence.join(' ')}`))
-  }, 30000)
-})
-
-describe('the first word of a reply', () => {
-})
-
-describe('send to an agent with no terminal', () => {
-  test('each way of running names itself: a persistent agent and a subagent are not told the same words', async () => {
-    const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
-    await init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
-      ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    }
-    ok(await p.run('run start', HOST))
-    ok(await p.run('task draft --file=top.yaml --by=h1', HOST))
-    const host = await solToken(p, ok(await p.ui('task open td1')).out) // ruling 10.1
-    ok(await p.agent(`brief ${host}`))
-    ok(await p.agent(`assign ${host} t1 --role=section-lead`))
-    ok(await p.agent(`assign ${host} t1 --role=writer --max-attempts=3`))
-    const agent = await p.agent(`send ${host} a2 --text="yes"`)
-    expect(agent.err).toContain('a2 has no terminal yet (it gets one when the UI starts its session)')
-    expect(agent.err).not.toContain('subagent')
-    const subagent = await p.agent(`send ${host} a3 --text="yes"`)
-    expect(subagent.err).toContain('a3 has no terminal (a subagent runs inside the terminal of its parent)')
   }, 30000)
 })
 

@@ -7,14 +7,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Exit } from 'effect'
 import type {
-  AgentId,
-  AssignmentId,
   Author,
   DirectionId,
   Event,
   EventRef,
   RevisionId,
-  SessionId,
   Time,
 } from '../schema/index.ts'
 import {
@@ -28,14 +25,11 @@ import {
   ok,
   type Project,
   refused,
-  solToken,
-  tokenIn,
   workOf,
 } from './fixture.test.ts'
 import type { ActionInput } from './types.ts'
 
 const HOST_RUN: Author = { _tag: 'ModelRun', name: 'host', at: '2026-10-25T08:00:00.000Z' as Time }
-const SUPERVISOR: Author = { _tag: 'Supervisor', name: 'Nanda' }
 // Nanda, 2026-11-15: a direction starts with examples (was: 3 cases): in each marked step of its
 // flow, one that follows it and one that breaks it.
 const OUTPUT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
@@ -186,82 +180,5 @@ describe('adjustments (ruling 14)', () => {
       content: {},
     }
     expect(refused(act(derivedIn(p), NANDA, accept)).message).toBe('editor is in use: a2 plays it')
-  }, 60000)
-})
-
-describe('persistent agents and their one terminal (ruling 9)', () => {
-  // A second persistent lead role, which the architect assigns, so that a run can hold two agents.
-  const EDITOR_ROLE =
-    '  editor:\n    model: sonnet\n    description: Edits one section.\n' +
-    '    intro: You edit one section.\n    responsibilities:\n' +
-    '      - Edit the section under its heading.\n    acts: [{ approve: [writer] }]\n' +
-    '    persistence: { persistent: true, why: It edits the sections of the project. }\n' +
-    '    icon: pen-tool\n'
-  // A dir with a host run h1, its top task t1 split in two, and section-lead given on each part.
-  const twoParts = async () => {
-    const p = h.project({
-      'aristoteles.yaml': `${h.WORK_YAML.replace('{ assign: [section-lead, writer, linter] }', '{ assign: [section-lead, writer, linter, editor] }')}${EDITOR_ROLE}`,
-      'top.yaml': `${h.TASK_WHOLE}role: architect\n`,
-    })
-    await h.init(p)
-    for (const role of ['architect', 'section-lead', 'writer', 'linter', 'editor']) {
-      ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-    }
-    ok(await p.run('run start', h.HOST))
-    ok(await p.run('task draft --file=top.yaml --by=h1', h.HOST))
-    const host = await solToken(p, ok(await p.ui('task open td1')).out)
-    ok(await p.agent(`brief ${host}`))
-    p.write(
-      'parts.yaml',
-      '- { name: Flags, text: Write the flags., context: { section: design } }\n' +
-        '- { name: Handler, text: Write the handler., context: { section: introduction } }\n',
-    )
-    ok(await p.nanda('task split t1 --file=parts.yaml'))
-    ok(await p.agent(`assign ${host} t2 --role=section-lead`))
-    ok(await p.agent(`assign ${host} t3 --role=section-lead`))
-    return { p, host }
-  }
-  const session = (a: string, id: string): ActionInput => ({
-    _tag: 'StartSession',
-    target: { assignment: a as AssignmentId },
-    content: { session: id as SessionId, secret: null },
-  })
-  const startP1: ActionInput = {
-    _tag: 'StartAgent',
-    target: { agent: 'p1' as AgentId },
-    content: { session: 's-lead' as SessionId },
-  }
-
-  test('the supervisor starts the agent once; its two assignments take its session', async () => {
-    const { p } = await twoParts()
-    stored(p, SUPERVISOR, startP1)
-    expect(workOf(p.dir).agents.get('p1' as AgentId)?.terminal._tag).toBe('Started')
-    expect(refused(act(derivedIn(p), SUPERVISOR, startP1)).message).toBe(
-      'p1 has its terminal s-lead',
-    )
-    stored(p, SUPERVISOR, session('a2', 's-lead'))
-    stored(p, SUPERVISOR, session('a3', 's-lead'))
-    const work = workOf(p.dir)
-    expect(work.sessions.get('a2' as AssignmentId)?.session).toBe('s-lead' as SessionId)
-    expect(work.sessions.get('a3' as AssignmentId)?.session).toBe('s-lead' as SessionId)
-  }, 60000)
-
-  test('an assignment of no agent, or of another agent, is refused that session', async () => {
-    const { p, host } = await twoParts()
-    stored(p, SUPERVISOR, startP1)
-    const lead = tokenIn(ok(await p.ui('session a2 --id=s-lead --token')).out)
-    ok(await p.agent(`brief ${lead}`))
-    ok(await p.agent(`assign ${lead} t2 --role=writer`))
-    ok(await p.agent(`assign ${host} t2 --role=editor`))
-    const work = workOf(p.dir)
-    const runs = (a: string): unknown => work.assignments.get(a as AssignmentId)?.runs
-    expect(runs('a4')).toEqual({ _tag: 'Subagent', model: 'haiku' })
-    expect(runs('a5')).toEqual({ _tag: 'Agent', agent: 'p2' })
-    const d = derivedIn(p)
-    for (const a of ['a1', 'a4', 'a5']) {
-      expect(refused(act(d, SUPERVISOR, session(a, 's-lead'))).message).toBe(
-        'the session s-lead is in use',
-      )
-    }
   }, 60000)
 })

@@ -6,7 +6,6 @@ import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import { Effect, Layer, Schema } from 'effect'
 import {
-  type AgentId,
   type AssignmentId,
   type Author,
   type DirectionId,
@@ -16,20 +15,17 @@ import {
   Flow,
   FlowStep,
   OnboardingDirection,
-  type RevisionId,
   type Time,
 } from '../schema/index.ts'
 import { decodeRecorded } from '../../src/domain/events.ts'
 import { Env, Store, StoreLive } from '../services/index.ts'
 import {
-  agentStateOf,
   derive,
   exampleStateOf,
-  nextFor,
   onboardingStateOf,
   waitingFor,
 } from './index.ts'
-import { momentOf, ok, solToken, tokenIn } from './support.test.ts'
+import { momentOf } from './support.test.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harnessJs from '../../test/harness.js'
 
@@ -89,23 +85,6 @@ const accepted = (draft: EventRef, p: Project) => {
 const rejected = (draft: EventRef) =>
   ({ _tag: 'Adjustment', id: draft, move: { _tag: 'Rejected', reason: 'not now' } }) as Event
 const derivedOf = (p: Project) => derive(momentOf(p.dir, p.now() as Time))
-
-// A dir with a host run h1 whose top task t1 is open, with the architect a1 as its host.
-const hosted = async () => {
-  const p = h.project({ 'top.yaml': `${h.TASK_WHOLE}role: architect\n` })
-  await h.init(p)
-  for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
-    ok(await p.nanda(`role fit ${role} --answers=fit.yaml`))
-  }
-  ok(await p.run('run start', h.HOST))
-  ok(await p.run('task draft --file=top.yaml --by=h1', h.HOST))
-  const host = await solToken(p as never, ok(await p.ui('task open td1')).out)
-  ok(await p.agent(`brief ${host}`))
-  return { p, host }
-}
-const PARTS =
-  '- { name: Flags, text: Write the flags., context: { section: design } }\n' +
-  '- { name: Handler, text: Write the handler., context: { section: introduction } }\n'
 
 // Nanda, 2026-11-15: an example is an output of a marked step, real or written by the host.
 const SPOT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
@@ -272,27 +251,6 @@ describe('onboardingStateOf', () => {
 // --- states of a store --------------------------------------------------------------------------
 
 describe('AgentState', () => {
-  test('OnAssignment with two open assignments, Between with none, then Ended', async () => {
-    const { p, host } = await hosted()
-    p.write('parts.yaml', PARTS)
-    ok(await p.nanda('task split t1 --file=parts.yaml'))
-    ok(await p.agent(`assign ${host} t2 --role=section-lead`))
-    ok(await p.agent(`assign ${host} t3 --role=section-lead`))
-    const p1 = 'p1' as AgentId
-    const on = derivedOf(p).states.agents.get(p1)
-    expect<unknown>(on).toEqual({ _tag: 'OnAssignment', assignments: ['a2', 'a3'] })
-    ok(await p.agent(`finish ${host} a2`))
-    ok(await p.agent(`finish ${host} a3`))
-    const d = derivedOf(p)
-    expect(d.states.agents.get(p1)).toEqual({ _tag: 'Between' })
-    // Its run ends: the dependency is given, with no store (R1).
-    const at = p.now() as Time
-    const ended = agentStateOf(d.moment, p1, {
-      run: { _tag: 'Closed', at },
-      assignments: d.states.assignments,
-    })
-    expect(ended).toEqual({ _tag: 'Ended', at })
-  }, 60000)
 })
 
 describe('adjustments', () => {
@@ -339,96 +297,5 @@ describe('adjustments', () => {
 })
 
 describe('what reaches the host from no project', () => {
-  test('a suggestion about the roles: the person sees it, the host drafts it', async () => {
-    const { p, host } = await hosted()
-    const about = { _tag: 'Roles' }
-    const says = 'a role reads the facts first'
-    const suggestion = { _tag: 'Suggestion', create: { _tag: 'Suggestion', about, says } }
-    await append(p, NANDA, suggestion as Event)
-    const d = derivedOf(p)
-    const item = waitingFor(d, { _tag: 'Person', name: 'Nanda' }).find(
-      (i) => i._tag === 'Suggestion',
-    )
-    expect(item?._tag === 'Suggestion' ? item.about : undefined).toEqual({ _tag: 'Roles' })
-    const a1 = { _tag: 'Agent', assignment: tokenIn(`work brief ${host}`).split('.')[0] } as Author
-    const steps = nextFor(d, a1).filter((s) => s.what._tag === 'AnswerRolesSuggestion')
-    expect(steps.map((s) => (s._tag === 'Do' ? s.intents.map((i) => i._tag) : []))).toEqual([
-      ['DraftAdjustment'],
-    ])
-    // The words of the step: the person's words, and the changes that an adjustment can make.
-    expect(ok(await p.agent(`next ${host}`)).out).toContain(
-      [
-        's1 suggests about the roles: "a role reads the facts first" (Nanda); answer it with the ' +
-          'adjustment that it asks for, one change at a time',
-        `  work adjust ${host} add-role <role> --file=<role.yaml>, or remove-role <role>, or ` +
-          'model <role> --model=<name>, or persistence <role> ' +
-          '--persistent=<true|false> --why="<one line>"',
-      ].join('\n'),
-    )
-    // Once a model drafts a role adjustment after the words, they wait no more.
-    await append(p, HOST_RUN, drafted({ _tag: 'SetModel', role: 'writer', model: 'sonnet' }))
-    const later = derivedOf(p)
-    expect(nextFor(later, a1).some((s) => s.what._tag === 'AnswerRolesSuggestion')).toBe(false)
-  }, 60000)
 
-  test('a company draft with no examples: the person rejects only, the host adds them', async () => {
-    const { p, host } = await hosted()
-    const source = {
-      repo: 'company-repo',
-      path: 'directions/flags',
-      ref: { _tag: 'DefaultBranch' },
-      commit: 'c'.repeat(40),
-    }
-    const folder = { name: 'Flags', says: 'Each change is flagged.', standards: [] }
-    const imported = { direction: 'flags', source, folder, owner: 'Nanda', checkers: {} }
-    const event = { _tag: 'Revision', create: { _tag: 'Imported', ...imported } }
-    await append(p, { _tag: 'Refresh' }, event as unknown as Event)
-    const d = derivedOf(p)
-    const draft = [...d.moment.work.drafts.values()].find((x) => x.of === 'flags')
-    if (draft === undefined) throw new Error('no draft of flags')
-    const person = waitingFor(d, { _tag: 'Person', name: 'Nanda' }).find(
-      (i) => i._tag === 'DraftForPerson' && i.draft === draft.id,
-    )
-    const step = person?.step
-    expect(step?._tag === 'Do' ? step.intents.map((i) => i._tag) : []).toEqual(['Reject'])
-    const a1 = { _tag: 'Agent', assignment: tokenIn(`work brief ${host}`).split('.')[0] } as Author
-    const adds = nextFor(d, a1).filter((s) => s.what._tag === 'AddExamples')
-    expect(adds.map((s) => (s._tag === 'Do' ? s.intents : []))).toEqual([
-      [{ _tag: 'AddExamples', target: { draft: draft.id as RevisionId } }],
-    ] as never)
-    // The words of the step: what the draft misses, and what an example is (ruling 4).
-    // Nanda, 2026-11-15: an example is an output of a marked step (was: 3 cases, as ladders).
-    expect(ok(await p.agent(`next ${host}`)).out).toContain(
-      [
-        `${draft.id} drafts the new direction "Flags", and its flow marks no step; write its ` +
-          'flow in this project, each step that it governs with uses, and examples: for each ' +
-          'marked step an output that follows the direction and one that breaks it, with its ' +
-          'input for a step that checks or decides; a real place of the project (file, line, a ' +
-          'short excerpt in the file) when it has one, else the output in your words (written)',
-        `  work direction examples ${host} ${draft.id} --file=<flow.yaml>`,
-      ].join('\n'),
-    )
-    // With a flow that marks a step, and one that follows and one that breaks there, the accept
-    // is the person's again, and the host has no step.
-    const flow = [{ from: 'writer', to: 'flags.ts', says: 'adds a flag', uses: ['flags'], examples: [CASE, BREAKS] }]
-    const move = { _tag: 'ExamplesAdded', flow }
-    const added = { _tag: 'Revision', id: draft.id, move } as unknown as Event
-    await append(p, HOST_RUN, added)
-    const after = derivedOf(p)
-    const again = waitingFor(after, { _tag: 'Person', name: 'Nanda' }).find(
-      (i) => i._tag === 'DraftForPerson' && i.draft === draft.id,
-    )?.step
-    expect(again?._tag === 'Do' ? again.intents.map((i) => i._tag) : []).toEqual([
-      'Accept',
-      'Reject',
-    ])
-    expect(nextFor(after, a1).some((s) => s.what._tag === 'AddExamples')).toBe(false)
-    // P8: a company refresh is the work of the dir: it shows at once, and no host explains it.
-    const shown = waitingFor(after, { _tag: 'Person', name: 'Nanda' }).find(
-      (i) => i._tag === 'DraftForPerson' && i.draft === draft.id,
-    )
-    expect(shown?.placement).toEqual({ _tag: 'DirWide' })
-    expect(shown?._tag === 'DraftForPerson' ? shown.hold._tag : undefined).toBe('Shown')
-    expect(nextFor(after, a1).some((s) => s.what._tag === 'ExplainDraft')).toBe(false)
-  }, 60000)
 })

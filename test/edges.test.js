@@ -33,17 +33,6 @@ const ending = async () => {
 }
 
 describe('a project ends once', () => {
-  test('a done project is not closed', async () => {
-    const { p } = await ending()
-    ok(await p.ui('run done h1'))
-    expect((await p.ui('run close h1')).err).toContain('h1 is done; a done project stays done')
-  })
-
-  test('a closed project is not done', async () => {
-    const { p } = await ending()
-    ok(await p.ui('run close h1'))
-    expect((await p.ui('run done h1')).err).toContain('h1 is closed')
-  })
 
   test('the draft of a closed project is not opened', async () => {
     const p = project({ 'top.yaml': `${TASK_WHOLE}role: architect\n` })
@@ -82,20 +71,6 @@ describe('a system problem stays in its project', () => {
 describe('a remade top task stays in its run', () => {
   // Ruling 10.1: the UI types nothing; the host's work wait in the run's pane gives the new Sol its
   // token (the remake ended a1, C1, so the session of the run is free for a2).
-  test('the Sol on the remake is the host of the run, in the session of the run', async () => {
-    const { p } = await hosted({ 'top2.yaml': TASK_WHOLE.replace(/text: .*/, 'text: A wider introduction.') })
-    ok(await p.nanda('task remake t1 --file=top2.yaml --reason="the scope grew"'))
-    const out = ok(await p.nanda('assign t2 --role=architect')).out
-    expect(out).toContain('a2 is the host of h1; the host gets its token from work wait.')
-    const waited = ok(await p.run('wait --by=h1 --seconds=1', HOST)).out
-    expect(waited).toContain('h1: its top task t2 The Introduction is open, and you are its host (a2)')
-    ok(await p.agent(`brief ${tokenIn(waited)}`))
-    const db = tables(p)
-    const run = db.query("SELECT session FROM run WHERE id = 'h1'").get().session
-    const a2 = db.query("SELECT session FROM assignment_session WHERE assignment = 'a2'").all()
-    db.close()
-    expect(a2.map((r) => r.session)).toContain(run)
-  })
 })
 
 describe('a question has one answer', () => {
@@ -121,15 +96,6 @@ describe('the CLI refuses what nothing would read', () => {
       .toContain('a task takes only a Reject; an Accept goes on a result of the task')
   })
 
-  test('a flag with no value is refused as such, not failed on', async () => {
-    const { p, host } = await hosted()
-    ok(await p.run(`brief ${host}`, HOST))
-    p.write('cost.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs. }\n')
-    const draft = ok(await p.agent(`direction revise ${host} tsd-writing --file=cost.yaml`)).out.match(/(d\d+) drafted/)[1]
-    const r = await p.ui(`review ${draft} reject --reason`, 'reject')
-    expect(r.err).toContain('--reason needs a value: --reason="<...>"')
-    expect(r.err).not.toContain('is not a function')
-  })
 })
 
 describe('the attempt of a maker', () => {

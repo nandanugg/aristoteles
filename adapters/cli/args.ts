@@ -213,12 +213,18 @@ export const USAGE: ReadonlyArray<string> = [
   '         work next <token> | ask <token> --text=<question> | forward ...',
   '         (the work model: a step names its own command, with --on <n> where it has a basis;',
   '         after an act run work wait <token> again)',
-  '         work send <token> --name= --goal= --sections=a,b --role=<role> | reassign <token> | top-done <token>',
-  '         work assign <token> <task> | review <token> <task> pass|fail|raise-tries|raise-no-rule|raise-misses --points= --on=',
-  '         work resume <token> <maker> | brief <token> | report <token> --output= --files=a,b --on=',
-  '         work evaluate <token> <task> split|fit|principle|direction|standard --summary= [--parts=<file>] [--role-draft=<file>] --on=',
-  '         work advance <token> <fix> | rule <token> <fix> <rule-file> | rule-test <token> <fix> | ship <token> <fix> <draft-file>',
-  '         work loop <token> <fix> person|revise | recheck <token> <task> holds|fails (each with --on=<n>)',
+  '         work send <token> --name= --goal= --sections=a,b --role=<role> | reassign <token> | ' +
+    'top-done <token>',
+  '         work assign <token> <task> | review <token> <task> ' +
+    'pass|fail|raise-tries|raise-no-rule|raise-misses --points= --on=',
+  '         work resume <token> <maker> | brief <token> | report <token> --output= --files=a,b ' +
+    '--on=',
+  '         work evaluate <token> <task> split|fit|principle|direction|standard --summary= ' +
+    '[--parts=<file>] [--role-draft=<file>] --on=',
+  '         work advance <token> <fix> | rule <token> <fix> <rule-file> | rule-test <token> ' +
+    '<fix> | ship <token> <fix> <draft-file>',
+  '         work loop <token> <fix> person|revise | recheck <token> <task> holds|fails (each ' +
+    'with --on=<n>)',
   '         work ask <token> --to=owner --text=<question> [--option=<words> ...] (the person answers it on the page)',
   '         work direction new [<token>] --file=<direction.yaml> [--by=<model run>] (a model drafts a new direction)',
   '         work direction revise [<token>] <direction> --file=<edit.yaml> [--by=<model run>] (a model drafts a change of a direction)',
@@ -242,8 +248,10 @@ export const USAGE: ReadonlyArray<string> = [
   '         work onboard approve-directions | accept-role <role> | revise-role <role> --words=<words> | remove-role <role>',
   '         work onboard persistence <role> --persistent=true|false | approve-roles (the store starts with the accepted result)',
   'person:  work start (the UI of this dir, in the browser) | work init | config apply|restore | task open|split|close | assign <task> --role=<role>',
-  '         top open --name= --goal= --sections=a,b | accept <fix> --on= | send-back <fix> --points= --on=',
-  '         reject <task> --points= --on= | decide <task> take|again --on= | answer <asker> --text= | end',
+  '         top open --name= --goal= --sections=a,b | accept <fix> --on= | send-back <fix> ' +
+    '--points= --on=',
+  '         reject <task> --points= --on= | decide <task> take|again --on= | answer <asker> ' +
+    '--text= | end',
   '         confirm <event> | answer <q> --text=<t>|--option=<n> | review <r> reject ... (after its deciders accept it)',
   '         review <draft>|<ev> accept --evidence= | reject --reason=',
   '         suggest [<direction|standard|rule>|roles] --says= (a role that directs writes the draft) | free|finish <a>',

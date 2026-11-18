@@ -1,5 +1,5 @@
 // P8, ruling 4: the server sends the build of its code (the git commit of the installed code) on
-// each open of the socket, so that a page of another build reloads (test/browser/page.check.js).
+// each open of the socket, so that a page of another build reloads.
 import { afterAll, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
