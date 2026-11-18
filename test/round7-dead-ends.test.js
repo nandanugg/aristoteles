@@ -93,15 +93,6 @@ describe('C-V1 approvedBy order [architect, Nanda] when the architect suggests t
 })
 
 describe('C-Q1 a forwarded question to an assignment that finished', () => {
-  test('the top agent forwards the person\'s question to a finished writer; nobody can answer it, and t1 waits for ever', async () => {
-    const { p, lead, writer } = await withWriter()
-    ok(await p.agent(`brief ${writer}`))
-    ok(await p.agent(`finish ${lead} a2`))
-    // The lead is the top agent (medium, no parent, with a claim): it forwards the person's question.
-    const forwarded = await p.agent(`forward ${lead} Nanda ask a2 --quote="Which merchant got the two files?" --channel=chat`)
-    // The fix (2026-11-07): a question to a finished assignment is refused.
-    expect(forwarded.err).toContain('is finished, so it answers no question')
-  })
 })
 
 describe('C-S1 a decider resolves an escalation to another assignment', () => {

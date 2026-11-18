@@ -121,3 +121,14 @@ export const WorkActed = Schema.TaggedStruct('Acted', {
 // The pane of the host in the person's own tmux (its socket and pane id): bookkeeping that the
 // page and the engine read, not an act of the protocol.
 export const WorkHostPane = Schema.TaggedStruct('HostPane', { socket: Str, pane: Str })
+
+// The host carries the person's words from its chat as the person's act: it waits on the page for
+// the person's confirm (Confirm dispatches it with its `on`) or drop. Bookkeeping, not an act.
+export const WorkForwarded = Schema.TaggedStruct('Forwarded', {
+  id: Str,
+  what: What,
+  on: Schema.NullOr(Int),
+  quote: Str,
+})
+// The forward is spent: the person dropped it, or confirmed it.
+export const WorkForwardDropped = Schema.TaggedStruct('ForwardDropped', { id: Str })

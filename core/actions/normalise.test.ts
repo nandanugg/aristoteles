@@ -6,9 +6,7 @@ import { canAct } from '../derived/index.ts'
 import type {
   AssignmentId,
   Event,
-  EventRef,
   QuestionId,
-  RevisionId,
   TaskId,
   Time,
 } from '../schema/index.ts'
@@ -241,23 +239,6 @@ describe('N9 (C1, I2): a finish of an ended assignment makes no event', () => {
 })
 
 describe('N10 (C6): a confirm of an irrelevant forward makes no event', () => {
-  test('the person accepted the draft herself: the forward waits for nothing', async () => {
-    const { p, lead } = await h.started()
-    ok(await p.nanda('role fit architect --answers=fit.yaml'))
-    const sol = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${sol}`))
-    p.write('cost.yaml', 'says: The reader decides from the page alone, with what it costs.\n')
-    ok(await p.agent(`direction revise ${sol} tsd-writing --file=cost.yaml`))
-    const seen = '--evidence="cost.yaml | the new words of the direction read well"'
-    const fwd = ok(await p.agent(`forward ${lead} Nanda accept d2 --quote="yes, take it" ${seen}`))
-    const ref = /^(e\d+):/.exec(fwd.out)?.[1] ?? ''
-    ok(await p.nanda(`review d2 accept ${seen}`, 'accept'))
-    const d = derivedIn(p)
-    expect(d.states.forwards.get(ref as EventRef)?._tag).toBe('Irrelevant')
-    const input = { _tag: 'Confirm', target: { forward: ref }, content: {} } as const
-    expect(events(act(d, NANDA, input as never))).toEqual([])
-    expect(d.states.revisions.get('d2' as RevisionId)?._tag).toBe('Official')
-  }, 60000)
 })
 
 describe('N12 (C2): an answer to an irrelevant question makes no event', () => {

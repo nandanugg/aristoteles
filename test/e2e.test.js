@@ -172,30 +172,6 @@ describe('forwarded person acts', () => {
     return s
   }
 
-  test('a forwarded Reject counts at once; a forwarded answer waits for confirm; the person accepts no result', async () => {
-    const { p, lead } = await ready()
-    ok(await p.agent(`review ${lead} r1 accept --evidence="repeatable | the introduction | a reviewer can repeat it"`))
-    ok(await p.agent(`forward ${lead} Nanda reject r1 --point="no need to mention the ticket" --quote="no need to mention the ticket" --channel=chat`))
-    expect(ok(await p.agent('blockers r1')).out).toContain('"no need to mention the ticket"')
-    expect((await p.agent(`forward ${lead} Nanda accept r1 --evidence="repeatable | read it | fine" --quote="ok this is fine"`)).err)
-      .toContain('Nanda approves directions and standards')
-    ok(await p.agent(`ask ${lead} --text="May we skip the repeatable rule?" --to=owner`))
-    const answer = ok(await p.agent(`forward ${lead} Nanda answer q1 --quote="no, keep it"`))
-    expect(answer.out).toMatch(/^e\d+: answer q1: "no, keep it" waits until Nanda runs work confirm e\d+ at a terminal\.$/)
-    const id = answer.out.match(/^(e\d+)/)[1]
-    expect(ok(await p.agent('waiting --for=Nanda')).out).toContain(`work confirm ${id}`)
-    expect((await p.agent(`confirm ${id}`)).err).toContain('this is a person command')
-    ok(await p.nanda(`confirm ${id}`, 'confirm'))
-    expect(ok(await p.agent('log --last=1')).out).toContain('confirm')
-  })
-
-  test('only the top agent forwards', async () => {
-    const { p, lead } = await ready()
-    const linter = tokenIn(ok(await p.agent(`assign ${lead} t1 --role=linter`)).out)
-    ok(await p.agent(`brief ${linter}`))
-    const r = await p.agent(`forward ${linter} Nanda reject r1 --point="x" --quote="x"`)
-    expect(r.err).toContain('only the top agent (a lead, with no parent) forwards the person')
-  })
 })
 
 describe('programs run on each report', () => {

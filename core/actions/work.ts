@@ -1,9 +1,9 @@
 // The new path of the work model (P2): the person opens the top, and each act of an actor is one
 // event, checked against the folded state by `refusal` (core/derived/work/accept.ts) inside the
 // store write. An act id is stored once: a second copy gets the first outcome (G3 firstTime).
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { currentOf, officialAt } from '../derived/reads.ts'
-import { type Refusal as Check, cur, dirBased, refusal } from '../derived/work/accept.ts'
+import { authority, type Refusal as Check, cur, dirBased, refusal } from '../derived/work/accept.ts'
 import {
   type Author,
   create,
@@ -13,6 +13,7 @@ import {
   isSpot,
   type Recorded,
   type Work,
+  WhatSchema,
   writtenBy,
 } from '../schema/index.ts'
 import { Dir, Now, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
@@ -32,7 +33,7 @@ import type {
   What,
   WorkState,
 } from '../state/work/types.ts'
-import { HOST, makerActor, PIPE, roleActor } from '../state/work/types.ts'
+import { HOST, makerActor, PERSON, PIPE, roleActor } from '../state/work/types.ts'
 import { folding, STORE } from './dispatch.ts'
 import { no } from './support.ts'
 import type { Refusal } from './types.ts'
@@ -78,6 +79,10 @@ export const WORK = {
     no(`--on ${on} is ahead of the state (${seq} acts taken)`, 'Pick', 'copy the --on of the step'),
   noBasis: (tag: string) =>
     no(`${tag} needs the basis of its step`, 'Pick', 'copy the --on <n> of the step you were told'),
+  notForwardable: (tag: string) =>
+    no(`${tag} is not an act that the host may forward`, 'Escalate', 'the person acts at the page'),
+  noForward: (id: string) =>
+    no(`${id} is no forward that waits`, 'Pick', 'the page lists the forwards that wait'),
   // The words of each check of `refusal`, and what the actor does next.
   checks: (c: Check, who: Actor, tag: string): Refusal => {
     switch (c) {
@@ -207,6 +212,98 @@ export const dispatchAct = (call: ActCall) =>
     )
     if (done === undefined) return yield* Effect.die('dispatchAct: the store built no act')
     return seq === null ? done : { ...done, seq }
+  })
+
+// --- the forwards --------------------------------------------------------------------------------
+
+// The acts of the person at a terminal only (run continue): neither the page nor a forward.
+export const atTerminal = (what: What): boolean =>
+  what._tag === 'MoveHost' || what._tag === 'Revive'
+
+// The id of an act of the page: a resend or a double click is the same act.
+export const pageActId = (what: What, on: number | null): string =>
+  sha(JSON.stringify(['page', Schema.encodeSync(WhatSchema)(what), on]))
+
+const storeOpened = Effect.gen(function* () {
+  const { cwd } = yield* Dir
+  return yield* (yield* Store)
+    .open(cwd, { create: false })
+    .pipe(Effect.catchTag('Refused', (e) => Effect.fail(STORE.noStore(e.message, cwd))))
+})
+
+// The host's carry of the person's words: the act waits on the page for the person's confirm.
+// Refused unless the person may act it (authority) and need not be at a terminal.
+export const recordForward = (
+  by: Author,
+  fwd: { readonly what: What; readonly on: number | null; readonly quote: string },
+) =>
+  Effect.gen(function* () {
+    const clock = yield* Now
+    const opened = yield* storeOpened
+    let id = ''
+    yield* opened.write((events) =>
+      Effect.gen(function* () {
+        const folded = yield* folding(() => foldWork(events))
+        if (folded === null) return yield* Effect.fail(WORK.noTop())
+        const s = folded.state
+        const who = PERSON
+        const a = { id: '', who, ep: 0, what: fwd.what, seen: -1, seenVer: 0, vers: new Map() }
+        if (atTerminal(fwd.what) || !authority(s, { ...a, old: false })) {
+          return yield* Effect.fail(WORK.notForwardable(fwd.what._tag))
+        }
+        if (fwd.on !== null && fwd.on > s.seq) {
+          return yield* Effect.fail(WORK.future(fwd.on, s.seq))
+        }
+        id = `f${(events.at(-1)?.seq ?? 0) + 1}`
+        const event = create('Work', { _tag: 'Forwarded', id, ...fwd })
+        if (!writtenBy(by, event)) {
+          return yield* Effect.die(`${by._tag} does not write Work.Forwarded`)
+        }
+        return { draft: { at: yield* clock.read, author: by, event }, rows: [] }
+      }),
+    )
+    return id
+  })
+
+// The forward is spent: the person dropped it, or confirmed it.
+export const dropForward = (by: Author, id: string) =>
+  Effect.gen(function* () {
+    const clock = yield* Now
+    const opened = yield* storeOpened
+    yield* opened.write((events) =>
+      Effect.gen(function* () {
+        const folded = yield* folding(() => foldWork(events))
+        if (folded === null) return yield* Effect.fail(WORK.noTop())
+        if (!folded.forwards.some((f) => f.id === id)) {
+          return yield* Effect.fail(WORK.noForward(id))
+        }
+        const event = create('Work', { _tag: 'ForwardDropped', id })
+        if (!writtenBy(by, event)) {
+          return yield* Effect.die(`${by._tag} does not write Work.ForwardDropped`)
+        }
+        return { draft: { at: yield* clock.read, author: by, event }, rows: [] }
+      }),
+    )
+  })
+
+// The person confirms a forward: its act is theirs, with the `on` it was forwarded with (a state
+// that moved since refuses it by its basis); then the forward is spent.
+export const confirmForward = (by: Author, id: string, build: string | null, current: string) =>
+  Effect.gen(function* () {
+    const events = yield* (yield* storeOpened).events
+    const folded = yield* folding(() => foldWork(events))
+    if (folded === null) return yield* Effect.fail(WORK.noTop())
+    const f = folded.forwards.find((x) => x.id === id)
+    if (f === undefined) return yield* Effect.fail(WORK.noForward(id))
+    const acted = yield* dispatchAct({
+      by,
+      act: { id: pageActId(f.what, f.on), who: PERSON, ep: 0, what: f.what },
+      on: f.on,
+      build,
+      current,
+    })
+    yield* dropForward(by, id)
+    return acted
   })
 
 // --- the top -------------------------------------------------------------------------------------

@@ -62,7 +62,7 @@ const harness = harnessJs as {
   readonly WORK_YAML: string
   readonly DIRECTION: string
 }
-const { ok, tokenIn, git } = harness
+const { ok, git } = harness
 
 // --- the store of a scenario ---------------------------------------------------------------------
 
@@ -198,10 +198,6 @@ const sameAsReplay = async (dir: string, name: string): Promise<Work> => {
 
 // --- the scenarios -------------------------------------------------------------------------------
 
-const LINT = (where: string) =>
-  `--evidence="no-code-proof | ${where} | no paths or hashes there" ` +
-  `--evidence="no-ticket-ids | ${where} | no ticket ids there"`
-
 // A company repo with the direction feature-flags in directions/feature-flags.
 const companyRepo = () => {
   const dir = mkdtempSync(join(tmpdir(), 'company-'))
@@ -235,29 +231,6 @@ describe('fold gives the Work of the old replay', () => {
     // No run holds t1, so the persistent lead attaches to no agent: it keeps its model (P2).
     const a1 = work.assignments.get('a1' as AssignmentId)
     expect(a1?.runs).toEqual({ _tag: 'NoRun', model: 'sonnet' })
-  }, 30000)
-
-  test('a relay: forwarded acts that count at once, and confirmed ones', async () => {
-    const { p, lead, linter } = await harness.reported()
-    ok(await p.agent(`forward ${lead} Nanda comment t1 --quote="keep it short" --channel=chat`))
-    ok(await p.agent(`review ${linter} r1 accept ${LINT('the introduction')}`))
-    const decide = '--evidence="repeatable | the introduction | a reviewer can repeat it"'
-    ok(await p.agent(`review ${lead} r1 accept ${decide}`))
-    const reject = `forward ${lead} Nanda reject r1 --point="no need to mention the ticket" ` +
-      '--quote="no need to mention the ticket" --channel=chat'
-    ok(await p.agent(reject))
-    ok(await p.agent(`ask ${lead} --text="May we skip the repeatable rule?" --to=owner`))
-    const answer = ok(await p.agent(`forward ${lead} Nanda answer q1 --quote="no, keep it"`)).out
-    ok(await p.nanda(`confirm ${answer.match(/^(e\d+):/)?.[1]}`, 'confirm'))
-    const arch = tokenIn(ok(await p.nanda('assign t1 --role=architect')).out)
-    ok(await p.agent(`brief ${arch}`))
-    p.write('edit.yaml', 'add:\n  - { id: cost-first, says: Say what the problem costs. }\n')
-    ok(await p.agent(`direction revise ${arch} tsd-writing --file=edit.yaml`))
-    const accept = `forward ${arch} Nanda accept d2 --evidence="chat | Nanda says yes" ` +
-      '--quote="yes, approve it" --channel=chat'
-    const id = ok(await p.agent(accept)).out.match(/^(e\d+):/)?.[1]
-    ok(await p.nanda(`confirm ${id}`, 'confirm'))
-    await sameAsReplay(p.dir, 'relay')
   }, 30000)
 
   test('a company direction: imports of two commits, accepts, and a suggestion', async () => {

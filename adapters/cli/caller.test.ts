@@ -252,6 +252,7 @@ describe('the work token, as its epoch is checked', () => {
     state: undefined as never,
     ids: new Map(),
     hostPane: null,
+    forwards: [],
     tokens: new Map([
       ['host', [{ ep: 0, hash: sha('k0001') }]],
       ['role:dev.v2', [{ ep: 0, hash: sha('old') }, { ep: 1, hash: sha('new') }]],

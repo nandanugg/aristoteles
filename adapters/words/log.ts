@@ -214,6 +214,8 @@ const OLD_TYPE: Total<string> = {
   'Work.Opened': 'work.open',
   'Work.Acted': 'work.act',
   'Work.HostPane': 'work.host-pane',
+  'Work.Forwarded': 'work.forwarded',
+  'Work.ForwardDropped': 'work.forward-dropped',
 }
 export const oldType = (event: Event): string => OLD_TYPE[kindOf(event)]
 

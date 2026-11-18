@@ -527,6 +527,122 @@ export const PageMessage = Schema.Union([
   }),
 ])
 
+// --- the dashboard (GET /api/dash, and the `dash` message of the socket) ----------------------
+
+const DashStatus = Schema.Literals(['Working', 'Waiting', 'Inactive'])
+const DashItemKind = Schema.Literals(['dir', 'std', 'rule'])
+const DashForm = Schema.Literals(['none', 'mech', 'ref', 'both'])
+const DashExample = Schema.Struct({
+  fits: Schema.Literals(['follows', 'breaks']),
+  sample: Text,
+})
+const DashRec = Schema.Struct({
+  kind: DashItemKind,
+  parent: Schema.NullOr(Text),
+  name: Text,
+  says: Text,
+  where: Schema.NullOr(Schema.Array(Text)),
+  test: Schema.NullOr(Text),
+  ref: Schema.NullOr(Text),
+  form: DashForm,
+  examples: Schema.Array(DashExample),
+})
+const DashTask = Schema.Struct({
+  id: Text,
+  name: Text,
+  role: Text,
+  state: Schema.Literals(['WORKING', 'QUEUED']),
+  description: Text,
+})
+const DashSubagent = Schema.Struct({ model: Text, role: Text, goal: Text })
+const DashTerminal = Schema.Struct({
+  role: Text,
+  // The pump session of its pane now (a click opens it).
+  session: Text,
+  model: Text,
+  status: DashStatus,
+  work: Text,
+})
+const DashColumn = Schema.Struct({
+  role: Text,
+  card: DashTerminal,
+  task: Schema.NullOr(DashTask),
+  subagents: Schema.Array(DashSubagent),
+})
+// An item of a draft: the record now and the record the draft sets (null: removed).
+const DashChange = Schema.Struct({
+  key: Text,
+  version: Schema.Number,
+  before: Schema.NullOr(DashRec),
+  after: Schema.NullOr(DashRec),
+})
+const DashCardWords = Schema.Struct({ words: Text, model: Text })
+const DashEscalation = Schema.Struct({
+  id: Text,
+  status: Schema.Literals(['QUEUED', 'IN_PIPELINE', 'WAIT_FOR_REVIEW']),
+  summary: Text,
+  // The task's name, or 'your direction edit'.
+  task: Text,
+  changes: Schema.Array(DashChange),
+  card: Schema.NullOr(
+    Schema.Struct({
+      role: Text,
+      before: Schema.NullOr(DashCardWords),
+      after: DashCardWords,
+    }),
+  ),
+})
+const DashAct = Schema.Struct({
+  tag: Text,
+  target: Schema.NullOr(Text),
+  words: Schema.Array(Text),
+})
+// `rec` is the whole record of the item: an edit starts from it.
+const DashRule = Schema.Struct({
+  key: Text,
+  rec: DashRec,
+  name: Text,
+  version: Schema.Number,
+  says: Text,
+  form: DashForm,
+})
+const DashStandard = Schema.Struct({
+  key: Text,
+  rec: DashRec,
+  name: Text,
+  version: Schema.Number,
+  summary: Text,
+  rules: Schema.Array(DashRule),
+})
+const DashDirection = Schema.Struct({
+  key: Text,
+  rec: DashRec,
+  name: Text,
+  version: Schema.Number,
+  principles: Schema.Array(Text),
+  summary: Text,
+  // The names of the first 3 standards (the card); the modal has them all in `standards`.
+  first: Schema.Array(Text),
+  examples: Schema.Array(DashExample),
+  standards: Schema.Array(DashStandard),
+})
+// The whole dashboard: the page draws from a whole copy of it, never from a diff (browser.qnt).
+export const Dash = Schema.Struct({
+  header: Schema.Struct({ dir: Text, project: Text, seq: Schema.Number, build: Text }),
+  queue: Schema.Array(DashTask),
+  host: Schema.Struct({ card: DashTerminal, subagents: Schema.Array(DashSubagent) }),
+  columns: Schema.Array(DashColumn),
+  pipe: DashTerminal,
+  row: Schema.Array(DashEscalation),
+  rowShown: Schema.Boolean,
+  person: Schema.Array(DashAct),
+  directions: Schema.Array(DashDirection),
+})
+export type Dash = typeof Dash.Type
+export type DashTerminalCard = typeof DashTerminal.Type
+export type DashStatusWord = typeof DashStatus.Type
+export const DashMessage = Schema.Struct({ type: Schema.Literal('dash'), dash: Dash })
+
 // --- the acts of the person (POST /api/act) -------------------------------------------------
 
 // The settings POST sends only the fields that the person changed: the server fills the rest

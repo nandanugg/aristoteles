@@ -140,6 +140,8 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
   'Work.Opened': (w) => unchanged(w),
   'Work.Acted': (w) => unchanged(w),
   'Work.HostPane': (w) => unchanged(w),
+  'Work.Forwarded': (w) => unchanged(w),
+  'Work.ForwardDropped': (w) => unchanged(w),
 }
 
 // The step of one stored event through the table: the Work after it, and the ids it made.

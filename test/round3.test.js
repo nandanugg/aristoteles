@@ -134,12 +134,6 @@ describe('claims and trees', () => {
 })
 
 describe('forward', () => {
-  test('F-C6: a forwarded point shows the person\'s words', async () => {
-    const { p, lead } = await reported()
-    ok(await p.agent(`review ${lead} r1 accept --evidence="repeatable | the introduction | a reviewer can repeat it"`))
-    ok(await p.agent(`forward ${lead} Nanda reject r1 --point="no cost" --quote="the reader cannot see what it cost us"`))
-    expect(ok(await p.agent('blockers r1')).out).toContain('Nanda (forwarded): "the reader cannot see what it cost us"')
-  })
 })
 
 describe('advice', () => {

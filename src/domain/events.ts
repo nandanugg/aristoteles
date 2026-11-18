@@ -58,7 +58,13 @@ import {
   TaskId,
   Time,
 } from './ids.ts'
-import { WorkActed, WorkHostPane, WorkOpened } from './work-acts.ts'
+import {
+  WorkActed,
+  WorkForwardDropped,
+  WorkForwarded,
+  WorkHostPane,
+  WorkOpened,
+} from './work-acts.ts'
 
 const Text = Schema.String
 const NonEmpty = Schema.NonEmptyArray
@@ -702,7 +708,10 @@ const Forward = Schema.Union([
 ])
 
 // The work model (core/state/work): the person opens the top; each accepted act is one event.
-const WorkEvent = created('Work', Schema.Union([WorkOpened, WorkActed, WorkHostPane]))
+const WorkEvent = created(
+  'Work',
+  Schema.Union([WorkOpened, WorkActed, WorkHostPane, WorkForwarded, WorkForwardDropped]),
+)
 
 // --- every event --------------------------------------------------------------------------------
 
@@ -881,6 +890,7 @@ export const WRITTEN_BY = {
     'Adjustment.Rejected',
     'Work.Opened',
     'Work.HostPane',
+    'Work.ForwardDropped',
     'Work.Acted',
   ],
   // A host run before it has an assignment: its task draft.
@@ -904,7 +914,12 @@ export const WRITTEN_BY = {
     'Work.Acted',
   ],
   // The CLI's own assign and finish of a program.
-  System: ['Assignment.GivenReviewer', 'Assignment.Finished', 'Work.Acted'],
+  System: [
+    'Assignment.GivenReviewer',
+    'Assignment.Finished',
+    'Work.Forwarded',
+    'Work.Acted',
+  ],
   // The supervisor of the terminals: its sessions, what it sees, its sends and their fate, the
   // problems that it records and fixes, and the start of a persistent agent's terminal.
   Supervisor: [

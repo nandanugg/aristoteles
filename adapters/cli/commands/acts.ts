@@ -5,7 +5,13 @@
 // the step was derived from. An agent's next step is not printed: it runs `work wait` again.
 import { isAbsolute, join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { dispatchAct, formOf, openTop, recordHostPane } from '../../../core/actions/work.ts'
+import {
+  dispatchAct,
+  formOf,
+  openTop,
+  recordForward,
+  recordHostPane,
+} from '../../../core/actions/work.ts'
 import {
   caughtOn,
   refExists,
@@ -567,4 +573,25 @@ const hook: Command = (call) =>
     return []
   }).pipe(Effect.catch(() => Effect.succeed([])))
 
-export const commands: Commands = { ...fresh(NEW), top, hook }
+// work forward <host-token> <person-act ...> --quote="<their words>": the host carries the
+// person's words from its chat as the person's act (the same words as the person's command, with
+// its --on); it waits on the page for the person's confirm.
+const forward: Command = (call) =>
+  Effect.gen(function* () {
+    const { events, folded } = yield* readFolded
+    const { who } = yield* verifyWork(folded, call.token)
+    if (who !== HOST) return yield* refuse('only the host forwards', 'leave it to the host')
+    const [word = '', ...words] = call.args.positional
+    const spec = Object.hasOwn(SPECS, word) ? SPECS[word] : undefined
+    if (spec?.by !== 'person') {
+      return yield* usage('work forward <token> end|answer|accept|send-back|reject|decide ...')
+    }
+    const quote = textOf(call.args.one('quote'))
+    if (quote === undefined) return yield* usage('work forward needs --quote="<their words>"')
+    const ctx: Ctx = { cmd: word, words, args: call.args, who: PERSON, state: folded.state, events }
+    const what = yield* spec.parse(ctx)
+    const id = yield* recordForward({ _tag: 'System' }, { what, on: onOf(call.args), quote })
+    return [`${id}: ${what._tag} waits for the person to confirm it on the page.`]
+  })
+
+export const commands: Commands = { ...fresh(NEW), top, hook, forward }

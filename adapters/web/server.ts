@@ -18,6 +18,14 @@ import { networkInterfaces } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, SubscriptionRef } from 'effect'
 import { dispatch } from '../../core/actions/index.ts'
+import { Refusal } from '../../core/actions/types.ts'
+import {
+  atTerminal,
+  confirmForward,
+  dispatchAct,
+  dropForward,
+  pageActId,
+} from '../../core/actions/work.ts'
 import { type Derived, derive, nextChangeAt } from '../../core/derived/index.ts'
 import { checkHost, tmuxPaneExists } from '../../core/effects/host-check.ts'
 import {
@@ -45,21 +53,29 @@ import {
   readOnboarding,
   readSettings,
   SpawnLive,
+  Store,
   StoreLive,
   Tokens,
   writeSettings,
 } from '../../core/services/index.ts'
-import { momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
+import { fold, momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
+import { foldWork } from '../../core/state/work/fold.ts'
+import { sessionOf } from '../../core/effects/engine.ts'
+import { HOST, PERSON, PIPE, roleActor } from '../../core/state/work/types.ts'
 import { buildOf } from '../live/build.ts'
+import { readPane } from '../live/host-pane.ts'
 import { readingsLive } from '../live/readings.ts'
 import { readStatus, statusStamp } from '../live/status.ts'
 import { tokenSecret } from '../live/tokens.ts'
+import { readMarkers } from '../live/waiting.ts'
 import { withBriefMeasure } from '../words/index.ts'
 import { suggestionMover } from '../words/shared.ts'
-import { type ActionAct, callOf, wordsOf } from './acts.ts'
+import { type ActionAct, callOf, refusedOf, type WorkPost, workPostOf, wordsOf } from './acts.ts'
 import { PAGE_FILES, pageBundle } from './bundle.ts'
 import {
   ACTS,
+  Dash,
+  DashMessage,
   DiffView,
   DirView,
   OnboardingView,
@@ -69,6 +85,7 @@ import {
   PersonView,
   TaskPanel,
 } from './contract.ts'
+import { dashOf } from './dash.ts'
 import type { ServerHandle, ServerOptions, Watcher } from './frozen.ts'
 import { onboardingWords, startStore } from './onboard.ts'
 import {
@@ -260,6 +277,74 @@ export function startServer(options: ServerOptions): ServerHandle {
     person,
   })
 
+  // --- the dashboard (DESIGN 10): built whole from the store and the terminals -----------------
+
+  const dashNow = (): typeof Dash.Type | undefined => {
+    const events = runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const opened = yield* (yield* Store).open(dir, { create: false })
+          return yield* opened.events
+        }).pipe(Effect.catchTag('Refused', () => Effect.succeed([]))),
+      ),
+    )
+    const folded = foldWork(events)
+    if (folded === null) return undefined
+    const { state, hostPane } = folded
+    const now = Date.parse(clock())
+    const terminals = pump?.status() ?? {}
+    const persistent = [HOST, PIPE, ...[...state.cards.keys()].map(roleActor)]
+    const tails = Object.fromEntries(
+      persistent.flatMap((k) => {
+        const sid = sessionOf(k, state.ep.get(k) ?? 0)
+        return sid in terminals ? [[sid, pump?.tail(sid, 40) ?? '']] : []
+      }),
+    )
+    const old = readState()
+    const roles = Object.entries(fold(events).config.roles)
+    const pipe = roles.find(([, r]) => r.kind === 'agent' && r.pipeline === true)
+    return dashOf({
+      dir: basename(dir),
+      build,
+      now,
+      state,
+      events,
+      host: {
+        model: '',
+        reading: hostPane === null ? null : readPane(hostPane.socket, hostPane.pane),
+      },
+      pipe: pipe === undefined || pipe[1].kind !== 'agent'
+        ? null
+        : { name: pipe[0], model: pipe[1].model },
+      terminals,
+      tails,
+      markers: readMarkers(env, dir, now),
+      principles: Object.fromEntries(
+        [...(old?.directions ?? [])].map(([id, d]) => [`dir:${id}`, d.from]),
+      ),
+    })
+  }
+  // The whole Dash goes to every tab when it differs from the last one sent (never a diff:
+  // browser.qnt, the page draws from a whole copy).
+  let lastDash = ''
+  const dashText = (): string | undefined => {
+    const dash = dashNow()
+    return dash === undefined
+      ? undefined
+      : JSON.stringify(Schema.encodeSync(DashMessage)({ type: 'dash', dash }))
+  }
+  const pushDash = () => {
+    if (sockets.size === 0) return
+    try {
+      const text = dashText()
+      if (text === undefined || text === lastDash) return
+      lastDash = text
+      for (const ws of sockets) ws.send(text)
+    } catch {
+      // A damaged store shows on the next read of the page, with its words.
+    }
+  }
+
   // --- the websocket and the terminals ---------------------------------------------------------
 
   const sockets = new Set<Bun.ServerWebSocket<undefined>>()
@@ -272,7 +357,12 @@ export function startServer(options: ServerOptions): ServerHandle {
     Effect.gen(function* () {
       const { ref } = yield* WorkCache
       yield* SubscriptionRef.changes(ref).pipe(
-        Stream.runForEach(() => Effect.sync(() => send({ type: 'changed' }))),
+        Stream.runForEach(() =>
+          Effect.sync(() => {
+            send({ type: 'changed' })
+            pushDash()
+          })
+        ),
       )
     }),
   )
@@ -409,6 +499,35 @@ export function startServer(options: ServerOptions): ServerHandle {
     }
   }
 
+  // --- the person's acts of the work model (POST /api/act with a What) ---------------------
+
+  const workActed = async (post: WorkPost): Promise<Response> => {
+    const by = await member()
+    if (by instanceof Response) return by
+    const tag = 'act' in post ? post.act._tag : 'forward'
+    if ('act' in post && atTerminal(post.act)) {
+      const words = `${tag} is for a terminal: work run continue`
+      return json({ refused: 'terminal', words }, 400)
+    }
+    const run = 'act' in post
+      ? dispatchAct({
+        by,
+        act: { id: pageActId(post.act, post.on), who: PERSON, ep: 0, what: post.act },
+        on: post.on,
+        build: post.build,
+        current: build,
+      }).pipe(Effect.map((a) => a.seq))
+      : 'confirm' in post
+      ? confirmForward(by, post.confirm, post.build, build).pipe(Effect.map((a) => a.seq))
+      : dropForward(by, post.drop).pipe(Effect.as(null))
+    const exit = await runtime.runPromiseExit(Effect.scoped(run))
+    runSync(refresh)
+    send({ type: 'changed' })
+    if (Exit.isSuccess(exit)) return json({ ok: true, seq: exit.value })
+    const error = Cause.squash(exit.cause)
+    return error instanceof Refusal ? json(refusedOf(error), 400) : failed(error)
+  }
+
   // --- onboarding (POST /api/onboarding): each act writes the files and stores nothing -------
 
   // The acts of the two pages, as the person of git user.name. After the store starts, a change is
@@ -501,6 +620,8 @@ export function startServer(options: ServerOptions): ServerHandle {
       return json({ error: 'an act comes only from the page of this server' }, 403)
     }
     const body: unknown = await req.json()
+    const work = workPostOf(body)
+    if (work) return workActed(work)
     const name = isRecord(body) ? body.act : undefined
     if (!ACTS.some((a) => a === name)) return json({ error: `there is no act "${name}"` }, 400)
     let decoded: PageAct
@@ -524,6 +645,12 @@ export function startServer(options: ServerOptions): ServerHandle {
       const work = readState()
       if (!work) return json({ error: `no work store in ${dir}` }, 404)
       return answer(PersonView, personView(work.config.people, await gitName(dir)))
+    }
+    if (path === '/api/dash') {
+      const dash = dashNow()
+      return dash === undefined
+        ? json({ error: `no work store in ${dir}` }, 404)
+        : answer(Dash, dash)
     }
     // The git process of the person's name runs while the request derives.
     const [d, person] = await Promise.all([Promise.resolve().then(readDerived), gitName(dir)])
@@ -656,6 +783,12 @@ export function startServer(options: ServerOptions): ServerHandle {
       open(ws) {
         sockets.add(ws)
         ws.send(JSON.stringify({ type: 'hello', build }))
+        try {
+          const text = dashText()
+          if (text !== undefined) ws.send(text)
+        } catch {
+          // as pushDash
+        }
         extend.open?.(ws)
       },
       message(ws, text) {
@@ -761,6 +894,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     const now = stamp()
     if (now !== seen) onboardingChanged()
     seen = now
+    pushDash()
   }, 3000)
 
   const ownPort = server.port ?? 0

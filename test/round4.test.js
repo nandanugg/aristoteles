@@ -21,11 +21,6 @@ const fresh = async (files) => {
 }
 
 describe('work that must not stop', () => {
-  test('FW-1: a forward still works after a direction version becomes official', async () => {
-    const { p, lead } = await started()
-    await changeDirection(p, 'add:\n  - { id: short, says: Keep it short. }\n', { flags: '--why="Correct the standard"' })
-    expect(ok(await p.agent(`forward ${lead} Nanda comment t1 --quote="keep it short" --channel=chat`)).out).toContain("Nanda's comment recorded")
-  })
 
 })
 

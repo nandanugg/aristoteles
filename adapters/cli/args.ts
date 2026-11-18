@@ -85,12 +85,12 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   },
   review: { accept: ['evidence', 'reason'], reject: ['point', 'breaks', 'reason'] },
   forward: {
-    reject: ['point', 'breaks', 'quote', 'channel'],
-    accept: ['evidence', 'reason', 'quote', 'channel'],
-    resolve: ['evidence', 'quote', 'channel'],
-    ask: ['quote', 'channel'],
-    answer: ['quote', 'channel'],
-    comment: ['quote', 'channel'],
+    end: ['quote'],
+    answer: ['text', 'quote'],
+    accept: ['on', 'quote'],
+    'send-back': ['points', 'on', 'quote'],
+    reject: ['points', 'on', 'quote'],
+    decide: ['on', 'quote'],
   },
   role: {
     fit: ['answers', 'as', 'by'],
@@ -187,7 +187,7 @@ export const ACT_OF: Readonly<Record<string, ActOf>> = {
   adjust: first,
   skill: first,
   review: (words) => words.find((w) => w === 'accept' || w === 'reject'),
-  forward: (words) => words[1],
+  forward: first,
 }
 
 // The flags that a call may carry: undefined when the command takes any flag of no table.
@@ -315,7 +315,6 @@ export const COMMAND_NAMES = [
   'direction',
   'suggest',
   'forward',
-  'confirm',
   'wait',
   'onboard',
   'adjust',

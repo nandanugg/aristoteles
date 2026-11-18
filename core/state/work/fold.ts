@@ -4,7 +4,7 @@ import type { Recorded } from '../../schema/index.ts'
 import { damaged } from '../act.ts'
 import { take } from './effect.ts'
 import { epOf, initState } from './reads.ts'
-import { type Actor, HOST, PIPE, roleActor, type WorkState } from './types.ts'
+import { type Actor, HOST, PIPE, roleActor, type What, type WorkState } from './types.ts'
 
 // The tokens of each actor, one per epoch in order: an old epoch's token still names that epoch.
 export interface WorkToken {
@@ -18,6 +18,14 @@ export interface WorkFolded {
   readonly tokens: ReadonlyMap<Actor, ReadonlyArray<WorkToken>>
   // The host's pane in the person's tmux (the last one recorded), bookkeeping, not an act.
   readonly hostPane: HostPane | null
+  readonly forwards: ReadonlyArray<PendingForward>
+}
+// A forward that waits for the person: the host's carry of their words (`id` is f<seq>).
+export interface PendingForward {
+  readonly id: string
+  readonly what: What
+  readonly on: number | null
+  readonly quote: string
 }
 export interface HostPane {
   readonly socket: string
@@ -29,6 +37,7 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
   const ids = new Map<string, number>()
   const tokens = new Map<Actor, Array<WorkToken>>()
   let hostPane: HostPane | null = null
+  let forwards: ReadonlyArray<PendingForward> = []
   for (const recorded of events) {
     const e = recorded.event
     if (e._tag !== 'Work') continue
@@ -42,6 +51,11 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
     } else if (c._tag === 'HostPane') {
       if (state === null) return damaged(recorded, 'a host pane before the top is opened')
       hostPane = { socket: c.socket, pane: c.pane }
+    } else if (c._tag === 'Forwarded') {
+      if (state === null) return damaged(recorded, 'a forward before the top is opened')
+      forwards = [...forwards, { id: c.id, what: c.what, on: c.on, quote: c.quote }]
+    } else if (c._tag === 'ForwardDropped') {
+      forwards = forwards.filter((f) => f.id !== c.id)
     } else {
       if (state === null) return damaged(recorded, 'an act before the top is opened')
       state = take(state, c.act)
@@ -52,5 +66,5 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
       }
     }
   }
-  return state === null ? null : { state, ids, tokens, hostPane }
+  return state === null ? null : { state, ids, tokens, hostPane, forwards }
 }

@@ -1,28 +1,21 @@
-// The commands direction, suggest, forward, confirm. The files are read by the
-// actions; the adapter reads the flags, builds the typed act of a forward, and prints the words.
+// The commands direction and suggest. The files are read by the actions; the adapter reads the
+// flags and prints the words.
 import { join } from 'node:path'
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 import { currentOf, draftAt } from '../../../core/derived/reads.ts'
-import type { PointInput, SuggestAbout } from '../../../core/schema/actions.ts'
+import type { SuggestAbout } from '../../../core/schema/actions.ts'
 import {
   type AnswerId,
   type Author,
   DirectionId,
-  EvidenceData,
-  type EventRef,
   type FlowStep,
-  type ForwardedAct,
-  isNonBlank,
   lookup,
-  type Found,
-  type NonBlank,
   type RevisionId,
   type SuggestionId,
   refuse,
   Time,
   type VersionId,
   versionIdOf,
-  whoOf,
   type RejectId,
   spotsOf,
   examplesOfFlow,
@@ -30,7 +23,6 @@ import {
 import { Dir, Files, Now } from '../../../core/services/index.ts'
 import {
   exampleLines,
-  describeInner,
   draftWaitsText,
   pieceNames,
   renderDirection,
@@ -43,15 +35,9 @@ import { type Args, textOf, wordsOf } from '../args.ts'
 import { authorOf, callerOf, isPerson, personAuthor, agentCallerOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { lookupKind } from '../lookups.ts'
-import { followCommit } from '../refresh.ts'
 import { act, derivedAfter, peekWork, readWork } from '../runtime.ts'
 import {
-  afterVersion,
-  EVIDENCE_FORM,
   FLOW_FORM,
-  evidenceOf,
-  pointsOf,
-  versionMadeBy,
 } from '../shared.ts'
 
 // The file of a new direction: the whole direction (guides/writing.md).
@@ -367,264 +353,4 @@ const suggest: Command = (call) =>
     ]
   })
 
-// --- forward and confirm -----------------------------------------------------------------------
-
-const FORWARD_ACTS = ['reject', 'accept', 'resolve', 'ask', 'answer', 'comment'] as const
-type ForwardWord = (typeof FORWARD_ACTS)[number]
-// A reject, a question and a comment of the person count at once; the rest waits for confirm.
-const FORWARD_AT_ONCE: ReadonlyArray<ForwardWord> = ['reject', 'ask', 'comment']
-const FORWARD_KINDS: Readonly<Record<ForwardWord, ReadonlyArray<string>>> = {
-  reject: ['r', 't', 'd'],
-  accept: ['r', 't', 'd'],
-  resolve: ['v'],
-  ask: ['a'],
-  answer: ['q'],
-  comment: ['t'],
-}
-
-// The CLI word of a forwarded act.
-const forwardWord = (inner: ForwardedAct): ForwardWord => {
-  switch (inner._tag) {
-    case 'Review':
-      return inner.create._tag === 'Reject'
-        ? 'reject'
-        : inner.create._tag === 'Resolve'
-          ? 'resolve'
-          : 'accept'
-    case 'Question':
-      return 'create' in inner ? 'ask' : 'answer'
-    case 'Note':
-      return 'comment'
-  }
-}
-
-// The person's act as the typed inner event.
-const innerOf = (input: {
-  readonly act: ForwardWord
-  readonly found: Found
-  readonly quote: NonBlank
-  readonly points: ReadonlyArray<PointInput>
-  readonly evidence: ReadonlyArray<typeof EvidenceData.Encoded>
-  readonly reason: string | undefined
-}): Effect.Effect<ForwardedAct, ReturnType<typeof refuse>> =>
-  Effect.gen(function* () {
-    const { act: word, found, quote, points, reason } = input
-    const read = Schema.decodeUnknownOption(Schema.Array(EvidenceData))(input.evidence)
-    if (read._tag === 'None') return yield* refuse(`an accept needs ${EVIDENCE_FORM}`)
-    const evidence = read.value
-    switch (word) {
-      case 'reject': {
-        const given = points.length ? points : [{ text: quote, breaks: null }]
-        for (const p of given) if (!isNonBlank(p.text)) return yield* refuse('a Reject needs a reason')
-        const typed = given.map((p) => ({ text: p.text as NonBlank, breaks: p.breaks as never }))
-        const [first, ...more] = typed
-        if (first === undefined) return yield* Effect.die('forward reject: no point')
-        if (found._tag === 'Revision') {
-          const why = typed.map((p) => p.text).join('; ') as NonBlank
-          return {
-            _tag: 'Review',
-            create: { _tag: 'Reject', of: { _tag: 'Revision', id: found.revision.id, reason: why } },
-          }
-        }
-        if (found._tag === 'Task') {
-          const ruled = typed.find((p) => p.breaks !== null)
-          if (ruled) {
-            return yield* refuse(
-              `a Reject of a task names no rule; reject a result for ${ruled.breaks}, or give the point with no rule`,
-            )
-          }
-          const own = (p: { readonly text: NonBlank }) => ({ text: p.text })
-          return {
-            _tag: 'Review',
-            create: {
-              _tag: 'Reject',
-              of: { _tag: 'Task', id: found.task.id, points: [own(first), ...more.map(own)] },
-            },
-          }
-        }
-        const result = (found as Extract<Found, { _tag: 'Result' }>).result.id
-        return {
-          _tag: 'Review',
-          create: { _tag: 'Reject', of: { _tag: 'Result', id: result, points: [first, ...more] } },
-        }
-      }
-      case 'accept': {
-        if (found._tag === 'Revision') {
-          return {
-            _tag: 'Review',
-            create: {
-              _tag: 'Accept',
-              of: { _tag: 'Revision', id: found.revision.id, evidence },
-              reason: (reason ?? quote) as NonBlank,
-            },
-          }
-        }
-        if (found._tag === 'Task') {
-          return yield* refuse('a task takes only a Reject; an Accept goes on a result of the task')
-        }
-        const target = (found as Extract<Found, { _tag: 'Result' }>).result.id
-        const [first, ...more] = evidence
-        if (!first) return yield* refuse(`an accept needs ${EVIDENCE_FORM}`)
-        return {
-          _tag: 'Review',
-          create: {
-            _tag: 'Accept',
-            of: { _tag: 'Result', id: target, evidence: [first, ...more] },
-            reason: (reason ?? quote) as NonBlank,
-          },
-        }
-      }
-      case 'resolve': {
-        if (found._tag !== 'Review' || found.review._tag !== 'Escalate') {
-          return yield* refuse('a resolve ends an escalation; this review is not an escalation')
-        }
-        return {
-          _tag: 'Review',
-          create: {
-            _tag: 'Resolve',
-            escalation: found.review.id,
-            resolution: quote,
-            evidence,
-          },
-        }
-      }
-      case 'ask': {
-        const assignment = (found as Extract<Found, { _tag: 'Assignment' }>).assignment.id
-        return {
-          _tag: 'Question',
-          create: { _tag: 'Asked', text: quote, to: { _tag: 'Agent', assignment } },
-        } as never
-      }
-      case 'answer': {
-        if (found._tag !== 'Question') return yield* Effect.die(`forward answer: ${found._tag}`)
-        return {
-          _tag: 'Question',
-          id: found.question.id,
-          move: { _tag: 'Answered', text: quote },
-        } as never
-      }
-      case 'comment': {
-        const about = (found as Extract<Found, { _tag: 'Task' }>).task.id
-        return { _tag: 'Note', create: { _tag: 'Message', about, text: quote } }
-      }
-    }
-  })
-
-const forward: Command = (call) =>
-  Effect.gen(function* () {
-    const { args } = call
-    const [who, actWord, target] = args.positional
-    const quote = wordsOf(args.one('quote'))
-    const channelWord = textOf(args.one('channel')) ?? 'chat'
-    const { work } = yield* peekWork
-    const caller = yield* agentCallerOf(work, call.token)
-    if (!isNonBlank(quote)) return yield* refuse('a forward needs --quote="<their exact words>"')
-    if (channelWord !== 'chat' && channelWord !== 'github') {
-      return yield* refuse('--channel is chat or github')
-    }
-    const word = FORWARD_ACTS.find((x) => x === actWord)
-    if (!word) {
-      return yield* refuse(
-        'a forward is reject, ask, answer, comment, accept (of a result, a task, or a ' +
-          'draft), or resolve (of an escalation)',
-      )
-    }
-    const hasEvidence = word === 'accept' || word === 'resolve'
-    const evidence = hasEvidence ? yield* evidenceOf(args.all('evidence')) : []
-    const found = yield* lookup(work, String(target), FORWARD_KINDS[word])
-    const inner = yield* innerOf({
-      act: word,
-      found,
-      quote,
-      points: pointsOf(args.flags),
-      evidence,
-      reason: textOf(args.one('reason')),
-    })
-    const done = yield* act(authorOf(caller), {
-      _tag: 'Forward',
-      target: { act: inner },
-      content: { person: String(who), quote, channel: channelWord },
-    })
-    const made = done.created.length ? ` -> ${done.created.join(', ')}` : ''
-    const stored = done.work.events.at(-1)?.recorded
-    const data = stored?.event._tag === 'Forward' && 'create' in stored.event ? stored.event.create : undefined
-    if (!stored || data?._tag !== 'Forwarded') {
-      return yield* Effect.die('forward: the store wrote no forward')
-    }
-    const by = whoOf(stored.author).who
-    return FORWARD_AT_ONCE.includes(forwardWord(data.inner))
-      ? [
-          `${who}'s ${forwardWord(data.inner)} recorded${made} (forwarded by ${by}, channel ${data.channel}).`,
-        ]
-      : [
-          `e${done.seq}: ${describeInner(data.inner, done.work)} waits until ${who} runs work confirm e${done.seq} at a terminal.`,
-        ]
-  })
-
-// The draft that a forwarded accept accepts, if it is one.
-const draftOf = (inner: ForwardedAct | undefined): RevisionId | undefined =>
-  inner?._tag === 'Review' && inner.create._tag === 'Accept' && inner.create.of._tag === 'Revision'
-    ? inner.create.of.id
-    : undefined
-
-const IRRELEVANT_WORDS = {
-  QuestionAnswered: 'its question was answered',
-  QuestionIrrelevant: 'its question ended with its task',
-  DraftDecided: 'its draft was decided',
-  PersonAccepted: 'the person accepted its draft',
-  ResultNotCurrent: 'its result is not the current one',
-  ResultAccepted: 'its result was accepted',
-  EscalationClosed: 'its escalation was closed',
-} as const
-
-// The person confirms a forward that waits.
-const confirm: Command = (call) =>
-  Effect.gen(function* () {
-    const id = String(call.args.positional[0])
-    const { work, d } = yield* peekWork
-    const forward = work.forwards.get(id as EventRef)
-    const state = d.states.forwards.get(id as EventRef)
-    const recorded = work.events.find((l) => `e${l.recorded.seq}` === id)?.recorded
-    const stored = recorded?.event
-    const forwarded = stored?._tag === 'Forward' && 'create' in stored ? stored.create : undefined
-    if (forward?._tag !== 'Confirmable' || !recorded || !forwarded || state === undefined) {
-      return yield* refuse(
-        `${id} is not a forwarded act that waits for a confirm; work waiting --for=<you> lists them`,
-      )
-    }
-    if (state._tag === 'Irrelevant') {
-      return [`${id} is irrelevant: ${IRRELEVANT_WORDS[state.why._tag]}; nothing was stored.`]
-    }
-    if (state._tag !== 'Waiting') {
-      return yield* refuse(
-        `${id} is not a forwarded act that waits for a confirm; work waiting --for=<you> lists them`,
-      )
-    }
-    const inner = forward.inner
-    const show = [
-      `${id}: ${describeInner(inner, work)}`,
-      `forwarded by ${whoOf(recorded.author).who}; their words: "${forwarded.quote}"`,
-    ]
-    const draft = draftOf(inner)
-    if (draft) show.push(renderDraft(d, draft))
-    const by = yield* personAuthor(work, { word: 'confirm', show: show.join('\n') })
-    const done = yield* act(by, {
-      _tag: 'Confirm',
-      target: { forward: id as EventRef },
-      content: {},
-    })
-    const after = yield* derivedAfter(done.work)
-    const version = draft ? versionMadeBy(after, draft) : undefined
-    return [
-      `${id} confirmed${done.created.length ? ` -> ${done.created.join(', ')}` : ''}.`,
-      ...(draft && version
-        ? [
-            `${draft} is official: ${versionIdOf(version)}.`,
-            ...(yield* followCommit(done.work, version)),
-            ...afterVersion(after, version),
-          ]
-        : []),
-    ]
-  })
-
-export const commands: Commands = { direction, suggest, forward, confirm }
+export const commands: Commands = { direction, suggest }

@@ -78,13 +78,6 @@ describe('a rule passes only with what it needs', () => {
 })
 
 describe('no dead ends', () => {
-  test('R5-9: a Reject of a task names no rule, also through a forward', async () => {
-    const { p, lead } = await withWriter()
-    const forwarded = await p.agent(`forward ${lead} Nanda reject t1 --quote="no ticket ids in this task, ever" ` +
-      '--point="no ticket ids in this task" --breaks=no-ticket-ids --channel=chat')
-    expect(forwarded.err).toContain('a Reject of a task names no rule')
-    expect((await p.nanda('review t1 reject --point="no ticket ids" --breaks=no-ticket-ids')).err).toContain('a Reject of a task names no rule')
-  })
 
   test('R5-10: an official draft that takes a rule off the task answers the points on that rule', async () => {
     const { p, linter } = await reported()

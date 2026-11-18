@@ -13,22 +13,6 @@ describe('identity', () => {
     expect(r.err).toContain('has characters outside')
   })
 
-  test('A4: a forwarded answer waits for the person to confirm it', async () => {
-    const { p, lead } = await started()
-    ok(await p.agent(`ask ${lead} --text="May we skip the repeatable rule?" --to=owner`))
-    const r = ok(await p.agent(`forward ${lead} Nanda answer q1 --quote="yes"`))
-    expect(r.out).toMatch(/^e\d+: answer q1: "yes" waits until Nanda runs work confirm/)
-    expect(ok(await p.agent('waiting --for=Nanda')).out).toContain('q1 for Nanda')
-  })
-
-  test('A5: a low assignment does not forward; the person gives no work to a low role', async () => {
-    const { p, linter } = await reported()
-    expect((await p.agent(`forward ${linter} Nanda reject r1 --quote="no"`)).err)
-      .toContain('only the top agent (a lead, with no parent) forwards the person')
-    expect((await p.nanda('assign t1 --role=linter')).err)
-      .toContain('the person gives work to a lead (a role that assigns); linter assigns nothing, so a lead gives it its work')
-  })
-
   test('A7: a person command refuses GIT_CONFIG variables', async () => {
     const { p } = await started()
     const r = await p.run('task open --file=task.yaml', { tty: true, env: { GIT_CONFIG_COUNT: '1' } })
@@ -71,16 +55,6 @@ describe('rules', () => {
     p.write('docs/tsd.md', INTRO_V1)
     expect(ok(await p.agent('blockers r1')).out).toContain('r1 changed after it was reported; the maker reports it again')
     expect(ok(await p.agent('task tree t1')).out).toContain('(r1 changed after it was reported)')
-  })
-
-  test('B4: the confirm prompt shows the act and the words', async () => {
-    const { p, lead } = await reported()
-    ok(await p.agent(`ask ${lead} --text="May we skip the repeatable rule?" --to=owner`))
-    const forwarded = ok(await p.agent(`forward ${lead} Nanda answer q1 --quote="no, keep it"`))
-    const id = forwarded.out.match(/^(e\d+)/)[1]
-    const r = ok(await p.nanda(`confirm ${id}`, 'confirm'))
-    expect(r.out).toContain(`${id}: answer q1: "no, keep it"`)
-    expect(r.out).toContain('their words: "no, keep it"')
   })
 
   test('B5: the tier maxAttempts is the default and the ceiling', async () => {
