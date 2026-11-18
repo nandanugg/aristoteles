@@ -184,7 +184,9 @@ flight; 6 person acts.
 |---|---|
 | 1 Person | `PERSON`: `Reject`, `Accept`, `SendBack`, `Decide`, `EndProject`, `MoveHost` (run continue); workenv `personActs` |
 | 1 Host | `HOST`: `SendTask`, `Reassign`, `TopDone` (agents never remake the top, DESIGN.md 13.1); its wait finds the top only through `hostFinds` |
-| G4 the agent's question | `Ask(k)` (the role, the pipeline role or a live maker `k`; one open question each, `Store.asks`), `Answer(k)` (the person; told for each open question); `AnswerOb(k)`, a person obligation (`isPersonOb`): a state owing only answers is Final. Asking blocks nothing else. Nanda's ruling, 2026-11-18 |
+| 16 ask is the one primitive: a question | `Ask(q)`, `Answer(q)`, `Hear(q)` with `Q = { from, to }` (any actor to any actor: the person, the host, a role, a live maker); `Store.asks` (open), `Store.answered` (answered, not yet heard by the asker); the answer is the asker's told step `Hear` (its wait); `AnswerOb(q)` (the `to`'s; a person obligation when `to` is the person: a state owing only answers is Final), `HearOb(q)` (the asker's). A question never blocks its asker: no other `legal` or `dos` reads `asks`. `endMaker` drops the questions of a maker |
+| 16 execute, check, evaluate, decide as asks | a view of the protocol's state, no new acts: `openAsks` (execute host -> role for a task sent, working or in review; execute role -> maker; check as the role's own obligation; evaluate role -> pipeline role; decide pipeline role -> person at `SAtPerson`; the questions); `waitsFor` (an edge per open execute, evaluate or decide ask, none for a question or a check, each from parent to child); `waitClosure`; core.qnt `NoWaitCycle` |
+| 16 one open ask per pair; alternation; repeats | one open or answered question per (from, to); the answerer alternates an answer with a step of its own (`Store.justAnswered`, `ownDos`: `Answer` is legal and told only if the answerer has no step of its own, or its last act was not an answer; `EveryObligationToldOnce` allows an answer deferred this way); `ASK_CAP` asks per pair (`Store.askCount`, `AskCap`); the ask past it is refused, and a maker's `AskRaise` raises its working task like `RaiseNoRule` |
 | 1 Persistent role | `ROLE`: `AssignDo`, `Review` (its verdict is the decision), `Resume`; `card` |
 | 1 Maker subagent | `Maker`, a fresh id per `AssignDo`; `ReadBrief`, `Report`; it lives inside the role's process (workenv `killed`, `Exit` of the role) |
 | 1 Pipeline role | `PIPE`: `Evaluate`, `Advance`, `WriteRule`, `RunTest`, `Ship`, `LoopReview`, `RecheckDone` |
@@ -244,9 +246,9 @@ holds. `cause` on `Evaluate` (split): the real cause of the new task part. `hits
 `Ship` and `Accept`, the person's too (ghost, the environment's truth): the tasks whose work
 the change breaks, raised tasks included; their result becomes bad (`Task.broken`, `rBad`)
 until it is made again under the new versions. A recheck judges only that (`broken`), not a
-defect the person took as it is (`Task.taken`). `Ask(k)` and `Answer(k)` carry no content:
-`k` is the asker's actor id (the role, the pipeline role or a maker), and the basis of both is
-their legality (an open question for `Answer`). `vers` on `Evaluate` and `EditDirection`: the
+defect the person took as it is (`Task.taken`). An ask is `{ type, to, body }` (DESIGN.md 16); the body stays abstract. `Ask(q)`, `Answer(q)`, `Hear(q)` and
+`AskRaise(q)` carry only the pair `q = { from, to }` (the sender is `from`, or `to` for `Answer`); their basis is
+their legality (an open question for `Answer`, an answered one for `Hear`, the cap for `AskRaise`). `vers` on `Evaluate` and `EditDirection`: the
 item versions the sender says its content is built on (the draft's `base`, compared and set at
 the append with rebase); `realVers` (ghost): the versions it really is built on (`trueBase`,
 which NoLostUpdate reads; they differ only for a Byzantine sender).
@@ -731,11 +733,21 @@ test command's behaviour, a rule that contradicts the other rule, what a change 
 cause of a split part); the person (accept, send back, reject, take as is, end, start the
 host again; at most `maxPerson` acts; never assumed to act); a bounded number of process
 ends (`maxExits`: work.qnt's Exit, then Revive by the harness, Resume by the role, the host's
-revival by the person); a bounded number of questions (`maxAsks`, 0 except in `coreAsk` and
-`coreOneAsk`, coreOne with one question, the TLC job for Ask (not run yet): an
-agent's `Ask`, the person's `Answer` is one of its `maxPerson` acts; Nanda's ruling,
-2026-11-18: a question waiting for the person is a wait on the person, so a state owing only
-`AnswerOb` is Final; `NoFinalWithAsk` is its witness, the simulator breaks it). An act takes
+revival by the person); a bounded number of questions (`maxAsks`, 0 except where named; `askMode`: 0 an agent asks the
+person, 1 any asker to any target above it, 2 among the agents, 3 among the agents in both
+directions; Answer and Hear are the told steps of the answerer and the asker, the person's
+Answer one of its `maxPerson` acts); a rogue maker (`rogue`: it asks its role again and again, and past `ASK_CAP` raises its task;
+unbounded, the ladder and the person must bound the raises). Invariants `NoWaitCycle` (the
+closure of `waitsFor` has no cycle) and `AskCap`; temporal `AnswererFinishes` (the role is
+again and again owed no step of its own, or Final: alternation). Modules: `coreAskCross` (one task: every cause, the person's two acts, a slip, a shallow
+evaluation, a failing test command; and two questions between any actors in both
+directions, the person a target too: role -> host and host -> role, maker -> role and role ->
+maker; no wait cycle, no deadlock; the person's answer and `NoFinalWithAsk` live here),
+`coreAskRogue` (the same task and an unbounded rogue maker; its liveness is unchecked until TLC
+runs). Witnesses the simulator breaks: `NoFinalWithAsk`, `NoCrossing`, `NoCapReached`,
+`NoAskRaise`. The two ask jobs are in tlc.sh and are not run on TLC yet. Deleted (Nanda: only
+the latest model is tested): `coreAsk`, `coreOneAsk`, `coreAskAgents` and `coreOne`, whose runs
+are all runs of coreAskCross (it may ask nothing, or only among agents). An act takes
 effect in one step on the current state (G3).
 
 Abstracted: tmux, terminals, processes (G1), the network and old views (G3), the page (G4),
@@ -773,7 +785,6 @@ CoreChangesStop):
 
 | Module | Checked | Expected | Distinct states | Time |
 |---|---|---|---|---|
-| coreOne (one task, every cause, person 2, one mistake, slips, rejects; no send-back) | 13 invariants, LIVE | holds | 1,465,220 | 2,293 s (a) |
 | coreTwo (two tasks, task 0 a standard cause, rules may contradict, person 1, one send-back) | 13 invariants, LIVE | holds | 992,236 | 2,702 s (a) |
 | coreTwo | CoreProgressNoPipe (assumption not vacuous) | breaks | 3,928 | 55 s (a) |
 | coreTwoExit (coreTwo, one process end, person 1, no send-back) | 13 invariants, LIVE | holds | 2,609,213 | 5,597 s |

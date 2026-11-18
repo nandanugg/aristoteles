@@ -16,7 +16,7 @@ printf '{"workers":%s,"maxHeap":"-Xmx%s"}\n' "${WORKERS:-4}" "${HEAP:-3G}" > "$C
 fail=0
 SAFE=Sane,EveryObligationToldOnce,ToldIsAllowed,SomethingOwed,DoneIsCurrent,NoDoneBrokenAtEnd
 SAFE=$SAFE,NoLostUpdate,NoTakenUndone,NoPassOfBadResult,NoRefixAtSameLevel
-SAFE=$SAFE,NoEscalationWithoutPerson,NoAgentChangeAtTop,Converges
+SAFE=$SAFE,NoEscalationWithoutPerson,NoAgentChangeAtTop,Converges,NoWaitCycle,AskCap
 LIVE=CoreProgress,CoreChangesStop,CoreSettles
 # A copy of the model with only the instance checked: the file up to its "---- instances"
 # line, then that module (quint's TLA+ export of a file with many instances overflows).
@@ -75,8 +75,8 @@ browser.qnt browserNoReconnect breaks - G4All
 browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All
 browser.qnt browserNoPoll breaks - G4All
-core.qnt coreOne holds $SAFE $LIVE
-core.qnt coreOneAsk holds $SAFE $LIVE
+core.qnt coreAskCross holds $SAFE $LIVE
+core.qnt coreAskRogue holds $SAFE $LIVE,AnswererFinishes
 core.qnt coreTwo holds $SAFE $LIVE
 core.qnt coreTwo breaks - CoreProgressNoPipe
 core.qnt coreTwoExit holds $SAFE $LIVE

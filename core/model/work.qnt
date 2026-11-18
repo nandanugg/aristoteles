@@ -109,13 +109,14 @@ module work {
              | SLoop | SAtPerson | SAccepted | SClosed
   type Form = NoForm | Mech | Ref | Both
   type DKind = DDir | DRole
+  type Q = { from: int, to: int }     // a question: from asks to
   type What =
     | EndProject | MoveHost | EditDirection | Reject(int) | Accept(int) | SendBack(int)
-    | Decide(int) | Answer(int)                                                // person
+    | Decide(int) | Answer(Q)                                                  // person, or its to
     | SendTask(int) | Reassign | TopDone                                       // host
     | AssignDo(int) | Review(int) | Resume(int)                                // role
     | ReadBrief(int) | Report(int)                                             // maker
-    | Ask(int)                                       // role, pipeline role or maker: itself
+    | Ask(Q) | AskRaise(Q) | Hear(Q)   // the asker (from, to; DESIGN.md 16)
     | Evaluate(int) | Advance(int) | WriteRule(int) | RunTest(int) | Ship(int)
     | LoopReview(int) | RecheckDone(int)                                      // pipeline
     | Revive(int) | Exit(int) | RunRule(int)                                   // harness
@@ -175,7 +176,7 @@ module work {
     noContext: bool, unchangedResubmit: bool, takenUndone: bool, wroteDropped: bool,
     unrechecked: bool, unacceptedChange: bool, acceptNotWaiting: bool, claimByEnded: bool,
     endBroken: bool, refix: bool, fightShipped: bool, raisedUp: bool, escalatedNoPerson: bool,
-    topNoPerson: bool,
+    topNoPerson: bool, askRaised: bool,
     rebaseFired: bool, recheckFired: bool, reassignEnded: bool,
   }
   type Store = {
@@ -185,9 +186,10 @@ module work {
     ver: Item -> int, ruleForm: int -> Form, card: int, changes: int, agentChanges: int,
     fixDepth: Item -> int,
     down: Set[int], ep: int -> int, nextMaker: int, g: Ghost,
-    // The open questions (DESIGN.md G4; Nanda's ruling, 2026-11-18): an agent's factual question
-    // to the person, by the asker's actor id (one open question per asker).
-    asks: Set[int],
+    // The questions (DESIGN.md 16): asks open, answered the answer not yet heard by the asker;
+    // one per (from, to). askCount: the asks so far per pair (ASK_CAP). justAnswered: the
+    // answerers whose last act was an Answer (they alternate it with a step of their own).
+    asks: Set[Q], answered: Set[Q], justAnswered: Set[int], askCount: (int, int) -> int,
   }
 
   pure val ZERO: Item -> int = ITEMS.mapBy(x => 0)
@@ -204,7 +206,7 @@ module work {
     staleFix: false, oldEpoch: false, noContext: false, unchangedResubmit: false,
     takenUndone: false, wroteDropped: false, unrechecked: false, unacceptedChange: false, acceptNotWaiting: false, claimByEnded: false, endBroken: false,
     refix: false, fightShipped: false, raisedUp: false, escalatedNoPerson: false, topNoPerson: false,
-    rebaseFired: false,
+    rebaseFired: false, askRaised: false,
     recheckFired: false, reassignEnded: false }
   def freshTask(gen: int, c: Cause): Task = { gen: gen, st: Unsent, tries: 0, maker: -1,
     rid: -1, checked: ZERO, pend: Set(), rBad: false, broken: false, taken: false, cause: c,
@@ -216,7 +218,7 @@ module work {
     fixes: FIXIDS.mapBy(i => CLOSED), ver: ZERO, ruleForm: Set(0, 1).mapBy(j => Ref), card: 0,
     changes: 0, agentChanges: 0,
     fixDepth: ITEMS.mapBy(x => -1), down: Set(), ep: PERSISTENT.mapBy(k => 0), nextMaker: 3,
-    g: NOGHOST, asks: Set(),
+    g: NOGHOST, asks: Set(), answered: Set(), justAnswered: Set(), askCount: Map(),
   }
 
   // ---- reads
@@ -298,8 +300,10 @@ module work {
     | Accept(_) => a.who == PERSON
     | SendBack(_) => a.who == PERSON
     | Decide(_) => a.who == PERSON
-    | Answer(_) => a.who == PERSON
-    | Ask(k) => a.who == k
+    | Answer(q) => a.who == q.to
+    | Ask(q) => a.who == q.from
+    | AskRaise(q) => a.who == q.from
+    | Hear(q) => a.who == q.from
     | SendTask(_) => a.who == HOST
     | Reassign => a.who == HOST
     | TopDone => a.who == HOST
@@ -327,6 +331,17 @@ module work {
   def makerAt(s: Store, m: int): bool = isMaker(s, m) and not(s.down.contains(m))
     and tk(s, mk(s, m).slot).st == Working
     and (not(OPT.endedCheck) or (not(mk(s, m).ended) and tk(s, mk(s, m).slot).maker == m))
+  pure val ASK_CAP = 2     // asks per (asker, to); the next is a repeat and raises (AskRaise)
+  def decideOk(s: Store, i: int): bool = not(free(i)) and fx(s, i).stage == SAtPerson
+  def runRuleOk(s: Store, i: int): bool =
+    tk(s, i).st == Done and tk(s, i).pend.exists(x => testRule(s, x))
+  def liveMakerId(s: Store, m: int): bool = isMaker(s, m) and not(mk(s, m).ended)
+  def askerOk(s: Store, k: int): bool =
+    (k == ROLE or k == PIPE or k == HOST or liveMakerId(s, k)) and not(s.down.contains(k))
+  def askableTo(s: Store, j: int): bool =
+    j == PERSON or j == HOST or j == ROLE or j == PIPE or liveMakerId(s, j)
+  def askCnt(s: Store, k: int, j: int): int =
+    if (s.askCount.keys().contains((k, j))) s.askCount.get((k, j)) else 0
   def reviewOk(s: Store, i: int, a: Act): bool =
     val t = tk(s, i)
     t.st == InReview and match a.v {
@@ -343,11 +358,17 @@ module work {
     | Reject(i) => tk(s, i).rid >= 0 and (tk(s, i).st == InReview or tk(s, i).st == Done)
     | Accept(i) => atPerson(s, i)
     | SendBack(i) => atPerson(s, i)
-    | Decide(i) => not(free(i)) and fx(s, i).stage == SAtPerson
-    | Answer(k) => s.asks.contains(k)
-    // The role, the pipeline role or a live maker asks while it has no open question.
-    | Ask(k) => (k == ROLE or k == PIPE or (isMaker(s, k) and not(mk(s, k).ended)))
-        and not(s.down.contains(k)) and not(s.asks.contains(k))
+    | Decide(i) => decideOk(s, i)
+    // DESIGN.md 16: an answer alternates with a step of the answerer's own.
+    | Answer(q) => s.asks.contains(q)
+        and (not(s.justAnswered.contains(q.to)) or ownDos(s, q.to) == Set())
+    // A host, a role, the pipeline role or a live maker asks a live actor; one open or
+    // answered question per pair, at most ASK_CAP asks per pair (past it: AskRaise).
+    | Ask(q) => askerOk(s, q.from) and askableTo(s, q.to) and q.from != q.to
+        and not(s.asks.contains(q)) and not(s.answered.contains(q))
+        and askCnt(s, q.from, q.to) < ASK_CAP
+    | AskRaise(q) => makerAt(s, q.from) and askCnt(s, q.from, q.to) >= ASK_CAP
+    | Hear(q) => s.answered.contains(q)
     | SendTask(i) => tk(s, i).st == Unsent
     | Reassign => FIXIDS.exists(i => fx(s, i).stage == SAccepted)
     | TopDone => allDone(s) and not(s.top.done)
@@ -372,7 +393,7 @@ module work {
     | LoopReview(i) => fx(s, i).stage == SLoop
         and not(OPT.reviseCheck and a.flag and fx(s, i).needRevise)
     | RecheckDone(i) => recheckDue(s, i) and not(OPT.recheckBasis and not(recheckCurrent(s, i, a)))
-    | RunRule(i) => tk(s, i).st == Done and tk(s, i).pend.exists(x => testRule(s, x))
+    | RunRule(i) => runRuleOk(s, i)
     | Revive(k) => PERSISTENT.contains(k) and s.down.contains(k)
     | Exit(k) => not(s.down.contains(k))
   }
@@ -397,7 +418,12 @@ module work {
   def setM(s: Store, m: int, f: Maker => Maker): Store =
     if (isMaker(s, m)) { ...s, makers: s.makers.setBy(m, f) } else s
   def endMaker(s: Store, m: int): Store =
-    { ...setM(s, m, y => { ...y, ended: true, claim: false }), asks: s.asks.exclude(Set(m)) }
+    val s1 = setM(s, m, y => { ...y, ended: true, claim: false })
+    val keep = s1.askCount.keys().filter(e => e._1 != m and e._2 != m)
+    { ...s1, asks: s1.asks.filter(q => q.from != m and q.to != m),
+      answered: s1.answered.filter(q => q.from != m and q.to != m),
+      justAnswered: s1.justAnswered.exclude(Set(m)),
+      askCount: keep.mapBy(e => s1.askCount.get(e)) }
   def ghost(s: Store, f: Ghost => Ghost): Store = { ...s, g: f(s.g) }
   def bump(s: Store, i: int): Store = setF(s, i, f => { ...f, step: f.step + 1 })
   def newEp(s: Store, k: int): Store = { ...s, ep: s.ep.put(k, epOf(s, k) + 1) }
@@ -789,8 +815,14 @@ module work {
             if (xs.contains(x)) s.ver.get(x) else z.checked.get(x)) })
         else { ...setT(s, i, z => { ...z, st: Sent, tries: 0, maker: -1, pend: Set() }),
                top: { ...s.top, done: false } }
-    | Ask(k) => { ...s, asks: s.asks.union(Set(k)) }
-    | Answer(k) => { ...s, asks: s.asks.exclude(Set(k)) }
+    | Ask(q) => { ...s, asks: s.asks.union(Set(q)),
+                  askCount: s.askCount.put((q.from, q.to), askCnt(s, q.from, q.to) + 1) }
+    | Answer(q) => { ...s, asks: s.asks.exclude(Set(q)), answered: s.answered.union(Set(q)) }
+    | Hear(q) => { ...s, answered: s.answered.exclude(Set(q)) }
+    // A repeat: the asker asked its limit; its task is raised to the pipeline as a problem no
+    // rule covers (as RaiseNoRule); the pair's count resets with the ended maker.
+    | AskRaise(q) => ghost(raise(s, mk(s, q.from).slot, tk(s, mk(s, q.from).slot).tries),
+                           g => { ...g, askRaised: true })
     | Revive(k) => newEp({ ...s, down: s.down.exclude(Set(k)) }, k)
     // An exit, appended by the pump or a hook. A maker is a subagent inside the role's
     // process: the role's exit is the exit of its makers too. Every exit ends a claim.
@@ -802,7 +834,11 @@ module work {
   }
   // Every taken act: an act of an older epoch of its actor is a split brain.
   def take(s: Store, a: Act): Store =
-    effect(ghost(s, g => { ...g, oldEpoch: g.oldEpoch or (a.who >= 0 and a.ep < epOf(s, a.who)) }), a)
+    val s1 = effect(ghost(s, g => { ...g, oldEpoch: g.oldEpoch or (a.who >= 0 and a.ep < epOf(s, a.who)) }), a)
+    match a.what {
+      | Answer(q) => { ...s1, justAnswered: s1.justAnswered.union(Set(q.to)) }
+      | _ => { ...s1, justAnswered: s1.justAnswered.exclude(Set(a.who)) }
+    }
 
   // An honest agent's content, on its own view (workenv.qnt and core.qnt; misjudge: the
   // pipeline role may evaluate shallower than the real cause, a mistake): it reviews correctly (it runs the test
@@ -855,14 +891,23 @@ module work {
     else if (tk(s, mk(s, m).slot).st != Working or tk(s, mk(s, m).slot).maker != m) Set()
     else if (not(mk(s, m).claim) or briefOld(s, m)) Set(ReadBrief(m))
     else Set(Report(m))
+  // What k is told: its own steps (ownDos) and the answers it owes; while it has just answered
+  // and has a step of its own, only the own steps (alternation, DESIGN.md 16).
   def dos(s: Store, k: int): Set[What] =
+    if (s.top.ended) Set() else
+    val own = ownDos(s, k)
+    val answers = s.asks.filter(q => q.to == k).map(q => Answer(q))
+    if (s.justAnswered.contains(k) and own != Set()) own else own.union(answers)
+  def ownDos(s: Store, k: int): Set[What] =
     if (s.top.ended) Set()
-    else if (k == PERSON)
+    else dosBase(s, k).union(s.answered.filter(q => q.from == k).map(q => Hear(q)))
+  def dosBase(s: Store, k: int): Set[What] =
+    if (k == PERSON)
       val end = if (s.top.done and allDone(s)) Set(EndProject) else Set()
       val drafts = FIXIDS.filter(i => fx(s, i).stage == SAtPerson)
-      val decide = SLOTS.filter(i => legal(s, { ...NOACT, what: Decide(i) })).map(i => Decide(i))
+      val decide = SLOTS.filter(i => decideOk(s, i)).map(i => Decide(i))
       end.union(drafts.map(i => Accept(i))).union(drafts.map(i => SendBack(i)))
-        .union(decide).union(s.asks.map(k => Answer(k)))
+        .union(decide)
         .union(if (s.down.contains(HOST)) Set(Revive(HOST)) else Set())
     else if (k == HOST)
       if (not(hostFinds(s))) Set() else
@@ -881,7 +926,7 @@ module work {
       acc.union(pipeDo(fx(s, i).stage, i))
         .union(if (recheckDue(s, i)) Set(RecheckDone(i)) else Set()))
     else if (k == HARNESS) Set(ROLE, PIPE).filter(p => s.down.contains(p)).map(p => Revive(p))
-      .union(SLOTS.filter(i => legal(s, { ...NOACT, what: RunRule(i) })).map(i => RunRule(i)))
+      .union(SLOTS.filter(i => runRuleOk(s, i)).map(i => RunRule(i)))
     else makerDos(s, k)
   pure val NOACT: Act = { who: HARNESS, ep: 0, what: EndProject, seen: -1, seenDir: 0,
     old: false, v: Pass, level: Standard, flag: true, flag2: true, flag3: false, form: Ref,
@@ -894,7 +939,7 @@ module work {
   // ---- obligations: what must happen next, from the protocol's state alone
   type Ob = EndOb | TopDoneOb | SendOb(int) | AssignOb(int) | MakeOb(int)
           | ResumeOb(int) | ReviewOb(int) | PipeOb(int) | DraftOb(int) | DecideOb(int)
-          | ReassignOb | ReviveOb(int) | RecheckOb(int) | RuleRunOb(int) | AnswerOb(int)
+          | ReassignOb | ReviveOb(int) | RecheckOb(int) | RuleRunOb(int) | AnswerOb(Q) | HearOb(Q)
   def slotObs(s: Store, i: int): Set[Ob] =
     val t = tk(s, i)
     val st = fx(s, i).stage
@@ -926,7 +971,7 @@ module work {
     val frees = FIXIDS.filter(i => free(i))
       .fold(Set(), (acc, i) => acc.union(freeFixObs(s, i)))
     val top = if (allDone(s)) Set(if (s.top.done) EndOb else TopDoneOb) else Set()
-    val answers = s.asks.map(k => AnswerOb(k))
+    val answers = s.asks.map(q => AnswerOb(q)).union(s.answered.map(q => HearOb(q)))
     SLOTS.fold(revive.union(frees).union(top).union(answers),
                (acc, i) => acc.union(slotObs(s, i)))
   def discharges(ob: Ob, k: int, x: What): bool = match ob {
@@ -945,14 +990,15 @@ module work {
     | ReviveOb(p) => x == Revive(p)
     | RecheckOb(i) => x == RecheckDone(i)
     | RuleRunOb(i) => x == RunRule(i)
-    | AnswerOb(k) => x == Answer(k)
+    | AnswerOb(q) => x == Answer(q)
+    | HearOb(q) => x == Hear(q)
   }
   def isPersonOb(ob: Ob): bool = match ob {
     | EndOb => true
     | ReviveOb(p) => p == HOST
     | DraftOb(_) => true
     | DecideOb(_) => true
-    | AnswerOb(_) => true
+    | AnswerOb(q) => q.to == PERSON
     | _ => false
   }
   def toldAny(s: Store, ob: Ob): Set[int] =
@@ -968,4 +1014,34 @@ module work {
   // direction, which reaches the person; a split is below it). Past it is not a success.
   def changeBound: int = SLOTS.size() * OPT.sections
   def pastBound(s: Store): bool = s.agentChanges > changeBound
+
+  // ---- DESIGN.md 16: the protocol's waits as asks, a view of the state (no new acts).
+  type OpenAsk = { typ: str, from: int, to: int }
+  def openAsks(s: Store): Set[OpenAsk] =
+    if (s.top.ended) Set() else
+    val execs = SLOTS.filter(i => Set(Sent, Working, InReview).contains(tk(s, i).st))
+      .map(i => { typ: "execute", from: HOST, to: ROLE })
+    val makes = SLOTS.filter(i => tk(s, i).st == Working and liveMaker(s, i) >= 0)
+      .map(i => { typ: "execute", from: ROLE, to: liveMaker(s, i) })
+    // The role checks its maker's result: its own obligation, the reverse of a parent -> child
+    // wait, so it is modelled with no waiter.
+    val checks = SLOTS.filter(i => tk(s, i).st == InReview)
+      .map(i => { typ: "check", from: ROLE, to: ROLE })
+    val evals = SLOTS.filter(i => tk(s, i).st == Raised and pipeStage(fx(s, i).stage))
+      .map(i => { typ: "evaluate", from: ROLE, to: PIPE })
+    // After the pipeline the draft is a review ask to the human (DESIGN.md 16).
+    val decides = FIXIDS.filter(i => fx(s, i).stage == SAtPerson)
+      .map(i => { typ: "decide", from: PIPE, to: PERSON })
+    val qs = s.asks.map(q => { typ: "question", from: q.from, to: q.to })
+    execs.union(makes).union(checks).union(evals).union(decides).union(qs)
+  // An asker waits for its open execute, evaluate and decide asks, never for a question or a
+  // check. Each edge goes from parent to child in the protocol's order: host -> role (the host
+  // sent the task), role -> maker (it made it), role -> pipeline role (the role raised it),
+  // pipeline role -> person (the draft after the pipeline); never the reverse.
+  def waitsFor(s: Store): Set[(int, int)] =
+    openAsks(s).filter(x => x.typ != "question" and x.typ != "check").map(x => (x.from, x.to))
+  def waitStep(s: Store, r: Set[(int, int)]): Set[(int, int)] =
+    r.fold(r, (acc, x) => acc.union(waitsFor(s).filter(e => e._1 == x._2).map(e => (x._1, e._2))))
+  def waitClosure(s: Store): Set[(int, int)] =
+    1.to(actorsOf(s).size()).fold(waitsFor(s), (acc, _) => waitStep(s, acc))
 }

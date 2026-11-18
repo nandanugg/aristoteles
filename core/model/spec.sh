@@ -106,7 +106,8 @@ smallBreaks() {
 }
 CORE_INV="Sane EveryObligationToldOnce ToldIsAllowed SomethingOwed DoneIsCurrent
   NoDoneBrokenAtEnd NoLostUpdate NoTakenUndone NoPassOfBadResult NoRefixAtSameLevel
-  NoEscalationWithoutPerson NoAgentChangeAtTop Converges"
+  NoEscalationWithoutPerson NoAgentChangeAtTop Converges
+  NoWaitCycle AskCap"
 CORE_INV=$(echo $CORE_INV)
 # A job: optional VAR=value settings (SAMPLES, STEPS), then a function and its arguments.
 if [ $MODE = job ]; then
@@ -140,6 +141,8 @@ notAtCap tlcCrash
 pageTest
 smallHolds core.qnt coreTwo '$CORE_INV'
 smallHolds core.qnt coreAll '$CORE_INV'
+smallHolds core.qnt coreAskCross '$CORE_INV'
+smallHolds core.qnt coreAskRogue '$CORE_INV'
 smallHolds core.qnt coreCrossOnly 'Converges'
 smallHolds terminals.qnt termFixed 'Sane ExactlyOnce'
 smallHolds store.qnt storeFixed 'G3Holds'
