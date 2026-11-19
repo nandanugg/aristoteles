@@ -468,6 +468,42 @@ TLC results:
 One owed act: every copy the page gets is the whole state, so each act behaves alone (two
 acts and a three-state escalation passed 3 million states).
 
+### pipe.qnt (the live terminal)
+
+Contains: tmux (up or down), the pump (attached, detached, crashed), the websocket (open or
+closed), the page's terminal view (current, stale, closed); the screen as a version (versions
+0..2) in tmux, in the pump's copy and in the page's drawn copy; two keystroke ids the person
+types once. The page server holds the keystroke queue and its `sent` marks; the pump is only
+the transport. Forwarding is two steps (mark then write; a crash between loses that
+keystroke, never repeats it). The browser keeps an id until tmux applied it and sends it
+again after a reconnect or a lost ack. Failures, any number in any order until
+`adversaryDone` (one weakly fair step, which also brings tmux up): tmux down or up, the
+screen changing, the pump crashing (its copy lost) or detached by another client's attach -d,
+a websocket drop, a stale view, a keystroke sent again. Fair recoveries (the engine only):
+the pump attaches again (the view goes stale: a full redraw), the websocket reconnects, the
+pump pipes the screen, the redraw, the server receives, marks, writes, and the browser's ack.
+The person's typing is not fair. Requirement: the page buffers a keystroke typed while its
+socket is closed. Outside the claim: the page server's own restart (it loses queue and marks).
+
+Properties: `ShowsCurrentScreen` (in the end tmux is up, the view is current and draws
+tmux's last screen), `NoKeystrokeLost` (a keystroke typed after the failures stopped is
+applied; one caught mid-write by a failure may be lost), `NoKeystrokeTwice` (safety: no id
+applied more than once). `NotStuck` is for the simulator, which cannot check liveness: the
+failures stopped, the page does not show tmux's screen, and no recovery is enabled;
+unreachable in pipeFixed, reached in the three liveness mutants.
+
+| Module | Checked | Expected |
+|---|---|---|
+| pipeFixed | NoKeystrokeTwice; ShowsCurrentScreen, NoKeystrokeLost | holds |
+| pipeNoReattach (the pump never attaches again) | ShowsCurrentScreen | breaks |
+| pipeNoReconnect (the websocket never reconnects) | ShowsCurrentScreen | breaks |
+| pipeNoRedraw (no redraw: a stale view stays) | ShowsCurrentScreen | breaks |
+| pipeNoDedup (a sent again keystroke is forwarded again) | NoKeystrokeTwice | breaks |
+| pipeMarkAfter (write, then mark) | NoKeystrokeTwice | breaks |
+| pipeNoBuffer (a keystroke typed on a closed socket is dropped) | NoKeystrokeLost | breaks |
+
+TLC states: not recorded yet.
+
 ### check.qnt, properties.qnt, configs.qnt, canon.qnt (G2)
 
 Contains: protocol.qnt's protocol, imported, not restated; the actors around it: each agent takes

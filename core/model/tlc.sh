@@ -77,6 +77,13 @@ browser.qnt browserNoReconnect breaks - G4All
 browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All
 browser.qnt browserNoPoll breaks - G4All
+pipe.qnt pipeFixed holds NoKeystrokeTwice ShowsCurrentScreen,NoKeystrokeLost
+pipe.qnt pipeNoReattach breaks - ShowsCurrentScreen
+pipe.qnt pipeNoReconnect breaks - ShowsCurrentScreen
+pipe.qnt pipeNoRedraw breaks - ShowsCurrentScreen
+pipe.qnt pipeNoDedup breaks NoKeystrokeTwice -
+pipe.qnt pipeMarkAfter breaks NoKeystrokeTwice -
+pipe.qnt pipeNoBuffer breaks - NoKeystrokeLost
 configs.qnt coreAsks holds $SAFE $LIVE
 configs.qnt coreAskRogue holds $SAFE $LIVE,AnswererFinishes
 configs.qnt coreAskReverse breaks NoWaitCycle -

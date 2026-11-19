@@ -18,8 +18,8 @@ done
 [ $fail = 0 ] || exit 1
 [ $MODE = job ] || echo "ok     typecheck $(ls *.qnt | tr '\n' ' ')"
 
-# The small models (configs.qnt, terminals.qnt, store.qnt, browser.qnt; README.md "The small
-# models"): a simulator smoke here; TLC proves them (tlc.sh, bun run spec:tlc).
+# The small models (configs.qnt, terminals.qnt, store.qnt, browser.qnt, pipe.qnt; README.md
+# "The small models"): a simulator smoke here; TLC proves them (tlc.sh, bun run spec:tlc).
 # $1 file, $2 module, $3 invariants.
 smallHolds() {
   out=$($QUINT run "$1" --main="$2" --invariants $3 --max-samples="${SAMPLES:-400}" \
@@ -63,6 +63,7 @@ smallHolds configs.qnt coreCrossOnly 'Converges'
 smallHolds terminals.qnt termFixed 'Sane ExactlyOnce'
 smallHolds store.qnt storeFixed 'G3Holds'
 smallHolds browser.qnt browserFixed 'DashAfterRefresh'
+smallHolds pipe.qnt pipeFixed 'NoKeystrokeTwice NotStuck'
 EOF2
 # Each property breaks in its mutant (README.md, Properties): file, module, property, seed,
 # runs, steps.
@@ -73,6 +74,11 @@ smallBreaks configs.qnt coreNoCross Converges 0x2a 500 200
 smallBreaks configs.qnt coreNoSplit Converges 0x2a 500 200
 smallBreaks terminals.qnt termNoEvidence ExactlyOnce 0x2a 2000 60
 smallBreaks store.qnt storeBlind G3Holds 0x2a 2000 30
+smallBreaks pipe.qnt pipeNoDedup NoKeystrokeTwice 0x2a 2000 100
+smallBreaks pipe.qnt pipeMarkAfter NoKeystrokeTwice 0x2a 5000 150
+smallBreaks pipe.qnt pipeNoReattach NotStuck 0x2a 2000 200
+smallBreaks pipe.qnt pipeNoReconnect NotStuck 0x2a 2000 200
+smallBreaks pipe.qnt pipeNoRedraw NotStuck 0x2a 2000 200
 EOF2
 JOBS=${JOBS:-$(nproc)}
 # -d: one job per line, quotes kept for the job's own shell.
