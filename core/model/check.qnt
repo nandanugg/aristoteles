@@ -69,7 +69,7 @@ module check {
   // A maker of task n has the id n: one live maker per task; before each act the next
   // maker's id is set to its task's (withNextMakerId), and canon drops the ended makers.
   def makerForSlot(slot: int): Actor = Maker(slot)
-  def makers: Set[Actor] = SLOTS.map(slot => makerForSlot(slot))
+  def slotMakers: Set[Actor] = SLOTS.map(slot => makerForSlot(slot))
 
   action commitExits(updated: Store, newPersonActs: int, newMistakes: int, newExits: int): bool =
     all {
@@ -304,7 +304,7 @@ module check {
   }
   action step = any {
     agentStep(Host), agentStep(Role), agentStep(Pipe), agentStep(Harness),
-    nondet maker = makers.oneOf() agentStep(maker),
+    nondet maker = slotMakers.oneOf() agentStep(maker),
     personStep, exitHappens, askStep, rogueStep, reverseStep,
   }
 
