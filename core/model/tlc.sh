@@ -9,7 +9,7 @@
 main() {
 set -u
 cd "$(dirname "$0")" || exit 1
-Q=../../node_modules/.bin/quint
+QUINT=../../node_modules/.bin/quint
 OUT=${OUT:-/tmp/spec-tlc}; mkdir -p "$OUT"; rm -f "$OUT/failed"
 CFG=$OUT/tlc.json
 printf '{"workers":%s,"maxHeap":"-Xmx%s"}\n' "${WORKERS:-4}" "${HEAP:-3G}" > "$CFG"
@@ -21,33 +21,35 @@ LIVE=CoreProgress,CoreChangesStop,CoreSettles
 # A copy of the model with only the instance checked: the file up to its "---- instances"
 # line, then that module (quint's TLA+ export of a file with many instances overflows).
 extract() {
-  d=$OUT/src/$2; rm -rf "$d"; mkdir -p "$d"; cp ./*.qnt "$d/"
+  copy=$OUT/src/$2; rm -rf "$copy"; mkdir -p "$copy"; cp ./*.qnt "$copy/"
   end=$(grep -n '^// ---- instances' "$1" | cut -d: -f1)
   { head -n $((end - 1)) "$1"
-    awk -v m="module $2 {" '$0==m {p=1} p {print} p && /^}/ {exit}' "$1"; } > "$d/$1"
-  echo "$d/$1"
+    awk -v wanted="module $2 {" '$0==wanted {p=1} p {print} p && /^}/ {exit}' "$1"; } > "$copy/$1"
+  echo "$copy/$1"
 }
 run() {
-  f=$1; m=$2; want=$3; inv=$4; temp=$5
-  log=$OUT/$m-$want.log
-  set -- verify "$(extract "$f" "$m")" --main="$m" --backend=tlc --tlc-config "$CFG" --verbosity=3
+  file=$1; module=$2; want=$3; inv=$4; temp=$5
+  log=$OUT/$module-$want.log
+  set -- verify "$(extract "$file" "$module")" --main="$module" --backend=tlc \
+    --tlc-config "$CFG" --verbosity=3
   [ "$inv" = - ] || set -- "$@" --invariants $(echo "$inv" | tr ',' ' ')
   [ "$temp" = - ] || set -- "$@" --temporal "$temp"
   start=$(date +%s)
-  timeout "${TIMEOUT:-7200}" $Q "$@" > "$log" 2>&1 < /dev/null
+  timeout "${TIMEOUT:-7200}" $QUINT "$@" > "$log" 2>&1 < /dev/null
   # Another quint on this machine may hold the Apalache server's port: try once more.
   if grep -q 'Address already in use' "$log"; then
-    sleep 20; timeout "${TIMEOUT:-7200}" $Q "$@" > "$log" 2>&1 < /dev/null
+    sleep 20; timeout "${TIMEOUT:-7200}" $QUINT "$@" > "$log" 2>&1 < /dev/null
   fi
   secs=$(( $(date +%s) - start ))
-  n=$(grep -E 'distinct states found' "$log" | tail -1 | sed 's/.*generated, //; s/ distinct.*//')
+  states=$(grep -E 'distinct states found' "$log" | tail -1 \
+    | sed 's/.*generated, //; s/ distinct.*//')
   if grep -q '^\[ok\]' "$log"; then got=holds
   elif grep -q '^\[violation\]' "$log"; then got=breaks
   else got=error; fi
   if [ "$got" = "$want" ]; then
-    echo "$want  $f $m ($n states, ${secs}s)"
+    echo "$want  $file $module ($states states, ${secs}s)"
   else
-    echo "FAIL   $f $m: expected $want, got $got ($n states, ${secs}s; $log)"
+    echo "FAIL   $file $module: expected $want, got $got ($states states, ${secs}s; $log)"
     fail=1
   fi
 }
@@ -75,29 +77,29 @@ browser.qnt browserNoReconnect breaks - G4All
 browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All
 browser.qnt browserNoPoll breaks - G4All
-core.qnt coreAsks holds $SAFE $LIVE
-core.qnt coreAskRogue holds $SAFE $LIVE,AnswererFinishes
-core.qnt coreAskReverse breaks NoWaitCycle -
-core.qnt coreTwo holds $SAFE $LIVE
-core.qnt coreTwo breaks - CoreProgressNoPipe
-core.qnt coreTwoExit holds $SAFE $LIVE
-core.qnt coreLoops holds $SAFE $LIVE
-core.qnt coreNoRuleLadder breaks - CoreProgress
-core.qnt coreNoLoopLadder breaks - CoreProgress
-core.qnt corePersonUnbounded breaks - CoreSettles
-core.qnt coreTwoExit breaks - CoreProgressNoEngine
-core.qnt coreTwoDir holds $SAFE $LIVE
-core.qnt coreCrossOnly holds - CoreChangesStop
-core.qnt coreNoRaise breaks - CoreChangesStop
-core.qnt coreNoCross breaks - CoreChangesStop
-core.qnt coreNoSplit breaks - CoreChangesStop
+configs.qnt coreAsks holds $SAFE $LIVE
+configs.qnt coreAskRogue holds $SAFE $LIVE,AnswererFinishes
+configs.qnt coreAskReverse breaks NoWaitCycle -
+configs.qnt coreTwo holds $SAFE $LIVE
+configs.qnt coreTwo breaks - CoreProgressNoPipe
+configs.qnt coreTwoExit holds $SAFE $LIVE
+configs.qnt coreLoops holds $SAFE $LIVE
+configs.qnt coreNoRuleLadder breaks - CoreProgress
+configs.qnt coreNoLoopLadder breaks - CoreProgress
+configs.qnt corePersonUnbounded breaks - CoreSettles
+configs.qnt coreTwoExit breaks - CoreProgressNoEngine
+configs.qnt coreTwoDir holds $SAFE $LIVE
+configs.qnt coreCrossOnly holds - CoreChangesStop
+configs.qnt coreNoRaise breaks - CoreChangesStop
+configs.qnt coreNoCross breaks - CoreChangesStop
+configs.qnt coreNoSplit breaks - CoreChangesStop
 EOF
 }
 # One run by hand: sh tlc.sh one FILE MODULE holds|breaks INVARIANTS|- TEMPORAL|-
 if [ "${1:-}" = one ]; then shift; run "$@"; exit $fail; fi
-jobs | grep -E "${ONLY:-.}" | while read -r f m want inv temp; do
-  run "$f" "$m" "$want" "$inv" "$temp"
-  [ $fail = 0 ] || echo "$m" >> "$OUT/failed"
+jobs | grep -E "${ONLY:-.}" | while read -r file module want inv temp; do
+  run "$file" "$module" "$want" "$inv" "$temp"
+  [ $fail = 0 ] || echo "$module" >> "$OUT/failed"
 done
 [ -f "$OUT/failed" ] && { rm -f "$OUT/failed"; exit 1; }
 exit 0

@@ -11,7 +11,7 @@ agents, no reminder, is the fix.
 
 ## How to run
 
-- `bun run spec`: typechecks every `.qnt` file, then simulates the small models (core.qnt's
+- `bun run spec`: typechecks every `.qnt` file, then simulates the small models (configs.qnt's
   holds modules, terminals.qnt, store.qnt, browser.qnt): 400 runs each, a fixed seed and one
   thread (so the answer is the same every time). No violation is expected.
 - `bun run spec:check`: the same, and each mutant must break its property with its recorded
@@ -27,8 +27,10 @@ agents, no reminder, is the fix.
 
 ## Files and status
 
-work.qnt (store, protocol), core.qnt (the protocol core, G2, and its instances),
-contract.qnt (G1, G3, G4, each written once), terminals.qnt (G1), store.qnt (G3),
+types.qnt (the words), protocol.qnt (store, protocol), check.qnt (the composed model: the
+actors around the protocol, fairness, G2's assumption), properties.qnt (every property with
+its meaning), configs.qnt (the limits, the instances and mutants), canon.qnt (the state-space
+reduction), contract.qnt (G1, G3, G4, each written once), terminals.qnt (G1), store.qnt (G3),
 browser.qnt (G4), tlc.sh (`bun run spec:tlc`), spec.sh. The small models are proven by TLC
 (section "The small models").
 
@@ -50,10 +52,10 @@ browser.qnt (G4), tlc.sh (`bun run spec:tlc`), spec.sh. The small models are pro
 - **Store**: the one truth. An ordered, append-only log; the model keeps its fold (`Store`).
 - **Act**: a request to the store (`Act`): its sender's token, what it asks, its content. The
   store takes it (it is appended) or refuses it.
-- **Token**: the sender's identity and its **epoch** (`ep`), a counter the store raises when it
+- **Token**: the sender's identity and its **epoch** (`epoch`), a counter the store raises when it
   revives or resumes that actor. A sender has only its own token.
 - **Basis**: what an act was built on: the revision of its target it saw (`seen`), the item
-  versions of its view (`seenDir`, their sum; `vers`, per item), and for a recheck the items
+  versions of its view (`seenVersions`, their sum), and for a recheck the items
   it judged (`items`).
 - **Item**: a direction, a standard or a rule (DESIGN.md 9). Each has its own version. The
   model has one direction, two standards and two rules (`ITEMS`; `applies` says which task each
@@ -68,7 +70,7 @@ browser.qnt (G4), tlc.sh (`bun run spec:tlc`), spec.sh. The small models are pro
   time; may stop at its prompt. It cannot forge another token.
 - **Real cause**: the truth of what is wrong with a task (`Cause`), chosen by the environment and
   hidden from the store. It lets the model see an evaluation at the wrong level.
-- **History flag**: a field of `Store.g` that records an impossible state the store let in.
+- **History flag**: a field of `Store.ghost` that records an impossible state the store let in.
 - **Witness**: a state that should be reachable; `quint run --witnesses` counts the runs that
   reach it. Zero means a dead action.
 - **Mutant**: a configuration where a property must break; it proves the property can see the
@@ -76,11 +78,21 @@ browser.qnt (G4), tlc.sh (`bun run spec:tlc`), spec.sh. The small models are pro
 
 ## Files and modules
 
-- `work.qnt`, module `work`: the store and the protocol, pure (no variables). The store's check
-  `accept` (= `authority` + `epochOk` + `legal` + `basisOk` + the build check), `effect` (and
-  `take`), the told steps `dos`, the obligations `obligationsOf`, `finalOf`, `pastBound`, the
-  waits `waitsFor`.
-- `core.qnt`: the protocol core (`core`, G2), its fixed configurations (`coreCfgs`) and its
+- `protocol.qnt`, module `protocol`: the store and the protocol, pure (no variables). For each
+  act, together: when the store takes it (`allowed`: the token, the act's own legality, its
+  basis `basisOk`), what it changes (`effect`), what the wait tells an actor to do it (`toldSteps`).
+  The store's check `accept` (the epoch, `allowed`, the build check) and `take` (the effect and
+  `sweep`), the obligations `obligationsOf`, `finalOf`, `pastBound`, the waits `waitsFor`.
+- `types.qnt`, module `types`: the actors, the acts, the records of the store; no logic.
+- `check.qnt`, module `check`: the composed model (G2): the actors around the protocol
+  (`agentStep`, `personStep`, `exitHappens`, `askStep`, `rogueStep`, `reverseStep`, `honestOf`,
+  `choices`) and the fairness (`AgentsG1`, `EngineFair`, `Assumed`). Constants: `OPTIONS` (the
+  protocol options, protocol.qnt's own), `LIMITS` (the limits of a run).
+- `properties.qnt`, module `properties`: each invariant, temporal property and witness, with
+  its meaning; it exports `check`, which exports `protocol`, so an instance imports it alone (one copy of
+  each: quint's TLA+ export overflows on two).
+- `canon.qnt`, module `canon`: `canon`, the state-space reduction (pure on the store).
+- `configs.qnt`: `configsBase` (`FIXED_OPTIONS`, `BASE_LIMITS`, the named causes) and the
   instances and mutants (`coreTwo`, `coreTwoDir`, `coreTwoExit`, `coreLoops`, `coreAsks`,
   `coreAskRogue`, `coreAskReverse`, `coreCrossOnly`, `coreAll`, the `coreNo*` mutants).
 
@@ -88,7 +100,7 @@ Sizes: two tasks (`CFG.slots`); one host, one persistent role, one pipeline role
 from 3; 2 tries; 2 sections per task; no cap on review-loop revisions or rule rewrites (the
 ladder, DESIGN.md 13.2).
 
-## Options (`CFG`, work.qnt `OPT`)
+## Options (`OPTIONS`)
 
 | Field | Meaning | `DESIGN` | `FIXED` |
 |---|---|---|---|
@@ -126,53 +138,65 @@ ladder, DESIGN.md 13.2).
 
 ## DESIGN.md to Quint
 
-| DESIGN.md | Quint (work.qnt unless named) |
+| DESIGN.md | Quint (protocol.qnt unless named) |
 |---|---|
-| 1 Person | `PERSON`: `Ask` Execute -> pipeline role (a reject of a result, an edit), `Answer` to a Decide (`Reply`: accept, send back, take as is, again), `EndProject`, `MoveHost` (run continue) |
-| 1 Host | `HOST`: `Ask` Execute host -> role (a task sent), `Reassign`, `TopDone` (agents never remake the top, DESIGN.md 13.1); its wait finds the top only through `hostFinds` |
-| 16 ask is the one act | `Ask(r)`, `Answer(r)`, `Hear(r)`, `AskRaise(r)` with `r = { typ, from, to, about }` (`typ`: `Question` any actor to any actor, `Execute`, `Check`, `Decide`; `about`: the task slot or fix id, -1 for a question); `Store.asks` (open), `Store.answered` (a question's answer not yet heard by the asker). An Answer closes its ask; a protocol Answer's own effect carries the result (no extra step) |
-| 16 execute, check, decide as asks | host -> role: `Ask` Execute (replaces `SendTask`); role -> maker: `Ask` Execute (replaces `AssignDo`; the store gives the fresh maker its id); the maker's result: its `Answer` to that Execute (replaces `Report`), which opens `Check` maker -> role; the role's `Answer` to the Check carries the verdict (replaces `Review`: `Pass` also closes the host's Execute, `Fail` opens a new Execute role -> the same maker, a raise opens an Execute role -> pipeline role); a reject or an edit: `Ask` Execute person -> pipeline role; the draft after the pipeline: `Decide` pipeline role -> person, opened and withdrawn with the fix's stage (`sweep`), answered by Accept, SendBack, take as is or again (`Reply`). The pipeline's stage steps, `Reassign`, `TopDone`, `Resume`, `Revive`, `Exit`, `RunRule`, `EndProject`, `MoveHost` stay steps (not asks). `waitsFor` = the open asks that are not questions, except those from the person (it is not event-driven); `NoWaitCycle` tests its closure |
-| 16 one open ask; alternation; repeats | the asks are a set: one open ask per (typ, from, to, about); a question has about -1, one open or answered per (from, to); the answerer of a question alternates its answer with a step of its own (`Store.justAnswered`, `ownDos`); questions per pair are counted (`ASK_CAP`), the next from a maker is `AskRaise`: it raises the maker's task (`askRaised`) |
-| 1 Persistent role | `ROLE`: `Ask` Execute role -> maker, `Answer` to a Check (its verdict is the decision), `Resume`; `card` |
-| 1 Maker subagent | `Maker`, a fresh id per Execute role -> maker; `ReadBrief`, `Answer` to its Execute; it lives inside the role's process (`Exit` of the role) |
-| 1 Pipeline role | `PIPE`: `Evaluate`, `Advance`, `WriteRule`, `RunTest`, `Ship`, `LoopReview`, `RecheckDone` |
-| 2 the loop | Execute host -> role, Execute role -> maker, `ReadBrief`, the maker's `Answer`, Check, the role's `Answer`: `Pass` (done), `Fail` (revision to the same maker, `revs + 1`), raise |
+| 1 Person | `Human`: `Open` of an Execute -> pipeline role (a reject of a result, an edit), `Respond` to a Decide (`Reply`: `AcceptIt`, `SendItBack`, `TakeAsIs`, `EvaluateAgain`), `EndProject`, `MoveHost` (run continue) |
+| 1 Host | `Host`: `Open` of an Execute host -> role (a task sent), `Reassign`, `TopDone` (agents never remake the top, DESIGN.md 13.1); its wait finds the top only through `hostFinds` |
+| 16 ask is the one act | `Open(r)`, `AnswerQuestion(r)`, `Hear(r)`, `AskRaise(r)` with `r = { kind, from, to, about }` (`kind`: `Question` any actor to any actor, `Execute`, `Check`, `Decide`; `about`: the task slot or fix id, -1 for a question); `Store.asks` (open), `Store.answered` (a question's answer not yet heard by the asker). An Answer closes its ask; a protocol Answer's own effect carries the result (no extra step) |
+| 16 execute, check, decide as asks | host -> role: `Open` of an Execute; role -> maker: `Open` of an Execute (the store gives the fresh maker its id); the maker's result: its `Report` (the answer to that Execute), which opens `Check` maker -> role; the role's `Review` (the answer to the Check) carries the verdict ( `Pass` also closes the host's Execute, `Fail` opens a new Execute role -> the same maker, a raise opens an Execute role -> pipeline role); a reject or an edit: `Open` of an Execute person -> pipeline role; the draft after the pipeline: `Decide` pipeline role -> person, opened and withdrawn with the fix's stage (`sweep`), answered by `Respond` (`AcceptIt`, `SendItBack`, `TakeAsIs`, `EvaluateAgain`). The pipeline's stage steps, `Reassign`, `TopDone`, `Resume`, `Revive`, `Exit`, `RunRule`, `EndProject`, `MoveHost` stay steps (not asks). `waitsFor` = the open asks that are not questions, except those from the person (it is not event-driven); `NoWaitCycle` tests its closure |
+| 16 one open ask; alternation; repeats | the asks are a set: one open ask per (kind, from, to, about); a question has about -1, one open or answered per (from, to); the answerer of a question alternates its answer with a step of its own (`Store.justAnswered`, `ownToldSteps`); questions per pair are counted (`ASK_CAP`), the next from a maker is `AskRaise`: it raises the maker's task (`askRaised`) |
+| 1 Persistent role | `Role`: `Open` of an Execute role -> maker, `Review` (the answer to a Check; its verdict is the decision), `Resume`; `card` |
+| 1 Maker subagent | `Maker`, a fresh id per Execute role -> maker; `ReadBrief`, `Report` (the answer to its Execute); it lives inside the role's process (`Exit` of the role) |
+| 1 Pipeline role | `Pipe`: `Evaluate`, `Advance`, `WriteRule`, `RunTest`, `Ship`, `LoopReview`, `RecheckDone` |
+| 2 the loop | Execute host -> role, Execute role -> maker, `ReadBrief`, the maker's `Report`, Check, the role's `Review`: `Pass` (done), `Fail` (revision to the same maker, `revisions + 1`), raise |
 | 2.6 raise | `RaiseTries` (only when tries are used up), `RaiseNoRule`, `RaiseMisses`, the person's reject (Execute person -> pipeline role); `raise` |
 | 3 the five levels | `Evaluate` with `Level`; `Split` (a new task generation, one section less), `Fit` (role draft), `Principle`, `Direct`, `Standard` (`entryOf`); the real cause: `Task.cause`, `resolves` |
-| 4 stages | `SPrinciple` -> `SDirAssess` -> `SStdAssess` -> `SRuleAssess` -> `STest` -> `SDraft`; `nextStage` |
+| 4 stages | `AtPrinciple` -> `AtDirection` -> `AtStandard` -> `AtRule` -> `Testing` -> `Drafting`; `nextStage` |
 | 4 rule forms | `Form`: `Mech` (test command), `Ref` (reference), `Both`; `WriteRule` (`flag`: the test's real behaviour, `flag2`: the reference exists); `RunTest` |
-| 5 only a standard change? | `Ship`: the draft names `items` (content: `real`); no direction among them: `shipStandard` (in effect at once, back to the role); else `SLoop` |
-| 5 review loop, change by human | `LoopReview`, the person's `Answer` to a Decide (accept, send back) |
-| 5 role draft, only a role change? | `Evaluate` `Fit` -> `SLoop`; accept: role-only -> `cardInEffect`, `backToRole`; else `SAccepted` -> `Reassign` |
+| 5 only a standard change? | `Ship`: the draft names `items` (content: `real`); no direction among them: `shipStandard` (in effect at once, back to the role); else `InLoop` |
+| 5 review loop, change by human | `LoopReview`, the person's `Respond` to a Decide (accept, send back) |
+| 5 role draft, only a role change? | `Evaluate` `Fit` -> `InLoop`; accept: role-only -> `cardInEffect`, `backToRole`; else `Accepted` -> `Reassign` |
 | 6 C1, D7 | settled: DESIGN.md 12 (the host keeps the top; agents never remake it, 13.1) and DESIGN.md 13 (no budgets) |
 | 13, 13.1 how the loop ends | `crossTest` (`Fix.fights`, `RunTest`); no agreeing rule: a contradiction found at `RunTest` goes at once to direction assessment (13.1), and a second contradiction of a draft already at direction goes on to the person (`Fix.contradicted`; a rule that fails its own examples is always written again); `raiseLevel` (`Task.floor` per task; `Store.fixDepth` per item, `refixed`, `raiseUp`); `ladderRoute`; `strictScope` (`Task.sections`); `changeBound`, `NoRefixAtSameLevel`, `NoAgentChangeAtTop` |
 | 12 lifetimes | the host holds the top for the whole project (`Top` has no "hosted"; `TopDone` keeps it); roles never end |
 | 7 Store | `accept`, `take` |
 | 10.1 the person's edit, the pipeline row | the edit (an Execute person -> pipeline role about `EDIT`, at direction assessment; `wrote`), `shipEdit` (editBack), `atPerson` (acceptCheck) |
-| 11 take as is | the reply take as is to a Decide (instead of the draft at the person) with `decideRecheck`: done with `pend` = the items that moved (`oldFor`); `RecheckDone` (with `recheckBasis` it names what it judged), `RunRule` |
-| 9 per-item versions, scoped recheck | `Item`, `ITEMS`, `applies`, `Store.ver`, `Fix.items`/`real`, `itemsInEffect` (scope), `Task.pend`, `RecheckDone` (pipeline role), `RunRule` (harness), `Maker.brief` and `Task.checked` (snapshots `{item: version}`) |
+| 11 take as is | the reply take as is to a Decide (instead of the draft at the person) with `decideRecheck`: done with `pending` = the items that moved (`oldFor`); `RecheckDone` (with `recheckBasis` it names what it judged), `RunRule` |
+| 9 per-item versions, scoped recheck | `Item`, `ITEMS`, `applies`, `Store.versions`, `Fix.items`/`real`, `itemsInEffect` (scope), `Task.pending`, `RecheckDone` (pipeline role), `RunRule` (harness), `Maker.brief` and `Task.checked` (snapshots `{item: version}`) |
 
 ## Act content
 
-`flag` and `flag2` mean, per act: `Answer` to a maker's Execute, flag: the maker slipped; `Answer` to a Check: `v`, the verdict; `WriteRule` flag: the test
-command really behaves on its examples, flag2: the reference exists; `RunTest` flag: the
-pipeline role's claim of the outcome, flag2: its claim that the test failed on another rule's
-example (a contradiction); `Evaluate` with `Fit` flag: the label "only a role change", flag2: the content; `LoopReview` flag: hand the
-draft to the person; `RecheckDone` flag: it still
-holds. `cause` on `Evaluate` (split): the real cause of the new task part. `hits` on
-`Ship` and the person's accept (ghost, the environment's truth): the tasks whose work
-the change breaks, raised tasks included; their result becomes bad (`Task.broken`, `rBad`)
-until it is made again under the new versions. A recheck judges only that (`broken`), not a
-defect the person took as it is (`Task.taken`). An ask is `{ typ, from, to, about }` (DESIGN.md 16); the body stays abstract. `Ask(r)`,
-`Answer(r)`, `Hear(r)` and `AskRaise(r)` carry the request `r` (the sender is `from`, or `to` for
-`Answer`); the basis of a protocol ask is the old target's (`cur`: a result's id for the Check
-and a reject, the maker's revision for the maker's Answer, the fix's step for a Decide); a
-question's is its legality (an open question for `Answer`, an answered one for `Hear`, the cap
-for `AskRaise`). `rep` (the person's Answer to a Decide): accept, send back, take as is,
-again (`Decide` flag is gone). `vers` on `Evaluate` and `EditDirection`: the
-item versions the sender says its content is built on (the draft's `base`, compared and set at
-the append with rebase); `realVers` (ghost): the versions it really is built on (`trueBase`,
-which NoLostUpdate reads; they differ only for a Byzantine sender).
+An act is `{ who, epoch, seen, seenVersions, old, byzantine, hadContext, body }` (types.qnt
+`Act`): the sender's token (`who`, `epoch`), its basis (`seen`: the revision of the target;
+`seenVersions`: the sum of the item versions it saw), `old` (from an old page build, which names
+no basis) and two ghosts the store never reads (`byzantine`, `hadContext`). The body carries
+only its own fields:
+
+- `Report` (a maker's result to its Execute): `slipped`, the maker slipped. `Review` (the role's
+  answer to a Check): `verdict`. `Respond` (the person's answer to a Decide): `reply`
+  (`AcceptIt`, `SendItBack`, `TakeAsIs`, `EvaluateAgain`), `resolvesFight` and `breaksTasks`
+  (ghosts, the environment's truth, below).
+- `Evaluate`: a `finding`: `Splits` (`cause`: the real cause of the new task part), `FitsRole`
+  (`label`: the pipeline's answer "only a role change"; `only`: the content), or `FixAt` (the
+  level, and the versions it is built on: `base`, really `trueBase`, which NoLostUpdate reads;
+  they differ only for a Byzantine sender).
+- `WriteRule`: `form`, `testOk` (the test command really behaves on its examples), `refOk` (the
+  reference exists), `fights` (the rule contradicts the other rule: the environment's truth).
+  `RunTest`: `passed`, the pipeline role's claim of the outcome; `contradicts`, its claim that the
+  test failed on another rule's example. `Ship`: `items` (the items the draft names), `real` (the
+  items its content changes), `breaksTasks`. `LoopReview`: `toPerson`, hand the draft to the
+  person. `RecheckDone`: `holds`, with the `items` and `base` versions it judged.
+- `breaksTasks` on `Ship` and on the person's accept (ghost, the environment's truth): the tasks
+  whose work the change breaks, raised tasks included; their result becomes bad (`Task.broken`,
+  `badResult`) until it is made again under the new versions. A recheck judges only that
+  (`broken`), not a defect the person took as it is (`Task.taken`). `resolvesFight`: the accepted
+  direction change resolves a contradiction.
+- An ask is `{ kind, from, to, about }` (types.qnt `Ask`); the body stays abstract. `Open`,
+  `AnswerQuestion`, `Hear` and `AskRaise` carry the ask (the sender is `from`, or `to` for an
+  answer); the basis of a protocol ask is the old target's (`basisOf`: a result's id for the Check
+  and a reject, the maker's `revisions` for its report, the fix's `basisStep` for a Decide); a
+  question's is its legality (an open question for `AnswerQuestion`, an answered one for `Hear`,
+  the cap for `AskRaise`).
 
 ## Simplified or left out on purpose (declared)
 
@@ -188,13 +212,13 @@ which NoLostUpdate reads; they differ only for a Byzantine sender).
   once the host returned the top and no recheck is pending.
 - DESIGN.md 13.2: no caps on agents. A rule that fails its own examples is written again
   once; a second failure climbs (`ruleLadder`): standard assessment, then direction, then
-  principle, then the person (`Fix.climb`). A draft the review loop sends back is revised
+  principle, then the person (`Fix.climbedTo`). A draft the review loop sends back is revised
   once; a second send-back climbs one level from its entry (`loopLadder`; a role draft goes to
   the person). A reference-only rule cannot be cross-tested, so a contradiction can still ship
   through it.
 - The person's "take as is" (`Decide`) is offered at the person instead of the draft
   (DESIGN.md 11: "any person's done"); there are no budgets, so no other path reaches it.
-- The truth of a contradiction is the environment's choice (`WriteRule` `flag3`, a ghost the
+- The truth of a contradiction is the environment's choice (`WriteRule` `fights`, a ghost the
   store never reads): a rule that fights the other rule of the direction breaks the tasks that
   rule applies to and gives them a standard cause again (the ping-pong of DESIGN.md 13,
   example d20). Any direction draft can change any standard or rule (`ITEMSETS` is
@@ -209,7 +233,7 @@ which NoLostUpdate reads; they differ only for a Byzantine sender).
   store cannot protect review quality or the choice of level from a Byzantine role or
   pipeline role: `NoPassOfBadResult` and `NoShallowEvaluation` (and, through a passed recheck,
   `NoDoneBrokenAtEnd`) break in `fixedRole` and `fixedPipe`, by design of the problem.
-- History flags read from a sender's own basis (`seen`, `seenDir`, `ctx`) count only for
+- History flags read from a sender's own basis (`seen`, `seenVersions`, `hadContext`) count only for
   non-Byzantine senders: a Byzantine sender can write the right basis while acting on a wrong
   one. For them only the store's refusal of a wrong claimed basis is checked.
 - Fairness is per process (process ids 0-11, `procFair`; a stale process of an actor cannot
@@ -227,7 +251,7 @@ which NoLostUpdate reads; they differ only for a Byzantine sender).
   restates it, so it is not a check): a live terminal prints or renews its beat within the
   minute. What it cannot see: a CLI that keeps redrawing while stuck never shows Inactive; a
   hung tool call that prints nothing shows Inactive only after the minute.
-- The truth of what a change breaks is the environment's choice (`hits`); a result made under
+- The truth of what a change breaks is the environment's choice (`breaksTasks`); a result made under
   an old brief stays broken.
 - The person's direction edit, once in effect (accepted, or at once by editBack), goes to the
   host's reassign like any accepted direction draft.
@@ -239,7 +263,7 @@ which NoLostUpdate reads; they differ only for a Byzantine sender).
 - Not done (the review's "nice to have"): the card version in the task's snapshot; a test
   command that catches only some bad results (`mechCatches` assumes every one); a Byzantine
   view (a Byzantine process never reads; its lying basis is random); `Review` `Fail` with no
-  live maker adds to tries, then `AssignDo` resets them; `EndProject` is legal while the
+  live maker adds to tries, then `Open` of an Execute to a maker resets them; `EndProject` is legal while the
   person's edit is open.
 - Done tasks are rechecked; active tasks are rechecked by their running role (the maker reads
   its brief again; the role reviews under the new versions), not by a separate act.
@@ -264,7 +288,7 @@ part is a model small enough for TLC to visit every reachable state, liveness in
 | terminals.qnt | G1: an agent that owes work in the end hears its step | fairness of the engine parts only |
 | store.qnt | G3: an act takes effect only if it is fresh | nothing (an adversary sends any act) |
 | browser.qnt | G4: what the person owes is in the end shown on the page | fairness of the engine parts only |
-| core.qnt | G2: every run reaches Final; agent changes stop | G1 (with A), G3, G4, engine fairness |
+| check.qnt | G2: every run reaches Final; agent changes stop | G1 (with A), G3, G4, engine fairness |
 
 A (an agent that hears its step takes it) is not provable: it is assumed and bounded (tries,
 the ladder, the person).
@@ -277,34 +301,34 @@ assumes it:
 - `G1(owes, hears, personOwes) = always(eventually(not(owes) or hears or personOwes))`, the
   same as `always(owes implies eventually(hears or not(owes) or personOwes))`. terminals.qnt
   checks it with owes always true (no action there reads owes, so this is the strongest
-  case); core.qnt assumes it for each agent with `hears` = the agent's own step (that is G1
+  case); check.qnt assumes it for each agent with `hears` = the agent's own step (that is G1
   followed by A).
 - `G3(f: Fresh)`: the act's basis is current, a recheck's judged versions did not move, its
   id is new, its token's epoch is current, it is from the current page build, and an accept
   is of a draft that waits for the person. store.qnt proves that every act the store takes
-  has G3; core.qnt takes an act only when G3 holds of it (computed from work.qnt's checks),
-  which is what lets core.qnt apply each act at once to the current state.
+  has G3; check.qnt takes an act only when G3 holds of it (computed from protocol.qnt's checks),
+  which is what lets check.qnt apply each act at once to the current state.
 - `G4(owes, shown) = always(eventually(not(owes) or shown))`: browser.qnt proves it for each
-  act the person owes; core.qnt's Final ("waits only on the person") relies on it.
+  act the person owes; check.qnt's Final ("waits only on the person") relies on it.
 
 The arguments each side uses (R6-13):
 
-| Guarantee | Proven as | Assumed in core.qnt as |
+| Guarantee | Proven as | Assumed in check.qnt as |
 |---|---|---|
-| G1 host | `G1(true, heardBy(HOST), personOwes(HOST))` | `G1(owes(HOST), agentStep(HOST), HOST in s.down)` |
-| G1 role, pipeline role | `G1(true, heardBy(k), false)` | `G1(owes(k), agentStep(k), false)` |
-| G1 maker | `G1(true, heardBy(MAKER), false)`: the maker hears, or its exit is recorded and the role hears (its resume) | `G1(owes(m), agentStep(m), false)`: a maker whose exit is recorded is told nothing; its resume is a role's step |
-| G3 | `G3Holds` in store.qnt: every act taken was fresh | each act core takes is built on the current store and satisfies `G3(fresh(a))` (true by construction: it names the assumption) |
-| G4 | `G4(owed x, page shows x)` in browser.qnt for any set the protocol sets | the person's obligations of Final (work.qnt `isPersonOb`, `dos(PERSON)`) are browser's `owed` |
+| G1 host | `G1(true, heardBy(HOST), personOwes(HOST))` | `G1(owes(Host), agentStep(Host), store.down.contains(Host))` |
+| G1 role, pipeline role | `G1(true, heardBy(agent), false)` | `G1(owes(agent), agentStep(agent), false)` |
+| G1 maker | `G1(true, heardBy(MAKER), false)`: the maker hears, or its exit is recorded and the role hears (its resume) | `G1(owes(maker), agentStep(maker), false)`: a maker whose exit is recorded is told nothing; its resume is a role's step |
+| G3 | `G3Holds` in store.qnt: every act taken was fresh | each act check.qnt takes is built on the current store and satisfies `G3(fresh(act))` (true by construction: it names the assumption) |
+| G4 | `G4(owed x, page shows x)` in browser.qnt for any set the protocol sets | the person's obligations of Final (protocol.qnt `isPersonOb`, `toldSteps(Human)`) are browser's `owed` |
 
 Composition, in words. Take a run of the whole system. terminals gives each agent G1; with A
 each agent then takes its step in the end, or the host waits for the person to start it
-again. core assumes exactly that for each agent (the same third argument for the host: its
-exit is recorded, work.qnt `ReviveOb(HOST)` is a person obligation). store gives G3, so the
-acts that take effect are the fresh ones core takes. core then proves the run reaches Final,
+again. check.qnt assumes exactly that for each agent (the same third argument for the host: its
+exit is recorded, protocol.qnt `ReviveOb(Host)` is a person obligation). store gives G3, so the
+acts that take effect are the fresh ones check.qnt takes. check.qnt then proves the run reaches Final,
 and browser shows the person every act it owes, so a Final that waits on the person is a
 wait the person can see, not a stall. One fairness is not from the contract: the engine runs
-a due rule test and revives a role (core.qnt `EngineFair`; the watcher's revive is proven in
+a due rule test and revives a role (check.qnt `EngineFair`; the watcher's revive is proven in
 terminals).
 
 ### terminals.qnt (G1)
@@ -352,7 +376,7 @@ Two findings came from TLC and are in the model (and the design must have them):
 server looks at the host's pane when it starts (else a restart between the host's end and
 its record loses the end: the pump's listing does not cover the person's tmux); the role's
 revive holds its makers as ended (else a maker resumed by the old role, on a lost socket,
-between the role's exit and its revive, dies unseen). work.qnt's Revive does not do the
+between the role's exit and its revive, dies unseen). protocol.qnt's Revive does not do the
 second yet: noted for P2.
 
 A send is at least once: a typed text leaves no mark the watcher can read, so after a crash
@@ -362,7 +386,7 @@ a nudge.
 ### store.qnt (G3)
 
 Contains: two items with versions (item 1 holds the draft the person may accept); the
-store's checks of work.qnt (basis: compare-and-set on what the act read, which also refuses
+store's checks of protocol.qnt (basis: compare-and-set on what the act read, which also refuses
 a second copy; recheckBasis; epochs; build; acceptCheck); senders that are honest but slow:
 an act is built on a snapshot (any versions up to the current ones: every old view and
 more), names its basis from it, and arrives late, out of order, any number of times; a
@@ -392,25 +416,25 @@ Senders are honest about their basis (the basis is the snapshot): the harness, n
 fills the basis from what the CLI fetched; an agent acting on an old brief is then exactly a
 stale basis. A sender that names a basis it did not build on is Byzantine (the big model).
 
-How work.qnt's acts keep "it reads what it writes" (the fact G3 rests on). An act's
-content built from a view is covered by its basis (`cur`: a fix's step, a result's id, a
+How protocol.qnt's acts keep "it reads what it writes" (the fact G3 rests on). An act's
+content built from a view is covered by its basis (`basisOf`: a fix's `basisStep`, a result's id, a
 maker's revision; with recheckBasis the judged versions) or by `legal` (the state the act
 needs, which its own effect changes, so a second copy is refused); the rest of its effect is
 computed by the store at the append, from the current store, so it is not stale:
 
 | Acts | What refuses a stale or second copy |
 |---|---|
-| Answer to a Check (the verdict), Ask Execute person -> pipeline role about a slot (reject), RecheckDone | the result's id (`rid`); RecheckDone also the judged versions |
-| Answer to a maker's Execute | the maker's revision, the brief's versions (briefCheck), the live maker (endedCheck) |
-| Evaluate, Advance, WriteRule, RunTest, Ship, LoopReview, Answer to a Decide (accept, send back, take, again) | the fix's step |
+| Review (the verdict), Open of an Execute person -> pipeline role about a slot (reject), RecheckDone | the result's id (`resultId`); RecheckDone also the judged versions |
+| Report (the maker's answer) | the maker's revision, the brief's versions (briefCheck), the live maker (endedCheck) |
+| Evaluate, Advance, WriteRule, RunTest, Ship, LoopReview, Respond to a Decide (accept, send back, take, again) | the fix's `basisStep` |
 | Ask Execute host -> role, Ask Execute role -> maker, TopDone, EndProject, Reassign, the edit | `legal`: the state they change (Unsent, Sent, not done, open, an accepted fix, the edit closed) |
-| a question | `legal`: an open question (Answer), an answered one (Hear), the cap |
+| a question | `legal`: an open question (AnswerQuestion), an answered one (Hear), the cap |
 | Resume, Revive, Exit, RunRule | `legal`: the exit record or the pending rule they change |
 | RecheckDone (its own second copy) | `legal`: the pending items it clears, or the task sent back; a copy of a passed recheck excludes the same items again (no effect) |
 | MoveHost (run continue) | nothing: `legal` is always true. A second copy moves the host twice. A finding (P2: give it a basis, the session it moves from) |
 
 What store.qnt does not show (R6-11): it checks the mechanism on items with versions, not
-work.qnt's accept itself; the table above is the mapping, by reading. 
+protocol.qnt's accept itself; the table above is the mapping, by reading. 
 
 ### browser.qnt (G4)
 
@@ -444,19 +468,19 @@ TLC results:
 One owed act: every copy the page gets is the whole state, so each act behaves alone (two
 acts and a three-state escalation passed 3 million states).
 
-### core.qnt (G2)
+### check.qnt, properties.qnt, configs.qnt, canon.qnt (G2)
 
-Contains: work.qnt's protocol, imported, not restated; the actors around it: each agent takes
-a step it is told with honest content (work.qnt `honestOf`); a bounded number of mistakes
+Contains: protocol.qnt's protocol, imported, not restated; the actors around it: each agent takes
+a step it is told with honest content (check.qnt `honestOf`); a bounded number of mistakes
 (the pipeline role evaluates shallower than the real cause, `maxMistakes`); the environment's
 truths (a maker's slip, a test command's behaviour, a rule that contradicts the other rule,
 what a change breaks, the cause of a split part); the person (reply to a Decide: accept, send
-back, take as is, again; reject, end, start the host again; at most `maxPerson` acts; never
-assumed to act); a bounded number of process ends (`maxExits`: work.qnt's Exit, then Revive
+back, take as is, again; reject, end, start the host again; at most `maxPersonActs` acts; never
+assumed to act); a bounded number of process ends (`maxExits`: protocol.qnt's Exit, then Revive
 by the harness, Resume by the role, the host's revival by the person); a bounded number of
 questions (`maxAsks`, 0 except where named: any agent asks any actor, the person a target
-too, both ways; Answer and Hear are the told steps of the answerer and the asker, the
-person's Answer one of its `maxPerson` acts); a rogue maker (`rogue`: it asks its role again
+too, both ways; AnswerQuestion and Hear are the told steps of the answerer and the asker, the
+person's AnswerQuestion one of its `maxPersonActs` acts); a rogue maker (`rogueMaker`: it asks its role again
 and again, and past `ASK_CAP` raises its task with `AskRaise`; unbounded, the ladder and the
 person must bound the raises); a mutant of the wait order (`reverse`: a maker asks its role
 to execute, injected past the store's check).
@@ -487,12 +511,13 @@ are dropped; history flags this model does not check are cleared; agentChanges s
 changeBound + 1. A maker of task i has the id 3 + i. A draft of task i's raise changes items
 that apply to task i (a choice of this model, to cut states).
 
-Reused from work.qnt (imported): every type, the store, `accept`, `take`/`effect`, `dos`,
-`obligationsOf`, `toldAny`, `finalOf`, `changeBound`/`pastBound`, `initStore`, `honestOf`,
-`basisOk`, `epochOk`, `recheckCurrent`. Restated (and why): the CFG record type (quint needs
-the const's type in the module), the FIXED values (`coreCfgs`), `CAUSE_OF`, the property one-liners (Sane's parts,
-DoneIsCurrent, the flags), EveryObligationToldOnce without the hearing part (every actor
-hears here: G1), ToldIsAllowed on core's own content choices (`choices`).
+Reused from protocol.qnt (imported): every type, the store, `accept`, `take`/`effect`, `toldSteps`,
+`obligationsOf`, `toldAny`, `finalOf`, `changeBound`/`pastBound`, `initStore`,
+`basisOk`, `epochOk`, `recheckCurrent`. Restated (and why): the `LIMITS` record type (quint needs
+the const's type in the module), the FIXED values (`configsBase`; the causes are named, a set
+of `Cause` values per instance), the property one-liners (Sane's parts, DoneIsCurrent, the
+flags), EveryObligationToldOnce without the hearing part (every actor
+hears here: G1), ToldIsAllowed on check's own content choices (`choices`).
 
 Properties: invariants Sane, EveryObligationToldOnce, ToldIsAllowed, SomethingOwed,
 DoneIsCurrent, NoDoneBrokenAtEnd, NoLostUpdate, NoTakenUndone, NoPassOfBadResult,
@@ -532,7 +557,7 @@ other instances, a subset of the runs P allows, to keep them small), 0 or 1 mist
 only, `bun run spec`): two tasks with every cause and the person's acts (coreAll); more than
 one process end; the person's direction edit and run continue.
 
-One TLC finding, fixed in work.qnt (5934497): a contradiction that landed while the other
+One TLC finding, fixed in protocol.qnt (5934497): a contradiction that landed while the other
 task was in review broke it, but the raise cleared what it had to be rechecked against; the
 person took it as is and the project ended with that task broken (NoDoneBrokenAtEnd, in
 coreTwoExit). fightsBack now keeps the broken rule pending for a task in review, and a raise

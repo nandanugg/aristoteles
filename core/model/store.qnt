@@ -13,11 +13,11 @@
 // built on a snapshot equal to the store on every item it reads or writes; it was sent by
 // the actor's current process; it came from the current page build; an accept is of a
 // draft that waits for the person.
-// The checks (work.qnt accept): basis (the versions an act read are the current ones: for a
+// The checks (protocol.qnt accept): basis (the versions an act read are the current ones: for a
 // draft the compare-and-set of rebase), recheckBasis (the versions a recheck judged did not
 // move), epochs, build, acceptCheck. G3 rests on one fact of the protocol, stated in the
 // contract: every act reads what it writes (its basis or `legal` covers the items it
-// changes; README "The small models" maps work.qnt's acts). The model's acts keep it; the
+// changes; README "The small models" maps protocol.qnt's acts). The model's acts keep it; the
 // mutant storeBlind drops it and G3 breaks.
 module store {
   import contract.* from "./contract"
@@ -30,8 +30,8 @@ module store {
   type Kind = AgentAct | Recheck | PersonAccept
   // reads: what the act was built on (a recheck: what it judged); basis: their versions as
   // named in the act; writes: what it changes; ep: its token's epoch; oldBuild: from an old
-  // page build (an old build names no basis: work.qnt basisOk). Ghosts: snap, the store the
-  // sender saw; gen, the sender process's generation.
+  // page build (an old build names no basis: protocol.qnt basisCurrent). Ghosts: snap, the
+  // store the sender saw; gen, the sender process's generation.
   type Act = { kind: Kind, reads: Set[int], basis: int -> int, writes: Set[int], ep: int,
                oldBuild: bool, snap: int -> int, gen: int }
   // ep: the agent's current epoch (a revive raises it); page: the person's copy and whether
@@ -47,7 +47,7 @@ module store {
 
   // The facts the store can read of an act at its append (contract.qnt Fresh), read
   // through the act's own fields. No act carries an id: a second copy is refused because
-  // what it read has moved (work.qnt has no act ids either).
+  // what it read has moved (protocol.qnt has no act ids either).
   def named(a: Act): bool = a.reads.forall(x => a.basis.get(x) == st.ver.get(x))
   def facts(a: Act): Fresh = {
     basisCurrent: a.kind == Recheck or a.oldBuild or named(a),
