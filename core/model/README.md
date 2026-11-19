@@ -345,14 +345,14 @@ store, acts, then marks it, and can crash between any two (evidence: before acti
 revive it looks for the pane of that revive); the person typing into a pane (promptArg off
 only). Aristoteles is an adversary: what an agent owes is not state (G1 is checked for owes
 always true) and a send can be asked for at any time. Faults are not counted: any number, in
-any order, until one weakly fair "calm" step (faults stop in the end).
+any order, until the faults reach maxFaults (no `adversaryDone` step: a count keeps the states finite).
 
 Abstracted: process ids and epochs (one process per agent; a revived one replaces the old
 one, whose acts the store refuses), the context of a resumed process, time, the protocol.
 
 Fair: the engine parts only (the pump's and hooks' reports, the watcher's record, act and
 mark per op, the server's recreation, the pump's attach, a typed prompt read, the limit
-lifting, calm). Not fair: agents, the person, the adversary, faults.
+lifting). Not fair: agents, the person, the adversary, faults.
 
 TLC results (arch-temp, 12 workers, 2026-11-17), every reachable state:
 
@@ -370,7 +370,7 @@ TLC results (arch-temp, 12 workers, 2026-11-17), every reachable state:
 
 What it measured (rule 7): the adversary's owes bits as state multiplied the states by 16
 (they feed no action: now G1 is checked with owes true); faults without a count (until a fair
-calm step) passed 2.3 million states and kept growing, so the count stays (2, and 3).
+step ends them) passed 2.3 million states and kept growing, so the count stays (2, and 3).
 
 Two findings came from TLC and are in the model (and the design must have them): the page
 server looks at the host's pane when it starts (else a restart between the host's end and
@@ -442,7 +442,7 @@ Contains: what the person owes (two acts), the role's terminal inputs (its own s
 engine's inactive signal: tmux, the usage-limit message, 1 minute of silence) and the
 escalation's state, all set and cleared at any time; the page's copy, its websocket, its
 build; the page server (it restarts itself on a new build); faults: websocket drops, server
-crashes, a new build, any number until calm. A background tab has no timer of its own: only
+crashes, a new build, any number until adversaryDone. A background tab has no timer of its own: only
 what the engine pushes or sends on reconnect reaches it. The page server has its own copy
 of the store: it hears changes through its watch, which can be lost (a fault), and reads the
 store again when it starts and by a poll (off in browserNoPoll). G4 is "shown while a page

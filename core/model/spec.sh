@@ -72,7 +72,7 @@ smallBreaks configs.qnt coreAskReverse NoWaitCycle 0x2a 500 60
 smallBreaks configs.qnt coreNoRaise Converges 0x2a 2000 200
 smallBreaks configs.qnt coreNoCross Converges 0x2a 500 200
 smallBreaks configs.qnt coreNoSplit Converges 0x2a 500 200
-smallBreaks terminals.qnt termNoEvidence ExactlyOnce 0x2a 2000 60
+smallBreaks terminals.qnt termNoEvidence ExactlyOnce 0x2a 5000 200
 smallBreaks store.qnt storeBlind G3Holds 0x2a 2000 30
 smallBreaks pipe.qnt pipeNoDedup NoKeystrokeTwice 0x2a 2000 100
 smallBreaks pipe.qnt pipeMarkAfter NoKeystrokeTwice 0x2a 5000 150
