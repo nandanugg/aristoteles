@@ -120,7 +120,8 @@ describe('the server, read only', () => {
     const p = project()
     const sizes = []
     const pump = {
-      onOutputs: [], onSizes: [], status: () => ({}), snapshot: () => new Uint8Array(), input: () => {},
+      onOutputs: [], onSizes: [], onAttach: [], status: () => ({}),
+      snapshot: () => new Uint8Array(), input: () => {},
       resize: (sid, cols, rows) => sizes.push([sid, cols, rows]),
     }
     const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }, pump })

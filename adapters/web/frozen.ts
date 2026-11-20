@@ -1,3 +1,4 @@
+import type { TerminalTarget } from '../live/pump.ts'
 // The types of the web entry points (plan/rebuild/BUILD.md D15): the pump, the watcher, the
 // server and work start, which test/code.js gives to the integrated tests.
 import type { Work } from '../../core/schema/index.ts'
@@ -34,6 +35,9 @@ export interface Pump {
   readonly dir: string
   // The listeners that the server adds; each gets every output.
   onOutputs: ReadonlyArray<(session: string, bytes: Uint8Array) => void>
+  onAttach: ReadonlyArray<(session?: string) => void>
+  readonly redraw: (session: string, show: (bytes: Uint8Array) => void) => void
+  readonly inputTarget: (session: string) => TerminalTarget
   readonly start: (session: string, command: string, options?: StartOptions) => string
   readonly resume: (session: string, command: string, options?: StartOptions) => string
   readonly input: (session: string, text: string) => void

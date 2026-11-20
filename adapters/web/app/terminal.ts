@@ -68,6 +68,7 @@ function openTerminal(
   el: HTMLElement,
   session: Session,
   setState: (state: string) => void,
+  setWaiting: (count: number) => void,
 ): OpenTerminal {
   const term = new window.Terminal({
     fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
@@ -97,21 +98,49 @@ function openTerminal(
   }
   const watch = new ResizeObserver(refit)
   watch.observe(el)
+  let attach = -1
+  let pendingSize: { attach: number; cols: number; rows: number } | undefined
   const off = socket.listen((m) => {
-    if (m.type === 'open') socket.send({ type: 'term.open', session })
+    if (m.type === 'open') {
+      attach = -1
+      pendingSize = undefined
+    }
+    if (m.type === 'term.pending' && m.session === session) {
+      setWaiting(m.count)
+    }
     if (m.type === 'term.size' && m.session === session) {
-      term.resize(m.cols, m.rows)
-      refit()
+      if (m.attach < attach) return
+      if (m.attach > attach) {
+        if (!pendingSize || m.attach >= pendingSize.attach) pendingSize = m
+      }
+      else {
+        term.resize(m.cols, m.rows)
+        refit()
+      }
     }
     if (m.type === 'term.data' && m.session === session) {
-      if (m.reset) term.reset()
+      if (m.attach < attach || (!m.reset && m.attach !== attach)) return
+      if (m.reset) {
+        attach = m.attach
+        // Queue the reset behind bytes from the previous attachment.
+        term.write('\x1bc')
+        if (pendingSize?.attach === attach) {
+          term.resize(pendingSize.cols, pendingSize.rows)
+          refit()
+          pendingSize = undefined
+        }
+      }
       term.write(fromBase64(m.data))
       setState('open')
     }
     if (m.type === 'term.error' && m.session === session) setState(m.error)
   })
+  const visible = () => {
+    if (!document.hidden) socket.send({ type: 'term.redraw', session })
+  }
+  document.addEventListener('visibilitychange', visible)
   const input = term.onData((data) => {
-    if (!REPLY.test(data)) socket.send({ type: 'term.input', session, data })
+    if (!REPLY.test(data)) socket.input(session, data)
   })
   socket.send({ type: 'term.open', session })
   term.focus()
@@ -127,6 +156,7 @@ function openTerminal(
       watch.disconnect()
       socket.send({ type: 'term.close', session })
       off()
+      document.removeEventListener('visibilitychange', visible)
       input.dispose()
       term.dispose()
     },
@@ -138,6 +168,7 @@ export function Terminal({ label, session, live }: TerminalProps) {
   const box = useRef<HTMLDivElement>(null)
   const opened = useRef<OpenTerminal>()
   const [state, setState] = useState('connecting')
+  const [waiting, setWaiting] = useState(0)
   useEffect(() => {
     const el = box.current
     if (!el) return undefined
@@ -145,7 +176,7 @@ export function Terminal({ label, session, live }: TerminalProps) {
     let closed = false
     xtermLoaded()
       .then(() => {
-        if (!closed) opened.current = openTerminal(el, session, setState)
+        if (!closed) opened.current = openTerminal(el, session, setState, setWaiting)
       })
       .catch((error: unknown) => setState(error instanceof Error ? error.message : String(error)))
     return () => {
@@ -157,7 +188,7 @@ export function Terminal({ label, session, live }: TerminalProps) {
   // Page Up and Page Down for the tool in the terminal: Claude scrolls its own view with them.
   // A press keeps the focus in the terminal, so that the person types on.
   const page = (key: string) =>
-    socket.send({ type: 'term.input', session, data: key })
+    socket.input(session, key)
   const keep = (e: Event) => e.preventDefault()
   // The resize button asks tmux for the size that fills the box now, but never less than 80 x 24:
   // a tap on a phone must leave an AI CLI a terminal that it can use. The terminal takes the size
@@ -170,12 +201,14 @@ export function Terminal({ label, session, live }: TerminalProps) {
     socket.send({ type: 'term.resize', session, cols, rows })
   }
   const words = live ? 'runs' : 'inactive'
+  const detail = state !== 'open' && state !== 'connecting' ? ` · ${state}` : ''
+  const pending = waiting ? ` · ${waiting} keys waiting` : ''
   return html`<div class="term-bar"><span>${label} · session <code>${session}</code>
     </span><span class="grow"></span>
       ${live ? html`<button class="btn small" onMouseDown=${keep} onClick=${fitBox}
         title="Set the terminal to the size of this box, at least 80 x 24">Fit to box</button>`
         : ''}
-      <span>${words}${state !== 'open' && state !== 'connecting' ? ` · ${state}` : ''}</span></div>
+      <span>${words}${detail}${pending}</span></div>
     <div class="term-wrap">
       <div class="term" ref=${box}></div>
       ${live ? html`<div class="term-scroll">

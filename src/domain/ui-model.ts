@@ -98,14 +98,36 @@ export interface DirectionView {
 }
 // The websocket: "changed" when the store has a new act, and the bytes of the terminals. The
 // optional keys of the messages and of the acts below are the wire format (outside), as today.
+export interface TermKey {
+  readonly type: 'term.key'
+  readonly instance: string
+  readonly session: SessionId
+  readonly target: string
+  readonly seq: number
+  readonly data: Text
+}
+
+export interface KeyReceipt {
+  readonly type: 'term.receipt'
+  readonly instance: string
+  readonly session: SessionId
+  readonly target: string
+  readonly seq: number
+  readonly status: 'applied' | 'doNotResend' | 'refused' | 'uncertain'
+  readonly reason?: 'target'
+}
+
 export type ServerMessage =
   | { readonly type: 'changed' }
+  | KeyReceipt
+  | { readonly type: 'term.bound'; readonly session: SessionId; readonly target: string }
   // P8: the build of the server's code, on each open of the socket; a new one reloads the page.
   | { readonly type: 'hello'; readonly build: string }
   | {
       readonly type: 'term.data'
       readonly session: SessionId
       readonly data: Text
+      readonly attach: number
       readonly reset?: boolean
     } // base64
   | { readonly type: 'term.error'; readonly session: SessionId; readonly error: Text }
@@ -114,12 +136,13 @@ export type ServerMessage =
   | {
       readonly type: 'term.size'
       readonly session: SessionId
+      readonly attach: number
       readonly cols: PositiveInt
       readonly rows: PositiveInt
     }
 export type PageMessage =
-  | { readonly type: 'term.open' | 'term.close'; readonly session: SessionId }
-  | { readonly type: 'term.input'; readonly session: SessionId; readonly data: Text }
+  | { readonly type: 'term.open' | 'term.close' | 'term.redraw'; readonly session: SessionId }
+  | TermKey
   | {
       readonly type: 'term.resize'
       readonly session: SessionId

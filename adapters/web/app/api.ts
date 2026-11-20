@@ -2,15 +2,14 @@
 // acts of the person, and the toast at the bottom of the page.
 import { Data, Effect, Schema } from 'effect'
 import type { OnboardingAct } from '../../../src/domain/onboarding.ts'
+import { pipeOutbox } from './pipe-outbox.ts'
+import { createSocket } from './pipe-socket.ts'
 import type { What } from '../../../src/domain/work-acts.ts'
 import {
   ActAnswer,
   ApiError as ApiErrorBody,
   type Dash,
-  DashMessage,
   type PageAct,
-  PageMessage,
-  ServerMessage,
 } from '../contract.ts'
 
 // The server refused, the network failed, or the answer did not match its Schema; the message
@@ -117,56 +116,26 @@ export const postOnboarding = (act: OnboardingActJson): Promise<ActOut> =>
     }),
   )
 
-// What the page hears: a server message, or its own "open" when the socket connects.
-export type Heard =
-  | typeof ServerMessage.Type
-  | typeof DashMessage.Type
-  | { readonly type: 'open' }
-const decodeMessage = Schema.decodeUnknownOption(Schema.Union([ServerMessage, DashMessage]))
-type Listener = (message: Heard) => void
-
-// One websocket for the page. A lost socket connects again; a message sent before it opens waits.
-const createSocket = () => {
-  const listeners = new Set<Listener>()
-  let ws: WebSocket
-  let queue: string[] = []
-  let build: string | null = null
-  const connect = () => {
-    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
-    ws.onopen = () => {
-      for (const m of queue) ws.send(m)
-      queue = []
-      for (const fn of listeners) fn({ type: 'open' })
-    }
-    ws.onmessage = (m) => {
-      const message = decodeMessage(JSON.parse(String(m.data)))
-      if (message._tag === 'None') return
-      // P8: a server of another build than the one that served this page: the page reloads.
-      if (message.value.type === 'hello') {
-        if (build !== null && build !== message.value.build) location.reload()
-        build = message.value.build
-        return
-      }
-      for (const fn of listeners) fn(message.value)
-    }
-    ws.onclose = () => setTimeout(connect, 1000)
-  }
-  connect()
-  return {
-    listen(fn: Listener): () => void {
-      listeners.add(fn)
-      return () => {
-        listeners.delete(fn)
-      }
-    },
-    send(message: typeof PageMessage.Type): void {
-      const text = JSON.stringify(message)
-      if (ws.readyState === 1) ws.send(text)
-      else queue.push(text)
-    },
+const browserOutbox = () => {
+  try {
+    const navigation = performance.getEntriesByType('navigation')[0] as
+      PerformanceNavigationTiming | undefined
+    return pipeOutbox(sessionStorage, navigation?.type === 'reload')
+  } catch {
+    return undefined
   }
 }
-export const socket = createSocket()
+const outbox = browserOutbox()
+export const socket = createSocket({
+  ...(outbox ? { outbox } : {}),
+  connect() {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return new WebSocket(`${protocol}//${location.host}/ws`)
+  },
+  retry: (fn) => { setTimeout(fn, 1000) },
+  reload: () => location.reload(),
+  notice: (words) => toast(words),
+})
 
 // A short message at the bottom of the page.
 export const toast = (text: string): void => {

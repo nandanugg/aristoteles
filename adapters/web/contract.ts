@@ -169,14 +169,27 @@ export const PersonView = Schema.Struct({
 
 // --- the websocket --------------------------------------------------------------------------
 
+const KeySequence = Schema.Number.check(Schema.isInt(), Schema.isBetween({
+  minimum: 1, maximum: Number.MAX_SAFE_INTEGER - 1,
+}))
+const KeyIdentity = { instance: Text, session: SessionId, target: Text, seq: KeySequence }
+const Attach = Schema.Number.check(Schema.isInt())
+
 export const ServerMessage = Schema.Union([
   Schema.Struct({ type: Schema.Literal('changed') }),
+  Schema.Struct({ type: Schema.Literal('term.bound'), session: SessionId, target: Text }),
+  Schema.Struct({
+    type: Schema.Literal('term.receipt'), ...KeyIdentity,
+    status: Schema.Literals(['applied', 'doNotResend', 'refused', 'uncertain']),
+    reason: Schema.optionalKey(Schema.Literal('target')),
+  }),
   // P8: the build of the server's code, on each open of the socket; a new one reloads the page.
   Schema.Struct({ type: Schema.Literal('hello'), build: Schema.String }),
   Schema.Struct({
     type: Schema.Literal('term.data'),
     session: SessionId,
     data: Text,
+    attach: Attach,
     reset: Schema.optionalKey(Schema.Boolean),
   }),
   Schema.Struct({ type: Schema.Literal('term.error'), session: SessionId, error: Text }),
@@ -185,13 +198,16 @@ export const ServerMessage = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('term.size'),
     session: SessionId,
+    attach: Attach,
     cols: PositiveInt,
     rows: PositiveInt,
   }),
 ])
 export const PageMessage = Schema.Union([
-  Schema.Struct({ type: Schema.Literals(['term.open', 'term.close']), session: SessionId }),
-  Schema.Struct({ type: Schema.Literal('term.input'), session: SessionId, data: Text }),
+  Schema.Struct({
+    type: Schema.Literals(['term.open', 'term.close', 'term.redraw']), session: SessionId,
+  }),
+  Schema.Struct({ type: Schema.Literal('term.key'), ...KeyIdentity, data: Text }),
   Schema.Struct({
     type: Schema.Literal('term.resize'),
     session: SessionId,
@@ -199,6 +215,9 @@ export const PageMessage = Schema.Union([
     rows: PositiveInt,
   }),
 ])
+
+export type TermKey = Extract<typeof PageMessage.Type, { readonly type: 'term.key' }>
+export type KeyReceipt = Extract<typeof ServerMessage.Type, { readonly type: 'term.receipt' }>
 
 // --- the dashboard (GET /api/dash, and the `dash` message of the socket) ----------------------
 

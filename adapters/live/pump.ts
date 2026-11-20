@@ -10,8 +10,10 @@
 // One engine, two views. createTmuxPump is the sync facade that the frozen createPump of
 // adapters/web returns; pumpLayerOf makes the Pump service of core/services from any facade (a
 // test's fake too). The frozen WatcherOptions.pump is a facade, so the watcher needs this way.
-import { createHash } from 'node:crypto'
-import { rmSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Effect, Layer } from 'effect'
 import { OutsideFailed } from '../../core/schema/index.ts'
 import type { TerminalReading } from '../../core/schema/outside.ts'
@@ -42,6 +44,34 @@ export interface TerminalSize {
   readonly rows: number
 }
 
+export interface PreparedTerminalWrite {
+  readonly run: () => 'applied' | 'target'
+  readonly cleanup?: () => void
+}
+
+export type TerminalTarget =
+  | { readonly state: 'waiting' | 'gone' }
+  | {
+    readonly state: 'ready'
+    readonly id: string
+    readonly prepare: (
+      text: string, instance: string, seq: number,
+    ) => PreparedTerminalWrite | undefined
+  }
+
+// A failed probe only proves disappearance when tmux can still list the relevant panes.
+export const pipeTargetOf = (
+  read: { readonly code: number; readonly out: string },
+  missing: () => boolean,
+) => {
+  if (read.code !== 0) return missing() ? { state: 'gone' as const } : { state: 'waiting' as const }
+  const identity = read.out.trim()
+  const match = /^\d+ \d+ (%\d+) \d+ ([01])$/.exec(identity)
+  if (!match?.[1]) return { state: 'waiting' as const }
+  if (match[2] === '1') return { state: 'gone' as const }
+  return { state: 'ready' as const, pane: match[1], identity }
+}
+
 // The sync facade (adapters/web/frozen.ts Pump has this shape); a refusal is a thrown Error.
 export interface TmuxPump {
   readonly name: string
@@ -49,6 +79,9 @@ export interface TmuxPump {
   readonly dir: string
   // Listeners that the server adds; each gets every output.
   onOutputs: ReadonlyArray<(session: string, bytes: Uint8Array) => void>
+  onAttach: ReadonlyArray<(session?: string) => void>
+  readonly redraw: (session: string, show: (bytes: Uint8Array) => void) => void
+  readonly inputTarget: (session: string) => TerminalTarget
   readonly start: (session: string, command: string, options?: StartOptions) => string
   readonly resume: (session: string, command: string, options?: StartOptions) => string
   readonly input: (session: string, text: string) => void
@@ -195,6 +228,7 @@ const detach = (client: ControlClient | undefined) => {
 
 const startsWith = (bytes: Uint8Array, prefix: Uint8Array) =>
   bytes.length >= prefix.length && prefix.every((b, i) => bytes[i] === b)
+const CONTROL_END = new TextEncoder().encode('%end ')
 const OUTPUT = new TextEncoder().encode('%output %')
 // tmux resized a window of the client's session (`%layout-change @<window> <layout> ...`).
 const LAYOUT_CHANGE = new TextEncoder().encode('%layout-change ')
@@ -235,6 +269,9 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     refuse('tmux is not on this machine; the terminals of the UI need tmux')
   }
 
+  const rawPaste = tmuxNow('list-commands').out.split('\n').some(
+    (line) => line.startsWith('paste-buffer ') && /\[-[^\]]*S/.test(line),
+  )
   // The session of the dir, with a home window that keeps it alive when the agents end.
   const makeSession = () => {
     const made = tmuxNow(
@@ -304,6 +341,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
   // The control client of the pump's own session: %output lines carry the bytes of each pane;
   // after a %layout-change each terminal says its size again (a page that has it already keeps it).
   let client: ControlClient | undefined
+  let ownReady = false
   let closed = false
   // Which panes ended since the last look, and which windows are gone (killed while the pump was
   // detached, or after): a window that a start or a stop did not take is ended, whatever tmux
@@ -342,25 +380,38 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
   // Any detach (another client's attach -d, %exit, the server) ends the client's output: the pump
   // attaches again, after a delay that doubles to 5 s and starts over with the first line.
   let delay = 500
+  const attached = (sid?: string) => {
+    for (const fn of pump.onAttach) fn(sid)
+  }
   const attach = () => {
+    if (closed) return
     // The session can be gone (its server was killed): make it again before the client attaches.
     if (tmuxNow('has-session', '-t', name).code !== 0) makeSession()
     const args = ['-L', socket, '-C', 'attach-session', '-t', name]
-    client = controlClient(
+    const next = controlClient(
       args,
       (line) => {
+        if (closed || client !== next) return
+        if (!ownReady) {
+          if (!startsWith(line, CONTROL_END)) return
+          ownReady = true
+          refreshPanes()
+          attached()
+          return
+        }
         delay = 500
-        ownLine(line)
+        if (!captureLine(next, line)) ownLine(line)
       },
       () => {
-        if (closed) return
+        if (closed || client !== next) return
+        ownReady = false
         setTimeout(attach, delay)
         delay = Math.min(delay * 2, 5000)
       },
     )
+    client = next
     lookOwn()
   }
-  attach()
 
   // The host's own pane (ruling 2026-11-14): while a page shows it, one control client on the
   // person's server streams it to every tab that shows it; ignore-size keeps that client out of
@@ -401,11 +452,20 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       a.last = clock()
     }
   }
+  const readyHosts = new Set<string>()
   const streamHost = (sid: string, a: Adopted) => {
     // Not read-only (-r): tmux refuses a send-keys from outside the session when its newest
     // client is read-only, and this client is the newest. It is sent no command.
     const args = ['-S', a.socket, '-C', 'attach-session', '-f', 'ignore-size', '-t', a.pane]
     const hostLine = (line: Uint8Array) => {
+      if (adopted.get(sid) !== a || a.client !== hostClient) return
+      if (!readyHosts.has(sid)) {
+        if (!startsWith(line, CONTROL_END)) return
+        readyHosts.add(sid)
+        attached(sid)
+        return
+      }
+      if (captureLine(hostClient, line)) return
       if (startsWith(line, LAYOUT_CHANGE)) {
         const size = hostSize(a)
         if (size) emitSize(sid, size)
@@ -418,13 +478,13 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     // a page shows the pane, a new client streams it, after a whole frame of what the page missed.
     const detached = () => {
       if (a.client !== hostClient) return
+      readyHosts.delete(sid)
       setTimeout(() => {
         if (adopted.get(sid) !== a || a.client !== hostClient) return
         a.client = undefined
         lookHost(sid, a)
         if (a.ended || hostSize(a) === undefined) return
         streamHost(sid, a)
-        emit(sid, hostFrame(a))
       }, 500)
     }
     const hostClient = controlClient(args, hostLine, detached)
@@ -473,12 +533,165 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     return done.value
   }
 
+  // Capturing through the same control client orders the snapshot between output events.
+  // Replies are bracketed by matching %begin and %end/%error lines.
+  interface Capture {
+    readonly pane: string
+    readonly show: (bytes: Uint8Array) => void
+    readonly lines: string[]
+    marker?: string
+  }
+  const captures = new WeakMap<ControlClient, Capture[]>()
+  const sendCapture = (control: ControlClient, capture: Capture) => {
+    control.stdin.write(`capture-pane -p -e -t ${capture.pane}\n`)
+    control.stdin.flush()
+  }
+  const captureLine = (control: ControlClient, bytes: Uint8Array) => {
+    const queue = captures.get(control)
+    const capture = queue?.[0]
+    if (!queue || !capture) return false
+    const line = new TextDecoder().decode(bytes)
+    if (capture.marker === undefined) {
+      if (!line.startsWith('%begin ')) return false
+      capture.marker = line.slice(7)
+      return true
+    }
+    if (line === `%end ${capture.marker}` || line === `%error ${capture.marker}`) {
+      queue.shift()
+      capture.show(new TextEncoder().encode(capture.lines.join('\r\n')))
+      if (queue[0]) sendCapture(control, queue[0])
+    } else capture.lines.push(line)
+    return true
+  }
+
   const pump: TmuxPump = {
     name,
     socket,
     dir,
     onOutputs: [],
     onSizes: [],
+    onAttach: [],
+    redraw(sid, show) {
+      const a = adopted.get(sid)
+      const control = a?.client ?? client
+      if (!control || (a ? !readyHosts.has(sid) : !ownReady)) return
+      const pane = a?.pane ?? list().find((p) => p.sid === sid)?.pane
+      if (!pane || !/^%\d+$/.test(pane)) {
+        show(new Uint8Array())
+        return
+      }
+      const format = `#{cursor_x} #{cursor_y} ${MOUSE_FLAGS}`
+      const args = ['display-message', '-p', '-t', pane, format]
+      const info = a ? onPersonServer(a.socket, args).stdout.toString() : tmuxNow(...args).out
+      const [x = '0', y = '0', ...flags] = info.trim().split(' ')
+      const cursor = new TextEncoder().encode(
+        `\x1b[${Number(y) + 1};${Number(x) + 1}H${mouseModesOf(flags)}`,
+      )
+      const capture: Capture = {
+        pane, lines: [], show: (bytes) => {
+          if (a ? adopted.get(sid) !== a || a.client !== control : client !== control) return
+          const frame = new Uint8Array(bytes.length + cursor.length)
+          frame.set(bytes)
+          frame.set(cursor, bytes.length)
+          show(frame)
+        },
+      }
+      const existing = captures.get(control)
+      if (existing?.length) existing.push(capture)
+      else {
+        captures.set(control, [capture])
+        sendCapture(control, capture)
+      }
+    },
+    inputTarget(sid) {
+      const adoptedPane = adopted.get(sid)
+      if (adoptedPane ? !readyHosts.has(sid) : !ownReady) return { state: 'waiting' }
+      const run = (args: string[]) => {
+        if (!adoptedPane) return tmuxNow(...args)
+        const result = onPersonServer(adoptedPane.socket, args)
+        return {
+          code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString(),
+        }
+      }
+      const format = '#{pid} #{start_time} #{pane_id} #{pane_pid} #{pane_dead}'
+      const at = adoptedPane?.pane ?? target(sid)
+      const found = pipeTargetOf(run(['display-message', '-p', '-t', at, format]), () => {
+        if (!adoptedPane) return rowsNow()?.every((row) => row.sid !== sid) === true
+        const inventory = run(['list-panes', '-a', '-F', '#{pane_id}'])
+        return inventory.code === 0 && !inventory.out.trim().split('\n').includes(at)
+      })
+      if (found.state !== 'ready') return found
+      const { pane, identity } = found
+      const id = JSON.stringify([adoptedPane?.socket ?? socket, identity])
+      return {
+        state: 'ready', id,
+        prepare(text, instance, seq) {
+          const bytes = new TextEncoder().encode(text)
+          const stream = createHash('sha256').update(JSON.stringify([dir, id, instance]))
+            .digest('hex').slice(0, 32)
+          const option = `@ar-pipe-${stream}`
+          const sequence = String(seq).padStart(16, '0')
+          const samePane = `#{==:${format},${identity}}`
+          const next = `#{>:${sequence},#{${option}}}`
+          const check = ['if-shell', '-F', '-t', pane, `#{&&:${samePane},${next}}`]
+          // The tmux-side guard also fences a previous server's subprocess if the server
+          // died after spawning it and the replacement has already sent a newer key.
+          const mark = `set-option -p -t ${pane} ${option} ${sequence}`
+          const hexCommand = (chunk: Uint8Array) => {
+            const hex = [...chunk].map((byte) => byte.toString(16).padStart(2, '0')).join(' ')
+            return `send-keys -t ${pane} -H ${hex}`
+          }
+          const refused = 'display-message -p target-changed'
+          const prepare = (
+            args: string[], cleanup?: () => void, mayWriteInParts = false,
+          ): PreparedTerminalWrite => ({
+            run() {
+              const result = run([...check, ...args])
+              if (result.out.includes('target-changed') ||
+                (!mayWriteInParts && /can't find pane:/.test(result.err))) {
+                return 'target'
+              }
+              if (result.code !== 0) refuse(`tmux could not type into ${sid}`)
+              return 'applied'
+            },
+            ...(cleanup ? { cleanup } : {}),
+          })
+          if (bytes.length <= 128) {
+            return prepare([`${mark}; ${hexCommand(bytes)}`, refused])
+          }
+          if (rawPaste) {
+            // Bypass tmux's command length limit. -r -S preserve the original bytes.
+            const buffer = `ar-pipe-${randomUUID()}`
+            const endpoint = adoptedPane ? ['-S', adoptedPane.socket] : ['-L', socket]
+            const child = Bun.spawnSync([
+              pathOf('tmux'), '-f', '/dev/null', ...endpoint, 'load-buffer', '-b', buffer, '-',
+            ], { env, stdin: bytes })
+            const cleanup = () => { run(['delete-buffer', '-b', buffer]) }
+            if (child.exitCode !== 0) {
+              cleanup()
+              return undefined
+            }
+            return prepare([`${mark}; paste-buffer -d -r -S -b ${buffer} -t ${pane}`, refused],
+              cleanup)
+          }
+          // Older tmux releases escape control bytes when pasting buffers.
+          const folder = mkdtempSync(join(tmpdir(), 'ar-pipe-'))
+          const cleanup = () => rmSync(folder, { recursive: true, force: true })
+          try {
+            const file = join(folder, 'keys')
+            const lines = [mark]
+            for (let i = 0; i < bytes.length; i += 128) {
+              lines.push(hexCommand(bytes.subarray(i, i + 128)))
+            }
+            writeFileSync(file, lines.join('\n'), { mode: 0o600 })
+            return prepare([`source-file ${JSON.stringify(file)}`, refused], cleanup, true)
+          } catch (error) {
+            cleanup()
+            throw error
+          }
+        },
+      }
+    },
     // Starts a real agent: its command runs in a new window, with ARISTOTELES_SESSION set, so
     // that the CLI refuses a person command from it.
     start(sid, command, { env: vars = {}, cols = 160, rows = 48 } = {}) {
@@ -499,6 +712,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       tmuxNow('resize-window', '-t', target(sid), '-x', String(cols), '-y', String(rows))
       gone.delete(sid)
       lookOwn()
+      attached(sid)
       return r.out.trim()
     },
     // A resume: a dead pane runs the resume command; a closed window is made again.
@@ -513,6 +727,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
         runOrThrow(mustTmux(`resume ${sid}`, respawn))
         gone.delete(sid)
         lookOwn()
+        attached(sid)
         return p.pane
       }
       return pump.start(sid, command, startOptions)
@@ -619,6 +834,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       const a = adopted.get(sid)
       if (a?.socket === on && a.pane === pane) return
       detach(a?.client)
+      readyHosts.delete(sid)
       const b: Adopted = {
         socket: on,
         pane,
@@ -632,10 +848,11 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       // A page that showed the old pane goes on with the new one.
       if (a?.client) {
         pump.show(sid)
-        emit(sid, hostFrame(b))
+        attached(sid)
       }
     },
     release(sid) {
+      readyHosts.delete(sid)
       detach(adopted.get(sid)?.client)
       adopted.delete(sid)
     },
@@ -676,10 +893,12 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     hide(sid) {
       const a = adopted.get(sid)
       if (!a) return
+      readyHosts.delete(sid)
       detach(a.client)
       a.client = undefined
     },
   }
+  attach()
   return pump
 }
 

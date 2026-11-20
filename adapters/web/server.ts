@@ -77,6 +77,7 @@ import {
 } from './contract.ts'
 import { dashOf } from './dash.ts'
 import type { ServerHandle, ServerOptions } from './frozen.ts'
+import { pipeMarks, pipeQueue } from './pipe-keys.ts'
 import { onboardingWords, startStore } from './onboard.ts'
 import {
   dirView,
@@ -324,62 +325,139 @@ export function startServer(options: ServerOptions): ServerHandle {
   // The terminals (part 5): a tab subscribes to the sessions that it shows; the pump's output
   // and each size that tmux reports go to each tab that shows its session.
   const watching = new Map<Bun.ServerWebSocket<undefined>, Set<string>>()
+  const attachments = new Map<string, number>()
   const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64')
   const toWatchers = (session: string, message: unknown) => {
     const text = JSON.stringify(message)
-    for (const [ws, set] of watching) if (set.has(session)) ws.send(text)
+    for (const [ws, set] of watching) {
+      if (set.has(session) && ws.send(text) === 0) ws.close(1013, 'redraw terminal')
+    }
   }
   const shown = (session: string) => [...watching.values()].some((set) => set.has(session))
-  if (pump) {
-    pump.onOutputs = [
-      ...pump.onOutputs,
-      (session, bytes) => toWatchers(session, { type: 'term.data', session, data: b64(bytes) }),
-    ]
-    pump.onSizes = [
-      ...pump.onSizes,
-      (session, size) => toWatchers(session, { type: 'term.size', session, ...size }),
-    ]
+  let marks: ReturnType<typeof pipeMarks> | undefined
+  let keys: ReturnType<typeof pipeQueue> | undefined
+  const queue = () => {
+    if (keys) return keys
+    marks = pipeMarks(dbPath(env), dir)
+    keys = pipeQueue(marks, (key) => {
+      const target = pump?.inputTarget(key.session)
+      if (!target || target.state === 'gone') return { state: 'gone' }
+      if (target.state !== 'ready') return { state: 'waiting' }
+      return target.id === key.target
+        ? { state: 'ready', prepare: () => target.prepare(key.data, key.instance, key.seq) }
+        : { state: 'gone' }
+    })
+    return keys
   }
+  const waitingBindings = new Set<string>()
+  const bind = (session: string) => {
+    const target = pump?.inputTarget(session)
+    if (target?.state !== 'ready') {
+      if (!waitingBindings.has(session)) {
+        toWatchers(session, {
+          type: 'term.error', session, error: 'Waiting for the terminal pane to bind',
+        })
+      }
+      waitingBindings.add(session)
+      return false
+    }
+    waitingBindings.delete(session)
+    toWatchers(session, { type: 'term.bound', session, target: target.id })
+    return true
+  }
+  const redraw = (session: string) => {
+    if (!pump || !shown(session)) return
+    pump.redraw(session, (frame) => {
+      if (!shown(session)) return
+      const attach = (attachments.get(session) ?? 0) + 1
+      attachments.set(session, attach)
+      const size = pump.size(session)
+      if (size) toWatchers(session, { type: 'term.size', session, ...size, attach })
+      toWatchers(session, {
+        type: 'term.data', session, data: b64(frame), reset: true, attach,
+      })
+      bind(session)
+    })
+  }
+  const onOutput = (session: string, bytes: Uint8Array) => {
+    const attach = attachments.get(session)
+    if (attach !== undefined) {
+      toWatchers(session, { type: 'term.data', session, data: b64(bytes), attach })
+    }
+  }
+  const onSize = (session: string, size: { cols: number; rows: number }) => {
+    const attach = attachments.get(session)
+    if (attach !== undefined) toWatchers(session, { type: 'term.size', session, ...size, attach })
+  }
+  const onAttach = (session?: string) => {
+    if (session !== undefined) redraw(session)
+    else for (const sid of new Set([...watching.values()].flatMap((set) => [...set]))) redraw(sid)
+  }
+  if (pump) {
+    pump.onOutputs = [...pump.onOutputs, onOutput]
+    pump.onSizes = [...pump.onSizes, onSize]
+    pump.onAttach = [...pump.onAttach, onAttach]
+  }
+  const drain = setInterval(() => {
+    try {
+      keys?.drain()
+    } catch {
+      // Leave keys pending when storage is temporarily unavailable.
+    }
+  }, 100)
+  drain.unref()
+  const retryBindings = setInterval(() => {
+    for (const session of waitingBindings) {
+      if (!shown(session)) waitingBindings.delete(session)
+      else if (bind(session)) redraw(session)
+    }
+  }, 1000)
+  retryBindings.unref()
   const terminalMessage = (ws: Bun.ServerWebSocket<undefined>, m: typeof PageMessage.Type) => {
+    const error = (words: string) =>
+      ws.send(JSON.stringify({ type: 'term.error', session: m.session, error: words }))
     if (!pump) {
-      const error = 'tmux is not on this machine'
-      ws.send(JSON.stringify({ type: 'term.error', session: m.session, error }))
+      error('tmux is not on this machine')
       return
     }
     const set = watching.get(ws) ?? new Set<string>()
     watching.set(ws, set)
     try {
       switch (m.type) {
-        case 'term.open': {
-          // The first tab that shows a terminal starts its stream; the size goes before the
-          // first bytes, so that they draw at the pane's own width.
+        case 'term.open':
           if (!shown(m.session)) pump.show(m.session)
           set.add(m.session)
-          const size = pump.size(m.session)
-          if (size) ws.send(JSON.stringify({ type: 'term.size', session: m.session, ...size }))
-          ws.send(
-            JSON.stringify({
-              type: 'term.data',
-              session: m.session,
-              data: b64(pump.snapshot(m.session)),
-              reset: true,
-            }),
-          )
+          redraw(m.session)
           break
-        }
+        case 'term.redraw':
+          if (set.has(m.session)) redraw(m.session)
+          break
         case 'term.close':
           set.delete(m.session)
           if (!shown(m.session)) pump.hide(m.session)
           break
-        case 'term.input':
-          pump.input(m.session, m.data)
+        case 'term.key':
+          if (!set.has(m.session)) {
+            ws.close(1013, 'reopen terminal and replay input')
+            return
+          }
+          if (!m.data || Buffer.byteLength(m.data) > 4096) {
+            error('Terminal input must be between 1 and 4096 bytes')
+            return
+          }
+          queue().enqueue(m, (receipt) => {
+            if (sockets.has(ws) && ws.send(JSON.stringify(receipt)) === 0) {
+              ws.close(1013, 'replay terminal input')
+            }
+          }, () => ws.close(1013, 'resynchronize terminal input'))
           break
         case 'term.resize':
           pump.resize(m.session, Math.max(40, m.cols | 0), Math.max(10, m.rows | 0))
           break
       }
-    } catch (error) {
-      ws.send(JSON.stringify({ type: 'term.error', session: m.session, error: messageOf(error) }))
+    } catch (cause) {
+      error(messageOf(cause))
+      if (m.type === 'term.key') ws.close(1013, 'retry terminal input')
     }
   }
 
@@ -743,6 +821,14 @@ export function startServer(options: ServerOptions): ServerHandle {
   const ownPort = server.port ?? 0
   const stop = () => {
     watcher?.stop()
+    clearInterval(drain)
+    clearInterval(retryBindings)
+    marks?.close()
+    if (pump) {
+      pump.onOutputs = pump.onOutputs.filter((fn) => fn !== onOutput)
+      pump.onSizes = pump.onSizes.filter((fn) => fn !== onSize)
+      pump.onAttach = pump.onAttach.filter((fn) => fn !== onAttach)
+    }
     clearInterval(poll)
     clearInterval(rebuild)
     clearTimeout(timer)
