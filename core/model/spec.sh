@@ -34,11 +34,28 @@ smallBreaks() {
   if echo "$out" | grep -q '^\[violation\]'; then echo "breaks $1 $2 $3"
   else echo "FAIL   $1 $2 $3 (expected a violation)"; fail=1; fi
 }
+pipeWitnesses() {
+  witnesses="ReplayedAfterRestart ReplayRetired InterruptedWrite
+    BufferedKeySurvivesReload GapDrained"
+  out=$($QUINT run pipe.qnt --main=pipeWitnesses --witnesses $witnesses --max-samples=8000 \
+    --max-steps=200 --seed=0x2a --n-threads=1 --verbosity=1 2>&1)
+  if ! echo "$out" | grep -q '^\[ok\]'; then
+    echo "FAIL   pipe.qnt pipeFixed witnesses"; echo "$out"; fail=1; return
+  fi
+  for witness in $witnesses; do
+    if echo "$out" | grep -Eq "^$witness was witnessed in [1-9][0-9]* trace"; then
+      echo "$out" | grep "^$witness "
+    else
+      echo "FAIL   pipe.qnt pipeFixed $witness (expected a witness)"; fail=1
+    fi
+  done
+}
 CORE_INV="Sane EveryObligationToldOnce ToldIsAllowed SomethingOwed DoneIsCurrent
   NoDoneBrokenAtEnd NoLostUpdate NoTakenUndone NoPassOfBadResult NoRefixAtSameLevel
   NoEscalationWithoutPerson NoAgentChangeAtTop Converges
   NoWaitCycle AskCap"
 CORE_INV=$(echo $CORE_INV)
+PIPE_INV="NoKeystrokeTwice NotStuck Prefix AtMostOneWriting WritingIsMarked"
 # A job: optional VAR=value settings (SAMPLES, STEPS), then a function and its arguments.
 if [ $MODE = job ]; then
   shift
@@ -63,7 +80,8 @@ smallHolds configs.qnt coreCrossOnly 'Converges'
 smallHolds terminals.qnt termFixed 'Sane ExactlyOnce'
 smallHolds store.qnt storeFixed 'G3Holds'
 smallHolds browser.qnt browserFixed 'DashAfterRefresh'
-smallHolds pipe.qnt pipeFixed 'NoKeystrokeTwice NotStuck'
+smallHolds pipe.qnt pipeFixed '$PIPE_INV'
+pipeWitnesses
 EOF2
 # Each property breaks in its mutant (README.md, Properties): file, module, property, seed,
 # runs, steps.
@@ -76,6 +94,7 @@ smallBreaks terminals.qnt termNoEvidence ExactlyOnce 0x2a 5000 200
 smallBreaks store.qnt storeBlind G3Holds 0x2a 2000 30
 smallBreaks pipe.qnt pipeNoDedup NoKeystrokeTwice 0x2a 2000 100
 smallBreaks pipe.qnt pipeMarkAfter NoKeystrokeTwice 0x2a 5000 150
+smallBreaks pipe.qnt pipeVolatileMarks NoKeystrokeTwice 0x2a 5000 150
 smallBreaks pipe.qnt pipeNoReattach NotStuck 0x2a 2000 200
 smallBreaks pipe.qnt pipeNoReconnect NotStuck 0x2a 2000 200
 smallBreaks pipe.qnt pipeNoRedraw NotStuck 0x2a 2000 200

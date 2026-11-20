@@ -472,25 +472,29 @@ acts and a three-state escalation passed 3 million states).
 
 Contains: tmux (up or down), the pump (attached, detached, crashed), the websocket (open or
 closed), the page's terminal view (current, stale, closed); the screen as a version (versions
-0..2) in tmux, in the pump's copy and in the page's drawn copy; two keystroke ids the person
-types once. The page server holds the keystroke queue and its `sent` marks; the pump is only
-the transport. Forwarding is two steps (mark then write; a crash between loses that
-keystroke, never repeats it). The browser keeps an id until tmux applied it and sends it
-again after a reconnect or a lost ack. Failures, any number in any order until
-`adversaryDone` (one weakly fair step, which also brings tmux up): tmux down or up, the
-screen changing, the pump crashing (its copy lost) or detached by another client's attach -d,
-a websocket drop, a stale view, a keystroke sent again. Fair recoveries (the engine only):
-the pump attaches again (the view goes stale: a full redraw), the websocket reconnects, the
-pump pipes the screen, the redraw, the server receives, marks, writes, and the browser's ack.
-The person's typing is not fair. Requirement: the page buffers a keystroke typed while its
-socket is closed. Outside the claim: the page server's own restart (it loses queue and marks).
+0..2) in tmux, in the pump's copy and in the page's drawn copy. One browser/target
+stream has two successive key ids. The browser keeps an outbox across reconnect and
+automatic reload. A page-server restart clears the queue and any in-flight attempt,
+crashes the pump, and retains the durable dispatch marks. The marks form a contiguous prefix: the
+server marks the next id when the pump is ready, before writing, with one attempt in
+flight. Receipts are lost with their socket. A marked replay gets a new receipt
+when its attempt is over. This can retire an interrupted key without asserting delivery.
 
-Properties: `ShowsCurrentScreen` (in the end tmux is up, the view is current and draws
-tmux's last screen), `NoKeystrokeLost` (a keystroke typed after the failures stopped is
-applied; one caught mid-write by a failure may be lost), `NoKeystrokeTwice` (safety: no id
-applied more than once). `NotStuck` is for the simulator, which cannot check liveness: the
-failures stopped, the page does not show tmux's screen, and no recovery is enabled;
-unreachable in pipeFixed, reached in the three liveness mutants.
+The adversary may restart the server, reload the page, drop the socket, bring tmux
+down or up, detach or crash the pump, or make the view stale. When failures stop,
+weakly fair recovery reconnects the socket, replays pending keys, attaches the pump,
+and redraws the last screen. Tab close, tab crash and host power loss are outside
+the model.
+
+Properties: `ShowsCurrentScreen` (in the end the view draws tmux's last screen),
+`NoKeystrokeLost` (every typed key eventually reaches tmux unless a failure cleared
+its marked in-flight attempt), `NoKeystrokeTwice` (no id applied more than once),
+`Prefix` (marks are contiguous), `AtMostOneWriting`, `WritingIsMarked`, and `NotStuck`
+(simulator screen-recovery check). Simulator witnesses exercise replay and receipt
+retirement after restart, an interrupted write, delivery of a buffered key restored
+after reload, and the draining of a gap. Receive can choose key 2 before key 1 from
+the reconnect replay. Socket identity and explicit retired-socket callbacks belong
+in the implementation tests.
 
 | Module | Checked | Expected |
 |---|---|---|
@@ -500,9 +504,15 @@ unreachable in pipeFixed, reached in the three liveness mutants.
 | pipeNoRedraw (no redraw: a stale view stays) | ShowsCurrentScreen | breaks |
 | pipeNoDedup (a sent again keystroke is forwarded again) | NoKeystrokeTwice | breaks |
 | pipeMarkAfter (write, then mark) | NoKeystrokeTwice | breaks |
+| pipeVolatileMarks (server restart loses its marks) | NoKeystrokeTwice | breaks |
 | pipeNoBuffer (a keystroke typed on a closed socket is dropped) | NoKeystrokeLost | breaks |
+| pipeNoOutbox (automatic reload fails to adopt the outbox) | NoKeystrokeLost | breaks |
 
-TLC states: not recorded yet.
+A dropped prefix key in pipeNoBuffer can also strand a later queued key. The
+prefix guard stays enabled in pipeNoDedup, which allows a marked key to dispatch
+again.
+
+TLC on the durable-mark model: pipeFixed completed with 111,536 distinct states.
 
 ### check.qnt, properties.qnt, configs.qnt, canon.qnt (G2)
 

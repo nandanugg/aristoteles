@@ -18,6 +18,7 @@ SAFE=Sane,EveryObligationToldOnce,ToldIsAllowed,SomethingOwed,DoneIsCurrent,NoDo
 SAFE=$SAFE,NoLostUpdate,NoTakenUndone,NoPassOfBadResult,NoRefixAtSameLevel
 SAFE=$SAFE,NoEscalationWithoutPerson,NoAgentChangeAtTop,Converges,NoWaitCycle,AskCap
 LIVE=CoreProgress,CoreChangesStop,CoreSettles
+PIPE_SAFE=NoKeystrokeTwice,Prefix,AtMostOneWriting,WritingIsMarked
 # A copy of the model with only the instance checked: the file up to its "---- instances"
 # line, then that module (quint's TLA+ export of a file with many instances overflows).
 extract() {
@@ -77,13 +78,15 @@ browser.qnt browserNoReconnect breaks - G4All
 browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All
 browser.qnt browserNoPoll breaks - G4All
-pipe.qnt pipeFixed holds NoKeystrokeTwice ShowsCurrentScreen,NoKeystrokeLost
+pipe.qnt pipeFixed holds $PIPE_SAFE ShowsCurrentScreen,NoKeystrokeLost
 pipe.qnt pipeNoReattach breaks - ShowsCurrentScreen
 pipe.qnt pipeNoReconnect breaks - ShowsCurrentScreen
 pipe.qnt pipeNoRedraw breaks - ShowsCurrentScreen
 pipe.qnt pipeNoDedup breaks NoKeystrokeTwice -
 pipe.qnt pipeMarkAfter breaks NoKeystrokeTwice -
+pipe.qnt pipeVolatileMarks breaks NoKeystrokeTwice -
 pipe.qnt pipeNoBuffer breaks - NoKeystrokeLost
+pipe.qnt pipeNoOutbox breaks - NoKeystrokeLost
 configs.qnt coreAsks holds $SAFE $LIVE
 configs.qnt coreAskRogue holds $SAFE $LIVE,AnswererFinishes
 configs.qnt coreAskReverse breaks NoWaitCycle -
