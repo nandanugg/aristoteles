@@ -22,6 +22,21 @@ export {
   WorkOpened,
 } from '../../src/domain/work-acts.ts'
 
+// --- the acts of the c16 contract (their stored form; the types are core/state/c16/types.ts) ---
+export {
+  ActEnvelope as ActEnvelopeSchema,
+  Actor as ActorSchema,
+  actorOf,
+  AnswerBody as AnswerBodySchema,
+  Ask as AskSchema,
+  Body as BodySchema,
+  keyOf,
+  QuestionBody as QuestionBodySchema,
+  QuestionForm as QuestionFormSchema,
+  Refusal as RefusalSchema,
+} from '../../src/domain/c16-acts.ts'
+export type { ActorCase, RefusalNameCase } from '../../src/domain/c16-acts.ts'
+
 // --- the stored events (Schemas: the store's contract, R2) -------------------------------------
 export {
   create,

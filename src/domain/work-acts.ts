@@ -31,24 +31,24 @@ export const ItemRec = Schema.Struct({
 })
 export type ItemRec = typeof ItemRec.Type
 
-const Level = Schema.Literals(['Split', 'Fit', 'Principle', 'Direct', 'Standard'])
-const Verdict = Schema.Literals(['Pass', 'Fail', 'RaiseTries', 'RaiseNoRule', 'RaiseMisses'])
+export const Level = Schema.Literals(['Split', 'Fit', 'Principle', 'Direct', 'Standard'])
+export const Verdict = Schema.Literals(['Pass', 'Fail', 'RaiseTries', 'RaiseNoRule', 'RaiseMisses'])
 export const RoleDraft = Schema.Struct({ role: Str, words: Str, model: Str })
-const TaskSpec = Schema.Struct({ name: Str, goal: Str, sections: Strs, role: Str })
-const Versions = Schema.Array(Schema.Tuple([Str, Int])).pipe(
+export const TaskSpec = Schema.Struct({ name: Str, goal: Str, sections: Strs, role: Str })
+export const Versions = Schema.Array(Schema.Tuple([Str, Int])).pipe(
   Schema.decodeTo(Schema.ReadonlyMap(Str, Int), {
     decode: SchemaGetter.transform((pairs) => new Map(pairs)),
     encode: SchemaGetter.transform((map) => [...map]),
   }),
 )
 const Drafted = Schema.NullOr(ItemRec)
-const DraftItems = Schema.Array(Schema.Tuple([Str, Drafted])).pipe(
+export const DraftItems = Schema.Array(Schema.Tuple([Str, Drafted])).pipe(
   Schema.decodeTo(Schema.ReadonlyMap(Str, Drafted), {
     decode: SchemaGetter.transform((pairs) => new Map(pairs)),
     encode: SchemaGetter.transform((map) => [...map]),
   }),
 )
-const Keys = setOf(Str)
+export const Keys = setOf(Str)
 
 export const What = Schema.Union([
   Schema.TaggedStruct('EndProject', {}),
