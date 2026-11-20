@@ -141,6 +141,9 @@ export type Body =
     readonly rule: ItemKey
     readonly rec: ItemRec
     readonly refOk: boolean // A
+    // The role's claim of the other rules its rule contradicts: for a rule with no test command
+    // (Ref); a rule with one keeps the harness's verdict (RunTest contra).
+    readonly fights: ReadonlyArray<ItemKey>
   }
   | {
     readonly _tag: 'RunTest'
@@ -153,6 +156,9 @@ export type Body =
     readonly fix: string
     readonly items: ReadonlySet<ItemKey>
     readonly draft: DraftItems
+    // The drafted direction resolves the rule's contradiction: the harness's cross test for a
+    // rule with a test command, the pipeline role's claim for a reference-only rule.
+    readonly resolvesFight: boolean
   }
   | { readonly _tag: 'LoopReview'; readonly fix: string; readonly toPerson: boolean }
   | {
