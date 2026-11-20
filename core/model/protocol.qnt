@@ -185,7 +185,8 @@ module protocol {
     val keep = ended.askCount.keys().filter(pair => pair._1 != maker and pair._2 != maker)
     // a Check kept across a revive goes with its maker (withdrawn by a reject)
     { ...ended, ghost: { ...ended.ghost,
-        keptChecks: ended.ghost.keptChecks.filter(ask => ask.from != maker) }, asks: ended.asks.filter(ask => ask.from != maker and ask.to != maker),
+        keptChecks: ended.ghost.keptChecks.filter(ask => ask.from != maker) },
+      asks: ended.asks.filter(ask => ask.from != maker and ask.to != maker),
       answered: ended.answered.filter(ask => ask.from != maker and ask.to != maker),
       justAnswered: ended.justAnswered.exclude(Set(maker)),
       askCount: keep.mapBy(pair => ended.askCount.get(pair)) }
