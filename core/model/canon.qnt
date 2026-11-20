@@ -73,5 +73,10 @@ module canon {
       ghost: { ...noGhost, endBroken: ghost.endBroken, lostUpdate: ghost.lostUpdate,
                takenUndone: ghost.takenUndone, refix: ghost.refix,
                escalatedNoPerson: ghost.escalatedNoPerson, topNoPerson: ghost.topNoPerson,
-               passDefect: ghost.passDefect, askRaised: ghost.askRaised } }
+               passDefect: ghost.passDefect, askRaised: ghost.askRaised,
+               restartedSlots: ghost.restartedSlots, keptChecks: ghost.keptChecks,
+               restartedAssigned: ghost.restartedAssigned,
+               keptCheckJudged: ghost.keptCheckJudged,
+               keptFailSlots: ghost.keptFailSlots,
+               keptFailAssigned: ghost.keptFailAssigned } }
 }

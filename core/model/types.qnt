@@ -185,6 +185,11 @@ module types {
   // bound to. done: the host returned the top (all done).
   type Top = { hostSession: int, done: bool, ended: bool }
   // Impossible states the store let in (each must stay false), and markers for witnesses.
+  // restartedSlots, keptChecks: the tasks a revived role lost its maker of (working, back to
+  // Sent) and the Checks it kept (in review; a Check leaves the set when judged or withdrawn);
+  // restartedAssigned, keptCheckJudged: one of the first got a fresh maker, one of the second was
+  // judged. keptFailSlots, keptFailAssigned: a kept Check was failed (no live maker: the task
+  // went to Sent) and then a fresh maker took the task.
   type Ghost = {
     endedActed: bool, otherResult: bool, otherVersion: bool, staleReport: bool,
     unseenReject: bool, unseenAccept: bool, rejectedInEffect: bool, lostUpdate: bool,
@@ -194,7 +199,9 @@ module types {
     unrechecked: bool, unacceptedChange: bool, acceptNotWaiting: bool, claimByEnded: bool,
     endBroken: bool, refix: bool, fightShipped: bool, raisedUp: bool, escalatedNoPerson: bool,
     topNoPerson: bool, askRaised: bool, rebaseFired: bool, recheckFired: bool,
-    reassignEnded: bool,
+    reassignEnded: bool, restartedSlots: Set[int], keptChecks: Set[Ask],
+    restartedAssigned: bool, keptCheckJudged: bool, keptFailSlots: Set[int],
+    keptFailAssigned: bool,
   }
   // versions: per item. fixDepth: per item, the depth of the level of its last fix from a
   // task's raise (NONE: none; 1 standard, 2 direction, 3 principle). epochs: per process.

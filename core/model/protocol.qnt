@@ -26,7 +26,9 @@ module protocol {
     takenUndone: false, wroteDropped: false, unrechecked: false, unacceptedChange: false,
     acceptNotWaiting: false, claimByEnded: false, endBroken: false, refix: false,
     fightShipped: false, raisedUp: false, escalatedNoPerson: false, topNoPerson: false,
-    askRaised: false, rebaseFired: false, recheckFired: false, reassignEnded: false }
+    askRaised: false, rebaseFired: false, recheckFired: false, reassignEnded: false,
+    restartedSlots: Set(), keptChecks: Set(), restartedAssigned: false,
+    keptCheckJudged: false, keptFailSlots: Set(), keptFailAssigned: false }
   def freshTask(generation: int, cause: Cause): Task = { generation: generation,
     state: Unsent, tries: 0, maker: NoOne, resultId: NONE, checked: ZERO, pending: Set(),
     badResult: false,
@@ -181,7 +183,9 @@ module protocol {
     if (maker == NoOne) store else
     val ended = setMaker(store, maker, row => { ...row, ended: true, claimed: false })
     val keep = ended.askCount.keys().filter(pair => pair._1 != maker and pair._2 != maker)
-    { ...ended, asks: ended.asks.filter(ask => ask.from != maker and ask.to != maker),
+    // a Check kept across a revive goes with its maker (withdrawn by a reject)
+    { ...ended, ghost: { ...ended.ghost,
+        keptChecks: ended.ghost.keptChecks.filter(ask => ask.from != maker) }, asks: ended.asks.filter(ask => ask.from != maker and ask.to != maker),
       answered: ended.answered.filter(ask => ask.from != maker and ask.to != maker),
       justAnswered: ended.justAnswered.exclude(Set(maker)),
       askCount: keep.mapBy(pair => ended.askCount.get(pair)) }
@@ -391,7 +395,12 @@ module protocol {
     val made = { ...store, nextMaker: store.nextMaker + 1, epochs: store.epochs.put(maker, 0),
       makers: store.makers.put(maker,
         { slot: slot, ended: false, claimed: false, brief: ZERO, revisions: 0 }) }
-    openAsk(setTask(made, slot, task => { ...task, state: Working, tries: 0, maker: maker }),
+    val assigned = mark(made, ghost => { ...ghost,
+      restartedAssigned: ghost.restartedAssigned or ghost.restartedSlots.contains(slot),
+      restartedSlots: ghost.restartedSlots.exclude(Set(slot)),
+      keptFailAssigned: ghost.keptFailAssigned or ghost.keptFailSlots.contains(slot),
+      keptFailSlots: ghost.keptFailSlots.exclude(Set(slot)) })
+    openAsk(setTask(assigned, slot, task => { ...task, state: Working, tries: 0, maker: maker }),
             executeAsk(Role, maker, slot))
   // The person's reject of a result (a done task opens the top again): the task is raised.
   def rejectEffect(store: Store, act: Act, slot: int): Store =
@@ -543,6 +552,8 @@ module protocol {
     val task = taskOf(store, slot)
     val closed = closeAsk(store, checkOf(task.maker, slot))
     val marked = mark(closed, ghost => { ...ghost,
+      keptCheckJudged: ghost.keptCheckJudged or ghost.keptChecks.contains(review.ask),
+      keptChecks: ghost.keptChecks.exclude(Set(review.ask)),
       otherResult: ghost.otherResult or (not(act.byzantine) and act.seen != task.resultId) })
     match review.verdict {
       | Pass =>
@@ -557,7 +568,9 @@ module protocol {
       // The revision goes to the same maker. A rechecked task has none: a fresh one.
       | Fail =>
           if (liveMaker(store, slot) == NoOne)
-            setTask(marked, slot, row => { ...row, state: Sent, tries: row.tries + 1 })
+            setTask(mark(marked, ghost => { ...ghost, keptFailSlots: ghost.keptFailSlots.union(
+                      if (store.ghost.keptChecks.contains(review.ask)) Set(slot) else Set()) }),
+                    slot, row => { ...row, state: Sent, tries: row.tries + 1 })
           else openAsk(setMaker(setTask(marked, slot,
                           row => { ...row, state: Working, tries: row.tries + 1 }),
                           task.maker, row => { ...row, revisions: row.revisions + 1 }),
@@ -918,8 +931,22 @@ module protocol {
   def reviveAllowed(store: Store, act: Act, actor: Actor): bool =
     act.who == (if (actor == Host) Human else Harness) and PERSISTENT.contains(actor)
       and store.down.contains(actor)
+  // The revived role has lost its makers: they end (their questions and answers go too). A
+  // working task goes back to Sent, so the role assigns a fresh maker (it starts at 0 tries, as
+  // after any assign: the tries kept by the revive are moot); its
+  // Execute to the old maker closes. A task in review keeps its Check: the role checks the
+  // result itself. The host and the pipeline role are revived as they were.
   def reviveEffect(store: Store, act: Act, actor: Actor): Store =
-    newEpoch({ ...store, down: store.down.exclude(Set(actor)) }, actor)
+    val revived = newEpoch({ ...store, down: store.down.exclude(Set(actor)) }, actor)
+    if (actor == Role) SLOTS.fold(revived, (soFar, slot) => loseMaker(soFar, slot)) else revived
+  def loseMaker(store: Store, slot: int): Store =
+    val maker = liveMaker(store, slot)
+    if (maker == NoOne) store
+    else if (taskOf(store, slot).state == InReview)
+      mark(openAsk(endMaker(store, maker), checkOf(maker, slot)),
+           ghost => { ...ghost, keptChecks: ghost.keptChecks.union(Set(checkOf(maker, slot))) })
+    else mark(setTask(endMaker(store, maker), slot, task => { ...task, state: Sent, maker: NoOne }),
+              ghost => { ...ghost, restartedSlots: ghost.restartedSlots.union(Set(slot)) })
   def reviveTold(store: Store, actor: Actor): Set[Body] =
     if (actor == Human and store.down.contains(Host)) Set(Revive({ actor: Host }))
     else if (actor == Harness)

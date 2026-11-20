@@ -109,6 +109,17 @@ module properties {
   // An asker reaches the cap.
   val NoCapReached: bool = store.askCount.keys().forall(pair =>
     store.askCount.get(pair) < ASK_CAP)
+  // A role revived while its task was working: the task went back to Sent and got a fresh maker.
+  val NoRestartAssigned: bool = not(store.ghost.restartedAssigned)
+  // A role revived while its task was in review: its Check survived and was judged.
+  val NoKeptCheckJudged: bool = not(store.ghost.keptCheckJudged)
+  // A kept Check was failed (the task went to Sent: the old maker is gone) and a fresh maker took
+  // the task.
+  val NoKeptFailAssigned: bool = not(store.ghost.keptFailAssigned)
+  // After that, an open Execute never names an ended maker (the Resume is told and allowed only
+  // for a live maker: resumeAllowed, resumeTold).
+  val NoExecuteToEndedMaker: bool = store.asks.forall(ask =>
+    not(ask.kind == Execute and isMakerActor(ask.to)) or isLive(store, ask.to))
   // A repeat past the cap raised its task.
   val NoAskRaise: bool = not(store.ghost.askRaised)
 }

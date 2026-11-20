@@ -53,7 +53,7 @@ pipeWitnesses() {
 CORE_INV="Sane EveryObligationToldOnce ToldIsAllowed SomethingOwed DoneIsCurrent
   NoDoneBrokenAtEnd NoLostUpdate NoTakenUndone NoPassOfBadResult NoRefixAtSameLevel
   NoEscalationWithoutPerson NoAgentChangeAtTop Converges
-  NoWaitCycle AskCap"
+  NoWaitCycle AskCap NoExecuteToEndedMaker"
 CORE_INV=$(echo $CORE_INV)
 PIPE_INV="NoKeystrokeTwice NotStuck Prefix AtMostOneWriting WritingIsMarked"
 # A job: optional VAR=value settings (SAMPLES, STEPS), then a function and its arguments.
@@ -87,6 +87,9 @@ EOF2
 # runs, steps.
 [ "${1:-}" = "--check" ] && cat >> "$JOBLIST" <<'EOF2'
 smallBreaks configs.qnt coreAskReverse NoWaitCycle 0x2a 500 60
+smallBreaks configs.qnt coreTwoExit NoRestartAssigned 0x2a 2000 60
+smallBreaks configs.qnt coreTwoExit NoKeptCheckJudged 0x2a 2000 60
+smallBreaks configs.qnt coreTwoExit NoKeptFailAssigned 0x2a 2000 60
 smallBreaks configs.qnt coreNoRaise Converges 0x2a 2000 200
 smallBreaks configs.qnt coreNoCross Converges 0x2a 500 200
 smallBreaks configs.qnt coreNoSplit Converges 0x2a 500 200

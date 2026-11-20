@@ -542,7 +542,10 @@ cycle, no deadlock; the person's answers and `NoFinalWithAsk` live here), `coreA
 task, a rogue maker: the cap, `AskRaise`, the role's own work still finishes),
 `coreAskReverse` (the mutant: `NoWaitCycle` must break). Witnesses the simulator breaks:
 `NoFinalWithAsk`, `NoCrossing`, `NoWaitChain` (host -> role -> maker), `NoCapReached`,
-`NoAskRaise`. The three ask jobs are in tlc.sh and are not run on TLC yet. Replaced and
+`NoAskRaise`. Revive of the role (coreTwoExit): its live makers end; a working task goes back to
+Sent and gets a fresh maker (`NoRestartAssigned`); a task in review keeps its
+Check, which the role then judges (`NoKeptCheckJudged`); both witnesses break in the simulator
+(spec.sh --check). The three ask jobs are in tlc.sh and are not run on TLC yet. Replaced and
 deleted: `coreAskCross` (by `coreAsks`; with the asks as acts a task already has wait edges
 with no cause). An act takes effect in one step on the current state (G3).
 

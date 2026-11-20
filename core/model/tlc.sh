@@ -17,6 +17,7 @@ fail=0
 SAFE=Sane,EveryObligationToldOnce,ToldIsAllowed,SomethingOwed,DoneIsCurrent,NoDoneBrokenAtEnd
 SAFE=$SAFE,NoLostUpdate,NoTakenUndone,NoPassOfBadResult,NoRefixAtSameLevel
 SAFE=$SAFE,NoEscalationWithoutPerson,NoAgentChangeAtTop,Converges,NoWaitCycle,AskCap
+SAFE=$SAFE,NoExecuteToEndedMaker
 LIVE=CoreProgress,CoreChangesStop,CoreSettles
 PIPE_SAFE=NoKeystrokeTwice,Prefix,AtMostOneWriting,WritingIsMarked
 # A copy of the model with only the instance checked: the file up to its "---- instances"
