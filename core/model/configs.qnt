@@ -119,7 +119,7 @@ module coreAsks {
 
 // The pipeline on its shortest path that still opens evaluate and decide (a direction cause:
 // a raise to the pipeline role, the draft at the person), reference rules only, no failing
-// tests, no mistakes, slips or rejects, one person act, one question that may cross (the person
+// tests, no mistakes, slips or rejects, one person act, two questions that may cross (the person
 // a target too): questions while the evaluate and decide waits are open.
 module coreAsksPipe {
   import configsBase.*
@@ -127,7 +127,7 @@ module coreAsksPipe {
   import properties(OPTIONS = { ...FIXED_OPTIONS, slots: Set(0) },
     LIMITS = { ...BASE_LIMITS, causesTask0: Set(AT_DIRECT), causesTask1: Set(NO_CAUSE),
                ruleForms: Set(Ref), testsMayFail: false, maxPersonActs: 1,
-               sendBacksPerDraft: 0, maxAsks: 1 })
+               sendBacksPerDraft: 0, maxAsks: 2 })
     .* from "./properties"
 }
 
