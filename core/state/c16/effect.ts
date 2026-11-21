@@ -2,7 +2,13 @@
 // as taken (`take`: effect, the sweep of the asks, justAnswered, the next seq). Pure: every change
 // is a new state. The model's ghosts and options are not kept: the environment's truths come in the
 // act (caught, own, contra, holds) or are not state.
-import type { Form as RecForm, ItemKey, RoleDraft, TaskSpec } from '../work/types.ts'
+import type {
+  Form as RecForm,
+  ItemKey,
+  RoleDraft,
+  TaskSpec,
+  Versions,
+} from '../work/types.ts'
 import { EDIT, free, hasMech, kindOf } from '../work/types.ts'
 import {
   advance,
@@ -186,6 +192,8 @@ const redo = (s: WorkState, i: string): WorkState =>
     ...y,
     stage: y.entry,
     base: s.ver,
+    resolvesFight: false,
+    resolvedOn: null,
     cardBase: y.kind === 'RoleDraft' ? cardOf(s, roleDraftOf(y).role) : y.cardBase,
     revision: y.revision + 1,
     basisStep: y.basisStep + 1,
@@ -207,6 +215,8 @@ const raiseUp = (s: WorkState, i: string): WorkState => {
     ...z,
     stage,
     entry: stage,
+    resolvesFight: false,
+    resolvedOn: null,
     level: stage === 'AtDirection' ? 'Direct' : 'Principle',
     basisStep: z.basisStep + 1,
   }))
@@ -311,6 +321,8 @@ const itemsInEffect = (s: WorkState, i: string): WorkState => {
         ...y,
         stage: y.entry,
         base: ver,
+        resolvesFight: false,
+        resolvedOn: null,
         revision: y.revision + 1,
         basisStep: y.basisStep + 1,
       }))
@@ -514,6 +526,7 @@ const ship = (s: WorkState, w: Of<'Ship'>): WorkState => {
     real,
     draft: w.draft,
     resolvesFight: w.resolvesFight,
+    resolvedOn: s.ver,
     basisStep: f.basisStep + 1,
   }))
   if (free(i)) return shipEdit(s1)
@@ -526,12 +539,18 @@ const ship = (s: WorkState, w: Of<'Ship'>): WorkState => {
 
 // --- Respond: accept, send back, take as is, evaluate again --------------------------------------
 
+const sameVersions = (a: Versions, b: Versions): boolean =>
+  [...new Set([...a.keys(), ...b.keys()])].every((x) => verOf(a, x) === verOf(b, x))
+
 const acceptIt = (s: WorkState, i: string): WorkState => {
   const f = fixOf(s, i)
   if (conflict(s, i)) return redo(s, i)
   if (refixed(s, i)) return raiseUp(s, i)
   // a contradicted draft whose direction resolves the contradiction no longer fights
-  const settled = f.contradicted && f.resolvesFight
+  // (a test-command rule's value counts only on the versions it was computed on)
+  const testCommand = f.form === 'Mech' || f.form === 'Both'
+  const onVersions = f.resolvedOn !== null && sameVersions(f.resolvedOn, s.ver)
+  const settled = f.contradicted && f.resolvesFight && (!testCommand || onVersions)
     ? setF(s, i, (z) => ({ ...z, fights: new Set() }))
     : s
   const s1 = bump(
@@ -553,6 +572,8 @@ const respond = (s: WorkState, w: Of<'Respond'>, fix: string): WorkState => {
       return setF(s, fix, (f) => ({
         ...f,
         stage: 'InLoop',
+        resolvesFight: false,
+        resolvedOn: null,
         sentBack: new Set([...f.sentBack, f.revision]),
         needRevise: true,
         loopRounds: 0,
@@ -763,7 +784,7 @@ export const effect = (s: WorkState, a: Act): WorkState => {
     case 'Hear': {
       const answered = new Map(s.answered)
       answered.delete(w.ask)
-      return { ...s, answered }
+      return { ...s, answered, heardIds: new Set([...s.heardIds, w.ask]) }
     }
     // A maker past the cap raises its task as a problem no rule covers.
     case 'AskRaise': {

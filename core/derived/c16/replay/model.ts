@@ -338,10 +338,12 @@ const ownTold = (m: MStore, actor: string): ReadonlyArray<string> => {
 }
 
 // toldSteps: an answerer that has just answered and has a step of its own is told only that.
-export const modelTold = (m: MStore, actor: string): ReadonlyArray<string> => {
+export const modelTold = (m: MStore, actor: string, alternate = true): ReadonlyArray<string> => {
   if (m.top.ended) return []
   const own = ownTold(m, actor)
-  if (m.justAnswered.includes(actor) && own.length > 0) return [...new Set(own)].sort()
+  if (alternate && m.justAnswered.includes(actor) && own.length > 0) {
+    return [...new Set(own)].sort()
+  }
   const answers = m.asks.filter((a) => a.kind === 'Question' && a.to === actor).map((a) =>
     `AnswerQuestion:${askStr(a)}`
   )
@@ -357,3 +359,80 @@ export const modelActors = (m: MStore): ReadonlyArray<string> => [
   'Harness',
   ...[...m.makers].filter(([, y]) => !y.ended).map(([id]) => id),
 ]
+
+// --- who waits for whom, and what is owed --------------------------------------------------------
+
+// waitsFor: the open asks that are not questions and not the person's, as `from>to`.
+export const modelWaits = (m: MStore): ReadonlyArray<string> =>
+  [...new Set(m.asks.filter((a) => a.kind !== 'Question' && a.from !== 'Human').map((a) =>
+    `${a.from}>${a.to}`
+  ))].sort()
+
+const depthOf = (a: MAsk): number =>
+  a.kind === 'Decide' ? 3 : a.kind === 'Check' ? 2 : a.from === 'Host' ? 0 : 1
+const PIPE_STAGES = PIPE_STAGE.map(([stage]) => stage)
+
+// The obligations (protocol.qnt obligationsOf), each with the texts of the steps that discharge
+// it (discharges); the TS core's owed items are named the same way (project.ts).
+interface Ob {
+  readonly ob: string
+  readonly by: ReadonlyArray<string>
+}
+const obligations = (m: MStore): ReadonlyArray<Ob> => {
+  if (m.top.ended) return []
+  const slots = slotsOf(m)
+  const pipeFix = (id: number): string[] => PIPE_STAGE.map(([, act]) => `${act}:${id}`)
+  const innermost = (a: MAsk): boolean =>
+    !m.asks.some((o) => o.kind !== 'Question' && o.about === a.about && depthOf(o) > depthOf(a))
+  const fromAsk = (a: MAsk): ReadonlyArray<Ob> => {
+    const text = askStr(a)
+    if (a.kind === 'Question') return [{ ob: `AskOb:${text}`, by: [`AnswerQuestion:${text}`] }]
+    if (!innermost(a)) return []
+    if (a.kind === 'Execute' && a.from.startsWith('Maker')) return []
+    if (depthOf(a) === 0 && m.tasks.get(a.about)?.state !== 'Sent') return []
+    if (a.to === 'Pipe') {
+      return PIPE_STAGES.includes(fixOf(m, a.about)?.stage ?? '')
+        ? [{ ob: `PipeOb:${a.about}`, by: pipeFix(a.about) }]
+        : []
+    }
+    if (a.kind === 'Execute' && a.to.startsWith('Maker') && m.down.includes(a.to)) {
+      const slot = m.makers.get(a.to)?.slot
+      return [{ ob: `ResumeOb:${slot}`, by: [`Resume:${slot}`] }]
+    }
+    if (a.kind === 'Execute' && a.from === 'Host') {
+      return [{ ob: `AskOb:${text}`, by: [`Open:make:${a.about}`] }]
+    }
+    if (a.kind === 'Execute') {
+      return [{ ob: `AskOb:${text}`, by: [`ReadBrief:${a.about}`, `Report:${a.about}`] }]
+    }
+    return [{ ob: `AskOb:${text}`, by: [`${a.kind === 'Check' ? 'Review' : 'Respond'}:${text}`] }]
+  }
+  return [
+    ...['Host', 'Role', 'Pipe'].filter((p) => m.down.includes(p)).map((p) =>
+      ({ ob: `ReviveOb:${p}`, by: [`Revive:${p}`] })
+    ),
+    ...(allDone(m)
+      ? [m.top.done ? { ob: 'EndOb', by: ['EndProject'] } : { ob: 'TopDoneOb', by: ['TopDone'] }]
+      : []),
+    ...(fixIds(m).some((id) => fixOf(m, id)?.stage === 'Accepted')
+      ? [{ ob: 'ReassignOb', by: ['Reassign'] }]
+      : []),
+    ...m.asks.flatMap(fromAsk),
+    ...m.answered.map((a) => ({ ob: `HearOb:${askStr(a)}`, by: [`Hear:${askStr(a)}`] })),
+    ...slots.flatMap((n) => [
+      ...(m.tasks.get(n)?.state === 'Unsent' ? [{ ob: 'SendOb', by: ['Open:send'] }] : []),
+      ...(recheckDue(m, n) ? [{ ob: `RecheckOb:${n}`, by: [`RecheckDone:${n}`] }] : []),
+      ...(runRuleDue(m, n) ? [{ ob: `RuleRunOb:${n}`, by: [`RunRule:${n}`] }] : []),
+    ]),
+  ]
+}
+
+// Each obligation with its owner: the actors told a step that discharges it (the alternation of
+// answers and own steps is the told order, not ownership: it is left out here).
+export const modelOwed = (m: MStore): ReadonlyArray<string> =>
+  [...new Set(obligations(m).flatMap(({ ob, by }) => {
+    const owners = modelActors(m).filter((who) =>
+      modelTold(m, who, false).some((step) => by.includes(step))
+    )
+    return owners.length === 0 ? [`${ob}@-`] : owners.map((who) => `${ob}@${who}`)
+  }))].sort()

@@ -91,6 +91,9 @@ export interface Fix {
   readonly contradicted: boolean
   // recorded with the draft at Ship: the accept of a contradicted draft clears fights if true
   readonly resolvesFight: boolean
+  // the item versions the harness computed it on (the store's at Ship); a test-command rule's
+  // value counts at the accept only if they are still the store's versions
+  readonly resolvedOn: Versions | null
   readonly fights: ReadonlySet<ItemKey>
   readonly at: number
   readonly summary: string
@@ -115,6 +118,9 @@ export interface WorkState {
   readonly ep: ReadonlyMap<ActorKey, number>
   readonly asks: ReadonlyMap<AskId, OpenAsk>
   readonly answered: ReadonlyMap<AskId, Answered>
+  // a code realisation: the occurrences their asker heard (a Hear of one is `heard`, of any other
+  // gone one `stale`)
+  readonly heardIds: ReadonlySet<AskId>
   readonly askCount: ReadonlyMap<string, number>
   readonly justAnswered: ReadonlySet<ActorKey>
   readonly askCap: number
@@ -152,6 +158,7 @@ export const CLOSED: Fix = {
   sendBacks: 0,
   contradicted: false,
   resolvesFight: false,
+  resolvedOn: null,
   fights: NONE,
   at: 0,
   summary: '',
@@ -179,6 +186,7 @@ export const initState = (
   ep: new Map(),
   asks: new Map(),
   answered: new Map(),
+  heardIds: NONE,
   askCount: new Map(),
   justAnswered: NONE,
   askCap,

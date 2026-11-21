@@ -12,7 +12,7 @@ import {
   isMaker,
 } from '../../../state/c16/types.ts'
 import type { ItemKey, ItemRec, Versions } from '../../../state/work/types.ts'
-import { dos } from '../obligations.ts'
+import { dos, owed } from '../obligations.ts'
 import { type CFix, type Cmp, type CTask, type Vers, ITEMS, canonical } from './model.ts'
 
 // --- the world -----------------------------------------------------------------------------------
@@ -294,3 +294,37 @@ export const actorOfName = (c: Ctx, name: string): Actor => {
 
 export const told = (s: WorkState, c: Ctx, who: string): ReadonlyArray<string> =>
   [...new Set(dos(s, actorOfName(c, who)).map((x) => stepText(s, c, who, x)))].sort()
+
+// waitsFor of the TS core: its open asks that are not questions and not the person's.
+export const waits = (s: WorkState, c: Ctx): ReadonlyArray<string> =>
+  [...new Set([...s.asks.values()].filter((a) => a.kind !== 'Question' && a.from._tag !== 'Human')
+    .map((a) => `${actorName(c, a.from)}>${actorName(c, a.to)}`))].sort()
+
+// Everything owed, with its owner, named as the model names it (model.ts modelOwed).
+export const owedTexts = (s: WorkState, c: Ctx): ReadonlyArray<string> => {
+  const ask = (id: string): string => {
+    const a = s.asks.get(id) ?? s.answered.get(id)?.ask
+    return a === undefined ? `?${id}` : askText(c, a)
+  }
+  const slot = (task: string): number | string => slotOfTask(c, task) ?? `?${task}`
+  return [...new Set(owed(s).map(({ ob, owner }) => {
+    switch (ob._tag) {
+      case 'SendOb':
+        return `SendOb@${keyName(c, owner)}`
+      case 'AskOb':
+      case 'HearOb':
+        return `${ob._tag}:${ask(ob.ask)}@${keyName(c, owner)}`
+      case 'ResumeOb':
+        return `ResumeOb:${slot(s.makers.get(ob.maker)?.task ?? '')}@${keyName(c, owner)}`
+      case 'PipeOb':
+        return `PipeOb:${aboutNo(c, ob.fix)}@${keyName(c, owner)}`
+      case 'RecheckOb':
+      case 'RuleRunOb':
+        return `${ob._tag}:${slot(ob.task)}@${keyName(c, owner)}`
+      case 'ReviveOb':
+        return `ReviveOb:${keyName(c, ob.actor)}@${keyName(c, owner)}`
+      default:
+        return `${ob._tag}@${keyName(c, owner)}`
+    }
+  }))].sort()
+}

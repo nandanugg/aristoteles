@@ -566,27 +566,87 @@ describe('WriteRule fights', () => {
 })
 
 describe('Ship records resolvesFight', () => {
-  const accepted = (resolvesFight: boolean): ReadonlySet<string> => {
+  // The draft held at the person, contradicted; `moved`: an item version moved since the Ship.
+  const held = (
+    over: Partial<ReturnType<typeof fixOf>>,
+    moved = false,
+  ): WorkState => {
     let s = evaluated(start(), 'Standard')
-    // the Ship stores the value; the draft is then held at the person, contradicted
     s = go(s, pipe, { _tag: 'Advance', fix: 't1' })
+    const resolvedOn = new Map(s.ver)
     s = {
       ...s,
+      ver: moved ? new Map(s.ver).set('rule:r1', 5) : s.ver,
       fixes: new Map(s.fixes).set('t1', {
         ...fixOf(s, 't1'),
         stage: 'AtPerson',
-        resolvesFight,
         contradicted: true,
         fights: new Set(['rule:r2']),
+        resolvedOn,
+        ...over,
       }),
     }
-    s = go(s, host, { _tag: 'TopDone' }) // the sweep opens the Decide
-    s = go(s, human, { _tag: 'Respond', ask: one(s, 'Decide').id, reply: 'AcceptIt', points: [] })
-    return fixOf(s, 't1').fights
+    return s
   }
-  test('the accept of a contradicted draft clears fights if the Ship said so', () => {
-    expect([...accepted(true)]).toEqual([])
-    expect([...accepted(false)]).toEqual(['rule:r2'])
+  const accept = (s: WorkState): WorkState => {
+    const s1 = go(s, host, { _tag: 'TopDone' }) // the sweep opens the Decide
+    const ask = one(s1, 'Decide').id
+    return go(s1, human, { _tag: 'Respond', ask, reply: 'AcceptIt', points: [] })
+  }
+  const fights = (over: Partial<ReturnType<typeof fixOf>>, moved = false) =>
+    [...fixOf(accept(held(over, moved)), 't1').fights]
+
+  test('a reference-only rule: the claim is carried with the draft', () => {
+    expect(fights({ form: 'Ref', resolvesFight: true })).toEqual([])
+    expect(fights({ form: 'Ref', resolvesFight: false })).toEqual(['rule:r2'])
+    // not a harness value: versions moving do not void a claim
+    expect(fights({ form: 'Ref', resolvesFight: true }, true)).toEqual([])
+  })
+  test('a test-command rule: harness evidence on the versions it was computed on', () => {
+    for (const form of ['Mech', 'Both'] as const) {
+      expect(fights({ form, resolvesFight: true })).toEqual([])
+      expect(fights({ form, resolvesFight: false })).toEqual(['rule:r2'])
+      // the versions moved since the cross test: the value is void, the fight stays
+      expect(fights({ form, resolvesFight: true }, true)).toEqual(['rule:r2'])
+      expect(fights({ form, resolvesFight: true, resolvedOn: null })).toEqual(['rule:r2'])
+    }
+  })
+  test('the Ship records the versions it was computed on', () => {
+    let s = evaluated(start(), 'Direct')
+    s = go(s, pipe, { _tag: 'Advance', fix: 't1' })
+    s = go(s, pipe, {
+      _tag: 'Ship',
+      fix: 't1',
+      items: new Set(['std:s1']),
+      draft: new Map([['std:s1', std2]]),
+      resolvesFight: true,
+    })
+    expect(fixOf(s, 't1')).toMatchObject({ resolvesFight: true })
+    expect(fixOf(s, 't1').resolvedOn).toEqual(s.ver)
+  })
+  test('a redo drops the claim: send back, then a new Ship', () => {
+    let s = held({ form: 'Ref', resolvesFight: true })
+    s = go(s, host, { _tag: 'TopDone' })
+    const ask = one(s, 'Decide').id
+    s = go(s, human, { _tag: 'Respond', ask, reply: 'SendItBack', points: [] })
+    expect(fixOf(s, 't1')).toMatchObject({ resolvesFight: false, resolvedOn: null })
+  })
+  test('a rebase drops the claim', () => {
+    // t2's draft sits at the person; another fix changes a direction: t2 is rebased
+    let s = held({ form: 'Ref', resolvesFight: true })
+    const t2 = { ...fixOf(s, 't1'), entry: 'AtStandard', stage: 'Drafting' } as const
+    s = { ...s, fixes: new Map(s.fixes).set('t2', t2) }
+    s = go(s, human, { _tag: 'AskEdit', draft: new Map([['dir:d1', dir2]]) })
+    s = go(s, pipe, {
+      _tag: 'Ship',
+      fix: 'edit',
+      items: new Set(['dir:d1']),
+      draft: new Map([['dir:d1', dir2]]),
+      resolvesFight: false,
+    })
+    expect(fixOf(s, 'edit').stage).toBe('Accepted')
+    expect(fixOf(s, 't2'))
+      .toMatchObject({ stage: 'AtStandard', resolvesFight: false, resolvedOn: null })
   })
 })
 

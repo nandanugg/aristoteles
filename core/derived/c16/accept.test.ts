@@ -237,13 +237,17 @@ describe('the order and the names', () => {
 
   test('heard: Hear of an answer already heard; stale once the asker asked again', () => {
     const hear: Body = { _tag: 'Hear', ask: '6' }
-    const heardOnce = { ...base(), seq: 12 }
+    const heardOnce = { ...base(), seq: 12, heardIds: new Set(['6']) }
     expect(refusal(heardOnce, act(host, hear))).toBe('heard')
+    // a never-created id, an id removed with an ended maker: stale, never heard
     expect(refusal(heardOnce, act(host, { _tag: 'Hear', ask: '40' }))).toBe('stale')
-    const again = asked(heardOnce, host, human)
-    const reopened = { ...again.asks.get('6')!, id: '9', at: 9 }
-    const replaced = { ...again, asks: new Map([['9', reopened]]) }
-    expect(refusal(replaced, act(host, hear))).toBe('stale')
+    expect(refusal(heardOnce, act(host, { _tag: 'Hear', ask: '5' }))).toBe('stale')
+    // an independent pair: a newer question to another recipient does not change heard to stale
+    const other = withAsk(
+      heardOnce,
+      ask('9', { kind: 'Question', from: host, to: writer, about: none, at: 9, question: single }),
+    )
+    expect(refusal(other, act(host, hear))).toBe('heard')
   })
 
   test('pair: one open or unheard question per ordered pair', () => {
@@ -563,6 +567,109 @@ describe('legal, act by act', () => {
     expect(claim(r({ form: 'both', test: 'x', ref: 'f#a:1' }))).toBe('legal')
   })
 
+  describe('the rules a fight or a contradiction names, and the rule a Ship installs', () => {
+    const r = (over: Partial<ItemRec>) => rec({ kind: 'rule', parent: 'std:s1', ...over })
+    const ref = r({ form: 'ref', ref: 'f#a:1' })
+    const two: WorkState = {
+      ...base(),
+      items: new Map([
+        ...base().items,
+        ['dir:d2', rec({})],
+        ['std:s2', rec({ kind: 'std', parent: 'dir:d2' })],
+        ['rule:r3', rec({ kind: 'rule', parent: 'std:s2', form: 'ref', ref: 'f#a:1' })],
+      ]),
+    }
+    const at = (stage: Fix['stage'], over: Partial<Fix> = {}) =>
+      withFix(withTask({ state: 'Raised' }, two), 't1', { stage, basisStep: 3, ...over })
+    const write = (fights: ReadonlyArray<string>, rule = 'rule:r9', rc = ref) =>
+      refusal(
+        at('AtRule'),
+        act(pipe, {
+          _tag: 'WriteRule', fix: 't1', rule, rec: rc, refOk: true, fights,
+        }, { seen: 3 }),
+      )
+    test('WriteRule: a unique set of known other rules of the same direction', () => {
+      expect(write(['rule:r2'])).toBeNull()
+      expect(write(['rule:r1', 'rule:r2'])).toBeNull()
+      expect(write(['rule:r2', 'rule:r2'])).toBe('legal')
+      expect(write(['rule:nope'])).toBe('legal')
+      expect(write(['std:s1'])).toBe('legal')
+      expect(write(['rule:r9'])).toBe('legal')
+      expect(write(['rule:r2'], 'rule:r2')).toBe('legal')
+      expect(write(['rule:r3'])).toBe('legal')
+      expect(write(['rule:r1'], 'rule:r9', r({ form: 'ref', ref: 'f#a:1', parent: 'std:s2' })))
+        .toBe('legal')
+    })
+    test('WriteRule: the new record is a rule with a valid parent', () => {
+      expect(write([], 'rule:r9', { ...ref, kind: 'std' })).toBe('legal')
+      expect(write([], 'rule:r9', r({ form: 'ref', ref: 'f#a:1', parent: null }))).toBe('legal')
+      expect(write([], 'rule:r9', r({ form: 'ref', ref: 'f#a:1', parent: 'std:s9' })))
+        .toBe('legal')
+      expect(write([], 'rule:r9', r({ form: 'ref', ref: 'f#a:1', parent: 'rule:r1' })))
+        .toBe('legal')
+    })
+    const test9 = r({ form: 'mech', test: 'x' })
+    const run = (contra: ReadonlyArray<string>, draft: ReadonlyArray<[string, ItemRec]> = []) =>
+      refusal(
+        at('Testing', { draft: new Map([['rule:r9', test9], ...draft]) }),
+        act(pipe, { _tag: 'RunTest', fix: 't1', own: true, contra }, { seen: 3 }),
+      )
+    test('RunTest: the same validation of contra', () => {
+      expect(run(['rule:r1', 'rule:r2'])).toBeNull()
+      expect(run([])).toBeNull()
+      expect(run(['rule:r1', 'rule:r1'])).toBe('legal')
+      expect(run(['rule:nope'])).toBe('legal')
+      expect(run(['rule:r9'])).toBe('legal')
+      expect(run(['rule:r3'])).toBe('legal')
+      expect(run(['dir:d1'])).toBe('legal')
+    })
+    const ship = (draft: ReadonlyArray<[string, ItemRec | null]>, over: Partial<Fix> = {}) =>
+      refusal(
+        at('Drafting', { draft: new Map([['rule:r9', ref]]), ...over }),
+        act(pipe, {
+          _tag: 'Ship',
+          fix: 't1',
+          items: new Set(draft.map(([x]) => x)),
+          draft: new Map(draft),
+          resolvesFight: false,
+        }, { seen: 3 }),
+      )
+    const dir2 = rec({ says: 'd2' })
+    test('Ship: a rule item is the fix\'s written record, else refused', () => {
+      expect(ship([['rule:r9', ref], ['dir:d1', dir2]])).toBeNull()
+      expect(ship([['dir:d1', dir2]])).toBeNull()
+      // a rule with form none, or with other evidence than was written and tested
+      expect(ship([['rule:r9', r({ form: 'none' })]])).toBe('legal')
+      expect(ship([['rule:r9', { ...ref, ref: 'other#b:2' }]])).toBe('legal')
+      expect(ship([['rule:r9', test9]])).toBe('legal')
+      // a newly added rule nobody wrote, a rule deleted that nobody deleted
+      expect(ship([['rule:r8', ref]])).toBe('legal')
+      expect(ship([['rule:r9', null]])).toBe('legal')
+      // an existing rule left as the store has it is no change
+      expect(ship([['rule:r2', two.items.get('rule:r2')!]])).toBeNull()
+      expect(ship([['rule:r2', { ...ref, says: 'changed' }]])).toBe('legal')
+    })
+    test('Ship: the person\'s edit (the delayed accept path) is bound the same way', () => {
+      const edit = (draft: ReadonlyArray<[string, ItemRec | null]>) =>
+        refusal(
+          withFix(two, 'edit', {
+            stage: 'Drafting',
+            basisStep: 3,
+            draft: new Map([['rule:r9', ref]]),
+          }),
+          act(pipe, {
+            _tag: 'Ship',
+            fix: 'edit',
+            items: new Set(),
+            draft: new Map(draft),
+            resolvesFight: false,
+          }, { seen: 3 }),
+        )
+      expect(edit([['rule:r9', ref]])).toBeNull()
+      expect(edit([['rule:r9', r({ form: 'none' })]])).toBe('legal')
+    })
+  })
+
   test('Reassign, TopDone and EndProject follow the state', () => {
     expect(refusal(base(), act(host, { _tag: 'Reassign' }))).toBe('legal')
     const accepted = withFix(base(), 't1', { stage: 'Accepted' })
@@ -642,14 +749,14 @@ describe('a retry against a replacement occurrence', () => {
     }]]), seq: 4 }
     expect(refusal(answered, act(host, { _tag: 'Hear', ask: '2' }))).toBeNull()
     // heard, and asked again: the replacement is '8'
-    const heard = { ...answered, answered: new Map(), seq: 8 }
+    const heard = { ...answered, answered: new Map(), heardIds: new Set(['2']), seq: 8 }
     const again = openAsk(heard, { kind: 'Question', from: host, to: human, about: none }, single)
       .state
     expect([...again.asks.keys()]).toEqual(['8'])
     const next = advance(again)
     // a retry of the first occurrence's answer or hear is stale; the new one is fine
     expect(refusal(next, act(human, ans))).toBe('stale')
-    expect(refusal(next, act(host, { _tag: 'Hear', ask: '2' }))).toBe('stale')
+    expect(refusal(next, act(host, { _tag: 'Hear', ask: '2' }))).toBe('heard')
     expect(refusal(next, act(human, answer({ _tag: 'Single', text: 'y' }, '8')))).toBeNull()
     // before it is asked again, a retried Hear is heard, not stale
     expect(refusal({ ...heard, seq: 9 }, act(host, { _tag: 'Hear', ask: '2' }))).toBe('heard')

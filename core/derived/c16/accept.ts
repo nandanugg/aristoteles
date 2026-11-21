@@ -2,7 +2,7 @@
 // what is legal in the state, on which basis, from which build; and the asks the act names.
 // Every check of the model is on.
 import type { Refusal as RefusalRecord } from '../../state/c16/types.ts'
-import { type Maker, type Task, type WorkState } from '../../state/c16/state.ts'
+import { type Fix, type Maker, type Task, type WorkState } from '../../state/c16/state.ts'
 import {
   allDone,
   askCountOf,
@@ -29,8 +29,8 @@ import {
   keyOf,
   pairKey,
 } from '../../state/c16/types.ts'
-import { EDIT, free, hasMech, hasRef } from '../../state/work/types.ts'
-import type { TaskSpec, Verdict } from '../../state/work/types.ts'
+import { EDIT, free, hasMech, hasRef, kindOf } from '../../state/work/types.ts'
+import type { DraftItems, ItemKey, ItemRec, TaskSpec, Verdict } from '../../state/work/types.ts'
 import { ownToldSteps } from './obligations.ts'
 
 // --- the records, read without throwing ------------------------------------------------------
@@ -184,15 +184,9 @@ const sameAsAsk = (
 
 // --- the asks the act names: stale, heard ------------------------------------------------------
 
-const seqOfAsk = (id: string): number => Number(id.split('.')[0])
-// The asker has asked again since: a question of its own opened after that occurrence.
-const askedSince = (s: WorkState, who: Actor, seq: number): boolean =>
-  [...s.asks.values(), ...[...s.answered.values()].map((x) => x.ask)].some((a) =>
-    a.kind === 'Question' && sameActor(a.from, who) && a.at > seq
-  )
-
 // The named ask is not there: closed or replaced (`stale`); an answer already heard (`heard`).
-// A heard answer leaves no record: it is the one Hear names that no later question replaced.
+// A heard answer is recorded (heardIds); any other id that is not there is stale: unknown, never
+// created, or removed with its ended maker.
 const askGone = (s: WorkState, a: Act): 'stale' | 'heard' | null => {
   const b = a.body
   switch (b._tag) {
@@ -203,8 +197,7 @@ const askGone = (s: WorkState, a: Act): 'stale' | 'heard' | null => {
       return s.asks.has(b.ask) ? null : 'stale'
     case 'Hear': {
       if (s.answered.has(b.ask) || s.asks.has(b.ask)) return null
-      const seq = seqOfAsk(b.ask)
-      return Number.isNaN(seq) || seq >= s.seq || askedSince(s, a.who, seq) ? 'stale' : 'heard'
+      return s.heardIds.has(b.ask) ? 'heard' : 'stale'
     }
     default:
       return null
@@ -278,6 +271,53 @@ const pairTaken = (s: WorkState, from: Actor, to: Actor): boolean => {
 }
 const overCap = (s: WorkState, from: Actor, to: Actor): boolean =>
   askCountOf(s, from, to) >= s.askCap
+
+// The record of an item in the draft, else in the store.
+const recOf = (s: WorkState, f: Fix, x: ItemKey): ItemRec | null =>
+  (f.draft.has(x) ? f.draft.get(x) : s.items.get(x)) ?? null
+// The direction an item belongs to, by its parents (a rule's standard, a standard's direction).
+const directionOf = (s: WorkState, f: Fix, x: ItemKey): ItemKey | null => {
+  let k: ItemKey | null = x
+  for (let n = 0; n < 4 && k !== null; n++) {
+    if (kindOf(k) === 'dir') return k
+    k = recOf(s, f, k)?.parent ?? null
+  }
+  return null
+}
+// A rule's parent is a standard of a direction.
+const validParent = (s: WorkState, f: Fix, r: ItemRec): boolean =>
+  r.parent !== null && recOf(s, f, r.parent)?.kind === 'std' &&
+  directionOf(s, f, r.parent) !== null
+// The rules the draft changed or added: the ones WriteRule wrote.
+const writtenRules = (s: WorkState, f: Fix): ReadonlyArray<ItemKey> =>
+  [...f.draft].filter(([x, r]) => kindOf(x) === 'rule' && r !== null && !sameRec(r, s.items.get(x)))
+    .map(([x]) => x)
+// What a fight claim or a contradiction result may name: a unique set of known other rules of the
+// same direction as the rules written.
+const contraOk = (
+  s: WorkState,
+  f: Fix,
+  written: ReadonlyArray<ItemKey>,
+  contra: ReadonlyArray<ItemKey>,
+): boolean => {
+  if (new Set(contra).size !== contra.length) return false
+  const dirs = new Set(written.map((x) => directionOf(s, f, x)))
+  return contra.every((x) =>
+    !written.includes(x) && s.items.get(x)?.kind === 'rule' && dirs.size === 1 &&
+    dirs.has(directionOf(s, f, x))
+  )
+}
+const sameRec = (a: ItemRec | null | undefined, b: ItemRec | null | undefined): boolean => {
+  if (a === null || a === undefined || b === null || b === undefined) return !a && !b
+  return a.kind === b.kind && a.parent === b.parent && a.name === b.name && a.says === b.says &&
+    a.test === b.test && a.ref === b.ref && a.form === b.form &&
+    JSON.stringify(a.where) === JSON.stringify(b.where) &&
+    JSON.stringify(a.examples) === JSON.stringify(b.examples)
+}
+// A shipped rule is the fix's written record (or the store's, unchanged): the Ship changes the set
+// of items, never a rule's evidence.
+const shipBound = (s: WorkState, f: Fix, draft: DraftItems): boolean =>
+  [...draft].every(([x, r]) => kindOf(x) !== 'rule' || sameRec(r, recOf(s, f, x)))
 
 const legal = (s: WorkState, a: Act): boolean => {
   const b = a.body
@@ -356,12 +396,19 @@ const legal = (s: WorkState, a: Act): boolean => {
       const ok = r.form !== 'none' && (!hasMech(r.form) || r.test !== null) &&
         (!hasRef(r.form) || (r.ref !== null && b.refOk)) &&
         (b.fights.length === 0 || !hasMech(r.form))
-      return fixOf(s, b.fix).stage === 'AtRule' && b.rule.startsWith('rule:') && ok
+      const f = fixOf(s, b.fix)
+      const written: Fix = { ...f, draft: new Map(f.draft).set(b.rule, r) }
+      return f.stage === 'AtRule' && b.rule.startsWith('rule:') && ok && r.kind === 'rule' &&
+        validParent(s, written, r) && contraOk(s, written, [b.rule], b.fights)
     }
-    case 'RunTest':
-      return fixOf(s, b.fix).stage === 'Testing'
-    case 'Ship':
-      return fixOf(s, b.fix).stage === 'Drafting'
+    case 'RunTest': {
+      const f = fixOf(s, b.fix)
+      return f.stage === 'Testing' && contraOk(s, f, writtenRules(s, f), b.contra)
+    }
+    case 'Ship': {
+      const f = fixOf(s, b.fix)
+      return f.stage === 'Drafting' && shipBound(s, f, b.draft)
+    }
     case 'LoopReview':
       return fixOf(s, b.fix).stage === 'InLoop' && !(b.toPerson && fixOf(s, b.fix).needRevise)
     case 'Reassign':

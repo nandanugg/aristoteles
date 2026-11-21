@@ -165,12 +165,9 @@ const spec = (slot: number, sections: ReadonlyArray<string>): TaskSpec => ({
   role: ROLE,
 })
 
-// The other rules of the direction: the one of each other task (rule:x when there is no other).
-const otherRules = (pre: MStore, fix: number): ReadonlyArray<ItemKey> => {
-  const others = [...pre.tasks.keys()].filter((x) => x !== fix)
-  return others.length > 0 ? others.map((x) => `rule:${x}`) : ['rule:x']
-}
-
+// The other rules of the direction: the model has two, one per task, and the TS world has both.
+const otherRules = (fix: number): ReadonlyArray<ItemKey> =>
+  ['rule:0', 'rule:1'].filter((x) => x !== `rule:${fix}`)
 
 export const tsAct = (
   m: ModelAct,
@@ -298,7 +295,7 @@ export const tsAct = (
         // the role's claim of the other rules its rule contradicts: only for a rule with no test
         // command (a test command's verdict comes with RunTest)
         const mech = text(v['form']) === 'Mech' || text(v['form']) === 'Both'
-        const fights = v['fights'] === true && !mech ? otherRules(pre, fix) : []
+        const fights = v['fights'] === true && !mech ? otherRules(fix) : []
         return { _tag: 'WriteRule', fix: fixId(fix), rule, rec, refOk: v['refOk'] === true, fights }
       }
       case 'RunTest': {
@@ -308,7 +305,7 @@ export const tsAct = (
           fix: fixId(fix),
           own: v['passed'] === true,
           contra: v['contradicts'] === true
-            ? otherRules(pre, fix)
+            ? otherRules(fix)
             : [],
         }
       }
@@ -320,7 +317,9 @@ export const tsAct = (
             const key = KEY[x]!
             const cur = s.items.get(key)!
             const edited = { ...cur, says: `x${n}` }
-            const next = x.startsWith('R') ? RULE_REC(cur, form, `x${n}`) : edited
+            // a rule is the record WriteRule wrote (a Ship changes the items, never the evidence)
+            const written = s.fixes.get(fixId(fix))?.draft.get(key)
+            const next = x.startsWith('R') ? written ?? RULE_REC(cur, form, `x${n}`) : edited
             return [key, next]
           }),
         )

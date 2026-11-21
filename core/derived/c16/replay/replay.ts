@@ -1,12 +1,39 @@
-// The replay of a model trace on the TS core. From the mapped initial state, for every step: the TS
-// `refusal` accepts the act the model took, the TS state after `take` projects to the model's next
-// state on every compared field (model.ts Cmp), and `dos` of every actor is the model's told steps.
+// The replay of a model trace on the TS core. From the mapped initial state, for every step it
+// establishes:
+//   - the TS `refusal` accepts the act the model took (an act that is too strict is found);
+//   - the TS state after `take` projects to the model's next state on the compared fields (model.ts
+//     Cmp: the ghosts, canon's counters and the ended makers are not compared);
+//   - `dos` of every actor is the model's told steps, as sets;
+//   - the waitsFor relation of the TS asks is the model's, and every owed item has the model's
+//     owner (the actors told a step that discharges it, the alternation of answers left out).
+// It does not establish:
+//   - the order of what an actor is told or what is owed (oldest first): sets only (the full-state
+//     tests in fullstate.test.ts cover occurrence ids and the order);
+//   - that a guard is not too weak: the model takes only acts it accepts, so an act the core
+//     should refuse is not offered (the unit tests and mutate.sh cover that);
+//   - the basis, the version sum and the epoch of an act: they are read from the TS state, so the
+//     stale-basis and epoch fences are the unit tests' (accept.test.ts) and mutate.sh's;
+//   - that the evidence an act carries (a Ship's resolvesFight, the harness's caught, holds,
+//     own, contra) is present, current or from the right candidate: the replay supplies it from
+//     the model's truths;
+//   - the siblings of a split: the model's single successor is the first part, and the other parts
+//     are held Done with their asks removed in the continuation state (project.ts canonState), so
+//     the replay says nothing of their asks, obligations or told steps.
 import { take } from '../../../state/c16/effect.ts'
 import { refusal } from '../accept.ts'
 import { modelActOf, toldTextOf, tsAct } from './acts.ts'
 import type { Trace } from './itf.ts'
-import { type Cmp, canonical, modelActors, modelCmp, modelTold, storeOf } from './model.ts'
-import { advance, canonState, initial, project, start, told } from './project.ts'
+import {
+  type Cmp,
+  canonical,
+  modelActors,
+  modelCmp,
+  modelOwed,
+  modelTold,
+  modelWaits,
+  storeOf,
+} from './model.ts'
+import { advance, canonState, initial, owedTexts, project, start, told, waits } from './project.ts'
 
 // The differing leaves of two values: `path: model | ts`.
 export const diff = (model: unknown, ts: unknown, path = ''): ReadonlyArray<string> => {
@@ -52,6 +79,10 @@ export const replay = (trace: Trace): Replayed => {
     const cmp: Cmp = canonical(modelCmp(model))
     const lines = diff(cmp, project(s, ctx))
     if (lines.length > 0) fail(step, 'the state differs from the model (model | ts)', lines)
+    const edges = diff(modelWaits(model), waits(s, ctx), 'waitsFor')
+    if (edges.length > 0) fail(step, 'who waits for whom differs (model | ts)', edges)
+    const owners = diff(modelOwed(model), owedTexts(s, ctx), 'owed')
+    if (owners.length > 0) fail(step, 'what is owed, and by whom, differs (model | ts)', owners)
     const tolds = modelActors(model).flatMap((who) =>
       diff(modelTold(model, who), told(s, ctx, who), who)
     )
