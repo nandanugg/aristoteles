@@ -199,9 +199,8 @@ export const modelCmp = (m: MStore): Cmp => ({
 // sides, the item versions are shifted so each item's smallest copy is 0, a closed fix is one
 // record. Idempotent: the model's states pass through it unchanged.
 export const canonical = (c: Cmp): Cmp => {
-  const kept = (state: string): boolean => ['Done', 'Raised', 'InReview'].includes(state)
   const tasks = Object.entries(c.tasks).map(([k, t]) =>
-    [k, { ...t, checked: kept(t.state) ? t.checked : c.versions }] as const
+    [k, { ...t, checked: t.hasResult ? t.checked : c.versions }] as const
   )
   const makers = Object.entries(c.makers).map(([k, y]) =>
     [k, { ...y, brief: y.claimed ? y.brief : c.versions }] as const

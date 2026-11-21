@@ -116,10 +116,17 @@ describe('the task cycle and its asks', () => {
     expect(findAsk(s, makes as AskSpec)?.id)
       .toBe('1')
     expect(s.ep.get('maker:m1')).toBe(0)
-    s = go(s, maker('m1'), { _tag: 'ReadBrief', maker: 'm1' })
+    const ver = new Map(s.ver).set('dir:d1', 1)
+    s = go({ ...s, ver }, maker('m1'), { _tag: 'ReadBrief', maker: 'm1' })
     expect(s.makers.get('m1')?.claimed).toBe(true)
-    s = reported(start())
-    expect(taskOf(s, 't1')).toMatchObject({ state: 'InReview', resultId: 0, taken: false })
+    expect(s.makers.get('m1')?.brief.get('dir:d1')).toBe(1)
+    s = go(s, maker('m1'), {
+      _tag: 'Report', ask: makerAsk(s).id, output: 'o', files: [], caught: new Set(['rule:r1']),
+    })
+    expect(taskOf(s, 't1')).toMatchObject({
+      state: 'InReview', resultId: 0, taken: false,
+    })
+    expect(taskOf(s, 't1').checked.get('dir:d1')).toBe(1)
     expect(taskOf(s, 't1').caught.has('rule:r1')).toBe(true)
     // the report closed the maker's Execute and made the Check in the same event
     expect(asks(s, 'Execute').length).toBe(1)

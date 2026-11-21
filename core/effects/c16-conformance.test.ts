@@ -18,7 +18,6 @@ import { create, type Author, type Time } from '../schema/index.ts'
 import { Dir, Env, Now, Store, StoreLive, Tokens } from '../services/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { epochOf, testRule } from '../state/c16/reads.ts'
-import type { Versions } from '../state/c16/data.ts'
 import type { WorkState } from '../state/c16/state.ts'
 import type { Actor, Body } from '../state/c16/types.ts'
 import { inspectWait } from './wait.ts'
@@ -48,7 +47,6 @@ for (const name of names) {
     try {
       await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
         const modelFirst = storeOf(trace.states[0]!.store)
-        const modelChecks = new Map<string, { readonly actual: Versions; readonly model: Versions }>()
         let ctx = start([...modelFirst.tasks.keys()])
         const seed = initial(ctx.slots)
         const store = yield* (yield* Store).open(dir, { create: true })
@@ -96,30 +94,8 @@ for (const name of names) {
               : act.body
             yield* append(act.who, body).pipe(Effect.tapError((error) =>
               Effect.sync(() => console.error(name, i, act.body._tag, error))))
-            // Canon discards a prior result's check versions during Working. If a
-            // maker raises from there, the model has current versions. The journal
-            // retains the old result's real check versions for a later TakeAsIs.
-            if (body._tag === 'AskRaise' && act.who._tag === 'Maker') {
-              const task = before.makers.get(act.who.id)!.task
-              const prior = before.tasks.get(task)!
-              if (prior.state === 'Working') {
-                expect(state.tasks.get(task)!.checked).toEqual(prior.checked)
-                modelChecks.set(task, { actual: state.tasks.get(task)!.checked, model: before.ver })
-              }
-            }
             ctx = advance(ctx, before, state)
-            const recheck = new Set(ctx.ignored)
-            if (body._tag === 'Respond' && body.reply === 'TakeAsIs') {
-              const ask = before.asks.get(body.ask)!
-              if (ask.about._tag === 'Fix' && modelChecks.delete(ask.about.id)) {
-                const task = ask.about.id
-                const pending = state.tasks.get(task)!.pending
-                // The model's discarded basis cannot schedule these rechecks.
-                // Run them through the journal before continuing the trace.
-                if (pending.size > 0) recheck.add(task)
-              }
-            }
-            for (const task of recheck) {
+            for (const task of ctx.ignored) {
               const t = state.tasks.get(task)!
               const role: Actor = { _tag: 'Role', name: t.role }
               if (t.state === 'Sent') {
@@ -150,15 +126,7 @@ for (const name of names) {
               }
             }
           }
-          const compared = canonState({
-            ...state,
-            tasks: new Map([...state.tasks].map(([id, task]) => {
-              const check = modelChecks.get(id)
-              const same = check && check.actual.size === task.checked.size &&
-                [...check.actual].every(([key, ver]) => task.checked.get(key) === ver)
-              return [id, same ? { ...task, checked: check.model } : task]
-            })),
-          }, ctx)
+          const compared = canonState(state, ctx)
           const differences = diff(canonical(modelCmp(model)), project(compared, ctx))
           if (differences.length) throw new Error(`${name} step ${i}:\n${differences.join('\n')}`)
           for (const who of modelActors(model)) {

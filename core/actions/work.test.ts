@@ -272,6 +272,9 @@ test('question, replay, page-only and ended refusals are typed through the dispa
   await fails(call('human', answer(first, 'different')), 'stale')
   await step(call('maker:m1', { _tag: 'Hear', ask: first }))
   await fails(call('maker:m1', { _tag: 'Hear', ask: first }), 'heard')
+  expect(state().heardIds.get(first)).toBe('maker:m1')
+  expect(failed(await run(p.dir, at, dispatchAct(call('host', { _tag: 'Hear', ask: first })))))
+    .toMatchObject({ refused: 'heard', words: 'that answer was already heard by maker:m1' })
   await step(call('maker:m1', q))
   const second = [...state().asks.values()].find((a) => a.kind === 'Question')!.id
   await step(call('human', { _tag: 'Revive', actor: { _tag: 'Host' } }))

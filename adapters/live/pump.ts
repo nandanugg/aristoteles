@@ -11,9 +11,7 @@
 // adapters/web returns; pumpLayerOf makes the Pump service of core/services from any facade (a
 // test's fake too). The frozen WatcherOptions.pump is a facade, so the watcher needs this way.
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rmSync } from 'node:fs'
 import { Effect, Layer } from 'effect'
 import { OutsideFailed } from '../../core/schema/index.ts'
 import type { TerminalReading } from '../../core/schema/outside.ts'
@@ -269,9 +267,6 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     refuse('tmux is not on this machine; the terminals of the UI need tmux')
   }
 
-  const rawPaste = tmuxNow('list-commands').out.split('\n').some(
-    (line) => line.startsWith('paste-buffer ') && /\[-[^\]]*S/.test(line),
-  )
   // The session of the dir, with a home window that keeps it alive when the agents end.
   const makeSession = () => {
     const made = tmuxNow(
@@ -643,12 +638,12 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
           }
           const refused = 'display-message -p target-changed'
           const prepare = (
-            args: string[], cleanup?: () => void, mayWriteInParts = false,
+            args: string[], cleanup?: () => void,
           ): PreparedTerminalWrite => ({
             run() {
               const result = run([...check, ...args])
               if (result.out.includes('target-changed') ||
-                (!mayWriteInParts && /can't find pane:/.test(result.err))) {
+                /can't find pane:/.test(result.err)) {
                 return 'target'
               }
               if (result.code !== 0) refuse(`tmux could not type into ${sid}`)
@@ -659,36 +654,24 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
           if (bytes.length <= 128) {
             return prepare([`${mark}; ${hexCommand(bytes)}`, refused])
           }
-          if (rawPaste) {
-            // Bypass tmux's command length limit. -r -S preserve the original bytes.
-            const buffer = `ar-pipe-${randomUUID()}`
-            const endpoint = adoptedPane ? ['-S', adoptedPane.socket] : ['-L', socket]
-            const child = Bun.spawnSync([
-              pathOf('tmux'), '-f', '/dev/null', ...endpoint, 'load-buffer', '-b', buffer, '-',
-            ], { env, stdin: bytes })
-            const cleanup = () => { run(['delete-buffer', '-b', buffer]) }
-            if (child.exitCode !== 0) {
-              cleanup()
-              return undefined
-            }
-            return prepare([`${mark}; paste-buffer -d -r -S -b ${buffer} -t ${pane}`, refused],
-              cleanup)
-          }
-          // Older tmux releases escape control bytes when pasting buffers.
-          const folder = mkdtempSync(join(tmpdir(), 'ar-pipe-'))
-          const cleanup = () => rmSync(folder, { recursive: true, force: true })
-          try {
-            const file = join(folder, 'keys')
-            const lines = [mark]
-            for (let i = 0; i < bytes.length; i += 128) {
-              lines.push(hexCommand(bytes.subarray(i, i + 128)))
-            }
-            writeFileSync(file, lines.join('\n'), { mode: 0o600 })
-            return prepare([`source-file ${JSON.stringify(file)}`, refused], cleanup, true)
-          } catch (error) {
+          // tmux 3.0–3.6a already paste raw bytes with -r. In 3.7, -S opts
+          // out of vis escaping. Query the target server for the flags it accepts.
+          const commands = run(['list-commands'])
+          const paste = commands.out.split('\n').find((line) => line.startsWith('paste-buffer '))
+          if (commands.code !== 0 || paste === undefined) return undefined
+          const raw = /\[-[^\]]*S/.test(paste) ? ' -S' : ''
+          const buffer = `ar-pipe-${randomUUID()}`
+          const endpoint = adoptedPane ? ['-S', adoptedPane.socket] : ['-L', socket]
+          const child = Bun.spawnSync([
+            pathOf('tmux'), '-f', '/dev/null', ...endpoint, 'load-buffer', '-b', buffer, '-',
+          ], { env, stdin: bytes })
+          const cleanup = () => { run(['delete-buffer', '-b', buffer]) }
+          if (child.exitCode !== 0) {
             cleanup()
-            throw error
+            return undefined
           }
+          return prepare([`${mark}; paste-buffer -d -r${raw} -b ${buffer} -t ${pane}`, refused],
+            cleanup)
         },
       }
     },

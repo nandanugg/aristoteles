@@ -128,8 +128,8 @@ const FORM: { readonly [form: string]: string } = {
 }
 
 // canon.qnt's lossy part, applied to the TS state itself between steps (the model's states have
-// been through it, and later steps read what it left): the versions a task was checked under
-// while it is not in review, raised or done; the brief of a maker that has not read it; the base
+// been through it, and later steps read what it left): the check versions of a task without a
+// result; the brief of a maker that has not read it; the base
 // of a draft that is not a direction draft past evaluation. The other parts of a split are held
 // done with nothing pending and no ask about them, so they never owe a step the model lacks.
 export const canonState = (s: WorkState, c: Ctx): WorkState => ({
@@ -141,7 +141,7 @@ export const canonState = (s: WorkState, c: Ctx): WorkState => ({
     id,
     c.ignored.has(id)
       ? { ...t, state: 'Done' as const, pending: new Set<string>(), maker: null }
-      : ['Done', 'Raised', 'InReview'].includes(t.state)
+      : t.resultId >= 0
       ? t
       : { ...t, checked: s.ver },
   ])),

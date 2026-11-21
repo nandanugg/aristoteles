@@ -120,7 +120,7 @@ export interface WorkState {
   readonly answered: ReadonlyMap<AskId, Answered>
   // a code realisation: the occurrences their asker heard (a Hear of one is `heard`, of any other
   // gone one `stale`)
-  readonly heardIds: ReadonlySet<AskId>
+  readonly heardIds: ReadonlyMap<AskId, ActorKey>
   readonly askCount: ReadonlyMap<string, number>
   readonly justAnswered: ReadonlySet<ActorKey>
   readonly askCap: number
@@ -186,7 +186,7 @@ export const initState = (
   ep: new Map(),
   asks: new Map(),
   answered: new Map(),
-  heardIds: NONE,
+  heardIds: new Map(),
   askCount: new Map(),
   justAnswered: NONE,
   askCap,

@@ -481,6 +481,10 @@ const WORDS: Readonly<Record<RefusalName, string>> = {
 export const refused = (s: WorkState, a: Act, via: Via = 'terminal'): RefusalRecord | null => {
   const name = refusal(s, a, via)
   if (name === null) return null
+  if (name === 'heard' && a.body._tag === 'Hear') {
+    const listener = s.heardIds.get(a.body.ask)
+    if (listener !== undefined) return { refused: name, words: `${WORDS.heard} by ${listener}` }
+  }
   return name === 'cap'
     ? { refused: name, words: WORDS[name], next: 'AskRaise' }
     : { refused: name, words: WORDS[name] }

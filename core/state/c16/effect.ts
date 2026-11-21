@@ -784,7 +784,7 @@ export const effect = (s: WorkState, a: Act): WorkState => {
     case 'Hear': {
       const answered = new Map(s.answered)
       answered.delete(w.ask)
-      return { ...s, answered, heardIds: new Set([...s.heardIds, w.ask]) }
+      return { ...s, answered, heardIds: put(s.heardIds, w.ask, keyOf(a.who)) }
     }
     // A maker past the cap raises its task as a problem no rule covers.
     case 'AskRaise': {

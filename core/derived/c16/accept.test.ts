@@ -235,10 +235,13 @@ describe('the order and the names', () => {
       .toBe('stale')
   })
 
-  test('heard: Hear of an answer already heard; stale once the asker asked again', () => {
+  test('heard: a recorded occurrence names the listener, including for another caller', () => {
     const hear: Body = { _tag: 'Hear', ask: '6' }
-    const heardOnce = { ...base(), seq: 12, heardIds: new Set(['6']) }
+    const heardOnce = { ...base(), seq: 12, heardIds: new Map([['6', 'host']]) }
     expect(refusal(heardOnce, act(host, hear))).toBe('heard')
+    expect(refused(heardOnce, act(writer, hear))).toEqual({
+      refused: 'heard', words: 'that answer was already heard by host',
+    })
     // a never-created id, an id removed with an ended maker: stale, never heard
     expect(refusal(heardOnce, act(host, { _tag: 'Hear', ask: '40' }))).toBe('stale')
     expect(refusal(heardOnce, act(host, { _tag: 'Hear', ask: '5' }))).toBe('stale')
@@ -749,7 +752,7 @@ describe('a retry against a replacement occurrence', () => {
     }]]), seq: 4 }
     expect(refusal(answered, act(host, { _tag: 'Hear', ask: '2' }))).toBeNull()
     // heard, and asked again: the replacement is '8'
-    const heard = { ...answered, answered: new Map(), heardIds: new Set(['2']), seq: 8 }
+    const heard = { ...answered, answered: new Map(), heardIds: new Map([['2', 'host']]), seq: 8 }
     const again = openAsk(heard, { kind: 'Question', from: host, to: human, about: none }, single)
       .state
     expect([...again.asks.keys()]).toEqual(['8'])
