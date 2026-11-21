@@ -118,6 +118,7 @@ export type StartFix =
   | { readonly _tag: 'Direction'; readonly direction: DirectionId }
   | { readonly _tag: 'Role'; readonly role: RoleName }
   | { readonly _tag: 'Lead' }
+  | { readonly _tag: 'Staffing' }
 interface StartProblem {
   readonly refusal: Refusal
   readonly fix: StartFix
@@ -215,6 +216,13 @@ export const startStateOf = (files: OnboardingFiles): StartState => {
   }
   const role = files.roles.find((r) => r.decision._tag !== 'Accepted')
   if (role !== undefined) return { _tag: 'Waiting', on: { _tag: 'Role', role: role.role } }
+  if (files.staffingProblem !== undefined) {
+    return {
+      _tag: 'Blocked',
+      refusal: no(files.staffingProblem, 'Write', 'correct the staffing for this directory'),
+      fix: { _tag: 'Staffing' },
+    }
+  }
   return { _tag: 'Open' }
 }
 
@@ -258,10 +266,14 @@ const roleIn = (roles: Readonly<Record<string, RoleFile>>, name: string): RoleFi
   Object.hasOwn(roles, name) ? roles[name] : undefined
 
 // What differs between the file and the stored config: the words of roles, and anything else.
-const diffConfig = (config: ConfigFile, old: ConfigFile) => {
+const responsibility = <T extends object>(role: T) =>
+  Object.fromEntries(Object.entries(role).filter(([key]) => key !== 'model' && key !== 'persistence'))
+
+const diffConfig = (config: ConfigFile, old: ConfigFile, localStaffing: boolean) => {
   const text: Record<string, RoleWords> = {}
   const other: Array<string> = []
   for (const key of ['project', 'people', 'models', 'decide'] as const) {
+    if (key === 'models' && localStaffing) continue
     if (canon(config[key]) !== canon(old[key])) other.push(key)
   }
   for (const [roleName, role] of Object.entries(config.roles)) {
@@ -272,7 +284,8 @@ const diffConfig = (config: ConfigFile, old: ConfigFile) => {
     }
     const { description, intro, responsibilities, output, ...rest } = role
     const { description: d0, intro: i0, responsibilities: r0, output: o0, ...rest0 } = was
-    if (canon(rest) !== canon(rest0)) {
+    if (canon(localStaffing ? responsibility(rest) : rest) !==
+      canon(localStaffing ? responsibility(rest0) : rest0)) {
       other.push(`the acts, model, persistence or icon of ${roleName}`)
     }
     if (canon([description, intro, responsibilities, output]) !== canon([d0, i0, r0, o0])) {
@@ -287,8 +300,8 @@ const diffConfig = (config: ConfigFile, old: ConfigFile) => {
 const roleWordsOfFile = (d: Derived): Effect.Effect<Event, Refusal, Files> =>
   Effect.gen(function* () {
     const cwd = d.moment.outside.cwd
-    const { config, hashes, texts } = yield* readConfig(cwd).pipe(Effect.mapError(asWrite(CONFIG)))
-    const { text, other } = diffConfig(config, d.moment.work.config)
+    const { config, hashes, texts, localStaffing } = yield* readConfig(cwd).pipe(Effect.mapError(asWrite(CONFIG)))
+    const { text, other } = diffConfig(config, d.moment.work.config, localStaffing === true)
     if (other.length) return yield* fail(R.ApplyConfig.notWords(other.join(', ')))
     const changed = { _tag: 'RoleWordsChanged' as const, roles: text, hashes, texts }
     return { _tag: 'Workflow', move: changed } as Event

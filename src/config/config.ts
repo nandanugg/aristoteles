@@ -32,6 +32,7 @@ import {
   sha,
 } from './core.ts'
 import { readSettingsOf, withSettings } from './settings.ts'
+import { readStaffing, STAFFING, type Staffing } from './staffing.ts'
 
 export { CONFIG, LIMIT_KEYS, MECHANISM_KEYS, SETTING_KEYS, sha }
 
@@ -43,22 +44,19 @@ export interface ConfigRead {
   readonly config: ConfigFile
   readonly hashes: Readonly<Record<string, string>>
   readonly texts: Readonly<Record<string, string>>
+  readonly localStaffing?: true
 }
 
-// The mechanism of a parsed file: its keys, and the limits of each model (the commands of a
-// model are settings).
-const mechanismOf = (raw: Raw): Raw => ({
-  ...Object.fromEntries(MECHANISM_KEYS.map((k) => [k, raw[k] ?? null])),
-  models: Object.fromEntries(
-    Object.entries<Raw>(raw.models ?? {}).map(([name, m]) => [name, m?.limits ?? null]),
-  ),
-})
+// Hash the responsibility layer separately from project-local staffing.
+const mechanismOf = (raw: Raw): Raw =>
+  Object.fromEntries(MECHANISM_KEYS.map((key) => [key, raw[key] ?? null]))
 // The hash of the mechanism only: a change of the settings (the UI writes them) is not a change
 // of the stored config. A file that does not parse is still a changed file.
 const mechanismHash = (text: string): string => {
   let raw: Raw
   try {
     raw = Bun.YAML.parse(text) ?? {}
+    checkResponsibility(raw)
   } catch {
     return sha(text)
   }
@@ -269,7 +267,7 @@ const configOf = (dir: string, raw: Raw): ConfigFile => {
     )
   }
   const known: readonly string[] = [...MECHANISM_KEYS, ...SETTING_KEYS]
-  const unknown = Object.keys(raw).find((k) => !known.includes(k))
+  const unknown = Object.keys(raw).find((k) => k !== 'models' && !known.includes(k))
   if (unknown) fail(CONFIG, `"${unknown}" is not a key of ${CONFIG} (${known.join(', ')})`)
   readSettingsOf(raw)
   const people: string[] = list(raw.people).map((p) => p?.name)
@@ -319,6 +317,39 @@ const configOf = (dir: string, raw: Raw): ConfigFile => {
   return { project: basename(dir), people, models, roles, decide: decided } as unknown as ConfigFile
 }
 
+// Join staffing at the configuration boundary. The effective role retains the shape used
+// by the journal and the current work core. Only the responsibility text is hashed or stored.
+const checkResponsibility = (raw: Raw): void => {
+  if (raw.models !== undefined) fail(CONFIG, `move models to ${STAFFING}`)
+  for (const [name, role] of Object.entries<Raw>(raw.roles ?? {})) {
+    if (role?.model !== undefined || role?.persistence !== undefined) {
+      fail(CONFIG, `move roles.${name}'s model and persistence to ${STAFFING}`)
+    }
+  }
+}
+
+const bindStaffing = (raw: Raw, staffing: Staffing): Raw => {
+  const roles = Object.fromEntries(Object.entries<Raw>(raw.roles ?? {}).map(([name, role]) => {
+    const binding = Object.hasOwn(staffing.roles, name) ? staffing.roles[name] : undefined
+    if (role?.kind === 'program') {
+      if (binding !== undefined) fail(STAFFING, `program role ${name} needs no staffing`)
+      return [name, role]
+    }
+    if (binding === undefined) return fail(STAFFING, `roles.${name} needs a staffing binding`)
+    return [name, {
+      ...role,
+      model: binding.model,
+      persistence: { persistent: binding.persistent, why: 'Chosen in staffing.' },
+    }]
+  }))
+  for (const name of Object.keys(staffing.roles)) {
+    if (!Object.hasOwn(roles, name)) fail(STAFFING, `roles.${name} names an unknown role`)
+  }
+  const models = Object.fromEntries(Object.values(staffing.roles)
+    .flatMap((binding) => binding.allowedModels.map((model) => [model, {}])))
+  return { ...raw, roles, models: { ...models, ...staffing.models } }
+}
+
 // readConfig(dir): the mechanism, its hash and its text.
 export const readConfig = (dir: string): Effect.Effect<ConfigRead, Refused, Files> =>
   Effect.gen(function* () {
@@ -327,16 +358,41 @@ export const readConfig = (dir: string): Effect.Effect<ConfigRead, Refused, File
     if (text === null) {
       return yield* refuse(`no ${CONFIG} in ${dir}; write one (see DESIGN.md section 3)`)
     }
-    return yield* configOfText(dir, text)
+    return yield* readConfigText(dir, text)
   })
 
 // The same read of a text that is not in the file yet (work config check reads the merged draft).
-export const configOfText = (dir: string, text: string): Effect.Effect<ConfigRead, Refused> =>
-  refusing(() => ({
-    config: configOf(dir, parseYaml(text)),
-    hashes: { [CONFIG]: mechanismHash(text) },
-    texts: { [CONFIG]: text },
-  }))
+export const configOfText = (
+  dir: string, text: string, staffing: Staffing | null = null,
+): Effect.Effect<ConfigRead, Refused> =>
+  refusing(() => {
+    const raw = parseYaml(text)
+    checkResponsibility(raw)
+    if (staffing === null) return fail(STAFFING, 'add the staffing bindings for this directory')
+    return {
+      config: configOf(dir, bindStaffing(raw, staffing)),
+      hashes: { [CONFIG]: mechanismHash(text) },
+      texts: { [CONFIG]: text },
+      localStaffing: true,
+    }
+  })
+
+export const draftConfigOfText = (dir: string, text: string): Effect.Effect<ConfigRead, Refused> =>
+  refusing(() => {
+    const raw = parseYaml(text)
+    checkResponsibility(raw)
+    // The role-card readers still take the effective role shape. These defaults belong
+    // to the draft view. The checked join supplies the runtime fields at startup.
+    const roles = Object.fromEntries(Object.entries<Raw>(raw.roles ?? {}).map(([name, role]) =>
+      [name, role?.kind === 'program' ? role : {
+        ...role, model: '', persistence: { persistent: true, why: 'Staffing is pending.' },
+      }]))
+    return { config: configOf(dir, { ...raw, roles, models: { '': {} } }),
+      hashes: { [CONFIG]: mechanismHash(text) }, texts: { [CONFIG]: text } }
+  })
+
+export const readConfigText = (dir: string, text: string) =>
+  Effect.flatMap(readStaffing(dir), (staffing) => configOfText(dir, text, staffing))
 
 // fileHashes(dir): the hash of the mechanism in the file now.
 export const fileHashes = (
@@ -361,19 +417,11 @@ export const restoreConfig = (dir: string, stored: string): Effect.Effect<void, 
     try {
       now = nowText === null ? {} : (Bun.YAML.parse(nowText) ?? {})
     } catch {}
-    yield* files.write(path, stored).pipe(Effect.orDie)
-    const settings: Raw = Object.fromEntries(SETTING_KEYS.map((k) => [k, now[k]]))
-    // The commands of a model are the file's now; its limits are the stored ones.
-    const was = parseYaml(stored).models ?? {}
-    const names = [...new Set([...Object.keys(was), ...Object.keys(now.models ?? {})])]
-    settings.models = Object.fromEntries(
-      names.map((n) => {
-        const { limits: _, ...commands } = now.models?.[n] ?? {}
-        const limits = was[n]?.limits
-        return [n, { ...was[n], ...commands, ...(limits ? { limits } : {}) }]
-      }),
-    )
-    const text = yield* refusing(() => withSettings(stored, settings))
+    const settings = Object.fromEntries(SETTING_KEYS.map((k) => [k, now[k]]))
+    const text = yield* refusing(() => {
+      checkResponsibility(parseYaml(stored))
+      return withSettings(stored, settings)
+    })
     yield* files.write(path, text).pipe(Effect.orDie)
   })
 

@@ -2,12 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/nandanugg/aristoteles/main/schema/aristoteles.schema.json",
   "title": "aristoteles.yaml",
-  "description": "The one file of a dir: the people, the roles, the deciders and the limits of each model (the mechanism), and the settings of the UI with the commands of each model. The name of the dir is the name of its folder.",
+  "description": "The people, role responsibilities, deciders and display settings of a directory. Staffing for a new project is in .work/staffing.yaml.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "people",
-    "models",
     "roles"
   ],
   "properties": {
@@ -29,15 +28,8 @@
         }
       }
     },
-    "models": {
-      "description": "The models that the roles name, by name: the commands of each (settings) and its limits (mechanism). A persistent role of any model runs in a terminal of its own; a disposable role runs as a subagent inside the terminal above it. Choose a stronger model for a role whose work needs more care.",
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/model"
-      }
-    },
     "roles": {
-      "description": "The roles of the dir. Each agent role names its model and its acts; one persistent role splits (it hosts each project).",
+      "description": "The responsibilities and acts of each role. Staffing binds agent roles to models.",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/role"
@@ -232,11 +224,6 @@
           ],
           "description": "A program runs a command on each report."
         },
-        "model": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The name of an entry of the models table."
-        },
         "description": {
           "type": "string"
         },
@@ -275,28 +262,6 @@
         "timeout": {
           "type": "integer",
           "minimum": 1
-        },
-        "persistence": {
-          "description": "How an agent role runs, apart from its model: a persistent role gets a terminal of its own for the whole project; a disposable role runs as a subagent of a terminal. why: the reason, which the card of the role shows. A program has none.",
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "persistent",
-            "why"
-          ],
-          "properties": {
-            "persistent": {
-              "type": "boolean"
-            },
-            "why": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        },
-        "pipeline": {
-          "description": "true on the one persistent agent role that is the pipeline (PIPE, not a role card); at most one role has it. A top cannot open without it.",
-          "const": true
         },
         "icon": {
           "description": "The icon of the role on its card.",
@@ -360,12 +325,6 @@
             }
           ]
         }
-      },
-      "else": {
-        "required": [
-          "persistence",
-          "model"
-        ]
       }
     },
     "deciders": {

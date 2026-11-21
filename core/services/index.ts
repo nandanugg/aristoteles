@@ -19,7 +19,8 @@ export { StoreLive } from '../../src/store/sqlite.ts'
 export { dbPath } from '../../src/store/path.ts'
 export { rowsOf } from '../../src/store/rows.ts'
 export {
-  configOfText,
+  readConfigText,
+  draftConfigOfText,
   fileHashes,
   readConfig,
   readDirection,
@@ -57,3 +58,4 @@ export { Readings } from './readings.ts'
 
 // Additive (P7): what the CLI prints or reads that the doors above did not carry.
 export { refusing } from '../../src/config/core.ts'
+export { readStaffing } from '../../src/config/staffing.ts'

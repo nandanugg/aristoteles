@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { main } from './code.js'
+import { staffedFixture } from './staffing-fixture.js'
 
 // Ruling 2026-11-14 (brief limits leave room for the guide): the limits of a model sit above the
 // text of its guide, which counts in the brief. Ruling 7, onboarding 2026-11-14: each agent role
@@ -214,7 +215,17 @@ export function onboardingProject(files = {}, name = 'report-export') {
 function projectOf(all, name) {
   const dir = join(mkdtempSync(join(tmpdir(), 'work-')), name)
   mkdirSync(dir)
-  for (const [path, text] of Object.entries(all)) write(dir, path, text)
+  const writeFixture = (path, text) => {
+    if (path === 'aristoteles.yaml' || path === 'aristoteles.draft.yaml' || /^draft[^/]*\.yaml$/.test(path)) {
+      const pair = staffedFixture(text)
+      if (pair) {
+        write(dir, '.work/staffing.yaml', pair.staffing)
+        return write(dir, path, pair.config)
+      }
+    }
+    write(dir, path, text)
+  }
+  for (const [path, text] of Object.entries(all)) writeFixture(path, text)
   let minute = 0
   // A test with the server of the UI uses the real clock, because the server acts at the real time.
   let real = false
@@ -249,7 +260,7 @@ function projectOf(all, name) {
   const now = () => new Date(Date.UTC(2026, 9, 25, 9, Math.max(minute - 1, 0))).toISOString()
   return {
     dir, run, nanda, ui, agent, now, realTime: () => { real = true },
-    write: (path, text) => write(dir, path, text), wait: (minutes) => { minute += minutes },
+    write: writeFixture, wait: (minutes) => { minute += minutes },
   }
 }
 

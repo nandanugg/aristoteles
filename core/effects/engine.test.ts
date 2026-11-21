@@ -134,6 +134,23 @@ describe('engineTick', () => {
       expect(lead).toContain(`work hook stopped ${LEAD}.1.k`)
     }, 90000)
 
+  test('a role-specific local launch takes its effective model from staffing', async () => {
+    const t = await setup()
+    const binding = {
+      account: 'primary', cli: 'agent', allowedModels: ['new'], model: 'new',
+      persistent: true, concurrency: 1, subagentAllowance: 0,
+      launch: 'staffed {model} {session}',
+    }
+    t.p.write('.work/staffing.yaml', Bun.YAML.stringify({
+      clis: { agent: { backgroundChildren: false } },
+      accounts: { primary: { limits: {} } },
+      roles: { architect: binding, 'section-lead': binding },
+    }))
+    await t.tick()
+    expect(t.pump.commands.get('pipe-e1')).toStartWith('staffed new ')
+    expect(t.pump.commands.get('role-section-lead-e1')).toStartWith('staffed new ')
+  }, 90000)
+
   test('both alive: the tick does nothing', async () => {
     const t = await setup()
     await t.tick()

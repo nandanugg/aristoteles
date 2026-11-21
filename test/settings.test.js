@@ -9,6 +9,7 @@ import Ajv from 'ajv/dist/2020.js'
 import { startServer } from './code.js'
 import { CODE_YAML, ONBOARD_CONFIG, WORK_YAML, ok, initiated, onboardingProject, project, withModels } from './harness.js'
 import { act, api, dbOf, gitPerson, settingsOf } from './outside.js'
+import { staffedFixture } from './staffing-fixture.js'
 
 // An act of the onboarding pages (POST /api/onboarding), with the key and the page's own origin.
 const onboardingAct = async (p, body) => {
@@ -49,9 +50,9 @@ const WITH_MODELS = withModels(WORK_YAML, MODELS)
 
 describe('aristoteles.yaml', () => {
   test('the schema accepts the files of the tests and the settings of the plan', () => {
-    expect(valid(WORK_YAML)).toBe(true)
-    expect(valid(CODE_YAML)).toBe(true)
-    expect(valid(SETTINGS + WITH_MODELS)).toBe(true)
+    expect(valid(staffedFixture(WORK_YAML).config)).toBe(true)
+    expect(valid(staffedFixture(CODE_YAML).config)).toBe(true)
+    expect(valid(staffedFixture(SETTINGS + WITH_MODELS).config)).toBe(true)
   })
 
   test('the schema refuses a key that the CLI refuses', () => {
@@ -89,9 +90,9 @@ describe('aristoteles.yaml', () => {
     expect(await refusal(WORK_YAML.replace('  sonnet: {', '  sonnet: { launch: x {session},')))
       .toContain('YAML Parse error: Unexpected token')
     expect(await refusal(withModels(WORK_YAML, { opus: { launch: 'agent-tool' } })))
-      .toContain('models.opus.launch has no {session}')
+      .toContain('roles.architect.launch needs {session}')
     expect(await refusal(WORK_YAML.replace('model: haiku', 'model: tiny')))
-      .toContain('roles.writer: model names an entry of the models table (haiku, sonnet, opus)')
+      .toContain('roles.writer.model must be one of its allowed models')
   })
 
   // The page reads the settings (GET /api/dir) and saves them (POST /api/act).
@@ -120,7 +121,7 @@ describe('aristoteles.yaml', () => {
     const now = await settingsOf(p)
     expect(now.models.opus).toMatchObject({ launch: 'agent-tool --model {model} --session-id {session}' })
     expect(now.models.haiku).toMatchObject({ launch: 'agent-tool --session-id {session}' })
-    const file = Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8'))
+    const file = Bun.YAML.parse(readFileSync(join(p.dir, '.work/staffing.yaml'), 'utf8'))
     expect(file.models.haiku.limits).toEqual({ Assignment: { briefChars: 6000, attempts: 3 }, Review: { rules: 5 } })
     expect(file.models.sonnet.launch).toBeUndefined()
   })
@@ -131,8 +132,8 @@ describe('aristoteles.yaml', () => {
     expect(await act(p, 'settings', { settings })).toEqual({ out: 'the settings are saved.' })
     const text = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
     expect(text).toStartWith('# yaml-language-server: $schema=../schema/aristoteles.schema.json\n')
-    expect(text).toContain(`# the roles below are ours\npeople:\n  - name: Nanda\n`)
-    expect(text).toContain(WORK_YAML.slice(WORK_YAML.indexOf('roles:')))
+    expect(text).toContain('# the roles below are ours')
+    expect(Bun.YAML.parse(text).roles.architect.model).toBeUndefined()
     const now = await settingsOf(p)
     expect(now).toMatchObject({ sound: true, theme: 'dark', retryMinutes: 5 })
     expect(now.models.opus.launch).toBe('other-tool --session-id {session}')
@@ -197,7 +198,7 @@ describe('the skills of a launched AI tool', () => {
 describe('the first start of a dir', () => {
   // A dir with only the settings that the person saved on the page, and its git user.
   const fresh = () => {
-    const p = project({ 'aristoteles.yaml': 'models:\n  opus:\n    launch: page-tool --session-id {session}\n' })
+    const p = project({ 'aristoteles.yaml': 'theme: light\n' })
     Bun.spawnSync(['git', 'init', '-q', p.dir])
     Bun.spawnSync(['git', '-C', p.dir, 'config', 'user.name', 'Nanda'])
     return p
@@ -221,8 +222,8 @@ describe('the first start of a dir', () => {
 
   // Ruling 1, onboarding 2026-11-14: the store start of the page writes the models of the draft
   // (Accept the roles did, with no onboarding files).
-  test('the store start: the models of the draft replace the saved ones, in one block', async () => {
-    const p = onboardingProject({ 'aristoteles.yaml': 'models:\n  opus:\n    launch: page-tool --session-id {session}\n' })
+  test('the store start: the start keeps the staffing out of the responsibility file', async () => {
+    const p = onboardingProject({ 'aristoteles.yaml': 'theme: light\n' })
     gitPerson(p)
     p.write('draft.yaml', hostDraft(ONBOARD_CONFIG))
     ok(await p.agent('onboard config --file=draft.yaml'))
@@ -231,7 +232,7 @@ describe('the first start of a dir', () => {
       'store made for report-export in aristoteles: 4 roles and 0 directions; the onboarding files are gone.',
     )
     const text = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
-    expect(text.match(/^models:/gm)).toHaveLength(1)
+    expect(Bun.YAML.parse(text).models).toBeUndefined()
     expect((await settingsOf(p)).models.opus).toMatchObject({ launch: 'host-cli --session-id {session} {prompt}', skills: '.host/skills' })
     expect(existsSync(join(p.dir, 'aristoteles.draft.yaml'))).toBe(false)
   })
@@ -251,7 +252,7 @@ describe('the first start of a dir', () => {
     expect((await p.agent('config check')).err).toMatch(/^refused: aristoteles\.draft\.yaml: linter: ".*" uses the vague verb "ensure"/)
     // The same words as the refusal of the page.
     p.write('aristoteles.draft.yaml', withModels(WORK_YAML, { opus: { launch: 'host-cli' } }))
-    expect((await p.agent('config check')).err).toContain('aristoteles.draft.yaml: aristoteles.yaml: models.opus.launch has no {session}')
+    expect((await p.agent('config check')).err).toContain('roles.architect.launch needs {session}')
   })
 
   test('the host records the fit of each role as a model run; the person does not use --by', async () => {

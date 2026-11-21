@@ -7,6 +7,8 @@ import { join } from 'node:path'
 import { runNew } from './outcome.ts'
 import * as next from './config.ts'
 import { checkerProblem } from '../domain/files.ts'
+// @ts-expect-error fixture helpers are JavaScript
+import { staffedFixture } from '../../test/staffing-fixture.js'
 
 // biome-ignore lint/suspicious/noExplicitAny: a mutable raw config of a test
 type Obj = any
@@ -43,7 +45,14 @@ const limitsOnly = (o: Obj): void => {
 const yaml = (o: Obj) => Bun.YAML.stringify(o, null, 2)
 const dirWith = (text: string | null): string => {
   const dir = mkdtempSync(join(tmpdir(), 'cfg-'))
-  if (text !== null) writeFileSync(join(dir, 'aristoteles.yaml'), text)
+  if (text !== null) {
+    const pair = staffedFixture(text)
+    writeFileSync(join(dir, 'aristoteles.yaml'), pair?.config ?? text)
+    if (pair) {
+      mkdirSync(join(dir, '.work'))
+      writeFileSync(join(dir, '.work/staffing.yaml'), pair.staffing)
+    }
+  }
   return dir
 }
 
@@ -184,7 +193,7 @@ describe('fileHashes and the hash of the mechanism', () => {
     const [ha, hb, hc, hd] = await Promise.all([a, b, c, d].map(hashOf))
     expect(ha).toBe(hb)
     expect(ha).not.toBe(hc)
-    expect(ha).not.toBe(hd)
+    expect(ha).toBe(hd)
   })
 })
 
@@ -201,7 +210,7 @@ describe('restoreConfig', () => {
   for (const [name, stored, now] of cases) {
     test(name, async () => {
       const dir = dirWith(now)
-      expect(await runNew(next.restoreConfig(dir, stored))).toEqual({ ok: undefined })
+      expect(await runNew(next.restoreConfig(dir, staffedFixture(stored)?.config ?? stored))).toEqual({ ok: undefined })
       expect(await Bun.file(join(dir, 'aristoteles.yaml')).text()).toMatchSnapshot()
     })
   }
@@ -359,7 +368,10 @@ describe('the small exports', () => {
   test('the name of the project is the name of the folder', async () => {
     const dir = join(mkdtempSync(join(tmpdir(), 'cfg-')), 'my-project')
     mkdirSync(dir)
-    writeFileSync(join(dir, 'aristoteles.yaml'), yaml(good()))
+    const pair = staffedFixture(yaml(good()))
+    writeFileSync(join(dir, 'aristoteles.yaml'), pair.config)
+    mkdirSync(join(dir, '.work'))
+    writeFileSync(join(dir, '.work/staffing.yaml'), pair.staffing)
     const now = (await runNew(next.readConfig(dir))) as Obj
     expect(now.ok.config.project).toBe('my-project')
   })

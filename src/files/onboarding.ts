@@ -23,9 +23,10 @@ import {
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { Effect, Schema, type Scope } from 'effect'
-import { type ConfigRead, configOfText } from '../config/config.ts'
+import { type ConfigRead, configOfText, draftConfigOfText } from '../config/config.ts'
 import { CONFIG, DRAFT, parseYaml, type Raw, refusing } from '../config/core.ts'
 import { mergeDraft } from '../config/settings.ts'
+import { STAFFING, staffingOfText } from '../config/staffing.ts'
 import type { Principle } from '../domain/closed.ts'
 import { OutsideFailed, Refused, refuse } from '../domain/errors.ts'
 import type { OnboardedDirection } from '../domain/events.ts'
@@ -220,11 +221,24 @@ const writeRoleStates = (dir: string, states: RoleStates) =>
 interface Draft {
   readonly raw: Raw
   readonly read: ConfigRead
+  readonly staffingProblem?: string
 }
 const draftOf = (dir: string, text: string): Effect.Effect<Draft, Refused> =>
-  refusing(() => ({ raw: parseYaml(text), merged: mergeDraft(readText(join(dir, CONFIG)) ?? '', text) })).pipe(
+  refusing(() => ({
+    raw: parseYaml(text),
+    merged: mergeDraft(readText(join(dir, CONFIG)) ?? '', text),
+  })).pipe(
     Effect.flatMap(({ raw, merged }) =>
-      Effect.map(configOfText(dir, merged), (read) => ({ raw, read })),
+      Effect.gen(function* () {
+        const read = yield* draftConfigOfText(dir, merged)
+        const joined = yield* Effect.result(Effect.gen(function* () {
+          const staffing = yield* refusing(() => staffingOfText(readText(join(dir, STAFFING))))
+          if (staffing === null) return yield* refuse(`add the staffing bindings in ${STAFFING}`)
+          return yield* configOfText(dir, merged, staffing)
+        }))
+        return joined._tag === 'Success' ? { raw, read: joined.success }
+          : { raw, read, staffingProblem: joined.failure.message }
+      }),
     ),
     Effect.mapError((e) => new Refused({ message: `${DRAFT}: ${e.message}`, next: e.next })),
   )
@@ -257,6 +271,8 @@ const writeDraft = (dir: string, raw: Raw) =>
 export interface OnboardingFiles {
   // The config draft as the store start reads it; null: the host has written none yet.
   readonly config: ConfigFile | null
+  readonly responsibilityOnly?: true
+  readonly staffingProblem?: string
   readonly directions: ReadonlyArray<OnboardingDirection>
   // The roles of the config draft in its order, each joined with its entry of roles.yaml.
   readonly roles: ReadonlyArray<OnboardingRole>
@@ -278,7 +294,9 @@ export const readOnboarding = (dir: string): Effect.Effect<OnboardingFiles, Refu
       }
       roles.push({ ...state, role: role as RoleName, file })
     }
-    return { config: draft?.read.config ?? null, directions, roles }
+    return { config: draft?.read.config ?? null, directions, roles,
+      ...(draft !== undefined ? { responsibilityOnly: true } : {}),
+      ...(draft?.staffingProblem === undefined ? {} : { staffingProblem: draft.staffingProblem }) }
   })
 
 // An accepted direction as the store holds it. The person who starts the store owns it: an
@@ -730,49 +748,10 @@ export const personAct = (
           yield* writeRoleStates(dir, states)
           return []
         }
-        case 'persistence': {
-          const known = yield* needDraft(dir)
-          const role = yield* roleIn(known, act.role)
-          if (role.kind === 'program') {
-            return yield* refuse(
-              `${act.role} is a program; it runs in the CLI and has no persistence`,
-              'toggle the persistence of an agent role',
-            )
-          }
-          // Ruling 15: the role of the top task is the persistent role that splits, which the host
-          // plays; while it is the only one, its card has no toggle.
-          if (onlyLead(known.read.config.roles) === act.role) {
-            return yield* refuse(
-              `${act.role} is the role of the top task (the only persistent role that splits), so it has ` +
-                'no toggle: the host plays it, and the host is a terminal (ruling 15)',
-              `keep ${act.role} persistent`,
-            )
-          }
-          const persistence = { persistent: act.persistent, why: `${person} chose it on the agents page.` }
-          const raw = known.raw.roles[act.role]
-          yield* writeDraft(dir, {
-            ...known.raw,
-            roles: { ...known.raw.roles, [act.role]: { ...raw, persistence } },
-          })
-          return []
-        }
-        case 'model': {
-          const known = yield* needDraft(dir)
-          const role = yield* roleIn(known, act.role)
-          if (role.kind === 'program') {
-            return yield* refuse(`${act.role} is a program; it runs no model`, 'pick the model of an agent role')
-          }
-          const names = Object.keys(known.raw.models ?? {})
-          if (!names.includes(act.model)) {
-            return yield* refuse(`there is no model ${act.model} in the models table`, `pick one of ${names.join(', ')}`)
-          }
-          const raw = known.raw.roles[act.role]
-          yield* writeDraft(dir, {
-            ...known.raw,
-            roles: { ...known.raw.roles, [act.role]: { ...raw, model: act.model } },
-          })
-          return []
-        }
+        case 'persistence':
+        case 'model':
+          return yield* refuse(`edit ${STAFFING} to change the staffing of ${act.role}`)
+
       }
     }),
   )

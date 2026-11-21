@@ -296,7 +296,7 @@ export const onboardingFilesView = (
     roleCardOf(settings, r.role, r.file, {
       summary: r.summary,
       description: r.file.description,
-      toggle: lead !== r.role,
+      toggle: files.responsibilityOnly !== true && lead !== r.role,
       found: r.found._tag === 'InProject' ? r.found.path : null,
       state: r.decision._tag === 'Accepted' ? 'accepted' : 'waiting',
       request: r.decision._tag === 'Revising' ? r.decision.words : null,
@@ -306,7 +306,7 @@ export const onboardingFilesView = (
     stage: 'files',
     directions: files.directions.map((f) => onboardingDirectionCard(f, exampleOf)),
     roles: [...roles.filter((r) => r.found !== null), ...roles.filter((r) => r.found === null)],
-    models: Object.keys(settings.models),
+    models: files.responsibilityOnly === true ? [] : Object.keys(settings.models),
     start: startViewOf(files),
   }
 }

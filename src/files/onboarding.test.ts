@@ -8,6 +8,8 @@ import { join } from 'node:path'
 import { Effect, Exit } from 'effect'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import { WORK_YAML } from '../../test/harness.js'
+// @ts-expect-error fixture helpers are JavaScript
+import { staffedFixture } from '../../test/staffing-fixture.js'
 import {
   ASSESS,
   type DirectionDraft,
@@ -39,7 +41,8 @@ const fileOf = async (dir: string, id: string) => {
 }
 
 // The config draft of the harness: each role with the one line of its card.
-const CONFIG = Bun.YAML.parse(WORK_YAML) as { readonly roles: Record<string, unknown> }
+const PAIR = staffedFixture(WORK_YAML)
+const CONFIG = Bun.YAML.parse(PAIR.config) as { readonly roles: Record<string, unknown> }
 const NOTES = Object.fromEntries(
   Object.keys(CONFIG.roles).map((r) => [r, { summary: `the ${r}`, found: { _tag: 'New' } }]),
 )
@@ -77,6 +80,8 @@ const draftOf = (id: string): DirectionDraft =>
   }) as unknown as DirectionDraft
 const withConfig = async () => {
   const dir = dirOf()
+  mkdirSync(join(dir, '.work'), { recursive: true })
+  writeFileSync(join(dir, '.work/staffing.yaml'), PAIR.staffing)
   await host(dir, { _tag: 'Config', config: CONFIG, notes: NOTES })
   return dir
 }
@@ -198,15 +203,12 @@ describe('the acts', () => {
       hostAct(dir, { _tag: 'Draft', direction: 'small-changes', draft: draftOf('small-changes'), reopen: false } as HostAct),
     )
     expect(String(Exit.isFailure(again) && again.cause)).toContain('small-changes is accepted')
-    // The person's toggle writes the persistence of the role, with the person's reason, and only it.
     const before = (await read(dir)).roles.find((r: Obj) => r.role === 'writer')
-    await nanda(dir, { act: 'persistence', role: 'writer', persistent: true })
-    const after = (await read(dir)).roles.find((r: Obj) => r.role === 'writer')
-    expect(after?.file).toEqual({
-      ...before?.file,
-      persistence: { persistent: true, why: 'Nanda chose it on the agents page.' },
-    } as never)
-    expect(after?.decision).toEqual(before?.decision as never)
+    const edit = await exitOf(personAct(dir, 'Nanda', {
+      act: 'persistence', role: 'writer', persistent: true,
+    } as PersonAct))
+    expect(String(Exit.isFailure(edit) && edit.cause)).toContain('edit .work/staffing.yaml')
+    expect((await read(dir)).roles.find((r: Obj) => r.role === 'writer')).toEqual(before as never)
   })
 
   // Nanda, 2026-11-15: the new shape is the only one. A file in an older shape (here: cases, no
@@ -276,45 +278,24 @@ describe('a host edit of the config draft', () => {
   const edit = (dir: string, change: (c: Obj) => Obj) =>
     host(dir, { _tag: 'Config', config: change(structuredClone(CONFIG)), notes: NOTES })
 
-  // A model's entry (its commands and its limits) is on the card of each role that names it.
-  const withHaiku = (c: Obj, entry: Obj) => ({ ...c, models: { ...c.models, haiku: { ...c.models.haiku, ...entry } } })
-
-  test('a change of a model clears the roles of that model only', async () => {
+  test('staffing and people changes do not clear accepted responsibilities', async () => {
     const dir = await withConfig()
     await acceptAll(dir)
-    await edit(dir, (c) => withHaiku(c, { launch: 'small --session-id {session}' }))
-    expect(await accepted(dir)).toEqual(['architect', 'section-lead'])
-  })
-
-  test('the people clear nothing; the limits of a model clear the roles of that model', async () => {
-    const dir = await withConfig()
-    await acceptAll(dir)
+    const staffing = Bun.YAML.parse(PAIR.staffing) as Obj
+    staffing.roles.writer.model = 'sonnet'
+    writeFileSync(join(dir, '.work/staffing.yaml'), Bun.YAML.stringify(staffing, null, 2))
     await edit(dir, (c) => ({ ...c, people: [...c.people, { name: 'Budi' }] }))
     expect(await accepted(dir)).toEqual(ROLE_NAMES)
-    expect(await run(personAct(dir, 'Budi', { act: 'accept-role', role: 'writer' } as PersonAct))).toEqual([])
-    await edit(dir, (c) => ({
-      ...c,
-      people: [...c.people, { name: 'Budi' }],
-      models: { ...c.models, sonnet: { limits: { Assignment: { briefChars: 9000 } } } },
-    }))
-    expect(await accepted(dir)).toEqual(['architect', 'writer', 'linter'])
+    const files = await read(dir)
+    expect(files.roles.find((r: Obj) => r.role === 'writer').file.model).toBe('sonnet')
   })
 
-  // The real case: the host changes the commands of a model and moves one role to another model.
-  test("a role's model clears that role; the card words clear their role", async () => {
+  test('a change of role words clears only its acceptance', async () => {
     const dir = await withConfig()
     await acceptAll(dir)
     await edit(dir, (c) => ({
-      ...withHaiku(c, { launch: 'small --session-id {session}' }),
-      roles: { ...c.roles, linter: { ...c.roles.linter, model: 'sonnet' } },
+      ...c, roles: { ...c.roles, writer: { ...c.roles.writer, intro: 'Write it again.' } },
     }))
-    // writer: the entry of its model; linter: its own model; architect, section-lead: untouched.
-    expect(await accepted(dir)).toEqual(['architect', 'section-lead'])
-    await acceptAll(dir)
-    const notes = { ...NOTES, writer: { summary: 'writes it', found: { _tag: 'New' } } }
-    const roles = { ...CONFIG.roles, linter: { ...(CONFIG.roles.linter as Obj), model: 'sonnet' } }
-    const config = { ...withHaiku(CONFIG, { launch: 'small --session-id {session}' }), roles }
-    await host(dir, { _tag: 'Config', config, notes })
     expect(await accepted(dir)).toEqual(['architect', 'section-lead', 'linter'])
   })
 })

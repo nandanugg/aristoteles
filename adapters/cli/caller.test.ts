@@ -13,6 +13,9 @@ import { main } from './main.ts'
 // @ts-expect-error the harness of the integrated tests is plain JavaScript with no types
 import * as harnessJs from '../../test/harness.js'
 
+// @ts-expect-error fixture helpers are JavaScript
+import { staffedFixture } from '../../test/staffing-fixture.js'
+
 const harness = harnessJs as { readonly WORK_YAML: string }
 
 interface Options {
@@ -27,7 +30,10 @@ interface Options {
 const makeDir = (): string => {
   const dir = join(mkdtempSync(join(tmpdir(), 'work-cli-')), 'report-export')
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'aristoteles.yaml'), harness.WORK_YAML)
+  const pair = staffedFixture(harness.WORK_YAML)
+  writeFileSync(join(dir, 'aristoteles.yaml'), pair.config)
+  mkdirSync(join(dir, '.work'))
+  writeFileSync(join(dir, '.work/staffing.yaml'), pair.staffing)
   return dir
 }
 

@@ -131,6 +131,34 @@ start from that file. A build that fails changes nothing: that call runs the cod
 
 ## The UI: `work start`
 
+For a new project, put role responsibilities and acts in `aristoteles.yaml`. Put the
+staffing in the project-local `.work/staffing.yaml`, outside Git. For example:
+
+```yaml
+clis:
+  coding-agent:
+    backgroundChildren: false
+accounts:
+  primary:
+    limits:
+      sessions: "2 sessions"
+roles:
+  lead:
+    cli: coding-agent
+    account: primary
+    allowedModels: [model-a, model-b]
+    model: model-a
+    persistent: true
+    concurrency: 1
+    subagentAllowance: 0
+    launch: 'agent --model {model} --session-id {session} {prompt}'
+```
+
+Add a binding for every AI role. Program roles run their configured checks without
+staffing bindings. Account limits are entered as text. The role's concurrency and
+its subagent allowance are separate settings. They describe top-level attempts and
+children respectively. Provider session capacity is separate from both.
+
 Work events use SQLite format 6. Opening a format-5 store fails without changing the
 database. Use a fresh store for the C16 work loop.
 

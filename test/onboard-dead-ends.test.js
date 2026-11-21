@@ -131,7 +131,7 @@ describe('O2: the config draft never freezes before the store', () => {
   // The real case (2026-11-15): one role accepted, then the host changes the commands of a model
   // and moves a role to another model. Only the roles that the change touches wait for the person
   // again: the roles of that model, and the role that moved.
-  test('a model and the model of a role change after accepts; only the touched roles wait again', async () => {
+  test('staffing edits leave responsibility accepts in place', async () => {
     const p = await drafted()
     await acceptRoles(p)
     const changed = withModels(ONBOARD_CONFIG, { haiku: { launch: 'small --session-id {session}' } }).replace(
@@ -143,8 +143,8 @@ describe('O2: the config draft never freezes before the store', () => {
     const status = ok(await p.agent('onboard status')).out
     expect(status).toContain('  architect · Accepted')
     expect(status).toContain('  section-lead · Accepted')
-    expect(status).toContain('  writer · Waiting')
-    expect(status).toContain('  linter · Waiting · sonnet')
+    expect(status).toContain('  writer · Accepted')
+    expect(status).toContain('  linter · Accepted · sonnet')
   })
 
   test('a person outside the people gets a next line that works, and the accepts stay', async () => {

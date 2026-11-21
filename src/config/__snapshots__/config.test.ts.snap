@@ -6,13 +6,13 @@ exports[`readConfig a good file with no settings 1`] = `"ok"`;
 
 exports[`readConfig an empty file 1`] = `
 {
-  "refused": "aristoteles.yaml: people must list at least one { name: ... }",
+  "refused": ".work/staffing.yaml: add the staffing bindings for this directory",
 }
 `;
 
 exports[`readConfig a file of one scalar 1`] = `
 {
-  "refused": "aristoteles.yaml: "0" is not a key of aristoteles.yaml (people, roles, decide, models, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
+  "refused": ".work/staffing.yaml: add the staffing bindings for this directory",
 }
 `;
 
@@ -42,7 +42,7 @@ exports[`readConfig the directions key 1`] = `
 
 exports[`readConfig an unknown key 1`] = `
 {
-  "refused": "aristoteles.yaml: "colour" is not a key of aristoteles.yaml (people, roles, decide, models, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
+  "refused": "aristoteles.yaml: "colour" is not a key of aristoteles.yaml (people, roles, decide, retryMinutes, hostWaitMinutes, outsideSourceHours, sound, theme)",
 }
 `;
 
@@ -50,7 +50,7 @@ exports[`readConfig models: {model} in launch and resume 1`] = `"ok"`;
 
 exports[`readConfig models: a list 1`] = `
 {
-  "refused": "aristoteles.yaml: models is a map of models by name",
+  "refused": ".work/staffing.yaml: SchemaError(Expected object at ["models"])",
 }
 `;
 
@@ -68,7 +68,7 @@ exports[`readConfig models: a key that is not a setting 1`] = `
 
 exports[`readConfig models: launch is not a text 1`] = `
 {
-  "refused": "aristoteles.yaml: models.opus.launch is a text",
+  "refused": ".work/staffing.yaml: SchemaError(Expected string at ["roles"]["boss"]["launch"])",
 }
 `;
 
@@ -104,7 +104,7 @@ exports[`readConfig models: silentMinutes is 1.5 1`] = `
 
 exports[`readConfig models: launch has no {session} 1`] = `
 {
-  "refused": "aristoteles.yaml: models.opus.launch has no {session}: the UI gives each real agent its session id, so that a resume finds it",
+  "refused": ".work/staffing.yaml: roles.boss.launch needs {session}",
 }
 `;
 
@@ -202,19 +202,19 @@ exports[`readConfig a program that is not on report 1`] = `
 
 exports[`readConfig a role with a model that the table lacks 1`] = `
 {
-  "refused": "aristoteles.yaml roles.writer: model names an entry of the models table (opus, sonnet, haiku)",
+  "refused": ".work/staffing.yaml: roles.writer.model must be one of its allowed models",
 }
 `;
 
 exports[`readConfig a role with no model 1`] = `
 {
-  "refused": "aristoteles.yaml roles.writer: model names an entry of the models table (opus, sonnet, haiku)",
+  "refused": ".work/staffing.yaml: SchemaError(Missing key at ["roles"]["writer"]["model"])",
 }
 `;
 
 exports[`readConfig a program with a model 1`] = `
 {
-  "refused": "aristoteles.yaml roles.linter: a program runs no model: remove its model",
+  "refused": "aristoteles.yaml: move roles.linter's model and persistence to .work/staffing.yaml",
 }
 `;
 
@@ -244,27 +244,19 @@ exports[`readConfig a role with no acts 1`] = `
 
 exports[`readConfig a role with no persistence 1`] = `
 {
-  "refused": "aristoteles.yaml roles.writer: persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets a terminal of its own; a disposable role runs as a subagent)",
+  "refused": ".work/staffing.yaml: SchemaError(Missing key at ["roles"]["writer"]["persistent"])",
 }
 `;
 
-exports[`readConfig a role whose persistence has no why 1`] = `
-{
-  "refused": "aristoteles.yaml roles.writer: persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets a terminal of its own; a disposable role runs as a subagent)",
-}
-`;
+exports[`readConfig a role whose persistence has no why 1`] = `"ok"`;
 
 exports[`readConfig a role whose persistence is a word 1`] = `
 {
-  "refused": "aristoteles.yaml roles.writer: persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets a terminal of its own; a disposable role runs as a subagent)",
+  "refused": ".work/staffing.yaml: SchemaError(Missing key at ["roles"]["writer"]["persistent"])",
 }
 `;
 
-exports[`readConfig a role whose persistence has another key 1`] = `
-{
-  "refused": "aristoteles.yaml roles.writer: persistence is required: { persistent: true|false, why: <one line> } (a persistent role gets a terminal of its own; a disposable role runs as a subagent)",
-}
-`;
+exports[`readConfig a role whose persistence has another key 1`] = `"ok"`;
 
 exports[`readConfig a role with no icon 1`] = `
 {
@@ -286,7 +278,7 @@ exports[`readConfig a program with no icon 1`] = `
 
 exports[`readConfig a program with a persistence 1`] = `
 {
-  "refused": "aristoteles.yaml roles.linter: a program runs in the CLI, never in a terminal: remove its persistence",
+  "refused": "aristoteles.yaml: move roles.linter's model and persistence to .work/staffing.yaml",
 }
 `;
 
@@ -342,7 +334,7 @@ exports[`readConfig no role splits 1`] = `
 
 exports[`readConfig no roles 1`] = `
 {
-  "refused": "aristoteles.yaml: no role splits; a role with the split act hosts each project and evaluates a mistake",
+  "refused": "aristoteles.yaml: move models to .work/staffing.yaml",
 }
 `;
 
@@ -411,7 +403,7 @@ exports[`fileHashes and the hash of the mechanism no file 1`] = `
 exports[`fileHashes and the hash of the mechanism a good file 1`] = `
 {
   "ok": {
-    "aristoteles.yaml": "91bde5cc352acb281bb175e7030fcf6931970c8399ba776156d41cdb48bef0aa",
+    "aristoteles.yaml": "e44f014daeb855737b340ba38309cfcccada99cfaf896dd299a0660b08a2de99",
   },
 }
 `;
@@ -427,7 +419,7 @@ exports[`fileHashes and the hash of the mechanism a file that does not parse 1`]
 exports[`fileHashes and the hash of the mechanism an empty file 1`] = `
 {
   "ok": {
-    "aristoteles.yaml": "cd034a1e7017127ce033a4338bf9f853fa92a61ec1c29b1425ff01a7bd1ff9fc",
+    "aristoteles.yaml": "48e7f430f452c812f9e86e02090bc9a51b26d1acd1da1cc0c5384f9def09e2aa",
   },
 }
 `;
@@ -436,22 +428,8 @@ exports[`restoreConfig the stored text and a file with other settings 1`] = `
 "people:
   - name: Nanda
   - name: Dewi
-models:
-  opus:
-    launch: "claude --session {session}"
-    start: "go {agent}"
-    silentMinutes: 5
-    limits:
-      Review:
-        rules: 4
-  sonnet: {}
-  haiku:
-    limits:
-      Assignment:
-        attempts: 3
 roles:
   writer:
-    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -459,12 +437,8 @@ roles:
     acts:
       - do: write
     timeout: 60
-    persistence:
-      persistent: false
-      why: it does one piece of work once
     icon: feather
   checker:
-    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -477,13 +451,8 @@ roles:
           - writer
       - assign:
           - writer
-    persistence:
-      &persistence
-      persistent: true
-      why: it leads the project
     icon: eye
   boss:
-    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -499,8 +468,6 @@ roles:
       - split
       - direct
       - fit
-    persistence:
-      *persistence
     icon: crown
   linter:
     kind: program
@@ -529,22 +496,8 @@ sound: true
 people:
   - name: Nanda
   - name: Dewi
-models:
-  opus:
-    limits:
-      Review:
-        rules: 4
-    launch: "claude --session {session}"
-    start: "go {agent}"
-    silentMinutes: 5
-  sonnet: {}
-  haiku:
-    limits:
-      Assignment:
-        attempts: 3
 roles:
   writer:
-    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -552,12 +505,8 @@ roles:
     acts:
       - do: write
     timeout: 60
-    persistence:
-      persistent: false
-      why: it does one piece of work once
     icon: feather
   checker:
-    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -570,13 +519,8 @@ roles:
           - writer
       - assign:
           - writer
-    persistence:
-      &persistence
-      persistent: true
-      why: it leads the project
     icon: eye
   boss:
-    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -592,8 +536,6 @@ roles:
       - split
       - direct
       - fit
-    persistence:
-      *persistence
     icon: crown
   linter:
     kind: program
@@ -618,22 +560,8 @@ exports[`restoreConfig a file with other commands and other limits 1`] = `
 "people:
   - name: Nanda
   - name: Dewi
-models:
-  opus:
-    launch: "other --session {session}"
-    start: "go {agent}"
-    silentMinutes: 5
-    limits:
-      Review:
-        rules: 4
-  sonnet: {}
-  haiku:
-    limits:
-      Assignment:
-        attempts: 3
 roles:
   writer:
-    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -641,12 +569,8 @@ roles:
     acts:
       - do: write
     timeout: 60
-    persistence:
-      persistent: false
-      why: it does one piece of work once
     icon: feather
   checker:
-    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -659,13 +583,8 @@ roles:
           - writer
       - assign:
           - writer
-    persistence:
-      &persistence
-      persistent: true
-      why: it leads the project
     icon: eye
   boss:
-    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -681,8 +600,6 @@ roles:
       - split
       - direct
       - fit
-    persistence:
-      *persistence
     icon: crown
   linter:
     kind: program
@@ -709,22 +626,8 @@ exports[`restoreConfig no file now 1`] = `
 "people:
   - name: Nanda
   - name: Dewi
-models:
-  opus:
-    launch: "claude --session {session}"
-    start: "go {agent}"
-    silentMinutes: 5
-    limits:
-      Review:
-        rules: 4
-  sonnet: {}
-  haiku:
-    limits:
-      Assignment:
-        attempts: 3
 roles:
   writer:
-    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -732,12 +635,8 @@ roles:
     acts:
       - do: write
     timeout: 60
-    persistence:
-      persistent: false
-      why: it does one piece of work once
     icon: feather
   checker:
-    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -750,13 +649,8 @@ roles:
           - writer
       - assign:
           - writer
-    persistence:
-      &persistence
-      persistent: true
-      why: it leads the project
     icon: eye
   boss:
-    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -772,8 +666,6 @@ roles:
       - split
       - direct
       - fit
-    persistence:
-      *persistence
     icon: crown
   linter:
     kind: program
@@ -798,22 +690,8 @@ exports[`restoreConfig a file now that does not parse 1`] = `
 "people:
   - name: Nanda
   - name: Dewi
-models:
-  opus:
-    launch: "claude --session {session}"
-    start: "go {agent}"
-    silentMinutes: 5
-    limits:
-      Review:
-        rules: 4
-  sonnet: {}
-  haiku:
-    limits:
-      Assignment:
-        attempts: 3
 roles:
   writer:
-    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -821,12 +699,8 @@ roles:
     acts:
       - do: write
     timeout: 60
-    persistence:
-      persistent: false
-      why: it does one piece of work once
     icon: feather
   checker:
-    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -839,13 +713,8 @@ roles:
           - writer
       - assign:
           - writer
-    persistence:
-      &persistence
-      persistent: true
-      why: it leads the project
     icon: eye
   boss:
-    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -861,8 +730,6 @@ roles:
       - split
       - direct
       - fit
-    persistence:
-      *persistence
     icon: crown
   linter:
     kind: program
@@ -889,22 +756,8 @@ exports[`restoreConfig a stored text with comments 1`] = `
 people:
   - name: Nanda
   - name: Dewi
-models:
-  opus:
-    launch: "claude --session {session}"
-    start: "go {agent}"
-    silentMinutes: 5
-    limits:
-      Review:
-        rules: 4
-  sonnet: {}
-  haiku:
-    limits:
-      Assignment:
-        attempts: 3
 roles:
   writer:
-    model: haiku
     description: writes
     intro: you write
     responsibilities:
@@ -912,12 +765,8 @@ roles:
     acts:
       - do: write
     timeout: 60
-    persistence:
-      persistent: false
-      why: it does one piece of work once
     icon: feather
   checker:
-    model: sonnet
     description: checks
     intro: you check
     responsibilities:
@@ -930,13 +779,8 @@ roles:
           - writer
       - assign:
           - writer
-    persistence:
-      &persistence
-      persistent: true
-      why: it leads the project
     icon: eye
   boss:
-    model: opus
     description: leads
     intro: you lead
     responsibilities:
@@ -952,8 +796,6 @@ roles:
       - split
       - direct
       - fit
-    persistence:
-      *persistence
     icon: crown
   linter:
     kind: program

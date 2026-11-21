@@ -11,7 +11,7 @@ import { folding } from '../actions/dispatch.ts'
 import { dispatchAct, type NewToken } from '../actions/work.ts'
 import { dos } from '../derived/c16/obligations.ts'
 import { type Author, SessionId } from '../schema/index.ts'
-import { Dir, Pump, readSettings, sha, Store } from '../services/index.ts'
+import { Dir, Pump, readStaffing, sha, Store } from '../services/index.ts'
 import { fold } from '../state/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { epochOf } from '../state/c16/reads.ts'
@@ -137,18 +137,23 @@ export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
     const launchOf = (k: ActorKey) =>
       Effect.gen(function* () {
         const card = state.cards.get(k.slice('role:'.length))
-        const pipe = card === undefined
-          ? Object.values(fold(now.events).config.roles).find(
-            (f) => f.kind === 'agent' && f.pipeline === true,
+        const pipe = k === PIPE
+          ? Object.entries(fold(now.events).config.roles).find(
+            ([, role]) => role.kind === 'agent' && role.pipeline === true,
           )
           : undefined
         const role = card ??
-          (pipe?.kind === 'agent' ? { words: pipe.intro, model: pipe.model } : null)
-        const settings = yield* readSettings(cwd)
-        const template = role === null ? undefined : settings.models[role.model]?.launch
-        return role === null || template === undefined || template === ''
+          (pipe?.[1].kind === 'agent'
+            ? { role: pipe[0], words: pipe[1].intro, model: pipe[1].model }
+            : null)
+        if (role === null) return null
+        const staffing = yield* readStaffing(cwd)
+        const binding = staffing !== null && Object.hasOwn(staffing.roles, role.role)
+          ? staffing.roles[role.role]
+          : undefined
+        return binding === undefined || !binding.persistent
           ? null
-          : { words: role.words, model: role.model, template }
+          : { words: role.words, model: binding.model, template: binding.launch }
       })
     for (const step of dos(state, HARNESS)) {
       if (step.act === 'RunRule') {

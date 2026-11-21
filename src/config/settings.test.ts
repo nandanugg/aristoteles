@@ -1,6 +1,6 @@
 // readSettings and writeSettings of settings.ts.
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runNew } from './outcome.ts'
@@ -11,7 +11,18 @@ type Obj = any
 
 const dirWith = (text: string | null): string => {
   const dir = mkdtempSync(join(tmpdir(), 'set-'))
-  if (text !== null) writeFileSync(join(dir, 'aristoteles.yaml'), text)
+  if (text !== null) {
+    let raw: Obj
+    try { raw = Bun.YAML.parse(text) } catch { raw = null }
+    if (raw?.models !== undefined && !Array.isArray(raw.models)) {
+      const { models, ...config } = raw
+      mkdirSync(join(dir, '.work'))
+      writeFileSync(join(dir, '.work/staffing.yaml'), Bun.YAML.stringify({
+        models, roles: {}, clis: {}, accounts: {},
+      }, null, 2))
+      writeFileSync(join(dir, 'aristoteles.yaml'), Bun.YAML.stringify(config, null, 2))
+    } else writeFileSync(join(dir, 'aristoteles.yaml'), text)
+  }
   return dir
 }
 
@@ -30,7 +41,7 @@ const readCases: Array<[string, string | null, string?]> = [
   ['three models', 'models:\n  opus: {}\n  sonnet: {}\n  haiku: {}\n'],
   ['a launch that names {model}', 'models:\n  haiku:\n    launch: c --model {model} --session {session}\n'],
   ['limits beside the commands', 'models:\n  haiku:\n    launch: c {session}\n    limits: { Assignment: { attempts: 3 } }\n'],
-  ['a models table that is a list', 'models: [a]\n', 'aristoteles.yaml: models is a map of models by name'],
+  ['a models table that is a list', 'models: [a]\n', 'aristoteles.yaml: move models to .work/staffing.yaml'],
   ['a model that is a word', 'models:\n  opus: big\n', 'aristoteles.yaml: models.opus is a map of settings'],
   // Bun 1.4.3 and later: the YAML parser refuses an unquoted { } in a flow map (Bun 1.3 made a
   // key of it).
@@ -119,7 +130,7 @@ describe('writeSettings', () => {
     const dir = dirWith(MODELS)
     const settings = { models: { opus: { launch: 'b {session}' }, ghost: { launch: 'g {session}' } } }
     expect(await runNew(next.writeSettings(dir, settings))).toEqual({ ok: undefined })
-    const text = await Bun.file(join(dir, 'aristoteles.yaml')).text()
+    const text = await Bun.file(join(dir, '.work/staffing.yaml')).text()
     expect((Bun.YAML.parse(text) as { models: unknown }).models).toEqual({
       opus: { launch: 'b {session}', limits: { Assignment: { attempts: 3 } } },
       haiku: {},

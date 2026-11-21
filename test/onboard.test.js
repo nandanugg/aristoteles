@@ -102,7 +102,7 @@ describe('the whole onboarding at a terminal', () => {
       'accepted: one-thing, tsd-writing.\nevery direction is accepted or removed: the roles come next',
     )
     // Ruling 7: the person's toggle writes the persistence with a true reason (P11).
-    ok(await p.nanda('onboard persistence writer --persistent=true'))
+    expect((await p.nanda('onboard persistence writer --persistent=true')).err).toContain('.work/staffing.yaml')
     for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
     expect(ok(await p.agent('onboard status')).out).toContain(
       'next: everything is accepted; the person starts the store: work onboard approve-roles',
@@ -122,7 +122,7 @@ describe('the whole onboarding at a terminal', () => {
     )
     for (const path of ['.work/assess', 'aristoteles.draft.yaml', '.work/onboarding.lock']) expect(exists(p, path)).toBe(false)
     const config = Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8'))
-    expect(config.roles.writer.persistence).toEqual({ persistent: true, why: 'Nanda chose it on the agents page.' })
+    expect(config.roles.writer.persistence).toBeUndefined()
     expect(config.roles.linter.summary).toBeUndefined()
     // After the start, an onboarding act is refused: a change is an adjustment now (ruling 14).
     expect((await p.nanda('onboard add --principle="one more"')).err).toContain('the store of this dir has started, so onboarding is over')
@@ -354,21 +354,77 @@ describe('what onboarding refuses', () => {
 
   // Ruling 1, onboarding 2026-11-14: the config draft reads as the store start would read it, so a
   // draft whose models do not read is refused when the host sends it (was: at accept-roles).
-  test('a config draft whose models do not read is refused, and no file is written', async () => {
+  test('bad staffing blocks the start after responsibilities are accepted', async () => {
     const p = onboardingProject()
     p.write('draft.yaml', withModels(ONBOARD_CONFIG, { opus: { launch: 'host-cli' } }))
     const r = await p.agent('onboard config --file=draft.yaml')
-    expect(r.err).toContain('models.opus.launch has no {session}')
-    expect(exists(p, 'aristoteles.draft.yaml')).toBe(false)
+    ok(r)
+    expect(exists(p, 'aristoteles.draft.yaml')).toBe(true)
+    for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
+    const start = await p.nanda('onboard approve-roles', 'approve')
+    expect(start.err).toContain('roles.architect.launch needs {session}')
   })
 
   test('the role of the top task has no toggle (ruling 15)', async () => {
     const p = await drafted()
     for (const persistent of ['false', 'true']) {
       expect((await p.nanda(`onboard persistence architect --persistent=${persistent}`)).err).toContain(
-        'refused: architect is the role of the top task (the only persistent role that splits), so it has no toggle',
+        'refused: edit .work/staffing.yaml to change the staffing of architect',
       )
     }
-    expect((await p.nanda('onboard persistence section-lead --persistent=false')).code).toBe(0)
+    expect((await p.nanda('onboard persistence section-lead --persistent=false')).err).toContain('.work/staffing.yaml')
   })
+})
+
+test('accepted responsibilities are joined with staffing from the project directory', async () => {
+  const p = onboardingProject()
+  const draft = Bun.YAML.parse(ONBOARD_CONFIG)
+  delete draft.models
+  const roles = {}
+  for (const [name, role] of Object.entries(draft.roles)) {
+    if (role.kind === 'program') continue
+    roles[name] = {
+      account: 'primary', cli: 'agent', allowedModels: [role.model], model: role.model,
+      persistent: role.persistence.persistent, concurrency: 1, subagentAllowance: 0,
+      launch: 'agent --session {session}',
+    }
+    delete role.model
+    delete role.persistence
+  }
+  p.write('draft.yaml', Bun.YAML.stringify(draft))
+  ok(await p.agent('onboard config --file=draft.yaml'))
+  for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
+  const missing = await p.nanda('onboard approve-roles', 'approve')
+  expect(missing.code).toBe(1)
+  expect(missing.err).toContain('.work/staffing.yaml')
+  expect(exists(p, '.work/aristoteles.db')).toBe(false)
+
+  p.write('.work/staffing.yaml', Bun.YAML.stringify({
+    clis: { agent: { backgroundChildren: false } },
+    accounts: { primary: { limits: { sessions: '1 session' } } },
+    roles,
+  }))
+  ok(await p.nanda('onboard approve-roles', 'approve'))
+  const file = Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8'))
+  expect(file.models).toBeUndefined()
+  expect(file.roles.writer.model).toBeUndefined()
+  expect(file.roles.writer.persistence).toBeUndefined()
+  const stored = JSON.parse(eventsOf(p)[0].event).create
+  expect(stored.config.roles.writer.model).toBe('haiku')
+  expect(stored.config.roles.writer.persistence.persistent).toBe(false)
+  expect(stored.texts['aristoteles.yaml']).not.toContain('primary')
+})
+
+test('embedded staffing is refused in both a responsibility file and a draft', async () => {
+  const p = onboardingProject()
+  const embedded = Bun.YAML.parse(ONBOARD_CONFIG)
+  p.write('embedded.yaml', ONBOARD_CONFIG)
+  expect((await p.agent('onboard config --file=embedded.yaml')).err).toContain('move models')
+  delete embedded.models
+  p.write('embedded.yaml', Bun.YAML.stringify(embedded, null, 2))
+  expect((await p.agent('onboard config --file=embedded.yaml')).err).toContain('move roles.architect')
+  const { writeFileSync } = await import('node:fs')
+  writeFileSync(join(p.dir, 'aristoteles.yaml'), ONBOARD_CONFIG)
+  expect((await p.nanda('init')).err).toContain('move models')
+  expect(eventsOf(p)).toEqual([])
 })

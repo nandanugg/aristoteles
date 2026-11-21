@@ -24,7 +24,7 @@ import {
 } from '../../../core/schema/index.ts'
 import {
   CONFIG,
-  configOfText,
+  draftConfigOfText,
   DRAFT,
   Dir,
   type DirectionDraft,
@@ -67,21 +67,17 @@ import { WAIT_SECONDS } from './wait.ts'
 
 const POLL_MS = 1000
 
-const ROLE_KEYS = `      model: <a name of the models table>
-      description: <what the role does, in one line>
+const ROLE_KEYS = `      description: <what the role does, in one line>
       intro: <the first words of its brief>
       responsibilities: [<one exact output or command>]
       acts: [{ do: <its work> }] or [{ review: [<role>] }] or [{ approve: [<role>] }], with
         { assign: [<role>] } and split, direct, fit for a role that gives work, splits, directs, fits
-      persistence: { persistent: true | false, why: <one line: why it needs a terminal, or not> }
       icon: <a role icon, such as compass>
       summary: <the one line of its card>
       found: <where the project has the role, such as .claude/agents/<role>.md; leave it out for a new role>`
 const CONFIG_TEMPLATE = `write a file like this, then run the command again:
   people:
     - name: <the git user.name of each person>
-  models:   # by name: the commands of each, and its limits; a stronger model for more care
-    <model>: { launch: "<cli> --model {model} --session-id {session} {prompt}", limits: {} }
   roles:
     <role>:
 ${ROLE_KEYS}`
@@ -178,7 +174,7 @@ const checkDraft = (file: string, raw: Readonly<Record<string, unknown>>) =>
     const { config } = yield* refusing(() =>
       mergeDraft(now ?? '', Bun.YAML.stringify(raw, null, 2)),
     ).pipe(
-      Effect.flatMap((text) => configOfText(cwd, text)),
+      Effect.flatMap((text) => draftConfigOfText(cwd, text)),
       Effect.mapError((e) => new Refused({ message: `${file}: ${e.message}`, next: e.next })),
     )
     const problems = yield* configProblems(config)

@@ -1,10 +1,11 @@
-// The settings of the UI live in aristoteles.yaml and are read from the file now (never stored).
+// Display settings live in aristoteles.yaml. Model settings live in project-local staffing.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import type { OutsideFailed, Refused } from '../domain/errors.ts'
 import type { Settings } from '../domain/files.ts'
 import { PositiveInt } from '../domain/ids.ts'
 import { Files } from '../services/outside.ts'
+import { readStaffing, STAFFING } from './staffing.ts'
 import { CONFIG, DRAFT, fail, parseYaml, type Raw, refusing, SETTING_KEYS } from './core.ts'
 
 // The settings of a model; limits is its mechanism, which config.ts reads.
@@ -100,16 +101,19 @@ export const readSettingsOf = (raw: Raw, file: string = CONFIG): Settings => {
 }
 
 // The settings of a dir, from its file now; a dir with no file has the defaults.
-// Before the store starts, the config draft holds the settings that will apply (the host edits
-// its models during onboarding): one reader for both, so the page never shows another model than
-// the file (Nanda, 2026-11-15).
+// Before the store starts, the draft supplies display settings when there is no project file.
 export const readSettings = (dir: string): Effect.Effect<Settings, Refused, Files> =>
   Effect.gen(function* () {
     const files = yield* Files
     const config = yield* files.read(join(dir, CONFIG))
     const file = config === null ? DRAFT : CONFIG
     const text = config ?? (yield* files.read(join(dir, DRAFT)))
-    return yield* refusing(() => readSettingsOf(text === null ? {} : parseYaml(text), file))
+    const staffing = yield* readStaffing(dir)
+    return yield* refusing(() => {
+      const raw = text === null ? {} : parseYaml(text)
+      if (raw.models !== undefined) fail(file, 'move models to .work/staffing.yaml')
+      return readSettingsOf({ ...raw, models: staffing?.models ?? {} }, file)
+    })
   })
 
 const yamlBlock = (key: string, value: unknown): string =>
@@ -147,8 +151,7 @@ export const withSettings = (original: string, settings: Raw): string => {
 }
 
 // The text of aristoteles.yaml after Accept the roles, from the file and the host's draft. The
-// settings in the draft (the host writes the models of its own AI CLI) replace their blocks in the
-// file, so that each key has one block; the people and the roles go below. Two blocks of one key
+// display settings in the draft replace their blocks in the file. The people and roles go below. Two blocks of one key
 // would parse as the last one, and a later edit on the page would change only the first.
 export const mergeDraft = (file: string, draft: string): string => {
   const raw = parseYaml(draft)
@@ -158,22 +161,8 @@ export const mergeDraft = (file: string, draft: string): string => {
   return `${head.trimEnd()}${head.trim() ? '\n' : ''}${rest}`
 }
 
-// The models of a change of the page: the commands that it sends, for each model of the file;
-// the limits of each model are its mechanism and stay as they are, and no model comes or goes.
-const withModels = (original: string, settings: Raw): Raw => {
-  if (settings?.models === undefined) return settings
-  const now: Raw = parseYaml(original).models ?? {}
-  const models = Object.fromEntries(
-    Object.entries<Raw>(now).map(([name, m]) => {
-      const { limits: _, ...commands } = settings.models[name] ?? m
-      return [name, m?.limits ? { ...commands, limits: m.limits } : commands]
-    }),
-  )
-  return { ...settings, models }
-}
-
-// Writes the settings into aristoteles.yaml and keeps the mechanism as it is. The new text is
-// checked before the write, so a refusal leaves the file alone.
+// Model settings are part of the per-directory staffing. Other settings stay in the
+// responsibility file.
 export const writeSettings = (
   dir: string,
   settings: unknown,
@@ -182,6 +171,19 @@ export const writeSettings = (
     const files = yield* Files
     const path = join(dir, CONFIG)
     const original = (yield* files.read(path)) ?? ''
-    const text = yield* refusing(() => withSettings(original, withModels(original, settings)))
-    yield* files.write(path, text)
+    const { models: edits, ...display } = (settings ?? {}) as Raw
+    const text = yield* refusing(() => withSettings(original, display))
+    if (edits !== undefined && Object.keys(edits).length > 0) {
+      const staffing = yield* readStaffing(dir)
+      if (staffing === null) return yield* refusing(() => fail(STAFFING, 'no staffing file'))
+      const models = Object.fromEntries(
+        Object.entries<Raw>(staffing.models ?? {}).map(([name, model]) => {
+          const { limits: _, ...commands } = edits[name] ?? model
+          return [name, model.limits === undefined ? commands : { ...commands, limits: model.limits }]
+        }),
+      )
+      yield* refusing(() => readSettingsOf({ models }, STAFFING))
+      yield* files.write(join(dir, STAFFING), Bun.YAML.stringify({ ...staffing, models }, null, 2))
+    }
+    if (text !== original) yield* files.write(path, text)
   })

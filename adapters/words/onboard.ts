@@ -92,6 +92,8 @@ export const startFixWords = (fix: StartFix): string => {
       )
     case 'Role':
       return `the host writes ${fix.role} again (work onboard role ${fix.role} --file=<role.yaml>), then the person accepts it`
+    case 'Staffing':
+      return 'set the staffing in .work/staffing.yaml'
     case 'Lead':
       return (
         'the host writes a persistent role that splits (work onboard role <role> --file=<role.yaml>), ' +

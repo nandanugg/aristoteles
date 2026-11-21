@@ -1,3 +1,4 @@
+import { staffedFixture } from './staffing-fixture.js'
 // The server of the UI, read only (plan/ui/BUILD.md part 2): every request needs the key of
 // `work start`; the API reads the store with the replay and the reads of the engine; a websocket
 // tells the page when the store changes.
@@ -167,7 +168,7 @@ async function onboarding() {
 describe('the onboarding pages', () => {
   // Nanda, 2026-11-15: before the store, the config draft holds the settings: the role cards
   // read the models of the draft, and the page offers its names for the model of a role.
-  test('before the store, the role cards read the models of the config draft', async () => {
+  test('before the store, role cards read local staffing without editing it', async () => {
     const p = onboardingProject()
     gitPerson(p)
     p.write('draft.yaml', withModels(ONBOARD_CONFIG, { haiku: { launch: 'small --session-id {session}' } }))
@@ -176,7 +177,7 @@ describe('the onboarding pages', () => {
     const view = await get('/api/onboarding')
     const writer = view.roles.find((r) => r.role === 'writer')
     expect([writer.model, writer.launch]).toEqual(['haiku', 'small --session-id {session}'])
-    expect(view.models).toEqual(['haiku', 'sonnet', 'opus'])
+    expect(view.models).toEqual([])
   })
 
   test('GET /api/onboarding gives the directions page and the agents page from the files', async () => {
@@ -246,14 +247,14 @@ describe('the onboarding pages', () => {
     // Ruling 11: the roles that the project has come first; the model is the role's own; the role
     // of the top task has no toggle (ruling 15).
     expect(view.roles.map((r) => [r.role, r.model, r.found, r.toggle, r.state])).toEqual([
-      ['linter', 'haiku', '.claude/agents/linter.md', true, 'waiting'],
+      ['linter', 'haiku', '.claude/agents/linter.md', false, 'waiting'],
       ['architect', 'opus', null, false, 'waiting'],
-      ['section-lead', 'sonnet', null, true, 'waiting'],
-      ['writer', 'haiku', null, true, 'waiting'],
+      ['section-lead', 'sonnet', null, false, 'waiting'],
+      ['writer', 'haiku', null, false, 'waiting'],
     ])
     expect(view.roles[1]).toMatchObject({
       icon: 'compass', summary: 'Keeps the TSD on its directions.', launch: null,
-      persistence: { persistent: true, why: 'It holds the TSD for the whole project and starts the lower roles.' },
+      persistence: { persistent: true, why: 'Chosen in staffing.' },
     })
   })
 
@@ -304,9 +305,10 @@ describe('the onboarding pages', () => {
     expect((await onboard({ act: 'approve-all-directions' })).out).toBe('accepted: tsd-writing.')
     // Ruling 7, P11: the toggle writes the persistence with a true reason; the role of the top
     // task has none (ruling 15).
-    expect((await onboard({ act: 'persistence', role: 'writer', persistent: true })).out).toBe('writer is persistent: it gets a terminal of its own.')
-    expect(Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.draft.yaml'), 'utf8')).roles.writer.persistence).toEqual({ persistent: true, why: 'Nanda chose it on the agents page.' })
-    expect((await onboard({ act: 'persistence', role: 'architect', persistent: false })).error).toContain('architect is the role of the top task (the only persistent role that splits), so it has no toggle')
+    expect((await onboard({ act: 'persistence', role: 'writer', persistent: true })).error)
+      .toContain('edit .work/staffing.yaml')
+    expect(Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.draft.yaml'), 'utf8'))
+      .roles.writer.persistence).toBeUndefined()
     expect((await onboard({ act: 'revise-role', role: 'linter', words: 'check the headings too' })).out).toBe('linter: the host writes it again from your words.')
     expect((await get('/api/onboarding')).roles[0]).toMatchObject({ role: 'linter', request: 'check the headings too' })
     expect((await onboard({ act: 'accept-role', role: 'writer' })).out).toBe('writer is accepted.')
@@ -338,17 +340,18 @@ describe('the onboarding pages', () => {
     expect(has(p, '.work/onboarding.lock')).toBe(false)
     expect((await get('/api/dir')).initialized).toBe(false)
     // The host writes the linter again; the person accepts it, and the start stores the result.
-    p.write('linter.yaml', 'model: haiku\ndescription: Checks one section against the rules in its checks.\nintro: For each rule in your checks, say where you looked and what you saw.\n' +
+    p.write('linter.yaml', 'description: Checks one section against the rules in its checks.\nintro: For each rule in your checks, say where you looked and what you saw.\n' +
       'responsibilities:\n  - Give one --evidence line for each rule in your checks.\n  - Reject with one --point for each rule that the section breaks.\n' +
-      'acts: [{ review: [writer] }]\npersistence: { persistent: false, why: It checks one section once. }\nicon: shield-check\nsummary: Checks one section.\n')
+      'acts: [{ review: [writer] }]\nicon: shield-check\nsummary: Checks one section.\n')
     ok(await p.agent('onboard role linter --file=linter.yaml'))
     ok(await p.nanda('onboard accept-role linter'))
+    p.write('.work/staffing.yaml', staffedFixture(ONBOARD_CONFIG).staffing)
     expect((await onboard({ act: 'approve-all-roles' })).out).toBe('store made for report-export in aristoteles: 4 roles and 1 directions; the onboarding files are gone.')
     for (const path of ['.work/assess', 'aristoteles.draft.yaml', '.work/onboarding.lock']) expect(has(p, path)).toBe(false)
     // The models table of the draft is a settings block: it comes first, then the file's own.
     const written = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
-    expect(written).toStartWith('models:\n')
-    expect(written).toContain('\ntheme: dark\n')
+    expect(Bun.YAML.parse(written).models).toBeUndefined()
+    expect(Bun.YAML.parse(written).theme).toBe('dark')
     expect(await get('/api/dir')).toMatchObject({ initialized: true, onboarding: false })
     // After the start, the same view reads the store (the gear), and onboarding is over.
     const view = await get('/api/onboarding')

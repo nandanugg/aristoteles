@@ -13,7 +13,7 @@ import {
 import {
   ASSESS,
   CONFIG,
-  configOfText,
+  readConfigText,
   DRAFT,
   Dir,
   Files,
@@ -71,7 +71,7 @@ const checkConfig = Effect.gen(function* () {
   const { config } = yield* refusing(() =>
     draft === null ? (file ?? '') : mergeDraft(file ?? '', draft),
   ).pipe(
-    Effect.flatMap((text) => configOfText(cwd, text)),
+    Effect.flatMap((text) => readConfigText(cwd, text)),
     Effect.mapError((e) => new Refused({ message: `${name}: ${e.message}`, next: e.next })),
   )
   const problems = yield* configProblems(config)
