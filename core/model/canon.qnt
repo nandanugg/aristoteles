@@ -7,6 +7,8 @@
 // smallest copy is 0. Ended makers are dropped (nothing reads them again). The history flags
 // the model does not check are cleared. agentChanges stops at changeBound + 1 (Converges
 // reads it).
+// The rule: canon may reset a field only when no reachable step reads it again. A task's checked
+// versions are kept while it has a result (a raise from Working, then a take as is, reads them).
 module canon {
   import types.* from "./types"
   import contract.* from "./contract"
@@ -26,8 +28,8 @@ module canon {
     store.tasks.keys().mapBy(slot =>
       val task = store.tasks.get(slot)
       { ...task, generation: 0, resultId: if (task.resultId >= 0) 0 else -1,
-        checked: if (Set(Done, Raised, InReview).contains(task.state)) task.checked
-                 else store.versions })
+        // a result's checked versions are read again (a take as is rechecks what moved since)
+        checked: if (task.resultId >= 0) task.checked else store.versions })
 
   def canonFixes(store: Store, closed: Fix): int -> Fix =
     store.fixes.keys().mapBy(fixId =>

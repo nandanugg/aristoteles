@@ -91,6 +91,7 @@ smallBreaks configs.qnt coreAskReverse NoWaitCycle 0x2a 500 60
 smallBreaks configs.qnt coreTwoExit NoRestartAssigned 0x2a 2000 60
 smallBreaks configs.qnt coreTwoExit NoKeptCheckJudged 0x2a 2000 60
 smallBreaks configs.qnt coreTwoExit NoKeptFailAssigned 0x2a 2000 60
+smallBreaks configs.qnt coreAskRogue NoRecheckAfterAskRaise 0x2a 5000 100
 smallBreaks configs.qnt coreNoRaise Converges 0x2a 2000 200
 smallBreaks configs.qnt coreNoCross Converges 0x2a 500 200
 smallBreaks configs.qnt coreNoSplit Converges 0x2a 500 200

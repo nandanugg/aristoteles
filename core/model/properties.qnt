@@ -122,4 +122,9 @@ module properties {
     not(ask.kind == Execute and isMakerActor(ask.to)) or isLive(store, ask.to))
   // A repeat past the cap raised its task.
   val NoAskRaise: bool = not(store.ghost.askRaised)
+  // Witness: after a maker's AskRaise, the person takes the earlier result as is and a recheck
+  // is owed (canon must keep the result's checked versions for this to be reachable).
+  val NoRecheckAfterAskRaise: bool = not(store.ghost.askRaised and SLOTS.exists(slot =>
+    taskOf(store, slot).taken and taskOf(store, slot).state == Done
+      and taskOf(store, slot).pending != Set()))
 }
