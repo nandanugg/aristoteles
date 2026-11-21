@@ -18,7 +18,7 @@ import {
   examplesOfFlow,
 } from '../../../core/schema/index.ts'
 import { Dir, Files, Now, Store } from '../../../core/services/index.ts'
-import { foldWork } from '../../../core/state/work/fold.ts'
+import { foldWork } from '../../../core/state/c16/fold.ts'
 import {
   exampleLines,
   draftWaitsText,

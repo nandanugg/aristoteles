@@ -8,8 +8,8 @@ import { folding } from '../../../core/actions/dispatch.ts'
 import { type WaitEnd, waitFor } from '../../../core/effects/wait.ts'
 import { refuse } from '../../../core/schema/index.ts'
 import { Dir, Env, Store } from '../../../core/services/index.ts'
-import { foldWork } from '../../../core/state/work/fold.ts'
-import { HARNESS, PERSON } from '../../../core/state/work/types.ts'
+import { foldWork } from '../../../core/state/c16/fold.ts'
+import { type Answered, actorOf } from '../../../core/state/c16/types.ts'
 import { BEAT_MS, markReturned, markWaiting, type WaitPlace } from '../../live/waiting.ts'
 import { buildOf } from '../../live/build.ts'
 import { stepLine, stepWords } from '../../words/work.ts'
@@ -22,6 +22,23 @@ const POLL_MS = 500
 const BUILD_MS = 5000
 
 const OLD_TOKEN = /^a\d+(\.|$)/
+
+// The typed answer of a Hear step, as words (the question's own choices and rows by name).
+const answerWords = (a: Answered): string => {
+  const form = a.ask.question?.form
+  const b = a.answer
+  const text = b._tag === 'Single'
+    ? b.text
+    : b._tag === 'Multiple'
+    ? b.texts.map((t, i) => `${i + 1}. ${t}`).join(' | ')
+    : b._tag === 'Choice'
+    ? b.picked.map((i) => (form?._tag === 'Choice' ? form.options[i] : undefined) ?? `${i}`)
+      .join(', ')
+    : b.cells.map((c, i) =>
+      form?._tag === 'Matrix' ? `${form.rows[i]}: ${form.columns[c]}` : `${i}: ${c}`
+    ).join(' | ')
+  return `the answer to ask ${a.ask.id} (${b._tag}): ${text}`
+}
 
 // The token of the call: w.<actor>.<epoch>.<secret>, the first word.
 const tokenOf = (call: Parameters<Command>[0]): string | null =>
@@ -49,7 +66,8 @@ const wait: Command = (call) =>
     const folded = yield* folding(() => foldWork(events))
     if (folded === null) return yield* refuse(`no top is open in ${cwd}`, 'the person opens it')
     const { who, ep } = yield* verifyWork(folded, token)
-    if (who === HARNESS || who === PERSON) {
+    const actor = actorOf(who)
+    if (actor._tag === 'Harness' || actor._tag === 'Human') {
       return yield* refuse(`${who} does not wait`, 'work wait is for the agents and the host')
     }
     const place: WaitPlace = { env: vars, cwd, actor: who }
@@ -62,7 +80,7 @@ const wait: Command = (call) =>
       )
     })
     const end: WaitEnd = yield* waitFor(store, {
-      actor: who,
+      actor,
       ep,
       pollMs: POLL_MS,
       blocking,
@@ -82,6 +100,7 @@ const wait: Command = (call) =>
       case 'Step':
         return [
           ...stepWords(end.folded.state, end.step, end.events),
+          ...(end.heard === null ? [] : [answerWords(end.heard)]),
           stepLine(end.folded.state, end.step, end.folded.state.seq).replaceAll('<token>', token),
         ]
       case 'Old':

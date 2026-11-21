@@ -14,7 +14,7 @@ import type {
   QuestionBody,
 } from '../../state/c16/types.ts'
 import { keyOf } from '../../state/c16/types.ts'
-import type { ItemRec, RoleDraft, TaskSpec } from '../../state/work/types.ts'
+import type { ItemRec, RoleDraft, TaskSpec } from '../../state/c16/data.ts'
 import { vsum } from '../../state/c16/reads.ts'
 import { accept, basisOf, refusal, refused } from './accept.ts'
 

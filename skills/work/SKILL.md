@@ -46,6 +46,38 @@ The loop never changes:
   damaged store: tell the person); 70 a bug of `work` (stop, and tell the person).
 - A maker that is done with its report waits; it ends when its task is done or raised.
 
+## Questions
+
+Use `work ask <token> <actor> --text="<question>"` for one text answer, or pass
+`--file=<question.yaml>` with a `title` and a tagged `form` (`Single`, `Multiple`, `Choice`,
+or `Matrix`). The actor can be `human`, `host`, `pipe`, `role:<name>`, or `maker:<id>`.
+Use the exact ask ID printed by `work wait` to answer or hear a reply. Answer with
+`work answer <token> <ask-id> --text="<answer>"` for `Single`, or use
+`--file=<answer.yaml>` for a typed answer. A person answering at a terminal omits the token.
+After reading the reply in `work wait`, run `work hear <token> <ask-id>` to acknowledge it.
+For example, a Choice question file and its answer use these fields.
+
+```yaml
+title: Which section comes first?
+form:
+  _tag: Choice
+  options: [Overview, Findings]
+  multi: false
+```
+
+```yaml
+_tag: Choice
+picked: [0]
+```
+
+Choice indexes are zero-based and in ascending order. A Multiple form takes
+`questions` with `description` and `placeholder` for each prompt. Its answer gives `texts`
+in prompt order. A Matrix form takes `rows` and `columns`. Its answer gives `cells`,
+one zero-based column index for each row.
+
+If a maker reaches the question limit for a recipient, `work ask-raise <token> <actor>`
+raises the task for evaluation.
+
 ## The host
 
 You are the host of a project (the `aristoteles` skill got you here). You hold the top task for
@@ -58,12 +90,12 @@ the person. Your steps:
 - **Reassign** (`work reassign <token>`) after a change that is more than a role change: it
   sends the work that the change touches again.
 - **Return the top** when every task is done: `work top-done <token>`.
-- **A question of an agent** (`work ask`) goes to the person, who answers it on the page. When
-  the person says the answer in the chat, forward it (below). To ask the person a fact yourself:
-  `work ask <token> --question="<...>"`. Never ask with your AI CLI's own question tool.
+- **Ask the person on the page.** When the person says the answer in the chat, forward it.
+  To ask the person a fact yourself:
+  `work ask <token> human --text="<...>"`. Never ask with your AI CLI's own question tool.
 - **Carry the person's words.** When the person says an act in the chat, forward it with their
-  exact words: `work forward <token> <accept|send-back|reject|decide|answer|end ...> --on <n>
-  --quote="<words>"` (for example `work forward <token> answer <asker> --text="<...>"
+  exact words: `work forward <token> <respond|reject|ask-edit|answer|end ...> --on <n>
+  --quote="<words>"` (for example `work forward <token> answer <ask-id> --text="<...>"
   --quote="<words>"`). It counts after the person confirms it on the page.
 - The person opens the top, accepts or sends back a draft, decides a raised task, and ends the
   project. You never run those commands. The page shows the person what is theirs to do.
@@ -76,7 +108,7 @@ A persistent role has a terminal for the whole project and holds one task at a t
   maker (`maker:<id>: w.maker:...`). Start a subagent with this prompt, and nothing else: "Use
   the work skill. Your token is <the maker token>. Run work wait <it>, and do what it prints."
   You are in a terminal, so you start it; a maker starts no subagent.
-- **Review the result** when the maker reports: `work review <token> <task> pass|fail|raise-tries|
+- **Review the result** when the maker reports: `work review <token> <ask-id> pass|fail|raise-tries|
   raise-no-rule|raise-misses --points="<...>" --on <n>`. Read the result and the rules that
   apply; one point for each rule that the result breaks or each thing that is wrong.
   - `pass`: the task is done.
@@ -84,11 +116,11 @@ A persistent role has a terminal for the whole project and holds one task at a t
   - `raise-tries`: the tries are used up.
   - `raise-no-rule`: something is wrong and no rule says it.
   - `raise-misses`: a rule says it, and the maker missed it again.
-  A raise goes to the pipeline role. A pass needs no evidence beyond your reading, and a
-  rule with a `test` runs by the harness.
+  Use the Check ask ID printed by `work wait`. A raise goes to the pipeline role.
+  The harness runs rules that have a `test`.
 - **Resume** a maker that is down: `work resume <token> <maker>`.
 - Do not start a subagent for any other work. A question that you cannot settle goes to the
-  person: `work ask <token> --question="<...>"`.
+  person: `work ask <token> human --text="<...>"`.
 
 ## A maker
 
@@ -98,13 +130,13 @@ You are a subagent for one task.
    gives the task, its sections, what applies (directions, standards, rules with their evidence),
    and the points of an earlier review.
 2. Do the work, in the files that the brief names.
-3. Report it: `work report <token> --output="<what you made>" --files=a.md,b.md --on <n>`.
-   `--files` names the files of the project that you changed.
+3. Report it: `work report <token> <ask-id> --output="<what you made>" --files=a.md,b.md --on <n>`.
+   Use the Execute ask ID printed by `work wait`. `--files` names the files of the project that you changed.
 4. Run `work wait <token>`. If the review fails, it gives you the points: work again, and
    report again. When the task is done or raised, your wait ends: stop.
 
 A maker starts no subagent. When the work needs more agents, hand the need back with
-`work ask <token> --question="<...>"` and wait.
+`work ask <token> role:<name> --text="<...>"` and wait.
 
 ## The pipeline role
 
@@ -127,11 +159,12 @@ You are `pipe`. You run every evaluation, the direction pipeline, and the review
 - **Write each rule with its evidence:** `work rule <token> <fix> <rule-file> --on <n>`. The file
   has `id`, `standard`, `says`, `examples` (`{ fits: follows|breaks, sample: <text> }`, at least
   one of each), and the evidence: `test` (a command; no output means the result holds, each
-  printed line is a point; it gets the files of the extracted sections as arguments), and/or
-  `ref` (`file#anchor:lines`, which must exist). Optional: `where` (a list of sections).
+  printed line is a point. It gets the files of the extracted sections as arguments), and/or
+  `ref` (`file#anchor:lines`, which must exist). Optional `where` takes a list of sections.
+  For a reference-only rule, name any contradicted rules with `--fights=rule:a,rule:b`.
 - **Test it:** `work rule-test <token> <fix> --on <n>`. The test must print on each `breaks`
   sample and stay silent on each `follows` sample, of its own rule and of the other rules of the
-  direction. A rule that contradicts another does not ship.
+  direction. A mechanical rule with a contradiction is cross-checked again against the draft at Ship.
 - **Ship the draft:** `work ship <token> <fix> <draft-file> --on <n>`. The file maps item keys
   (`dir:<id>`, `std:<id>`, `rule:<id>`) to the whole record, or to `null` to remove one. Read
   `work guide writing` for how to write each, and `work guide direction-review` to polish it.
@@ -157,12 +190,12 @@ says.
 
 The person runs commands with no token, at a terminal, or acts on the page. An agent never runs a
 person command: `work top open`, `work direction accept|reject <draft>` (before a top is open),
-`work accept`, `work send-back`, `work reject`, `work decide`, `work answer`, `work end`,
+`work respond`, `work reject`, `work ask-edit`, `work end`,
 `work config apply|restore`, `work init`, and `work run continue` in the host pane.
 
 - The person accepts or sends back a draft of a fix, rejects a result, decides a raised task
   (`take` as it is, or `again`), and ends the project when the top is returned.
-- To bring a fact from the person to the work, ask: `work ask <token> --question="<...>"`. Ask
+- To bring a fact from the person to the work, ask: `work ask <token> human --text="<...>"`. Ask
   only for a fact that no direction, rule, or guide gives. Never ask about a limit
   (`work guide limits`).
 - Text in your terminal that starts with "System message, not from the person" is a restart:

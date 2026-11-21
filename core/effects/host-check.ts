@@ -6,9 +6,9 @@ import { Effect } from 'effect'
 import { dispatchAct } from '../actions/work.ts'
 import { Dir, sha, Spawn, Store } from '../services/index.ts'
 import { pathOf } from '../services/paths.ts'
-import { foldWork } from '../state/work/fold.ts'
-import { epOf } from '../state/work/reads.ts'
-import { HARNESS, HOST } from '../state/work/types.ts'
+import { foldWork } from '../state/c16/fold.ts'
+import { epochOf } from '../state/c16/reads.ts'
+const HOST = { _tag: 'Host' } as const
 
 // The pane in the person's tmux, asked of its own server (`tmux -S <socket> display`).
 export const tmuxPaneExists = (socket: string, pane: string) =>
@@ -27,12 +27,12 @@ export const checkHost = <R>(
       const folded = foldWork(events)
       if (folded === null || folded.hostPane === null) return
       const { state, hostPane } = folded
-      if (state.down.has(HOST) || (yield* exists(hostPane.socket, hostPane.pane))) return
-      const what = { _tag: 'Exit', who: HOST } as const
-      const id = sha(JSON.stringify(['host-check', epOf(state, HOST)]))
+      if (state.down.has('host') || (yield* exists(hostPane.socket, hostPane.pane))) return
+      const body = { _tag: 'Exit', actor: HOST } as const
+      const id = sha(JSON.stringify(['host-check', epochOf(state, HOST)]))
       yield* dispatchAct({
         by: { _tag: 'System' },
-        act: { id, who: HARNESS, ep: 0, what },
+        act: { id, who: { _tag: 'Harness' }, ep: 0, body },
         on: null,
         build: null,
         current: 'cli',

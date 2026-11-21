@@ -3,7 +3,7 @@
 // those are the action's. The refusal keeps the old words; its choice is the actor's real choice
 // (D10). One check per tag in a total table: a new act fails the compile until it has its check.
 // The acts are the person's, the host's model runs and the supervisor's before a top; a top's own
-// acts are checked in core/derived/work.
+// acts are checked in core/derived/c16.
 import type { ActionTag, Intent } from '../schema/actions.ts'
 import { type ChoiceKind, refusal } from '../schema/errors.ts'
 import { isMarked, type NonBlank } from '../schema/index.ts'

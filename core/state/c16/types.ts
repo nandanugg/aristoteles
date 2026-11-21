@@ -11,8 +11,7 @@ import type {
   TaskSpec,
   Verdict,
   Versions,
-  WorkState,
-} from '../work/types.ts'
+} from './data.ts'
 
 // --- actors --------------------------------------------------------------------------------------
 
@@ -205,18 +204,6 @@ export interface Answered {
   readonly answer: AnswerBody
   readonly at: number
 }
-// What the state gains; WorkState.asks (one question per asker) is replaced by `asks` here.
-export interface AskState {
-  readonly asks: ReadonlyMap<AskId, OpenAsk>
-  readonly answered: ReadonlyMap<AskId, Answered>
-  // The questions so far per ordered pair (pairKey).
-  readonly askCount: ReadonlyMap<string, number>
-  // The answerers whose last act answered.
-  readonly justAnswered: ReadonlySet<ActorKey>
-  readonly askCap: number
-}
-export type AskWork = Omit<WorkState, 'asks'> & AskState
-
 // --- what wait tells -----------------------------------------------------------------------------
 
 export interface Step {
@@ -244,9 +231,6 @@ export interface Owed {
   readonly owner: ActorKey
   readonly age: number
 }
-// The state-aware projection of an obligation to its step: an AskOb alone does not say which act
-// follows (OpenMake, ReadBrief, Report, Review, Respond, AnswerQuestion).
-export type ProjectStep = (s: AskWork, ob: Obligation) => Step
 
 // Derived from the schema: the list of names exists once.
 export type RefusalName = RefusalNameCase

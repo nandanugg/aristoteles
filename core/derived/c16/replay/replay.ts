@@ -55,7 +55,7 @@ export interface Replayed {
 // The model chooses resolvesFight at the person's accept; the TS core records it at the Ship that
 // made the draft (the draft at the person is fixed since). So a Ship takes the value of the first
 // accept of that fix after it, before the fix ships again.
-const shipResolves = (trace: Trace, at: number, fix: number): boolean => {
+export const shipResolves = (trace: Trace, at: number, fix: number): boolean => {
   for (let j = at + 1; j < trace.states.length; j++) {
     const pre = storeOf(trace.states[j - 1]!.store)
     const m = modelActOf(trace.states[j]!.action, trace.states[j]!.picks, pre)

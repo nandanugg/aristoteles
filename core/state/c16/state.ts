@@ -8,7 +8,7 @@ import type {
   RoleDraft,
   Top,
   Versions,
-} from '../work/types.ts'
+} from './data.ts'
 import type { ActorKey, AskId, Answered, OpenAsk } from './types.ts'
 
 // The model's words (types.qnt). The code keeps no Unsent: a section no task owns is `uncovered`.
@@ -31,7 +31,7 @@ export type Form = 'NoForm' | 'Mech' | 'Ref' | 'Both'
 // The model's ASK_CAP: the questions per ordered pair before the next raises (AskRaise).
 export const ASK_CAP = 2
 
-// work.qnt Task with the model's field names. role: the persistent role it is sent to; parent:
+// The model’s Task with the model's field names. role: the persistent role it is sent to; parent:
 // the task it is a part of; directions: the directions it serves; caught (A): the test-command
 // rules that print lines on the latest result; at: the seq of its last change.
 export interface Task {

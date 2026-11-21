@@ -177,6 +177,29 @@ export const createSocket = (transport: Transport) => {
       }
       wire(message)
     },
+    viewBuild(next: string) {
+      build ??= next
+    },
+    buildChanged(next: string) {
+      if (next === build || reloading || drainingBuild) return
+      if (ws.readyState === 1 && usable) {
+        ws.close()
+        return
+      }
+      // A page with polling but no socket can still reload safely.
+      if (!outbox?.sessions().size) {
+        reloading = true
+        transport.reload()
+        return
+      }
+      reloading = true
+      void outbox.prepareReload().then(transport.reload, () => {
+        reloading = false
+        noticeOnce('drain', 'Terminal input paused while pending keys drain before reload')
+        drainingBuild = true
+        if (ws.readyState !== 1) connect()
+      })
+    },
     input(session: Session, data: string) {
       if (drainingBuild) {
         issue(session, 'Terminal input paused while pending keys drain before reload')

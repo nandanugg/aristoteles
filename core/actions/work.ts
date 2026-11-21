@@ -1,9 +1,9 @@
 // The new path of the work model (P2): the person opens the top, and each act of an actor is one
-// event, checked against the folded state by `refusal` (core/derived/work/accept.ts) inside the
+// event, checked against the folded state by `refusal` (core/derived/c16/accept.ts) inside the
 // store write. An act id is stored once: a second copy gets the first outcome (G3 firstTime).
 import { Effect, Schema } from 'effect'
 import { currentOf, officialAt } from '../derived/reads.ts'
-import { authority, type Refusal as Check, cur, dirBased, refusal } from '../derived/work/accept.ts'
+import { basisOf, refused } from '../derived/c16/accept.ts'
 import {
   type Author,
   create,
@@ -13,27 +13,26 @@ import {
   isSpot,
   type Recorded,
   type Work,
-  WhatSchema,
+  BodySchema,
   writtenBy,
 } from '../schema/index.ts'
 import { Dir, Now, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
 import { fold } from '../state/index.ts'
-import { foldWork } from '../state/work/fold.ts'
-import { take } from '../state/work/effect.ts'
-import { testRule, vsum } from '../state/work/items.ts'
-import { epOf } from '../state/work/reads.ts'
-import type {
-  Act,
-  Actor,
-  Example,
-  ItemKey,
-  ItemRec,
-  RoleDraft,
-  Versions,
-  What,
-  WorkState,
-} from '../state/work/types.ts'
-import { HOST, makerActor, PERSON, PIPE, roleActor } from '../state/work/types.ts'
+import { foldWork } from '../state/c16/fold.ts'
+import { take } from '../state/c16/effect.ts'
+import { epochOf, testRule, vsum } from '../state/c16/reads.ts'
+import type { WorkState } from '../state/c16/state.ts'
+import { actorOf, keyOf, type Act, type Actor, type Body, type RefusalName }
+  from '../state/c16/types.ts'
+import type { Example, ItemKey, ItemRec, RoleDraft, Versions } from '../state/c16/data.ts'
+import { Refusal as WorkRefusal } from '../schema/errors.ts'
+import { NonBlank } from '../schema/index.ts'
+
+const HOST = { _tag: 'Host' } as const
+const HUMAN = { _tag: 'Human' } as const
+const PIPE = { _tag: 'Pipe' } as const
+const makerActor = (id: string): Actor => ({ _tag: 'Maker', id })
+const roleActor = (name: string): Actor => ({ _tag: 'Role', name })
 import { folding, STORE } from './dispatch.ts'
 import { no } from './support.ts'
 import type { Refusal } from './types.ts'
@@ -46,14 +45,17 @@ const TRIES = 3
 // (null: the CLI has none); current: the build of the code now.
 export interface ActCall {
   readonly by: Author
-  readonly act: Pick<Act, 'id' | 'who' | 'ep' | 'what'>
+  readonly act: Pick<Act, 'id' | 'who' | 'ep' | 'body'>
   readonly on: number | null
   readonly build: string | null
   readonly current: string
+  readonly forward?: string
+  readonly evidence?: Versions
+  readonly actorEpoch?: number
 }
 // A token the act made: the actor, its epoch and the secret (the store keeps only the hash).
 export interface NewToken {
-  readonly actor: Actor
+  readonly actor: string
   readonly ep: number
   readonly secret: string
 }
@@ -83,34 +85,17 @@ export const WORK = {
     no(`${tag} is not an act that the host may forward`, 'Escalate', 'the person acts at the page'),
   noForward: (id: string) =>
     no(`${id} is no forward that waits`, 'Pick', 'the page lists the forwards that wait'),
-  // The words of each check of `refusal`, and what the actor does next.
-  checks: (c: Check, who: Actor, tag: string): Refusal => {
-    switch (c) {
-      case 'ended':
-        return no('the project has ended', 'Escalate', 'the person starts a new project')
-      case 'authority':
-        return no(`${who} does not act ${tag}`, 'Escalate', 'leave the act to its own actor')
-      case 'epoch':
-        return no(`the token of ${who} is of an old epoch`, 'Pick', 'take the actor current token')
-      case 'legal':
-        return no(`${tag} is not legal in this state`, 'Wait', 'read the state again, then act')
-      case 'basis':
-        return no(`${tag} was built on a state that moved`, 'Pick', 'read again, then redo the act')
-      case 'build':
-        return no('the act comes from an old build of the page', 'Pick', 'reload, then act again')
-    }
-  },
 } as const
 
 // The actor whose token an act makes anew, if any: a new maker, a revived actor, a resumed maker,
 // the host of a move.
 const makesToken = (s: WorkState, a: Act): Actor | null => {
-  const w = a.what
+  const w = a.body
   switch (w._tag) {
-    case 'AssignDo':
-      return makerActor(`m${s.nextMaker}`)
+    case 'Open':
+      return w.open._tag === 'OpenMake' ? makerActor(`m${s.nextMaker}`) : null
     case 'Revive':
-      return w.who
+      return w.actor
     case 'Resume':
       return makerActor(w.maker)
     case 'MoveHost':
@@ -135,14 +120,14 @@ const viewAt = (events: ReadonlyArray<Recorded>, on: number): WorkState | null =
 // seenVer, vers) and, for a recheck, the items that the view's task waits to have rechecked.
 const viewed = (view: WorkState | null, a: ActCall['act']): Omit<Act, 'old'> => {
   if (view === null) return { ...a, seen: -1, seenVer: 0, vers: new Map() }
-  const w = a.what
-  const what: What = w._tag === 'RecheckDone'
+  const w = a.body
+  const body: Body = w._tag === 'RecheckDone'
     ? {
       ...w,
-      items: new Set([...(view.tasks.get(w.task)?.pend ?? [])].filter((x) => !testRule(view, x))),
+      items: new Set([...(view.tasks.get(w.task)?.pending ?? [])].filter((x) => !testRule(view, x))),
     }
     : w
-  return { ...a, what, seen: cur(view, what), seenVer: vsum(view), vers: view.ver }
+  return { ...a, body, seen: basisOf(view, body), seenVer: vsum(view), vers: view.ver }
 }
 
 // The reader rows of the items whose version moved.
@@ -155,6 +140,15 @@ const moved = (
   [...after]
     .filter(([x, v]) => before.get(x) !== v)
     .map(([item, version]) => ['item_version', { project: dir, item, version, seq }])
+
+const named = (refused: RefusalName, words: string, next = 'Read the state again.'): Refusal =>
+  new WorkRefusal({ message: words, choice: { kind: 'Pick', words: NonBlank.make(next) },
+    refused, words, next })
+
+const requestOf = (call: ActCall): string => sha(JSON.stringify([
+  call.by, keyOf(call.act.who), call.act.ep, Schema.encodeSync(BodySchema)(call.act.body),
+  call.on, call.build, call.forward ?? null,
+]))
 
 export const dispatchAct = (call: ActCall) =>
   Effect.gen(function* () {
@@ -170,31 +164,54 @@ export const dispatchAct = (call: ActCall) =>
       Effect.gen(function* () {
         const folded = yield* folding(() => foldWork(events))
         if (folded === null) return yield* Effect.fail(WORK.noTop())
+        const now = folded.state
+        const request = requestOf(call)
         const first = folded.ids.get(call.act.id)
         if (first !== undefined) {
-          done = { seq: first, state: folded.state, again: true, token: null }
+          const saved = events.find((event) => event.seq === first)?.event
+          if (saved?._tag !== 'Work' || saved.create._tag !== 'Acted' ||
+            saved.create.request !== request) {
+            return yield* Effect.fail(named('legal', 'This act ID names a different submission.'))
+          }
+          done = { seq: first, state: now, again: true, token: null }
           return null
         }
-        const now = folded.state
-        if (call.on !== null && call.on > now.seq) {
-          return yield* Effect.fail(WORK.future(call.on, now.seq))
+        if (call.forward !== undefined && !folded.forwards.some((f) => f.id === call.forward)) {
+          return yield* Effect.fail(WORK.noForward(call.forward))
         }
-        const needsBasis = cur(now, call.act.what) >= 0 || dirBased(call.act.what)
-        if (call.on === null && needsBasis) {
-          return yield* Effect.fail(WORK.noBasis(call.act.what._tag))
-        }
+        const invalidView = call.on !== null && (call.on < 0 || call.on > now.seq)
         const act: Act = {
-          ...viewed(call.on === null ? folded.state : viewAt(events, call.on), call.act),
+          ...viewed(call.on === null ? now : invalidView ? null : viewAt(events, call.on), call.act),
           old: call.build !== null && call.build !== call.current,
         }
-        const check = refusal(now, act)
-        if (check !== null) return yield* Effect.fail(WORK.checks(check, act.who, act.what._tag))
+        const via = call.by._tag === 'Person' && call.by.channel === 'ui' ? 'page' : 'terminal'
+        const check = refused(now, act, via)
+        if (check && check.refused !== 'basis') {
+          return yield* Effect.fail(named(check.refused, check.words, check.next))
+        }
+        const needsBasis = basisOf(now, act.body) >= 0 ||
+          act.body._tag === 'AskEdit'
+        if (invalidView || (call.on === null && needsBasis)) {
+          return yield* Effect.fail(named('basis', 'The act needs the basis of its current view.'))
+        }
+        if (check) return yield* Effect.fail(named(check.refused, check.words, check.next))
+        if (act.body._tag === 'Exit' && call.actorEpoch !== undefined &&
+          call.actorEpoch !== epochOf(now, act.body.actor)) {
+          return yield* Effect.fail(named('epoch', 'This process was replaced by a newer one.'))
+        }
+        const evidence = call.evidence
+        if (evidence && (evidence.size !== now.ver.size ||
+          [...evidence].some(([item, version]) => now.ver.get(item) !== version))) {
+          return yield* Effect.fail(named('basis', 'The evidence was computed before items changed.'))
+        }
         const actor = makesToken(now, act)
         const secret = actor === null ? null : yield* tokens.random
-        const made = actor === null || secret === null ? null : { actor, secret }
+        const made = actor === null || secret === null ? null : { actor: keyOf(actor), secret }
         const event = create('Work', {
           _tag: 'Acted',
           act,
+          request,
+          forward: call.forward ?? null,
           token: made === null ? null : [made.actor, sha(made.secret)],
         })
         if (!writtenBy(call.by, event)) {
@@ -207,7 +224,7 @@ export const dispatchAct = (call: ActCall) =>
           seq: next,
           state,
           again: false,
-          token: made === null ? null : { ...made, ep: epOf(state, made.actor) },
+          token: made === null ? null : { ...made, ep: epochOf(state, actorOf(made.actor)) },
         }
         return { draft, rows: moved(now.ver, state.ver, opened.dir, next) }
       }),
@@ -219,12 +236,12 @@ export const dispatchAct = (call: ActCall) =>
 // --- the forwards --------------------------------------------------------------------------------
 
 // The acts of the person at a terminal only (run continue): neither the page nor a forward.
-export const atTerminal = (what: What): boolean =>
-  what._tag === 'MoveHost' || what._tag === 'Revive'
+export const atTerminal = (body: Body): boolean =>
+  body._tag === 'MoveHost' || body._tag === 'Revive'
 
 // The id of an act of the page: a resend or a double click is the same act.
-export const pageActId = (what: What, on: number | null): string =>
-  sha(JSON.stringify(['page', Schema.encodeSync(WhatSchema)(what), on]))
+export const pageActId = (body: Body, on: number | null): string =>
+  sha(JSON.stringify(['page', Schema.encodeSync(BodySchema)(body), on]))
 
 const storeOpened = Effect.gen(function* () {
   const { cwd } = yield* Dir
@@ -235,9 +252,13 @@ const storeOpened = Effect.gen(function* () {
 
 // The host's carry of the person's words: the act waits on the page for the person's confirm.
 // Refused unless the person may act it (authority) and need not be at a terminal.
+const forwardable = (body: Body): boolean =>
+  body._tag === 'AnswerQuestion' || body._tag === 'Respond' || body._tag === 'AskEdit' ||
+  body._tag === 'EndProject' || (body._tag === 'Open' && body.open._tag === 'OpenReject')
+
 export const recordForward = (
   by: Author,
-  fwd: { readonly what: What; readonly on: number | null; readonly quote: string },
+  fwd: { readonly act: Body; readonly on: number | null; readonly quote: string },
 ) =>
   Effect.gen(function* () {
     const clock = yield* Now
@@ -248,10 +269,8 @@ export const recordForward = (
         const folded = yield* folding(() => foldWork(events))
         if (folded === null) return yield* Effect.fail(WORK.noTop())
         const s = folded.state
-        const who = PERSON
-        const a = { id: '', who, ep: 0, what: fwd.what, seen: -1, seenVer: 0, vers: new Map() }
-        if (atTerminal(fwd.what) || !authority(s, { ...a, old: false })) {
-          return yield* Effect.fail(WORK.notForwardable(fwd.what._tag))
+        if (!forwardable(fwd.act)) {
+          return yield* Effect.fail(WORK.notForwardable(fwd.act._tag))
         }
         if (fwd.on !== null && fwd.on > s.seq) {
           return yield* Effect.fail(WORK.future(fwd.on, s.seq))
@@ -295,17 +314,28 @@ export const confirmForward = (by: Author, id: string, build: string | null, cur
     const events = yield* (yield* storeOpened).events
     const folded = yield* folding(() => foldWork(events))
     if (folded === null) return yield* Effect.fail(WORK.noTop())
+    const first = folded.ids.get(`confirm:${id}`)
+    const recorded = events.find((event) => event.seq === first)
+    const saved = recorded?.event
     const f = folded.forwards.find((x) => x.id === id)
-    if (f === undefined) return yield* Effect.fail(WORK.noForward(id))
-    const acted = yield* dispatchAct({
+    if (f === undefined) {
+      if (build !== null && build !== current) {
+        return yield* Effect.fail(named('build', 'The page build is old.'))
+      }
+      if (saved?._tag === 'Work' && saved.create._tag === 'Acted' &&
+        saved.create.forward === id && JSON.stringify(recorded?.author) === JSON.stringify(by)) {
+        return { seq: first!, state: folded.state, again: true, token: null }
+      }
+      return yield* Effect.fail(WORK.noForward(id))
+    }
+    return yield* dispatchAct({
       by,
-      act: { id: pageActId(f.what, f.on), who: PERSON, ep: 0, what: f.what },
+      act: { id: `confirm:${id}`, who: HUMAN, ep: 0, body: f.act },
       on: f.on,
       build,
       current,
+      forward: id,
     })
-    yield* dropForward(by, id)
-    return acted
   })
 
 // --- the top -------------------------------------------------------------------------------------
@@ -320,7 +350,7 @@ export interface OpenCall {
 // The secrets of the epoch 0 tokens: the host, the pipe and each persistent role.
 export interface Opened {
   readonly seq: number
-  readonly secrets: ReadonlyArray<{ readonly actor: Actor; readonly secret: string }>
+  readonly secrets: ReadonlyArray<{ readonly actor: string; readonly secret: string }>
 }
 
 const none = { test: null, ref: null, form: 'none', examples: [] } as const
@@ -437,7 +467,7 @@ export const openTop = (call: OpenCall) =>
         const cards = cardsOf(work)
         const actors = [HOST, PIPE, ...cards.map(([role]) => roleActor(role))]
         secrets = yield* Effect.forEach(actors, (actor) =>
-          Effect.map(tokens.random, (secret) => ({ actor, secret })),
+          Effect.map(tokens.random, (secret) => ({ actor: keyOf(actor), secret })),
         )
         const event = create('Work', {
           _tag: 'Opened',

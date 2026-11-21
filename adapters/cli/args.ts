@@ -85,15 +85,19 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   reject: ['points', 'on'],
   decide: ['on'],
   advance: ['on'],
-  rule: ['on'],
+  rule: ['on', 'fights'],
   'rule-test': ['on'],
-  ship: ['on'],
+  ship: ['on', 'resolves'],
   loop: ['on'],
   recheck: ['on'],
   top: { open: ['name', 'goal', 'sections'] },
   hook: { stopped: [] },
-  ask: ['question', 'text'],
-  answer: ['text'],
+  ask: ['question', 'text', 'file'],
+  answer: ['text', 'file'],
+  hear: [],
+  'ask-raise': [],
+  respond: ['on', 'points'],
+  'ask-edit': ['on', 'file'],
   status: ['kind', 'text', 'by'],
   search: [],
   guide: [],
@@ -104,7 +108,9 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   wait: ['by', 'seconds'],
   forward: {
     end: ['quote'],
-    answer: ['text', 'quote'],
+    answer: ['text', 'file', 'quote'],
+    respond: ['on', 'points', 'quote'],
+    'ask-edit': ['on', 'file', 'quote'],
     accept: ['on', 'quote'],
     'send-back': ['points', 'on', 'quote'],
     reject: ['points', 'on', 'quote'],
@@ -137,7 +143,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
 }
 
 // The flags that stand alone, with no value.
-export const SWITCHES: ReadonlyArray<string> = []
+export const SWITCHES: ReadonlyArray<string> = ['resolves']
 
 // The word that names the act of a command with several acts.
 const first = (words: ReadonlyArray<string>) => words[0]
@@ -178,17 +184,19 @@ export const USAGE: ReadonlyArray<string> = [
   '         the step names its own command, with --on <n> where it has a basis; after an act run work wait again',
   '         work send <token> --name= --goal= --sections=a,b --role=<role> | reassign <token> | ' +
     'top-done <token>',
-  '         work assign <token> <task> | review <token> <task> ' +
+  '         work assign <token> <task> | review <token> <ask-id> ' +
     'pass|fail|raise-tries|raise-no-rule|raise-misses --points= --on=',
-  '         work resume <token> <maker> | brief <token> | report <token> --output= --files=a,b ' +
+  '         work resume <token> <maker> | brief <token> | report <token> <ask-id> --output= --files=a,b ' +
     '--on=',
   '         work evaluate <token> <task> split|fit|principle|direction|standard --summary= ' +
     '[--parts=<file>] [--role-draft=<file>] --on=',
-  '         work advance <token> <fix> | rule <token> <fix> <rule-file> | rule-test <token> ' +
-    '<fix> | ship <token> <fix> <draft-file>',
+  '         work advance <token> <fix> | rule <token> <fix> <rule-file> [--fights=rule:a,rule:b] | rule-test <token> ' +
+    '<fix> | ship <token> <fix> <draft-file> [--resolves]',
   '         work loop <token> <fix> person|revise | recheck <token> <task> holds|fails (each ' +
     'with --on=<n>)',
-  '         work ask <token> --question=<words> (the person answers it on the page)',
+  '         work ask <token> <actor> --text=<question> | --file=<question.yaml>',
+  '         work answer <token> <ask-id> --text=<answer> | --file=<answer.yaml>',
+  '         work hear <token> <ask-id> | ask-raise <token> <actor>',
   '         work direction new [<token>] --file=<direction.yaml> [--by=<model run>] (a model drafts a new direction)',
   '         work direction revise [<token>] <direction> --file=<edit.yaml> [--by=<model run>] (a model drafts a change of a direction)',
   '         work direction examples [<token>] <draft> --file=<flow.yaml> [--by=<model run>] (the flow of a company draft, its marked steps with their examples, before its accept)',
@@ -205,8 +213,9 @@ export const USAGE: ReadonlyArray<string> = [
   '         work onboard approve-directions | accept-role <role> | revise-role <role> --words=<words> | remove-role <role>',
   '         work onboard persistence <role> --persistent=true|false | approve-roles (the store starts with the accepted result)',
   'person:  work init | config apply|restore | top open --name= --goal= --sections=a,b',
-  '         accept <fix> --on= | send-back <fix> --points= --on= | reject <task> --points= --on=',
-  '         decide <task> take|again --on= | answer <asker> --text= | end',
+  '         respond <ask-id> accept|send-back|take|again [--points=] --on=',
+  '         reject <task> --points= --on= | ask-edit --file=<edit.yaml> --on=',
+  '         answer <ask-id> --text=<answer> | --file=<answer.yaml> | end',
   '         role fit <role> --answers=<file> (the fit of a role)',
 ]
 
@@ -228,6 +237,10 @@ export const COMMAND_NAMES = [
   'recheck',
   'ask',
   'answer',
+  'hear',
+  'ask-raise',
+  'respond',
+  'ask-edit',
   'evaluate',
   'resume',
   'end',

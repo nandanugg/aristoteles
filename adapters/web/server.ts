@@ -18,7 +18,6 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream, SubscriptionRef } from 'effect'
 import { Refusal } from '../../core/actions/types.ts'
 import {
-  atTerminal,
   confirmForward,
   dispatchAct,
   dropForward,
@@ -29,6 +28,7 @@ import { checkHost, tmuxPaneExists } from '../../core/effects/host-check.ts'
 import {
   type Author,
   OnboardingAct,
+  RefusalSchema,
   StoreDamaged,
   type Time,
   type Work,
@@ -54,19 +54,22 @@ import {
   writeSettings,
 } from '../../core/services/index.ts'
 import { fold, momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
-import { foldWork } from '../../core/state/work/fold.ts'
+import { foldWork } from '../../core/state/c16/fold.ts'
 import { sessionOf } from '../../core/effects/engine.ts'
-import { HOST, PERSON, PIPE, roleActor } from '../../core/state/work/types.ts'
+import { keyOf } from '../../core/state/c16/types.ts'
 import { buildOf } from '../live/build.ts'
 import { readPane } from '../live/host-pane.ts'
 import { readingsLive } from '../live/readings.ts'
 import { readStatus, statusStamp } from '../live/status.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { readMarkers } from '../live/waiting.ts'
-import { refusedOf, type WorkPost, workPostOf } from './acts.ts'
+import {
+  forwardedPageBody, pageBodyOf, pagePointsOk, type WorkPost, workPostOf,
+} from './acts.ts'
 import { PAGE_FILES, pageBundle } from './bundle.ts'
 import {
   ACTS,
+  type ActResponse,
   Dash,
   DashMessage,
   DirView,
@@ -248,7 +251,10 @@ export function startServer(options: ServerOptions): ServerHandle {
     const { state, hostPane, forwards } = folded
     const now = Date.parse(clock())
     const terminals = pump?.status() ?? {}
-    const persistent = [HOST, PIPE, ...[...state.cards.keys()].map(roleActor)]
+    const persistent = [
+      keyOf({ _tag: 'Host' }), keyOf({ _tag: 'Pipe' }),
+      ...[...state.cards.keys()].map((name) => keyOf({ _tag: 'Role', name })),
+    ]
     const tails = Object.fromEntries(
       persistent.flatMap((k) => {
         const sid = sessionOf(k, state.ep.get(k) ?? 0)
@@ -263,7 +269,6 @@ export function startServer(options: ServerOptions): ServerHandle {
       build,
       now,
       state,
-      events,
       host: {
         model: '',
         reading: hostPane === null ? null : readPane(hostPane.socket, hostPane.pane),
@@ -273,7 +278,7 @@ export function startServer(options: ServerOptions): ServerHandle {
         : { name: pipe[0], model: pipe[1].model },
       terminals,
       tails,
-      forwards,
+      forwards: forwards.map(({ id, act, quote }) => ({ id, quote, body: act })),
       markers: readMarkers(env, dir, now),
       principles: Object.fromEntries(
         [...(old?.directions ?? [])].map(([id, d]) => [`dir:${id}`, d.from]),
@@ -486,33 +491,50 @@ export function startServer(options: ServerOptions): ServerHandle {
     }
     return by
   }
-  // --- the person's acts of the work model (POST /api/act with a What) ---------------------
-
   const workActed = async (post: WorkPost): Promise<Response> => {
     const by = await member()
-    if (by instanceof Response) return by
-    const tag = 'act' in post ? post.act._tag : 'forward'
-    if ('act' in post && atTerminal(post.act)) {
-      const words = `${tag} is for a terminal: work run continue`
-      return json({ refused: 'terminal', words }, 400)
+    if (by instanceof Response) {
+      send({ type: 'changed' })
+      return by
     }
+    const forward = 'confirm' in post
+      ? foldWork(storeEvents())?.forwards.find((entry) => entry.id === post.confirm)
+      : undefined
+    const pageBody = 'act' in post ? post.act : forward && forwardedPageBody(forward.act)
+    if ((forward && !pageBody) || (pageBody && !pagePointsOk(pageBody))) {
+      send({ type: 'changed' })
+      return json({
+        refused: 'legal',
+        words: pageBody ? 'Add at least one point.' : 'This act cannot be posted.',
+      }, 400)
+    }
+    const success = ({ seq, again }: { seq: number; again: boolean }): ActResponse =>
+      again ? { ok: true, seq, duplicate: true } : { ok: true, seq }
     const run = 'act' in post
       ? dispatchAct({
         by,
-        act: { id: pageActId(post.act, post.on), who: PERSON, ep: 0, what: post.act },
+        act: {
+          id: post.id ?? pageActId(pageBodyOf(post.act), post.on),
+          who: { _tag: 'Human' }, ep: 0, body: pageBodyOf(post.act),
+        },
         on: post.on,
         build: post.build,
         current: build,
-      }).pipe(Effect.map((a) => a.seq))
+      }).pipe(Effect.map(success))
       : 'confirm' in post
-      ? confirmForward(by, post.confirm, post.build, build).pipe(Effect.map((a) => a.seq))
-      : dropForward(by, post.drop).pipe(Effect.as(null))
+      ? confirmForward(by, post.confirm, post.build, build).pipe(Effect.map(success))
+      : dropForward(by, post.drop).pipe(Effect.as({ ok: true, seq: null } as const))
     const exit = await runtime.runPromiseExit(Effect.scoped(run))
     runSync(refresh)
     send({ type: 'changed' })
-    if (Exit.isSuccess(exit)) return json({ ok: true, seq: exit.value })
+    if (Exit.isSuccess(exit)) return json(exit.value)
     const error = Cause.squash(exit.cause)
-    return error instanceof Refusal ? json(refusedOf(error), 400) : failed(error)
+    const c16 = Schema.decodeUnknownOption(RefusalSchema)(error)
+    if (c16._tag === 'Some') return json(c16.value, 400)
+    if (error instanceof Refusal) {
+      return json({ error: error.message, next: error.choice.words }, 400)
+    }
+    return failed(error)
   }
 
   // --- onboarding (POST /api/onboarding): each act writes the files and stores nothing -------
@@ -568,6 +590,13 @@ export function startServer(options: ServerOptions): ServerHandle {
     const body: unknown = await req.json()
     const work = workPostOf(body)
     if (work) return workActed(work)
+    if (isRecord(body) && isRecord(body.act) &&
+      (body.act._tag === 'MoveHost' || body.act._tag === 'Revive')) {
+      const by = await member()
+      if (by instanceof Response) return by
+      send({ type: 'changed' })
+      return json({ refused: 'terminal', words: 'Run work run continue in a terminal.' }, 400)
+    }
     const name = isRecord(body) ? body.act : undefined
     if (!ACTS.some((a) => a === name)) return json({ error: `there is no act "${name}"` }, 400)
     let decoded: PageAct

@@ -97,7 +97,7 @@ describe('a new store', () => {
       { name: dir, folder: dir, made_at: '2026-10-25T09:01:00.000Z' },
     ])
     expect(tableOf(file, 'SELECT * FROM words')).toEqual([row])
-    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 5 }])
+    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 6 }])
     const found = await run(
       withStore(file, dir, false, (store) =>
         store.query('SELECT place, text FROM words WHERE project = ?', dir),
@@ -180,7 +180,7 @@ describe('the files of a store', () => {
     const write = (n: number) => (s: DirStore) => s.write(() => written(draftOf(n, SOURCE)))
     const seq = await run(withStore(file, dir, true, write(1)))
     expect(seq).toBe(1)
-    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 5 }])
+    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 6 }])
   })
 
   test('an empty file is not filled by a command that does not create', async () => {
@@ -213,13 +213,13 @@ describe('the files of a store', () => {
           id,
           who: 'host',
           ep: 0,
-          what: { _tag: 'TopDone' },
+          body: { _tag: 'TopDone' },
           seen: -1,
           seenVer: 0,
           vers: [],
           old: false,
         },
-        token: null,
+        token: null, request: id, forward: null,
       },
     })
     const item: ReaderRow = ['item_version', { project: dir, item: 'dir:d1', version: 1, seq: 1 }]
@@ -263,6 +263,7 @@ describe('the files of a store', () => {
     ['a database of the old work (a table act)', sqlite('CREATE TABLE act (seq INTEGER)')],
     ['a database of another program', sqlite('CREATE TABLE notes (text TEXT)')],
     ['a database of another format', sqlite('PRAGMA user_version = 7')],
+    ['a database of format 5 (the old acts)', sqlite('CREATE TABLE event (x); PRAGMA user_version = 5')],
     ['a database of format 3', sqlite('CREATE TABLE event (x); PRAGMA user_version = 3')],
     ['a database of format 1 with tables', sqlite('CREATE TABLE event (x); PRAGMA user_version = 1')],
   ])('%s is refused, with the way to start fresh, and is left as it was', async (_name, make) => {

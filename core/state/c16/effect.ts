@@ -8,8 +8,8 @@ import type {
   RoleDraft,
   TaskSpec,
   Versions,
-} from '../work/types.ts'
-import { EDIT, free, hasMech, kindOf } from '../work/types.ts'
+} from './data.ts'
+import { EDIT, free, hasMech, kindOf } from './data.ts'
 import {
   advance,
   applies,

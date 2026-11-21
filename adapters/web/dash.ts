@@ -1,17 +1,23 @@
-// The dashboard of a project (DESIGN 10, 10.1) as one pure value: the folded work, the events,
+// The dashboard of a project (DESIGN 10, 10.1) as one pure value: the folded work,
 // the roles of the config and the readings of the terminals go in, the whole Dash comes out. The
 // page draws from a whole copy of it (browser.qnt). No clock here: `now` comes in.
 import type { TerminalReading, WaitMarker } from '../../core/schema/outside.ts'
-import type { Recorded } from '../../core/schema/index.ts'
-import { dos, type Step } from '../../core/derived/work/obligations.ts'
+import { dos, owed } from '../../core/derived/c16/obligations.ts'
 import { sessionOf } from '../../core/effects/engine.ts'
-import { verOf } from '../../core/state/work/items.ts'
-import { epOf, liveMaker } from '../../core/state/work/reads.ts'
-import type { PendingForward } from '../../core/state/work/fold.ts'
-import type { Actor, ItemKey, ItemRec, Task, WorkState } from '../../core/state/work/types.ts'
-import { EDIT, HOST, PERSON, PIPE, roleActor } from '../../core/state/work/types.ts'
-import { stepWords } from '../words/work.ts'
+import { epochOf, liveMaker, verOf } from '../../core/state/c16/reads.ts'
+import type { Task, WorkState } from '../../core/state/c16/state.ts'
+import { type Actor, type Body, keyOf } from '../../core/state/c16/types.ts'
+import { EDIT, type ItemKey, type ItemRec } from '../../core/state/c16/data.ts'
 import type { Dash, DashStatusWord, DashTerminalCard } from './contract.ts'
+
+const HOST: Actor = { _tag: 'Host' }
+const PIPE: Actor = { _tag: 'Pipe' }
+
+export interface DashForwardInput {
+  readonly id: string
+  readonly quote: string
+  readonly body: Body
+}
 
 // The usage-limit message of the AI CLI (Claude Code: "5-hour limit reached", "Claude usage
 // limit reached"), the one place that knows its text.
@@ -31,7 +37,6 @@ export interface DashInput {
   readonly build: string
   readonly now: number
   readonly state: WorkState
-  readonly events: ReadonlyArray<Recorded>
   // The config: the host's model (the person's AI CLI: '' when unknown) and the pipeline role.
   readonly host: { readonly model: string; readonly reading: Reading | null }
   readonly pipe: { readonly name: string; readonly model: string } | null
@@ -40,7 +45,7 @@ export interface DashInput {
   readonly tails: Readonly<Record<string, string>>
   readonly markers: ReadonlyArray<WaitMarker>
   // The acts that the host forwarded and the person has not confirmed or dropped.
-  readonly forwards: ReadonlyArray<PendingForward>
+  readonly forwards: ReadonlyArray<DashForwardInput>
   // The principle tags of each direction (`dir:<id>`), from the old Work direction record.
   readonly principles: Readonly<Record<ItemKey, ReadonlyArray<string>>>
 }
@@ -50,34 +55,35 @@ const FIRST = 3
 // --- the terminal cards --------------------------------------------------------------------------
 
 const readingOf = (i: DashInput, actor: Actor): Reading | null => {
-  if (actor === HOST) return i.host.reading
-  const t = i.terminals[sessionOf(actor, epOf(i.state, actor))]
+  if (actor._tag === 'Host') return i.host.reading
+  const t = i.terminals[sessionOf(keyOf(actor), epochOf(i.state, actor))]
   return t === undefined
     ? null
     : {
       alive: t._tag === 'Live',
       lastOutput: t.lastOutput,
-      tail: i.tails[sessionOf(actor, epOf(i.state, actor))] ?? '',
+      tail: i.tails[sessionOf(keyOf(actor), epochOf(i.state, actor))] ?? '',
     }
 }
 
 // The last wait beat of the actor's current terminal (a marker of another session is old).
-const beatOf = (i: DashInput, actor: Actor): number =>
-  i.markers
-    .filter((m) => m.actor === actor)
-    .filter((m) => m.session === null || m.session === sessionOf(actor, epOf(i.state, actor)))
+const beatOf = (i: DashInput, actor: Actor): number => {
+  const key = keyOf(actor)
+  const session = sessionOf(key, epochOf(i.state, actor))
+  return i.markers
+    .filter((m) => m.actor === key && (m.session === null || m.session === session))
     .reduce((at, m) => Math.max(at, m.beat), 0)
+}
 
 // DESIGN 10: Inactive belongs to the terminal (down, no live pane, the limit message, silence);
 // else Working only on real work of the role itself (dos); waiting on a maker is Waiting.
 const statusOf = (i: DashInput, actor: Actor): DashStatusWord => {
   const r = readingOf(i, actor)
   const silent = r !== null && i.now - Math.max(beatOf(i, actor), r.lastOutput) >= SILENT_MS
-  return i.state.down.has(actor) || r === null || !r.alive || USAGE_LIMIT.test(r.tail) || silent
-    ? 'Inactive'
-    : dos(i.state, actor).length > 0
-    ? 'Working'
-    : 'Waiting'
+  if (i.state.down.has(keyOf(actor)) || !r?.alive || USAGE_LIMIT.test(r.tail) || silent) {
+    return 'Inactive'
+  }
+  return dos(i.state, actor).length > 0 ? 'Working' : 'Waiting'
 }
 
 const DOING: Readonly<Record<string, string>> = {
@@ -87,10 +93,11 @@ const DOING: Readonly<Record<string, string>> = {
   RunTest: 'Testing the rule of',
   Ship: 'Drafting',
   LoopReview: 'Reviewing the draft of',
-  SendTask: 'Sending tasks for',
+  Open: 'Starting work on',
   Reassign: 'Reassigning after',
   TopDone: 'Returning',
-  AssignDo: 'Assigning a maker for',
+  AnswerQuestion: 'Answering a question about',
+  Hear: 'Reading an answer about',
   Review: 'Reviewing',
   Resume: 'Resuming the maker of',
   RecheckDone: 'Rechecking',
@@ -105,22 +112,25 @@ const nameOf = (s: WorkState, target: string | null): string => {
 
 const workOf = (s: WorkState, actor: Actor): string => {
   const [first] = dos(s, actor)
-  if (first !== undefined) return `${DOING[first.tag] ?? first.tag} ${nameOf(s, first.target)}`
+  if (first !== undefined) {
+    const target = first.fix ?? first.task ?? first.maker
+    return `${DOING[first.act] ?? first.act} ${nameOf(s, target)}`
+  }
   const waiting = [...s.tasks.values()].find(
-    (t) => roleActor(t.role) === actor && liveMaker(s, t.id) !== null,
+    (t) => actor._tag === 'Role' && actor.name === t.role && liveMaker(s, t.id) !== null,
   )
   return waiting !== undefined
     ? `Waits for its maker on ${waiting.name}`
-    : actor === HOST
+    : actor._tag === 'Host'
     ? 'Waits for the tasks'
-    : actor === PIPE
+    : actor._tag === 'Pipe'
     ? 'Waits for an escalation'
     : 'Waits for a task'
 }
 
 const terminalOf = (i: DashInput, actor: Actor, role: string, model: string): DashTerminalCard => ({
   role,
-  session: sessionOf(actor, epOf(i.state, actor)),
+  session: sessionOf(keyOf(actor), epochOf(i.state, actor)),
   model,
   status: statusOf(i, actor),
   work: workOf(i.state, actor),
@@ -128,12 +138,13 @@ const terminalOf = (i: DashInput, actor: Actor, role: string, model: string): Da
 
 // --- tasks and subagents -------------------------------------------------------------------------
 
-const taskCard = (t: Task) => ({
+const taskCard = (s: WorkState, t: Task) => ({
   id: t.id,
   name: t.name,
   role: t.role,
-  state: t.st === 'Sent' ? ('QUEUED' as const) : ('WORKING' as const),
+  state: t.state === 'Sent' ? ('QUEUED' as const) : ('WORKING' as const),
   description: t.goal,
+  reject: t.state === 'InReview' && t.resultId >= 0 && !s.top.ended,
 })
 
 const subagentsOf = (s: WorkState, role: string, model: string) =>
@@ -153,18 +164,21 @@ const changesOf = (s: WorkState, draft: ReadonlyMap<ItemKey, ItemRec | null>) =>
     after,
   }))
 
-const escalationsOf = (s: WorkState) =>
+const escalationsOf = (
+  s: WorkState, decisions: ReadonlyMap<string, string>,
+): Dash['row'] =>
   [...s.fixes].flatMap(([id, f]) => {
-    if (f.stage === 'SClosed') return []
+    if (f.stage === 'Closed') return []
+    const ask = decisions.get(id) ?? null
     const task = s.tasks.get(id)
     const card = s.cards.get(f.roleDraft?.role ?? '')
     return [{
       id,
-      status: f.stage === 'SEval'
-        ? ('QUEUED' as const)
-        : f.stage === 'SAtPerson'
-        ? ('WAIT_FOR_REVIEW' as const)
-        : ('IN_PIPELINE' as const),
+      ask,
+      reply: ask === null ? [] : id === EDIT ? ['AcceptIt', 'SendItBack']
+        : ['AcceptIt', 'SendItBack', 'TakeAsIs', 'EvaluateAgain'],
+      status: f.stage === 'Evaluating' ? 'QUEUED'
+        : ask === null ? 'IN_PIPELINE' : 'WAIT_FOR_REVIEW',
       summary: f.summary,
       task: task?.name ?? 'your direction edit',
       changes: changesOf(s, f.draft),
@@ -215,44 +229,77 @@ const directionsOf = (i: DashInput) => {
   })
 }
 
-// The step that a forwarded act is, for its words.
-const stepOfForward = (w: PendingForward['what']): Step => ({
-  tag: w._tag,
-  target: 'fix' in w ? w.fix : 'task' in w ? w.task : 'asker' in w ? w.asker : null,
-})
+const describeForward = (body: Body): string => {
+  switch (body._tag) {
+    case 'Open':
+      return body.open._tag === 'OpenReject' ? `Reject the result of ${body.open.task}` : 'Open'
+    case 'AskEdit':
+      return 'Send a direction edit to the pipeline'
+    case 'AnswerQuestion':
+      return `Answer question ${body.ask}`
+    case 'Respond':
+      return `Respond to decision ${body.ask}`
+    case 'EndProject':
+      return 'End the project'
+    default:
+      return body._tag
+  }
+}
+
+const humanOwed = (s: WorkState): Dash['person']['owed'] =>
+  owed(s).flatMap(({ owner, ob, age }): Dash['person']['owed'] => {
+    if (owner !== 'human') return []
+    if (ob._tag === 'EndOb') return [{ _tag: 'EndProject', age }]
+    if (ob._tag === 'ReviveOb') return [{ _tag: 'ReviveHost', age }]
+    if (ob._tag !== 'AskOb') return []
+    const ask = s.asks.get(ob.ask)
+    if (ask?.kind === 'Decide' && ask.about._tag === 'Fix') {
+      return [{ _tag: 'Decide', ask: ask.id, fix: ask.about.id, age }]
+    }
+    if (ask?.kind === 'Question') {
+      if (!ask.question) throw new Error(`Owed question ${ask.id} has no body`)
+      const makerTask = ask.from._tag === 'Maker' ? s.makers.get(ask.from.id)?.task : undefined
+      const role = ask.from._tag === 'Role' ? ask.from.name : s.tasks.get(makerTask ?? '')?.role
+      return [{ _tag: 'Question', ask: ask.id, from: keyOf(ask.from),
+        role: role ?? null, age, question: ask.question }]
+    }
+    return []
+  })
 
 // --- the dashboard -------------------------------------------------------------------------------
 
 export const dashOf = (i: DashInput): Dash => {
   const s = i.state
   const tasks = [...s.tasks.values()]
-  const row = escalationsOf(s)
+  const person = humanOwed(s)
+  const row = escalationsOf(s, new Map(person.flatMap((x) =>
+    x._tag === 'Decide' ? [[x.fix, x.ask] as const] : [])))
   return {
     header: { dir: i.dir, project: s.top.name, seq: s.seq, build: i.build },
-    queue: tasks.filter((t) => t.st === 'Sent' || t.st === 'Working' || t.st === 'InReview')
-      .map(taskCard),
+    queue: tasks
+      .filter((t) => t.state === 'Sent' || t.state === 'Working' || t.state === 'InReview')
+      .map((t) => taskCard(s, t)),
+    results: tasks.filter((t) => !s.top.ended && t.state === 'Done' && t.resultId >= 0)
+      .map(({ id, name }) => ({ id, name })),
     host: { card: terminalOf(i, HOST, 'host', i.host.model), subagents: [] },
     columns: [...s.cards].map(([role, card]) => {
-      const current = tasks.find((t) => t.role === role && t.st !== 'Done' && t.st !== 'Split')
+      const current = tasks.find((t) =>
+        t.role === role && t.state !== 'Done' && t.state !== 'Split')
       return {
         role,
-        card: terminalOf(i, roleActor(role), role, card.model),
-        task: current === undefined ? null : taskCard(current),
+        card: terminalOf(i, { _tag: 'Role', name: role }, role, card.model),
+        task: current === undefined ? null : taskCard(s, current),
         subagents: subagentsOf(s, role, card.model),
       }
     }),
     pipe: terminalOf(i, PIPE, i.pipe?.name ?? 'pipeline', i.pipe?.model ?? ''),
     row,
     rowShown: row.some((e) => e.status === 'WAIT_FOR_REVIEW'),
-    person: dos(s, PERSON).map((x) => ({
-      tag: x.tag,
-      target: x.target,
-      words: stepWords(s, x, i.events),
-    })),
+    person: { owed: person },
     forwards: i.forwards.map((f) => ({
       id: f.id,
       quote: f.quote,
-      words: stepWords(s, stepOfForward(f.what), i.events),
+      words: [describeForward(f.body)],
     })),
     directions: directionsOf(i),
   }

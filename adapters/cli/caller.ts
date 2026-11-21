@@ -5,8 +5,8 @@
 import { Effect } from 'effect'
 import { type Author, refuse, type Refused, type Work } from '../../core/schema/index.ts'
 import { Env, GitUser, sha, Terminal } from '../../core/services/index.ts'
-import type { WorkFolded } from '../../core/state/work/fold.ts'
-import type { Actor } from '../../core/state/work/types.ts'
+import type { WorkFolded } from '../../core/state/c16/fold.ts'
+import type { ActorKey } from '../../core/state/c16/types.ts'
 
 // What the person types to confirm an act at a terminal, and what it shows first.
 export interface Confirm {
@@ -22,7 +22,7 @@ export { workTokenOf } from '../words/work.ts'
 export const verifyWork = (
   folded: WorkFolded,
   token: string | null,
-): Effect.Effect<{ readonly who: Actor; readonly ep: number }, Refused> =>
+): Effect.Effect<{ readonly who: ActorKey; readonly ep: number }, Refused> =>
   Effect.gen(function* () {
     if (token === null) {
       return yield* refuse(

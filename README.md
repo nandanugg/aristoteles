@@ -17,7 +17,7 @@ SQLite file that links each task to the version of the direction that it used.
 - **Top task**: the whole job of one project, for example one TSD, with its sections. You open
   it (`work top open`); the host sends tasks that cover its sections to the roles.
 - The design: `plan/model/DESIGN.md` is locked by the person, and `core/model/` holds it as
-  Quint specs checked by TLC; the code follows `core/model/work.qnt`.
+  Quint specs checked by TLC; the work loop follows the C16 protocol in `core/model/`.
 - **Company directions**: a git repo with one folder for each direction. A project names a
   folder in its `aristoteles.lock`. The first command of each day fetches the repo, and a new
   commit comes in as a draft that its owner accepts.
@@ -130,6 +130,9 @@ into one file in `.cache/cli/` of the aristoteles folder (git ignores it), and t
 start from that file. A build that fails changes nothing: that call runs the code as it is.
 
 ## The UI: `work start`
+
+Work events use SQLite format 6. Opening a format-5 store fails without changing the
+database. Use a fresh store for the C16 work loop.
 
 `work start` in a dir opens its page in the browser: the dashboard (the task queue, the host,
 a column per role with its status Working, Waiting or Inactive, the pipeline row with the

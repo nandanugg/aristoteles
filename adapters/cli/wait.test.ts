@@ -8,7 +8,7 @@ import { dispatchAct, openTop } from '../../core/actions/work.ts'
 import { h, NANDA } from '../../core/actions/fixture.test.ts'
 import type { Time } from '../../core/schema/index.ts'
 import { Dir, Env, Now, Store, StoreLive, Tokens } from '../../core/services/index.ts'
-import type { What } from '../../core/state/work/types.ts'
+import { actorOf, type Body } from '../../core/state/c16/types.ts'
 import { readMarkers } from '../live/waiting.ts'
 
 const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
@@ -31,11 +31,11 @@ const setup = async () => {
     Effect.runPromise(Effect.scoped(e).pipe(Effect.provide(layer)))
   const opened = await run(openTop({ by: NANDA, name: 'T', goal: 'g', sections: ['a', 'b'] }))
   let n = 0
-  const act = (who: string, what: What, ep = 0) =>
+  const act = (who: string, body: Body, ep = 0) =>
     run(
       dispatchAct({
         by: NANDA,
-        act: { id: `w${++n}`, who, ep, what },
+        act: { id: `w${++n}`, who: actorOf(who), ep, body },
         on: null,
         build: null,
         current: 'b1',
@@ -43,8 +43,8 @@ const setup = async () => {
     )
   const send = (name: string, section: string) =>
     act('host', {
-      _tag: 'SendTask',
-      spec: { name, goal: 'g', sections: [section], role: 'section-lead' },
+      _tag: 'Open', open: { _tag: 'OpenSend',
+        spec: { name, goal: 'g', sections: [section], role: 'section-lead' } },
     })
   const secret = (actor: string) => opened.secrets.find((s) => s.actor === actor)?.secret ?? ''
   return { p, act, send, token: `w.role:section-lead.0.${secret('role:section-lead')}`, secret }
@@ -77,7 +77,7 @@ describe('work wait', () => {
 
   test('a token of an old epoch: the terminal is told to stop, with no step', async () => {
     const { p, act, secret } = await setup()
-    await act('person', { _tag: 'MoveHost', fromSession: 0 })
+    await act('human', { _tag: 'MoveHost', fromSession: 0 })
     const out = (await p.agent(`wait w.host.0.${secret('host')}`)).out
     expect(out).toContain("this terminal's token is old")
     expect(out).toContain('STOP')

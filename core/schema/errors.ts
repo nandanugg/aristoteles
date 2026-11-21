@@ -3,6 +3,7 @@
 // the input in its place (BUILD.md 3.6). A mistake of the command line is not a refusal: it is the
 // domain UsageError, and only the adapters make it.
 import { Data } from 'effect'
+import type { RefusalNameCase } from '../../src/domain/c16-acts.ts'
 import type { NonBlank } from '../../src/domain/ids.ts'
 
 // What kind of choice the actor has:
@@ -22,6 +23,9 @@ export interface Choice {
 export class Refusal extends Data.TaggedError('Refusal')<{
   readonly message: string
   readonly choice: Choice
+  readonly refused?: RefusalNameCase
+  readonly words?: string
+  readonly next?: string
 }> {}
 
 // A short way to refuse. The words of the choice are required: no refusal without a choice.

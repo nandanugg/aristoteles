@@ -6,9 +6,9 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { Data, Effect } from 'effect'
-import { fx, tk } from '../state/work/reads.ts'
-import { appliesTo, testRule } from '../state/work/items.ts'
-import type { ItemKey, ItemRec, WorkState } from '../state/work/types.ts'
+import { appliesTo, fixOf, taskOf, testRule } from '../state/c16/reads.ts'
+import type { WorkState } from '../state/c16/state.ts'
+import type { DraftItems, ItemKey, ItemRec } from '../state/c16/data.ts'
 import type { Recorded } from '../schema/index.ts'
 import { Dir, Files, Spawn } from '../services/index.ts'
 
@@ -77,19 +77,18 @@ const samplesOf = (r: ItemRec, fits: 'follows' | 'breaks'): ReadonlyArray<string
 const dirOf = (items: ReadonlyMap<ItemKey, ItemRec>, r: ItemRec): ItemKey | null =>
   r.parent === null ? null : (items.get(r.parent)?.parent ?? null)
 
-// The rule the fix's draft writes: own = its test prints on every 'breaks' example and on no
-// 'follows' one; contra = the other rules of its direction (the draft applied) on whose 'follows'
-// example it prints (the cross test).
-export const runTest = (
+// The rules of a draft (applied over the store's items) with a test command: own = each one's
+// test prints on every 'breaks' example and on no 'follows' one; contra = the other rules of its
+// direction (the draft applied) on whose 'follows' example it prints (the cross test).
+const testDraft = (
   s: WorkState,
-  fixId: string,
+  draft: DraftItems,
 ): Effect.Effect<
   { readonly own: boolean; readonly contra: ReadonlyArray<ItemKey> },
   RuleRunFailed,
   Dir | Spawn | Files
 > =>
   Effect.gen(function* () {
-    const draft = fx(s, fixId).draft
     const items = new Map(s.items)
     for (const [x, r] of draft) {
       if (r === null) items.delete(x)
@@ -100,7 +99,7 @@ export const runTest = (
     )
     let own = true
     const contra = new Set<ItemKey>()
-    for (const [x, r] of written) {
+    for (const [, r] of written) {
       const test = r.test ?? ''
       for (const e of r.examples) {
         const prints = yield* printsOn(test, [e.sample])
@@ -108,12 +107,28 @@ export const runTest = (
       }
       const dir = dirOf(items, r)
       for (const [y, o] of items) {
-        if (y === x || o.kind !== 'rule' || dirOf(items, o) !== dir) continue
+        // Only the store's other rules: a rule of the draft is no one to contradict.
+        if (draft.has(y) || o.kind !== 'rule' || dirOf(items, o) !== dir) continue
         if (yield* printsOn(test, samplesOf(o, 'follows'))) contra.add(y)
       }
     }
     return { own, contra: [...contra] }
   })
+
+// RunTest's fields: the test of the rule the fix's draft writes.
+export const runTest = (s: WorkState, fixId: string) => testDraft(s, fixOf(s, fixId).draft)
+
+// Ship's resolvesFight for a rule with a test command: the cross test on the fix's draft with the
+// drafted items on top of it finds no rule of the direction that the test contradicts.
+export const resolvesFight = (
+  s: WorkState,
+  fixId: string,
+  draft: DraftItems,
+): Effect.Effect<boolean, RuleRunFailed, Dir | Spawn | Files> =>
+  Effect.map(
+    testDraft(s, new Map([...fixOf(s, fixId).draft, ...draft])),
+    ({ contra }) => contra.length === 0,
+  )
 
 // `file#anchor:lines` (lines `n` or `n-m`).
 const REF = /^([^#:]+)#([^:]+):(\d+)(?:-(\d+))?$/
@@ -171,7 +186,7 @@ const checkPaths = (
   paths: ReadonlyArray<string>,
 ): Effect.Effect<ReadonlyArray<string>, RuleRunFailed, Files> =>
   Effect.gen(function* () {
-    const names = tk(s, taskId).sections
+    const names = taskOf(s, taskId).sections
     const out: string[] = []
     for (const p of paths) {
       const text = yield* (yield* Files).read(p)
@@ -191,7 +206,7 @@ export const caughtOn = (
   Effect.gen(function* () {
     const checked = yield* checkPaths(s, taskId, paths)
     const caught = new Set<ItemKey>()
-    for (const x of appliesTo(s, tk(s, taskId))) {
+    for (const x of appliesTo(s, taskOf(s, taskId))) {
       const r = s.items.get(x)
       if (r === undefined || r.kind !== 'rule' || !testRule(s, x) || r.test === null) continue
       if ((yield* runOn(r.test, checked)).length > 0) caught.add(x)
@@ -207,7 +222,7 @@ export const pendingHold = (
 ): Effect.Effect<boolean, RuleRunFailed, Dir | Spawn | Files> =>
   Effect.gen(function* () {
     const checked = yield* checkPaths(s, taskId, paths)
-    for (const x of tk(s, taskId).pend) {
+    for (const x of taskOf(s, taskId).pending) {
       const test = s.items.get(x)?.test ?? null
       if (!testRule(s, x) || test === null) continue
       if ((yield* runOn(test, checked)).length > 0) return false
@@ -223,9 +238,9 @@ export const filesOfLast = (
 ): ReadonlyArray<string> =>
   events.flatMap((r) =>
     r.event._tag === 'Work' && r.event.create._tag === 'Acted' &&
-      r.event.create.act.what._tag === 'Report' &&
-      s.makers.get(r.event.create.act.what.maker)?.task === task
-      ? [r.event.create.act.what.files]
+      r.event.create.act.body._tag === 'Report' && r.event.create.act.who._tag === 'Maker' &&
+      s.makers.get(r.event.create.act.who.id)?.task === task
+      ? [r.event.create.act.body.files]
       : []
   ).at(-1) ?? []
 

@@ -4,9 +4,10 @@ import { Data, Effect, Schema } from 'effect'
 import type { OnboardingAct } from '../../../src/domain/onboarding.ts'
 import { pipeOutbox } from './pipe-outbox.ts'
 import { createSocket } from './pipe-socket.ts'
-import type { What } from '../../../src/domain/work-acts.ts'
 import {
   ActAnswer,
+  ActResponse,
+  type PageActJson,
   ApiError as ApiErrorBody,
   type Dash,
   type PageAct,
@@ -73,15 +74,18 @@ export const post = (act: PageAct): Promise<ActOut> =>
 // An act of the work model (POST /api/act): the person's act on the seq and the build of the
 // Dash that showed it. A refusal (the words say why) means the page reads the Dash again.
 export type WorkOut =
-  | { readonly ok: true }
-  | { readonly refused: string; readonly words: string }
-const WorkAnswer = Schema.Struct({
-  ok: Schema.optionalKey(Schema.Boolean),
-  refused: Schema.optionalKey(Schema.String),
-  words: Schema.optionalKey(Schema.String),
-  error: Schema.optionalKey(Schema.String),
-})
-export type WhatJson = (typeof What)['Encoded']
+  | Extract<typeof ActResponse.Type, { readonly ok: true }>
+  | { readonly refused: string; readonly words: string; readonly next?: string }
+
+export type ActView = Pick<Dash['header'], 'seq' | 'build'>
+export interface PageSubmission {
+  readonly act: PageActJson
+  readonly on: number
+  readonly build: string
+  readonly id: string
+}
+export type WorkSender = (submission: PageSubmission) => Promise<WorkOut>
+
 const postAct = async (body: object): Promise<WorkOut> => {
   try {
     const res = await fetch('/api/act', {
@@ -90,16 +94,21 @@ const postAct = async (body: object): Promise<WorkOut> => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     })
-    const answer = Schema.decodeUnknownOption(WorkAnswer)(await res.json().catch(() => ({})))
-    const a = answer._tag === 'Some' ? answer.value : {}
-    if (res.ok && a.ok) return { ok: true }
-    return { refused: a.refused ?? 'refused', words: a.words ?? a.error ?? res.statusText }
+    const decoded = Schema.decodeUnknownOption(ActResponse)(await res.json().catch(() => ({})))
+    if (decoded._tag === 'None') {
+      return { refused: 'network', words: res.statusText || 'Invalid response from the server' }
+    }
+    const answer = decoded.value
+    if ('refused' in answer) return answer
+    if ('error' in answer) {
+      return { ...answer, refused: res.status >= 500 ? 'network' : 'refused', words: answer.error }
+    }
+    return answer
   } catch (e) {
     return { refused: 'network', words: e instanceof Error ? e.message : String(e) }
   }
 }
-export const postWork = (what: WhatJson, dash: Dash): Promise<WorkOut> =>
-  postAct({ act: what, on: dash.header.seq, build: dash.header.build })
+export const postWork: WorkSender = (submission) => postAct(submission)
 // The person confirms a forwarded act (on the page's build) or drops it.
 export const postForward = (op: 'confirm' | 'drop', id: string, dash: Dash): Promise<WorkOut> =>
   postAct(op === 'confirm' ? { confirm: id, build: dash.header.build } : { drop: id })

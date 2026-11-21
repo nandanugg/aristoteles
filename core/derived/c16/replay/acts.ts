@@ -16,7 +16,7 @@ import {
   keyOf,
   pairKey,
 } from '../../../state/c16/types.ts'
-import type { ItemKey, ItemRec, Level, TaskSpec, Verdict } from '../../../state/work/types.ts'
+import type { ItemKey, ItemRec, Level, TaskSpec, Verdict } from '../../../state/c16/data.ts'
 import { basisOf } from '../accept.ts'
 import { type Plain, picked } from './itf.ts'
 import { type MAsk, type MStore, applies } from './model.ts'

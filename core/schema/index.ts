@@ -12,15 +12,17 @@ export * from '../../src/domain/actor.ts'
 export * from '../../src/domain/closed.ts'
 export * from '../../src/domain/errors.ts'
 
-// --- the acts of the work model (their stored form; the types are core/state/work/types.ts) ---
+// --- the acts of the work model (their stored form; the types are core/state/c16/types.ts) ---
 export {
-  Act as ActSchema,
   ItemRec as ItemRecSchema,
-  What as WhatSchema,
+} from '../../src/domain/work-acts.ts'
+export {
   WorkActed,
+  WorkForwarded,
+  WorkForwardDropped,
   WorkHostPane,
   WorkOpened,
-} from '../../src/domain/work-acts.ts'
+} from '../../src/domain/events.ts'
 
 // --- the acts of the c16 contract (their stored form; the types are core/state/c16/types.ts) ---
 export {

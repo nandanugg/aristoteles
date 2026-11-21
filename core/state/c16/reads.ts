@@ -1,8 +1,6 @@
 // The shared reads of protocol.qnt (records, epochs, live maker, done, the ladder, the asks) and
 // the allocation of ask occurrence ids (contract D1). Pure: no act's behaviour here.
-import type { ItemKey, Level, Versions } from '../work/types.ts'
-import * as items from '../work/items.ts'
-import type { WorkState as OldState, Task as OldTask } from '../work/types.ts'
+import type { DraftItems, ItemKey, Level, Versions } from './data.ts'
 import { CLOSED, type Fix, type Maker, type Stage, type Task, type WorkState } from './state.ts'
 import {
   type Actor,
@@ -16,25 +14,28 @@ import {
   pairKey,
 } from './types.ts'
 
-// --- items (the old core's item logic, unchanged: it reads items, ver and four task fields) ---
-
-const old = (s: WorkState): OldState => s as unknown as OldState
-const oldTask = (t: Task): OldTask => t as unknown as OldTask
-export const verOf = items.verOf
-export const applies = (s: WorkState, x: ItemKey, t: Task): boolean =>
-  items.applies(old(s), x, oldTask(t))
+// Item scope follows the hierarchy and the sections of the task.
+export const verOf = (v: Versions, x: ItemKey): number => v.get(x) ?? 0
+export const applies = (s: WorkState, x: ItemKey, t: Task): boolean => {
+  const r = s.items.get(x)
+  if (r === undefined) return false
+  if (r.kind === 'dir') return t.directions.includes(x.slice('dir:'.length))
+  if (r.parent === null || !applies(s, r.parent, t)) return false
+  if (r.kind === 'rule') return true
+  return r.where === null || r.where.some((section) => t.sections.includes(section))
+}
 export const appliesTo = (s: WorkState, t: Task): ReadonlyArray<ItemKey> =>
-  items.appliesTo(old(s), oldTask(t))
-export const vsum = (s: WorkState): number => items.vsum(old(s))
+  [...s.items.keys()].filter((x) => applies(s, x, t))
+export const vsum = (s: WorkState): number => [...s.ver.values()].reduce((a, b) => a + b, 0)
 export const staleItems = (s: WorkState, t: Task): ReadonlyArray<ItemKey> =>
   appliesTo(s, t).filter((x) => verOf(t.checked, x) < verOf(s.ver, x))
 export const briefStale = (s: WorkState, brief: Versions, t: Task): boolean =>
   appliesTo(s, t).some((x) => verOf(brief, x) < verOf(s.ver, x))
-export const testRule = (s: WorkState, x: ItemKey): boolean => items.testRule(old(s), x)
-export const changedBy = (
-  s: WorkState,
-  draft: Parameters<typeof items.changedBy>[1],
-): ReadonlySet<ItemKey> => items.changedBy(old(s), draft)
+export const testRule = (s: WorkState, x: ItemKey): boolean => s.items.get(x)?.form === 'mech'
+export const changedBy = (s: WorkState, draft: DraftItems): ReadonlySet<ItemKey> =>
+  new Set([...draft].filter(([x, r]) =>
+    r === null ? s.items.has(x) : JSON.stringify(s.items.get(x)) !== JSON.stringify(r)
+  ).map(([x]) => x))
 
 // --- the records ---------------------------------------------------------------------------------
 

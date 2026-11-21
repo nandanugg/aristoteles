@@ -1,11 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 import { Schema } from 'effect'
+import { basisOf, refused } from '../../core/derived/c16/accept.ts'
 import { sessionOf } from '../../core/effects/engine.ts'
 import type { TerminalReading } from '../../core/schema/outside.ts'
-import { take } from '../../core/state/work/effect.ts'
-import { initState } from '../../core/state/work/reads.ts'
-import type { ItemRec, RoleDraft, What, WorkState } from '../../core/state/work/types.ts'
-import { PERSON, PIPE, roleActor } from '../../core/state/work/types.ts'
+import { take } from '../../core/state/c16/effect.ts'
+import { initState, type WorkState } from '../../core/state/c16/state.ts'
+import { type Actor, type Body, keyOf } from '../../core/state/c16/types.ts'
+import type { ItemRec, RoleDraft } from '../../core/state/c16/data.ts'
+const HUMAN: Actor = { _tag: 'Human' }
+const HOST: Actor = { _tag: 'Host' }
+const PIPE: Actor = { _tag: 'Pipe' }
+const role = (name: string): Actor => ({ _tag: 'Role', name })
+const roleActor = (name: string) => keyOf(role(name))
 import { Dash } from './contract.ts'
 import { type DashInput, dashOf, SILENT_MS, USAGE_LIMIT } from './dash.ts'
 
@@ -34,30 +40,45 @@ const start = (): WorkState =>
     new Map([['dev', card('dev')], ['qa', card('qa')]]),
     2,
   )
-const go = (s: WorkState, what: What): WorkState =>
-  take(s, { id: 'x', who: PERSON, ep: 0, what, seen: -1, seenVer: 0, vers: new Map(), old: false })
-const send = (s: WorkState, role = 'dev', sections = ['a', 'b']): WorkState =>
-  go(s, { _tag: 'SendTask', spec: { name: `task ${role}`, goal: `goal ${role}`, sections, role } })
-const assigned = (s: WorkState, task: string): WorkState => go(s, { _tag: 'AssignDo', task })
-const reported = (s: WorkState, task: string, maker: string): WorkState =>
-  [
-    { _tag: 'ReadBrief', maker },
-    { _tag: 'Report', maker, output: 'o', files: [], caught: new Set<string>() },
-  ].reduce((acc, w) => go(acc, w as What), assigned(s, task))
-const raised = (s: WorkState): WorkState =>
-  go(reported(send(s), 't1', 'm1'), { _tag: 'Review', task: 't1', v: 'RaiseNoRule', points: [] })
+const go = (s: WorkState, body: Body, who: Actor = HUMAN): WorkState =>
+  take(s, { id: 'x', who, ep: 0, body, seen: -1, seenVer: 0, vers: s.ver, old: false })
+const send = (s: WorkState, owner = 'dev', sections = ['a', 'b']): WorkState =>
+  go(s, {
+    _tag: 'Open',
+    open: { _tag: 'OpenSend',
+      spec: { name: `task ${owner}`, goal: `goal ${owner}`, sections, role: owner } },
+  }, HOST)
+const assigned = (s: WorkState, task: string): WorkState =>
+  go(s, { _tag: 'Open', open: { _tag: 'OpenMake', task } }, role('dev'))
+const askId = (s: WorkState, kind: 'Execute' | 'Check' | 'Decide'): string =>
+  [...s.asks.values()].find((ask) => ask.kind === kind &&
+    (kind !== 'Execute' || ask.to._tag === 'Maker'))!.id
+const reported = (s: WorkState, task: string, maker: string): WorkState => {
+  const who: Actor = { _tag: 'Maker', id: maker }
+  const brief = go(assigned(s, task), { _tag: 'ReadBrief', maker }, who)
+  return go(brief, {
+    _tag: 'Report', ask: askId(brief, 'Execute'), output: 'o', files: [], caught: new Set(),
+  }, who)
+}
+const reviewed = (s: WorkState, verdict: 'Pass' | 'RaiseNoRule'): WorkState =>
+  go(s, { _tag: 'Review', ask: askId(s, 'Check'), verdict, points: [] }, role('dev'))
+const raised = (s: WorkState): WorkState => reviewed(reported(send(s), 't1', 'm1'), 'RaiseNoRule')
 const evaluate = (s: WorkState, level: 'Standard' | 'Direct'): WorkState =>
-  go(s, { _tag: 'Evaluate', task: 't1', level, parts: [], roleDraft: null, summary: 'why' })
+  go(s, { _tag: 'Evaluate', fix: 't1', level, parts: [], roleDraft: null, summary: 'why' }, PIPE)
 const dir2 = { ...rec('dir', null, 'dir new'), name: 'dir says' }
+const ship = (s: WorkState): WorkState =>
+  go(s, {
+    _tag: 'Ship', fix: 't1', items: new Set(['dir:d1']),
+    draft: new Map([['dir:d1', dir2]]), resolvesFight: false,
+  }, PIPE)
 const atPerson = (): WorkState =>
-  [
-    { _tag: 'Ship', fix: 't1', items: new Set(['dir:d1']), draft: new Map([['dir:d1', dir2]]) },
-    { _tag: 'LoopReview', fix: 't1', toPerson: true },
-  ].reduce((acc, w) => go(acc, w as What), evaluate(raised(start()), 'Direct'))
+  go(ship(evaluate(raised(start()), 'Direct')), {
+    _tag: 'LoopReview', fix: 't1', toPerson: true,
+  }, PIPE)
 
 const live = (): Record<string, TerminalReading> =>
   Object.fromEntries(
-    [PIPE, roleActor('dev'), roleActor('qa')].map((k) => [
+    [keyOf(PIPE), roleActor('dev'), roleActor('qa')].map((k) => [
       sessionOf(k, 0),
       { _tag: 'Live', lastOutput: NOW } as const,
     ]),
@@ -67,7 +88,6 @@ const input = (state: WorkState, over: Partial<DashInput> = {}): DashInput => ({
   build: 'b1',
   now: NOW,
   state,
-  events: [],
   host: { model: '', reading: { alive: true, lastOutput: NOW, tail: '' } },
   pipe: { name: 'pipeline', model: 'pm' },
   terminals: live(),
@@ -81,8 +101,9 @@ const dev = (d: Dash) => d.columns.find((c) => c.role === 'dev')?.card.status
 
 describe('the header and the queue', () => {
   test('the header names the dir, the project, the seq and the build', () => {
-    const d = dashOf(input(send(start())))
-    expect(d.header).toEqual({ dir: 'proj', project: 'top', seq: 1, build: 'b1' })
+    const s = send(start())
+    const d = dashOf(input(s))
+    expect(d.header).toEqual({ dir: 'proj', project: 'top', seq: s.seq, build: 'b1' })
   })
 
   test('the queue shows only queued and working tasks', () => {
@@ -93,12 +114,7 @@ describe('the header and the queue', () => {
     ])
     s = assigned(s, 't1')
     expect(dashOf(input(s)).queue[0]).toMatchObject({ state: 'WORKING', description: 'goal dev' })
-    s = go(reported(send(start(), 'dev', ['a']), 't1', 'm1'), {
-      _tag: 'Review',
-      task: 't1',
-      v: 'Pass',
-      points: [],
-    })
+    s = reviewed(reported(send(start(), 'dev', ['a']), 't1', 'm1'), 'Pass')
     expect(dashOf(input(s)).queue).toEqual([])
     expect(dashOf(input(raised(start()))).queue).toEqual([])
   })
@@ -217,12 +233,7 @@ describe('the pipeline row', () => {
   })
 
   test('the loop stage is IN_PIPELINE and the draft is a diff of its items', () => {
-    const s = go(evaluate(raised(start()), 'Direct'), {
-      _tag: 'Ship',
-      fix: 't1',
-      items: new Set(['dir:d1']),
-      draft: new Map([['dir:d1', dir2]]),
-    })
+    const s = ship(evaluate(raised(start()), 'Direct'))
     const [e] = dashOf(input(s)).row
     expect(e?.status).toBe('IN_PIPELINE')
     expect(e?.changes).toMatchObject([
@@ -233,7 +244,7 @@ describe('the pipeline row', () => {
   })
 
   test('the person edit is an escalation of its own; a removed item has no after', () => {
-    const s = go(start(), { _tag: 'EditDirection', draft: new Map([['rule:r1', null]]) })
+    const s = go(start(), { _tag: 'AskEdit', draft: new Map([['rule:r1', null]]) })
     const [e] = dashOf(input(s)).row
     expect(e).toMatchObject({ id: 'edit', task: 'your direction edit' })
     expect(e?.changes).toMatchObject([
@@ -241,14 +252,50 @@ describe('the pipeline row', () => {
     ])
   })
 
-  test('the person owes the accept and the send-back of the escalation at them', () => {
+  test('the person owes one decision and its row exposes allowed replies', () => {
     const d = dashOf(input(atPerson()))
-    expect(d.person.map((a) => [a.tag, a.target])).toEqual([
-      ['Accept', 't1'],
-      ['SendBack', 't1'],
-      ['Decide', 't1'],
-    ])
-    expect(d.person[0]?.words[0]).toBe('Fix t1 waits for you.')
+    expect(d.person.owed).toEqual([{
+      _tag: 'Decide', ask: d.row[0]!.ask!, fix: 't1', age: expect.any(Number),
+    }])
+    expect(d.row[0]?.reply).toEqual(['AcceptIt', 'SendItBack', 'TakeAsIs', 'EvaluateAgain'])
+  })
+
+  test('F2.3 and F2.5 distinguish stale basis from a withdrawn occurrence', () => {
+    const prior = ship(evaluate(raised(start()), 'Direct'))
+    const person = go(prior, { _tag: 'LoopReview', fix: 't1', toPerson: true }, PIPE)
+    const ask = askId(person, 'Decide')
+    const body = { _tag: 'Respond', ask, reply: 'AcceptIt', points: [] } as const
+    const response = {
+      id: 'response', who: HUMAN, ep: 0, body, seen: basisOf(prior, body),
+      seenVer: 0, vers: prior.ver, old: false,
+    }
+    expect(refused(person, response, 'page')?.refused).toBe('basis')
+    const sentBack = go(person, { _tag: 'Respond', ask, reply: 'SendItBack', points: ['revise'] })
+    expect(refused(sentBack, response, 'page')?.refused).toBe('stale')
+    const page = dashOf(input(sentBack))
+    expect(page.row[0]?.ask).toBeNull()
+    expect(page.row[0]?.reply).toEqual([])
+    expect(page.person.owed.some((entry) => entry._tag === 'Decide')).toBe(false)
+  })
+
+  test('F2.1 owed entries encode and decode with their occurrence and form', () => {
+    const waiting = go(atPerson(), {
+      _tag: 'Open', open: { _tag: 'OpenQuestion', to: HUMAN,
+        question: {
+          title: 'Which one?', form: { _tag: 'Choice', options: ['A', 'B'], multi: false },
+        } },
+    }, HOST)
+    const down = go(waiting, { _tag: 'Exit', actor: HOST }, { _tag: 'Harness' })
+    const ready = go(reviewed(reported(send(start()), 't1', 'm1'), 'Pass'), {
+      _tag: 'TopDone',
+    }, HOST)
+    const views = [dashOf(input(down)), dashOf(input(ready))]
+    expect(views.flatMap((dash) => dash.person.owed.map((ob) => ob._tag)).sort()).toEqual(
+      ['Decide', 'EndProject', 'Question', 'ReviveHost'],
+    )
+    for (const dash of views) expect(Schema.decodeUnknownSync(Dash)(
+      Schema.encodeSync(Dash)(dash),
+    )).toEqual(dash)
   })
 })
 
@@ -284,7 +331,9 @@ describe('the sidebar', () => {
 describe('the forwards', () => {
   test('a forwarded act shows with its quote and the words of its step', () => {
     const s = atPerson()
-    const forward = { id: 'f1', what: { _tag: 'Accept', fix: 't1' } as What, on: 1, quote: 'ok' }
+    const forward = { id: 'f1', body: {
+      _tag: 'Respond', ask: askId(s, 'Decide'), reply: 'AcceptIt', points: [],
+    } as const, quote: 'ok' }
     const d = dashOf(input(s, { forwards: [forward] }))
     expect(d.forwards).toHaveLength(1)
     expect(d.forwards[0]).toMatchObject({ id: 'f1', quote: 'ok' })

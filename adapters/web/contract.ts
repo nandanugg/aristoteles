@@ -4,7 +4,10 @@
 // type differs from the wire, the Schema converts at its edge.
 import { Schema } from 'effect'
 import {
+  BodySchema,
   PositiveInt,
+  QuestionBodySchema,
+  RefusalSchema,
   SessionId,
   Settings,
   type DirectionCard as UiDirectionCard,
@@ -245,6 +248,7 @@ const DashTask = Schema.Struct({
   role: Text,
   state: Schema.Literals(['WORKING', 'QUEUED']),
   description: Text,
+  reject: Schema.Boolean,
 })
 const DashSubagent = Schema.Struct({ model: Text, role: Text, goal: Text })
 const DashTerminal = Schema.Struct({
@@ -269,8 +273,11 @@ const DashChange = Schema.Struct({
   after: Schema.NullOr(DashRec),
 })
 const DashCardWords = Schema.Struct({ words: Text, model: Text })
+const Reply = Schema.Literals(['AcceptIt', 'SendItBack', 'TakeAsIs', 'EvaluateAgain'])
 const DashEscalation = Schema.Struct({
   id: Text,
+  ask: Schema.NullOr(Text),
+  reply: Schema.Array(Reply),
   status: Schema.Literals(['QUEUED', 'IN_PIPELINE', 'WAIT_FOR_REVIEW']),
   summary: Text,
   // The task's name, or 'your direction edit'.
@@ -284,11 +291,14 @@ const DashEscalation = Schema.Struct({
     }),
   ),
 })
-const DashAct = Schema.Struct({
-  tag: Text,
-  target: Schema.NullOr(Text),
-  words: Schema.Array(Text),
-})
+export const DashOwed = Schema.Union([
+  Schema.TaggedStruct('Decide', { ask: Text, fix: Text, age: Schema.Int }),
+  Schema.TaggedStruct('Question', {
+    ask: Text, from: Text, role: Schema.NullOr(Text), age: Schema.Int, question: QuestionBodySchema,
+  }),
+  Schema.TaggedStruct('ReviveHost', { age: Schema.Int }),
+  Schema.TaggedStruct('EndProject', { age: Schema.Int }),
+])
 // `rec` is the whole record of the item: an edit starts from it.
 // A forwarded act waits for the person's Confirm or Drop.
 const DashForward = Schema.Struct({ id: Text, quote: Text, words: Schema.Array(Text) })
@@ -324,12 +334,13 @@ const DashDirection = Schema.Struct({
 export const Dash = Schema.Struct({
   header: Schema.Struct({ dir: Text, project: Text, seq: Schema.Number, build: Text }),
   queue: Schema.Array(DashTask),
+  results: Schema.Array(Schema.Struct({ id: Text, name: Text })),
   host: Schema.Struct({ card: DashTerminal, subagents: Schema.Array(DashSubagent) }),
   columns: Schema.Array(DashColumn),
   pipe: DashTerminal,
   row: Schema.Array(DashEscalation),
   rowShown: Schema.Boolean,
-  person: Schema.Array(DashAct),
+  person: Schema.Struct({ owed: Schema.Array(DashOwed) }),
   forwards: Schema.Array(DashForward),
   directions: Schema.Array(DashDirection),
 })
@@ -339,6 +350,37 @@ export type DashStatusWord = typeof DashStatus.Type
 export const DashMessage = Schema.Struct({ type: Schema.Literal('dash'), dash: Dash })
 
 // --- the acts of the person (POST /api/act) -------------------------------------------------
+
+const { cases: ActCases } = BodySchema.pipe(Schema.toTaggedUnion('_tag'))
+const { cases: OpenCases } = ActCases.Open.fields.open.pipe(Schema.toTaggedUnion('_tag'))
+export const PageActBody = Schema.Union([
+  Schema.TaggedStruct('Open', { open: OpenCases.OpenReject }),
+  ActCases.AskEdit,
+  ActCases.AnswerQuestion,
+  Schema.TaggedStruct('Respond', {
+    ask: Text, reply: Reply, points: Schema.optionalKey(Schema.Array(Text)),
+  }),
+  ActCases.EndProject,
+])
+export type PageActBody = typeof PageActBody.Type
+export type PageActJson = typeof PageActBody.Encoded
+
+export const DirectWorkPost = Schema.Struct({
+  act: PageActBody, on: Schema.Int, build: Text, id: Schema.optionalKey(Text),
+})
+export const ForwardWorkPost = Schema.Union([
+  Schema.Struct({ confirm: Text, build: Text }),
+  Schema.Struct({ drop: Text }),
+])
+export const ActResponse = Schema.Union([
+  Schema.Struct({
+    ok: Schema.Literal(true), seq: Schema.NullOr(Schema.Int),
+    duplicate: Schema.optionalKey(Schema.Literal(true)),
+  }),
+  RefusalSchema,
+  Schema.Struct({ error: Text, next: Schema.optionalKey(Text) }),
+])
+export type ActResponse = typeof ActResponse.Type
 
 // The settings POST sends only the fields that the person changed: the server fills the rest
 // from the file (a model keeps the words that it did not send, and outsideSourceHours is not on

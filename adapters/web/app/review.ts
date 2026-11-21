@@ -2,7 +2,8 @@
 // person's Accept and Send back.
 import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
-import type { WhatJson } from './api.ts'
+import type { ActView } from './api.ts'
+import { useSubmission } from './submission.ts'
 import { Pyramid, type Act } from './board.ts'
 import { Modal } from './modal.ts'
 import { type DiffLine, type Escalation, cardLines, changeKind, changeLines } from './pure.ts'
@@ -14,17 +15,22 @@ export const Lines = ({ lines }: { lines: ReadonlyArray<DiffLine> }) =>
 interface ReviewProps {
   e: Escalation
   onAct: Act
+  view: ActView
   onClose: () => void
 }
-export function Review({ e, onAct, onClose }: ReviewProps) {
+export function Review({ e, onAct, view, onClose }: ReviewProps) {
   const [points, setPoints] = useState('')
-  const [refused, setRefused] = useState<string | null>(null)
+  const { submit, busy, words } = useSubmission(onAct, view)
   const list = points.split('\n').map((p) => p.trim()).filter((p) => p !== '')
-  const run = (what: WhatJson) =>
-    onAct(what).then((out) => {
-      if ('refused' in out) setRefused(out.words)
-      else onClose()
-    })
+  const run = async (reply: Escalation['reply'][number]) => {
+    if (e.ask !== null && await submit({
+      _tag: 'Respond', ask: e.ask, reply, ...(reply === 'SendItBack' ? { points: list } : {}),
+    })) onClose()
+  }
+  const labels = {
+    AcceptIt: 'Accept', SendItBack: 'Send back', TakeAsIs: 'Take it as is',
+    EvaluateAgain: 'Evaluate again',
+  }
   return html`<${Modal} title=${`Escalation ${e.id}: ${e.task}`} kind="wide" onClose=${onClose}>
     <${Pyramid} summary=${e.summary} />
     <div class="section-title">Changes</div>
@@ -37,18 +43,18 @@ export function Review({ e, onAct, onClose }: ReviewProps) {
       <div class="change-title">Card of the role <code>${e.card.role}</code></div>
       <${Lines} lines=${cardLines(e.card)} /></section>` : ''}
     ${e.changes.length || e.card ? '' : html`<p class="muted">No change yet.</p>`}
-    ${e.status === 'WAIT_FOR_REVIEW'
+    ${e.ask !== null
       ? html`<div class="section-title">Your review</div>
-        <div class="field"><label for="points">Points to send back (one on each line)</label>
-          <textarea id="points" value=${points}
-            onInput=${(ev: Event) => setPoints((ev.target as HTMLTextAreaElement).value)}>
-          </textarea></div>
-        ${refused ? html`<div class="error" role="alert">${refused}</div>` : ''}
-        <div class="modal-foot">
-          <button class="btn" disabled=${list.length === 0}
-            onClick=${() => run({ _tag: 'SendBack', fix: e.id, points: list })}>Send back</button>
-          <button class="btn primary"
-            onClick=${() => run({ _tag: 'Accept', fix: e.id })}>Accept</button></div>`
+        ${e.reply.includes('SendItBack') ? html`<label class="field">
+          Points to send back (one on each line)
+          <textarea value=${points} disabled=${busy}
+            onInput=${(ev: Event) => setPoints((ev.currentTarget as HTMLTextAreaElement).value)}>
+          </textarea></label>` : ''}
+        ${words ? html`<div class="error" role="alert">${words}</div>` : ''}
+        <div class="modal-foot">${e.reply.map((reply) => html`<button key=${reply}
+          class=${reply === 'AcceptIt' ? 'btn primary' : 'btn'}
+          disabled=${busy || (reply === 'SendItBack' && !list.length)}
+          onClick=${() => run(reply)}>${labels[reply]}</button>`)}</div>`
       : ''}
   <//>`
 }

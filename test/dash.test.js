@@ -9,7 +9,8 @@ import { Effect, Layer } from 'effect'
 import { dispatchAct, openTop } from '../core/actions/work.ts'
 import { eventsOf, h, NANDA } from '../core/actions/fixture.test.ts'
 import { Dir, Env, Now, Store, StoreLive, Tokens } from '../core/services/index.ts'
-import { foldWork } from '../core/state/work/fold.ts'
+import { foldWork } from '../core/state/c16/fold.ts'
+import { keyOf } from '../core/state/c16/types.ts'
 
 const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
 
@@ -35,10 +36,12 @@ const opened = async (steps) => {
   h.git(p.dir, 'config', 'user.name', 'Nanda')
   await run(p, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['introduction'] }))
   let id = 0
-  for (const [who, what] of steps(p)) {
-    const on = foldWork(eventsOf(p.dir))?.state.seq ?? null
-    const act = { id: `d${++id}`, who, ep: 0, what }
-    await run(p, dispatchAct({ by: NANDA, act, on, build: null, current: 'b1' }))
+  for (const [who, next] of steps(p)) {
+    const state = foldWork(eventsOf(p.dir))?.state
+    const body = typeof next === 'function' ? next(state) : next
+    const act = { id: `d${++id}`, who, ep: state.ep.get(keyOf(who)) ?? 0, body }
+    const by = who._tag === 'Harness' ? { _tag: 'System' } : NANDA
+    await run(p, dispatchAct({ by, act, on: state.seq, build: null, current: 'b1' }))
   }
   return p
 }
@@ -50,8 +53,14 @@ const spec = {
   role: 'section-lead',
 }
 const summary = 'Say it once.\nThe draft repeats a line.'
-const evaluate = { _tag: 'Evaluate', task: 't1', level: 'Direct', parts: [], roleDraft: null }
-const send = ['host', { _tag: 'SendTask', spec }]
+const host = { _tag: 'Host' }
+const role = { _tag: 'Role', name: 'section-lead' }
+const maker = { _tag: 'Maker', id: 'm1' }
+const pipe = { _tag: 'Pipe' }
+const human = { _tag: 'Human' }
+const send = [host, { _tag: 'Open', open: { _tag: 'OpenSend', spec } }]
+const askId = (state, kind) => [...state.asks.values()].find((ask) =>
+  ask.kind === kind && (kind !== 'Execute' || ask.to._tag === 'Maker')).id
 
 test('the dashboard page, in a real browser', async () => {
   const queued = await opened(() => [send])
@@ -62,22 +71,41 @@ test('the dashboard page, in a real browser', async () => {
       kind: 'rule', parent: std[0], name: 'once', says: 'Say it once.', where: null,
       test: 'true', ref: null, form: 'mech', examples: [],
     }
-    const items = new Set([dir[0]])
+    const items = new Set([dir[0], 'rule:once'])
     const edited = { ...dir[1], says: `${dir[1].says} Say it once.` }
-    const draft = new Map([[dir[0], edited]])
+    const draft = new Map([[dir[0], edited], ['rule:once', rule]])
     return [
       send,
-      ['role:section-lead', { _tag: 'AssignDo', task: 't1' }],
-      ['maker:m1', { _tag: 'ReadBrief', maker: 'm1' }],
-      ['maker:m1', { _tag: 'Report', maker: 'm1', output: 'o', files: [], caught: new Set() }],
-      ['role:section-lead', { _tag: 'Review', task: 't1', v: 'RaiseNoRule', points: [] }],
-      ['pipe', { ...evaluate, summary }],
-      ['pipe', { _tag: 'Advance', fix: 't1' }],
-      ['pipe', { _tag: 'Advance', fix: 't1' }],
-      ['pipe', { _tag: 'WriteRule', fix: 't1', rule: 'rule:once', rec: rule, refOk: true }],
-      ['pipe', { _tag: 'RunTest', fix: 't1', own: true, contra: [] }],
-      ['pipe', { _tag: 'Ship', fix: 't1', items, draft }],
-      ['pipe', { _tag: 'LoopReview', fix: 't1', toPerson: true }],
+      [role, { _tag: 'Open', open: { _tag: 'OpenMake', task: 't1' } }],
+      [maker, { _tag: 'ReadBrief', maker: 'm1' }],
+      [maker, (state) => ({
+        _tag: 'Report', ask: askId(state, 'Execute'), output: 'o', files: [], caught: new Set(),
+      })],
+      [role, (state) => ({
+        _tag: 'Review', ask: askId(state, 'Check'), verdict: 'RaiseNoRule', points: [],
+      })],
+      [pipe, {
+        _tag: 'Evaluate', fix: 't1', level: 'Direct', parts: [], roleDraft: null, summary,
+      }],
+      [pipe, { _tag: 'Advance', fix: 't1' }],
+      [pipe, { _tag: 'Advance', fix: 't1' }],
+      [pipe, {
+        _tag: 'WriteRule', fix: 't1', rule: 'rule:once', rec: rule, refOk: true, fights: [],
+      }],
+      [pipe, { _tag: 'RunTest', fix: 't1', own: true, contra: [] }],
+      [pipe, { _tag: 'Ship', fix: 't1', items, draft, resolvesFight: false }],
+      [pipe, { _tag: 'LoopReview', fix: 't1', toPerson: true }],
+      [{ _tag: 'Harness' }, { _tag: 'Revive', actor: role }],
+      [role, { _tag: 'Open', open: {
+        _tag: 'OpenQuestion', to: human,
+        question: { title: 'Which examples?', form: {
+          _tag: 'Multiple',
+          questions: [
+            { description: 'First example', placeholder: 'First' },
+            { description: 'Second example', placeholder: 'Second' },
+          ],
+        } },
+      } }],
     ]
   })
   const child = spawn('bun', [join(import.meta.dir, 'browser', 'dash.check.js')], {

@@ -11,7 +11,7 @@ import {
   actorOf,
   isMaker,
 } from '../../../state/c16/types.ts'
-import type { ItemKey, ItemRec, Versions } from '../../../state/work/types.ts'
+import type { ItemKey, ItemRec, Versions } from '../../../state/c16/data.ts'
 import { dos, owed } from '../obligations.ts'
 import { type CFix, type Cmp, type CTask, type Vers, ITEMS, canonical } from './model.ts'
 
@@ -252,7 +252,7 @@ export const project = (s: WorkState, c: Ctx): Cmp =>
 // --- what the TS core tells ----------------------------------------------------------------------
 
 // A step as the model's told text names it (model.ts ownTold).
-const stepText = (s: WorkState, c: Ctx, who: string, x: Step): string => {
+export const stepText = (s: WorkState, c: Ctx, who: string, x: Step): string => {
   const slot = (task: string | null): number | string =>
     task === null ? '?' : slotOfTask(c, task) ?? `?${task}`
   const ask = (a: OpenAsk | undefined): string => a === undefined ? '?' : askText(c, a)

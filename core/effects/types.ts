@@ -8,7 +8,7 @@
 // Ruling 10.1 (2026-11-13): no effect types into a terminal. Only a host's `work send` (the answer
 // to a permission dialog of a child's AI CLI) is typed. A wake, a word to a host, a request for
 // the words of a decision, a retry line and a problem retry are derived steps of the actor now
-// (core/derived/work), and its `work wait` returns on them.
+// (core/derived/c16), and its `work wait` returns on them.
 //
 // EFFECTS and reconcile live in index.ts.
 import { Context, type Effect } from 'effect'

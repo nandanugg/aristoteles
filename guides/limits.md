@@ -12,7 +12,7 @@ person about a limit.
 - **When work passes it:** the role reviewed the result `attempts` times and it still fails.
   The default is three tries; the model with the fewest tries sets it. Tries are the only cap:
   there is no other budget.
-- **The action:** raise the task (`work review <token> <task> raise-tries --points="..."`).
+- **The action:** raise the task (`work review <token> <ask-id> raise-tries --points="..." --on <n>`).
   The pipeline role then evaluates the cause (split, fit, principle, direction, standard).
 
 ### `Review.rules`: the rules of one review

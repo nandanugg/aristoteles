@@ -33,7 +33,7 @@ of work: a file that breaks one is refused, or the work stops later at that chec
 - Only a persistent role gets a terminal of its own; a role that is not persistent runs as a
   subagent of a terminal. A role of any model can be persistent.
 - Only a terminal starts subagents: the host, and a persistent agent. A subagent starts none; it
-  hands a need back with `work ask`.
+  hands a need back with `work ask <token> role:<name> --text="<question>"`.
 
 ### Choose persistence with the Rumsfeld matrix
 

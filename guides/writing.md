@@ -121,7 +121,9 @@ leaves the file) or, when the project has none, written: `{ written: <the output
   The file adds, replaces, or removes standards.
 - A change that the pipeline role makes after a raised task: it writes a draft file, a map from
   item keys (`dir:<id>`, `std:<id>`, `rule:<id>`) to the whole record (`says`, `where`, `test`,
-  `ref`, `examples`), or `null` to remove one. It sends it with `work ship <token> <fix> <file>`.
+  `ref`, `examples`), or `null` to remove one. It sends it with
+  `work ship <token> <fix> <file> --on <n>`. Use `work ask-edit --file=<edit.yaml> --on <n>`
+  for the person's edit while a top is open.
   An example is `{ fits: follows|breaks, sample: <text> }`. A test must print lines on each
   `breaks` sample and none on a `follows` sample, of its own rule and of the other rules of
   the direction.

@@ -4,12 +4,14 @@ import type { ComponentChildren } from 'preact'
 import { html } from 'htm/preact'
 import { useEffect, useState } from 'preact/hooks'
 import type { Dash, DashTerminalCard } from '../contract.ts'
-import type { WhatJson, WorkOut } from './api.ts'
+import type { ActView, WorkOut, WorkSender } from './api.ts'
+import { QuestionForm } from './questions.ts'
+import { useSubmission } from './submission.ts'
 import { escalationClass, type Escalation, minto, statusClass } from './pure.ts'
 
 type Task = Dash['queue'][number]
 type Subagent = Dash['host']['subagents'][number]
-export type Act = (what: WhatJson) => Promise<WorkOut>
+export type Act = WorkSender
 export type Forward = (op: 'confirm' | 'drop', id: string) => Promise<WorkOut>
 
 // The terminal card: role, model, its status (a color and the word) and its work now. A click
@@ -26,12 +28,50 @@ export function TerminalCard({ card, onOpen }: { card: DashTerminalCard; onOpen:
   </button>`
 }
 
-export function TaskCard({ task }: { task: Task }) {
+const pointsOf = (text: string): ReadonlyArray<string> =>
+  text.split('\n').map((point) => point.trim()).filter(Boolean)
+
+function RejectForm({
+  task, onAct, view, close,
+}: { task: string; onAct: Act; view: ActView; close: () => void }) {
+  const [text, setText] = useState('')
+  const { submit, busy, words } = useSubmission(onAct, view)
+  const points = pointsOf(text)
+  const send = async (e: Event) => {
+    e.preventDefault()
+    if (!points.length) return
+    const open = { _tag: 'OpenReject', task, points } as const
+    if (await submit({ _tag: 'Open', open })) close()
+  }
+  return html`<form class="field" onSubmit=${send}>
+    <label>Points for the pipeline<textarea value=${text} disabled=${busy}
+      onInput=${(e: Event) => setText((e.currentTarget as HTMLTextAreaElement).value)}>
+    </textarea></label>
+    <div class="owed-acts">
+      <button class="btn" type="button" disabled=${busy} onClick=${close}>Cancel</button>
+      <button class="btn primary" disabled=${busy || !points.length}>Send to the pipeline</button>
+    </div>
+    ${words ? html`<div class="error" role="alert">${words}</div>` : ''}
+  </form>`
+}
+
+function RejectResult({ id, onAct, view }: { id: string; onAct: Act; view: ActView }) {
+  const [open, setOpen] = useState(false)
+  return open ? html`<${RejectForm} task=${id} onAct=${onAct} view=${view}
+    close=${() => setOpen(false)} />`
+    : html`<button class="btn" onClick=${() => setOpen(true)}>Reject result</button>`
+}
+
+export function TaskCard({
+  task, onAct, view,
+}: { task: Task; onAct: Act; view: ActView }) {
   return html`<section class="card task" aria-label=${`Task ${task.name}`}>
     <div class="card-head"><span class="task-name">${task.name}</span>
       <span class=${`state ${task.state.toLowerCase()}`}>${task.state}</span></div>
     <div class="card-body"><div class="for">for ${task.role}</div>
-      <p class="desc">${task.description}</p></div>
+      <p class="desc">${task.description}</p>
+      ${task.reject ? html`<${RejectResult} id=${task.id} onAct=${onAct} view=${view} />` : ''}
+    </div>
   </section>`
 }
 
@@ -49,11 +89,13 @@ const Column = ({ title, children }: { title: string; children: ComponentChildre
 interface BoardProps {
   dash: Dash
   onTerminal: (card: DashTerminalCard) => void
+  onAct: Act
 }
-export function Board({ dash, onTerminal }: BoardProps) {
+export function Board({ dash, onTerminal, onAct }: BoardProps) {
   return html`<div class="board">
     <${Column} title="Task queue">
-      ${dash.queue.map((t) => html`<${TaskCard} key=${t.id} task=${t} />`)}
+      ${dash.queue.map((t) => html`<${TaskCard} key=${t.id} task=${t}
+        onAct=${onAct} view=${dash.header} />`)}
     <//>
     <${Column} title="Host">
       <${TerminalCard} card=${dash.host.card} onOpen=${() => onTerminal(dash.host.card)} />
@@ -61,10 +103,21 @@ export function Board({ dash, onTerminal }: BoardProps) {
     <//>
     ${dash.columns.map((c) => html`<${Column} key=${c.role} title=${c.role}>
       <${TerminalCard} card=${c.card} onOpen=${() => onTerminal(c.card)} />
-      ${c.task ? html`<${TaskCard} task=${c.task} />` : ''}
+      ${c.task ? html`<${TaskCard} task=${c.task} onAct=${onAct} view=${dash.header} />` : ''}
       ${c.subagents.map((s, i) => html`<${SubagentCard} key=${i} s=${s} />`)}
     <//>`)}
   </div>`
+}
+
+export function Results({ dash, onAct }: { dash: Dash; onAct: Act }) {
+  if (!dash.results.length) return ''
+  return html`<section class="person" aria-label="Completed results">
+    <h2 class="col-title">Completed results</h2>
+    <ul>${dash.results.map((result) => html`<li key=${result.id} class="owed">
+      <div class="owed-words">${result.name}</div>
+      <${RejectResult} id=${result.id} onAct=${onAct} view=${dash.header} />
+    </li>`)}</ul>
+  </section>`
 }
 
 // The summary of an escalation as a pyramid: the conclusion, then what supports it.
@@ -124,43 +177,14 @@ function EscalationCard({ e, onOpen }: { e: Escalation; onOpen: () => void }) {
   </button>`
 }
 
-// One act the person owes: its words and its buttons. An Accept opens the escalation (its diff
-// is there); a run continue is for a terminal, so it has words only.
-interface OwedProps {
-  act: Dash['person'][number]
-  onAct: Act
-  onEscalation: (id: string) => void
-}
-function Owed({ act, onAct, onEscalation }: OwedProps) {
-  const [text, setText] = useState('')
-  const [refused, setRefused] = useState<string | null>(null)
-  const target = act.target ?? ''
-  const run = (what: WhatJson) =>
-    onAct(what).then((out) => setRefused('refused' in out ? out.words : null))
-  const buttons =
-    act.tag === 'EndProject'
-      ? html`<button class="btn primary" onClick=${() => run({ _tag: 'EndProject' })}>
-          End the project</button>`
-      : act.tag === 'Decide'
-      ? html`<button class="btn primary"
-          onClick=${() => run({ _tag: 'Decide', task: target, take: true })}>Take it</button>
-        <button class="btn" onClick=${() => run({ _tag: 'Decide', task: target, take: false })}>
-          Again</button>`
-      : act.tag === 'Answer'
-      ? html`<textarea aria-label="Your answer" value=${text}
-          onInput=${(e: Event) => setText((e.target as HTMLTextAreaElement).value)}></textarea>
-        <button class="btn primary" disabled=${text.trim() === ''}
-          onClick=${() => run({ _tag: 'Answer', asker: target, answer: text })}>Answer</button>`
-      : act.tag === 'Accept'
-      ? html`<button class="btn primary" onClick=${() => onEscalation(target)}>Review it</button>`
-      : ''
-  return html`<li class="owed"><div class="owed-words">
-    ${act.words.map((w) => html`<div>${w}</div>`)}</div><div class="owed-acts">${buttons}</div>
-    ${refused ? html`<div class="error" role="alert">${refused}</div>` : ''}</li>`
+function EndProject({ onAct, view }: { onAct: Act; view: ActView }) {
+  const { submit, busy, words } = useSubmission(onAct, view)
+  return html`<li class="owed"><button class="btn primary" disabled=${busy}
+    onClick=${() => submit({ _tag: 'EndProject' })}>End the project</button>
+    ${words ? html`<div class="error" role="alert">${words}</div>` : ''}
+  </li>`
 }
 
-// The acts that wait for the person. A send-back is the same decision as the accept, so it has
-// no line of its own.
 interface PersonProps {
   dash: Dash
   onAct: Act
@@ -181,12 +205,31 @@ function Forwarded({ f, onForward }: { f: Dash['forwards'][number]; onForward: F
 }
 
 export function Person({ dash, onAct, onForward, onEscalation }: PersonProps) {
-  const owed = dash.person.filter((a) => a.tag !== 'SendBack')
-  if (!owed.length && !dash.forwards.length) return ''
+  const list = dash.person.owed
+  if (!list.length && !dash.forwards.length) return ''
   return html`<section class="person" aria-label="Waits for you">
     <h2 class="col-title">Waits for you</h2>
-    <ul>${owed.map((a) => html`<${Owed} key=${`${a.tag}:${a.target}`} act=${a} onAct=${onAct}
-      onEscalation=${onEscalation} />`)}
+    <ul>${list.map((act) => {
+      switch (act._tag) {
+        case 'Question':
+          return html`<${QuestionForm} key=${act.ask} act=${act} onAct=${onAct}
+            view=${dash.header} />`
+        case 'Decide': {
+          const row = dash.row.find((item) => item.ask === act.ask)
+          if (!row) return ''
+          return html`<li class="owed" key=${act.ask}><div class="owed-words">
+            <${Pyramid} summary=${row.summary} /></div>
+            <button class="btn primary" onClick=${() => onEscalation(act.fix)}>Review it</button>
+          </li>`
+        }
+        case 'ReviveHost':
+          return html`<li class="owed" key="revive-host">
+            Run <code>work run continue</code> in the host terminal.
+          </li>`
+        case 'EndProject':
+          return html`<${EndProject} key="end-project" onAct=${onAct} view=${dash.header} />`
+      }
+    })}
       ${dash.forwards.map((f) => html`<${Forwarded} key=${f.id} f=${f} onForward=${onForward} />`)}
     </ul></section>`
 }

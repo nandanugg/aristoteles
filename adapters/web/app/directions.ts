@@ -1,8 +1,10 @@
 // The directions of the sidebar: a card for each, the modal with its standards and rules as a
-// timeline, and the editor, which sends EditDirection (the items the person wrote).
+// timeline, and the editor, which sends AskEdit (the items the person wrote).
 import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
 import type { Dash } from '../contract.ts'
+import type { ActView } from './api.ts'
+import { useSubmission } from './submission.ts'
 import type { Act } from './board.ts'
 import { Modal } from './modal.ts'
 
@@ -69,11 +71,12 @@ const Field = (p: {
 interface EditorProps {
   d: Direction
   onAct: Act
+  view: ActView
   onClose: () => void
 }
-function Editor({ d, onAct, onClose }: EditorProps) {
+function Editor({ d, onAct, view, onClose }: EditorProps) {
   const [edited, setEdited] = useState<Edited>({})
-  const [refused, setRefused] = useState<string | null>(null)
+  const { submit, busy, words } = useSubmission(onAct, view)
   const set = (key: string, field: 'says' | 'test' | 'ref', v: string) =>
     setEdited({
       ...edited,
@@ -90,11 +93,10 @@ function Editor({ d, onAct, onClose }: EditorProps) {
     const next = edit(rec, edited[key])
     return JSON.stringify(next) === JSON.stringify(rec) ? [] : [[key, next] as const]
   })
-  const send = () =>
-    onAct({ _tag: 'EditDirection', draft }).then((out) => {
-      if ('refused' in out) setRefused(out.words)
-      else onClose()
-    })
+  const send = async () => {
+    const items = draft.some(([key]) => key === d.key) ? draft : [[d.key, d.rec] as const, ...draft]
+    if (await submit({ _tag: 'AskEdit', draft: items })) onClose()
+  }
   const says = (key: string, rec: Rec) => edited[key]?.says ?? rec.says
   return html`<div class="editor">
     <p class="muted">Your edit goes into the task pipeline: it takes effect after the pipeline
@@ -112,8 +114,8 @@ function Editor({ d, onAct, onClose }: EditorProps) {
         <${Field} label=${`Rule ${r.name} ref`} value=${edited[r.key]?.ref ?? r.rec.ref ?? ''}
           onInput=${(v: string) => set(r.key, 'ref', v)} /></div>`)}
     </section>`)}
-    ${refused ? html`<div class="error" role="alert">${refused}</div>` : ''}
-    <div class="modal-foot"><button class="btn primary" disabled=${draft.length === 0}
+    ${words ? html`<div class="error" role="alert">${words}</div>` : ''}
+    <div class="modal-foot"><button class="btn primary" disabled=${busy || draft.length === 0}
       onClick=${send}>Send the edit to the pipeline</button></div>
   </div>`
 }
@@ -122,16 +124,17 @@ interface ModalProps {
   d: Direction
   editing: boolean
   onAct: Act
+  view: ActView
   onClose: () => void
 }
-export function DirectionModal({ d, editing, onAct, onClose }: ModalProps) {
+export function DirectionModal({ d, editing, onAct, view, onClose }: ModalProps) {
   const [edit, setEdit] = useState(editing)
   return html`<${Modal} title=${`${d.name} v${d.version}`} kind="wide" onClose=${onClose}>
     <div class="principles">${d.principles.map((p) => html`<span class="uses-tag">${p}</span>`)}
     </div>
     <p class="direction-summary">${d.summary}</p>
     ${edit
-      ? html`<${Editor} d=${d} onAct=${onAct} onClose=${onClose} />`
+      ? html`<${Editor} d=${d} onAct=${onAct} view=${view} onClose=${onClose} />`
       : html`<button class="btn small" onClick=${() => setEdit(true)}>Edit</button>
         ${d.examples.length ? html`<div class="section-title">Examples</div>
           <ul class="examples">${d.examples.map((x) => html`<li class=${`example ${x.fits}`}>

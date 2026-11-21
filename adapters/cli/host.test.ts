@@ -7,7 +7,8 @@ import { dispatchAct } from '../../core/actions/work.ts'
 import { eventsOf, h, NANDA } from '../../core/actions/fixture.test.ts'
 import type { Time } from '../../core/schema/index.ts'
 import { Dir, Env, Now, StoreLive, Tokens } from '../../core/services/index.ts'
-import { foldWork } from '../../core/state/work/fold.ts'
+import { actorOf } from '../../core/state/c16/types.ts'
+import { foldWork } from '../../core/state/c16/fold.ts'
 import { stopHookSettings } from '../live/stop-hook.ts'
 
 const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
@@ -30,12 +31,12 @@ const opened = async () => {
     Layer.succeed(Now, { read: Effect.succeed(p.now() as Time) }),
     Layer.succeed(Tokens, { random: Effect.sync(() => `z${++n}`) }),
   )
-  const act = (id: string, who: string, what: Parameters<typeof dispatchAct>[0]['act']['what']) =>
+  const act = (id: string, who: string, body: Parameters<typeof dispatchAct>[0]['act']['body']) =>
     Effect.runPromise(
       Effect.scoped(
         dispatchAct({
           by: NANDA,
-          act: { id, who, ep: 0, what },
+          act: { id, who: actorOf(who), ep: 0, body },
           on: null,
           build: null,
           current: 'b',
@@ -46,12 +47,12 @@ const opened = async () => {
   const exits = () =>
     eventsOf(p.dir).filter((r) =>
       r.event._tag === 'Work' && r.event.create._tag === 'Acted' &&
-      r.event.create.act.what._tag === 'Exit'
+      r.event.create.act.body._tag === 'Exit'
     ).length
   // A project opens with its actors down (or up, before that change): the host is down here.
   const downHost = async () => {
     if (folded()?.state.down.has('host')) return
-    await act('down', 'harness', { _tag: 'Exit', who: 'host' })
+    await act('down', 'harness', { _tag: 'Exit', actor: { _tag: 'Host' } })
   }
   return { p, act, folded, exits, downHost }
 }
@@ -77,7 +78,7 @@ describe('work run continue, and the stop hook', () => {
     expect(folded()?.state.session).toBe(1)
 
     // A second copy of the move, built on the session that moved on: refused.
-    await expect(act('copy', 'person', { _tag: 'MoveHost', fromSession: 0 })).rejects.toThrow()
+    await expect(act('copy', 'human', { _tag: 'MoveHost', fromSession: 0 })).rejects.toThrow()
     expect(folded()?.state.session).toBe(1)
   }, 120000)
 

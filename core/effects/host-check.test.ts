@@ -6,7 +6,7 @@ import { Effect, Layer } from 'effect'
 import { eventsOf, h } from '../actions/fixture.test.ts'
 import { Dir, Env, Now, SpawnLive, StoreLive, Tokens } from '../services/index.ts'
 import type { Time } from '../schema/index.ts'
-import { foldWork } from '../state/work/fold.ts'
+import { foldWork } from '../state/c16/fold.ts'
 import { checkHost, tmuxPaneExists } from './host-check.ts'
 
 const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')

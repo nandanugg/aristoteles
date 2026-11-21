@@ -1,7 +1,7 @@
 // The effect of each act (protocol.qnt) on small states, the shared store changes, the sweep of the
 // asks and the split (D5).
 import { describe, expect, test } from 'bun:test'
-import type { Form, ItemKind, ItemRec, RoleDraft } from '../work/types.ts'
+import type { Form, ItemKind, ItemRec, RoleDraft } from './data.ts'
 import { effect, take } from './effect.ts'
 import { allDone, askCountOf, findAsk, fixOf, taskOf } from './reads.ts'
 import { initState, type WorkState } from './state.ts'

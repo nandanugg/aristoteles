@@ -41,7 +41,7 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
     w.sources.get(e.id)?._tag === 'Outside'
       ? unchanged(w)
       : damaged(r, `${e.id} is no outside source`),
-  // The work model folds apart (core/state/work/fold.ts); the Work stays as it is.
+  // The work model folds apart (core/state/c16/fold.ts); the Work stays as it is.
   'Work.Opened': (w) => unchanged(w),
   'Work.Acted': (w) => unchanged(w),
   'Work.HostPane': (w) => unchanged(w),

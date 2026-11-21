@@ -1,5 +1,5 @@
 // The commands of the work model's acts (P2). One generic path: who calls (an agent by its work
-// token, the person at a terminal, or the harness), the words of the command made into a What, the
+// token, the person at a terminal, or the harness), the words of the command made into a Body, the
 // harness fields filled from the current state (the rule runner), then dispatchAct: the store
 // checks the act and appends it. The basis travels with the step: --on <n> is the seq of the view
 // the step was derived from. An agent's next step is not printed: it runs `work wait` again.
@@ -14,6 +14,7 @@ import {
 } from '../../../core/actions/work.ts'
 import {
   caughtOn,
+  resolvesFight,
   refExists,
   ruleHolds,
   runTest,
@@ -25,24 +26,24 @@ import {
   type Recorded,
   refuse,
   UsageError,
-  WhatSchema,
+  BodySchema,
+  ActorSchema,
+  AnswerBodySchema,
+  QuestionBodySchema,
 } from '../../../core/schema/index.ts'
 import { Dir, Env, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
 import { loadWork } from '../../../core/state/index.ts'
-import { foldWork } from '../../../core/state/work/fold.ts'
-import { epOf } from '../../../core/state/work/reads.ts'
-import type {
-  Actor,
-  ItemKey,
-  ItemRec,
-  Level,
-  RoleDraft,
-  TaskSpec,
-  Verdict,
-  What,
-  WorkState,
-} from '../../../core/state/work/types.ts'
-import { HARNESS, HOST, kindOf, PERSON } from '../../../core/state/work/types.ts'
+import { foldWork } from '../../../core/state/c16/fold.ts'
+import { askCountOf, epochOf, findAsk, fixOf, vsum } from '../../../core/state/c16/reads.ts'
+import type { WorkState } from '../../../core/state/c16/state.ts'
+import { actorOf, keyOf, type Actor, type Body, type Reply } from '../../../core/state/c16/types.ts'
+import type { ItemKey, ItemRec, Level, RoleDraft, TaskSpec, Verdict }
+  from '../../../core/state/c16/data.ts'
+import { kindOf } from '../../../core/state/c16/data.ts'
+
+const HUMAN = { _tag: 'Human' } as const
+const HOST = { _tag: 'Host' } as const
+const HARNESS = { _tag: 'Harness' } as const
 import { briefOf, hostWords } from '../../words/work.ts'
 import { type Args, textOf } from '../args.ts'
 import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
@@ -62,8 +63,8 @@ interface Ctx {
   readonly events: ReadonlyArray<Recorded>
 }
 interface Spec {
-  readonly by: 'person' | 'agent' | 'harness'
-  readonly parse: (c: Ctx) => Run<What>
+  readonly by: 'person' | 'agent' | 'either' | 'harness'
+  readonly parse: (c: Ctx) => Run<Body>
 }
 
 const usage = (message: string) => Effect.fail(new UsageError({ message, next: null }))
@@ -86,9 +87,9 @@ const onOf = (args: Args): number | null => {
   return v === undefined || !/^\d+$/.test(v) ? null : Number(v)
 }
 const makerOf = (c: Ctx): Run<string> =>
-  c.who.startsWith('maker:')
-    ? Effect.succeed(c.who.slice('maker:'.length))
-    : usage(`work ${c.cmd} is for a maker; ${c.who} is not one`)
+  c.who._tag === 'Maker'
+    ? Effect.succeed(c.who.id)
+    : usage(`work ${c.cmd} is for a maker; ${keyOf(c.who)} is not one`)
 
 // --- files: a YAML or JSON the command reads ---------------------------------------------------
 
@@ -219,31 +220,75 @@ const pick = <A>(c: Ctx, table: Readonly<Record<string, A>>, i: number): Run<A> 
 
 const person = (parse: Spec['parse']): Spec => ({ by: 'person', parse })
 const agent = (parse: Spec['parse']): Spec => ({ by: 'agent', parse })
-const pure = (what: What): Spec['parse'] => () => Effect.succeed(what)
+const pure = (body: Body): Spec['parse'] => () => Effect.succeed(body)
 const target = (shape: string) => (c: Ctx) => word(c, 0, shape)
+
+const actorKey = (key: string): Run<Actor> => {
+  const decoded = Schema.decodeUnknownOption(ActorSchema)(key)
+  return decoded._tag === 'Some' ? Effect.succeed(decoded.value) : usage(`Unknown actor: ${key}`)
+}
+
+const answerText = (c: Ctx): Run<string> => {
+  const value = c.args.one('text')
+  return typeof value === 'string' ? Effect.succeed(value) : flag(c, 'text')
+}
+
+const readSchema = <S extends Schema.Top & { readonly DecodingServices: never }>(
+  path: string, schema: S,
+): Run<S['Type']> => Effect.flatMap(readFile(path), (value) => {
+  const decoded = Schema.decodeUnknownOption(schema)(value)
+  return decoded._tag === 'Some'
+    ? Effect.succeed(decoded.value)
+    : usage(`${path} does not contain the required form`)
+})
+
+const replies = {
+  accept: 'AcceptIt', 'send-back': 'SendItBack', take: 'TakeAsIs', again: 'EvaluateAgain',
+} as const
+
+const respondWith = (c: Ctx, value: string, reply: Reply): Run<Body> => {
+  const points = pointsOf(c)
+  if (reply === 'SendItBack' && !points.length) return usage('Send back needs --points')
+  return Effect.succeed({ _tag: 'Respond', ask: value, reply, points })
+}
 
 const SPECS: Readonly<Record<string, Spec>> = {
   end: person(pure({ _tag: 'EndProject' })),
-  answer: person((c) =>
+  answer: { by: 'either', parse: (c) =>
     Effect.gen(function* () {
-      const asker = yield* word(c, 0, 'the asker (an actor of an open question)')
-      return { _tag: 'Answer', asker, answer: yield* flag(c, 'text') }
-    })
-  ),
-  accept: person((c) => Effect.map(target('a fix')(c), (fix) => ({ _tag: 'Accept', fix }))),
-  'send-back': person((c) =>
-    Effect.map(target('a fix')(c), (fix) => ({ _tag: 'SendBack', fix, points: pointsOf(c) }))
-  ),
-  reject: person((c) =>
-    Effect.map(target('a task')(c), (task) => ({ _tag: 'Reject', task, points: pointsOf(c) }))
-  ),
-  decide: person((c) =>
-    Effect.gen(function* () {
-      const task = yield* word(c, 0, 'a task')
-      const take = yield* pick(c, { take: true, again: false }, 1)
-      return { _tag: 'Decide', task, take }
-    })
-  ),
+      const ask = yield* word(c, 0, 'an ask ID')
+      const file = textOf(c.args.one('file'))
+      const answer = file
+        ? yield* readSchema(file, AnswerBodySchema)
+        : { _tag: 'Single' as const, text: yield* answerText(c) }
+      return { _tag: 'AnswerQuestion', ask, answer }
+    }),
+  },
+  hear: agent((c) => Effect.map(target('an ask ID')(c), (ask) => ({ _tag: 'Hear', ask }))),
+  'ask-raise': agent((c) => Effect.gen(function* () {
+    const to = yield* actorKey(yield* word(c, 0, 'the actor asked'))
+    return { _tag: 'AskRaise', to }
+  })),
+  respond: person((c) => Effect.gen(function* () {
+    const ask = yield* word(c, 0, 'an ask ID')
+    return yield* respondWith(c, ask, yield* pick(c, replies, 1))
+  })),
+  accept: person((c) => Effect.flatMap(target('an ask ID')(c),
+    (ask) => respondWith(c, ask, 'AcceptIt'))),
+  'send-back': person((c) => Effect.flatMap(target('an ask ID')(c),
+    (ask) => respondWith(c, ask, 'SendItBack'))),
+  reject: person((c) => Effect.gen(function* () {
+    const task = yield* word(c, 0, 'a task')
+    const points = pointsOf(c)
+    if (!points.length) return yield* usage('Reject needs --points')
+    return { _tag: 'Open', open: { _tag: 'OpenReject', task, points } }
+  })),
+  decide: person((c) => Effect.gen(function* () {
+    const ask = yield* word(c, 0, 'an ask ID')
+    return yield* respondWith(c, ask, yield* pick<Reply>(c, { take: 'TakeAsIs', again: 'EvaluateAgain' }, 1))
+  })),
+  'ask-edit': person((c) => Effect.map(fromFile(c, 'file', draftOf),
+    (draft) => ({ _tag: 'AskEdit', draft }))),
   send: agent((c) =>
     Effect.gen(function* () {
       const spec = {
@@ -252,26 +297,30 @@ const SPECS: Readonly<Record<string, Spec>> = {
         sections: listOf(c.args.one('sections')),
         role: yield* flag(c, 'role'),
       }
-      return { _tag: 'SendTask', spec }
+      return { _tag: 'Open', open: { _tag: 'OpenSend', spec } }
     })
   ),
   reassign: agent(pure({ _tag: 'Reassign' })),
   'top-done': agent(pure({ _tag: 'TopDone' })),
-  assign: agent((c) => Effect.map(target('a task')(c), (task) => ({ _tag: 'AssignDo', task }))),
+  assign: agent((c) => Effect.map(target('a task')(c), (task) => ({ _tag: 'Open', open: { _tag: 'OpenMake', task } }))),
   review: agent((c) =>
     Effect.gen(function* () {
-      const task = yield* word(c, 0, 'a task')
-      return { _tag: 'Review', task, v: yield* pick(c, VERDICTS, 1), points: pointsOf(c) }
+      const ask = yield* word(c, 0, 'a Check ask ID')
+      return { _tag: 'Review', ask, verdict: yield* pick(c, VERDICTS, 1), points: pointsOf(c) }
     })
   ),
   resume: agent((c) => Effect.map(target('a maker')(c), (maker) => ({ _tag: 'Resume', maker }))),
   brief: agent((c) => Effect.map(makerOf(c), (maker) => ({ _tag: 'ReadBrief', maker }))),
-  ask: agent((c) => {
-    const question = textOf(c.args.one('question')) ?? textOf(c.args.one('text'))
-    return question === undefined
-      ? usage('work ask needs --question="<...>"')
-      : Effect.succeed({ _tag: 'Ask', asker: c.who, question })
-  }),
+  ask: agent((c) => Effect.gen(function* () {
+    const to = yield* actorKey(c.words[0] ?? 'human')
+    const file = textOf(c.args.one('file'))
+    const title = textOf(c.args.one('question')) ?? textOf(c.args.one('text'))
+    if (!file && title === undefined) return yield* usage('Ask needs --text or --file')
+    const question = file
+      ? yield* readSchema(file, QuestionBodySchema)
+      : { title: title!, form: { _tag: 'Single' as const } }
+    return { _tag: 'Open', open: { _tag: 'OpenQuestion', question, to } }
+  })),
   report: agent((c) =>
     Effect.gen(function* () {
       const maker = yield* makerOf(c)
@@ -282,7 +331,8 @@ const SPECS: Readonly<Record<string, Spec>> = {
       const caught = task === undefined || files.length === 0
         ? new Set<ItemKey>()
         : yield* ranRules(caughtOn(c.state, task, files))
-      return { _tag: 'Report', maker, output, files, caught }
+      const ask = yield* word(c, 0, 'an Execute ask ID')
+      return { _tag: 'Report', ask, output, files, caught }
     })
   ),
   evaluate: agent((c) =>
@@ -292,7 +342,7 @@ const SPECS: Readonly<Record<string, Spec>> = {
       const summary = yield* flag(c, 'summary')
       const parts = level === 'Split' ? yield* fromFile(c, 'parts', partsOf) : []
       const roleDraft = level === 'Fit' ? yield* fromFile(c, 'role-draft', cardOf) : null
-      return { _tag: 'Evaluate', task, level, parts, roleDraft, summary }
+      return { _tag: 'Evaluate', fix: task, level, parts, roleDraft, summary }
     })
   ),
   advance: agent((c) => Effect.map(target('a fix')(c), (fix) => ({ _tag: 'Advance', fix }))),
@@ -312,7 +362,7 @@ const SPECS: Readonly<Record<string, Spec>> = {
       const rec = yield* recOf(rule, { ...r, name: id }, parent)
       const { cwd } = yield* Dir
       const refOk = rec.ref === null ? true : yield* refExists(cwd, rec.ref)
-      return { _tag: 'WriteRule', fix, rule, rec, refOk }
+      return { _tag: 'WriteRule', fix, rule, rec, refOk, fights: listOf(c.args.one('fights')) }
     })
   ),
   'rule-test': agent((c) =>
@@ -327,7 +377,12 @@ const SPECS: Readonly<Record<string, Spec>> = {
       const fix = yield* word(c, 0, 'a fix')
       const draft = yield* Effect.flatMap(word(c, 1, 'a draft file'), (f) =>
         Effect.flatMap(readFile(f), draftOf))
-      return { _tag: 'Ship', fix, items: new Set(draft.keys()), draft }
+      const recorded = fixOf(c.state, fix)
+      const mechanical = recorded.form === 'Mech' || recorded.form === 'Both'
+      const resolved = mechanical && recorded.contradicted
+        ? yield* ranRules(resolvesFight(c.state, fix, draft))
+        : !mechanical && c.args.one('resolves') === true
+      return { _tag: 'Ship', fix, items: new Set(draft.keys()), draft, resolvesFight: resolved }
     })
   ),
   loop: agent((c) =>
@@ -359,7 +414,7 @@ const SPECS: Readonly<Record<string, Spec>> = {
 
 // The id of an act: what the sender wrote (the harness fields are the same on a repeat, or not
 // the sender's), so a repeated command is the same act.
-const senderOf = (w: What): What => {
+const senderOf = (w: Body): Body => {
   switch (w._tag) {
     case 'Report':
       return { ...w, caught: new Set() }
@@ -373,8 +428,19 @@ const senderOf = (w: What): What => {
       return w
   }
 }
-const idOf = (who: Actor, ep: number, what: What, on: number | null): string =>
-  sha(JSON.stringify([who, ep, Schema.encodeSync(WhatSchema)(senderOf(what)), on]))
+const idOf = (
+  who: Actor, ep: number, body: Body, on: number | null, state: WorkState,
+): string => {
+  let occurrence = body._tag === 'ReadBrief' ? vsum(state) : on
+  if (body._tag === 'Open' && body.open._tag === 'OpenQuestion') {
+    const to = body.open.to
+    const pending = findAsk(state, { kind: 'Question', from: who, to, about: { _tag: 'None' } })
+    const answered = [...state.answered.values()].some(({ ask }) =>
+      keyOf(ask.from) === keyOf(who) && keyOf(ask.to) === keyOf(to))
+    occurrence = askCountOf(state, who, to) - (pending || answered ? 1 : 0)
+  }
+  return sha(JSON.stringify([who, ep, Schema.encodeSync(BodySchema)(senderOf(body)), occurrence]))
+}
 
 // The state and events of the dir; no Work.Opened yet is "no top is open".
 const readFolded = Effect.gen(function* () {
@@ -392,17 +458,19 @@ const personOf = Effect.gen(function* () {
   return yield* personAuthor(loaded._tag === 'NoStore' ? undefined : loaded.work)
 })
 
-const outcome = (what: What, seq: number, again: boolean): string =>
+const outcome = (body: Body, seq: number, again: boolean): string =>
   again
-    ? `${what._tag} was taken already (event e${seq}); nothing changed.`
-    : `${what._tag} taken (event e${seq}).`
+    ? `${body._tag} was taken already (event e${seq}); nothing changed.`
+    : `${body._tag} taken (event e${seq}).`
 
 const runAct = (cmd: string, spec: Spec): Command => (call) =>
   Effect.gen(function* () {
     const { events, folded } = yield* readFolded
-    const author: Author = spec.by === 'person' ? yield* personOf : { _tag: 'System' }
-    const actor = spec.by === 'agent' ? yield* verifyWork(folded, call.token) : null
-    const who = actor?.who ?? (spec.by === 'person' ? PERSON : HARNESS)
+    const asAgent = spec.by === 'agent' || (spec.by === 'either' && call.token !== null)
+    const asHuman = spec.by === 'person' || (spec.by === 'either' && !asAgent)
+    const actor = asAgent ? yield* verifyWork(folded, call.token) : null
+    const author: Author = asHuman ? yield* personOf : { _tag: 'System' }
+    const who = actor ? actorOf(actor.who) : asHuman ? HUMAN : HARNESS
     const ep = actor?.ep ?? 0
     const ctx: Ctx = {
       cmd,
@@ -412,25 +480,28 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
       state: folded.state,
       events,
     }
-    const what = yield* spec.parse(ctx)
+    const body = yield* spec.parse(ctx)
     const on = onOf(call.args)
     const acted = yield* dispatchAct({
       by: author,
-      act: { id: idOf(who, ep, what, on), who, ep, what },
+      act: { id: idOf(who, ep, body, on, folded.state), who, ep, body },
       on,
       build: null,
       current: 'cli',
+      ...(['Report', 'WriteRule', 'RunTest', 'Ship', 'RunRule'].includes(body._tag)
+        ? { evidence: folded.state.ver }
+        : {}),
     })
-    const line = outcome(what, acted.seq, acted.again)
+    const line = outcome(body, acted.seq, acted.again)
     const token = acted.token
     const made = token !== null
       ? [`  ${token.actor}: ${workTokenOf(token.actor, token.ep, token.secret)}`]
-      : acted.again && (what._tag === 'AssignDo' || what._tag === 'Resume')
+      : acted.again && ((body._tag === 'Open' && body.open._tag === 'OpenMake') || body._tag === 'Resume')
       ? ['  its token was printed by the first run.']
       : []
-    if (what._tag === 'ReadBrief') {
+    if (body._tag === 'ReadBrief') {
       const after = yield* (yield* (yield* Store).open((yield* Dir).cwd, { create: false })).events
-      return briefOf(acted.state, after, what.maker)
+      return briefOf(acted.state, after, body.maker)
     }
     const next = call.token === null
       ? []
@@ -443,6 +514,10 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
 const ACTS = [
   'end',
   'answer',
+  'hear',
+  'ask-raise',
+  'respond',
+  'ask-edit',
   'accept',
   'send-back',
   'reject',
@@ -516,21 +591,21 @@ const runContinue: Command = () =>
     const by = yield* personOf
     const pane = yield* paneOfPerson
     const s = folded.state
-    const what: What = s.down.has(HOST)
-      ? { _tag: 'Revive', who: HOST }
+    const body: Body = s.down.has('host')
+      ? { _tag: 'Revive', actor: HOST }
       : { _tag: 'MoveHost', fromSession: s.session }
     const on = s.seq
     const acted = yield* dispatchAct({
       by,
-      act: { id: idOf(PERSON, 0, what, on), who: PERSON, ep: 0, what },
+      act: { id: idOf(HUMAN, 0, body, on, s), who: HUMAN, ep: 0, body },
       on,
       build: null,
       current: 'cli',
     })
-    if (acted.token === null) return [outcome(what, acted.seq, acted.again)]
+    if (acted.token === null) return [outcome(body, acted.seq, acted.again)]
     yield* recordHostPane(by, pane)
     const token = workTokenOf(acted.token.actor, acted.token.ep, acted.token.secret)
-    return [outcome(what, acted.seq, false), `  host: ${token}`, ...hostWords(acted.state, token)]
+    return [outcome(body, acted.seq, false), `  host: ${token}`, ...hostWords(acted.state, token)]
   })
 
 // work hook stopped <token>: the CLI of the actor stopped at its prompt, so its exit is recorded
@@ -541,14 +616,15 @@ const hook: Command = (call) =>
     const { folded } = yield* readFolded
     const { who, ep } = yield* verifyWork(folded, call.token)
     if (call.args.positional[0] !== 'stopped') return []
-    if (ep !== epOf(folded.state, who) || folded.state.down.has(who)) return []
-    const what: What = { _tag: 'Exit', who }
+    if (ep !== epochOf(folded.state, actorOf(who)) || folded.state.down.has(who)) return []
+    const body: Body = { _tag: 'Exit', actor: actorOf(who) }
     yield* dispatchAct({
       by: { _tag: 'System' },
-      act: { id: idOf(HARNESS, ep, what, null), who: HARNESS, ep: 0, what },
+      act: { id: idOf(HARNESS, ep, body, null, folded.state), who: HARNESS, ep: 0, body },
       on: null,
       build: null,
       current: 'cli',
+      actorEpoch: ep,
     })
     return []
   }).pipe(Effect.catch(() => Effect.succeed([])))
@@ -560,18 +636,18 @@ const forward: Command = (call) =>
   Effect.gen(function* () {
     const { events, folded } = yield* readFolded
     const { who } = yield* verifyWork(folded, call.token)
-    if (who !== HOST) return yield* refuse('only the host forwards', 'leave it to the host')
+    if (who !== 'host') return yield* refuse('only the host forwards', 'leave it to the host')
     const [word = '', ...words] = call.args.positional
     const spec = Object.hasOwn(SPECS, word) ? SPECS[word] : undefined
-    if (spec?.by !== 'person') {
-      return yield* usage('work forward <token> end|answer|accept|send-back|reject|decide ...')
+    if (spec?.by !== 'person' && spec?.by !== 'either') {
+      return yield* usage('work forward <token> end|answer|respond|reject|ask-edit ...')
     }
     const quote = textOf(call.args.one('quote'))
     if (quote === undefined) return yield* usage('work forward needs --quote="<their words>"')
-    const ctx: Ctx = { cmd: word, words, args: call.args, who: PERSON, state: folded.state, events }
-    const what = yield* spec.parse(ctx)
-    const id = yield* recordForward({ _tag: 'System' }, { what, on: onOf(call.args), quote })
-    return [`${id}: ${what._tag} waits for the person to confirm it on the page.`]
+    const ctx: Ctx = { cmd: word, words, args: call.args, who: HUMAN, state: folded.state, events }
+    const body = yield* spec.parse(ctx)
+    const id = yield* recordForward({ _tag: 'System' }, { act: body, on: onOf(call.args), quote })
+    return [`${id}: ${body._tag} waits for the person to confirm it on the page.`]
   })
 
 // work run continue is the only act of `run`; it lives here with the host's acts.

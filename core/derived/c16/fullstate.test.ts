@@ -6,7 +6,7 @@ import { take } from '../../state/c16/effect.ts'
 import { epochOf, vsum } from '../../state/c16/reads.ts'
 import { initState, type WorkState } from '../../state/c16/state.ts'
 import { type Actor, type Body, keyOf } from '../../state/c16/types.ts'
-import type { ItemRec } from '../../state/work/types.ts'
+import type { ItemRec } from '../../state/c16/data.ts'
 import { basisOf, refusal } from './accept.ts'
 import { dos, owed } from './obligations.ts'
 

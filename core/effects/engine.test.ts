@@ -10,9 +10,10 @@ import { h, NANDA, eventsOf } from '../actions/fixture.test.ts'
 import { OutsideFailed, type Time } from '../schema/index.ts'
 import type { TerminalReading } from '../schema/outside.ts'
 import { Dir, Env, FilesLive, Now, Pump, SpawnLive, StoreLive, Tokens } from '../services/index.ts'
-import { foldWork } from '../state/work/fold.ts'
-import { epOf } from '../state/work/reads.ts'
-import type { ItemRec, What } from '../state/work/types.ts'
+import { foldWork } from '../state/c16/fold.ts'
+import { epochOf } from '../state/c16/reads.ts'
+import { actorOf, type Body } from '../state/c16/types.ts'
+import type { ItemRec } from '../state/c16/data.ts'
 import { stopHookSettings } from '../../adapters/live/stop-hook.ts'
 import { backoffMemory, engineTick, sessionOf } from './engine.ts'
 
@@ -55,6 +56,12 @@ const fakePump = () => {
   return { layer, live, commands, refuseStarts: (on: boolean) => void (refuse = on) }
 }
 
+const askId = (
+  state: NonNullable<ReturnType<typeof foldWork>>['state'] | undefined,
+  kind: 'Check' | 'Execute',
+) => [...(state?.asks.values() ?? [])].find((ask) =>
+  ask.kind === kind && (kind !== 'Execute' || ask.to._tag === 'Maker'))!.id
+
 const setup = async (sections = ['a', 'b']) => {
   const { p } = await h.started({ 'aristoteles.yaml': CONFIG })
   const pump = fakePump()
@@ -86,15 +93,15 @@ const setup = async (sections = ['a', 'b']) => {
   const acts = (tag: string) =>
     eventsOf(p.dir).filter((r) =>
       r.event._tag === 'Work' && r.event.create._tag === 'Acted' &&
-      r.event.create.act.what._tag === tag
+      r.event.create.act.body._tag === tag
     ).length
   let x = 0
   // An act of an actor on the state as it is now.
-  const go = (who: string, what: What) => {
+  const go = (who: string, body: Body) => {
     const s = state()
     return run(dispatchAct({
       by: NANDA,
-      act: { id: `t${++x}`, who, ep: s === undefined ? 0 : epOf(s, who), what },
+      act: { id: `t${++x}`, who: actorOf(who), ep: s === undefined ? 0 : epochOf(s, actorOf(who)), body },
       on: s?.seq ?? null,
       build: null,
       current: 'b',
@@ -145,15 +152,15 @@ describe('engineTick', () => {
       'pipe: revived in pipe-e2',
     ])
     expect(t.acts('Exit')).toBe(1)
-    expect(epOf(t.state() ?? (undefined as never), 'pipe')).toBe(2)
+    expect(epochOf(t.state()!, { _tag: 'Pipe' })).toBe(2)
     expect(t.pump.live.has('pipe-e2')).toBe(true)
     expect(t.pump.commands.get('pipe-e2')).toContain('pipe|2|')
   }, 90000)
 
   test('a revive recorded and never launched: exit, then revive again', async () => {
     const t = await setup()
-    await t.go('harness', { _tag: 'Revive', who: 'pipe' })
-    await t.go('harness', { _tag: 'Revive', who: LEAD })
+    await t.go('harness', { _tag: 'Revive', actor: { _tag: 'Pipe' } })
+    await t.go('harness', { _tag: 'Revive', actor: actorOf(LEAD) })
     t.pump.live.add(sessionOf(LEAD, 1))
     const lines = await t.tick()
     expect(lines).toEqual([
@@ -201,15 +208,15 @@ describe('engineTick', () => {
     const t = await setup(['a'])
     await t.tick()
     const spec = { name: 'n', goal: 'g', sections: ['a'], role: 'section-lead' }
-    await t.go('host', { _tag: 'SendTask', spec })
-    await t.go(LEAD, { _tag: 'AssignDo', task: 't1' })
+    await t.go('host', { _tag: 'Open', open: { _tag: 'OpenSend', spec } })
+    await t.go(LEAD, { _tag: 'Open', open: { _tag: 'OpenMake', task: 't1' } })
     await t.go('maker:m1', { _tag: 'ReadBrief', maker: 'm1' })
     await t.go('maker:m1', {
-      _tag: 'Report', maker: 'm1', output: 'o', files: [], caught: new Set(),
+      _tag: 'Report', ask: askId(t.state(), 'Execute'), output: 'o', files: [], caught: new Set(),
     })
-    await t.go(LEAD, { _tag: 'Review', task: 't1', v: 'Pass', points: [] })
+    await t.go(LEAD, { _tag: 'Review', ask: askId(t.state(), 'Check'), verdict: 'Pass', points: [] })
     await t.go('host', { _tag: 'TopDone' })
-    await t.go('person', { _tag: 'EndProject' })
+    await t.go('human', { _tag: 'EndProject' })
     expect(await t.tick()).toEqual([])
     expect([...t.pump.live]).toEqual([])
   }, 90000)
@@ -218,25 +225,25 @@ describe('engineTick', () => {
     const t = await setup()
     await t.tick()
     t.p.write('docs/tsd.md', '# TSD\n\nBAD line\n')
-    const spec = (name: string, section: string): What => ({
-      _tag: 'SendTask',
-      spec: { name, goal: 'g', sections: [section], role: 'section-lead' },
+    const spec = (name: string, section: string): Body => ({
+      _tag: 'Open', open: { _tag: 'OpenSend',
+        spec: { name, goal: 'g', sections: [section], role: 'section-lead' } },
     })
     const make = async (task: string, maker: string) => {
-      await t.go(LEAD, { _tag: 'AssignDo', task })
+      await t.go(LEAD, { _tag: 'Open', open: { _tag: 'OpenMake', task } })
       await t.go(`maker:${maker}`, { _tag: 'ReadBrief', maker })
       await t.go(`maker:${maker}`, {
-        _tag: 'Report', maker, output: 'o', files: ['docs/tsd.md'], caught: new Set(),
+        _tag: 'Report', ask: askId(t.state(), 'Execute'), output: 'o', files: ['docs/tsd.md'], caught: new Set(),
       })
     }
     await t.go('host', spec('one', 'a'))
     await t.go('host', spec('two', 'b'))
     await make('t2', 'm1')
-    await t.go(LEAD, { _tag: 'Review', task: 't2', v: 'Pass', points: [] })
+    await t.go(LEAD, { _tag: 'Review', ask: askId(t.state(), 'Check'), verdict: 'Pass', points: [] })
     await make('t1', 'm2')
-    await t.go(LEAD, { _tag: 'Review', task: 't1', v: 'RaiseNoRule', points: [] })
+    await t.go(LEAD, { _tag: 'Review', ask: askId(t.state(), 'Check'), verdict: 'RaiseNoRule', points: [] })
     await t.go('pipe', {
-      _tag: 'Evaluate', task: 't1', level: 'Standard', parts: [], roleDraft: null, summary: 's',
+      _tag: 'Evaluate', fix: 't1', level: 'Standard', parts: [], roleDraft: null, summary: 's',
     })
     await t.go('pipe', { _tag: 'Advance', fix: 't1' })
     const std = [...(t.state()?.items.keys() ?? [])].find((x) => x.startsWith('std:')) ?? ''
@@ -244,21 +251,21 @@ describe('engineTick', () => {
       kind: 'rule', parent: std, name: 'r9', says: 's', where: null, test: 'grep -n BAD',
       ref: null, form: 'mech', examples: [],
     }
-    await t.go('pipe', { _tag: 'WriteRule', fix: 't1', rule: 'rule:r9', rec, refOk: true })
+    await t.go('pipe', { _tag: 'WriteRule', fix: 't1', rule: 'rule:r9', rec, refOk: true, fights: [] })
     await t.go('pipe', { _tag: 'RunTest', fix: 't1', own: true, contra: [] })
     await t.go('pipe', {
-      _tag: 'Ship', fix: 't1', items: new Set(['rule:r9']), draft: new Map([['rule:r9', rec]]),
+      _tag: 'Ship', fix: 't1', items: new Set(['rule:r9']), draft: new Map([['rule:r9', rec]]), resolvesFight: false,
     })
-    expect([...(t.state()?.tasks.get('t2')?.pend ?? [])]).toEqual(['rule:r9'])
+    expect([...(t.state()?.tasks.get('t2')?.pending ?? [])]).toEqual(['rule:r9'])
     expect(await t.tick()).toEqual([])
     expect(t.acts('RunRule')).toBe(1)
     const ran = eventsOf(t.p.dir).flatMap((r) =>
       r.event._tag === 'Work' && r.event.create._tag === 'Acted' &&
-        r.event.create.act.what._tag === 'RunRule'
-        ? [r.event.create.act.what]
+        r.event.create.act.body._tag === 'RunRule'
+        ? [r.event.create.act.body]
         : []
     )
     expect(ran).toEqual([{ _tag: 'RunRule', task: 't2', holds: false }])
-    expect(t.state()?.tasks.get('t2')?.pend.size).toBe(0)
+    expect(t.state()?.tasks.get('t2')?.pending.size).toBe(0)
   }, 90000)
 })

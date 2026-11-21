@@ -56,7 +56,7 @@ works for aristoteles; any other session of the dir still uses the old files of 
     back with `work ask`.
 11. **Ask the person on the page.** After the first talk, never ask the person with your AI
     CLI's own question tool (such as AskUserQuestion): ask with
-    `work ask <token> --question="<the fact that you need>"`. The person answers on the page,
+    `work ask <token> human --text="<the fact that you need>"`. The person answers on the page,
     and `work wait` returns with the answer. Ask only for a fact that no direction gives.
 12. **Carry the person's words.** When the person says an act in this chat (accept, send back,
     reject, decide, answer, end), forward it with their exact words:

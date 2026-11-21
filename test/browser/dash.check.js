@@ -69,12 +69,61 @@ const texts = (page, sel) => page.locator(sel).allTextContents()
     expect(await page.textContent('.escalation .status')).toBe('Waits for review')
     expect(await page.textContent('.escalation .conclusion')).toBe('Say it once.')
     expect(await page.textContent('.person')).toContain('Waits for you')
+    const question = page.getByRole('form', { name: 'Which examples?' })
+    const answer = 'first line\nsecond line'
+    const textbox = question.getByLabel('First example')
+    await textbox.fill(answer)
+    const retry = []
+    await page.route('**/api/act', async (route) => {
+      retry.push(route.request().postDataJSON())
+      if (retry.length === 1) await route.abort()
+      else await route.continue()
+    })
+    const answerButton = question.getByRole('button', { name: 'Answer' })
+    await answerButton.click()
+    await question.getByRole('alert').waitFor()
+    expect(await textbox.inputValue()).toBe(answer)
+    const delivered = page.waitForResponse((response) =>
+      response.url().endsWith('/api/act') && response.request().method() === 'POST')
+    await answerButton.click()
+    const response = await delivered
+    expect(retry).toHaveLength(2)
+    expect(retry[0]).toEqual(retry[1])
+    const submission = retry[1]
+    expect(submission.act).toMatchObject({
+      _tag: 'AnswerQuestion', answer: { _tag: 'Multiple', texts: [answer, ''] },
+    })
+    expect(submission.id).toMatch(/^[0-9a-f]{32}$/)
+    expect((await response.json()).ok).toBe(true)
+    await question.waitFor({ state: 'detached' })
+    const repost = await fetch(`${s.url}api/act`, {
+      method: 'POST', headers: {
+        origin: new URL(s.url).origin, 'content-type': 'application/json',
+      },
+      body: JSON.stringify(submission),
+    })
+    expect((await repost.json()).duplicate).toBe(true)
     await page.click('.escalation')
     const dialog = page.locator('[role=dialog]')
     await dialog.waitFor()
     expect(await dialog.locator('.diff .add').count()).toBeGreaterThan(0)
     expect(await dialog.locator('button', { hasText: 'Accept' }).count()).toBe(1)
     expect(await dialog.locator('button', { hasText: 'Send back' }).isDisabled()).toBe(true)
+    const notes = dialog.getByLabel(/Points to send back/)
+    await notes.fill('This belongs to the original decision.')
+    const wire = await (await fetch(`${s.url}api/dash`)).json()
+    const before = wire.row[0].ask
+    const after = `${before}.replacement`
+    s.send({
+      type: 'dash',
+      dash: { ...wire, header: { ...wire.header, seq: wire.header.seq + 1 },
+        row: wire.row.map((row) => (row.ask === before ? { ...row, ask: after } : row)),
+        person: { owed: wire.person.owed.map((entry) =>
+          entry._tag === 'Decide' && entry.ask === before ? { ...entry, ask: after } : entry) },
+      },
+    })
+    await page.waitForFunction(() => document.querySelector('[role=dialog] textarea')?.value === '')
+    expect(await dialog.getByRole('button', { name: 'Send back' }).isDisabled()).toBe(true)
     await page.waitForTimeout(300)
     await page.keyboard.press('Escape')
     await dialog.waitFor({ state: 'detached' })
@@ -97,7 +146,7 @@ const texts = (page, sel) => page.locator(sel).allTextContents()
     await deaf.waitForSelector('.pipe-row')
     const origin = s.url.slice(0, -1)
     const dash = await (await fetch(`${s.url}api/dash`, { headers: { origin } })).json()
-    const act = { _tag: 'Accept', fix: 't1' }
+    const act = { _tag: 'Respond', ask: dash.row[0].ask, reply: 'AcceptIt' }
     const res = await fetch(`${s.url}api/act`, {
       method: 'POST',
       headers: { origin, 'content-type': 'application/json' },

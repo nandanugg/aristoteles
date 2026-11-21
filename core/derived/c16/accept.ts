@@ -29,8 +29,8 @@ import {
   keyOf,
   pairKey,
 } from '../../state/c16/types.ts'
-import { EDIT, free, hasMech, hasRef, kindOf } from '../../state/work/types.ts'
-import type { DraftItems, ItemKey, ItemRec, TaskSpec, Verdict } from '../../state/work/types.ts'
+import { EDIT, free, hasMech, hasRef, kindOf } from '../../state/c16/data.ts'
+import type { DraftItems, ItemKey, ItemRec, TaskSpec, Verdict } from '../../state/c16/data.ts'
 import { ownToldSteps } from './obligations.ts'
 
 // --- the records, read without throwing ------------------------------------------------------

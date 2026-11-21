@@ -33,13 +33,8 @@ import {
   SessionId,
   Time,
 } from './ids.ts'
-import {
-  WorkActed,
-  WorkForwardDropped,
-  WorkForwarded,
-  WorkHostPane,
-  WorkOpened,
-} from './work-acts.ts'
+import { ActEnvelope, Body } from './c16-acts.ts'
+import { ItemRec, RoleDraft } from './work-acts.ts'
 
 const Text = Schema.String
 const NonEmpty = Schema.NonEmptyArray
@@ -205,7 +200,46 @@ const Source = Schema.Union([
   created('Source', Schema.TaggedStruct('Moved', { source: Outside })),
   moved('Source', Text, SourceMove),
 ])
-// The work model (core/state/work): the person opens the top; each accepted act is one event.
+// The work model (core/state/c16): the person opens the top; each accepted act is one event.
+const Int = Schema.Number.pipe(Schema.check(Schema.isInt()))
+// A token as the store keeps it: the actor key and the hash of its secret.
+const TokenHash = Schema.Tuple([Text, Text])
+// The person opened the top: its items, the cards of the persistent roles, the tries of a task
+// before a raise, and the tokens (actor key, hash) of the host, the pipe and each role at epoch 0.
+export const WorkOpened = Schema.TaggedStruct('Opened', {
+  top: Schema.Struct({
+    name: Text,
+    goal: Text,
+    sections: Schema.Array(Text),
+    directions: Schema.Array(Text),
+  }),
+  items: Schema.Array(Schema.Tuple([Text, ItemRec])),
+  cards: Schema.Array(Schema.Tuple([Text, RoleDraft])),
+  maxTries: Int,
+  tokens: Schema.Array(TokenHash),
+})
+// One act the store accepted; token: the new token the act makes (a new maker, a revived actor, a
+// resumed maker, the host of a move), else null.
+export const WorkActed = Schema.TaggedStruct('Acted', {
+  act: ActEnvelope,
+  request: Text,
+  forward: Schema.NullOr(Text),
+  token: Schema.NullOr(TokenHash),
+})
+// The pane of the host in the person's own tmux (its socket and pane id): bookkeeping that the
+// page and the engine read, not an act of the protocol.
+export const WorkHostPane = Schema.TaggedStruct('HostPane', { socket: Text, pane: Text })
+// The host carries the person's words from its chat as the person's act (a Body the page may
+// send): it waits on the page for the person's confirm (Confirm dispatches it with its `on`) or
+// drop. Bookkeeping, not an act.
+export const WorkForwarded = Schema.TaggedStruct('Forwarded', {
+  id: Text,
+  act: Body,
+  on: Schema.NullOr(Int),
+  quote: Text,
+})
+// The forward is spent: the person dropped it, or confirmed it.
+export const WorkForwardDropped = Schema.TaggedStruct('ForwardDropped', { id: Text })
 const WorkEvent = created(
   'Work',
   Schema.Union([WorkOpened, WorkActed, WorkHostPane, WorkForwarded, WorkForwardDropped]),

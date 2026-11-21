@@ -6,8 +6,8 @@ import { SessionId } from '../../../src/domain/ids.ts'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { Dash as DashSchema, type DashTerminalCard, DirView } from '../contract.ts'
 import { api, chime, postForward, postWork, socket, toast } from './api.ts'
-import type { WhatJson } from './api.ts'
-import { Board, Person, PipeRow } from './board.ts'
+import type { WorkSender } from './api.ts'
+import { Board, Person, PipeRow, Results } from './board.ts'
 import { DirectionCard, DirectionModal } from './directions.ts'
 import { Gear } from './gear.ts'
 import { ICONS, icon } from './icons.ts'
@@ -29,17 +29,24 @@ const POLL_MS = 5000
 const useDash = () => {
   const [dash, setDash] = useState<DashData | null>(null)
   const pushes = useRef(0)
-  const build = useRef<string | null>(null)
+  const latest = useRef<DashData['header'] | null>(null)
   const take = useCallback((d: DashData) => {
-    if (build.current !== null && build.current !== d.header.build) location.reload()
-    build.current = d.header.build
+    if (latest.current !== null) {
+      if (latest.current.build !== d.header.build) {
+        socket.buildChanged(d.header.build)
+        return
+      }
+      if (latest.current.seq > d.header.seq) return
+    }
+    socket.viewBuild(d.header.build)
+    latest.current = d.header
     setDash(d)
   }, [])
   const poll = useCallback(() => {
     const before = pushes.current
     api('/api/dash', DashSchema).then(
       (d) => before === pushes.current && take(d),
-      () => setDash(null),
+      () => {},
     )
   }, [take])
   useEffect(() => {
@@ -152,21 +159,17 @@ function App() {
   const owed = useRef<number | null>(null)
   useEffect(() => {
     if (!dash || !dir) return
-    const now = dash.person.length + dash.forwards.length
+    const now = dash.person.owed.length + dash.forwards.length
     if (owed.current !== null && dir.sound && now > owed.current) chime()
     owed.current = now
-  }, [dash?.person.length, dash?.forwards.length])
+  }, [dash?.person.owed.length, dash?.forwards.length])
 
   // An act of the person: a refusal makes the page read the Dash again.
-  const act = useCallback(
-    async (what: WhatJson) => {
-      if (!dash) return { refused: 'none', words: 'The page has no dashboard yet.' }
-      const out = await postWork(what, dash)
-      if ('refused' in out) poll()
-      return out
-    },
-    [dash, poll],
-  )
+  const act: WorkSender = useCallback(async (submission) => {
+    const out = await postWork(submission)
+    poll()
+    return out
+  }, [poll])
 
   const forward = useCallback(
     async (op: 'confirm' | 'drop', id: string) => {
@@ -199,7 +202,8 @@ function App() {
       ${dash
         ? html`<header class="dash-head"><h1>${title}</h1></header>
           <${Person} dash=${dash} onAct=${act} onForward=${forward} onEscalation=${review} />
-          <${Board} dash=${dash} onTerminal=${terminal} />
+          <${Board} dash=${dash} onTerminal=${terminal} onAct=${act} />
+          <${Results} dash=${dash} onAct=${act} />
           <${PipeRow} dash=${dash} onEscalation=${review} onTerminal=${terminal} />`
         : !dir.initialized
         ? dir.onboarding
@@ -213,9 +217,11 @@ function App() {
           <${Terminal} label=${shown.card.role} session=${SessionId.make(shown.card.session)}
             live=${shown.card.status !== 'Inactive'} /><//>`
       : ''}
-    ${escalation ? html`<${Review} e=${escalation} onAct=${act} onClose=${close} />` : ''}
+    ${escalation ? html`<${Review} key=${escalation.ask ?? escalation.id} e=${escalation}
+        onAct=${act} view=${dash?.header} onClose=${close} />` : ''}
     ${direction ? html`<${DirectionModal} d=${direction}
-      editing=${shown?.kind === 'direction' && shown.edit} onAct=${act} onClose=${close} />` : ''}
+      view=${dash?.header} editing=${shown?.kind === 'direction' && shown.edit}
+      onAct=${act} onClose=${close} />` : ''}
     ${settings ? html`<${Gear} dir=${dir} version=${version}
       onClose=${() => setSettings(false)} />` : ''}
   </div>`

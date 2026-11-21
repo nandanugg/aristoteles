@@ -3,11 +3,20 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Effect, Layer } from 'effect'
-import { CLOSED, initState, tk } from '../state/work/reads.ts'
-import type { Example, Form, ItemRec, Task, WorkState } from '../state/work/types.ts'
+import { taskOf } from '../state/c16/reads.ts'
+import { CLOSED, initState, type Task, type WorkState } from '../state/c16/state.ts'
+import type { Example, Form, ItemRec } from '../state/c16/data.ts'
 import { Dir, FilesLive, Spawn, SpawnLive } from '../services/index.ts'
 import type { Files } from '../services/index.ts'
-import { caughtOn, pendingHold, refExists, RuleRunFailed, runOn, runTest } from './rules.ts'
+import {
+  caughtOn,
+  pendingHold,
+  refExists,
+  resolvesFight,
+  RuleRunFailed,
+  runOn,
+  runTest,
+} from './rules.ts'
 
 const proj = mkdtempSync(join(tmpdir(), 'rules-'))
 const layer = Layer.mergeAll(FilesLive, SpawnLive, Layer.succeed(Dir, { cwd: proj }))
@@ -51,13 +60,13 @@ const base = (): WorkState => {
     parent: null,
     sections: ['a'],
     directions: ['d1'],
-    gen: 0,
-    st: 'Done',
+    generation: 0,
+    state: 'Done',
     tries: 0,
     maker: null,
-    rid: 1,
+    resultId: 1,
     checked: new Map(),
-    pend: new Set(['rule:old']),
+    pending: new Set(['rule:old']),
     caught: new Set(),
     taken: false,
     floor: 'Split',
@@ -115,6 +124,19 @@ describe('runTest', () => {
   })
 })
 
+describe('resolvesFight', () => {
+  test('true when the drafted items leave no rule of the direction flagged', async () => {
+    const r = rec('rule', 'std:s1', 'mech', TODO, [ex('breaks', 'TODO')])
+    const s = withDraft(base(), r)
+    // the old rule still follows on a TODO sample: the cross test flags it
+    expect(await run(resolvesFight(s, 't1', new Map([['rule:new', r]])))).toBe(false)
+    // the draft rewrites that rule's example: nothing is flagged
+    const fixed = rec('rule', 'std:s1', 'mech', TODO, [ex('follows', 'clean')])
+    const ship = new Map<string, ItemRec | null>([['rule:new', r], ['rule:old', fixed]])
+    expect(await run(resolvesFight(s, 't1', ship))).toBe(true)
+  })
+})
+
 describe('refExists', () => {
   const doc = file('docs/g.md', '# Guide\n\n## Some Heading\nline four\nuse widget here\n')
   void doc
@@ -138,7 +160,7 @@ describe('refExists', () => {
 describe('caughtOn and pendingHold', () => {
   test('caughtOn: the applying test rules that print on the paths', async () => {
     const s = base()
-    expect(tk(s, 't1').id).toBe('t1')
+    expect(taskOf(s, 't1').id).toBe('t1')
     expect([...(await run(caughtOn(s, 't1', [file('c.txt', 'TODO\n')])))]).toEqual(['rule:old'])
     expect((await run(caughtOn(s, 't1', [file('d.txt', 'fine\n')]))).size).toBe(0)
   })

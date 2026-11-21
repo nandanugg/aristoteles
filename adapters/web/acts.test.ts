@@ -1,127 +1,152 @@
-// The person's acts of the work model on the page (POST /api/act with a What), and the forwards
-// of the host: a stale basis, an old build, a resend, an answer, confirm and drop.
-import { afterEach, describe, expect, test } from 'bun:test'
-import { join } from 'node:path'
-import { eventsOf, h } from '../../core/actions/fixture.test.ts'
-import { foldWork } from '../../core/state/work/fold.ts'
-import { startServer } from './server.ts'
+import { expect, test } from 'bun:test'
+import { Schema } from 'effect'
+import { basisOf, refused } from '../../core/derived/c16/accept.ts'
+import { dos } from '../../core/derived/c16/obligations.ts'
+import { take } from '../../core/state/c16/effect.ts'
+import { initState, type WorkState } from '../../core/state/c16/state.ts'
+import type { Act, Actor, AnswerBody, Body, QuestionForm } from '../../core/state/c16/types.ts'
+import { forwardedPageBody, pageBodyOf, pagePointsOk, workPostOf } from './acts.ts'
+import { ActResponse, type PageActJson } from './contract.ts'
 
-const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
-const tokens = (out: string): Record<string, string> =>
-  Object.fromEntries([...out.matchAll(/^ {2}(\S+): (w\.\S+)$/gm)].map((m) => [m[1], m[2]]))
-
-const servers: Array<{ readonly stop: () => void }> = []
-afterEach(() => {
-  while (servers.length > 0) servers.pop()?.stop()
+const human: Actor = { _tag: 'Human' }
+const host: Actor = { _tag: 'Host' }
+const initial = () => initState(
+  { name: 'top', goal: 'g', sections: ['section'], directions: [] }, new Map(), new Map(), 3,
+)
+const build = 'b1'
+const envelope = (state: WorkState, who: Actor, body: Body): Act => ({
+  id: 'fixture', who, ep: 0, seen: basisOf(state, body), seenVer: 0,
+  vers: state.ver, old: false, body,
 })
+const forms: ReadonlyArray<readonly [QuestionForm, AnswerBody, AnswerBody]> = [
+  [{ _tag: 'Single' }, { _tag: 'Single', text: 'first\nsecond' }, { _tag: 'Single', text: '' }],
+  [{ _tag: 'Multiple', questions: [{ description: 'One', placeholder: 'Text' }] },
+    { _tag: 'Multiple', texts: ['  first\nsecond  '] }, { _tag: 'Multiple', texts: [] }],
+  [{ _tag: 'Choice', options: ['A', 'B'], multi: false },
+    { _tag: 'Choice', picked: [1] }, { _tag: 'Choice', picked: [0, 1] }],
+  [{ _tag: 'Matrix', rows: ['R1', 'R2'], columns: ['A', 'B'] },
+    { _tag: 'Matrix', cells: [0, 1] }, { _tag: 'Matrix', cells: [1] }],
+]
 
-// A top with the task t1 in review (its maker m1 reported once, rid 0); the person is Nanda.
-const reviewed = async () => {
-  const { p } = await h.initiated({ 'aristoteles.yaml': PIPED })
-  h.git(p.dir, 'init', '-q')
-  h.git(p.dir, 'config', 'user.name', 'Nanda')
-  const t = tokens(h.ok(await p.nanda('top open --name=TSD --goal=g --sections=introduction')).out)
-  const state = () => foldWork(eventsOf(p.dir))
-  const seq = () => state()?.state.seq ?? -1
-  const send = `send ${t.host} --name=Intro --goal=g --sections=introduction --role=section-lead`
-  h.ok(await p.agent(send))
-  const assigned = h.ok(await p.agent(`assign ${t['role:section-lead']} t1`)).out
-  const maker = assigned.match(/(w\.maker:\S+)/)?.[1]
-  h.ok(await p.agent(`brief ${maker}`))
-  const before = seq()
-  p.write('docs/tsd.md', 'The export ran twice.\n')
-  h.ok(await p.agent(`report ${maker} --output=intro --files=docs/tsd.md --on ${before}`))
-  const s = startServer({
-    dir: p.dir,
-    env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') },
-    clock: () => p.now(),
-    readBuild: () => 'b1',
+for (const [form, valid, invalid] of forms) {
+  test(`F2.2 the ${form._tag} post uses the shared validator`, () => {
+    const s0 = initial()
+    const s = take(s0, envelope(s0, host, { _tag: 'Open',
+      open: { _tag: 'OpenQuestion', question: { title: 'Question?', form }, to: human },
+    }))
+    const ask = [...s.asks.keys()][0]!
+    const post = (answer: AnswerBody) => {
+      const act: PageActJson = { _tag: 'AnswerQuestion', ask, answer }
+      const wire = JSON.stringify({ act, on: s.seq, build, id: 'answer' })
+      const decoded = workPostOf(JSON.parse(wire))
+      if (!decoded || !('act' in decoded)) throw new Error('answer did not decode')
+      expect(decoded.id).toBe('answer')
+      return envelope(s, human, pageBodyOf(decoded.act))
+    }
+    expect(refused(s, post(invalid), 'page')?.refused).toBe('form')
+    const act = post(valid)
+    expect(refused(s, act, 'page')).toBeNull()
+    const answered = take(s, act)
+    expect(answered.answered.get(ask)?.answer).toEqual(valid)
+    expect(dos(answered, host).find((step) => step.act === 'Hear'))
+      .toMatchObject({ act: 'Hear', ask })
+    expect(take(answered, envelope(answered, host, { _tag: 'Hear', ask })).answered.has(ask))
+      .toBe(false)
+    expect(refused(answered, act, 'page')?.refused).toBe('stale')
+    expect(refused(s, { ...act, old: true }, 'page')?.refused).toBe('build')
   })
-  servers.push(s)
-  const post = async (body: unknown) => {
-    const headers = { origin: `http://127.0.0.1:${s.port}`, 'content-type': 'application/json' }
-    const res = await fetch(`http://127.0.0.1:${s.port}/api/act`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
-    return res.json() as Promise<Record<string, unknown>>
-  }
-  return { p, t, maker, before, seq, state, post }
 }
 
-const reject = { _tag: 'Reject', task: 't1', points: ['say it once'] }
-const acted = (dir: string) =>
-  eventsOf(dir).filter((r) => r.event._tag === 'Work' && r.event.create._tag === 'Acted')
+test('the page validates required points and normalizes optional Respond points', () => {
+  const decode = (act: PageActJson) => {
+    const post = workPostOf({ act, on: 0, build })
+    if (!post || !('act' in post)) throw new Error('act did not decode')
+    return post.act
+  }
+  const accept = decode({ _tag: 'Respond', ask: '23', reply: 'AcceptIt' })
+  expect(pageBodyOf(accept)).toMatchObject({ points: [] })
+  expect(pagePointsOk(accept)).toBe(true)
+  expect(pagePointsOk(decode({ _tag: 'Respond', ask: '23', reply: 'SendItBack' }))).toBe(false)
+  expect(pagePointsOk(decode({ _tag: 'Open',
+    open: { _tag: 'OpenReject', task: 't1', points: [' '] },
+  }))).toBe(false)
+  expect(workPostOf({ act: { _tag: 'Hear', ask: '23' }, on: 0, build })).toBeUndefined()
+  const refusedForward = forwardedPageBody({ _tag: 'Hear', ask: '23' })
+  expect(refusedForward).toBeUndefined()
+  const allowedForward = forwardedPageBody(pageBodyOf(accept))
+  expect(allowedForward).toMatchObject({ ...accept, points: [] })
+})
 
-describe('the acts of the person on the page', () => {
-  test('a stale basis is refused as basis, an old build as build', async () => {
-    const { p, before, seq, post } = await reviewed()
-    const stale = await post({ act: reject, on: before, build: 'b1' })
-    expect(stale).toMatchObject({ refused: 'basis' })
-    expect(String(stale.words)).toContain('built on a state that moved')
-    const old = await post({ act: reject, on: seq(), build: 'b0' })
-    expect(old).toMatchObject({ refused: 'build' })
-    expect(acted(p.dir).some((r) => JSON.stringify(r.event).includes('say it once'))).toBe(false)
-  }, 120000)
+test('F2.8 all named refusals retain their words and next step on the wire', () => {
+  const decode = Schema.decodeUnknownSync(ActResponse)
+  for (const refused of [
+    'ended', 'authority', 'epoch', 'legal', 'basis', 'build', 'stale', 'form',
+    'pair', 'cap', 'heard', 'terminal',
+  ] as const) {
+    const reply = { refused, words: `Refusal ${refused}`, next: 'Refresh the view.' }
+    expect(decode(reply)).toEqual(reply)
+  }
+  expect(decode({ ok: true, seq: 42, duplicate: true })).toEqual({
+    ok: true, seq: 42, duplicate: true,
+  })
+})
 
-  test('the same post twice is one act', async () => {
-    const { p, seq, post } = await reviewed()
-    const on = seq()
-    const first = await post({ act: reject, on, build: 'b1' })
+test('CLI and page see the same obligations after reopening a fresh format-6 store', async () => {
+  const { join } = await import('node:path')
+  const { eventsOf, h } = await import('../../core/actions/fixture.test.ts')
+  const { foldWork } = await import('../../core/state/c16/fold.ts')
+  const { startServer } = await import('./server.ts')
+  const config = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
+  const { p } = await h.initiated({ 'aristoteles.yaml': config })
+  h.git(p.dir, 'init', '-q')
+  h.git(p.dir, 'config', 'user.name', 'Nanda')
+  const top = h.ok(await p.nanda('top open --name=T --goal=g --sections=introduction')).out
+  const host = top.match(/^  host: (w\.\S+)$/m)?.[1]
+  const role = top.match(/^  role:section-lead: (w\.\S+)$/m)?.[1]
+  h.ok(await p.agent(`send ${host} --name=Intro --goal=g --sections=introduction --role=section-lead`))
+  const assigned = h.ok(await p.agent(`assign ${role} t1`)).out
+  const maker = assigned.match(/^  maker:m1: (w\.\S+)$/m)?.[1]
+  h.ok(await p.agent(`brief ${maker}`))
+  h.ok(await p.agent(`ask ${maker} human --text="Which approach?"`))
+  const start = () => startServer({
+    dir: p.dir, env: { ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') },
+    readBuild: () => 'test',
+  })
+  let server = start()
+  const dash = async () => (await fetch(new URL('api/dash', server.url))).json()
+  const post = async (body: object) => {
+    const res = await fetch(new URL('api/act', server.url), {
+      method: 'POST',
+      headers: { origin: new URL(server.url).origin, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  try {
+    const before = await dash()
+    const question = before.person.owed.find((entry: { _tag: string }) => entry._tag === 'Question')
+    expect(question).toMatchObject({ question: { title: 'Which approach?' } })
+    const waitBefore = h.ok(await p.agent(`wait ${maker}`)).out
+    server.stop()
+    server = start()
+    expect((await dash()).person.owed).toEqual(before.person.owed)
+    expect(h.ok(await p.agent(`wait ${maker}`)).out).toBe(waitBefore)
+    const submission = {
+      act: {
+        _tag: 'AnswerQuestion', ask: question.ask,
+        answer: { _tag: 'Single' as const, text: 'Line one\nLine two' },
+      },
+      on: before.header.seq, build: before.header.build, id: 'page-answer',
+    }
+    const first = await post(submission)
     expect(first).toMatchObject({ ok: true })
-    const count = acted(p.dir).length
-    expect(await post({ act: reject, on, build: 'b1' })).toEqual(first)
-    expect(acted(p.dir).length).toBe(count)
-  }, 120000)
-
-  test('the person answers an open question; a terminal act is not the page', async () => {
-    const { p, maker, state, post } = await reviewed()
-    h.ok(await p.agent(`ask ${maker} --text="which file?"`))
-    expect(state()?.state.asks.has('maker:m1')).toBe(true)
-    const answer = { _tag: 'Answer', asker: 'maker:m1', answer: 'docs/tsd.md' }
-    expect(await post({ act: answer, on: null, build: 'b1' })).toMatchObject({ ok: true })
-    expect(state()?.state.asks.has('maker:m1')).toBe(false)
-    const revive = await post({ act: { _tag: 'Revive', who: 'host' }, on: null, build: 'b1' })
-    expect(revive).toMatchObject({ refused: 'terminal' })
-  }, 120000)
-})
-
-describe('the forwards of the host', () => {
-  test('forward -> pending -> confirm: the act is the person, a stale one is refused', async () => {
-    const { p, t, before, seq, state, post } = await reviewed()
-    const words = (on: number) =>
-      `forward ${t.host} reject t1 --points="say it once" --quote="redo it" --on ${on}`
-    h.ok(await p.agent(words(before)))
-    const [stale] = state()?.forwards ?? []
-    expect(stale?.id).toMatch(/^f\d+$/)
-    expect(stale).toMatchObject({ quote: 'redo it', on: before })
-    expect(await post({ confirm: stale?.id, build: 'b1' })).toMatchObject({ refused: 'basis' })
-    expect(state()?.forwards.length).toBe(1)
-    expect(await post({ drop: stale?.id })).toMatchObject({ ok: true })
-    h.ok(await p.agent(words(seq())))
-    const [fresh] = state()?.forwards ?? []
-    expect(await post({ confirm: fresh?.id, build: 'b1' })).toMatchObject({ ok: true })
-    expect(state()?.forwards).toEqual([])
-    const last = acted(p.dir).at(-1)
-    expect(last?.author).toMatchObject({ _tag: 'Person', name: 'Nanda' })
-    expect(last?.event).toMatchObject({ create: { act: { who: 'person' } } })
-    expect(await post({ confirm: fresh?.id, build: 'b1' })).toMatchObject({ refused: 'refused' })
-  }, 120000)
-
-  test('an act that is not the person is refused; a drop spends the forward', async () => {
-    const { p, t, state, post } = await reviewed()
-    const lead = t['role:section-lead']
-    const send = await p.agent(`forward ${t.host} send --name=x --quote=q`)
-    expect(send.code).not.toBe(0)
-    expect(send.err).toContain('work forward <token>')
-    expect((await p.agent(`forward ${lead} end --quote=q`)).err).toContain('only the host forwards')
-    expect((await p.agent(`forward ${t.host} end`)).err).toContain('--quote')
-    h.ok(await p.agent(`forward ${t.host} end --quote="that is all"`))
-    const [pending] = state()?.forwards ?? []
-    expect(pending?.what).toEqual({ _tag: 'EndProject' })
-    expect(await post({ drop: pending?.id })).toMatchObject({ ok: true })
-    expect(state()?.forwards).toEqual([])
-    expect(await post({ drop: pending?.id })).toMatchObject({ refused: 'refused' })
-  }, 120000)
-})
+    expect(await post(submission)).toEqual({ ...first, duplicate: true })
+    expect(await post({
+      ...submission, act: { ...submission.act, answer: { _tag: 'Single', text: 'different' } },
+    })).toMatchObject({ refused: 'legal' })
+    const folded = foldWork(eventsOf(p.dir))
+    expect(folded?.state.answered.get(question.ask)?.answer).toEqual(submission.act.answer)
+  } finally {
+    server.stop()
+  }
+}, 90000)
