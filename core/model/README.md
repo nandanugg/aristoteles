@@ -535,17 +535,21 @@ Invariants `NoWaitCycle` (the closure of `waitsFor`, the open asks that are not 
 not from the person, has no cycle: it tests the real sequences of asks), `AskCap`, and
 `AsksFollowState` (in `Sane`: the open protocol asks are those the tasks and fixes imply);
 temporal `AnswererFinishes` (the role is again and again owed no step of its own, or Final:
-alternation). Modules: `coreAsks` (one task, causes none and principle, so that the waits
-host -> role -> maker and role -> pipeline role -> person arise; two questions crossing
-between any actors in both directions while executes, checks and decides are open: no wait
-cycle, no deadlock; the person's answers and `NoFinalWithAsk` live here), `coreAskRogue` (one
+alternation). Modules: `coreAsks` (one task with no cause, so the waits host -> role -> maker
+and maker -> role's check arise; two questions crossing between any actors in both directions:
+no wait cycle, no deadlock; the person's answers and `NoFinalWithAsk` live here; a pipeline
+cause made it too big for TLC: 6.18M states unfinished; measured knob by knob, 2026-11-21),
+`coreAsksPipe` (the pipeline on its shortest path that opens evaluate and decide: a direction
+cause, reference rules only, no failing tests, mistakes, slips or rejects, one person act, one
+question: questions while the evaluate and decide waits are open, `NoLongWaitChain` host ->
+role -> pipeline role -> person), `coreAskRogue` (one
 task, a rogue maker: the cap, `AskRaise`, the role's own work still finishes),
 `coreAskReverse` (the mutant: `NoWaitCycle` must break). Witnesses the simulator breaks:
 `NoFinalWithAsk`, `NoCrossing`, `NoWaitChain` (host -> role -> maker), `NoCapReached`,
 `NoAskRaise`. Revive of the role (coreTwoExit): its live makers end; a working task goes back to
 Sent and gets a fresh maker (`NoRestartAssigned`); a task in review keeps its
 Check, which the role then judges (`NoKeptCheckJudged`); both witnesses break in the simulator
-(spec.sh --check). The three ask jobs are in tlc.sh and are not run on TLC yet. Replaced and
+(spec.sh --check). Replaced and
 deleted: `coreAskCross` (by `coreAsks`; with the asks as acts a task already has wait edges
 with no cause). An act takes effect in one step on the current state (G3).
 

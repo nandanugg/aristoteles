@@ -89,6 +89,7 @@ pipe.qnt pipeVolatileMarks breaks NoKeystrokeTwice -
 pipe.qnt pipeNoBuffer breaks - NoKeystrokeLost
 pipe.qnt pipeNoOutbox breaks - NoKeystrokeLost
 configs.qnt coreAsks holds $SAFE $LIVE
+configs.qnt coreAsksPipe holds $SAFE $LIVE
 configs.qnt coreAskRogue holds $SAFE $LIVE,AnswererFinishes
 configs.qnt coreAskReverse breaks NoWaitCycle -
 configs.qnt coreTwo holds $SAFE $LIVE

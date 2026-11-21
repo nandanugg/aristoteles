@@ -103,18 +103,31 @@ module corePersonUnbounded {
                maxPersonActs: -1, personSendBackBound: false }).* from "./properties"
 }
 
-// One task, the causes that make wait edges (none: host -> role -> maker; split: the task
-// again after a split; principle: a raise to the pipeline role and the draft at the person),
-// no slips or mistakes (coreAskRogue has them). Two questions that cross between any actors
-// in both directions, the person a target too, while executes, checks and decides are open:
-// no wait cycle, no deadlock (NoWaitCycle, CoreProgress, CoreSettles); the person's answers
-// and NoFinalWithAsk live here.
+// One task with no cause (host -> role -> maker -> the role's check), no slips or mistakes. Two
+// questions that cross between any actors in both directions, the person a target too, while
+// executes and checks are open: no wait cycle, the cap, the alternation, no deadlock; the
+// person's answers and NoFinalWithAsk live here. (Any pipeline cause makes the space too big for
+// TLC: coreAsksPipe checks questions while the evaluate and decide waits are open.)
 module coreAsks {
   import configsBase.*
   import types.* from "./types"
   import properties(OPTIONS = { ...FIXED_OPTIONS, slots: Set(0) },
-    LIMITS = { ...BASE_LIMITS, causesTask0: Set(NO_CAUSE, AT_SPLIT, AT_PRINCIPLE),
-               causesTask1: Set(NO_CAUSE), maxPersonActs: 2, sendBacksPerDraft: 0, maxAsks: 2 })
+    LIMITS = { ...BASE_LIMITS, causesTask0: Set(NO_CAUSE), causesTask1: Set(NO_CAUSE),
+               maxPersonActs: 2, sendBacksPerDraft: 0, maxAsks: 2 })
+    .* from "./properties"
+}
+
+// The pipeline on its shortest path that still opens evaluate and decide (a direction cause:
+// a raise to the pipeline role, the draft at the person), reference rules only, no failing
+// tests, no mistakes, slips or rejects, one person act, one question that may cross (the person
+// a target too): questions while the evaluate and decide waits are open.
+module coreAsksPipe {
+  import configsBase.*
+  import types.* from "./types"
+  import properties(OPTIONS = { ...FIXED_OPTIONS, slots: Set(0) },
+    LIMITS = { ...BASE_LIMITS, causesTask0: Set(AT_DIRECT), causesTask1: Set(NO_CAUSE),
+               ruleForms: Set(Ref), testsMayFail: false, maxPersonActs: 1,
+               sendBacksPerDraft: 0, maxAsks: 1 })
     .* from "./properties"
 }
 
