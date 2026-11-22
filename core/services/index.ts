@@ -60,6 +60,10 @@ export { Readings } from './readings.ts'
 // Additive (P7): what the CLI prints or reads that the doors above did not carry.
 export { refusing } from '../../src/config/core.ts'
 export { readStaffing } from '../../src/config/staffing.ts'
+export { staffingPreview, staffingView } from '../../src/config/staffing-view.ts'
+export type {
+  ArrangedRole, LimitConsequence, ReviewMode, StaffingPreview, StaffingView, StaffingWarning,
+} from '../../src/config/staffing-view.ts'
 export {
   activationId, activationIO, activationLock, applyStartupFiles, keptOriginals, readActivationRecord,
   readLaunchFile, removeActivationGeneration, removeActivationRecord, removeLaunch, retireSecret, writeActivationRecord,
