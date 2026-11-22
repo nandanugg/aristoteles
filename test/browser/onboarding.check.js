@@ -163,7 +163,7 @@ try {
   await visible(button('Edit fixture weekly'))
   expect(await page.locator('.staffing-table tbody tr').count()).toBe(2)
   expect(await page.locator('.staffing-table tbody tr').filter({ hasText: 'weekly' }).textContent()).toContain('  40 credits / week  ')
-  expect(await page.locator('.staffing-table').textContent()).toContain('Unknown. no usage evidence yet')
+  expect(await page.locator('.staffing-table').textContent()).toContain('Unknown. No usage evidence yet: it is measured from the first tasks.')
   expect(await page.locator('.staffing-role').filter({ hasText: 'writer' }).textContent()).toContain('self-review turns')
   expect(await button('Review activation').count()).toBe(0)
   await shot('04-staffing.png')

@@ -59,11 +59,11 @@ export interface StaffingView {
 
 const NO_EVIDENCE: Unknown = {
   known: false,
-  why: 'no usage evidence yet: it is measured from the first tasks',
+  why: 'No usage evidence yet: it is measured from the first tasks',
 }
 const NO_WINDOW: Unknown = {
   known: false,
-  why: "the model's context window and the role's peak context are not evidenced yet",
+  why: "The model's context window and the role's peak context are not evidenced yet",
 }
 
 const reviewOf = (staffing: Staffing, role: Staffing['roles'][string]): ReviewMode =>
