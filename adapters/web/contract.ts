@@ -68,7 +68,12 @@ const StandardsView = Schema.Array(
   Schema.Struct({
     id: Text,
     says: Text,
-    rules: Schema.Array(Schema.Struct({ id: Text, says: Text, checkedBy: Schema.NullOr(Text) })),
+    rules: Schema.Array(Schema.Struct({
+      id: Text, says: Text, checkedBy: Schema.NullOr(Text),
+      test: Schema.optionalKey(Text), ref: Schema.optionalKey(Text), result: Schema.optionalKey(Text),
+      examples: Schema.optionalKey(Schema.Array(ExampleView)),
+      searched: Schema.optionalKey(Schema.Array(Text)), knownBreak: Schema.optionalKey(Schema.Boolean),
+    })),
   }),
 )
 export const FlowView = Schema.Array(
@@ -82,7 +87,10 @@ export const FlowView = Schema.Array(
   }),
 )
 
+const QuestionSide = Schema.Struct({ source: Text, words: Text })
 const QuestionFields = {
+  rule: Schema.optionalKey(Text),
+  sides: Schema.optionalKey(Schema.Tuple([QuestionSide, QuestionSide])),
   says: Text,
   example: ExampleView,
   options: Schema.Tuple([Text, Text]),
@@ -97,6 +105,8 @@ const DirectionWords = Schema.Struct({
   diff: DraftChange,
 })
 const CardHead = {
+  revision: Schema.optionalKey(Text),
+  principles: Schema.optionalKey(Schema.Array(Text)),
   id: Text,
   name: Text,
   origin: Text,
@@ -134,6 +144,11 @@ export const DirectionCard = Schema.Union([
   Schema.Struct({ ...CardHead, state: Schema.Literals(['ready', 'accepted', 'current']), draft }),
 ])
 const RoleCardBase = {
+  revision: Schema.optionalKey(Text),
+  builtIn: Schema.optionalKey(Schema.Literals(['host', 'pipeline'])),
+  principles: Schema.optionalKey(Schema.Array(Text)),
+  directions: Schema.optionalKey(Schema.Array(Text)),
+  questions: Schema.optionalKey(Schema.Array(Schema.Struct({ says: Text, choices: Schema.Array(Text) }))),
   role: Text,
   icon: Text,
   summary: Text,
@@ -153,6 +168,10 @@ export const RoleCard = Schema.Union([
   Schema.TaggedStruct('Program', RoleCardBase),
 ])
 export const OnboardingView = Schema.Struct({
+  discovery: Schema.optionalKey(Schema.Struct({
+    summary: Text, read: Schema.Array(Text), notSearched: Schema.Array(Text), app: Schema.NullOr(Schema.Boolean),
+  })),
+  roleRequests: Schema.optionalKey(Schema.Array(Schema.Struct({ role: Text, words: Text }))),
   stage: Schema.Literals(['files', 'store']),
   directions: Schema.Array(DirectionCard),
   roles: Schema.Array(RoleCard),

@@ -1,0 +1,80 @@
+.review-shell { width: 100%; max-width: 1360px; margin-inline: auto; }
+.review-shell .canvas-head h1 { margin: 0; font-size: clamp(1.6rem, 4vw, 2.35rem); }
+.review-stage { display: grid; gap: 20px; padding-block: 12px 32px; }
+.review-heading, .review-footer, .review-card-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.review-heading h2 { margin: 0; font-size: 1.35rem; }
+.review-heading p { margin: 6px 0 0; color: var(--muted); }
+.review-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.review-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 9px; min-height: 140px;
+  padding: 16px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); color: var(--text); text-align: left; overflow-wrap: anywhere;
+}
+.review-grid > :only-child { width: min(100%, 420px); }
+button.review-card { cursor: pointer; }
+button.review-card:hover { border-color: var(--focus); background: var(--surface-2); }
+.review-card > strong { font-size: 1.03rem; }
+.review-description { color: var(--muted); line-height: 1.45; }
+.review-card-top { font-size: .78rem; }
+.review-footer { justify-content: flex-end; border-top: 1px solid var(--line); padding-block: 16px; }
+.review-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-state[data-state="Question"], .review-state[data-state="Conflict"] {
+  color: var(--amber); background: var(--amber-tint); border-color: var(--amber-line);
+}
+.review-state[data-state="Accepted"], .review-state[data-state="Ready"] {
+  color: var(--accept); background: var(--accept-tint);
+}
+.review-progress { height: 4px; border-radius: 8px; background: var(--blue-tint); overflow: hidden; }
+.review-card .review-progress { margin-top: auto; }
+.review-progress::before {
+  content: ""; display: block; width: 36%; height: 100%; background: var(--port);
+  animation: review-progress 1.8s ease-in-out infinite alternate;
+}
+@keyframes review-progress { to { transform: translateX(177%); } }
+@media (prefers-reduced-motion: reduce) { .review-progress::before { animation: none; } }
+.review-empty, .review-discovery {
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 16px;
+}
+.review-empty { min-height: 180px; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; }
+.review-empty .review-progress { width: min(240px, 100%); }
+.review-discovery p { margin: 0 0 10px; }
+.review-discovery h3 { margin: 0; font-size: .9rem; }
+.review-discovery ul { margin: 6px 0 0; padding-inline-start: 20px; }
+.onboarding-modal .review-detail, .review-detail, .review-questions { display: grid; gap: 14px; }
+.review-detail p, .review-detail h3 { margin: 0; }
+.review-summary { display: grid; gap: 10px; }
+.review-standard { border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.review-standard > summary { cursor: pointer; padding: 12px 15px; }
+.review-standard > summary strong { margin-right: 8px; }
+.review-expand { float: right; color: var(--muted); font-size: .84rem; }
+.review-rules { display: grid; gap: 12px; padding: 0 14px 14px; }
+.review-rule { border-left: 2px solid var(--line-strong); padding: 5px 0 4px 12px; }
+.review-rule h3 { font-size: .95rem; }
+.rule-evidence { display: grid; gap: 8px; margin-top: 8px; }
+.review-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; }
+.examples.review-pair { display: grid; margin: 0; }
+.review-question-actions { display: grid; gap: 8px; margin-top: 10px; }
+.review-evidence { min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 10px; }
+.review-evidence > code { display: block; color: var(--muted); overflow-wrap: anywhere; }
+.review-evidence > pre { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 0; }
+.review-question { border: 1px solid var(--amber-line); border-radius: 8px; padding: 10px; min-width: 0; }
+.review-question legend { color: var(--amber); padding-inline: 5px; }
+.review-question button { margin: 6px 6px 0 0; }
+.review-option {
+  display: flex; align-items: start; gap: 9px; padding: 8px; margin-top: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
+}
+.review-option > span { display: grid; gap: 4px; }
+.review-input { display: flex; align-items: end; gap: 8px; }
+.review-input .field { flex: 1; margin: 0; }
+.review-add-types { display: flex; gap: 8px; flex-wrap: wrap; }
+.review-add-types [aria-pressed="true"] { border-color: var(--focus); }
+.principle-tag summary { cursor: pointer; }
+.principle-tag[open] { flex-basis: 100%; }
+.principle-tag p { margin-top: 5px; color: var(--muted); }
+.role-responsibility { line-height: 1.55; }
+@media (max-width: 540px) {
+  .review-heading, .review-input { align-items: stretch; flex-direction: column; }
+}

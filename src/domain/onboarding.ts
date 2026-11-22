@@ -113,7 +113,15 @@ const RoleDecision = Schema.Union([
   Schema.TaggedStruct('Revising', { words: NonBlank }),
   Schema.TaggedStruct('Accepted', {}),
 ])
+export const RoleReview = Schema.Struct({
+  principles: Schema.optionalKey(Schema.Array(Principle)),
+  directions: Schema.optionalKey(Schema.Array(DirectionId)),
+  questions: Schema.optionalKey(Schema.Array(Schema.Struct({
+    says: NonBlank, choices: Schema.Array(NonBlank),
+  }))),
+})
 export const OnboardingRoleState = Schema.Struct({
+  ...RoleReview.fields,
   summary: Text,
   found: Schema.Union([
     Schema.TaggedStruct('InProject', { path: Text }),
@@ -170,7 +178,10 @@ export type OnboardingRole = OnboardingRoleState & {
 
 // page: OnboardingAct. The acts of the person on the two pages (POST /api/onboarding): each one
 // writes the files and stores nothing. The optional key is the wire format, as PageAct's are.
+const Reviewed = Schema.Array(Schema.Struct({ id: Text, revision: Text }))
 export const OnboardingAct = Schema.Union([
+  Schema.Struct({ act: Schema.Literal('add-role'), words: NonBlank }),
+  Schema.Struct({ act: Schema.Literal('review-all-roles'), reviewed: Reviewed }),
   Schema.Struct({
     act: Schema.Literal('add-direction'),
     principle: NonBlank,
@@ -185,7 +196,7 @@ export const OnboardingAct = Schema.Union([
   }),
   Schema.Struct({ act: Schema.Literals(['accept', 'remove']), direction: DirectionId }),
   Schema.Struct({ act: Schema.Literal('revise'), direction: DirectionId, words: NonBlank }),
-  Schema.Struct({ act: Schema.Literal('approve-all-directions') }),
+  Schema.Struct({ act: Schema.Literal('approve-all-directions'), reviewed: Schema.optionalKey(Reviewed) }),
   Schema.Struct({ act: Schema.Literals(['accept-role', 'remove-role']), role: RoleName }),
   Schema.Struct({ act: Schema.Literal('revise-role'), role: RoleName, words: NonBlank }),
   Schema.Struct({ act: Schema.Literal('persistence'), role: RoleName, persistent: Schema.Boolean }),

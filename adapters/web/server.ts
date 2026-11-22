@@ -610,6 +610,9 @@ export function startServer(options: ServerOptions): ServerHandle {
         'the store of this dir has started, so onboarding is over; a change now is an adjustment'
       return json({ error: over }, 400)
     }
+    if (act.act === 'approve-all-directions' && act.reviewed === undefined) {
+      return json({ error: 'Send the reviewed revisions before accepting the directions.' }, 400)
+    }
     if (act.act === 'approve-all-roles') {
       return json({ error: 'approve the instruction manifest before starting' }, 400)
     }

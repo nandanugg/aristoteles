@@ -1,323 +1,184 @@
-// The onboarding pages (rulings 2, 3, 5, 6, 11): before any store, the host drafts into the files
-// with work onboard, and the person checks each direction, then each role, here. Each act writes
-// the files and stores nothing (ruling 1); approve all roles starts the store with the result.
 import { html } from 'htm/preact'
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { type DirView, MarkerApproval, OnboardingView } from '../contract.ts'
 import { AiToast } from './ai.ts'
-import { RoleGrid } from './agents.ts'
-import { api, attempt, type OnboardingActJson, postActivation, postOnboarding, toast } from './api.ts'
-import { DirectionReview, ExampleBlock } from './direction.ts'
-import { Inline } from './markdown.ts'
+import { api, attempt, postActivation, postOnboarding, toast } from './api.ts'
+import { Modal } from './modal.ts'
+import { directionLabel, DirectionModal, ReviewInput } from './onboarding-review.ts'
+import { Roles } from './onboarding-roles.ts'
 
-type DirData = typeof DirView.Type
-type ViewData = typeof OnboardingView.Type
-type Card = ViewData['directions'][number]
+type View = typeof OnboardingView.Type
+type Dir = typeof DirView.Type
+type Step = 'directions' | 'roles' | 'staffing'
 
-// The public example of a company direction (ruling 6): one direction, one standard, one rule.
-const EXAMPLE_REPO = 'https://github.com/nandanugg/aristoteles-example-direction'
-const STATE_LABEL: Record<Card['state'], string> = {
-  loading: 'Loading',
-  question: 'Question',
-  ready: 'Ready',
-  accepted: 'Accepted',
-  current: 'Current',
-}
-// What a loading direction waits for, in plain words.
-type Loading = Extract<Card, { readonly state: 'loading' }>
-const LOADING: { readonly [K in Loading['why']]: (card: Loading) => string } = {
-  drafting: () => 'The host drafts it',
-  reset: (card) => `${card.id} is not in the current shape: the host drafts it again`,
-  answered: () => 'The host drafts it again from your answers',
-  revise: (card) => `The host drafts it, from your words: "${'words' in card ? card.words : ''}"`,
-}
-const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
-const text = (e: Event) => (e.currentTarget as HTMLInputElement | HTMLTextAreaElement).value
-
-// The confirmation of an approve all: it counts for every item that it names.
-interface ConfirmProps {
-  readonly title: string
-  readonly words: string
-  readonly onYes: () => void
-  readonly onNo: () => void
-}
-function Confirm({ title, words, onYes, onNo }: ConfirmProps) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => ref.current?.focus(), [])
-  const back = (e: Event) => e.target === e.currentTarget && onNo()
-  return html`<div class="modal-back" onClick=${back}>
-    <div class="modal confirm" role="alertdialog" aria-modal="true" aria-label=${title}
-      tabindex="-1" ref=${ref}>
-      <h2>${title}</h2><p class="prose">${words}</p>
-      <div class="modal-foot"><button class="btn" onClick=${onNo}>Cancel</button>
-        <button class="btn primary" onClick=${onYes}>Approve</button></div>
-    </div>
-  </div>`
-}
-
-// The next direction that waits for the person, after `id` in the list order and from the top
-// again (Nanda, 2026-11-15); none when every other one is accepted.
-const nextAfter = (list: ReadonlyArray<Card>, id: string): string | undefined => {
-  const at = list.findIndex((d) => d.id === id)
-  return [...list.slice(at + 1), ...list.slice(0, Math.max(at, 0))].find(
-    (d) => d.state !== 'accepted',
-  )?.id
-}
-
-// The right column: the direction for its review (its summary, its marked flow, what its words
-// changed since the last draft, each rule with the role that the AI proposes to check it, and its
-// examples), the questions, and the acts. More examples are a Revise in words. An accept or a remove opens the next direction (onDone).
-function Direction({ card, onDone }: { card: Card; onDone: () => void }) {
-  const [words, setWords] = useState('')
-  // The questions wait for the answers only while the direction shows Question (O4).
-  const open = card.state === 'question' ? card.open : []
-  const [chosen, setChosen] = useState<ReadonlyArray<'A' | 'B' | undefined>>([])
-  const act = (fn: () => OnboardingActJson, done = false) =>
-    attempt(async () => {
-      const out = await postOnboarding(fn())
-      setWords('')
-      if (done) onDone()
-      return out
-    })
-  const submit = act(() => {
-    // Submit is enabled only when each open question has its answer.
-    const options = open.map((_, i) => chosen[i] as 'A' | 'B')
-    const [first, ...rest] = options
-    return { act: 'answer', direction: card.id, options: [first as 'A' | 'B', ...rest] }
-  })
-  const empty = !words.trim()
-  const answered = 'answered' in card ? card.answered : []
-  // An open question takes the person's choice; an answered one shows the choice it has.
-  const question = (
-    q: (typeof open)[number],
-    i: number,
-    choice: { readonly n: number } | { readonly answer: 'A' | 'B' },
-  ) => html`<fieldset class="question" aria-label=${`question ${i + 1}`}>
-      <legend><${Inline} text=${q.says} /></legend>
-      <ul class="examples"><${ExampleBlock} e=${q.example} /></ul>
-      ${(['A', 'B'] as const).map((o, k) => html`<label class="option">
-        <input type="radio" name=${`${card.id}-q${i}`} disabled=${'answer' in choice}
-          checked=${'answer' in choice ? choice.answer === o : chosen[choice.n] === o}
-          onChange=${() => 'n' in choice && setChosen((c) => Object.assign([...c], { [choice.n]: o }))} />
-        <span>${o}: ${q.options[k]}</span></label>`)}
-    </fieldset>`
-  const questions = [
-    ...open.map((q, n) => question(q, n, { n })),
-    ...answered.map((q, i) => question(q, i, { answer: q.answer })),
-  ]
-  return html`<article class="direction-page" aria-label=${card.name}>
-    <div class="direction-head"><h2>${card.name}</h2>
-      <span class=${`chip ${card.state}`}>${STATE_LABEL[card.state]}</span></div>
-    <div class="muted"><code>${card.id}</code> · ${card.origin}</div>
-    ${card.principle ? html`<p><strong>The principle:</strong> ${card.principle}</p>` : ''}
-    ${card.example ? html`<p><strong>An example:</strong> ${card.example}</p>` : ''}
-    ${card.state === 'loading' ? html`<p class="waits">${LOADING[card.why](card)}.</p>` : ''}
-    <div class="direction-body">
-      ${'draft' in card ? html`<${DirectionReview} id=${card.id} draft=${card.draft} />` : ''}
-      ${questions.length ? html`<div class="section-title">Questions of the AI</div>` : ''}
-      ${questions}
-      ${open.length ? html`<button class="btn primary"
-        disabled=${open.some((_, n) => !chosen[n])} onClick=${submit}>Submit the answers</button>`
-        : ''}
-    </div>
-    <label class="field"><span>What to change (Revise needs words; Accept needs none)</span>
-      <textarea rows="3" value=${words} onInput=${(e: Event) => setWords(text(e))}></textarea>
-    </label>
-    <div class="item-actions">
-      <button class="btn primary" disabled=${card.state !== 'ready' || !empty}
-        onClick=${act(() => ({ act: 'accept', direction: card.id }), true)}>Accept</button>
-      <button class="btn" disabled=${!('draft' in card) || empty}
-        onClick=${act(() => ({ act: 'revise', direction: card.id, words }))}>Revise</button>
-      <button class="btn" onClick=${act(() => ({ act: 'remove', direction: card.id }), true)}>
-        Remove</button>
-    </div>
-  </article>`
-}
-
-// Add new direction (ruling 5): the principle is required, an example is not.
-function AddNew({ onAdded }: { onAdded: (id: string) => void }) {
-  const [principle, setPrinciple] = useState('')
-  const [example, setExample] = useState('')
-  const add = attempt(async () => {
-    const out = await postOnboarding({
-      act: 'add-direction',
-      principle,
-      ...(example.trim() ? { example } : {}),
-    })
-    onAdded(out.out?.split(':')[0] ?? '')
-    return out
-  })
-  return html`<form class="add-form" aria-label="Add new direction"
-    onSubmit=${(e: Event) => e.preventDefault()}>
-    <h2>Add new direction</h2>
-    <p class="muted">Say the idea of the direction in your words. The AI drafts it with examples
-      from the project; it shows Loading until then.</p>
-    <label class="field"><span>The principle (required)</span>
-      <textarea rows="2" value=${principle} onInput=${(e: Event) => setPrinciple(text(e))}>
-      </textarea></label>
-    <label class="field"><span>An example (optional)</span>
-      <textarea rows="2" value=${example} onInput=${(e: Event) => setExample(text(e))}>
-      </textarea></label>
-    <button class="btn primary" disabled=${!principle.trim()} onClick=${add}>Add</button>
-  </form>`
-}
-
-// Add a company direction (ruling 6): a git repo and the folder of one direction in it.
-function AddCompany({ onAdded }: { onAdded: (id: string) => void }) {
+function AddDirection({ onDone }: { onDone: () => void }) {
+  const [company, setCompany] = useState(false)
   const [repo, setRepo] = useState('')
   const [path, setPath] = useState('')
-  const add = attempt(async () => {
-    const out = await postOnboarding({ act: 'add-company-direction', repo, path })
-    onAdded(out.out?.split(':')[0] ?? '')
-    return out
+  const [saving, setSaving] = useState(false)
+  const addPrompt = attempt(async (principle: string) => {
+    const response = await postOnboarding({ act: 'add-direction', principle })
+    onDone()
+    return response
   })
-  return html`<form class="add-form" aria-label="Add a company direction"
-    onSubmit=${(e: Event) => e.preventDefault()}>
-    <h2>Add a company direction</h2>
-    <p class="muted">A company keeps its directions in a git repo, one folder each. See the
-      example: <a href=${EXAMPLE_REPO} target="_blank" rel="noreferrer">${EXAMPLE_REPO}</a>
-      (one direction, one standard, one rule).</p>
-    <label class="field"><span>The git repo</span>
-      <input value=${repo} onInput=${(e: Event) => setRepo(text(e))} /></label>
-    <label class="field"><span>The folder of the direction in the repo</span>
-      <input value=${path} onInput=${(e: Event) => setPath(text(e))} /></label>
-    <button class="btn primary" disabled=${!repo.trim() || !path.trim()} onClick=${add}>Add</button>
-  </form>`
-}
-
-type Open = { readonly _tag: 'Direction'; readonly id: string | null } | { readonly _tag: 'Add' }
-  | { readonly _tag: 'Company' }
-
-// The directions page: the list with a state each at the left, the open one at the right. The
-// AI drafts in parallel, so the person opens any ready one (ruling 3).
-function Directions({ view, onAgents }: { view: ViewData; onAgents: () => void }) {
-  const [open, setOpen] = useState<Open>({ _tag: 'Direction', id: null })
-  const [confirm, setConfirm] = useState(false)
-  const ready = view.directions.filter((d) => d.state === 'ready')
-  const card =
-    open._tag === 'Direction'
-      ? (view.directions.find((d) => d.id === open.id) ?? view.directions[0])
-      : undefined
-  const added = (id: string) => setOpen({ _tag: 'Direction', id })
-  const approve = attempt(async () => {
-    setConfirm(false)
-    return postOnboarding({ act: 'approve-all-directions' })
+  const addCompany = attempt(async () => {
+    setSaving(true)
+    try {
+      const response = await postOnboarding({ act: 'add-company-direction', repo: repo.trim(), path: path.trim() })
+      onDone()
+      return response
+    } finally { setSaving(false) }
   })
-  const done = view.directions.every((d) => d.state === 'accepted')
-  return html`<div class="onboarding-cols">
-    <nav class="direction-list" aria-label="Directions">
-      ${view.directions.map((d) => html`<button class="direction-item"
-        aria-current=${d.id === card?.id ? 'true' : undefined}
-        onClick=${() => setOpen({ _tag: 'Direction', id: d.id })}>
-        <span class="title">${d.name}</span>
-        <span class=${`chip ${d.state}`}>${STATE_LABEL[d.state]}</span></button>`)}
-      <button class="btn wide" onClick=${() => setOpen({ _tag: 'Add' })}>Add new direction</button>
-      <button class="btn wide" onClick=${() => setOpen({ _tag: 'Company' })}>
-        Add a company direction</button>
-      <button class="btn primary wide" disabled=${ready.length === 0}
-        onClick=${() => setConfirm(true)}>Approve all</button>
-    </nav>
-    <section class="direction-open">
-      ${done && view.directions.length ? html`<div class="next-step"><span>Every direction is
-        accepted or removed.</span><button class="btn primary" onClick=${onAgents}>Next: the
-        agents</button></div>` : ''}
-      ${open._tag === 'Add' ? html`<${AddNew} onAdded=${added} />`
-        : open._tag === 'Company' ? html`<${AddCompany} onAdded=${added} />`
-        : card ? html`<${Direction} key=${card.id} card=${card} onDone=${() => {
-            const next = nextAfter(view.directions, card.id)
-            if (next) setOpen({ _tag: 'Direction', id: next })
-          }} />`
-        : html`<p class="muted">The host reads the project and drafts its directions; each one
-          shows here when it starts.</p>`}
-    </section>
-    ${confirm ? html`<${Confirm} title="Approve all directions"
-      words=${`Approve all accepts each ready direction: ${ready.map((d) => d.name).join(', ')}.`}
-      onYes=${approve} onNo=${() => setConfirm(false)} />` : ''}
+  return html`<div class="review-detail">
+    <div class="review-add-types" aria-label="Direction source">
+      <button class="btn" aria-pressed=${!company} onClick=${() => setCompany(false)}>Write a prompt</button>
+      <button class="btn" aria-pressed=${company} onClick=${() => setCompany(true)}>Use a repository URL</button>
+    </div>
+    ${company ? html`<form class="review-detail" onSubmit=${(event: Event) => { event.preventDefault(); void addCompany() }}>
+      <label class="field"><span>Repository URL</span><input type="url" required value=${repo}
+        onInput=${(e: Event) => setRepo((e.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="field"><span>Direction folder in the repository</span><input required value=${path}
+        onInput=${(e: Event) => setPath((e.currentTarget as HTMLInputElement).value)} /></label>
+      <button class="btn primary" disabled=${saving || !repo.trim() || !path.trim()}>Add direction</button>
+    </form>` : html`<${ReviewInput} label="What direction should the project follow?"
+      action="Add direction" onSubmit=${addPrompt} />`}
   </div>`
 }
 
-// The agents page (ruling 11): a card for each role, the roles that the project has first. A
-// persistent role gets a terminal of its own; a disposable role runs as a subagent of a terminal.
-function Agents({ view }: { view: ViewData }) {
-  const [confirm, setConfirm] = useState<typeof MarkerApproval.Type | null>(null)
-  const preview = () => api('/api/activation/approval', MarkerApproval).then(setConfirm, (error) =>
+function Directions({ view, project, refresh, onRoles }: {
+  view: View; project: string; refresh: () => void; onRoles: () => void
+}) {
+  const [selected, setSelected] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [reviewed, setReviewed] = useState<ReadonlyArray<{ id: string; revision: string }> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const selectedCard = view.directions.find((card) => card.id === selected)
+  const ready = view.directions.filter((card) => card.state === 'ready')
+  const blocked = !ready.length || view.directions.some((card) =>
+    card.state !== 'ready' && card.state !== 'accepted' || card.state === 'ready' && !card.revision)
+  const complete = view.directions.length > 0 && view.directions.every((card) => card.state === 'accepted')
+  const discovery = view.discovery
+  const accept = attempt(async () => {
+    setSaving(true)
+    try {
+      if (!reviewed) return
+      const response = await postOnboarding({ act: 'approve-all-directions', reviewed })
+      setReviewed(null)
+      refresh()
+      onRoles()
+      return response
+    } finally { setSaving(false) }
+  })
+  return html`<section class="review-stage" aria-label="Directions">
+    <header class="review-heading"><div><h2>Review the directions</h2>
+      ${view.directions.length ? html`<p>Review the draft directions for this repository.</p>` : ''}</div>
+      <button class="btn" onClick=${() => setAdding(true)}>Add direction</button>
+    </header>
+    ${discovery ? html`<section class="review-discovery" aria-label="Project summary">
+      <h3>About ${project}</h3><p>${discovery.summary}</p>
+      <div class="review-pair"><div><h3>Sources read</h3>
+        ${discovery.read.length ? html`<ul>${discovery.read.map((source) => html`<li><code>${source}</code></li>`)}</ul>`
+          : html`<p class="muted">No sources reported.</p>`}</div>
+        <div><h3>Areas not searched</h3>
+        ${discovery.notSearched.length ? html`<ul>${discovery.notSearched.map((area) => html`<li>${area}</li>`)}</ul>`
+          : html`<p class="muted">No areas reported.</p>`}</div></div>
+      ${discovery.app === false ? html`<p role="status">This repository has no app yet. An intake step will ask what to build.</p>` : ''}
+    </section>` : ''}
+    ${!view.directions.length ? html`<div class="review-empty" role="status">
+      <span>${discovery ? 'Please wait while the host drafts directions for this repository…'
+        : 'Analyzing your project directory…'}</span>
+      <div class="review-progress" aria-hidden="true"></div></div>` : ''}
+    ${view.directions.length ? html`<div class="review-grid">
+      ${view.directions.map((card) => {
+        const state = directionLabel(card)
+        const title = card.state === 'loading' && card.why === 'drafting' ? 'Assessing new direction…' : card.name
+        const summary = card.state === 'question' ? card.open[0]?.says : 'draft' in card ? card.draft.summary : card.name
+        return html`<button class="review-card" data-state=${state} onClick=${() => setSelected(card.id)}>
+          <span class="review-card-top"><span class="chip review-state" data-state=${state}>${state}</span></span>
+          <strong>${title}</strong>${summary && summary !== title ? html`<span class="review-description">${summary}</span>` : ''}
+          ${card.state === 'loading' ? html`<span class="review-progress" role="progressbar" aria-label=${state}></span>` : ''}
+        </button>`
+      })}
+    </div>` : ''}
+    <div hidden data-slot="onboarding-suggestions"></div>
+    ${view.directions.length ? html`<footer class="review-footer">
+      ${complete ? html`<button class="btn primary" onClick=${onRoles}>Continue to roles</button>`
+        : html`<button class="btn primary" disabled=${blocked} onClick=${() => setReviewed(ready.map(({ id, revision }) => ({ id, revision: revision! })))}>Accept all</button>`}
+    </footer>` : ''}
+    ${selectedCard ? html`<${DirectionModal} key=${`${selectedCard.id}-${selectedCard.revision}`} card=${selectedCard}
+      onClose=${() => { setSelected(null); refresh() }} />` : ''}
+    ${adding ? html`<${Modal} title="Add direction" onClose=${() => setAdding(false)}>
+      <${AddDirection} onDone=${() => { setAdding(false); refresh() }} />
+    <//>` : ''}
+    ${reviewed ? html`<${Modal} title="Accept all directions" onClose=${() => setReviewed(null)}>
+      <p>Accept the reviewed drafts and continue to roles.</p>
+      <div class="modal-foot"><button class="btn" onClick=${() => setReviewed(null)}>Cancel</button>
+        <button class="btn primary" disabled=${saving || blocked} onClick=${accept}>Accept all</button></div>
+    <//>` : ''}
+  </section>`
+}
+
+function Staffing({ view }: { view: View }) {
+  const [manifest, setManifest] = useState<typeof MarkerApproval.Type | null>(null)
+  const preview = () => api('/api/activation/approval', MarkerApproval).then(setManifest, (error) =>
     toast(error instanceof Error ? error.message : String(error)))
-  const toggle = attempt((role: string, persistent: boolean) =>
-    postOnboarding({ act: 'persistence', role, persistent }),
-  )
-  const acts = {
-    accept: (role: string) => attempt(() => postOnboarding({ act: 'accept-role', role }))(),
-    revise: (role: string, words: string) =>
-      attempt(() => postOnboarding({ act: 'revise-role', role, words }))(),
-    remove: (role: string) => attempt(() => postOnboarding({ act: 'remove-role', role }))(),
-    model: (role: string, model: string) =>
-      attempt(() => postOnboarding({ act: 'model', role, model }))(),
-  }
   const start = attempt(async () => {
-    if (!confirm) return
-    const approval = confirm
-    setConfirm(null)
-    return postActivation({ action: 'start', entries: approval.entries })
+    if (!manifest) return
+    const result = await postActivation({ action: 'start', entries: manifest.entries })
+    setManifest(null)
+    return result
   })
-  const directions = view.directions.map((d) => d.name).join(', ') || 'none'
-  const roles = view.roles.map((r) => r.role).join(', ')
-  return html`<div class="agents-page">
-    <p class="muted">A persistent role gets a terminal of its own, for the whole project; a
-      disposable role runs as a subagent of a terminal. The role of the top task stays persistent.
-      Open a card to accept, revise, or remove the role.</p>
-    ${view.roles.length ? html`<${RoleGrid} roles=${view.roles} models=${view.models} onToggle=${toggle}
-      acts=${acts} />`
-      : html`<p class="muted">The host has not drafted the roles yet.</p>`}
-    <div class="item-actions"><button class="btn primary" disabled=${view.start.state !== 'open'}
-      onClick=${preview}>Approve all</button></div>
-    ${confirm ? html`<${Confirm} title="Approve all roles and start the store"
-      words=${`The store starts with the directions ${directions}, and the roles ${roles}; ` +
-        'each role must be accepted first. Instruction files to mark: ' +
-        (confirm.entries.map(({ path }) => path).join(', ') || 'none') +
-        (confirm.reported.length ? `. Other instruction sources: ${confirm.reported.join(', ')}` : '.')}
-      onYes=${start} onNo=${() => setConfirm(null)} />` : ''}
-  </div>`
+  return html`<section class="review-stage" aria-label="Staffing">
+    <header class="review-heading"><div><h2>Staffing</h2>
+      <p>Configure accounts and models for the accepted roles before starting the project.</p></div></header>
+    ${view.start.state === 'blocked' ? html`<p role="status">${view.start.says}. ${view.start.fix}.</p>` : ''}
+    <footer class="review-footer"><button class="btn primary" disabled=${view.start.state !== 'open'}
+      onClick=${preview}>Review activation</button></footer>
+    ${manifest ? html`<${Modal} title="Review activation" onClose=${() => setManifest(null)}>
+      <p>Instruction files to mark</p>
+      ${manifest.entries.length ? html`<ul>${manifest.entries.map(({ path }) => html`<li><code>${path}</code></li>`)}</ul>`
+        : html`<p class="muted">No instruction files found.</p>`}
+      ${manifest.reported.length ? html`<p>Other instruction sources: ${manifest.reported.join(', ')}.</p>` : ''}
+      <div class="modal-foot"><button class="btn" onClick=${() => setManifest(null)}>Cancel</button>
+        <button class="btn primary" onClick=${start}>Start activation</button></div>
+    <//>` : ''}
+  </section>`
 }
 
-// What blocks the store start, and who fixes it (O1): the line of work onboard status.
-function StartBlocked({ start }: { start: ViewData['start'] }) {
-  if (start.state !== 'blocked') return html``
-  return html`<div class="start-blocked" role="status">
-    <strong>The store cannot start:</strong> ${start.says}. Next: ${start.fix}.</div>`
-}
-
-type Step = 'directions' | 'agents'
-export function Onboarding({ dir, version }: { dir: DirData; version: number }) {
-  const [view, setView] = useState<ViewData | null>(null)
+export function Onboarding({ dir, version }: { dir: Dir; version: number }) {
+  const [view, setView] = useState<View | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [step, setStep] = useState<Step>('directions')
+  const [revision, setRevision] = useState(0)
+  const refresh = () => setRevision((n) => n + 1)
   useEffect(() => {
-    api('/api/onboarding', OnboardingView)
-      .then((v) => {
-        setView(v)
-        setError(null)
-      })
-      .catch((e) => setError(errorText(e)))
-  }, [version])
-  if (error) {
-    return html`<div class="empty"><h2>The onboarding files do not read</h2>
-      <p class="error">${error}</p></div>`
-  }
-  if (!view) return html`<div></div>`
-  // The agents page opens when every direction is accepted or removed (ruling 3).
-  const agentsOpen = view.directions.every((d) => d.state === 'accepted')
-  const now: Step = step === 'agents' && agentsOpen ? 'agents' : 'directions'
-  const stepTab = (s: Step, label: string, disabled = false) => html`<button class="tab"
-    role="tab" aria-selected=${s === now} disabled=${disabled} onClick=${() => setStep(s)}>
-    ${label}</button>`
-  return html`<div class="onboarding">
-    <div class="canvas-head"><h1>Onboarding of ${dir.name}</h1></div>
-    <div class="tabs steps" role="tablist">
-      ${stepTab('directions', '1. Directions')}${stepTab('agents', '2. Agents', !agentsOpen)}
+    let current = true
+    api('/api/onboarding', OnboardingView).then((data) => {
+      if (!current) return
+      setView(data)
+      setError(null)
+    }, (reason: unknown) => {
+      if (current) setError(reason instanceof Error ? reason.message : String(reason))
+    })
+    return () => { current = false }
+  }, [version, revision])
+  const rolesOpen = view !== null && view.directions.length > 0 &&
+    view.directions.every((card) => card.state === 'accepted')
+  const staffingOpen = rolesOpen && view.roles.length > 0 && !view.roleRequests?.length &&
+    view.roles.every((role) => role.state === 'accepted' && !role.questions?.length && !role.request)
+  const active = step === 'staffing' && staffingOpen ? 'staffing' : step !== 'directions' && rolesOpen ? 'roles' : 'directions'
+  const tab = (id: Step, label: string, disabled = false) => html`<button class="tab" role="tab"
+    aria-selected=${active === id} disabled=${disabled} onClick=${() => setStep(id)}>${label}</button>`
+  return html`<div class="onboarding review-shell">
+    <header class="canvas-head"><h1>Set up ${dir.name}</h1></header>
+    <div class="tabs steps" role="tablist" aria-label="Onboarding steps">
+      ${tab('directions', 'Directions')}${tab('roles', 'Roles', !rolesOpen)}${tab('staffing', 'Staffing', !staffingOpen)}
     </div>
-    <${StartBlocked} start=${view.start} />
-    ${now === 'agents' ? html`<${Agents} view=${view} />`
-      : html`<${Directions} view=${view} onAgents=${() => setStep('agents')} />`}
+    ${error ? html`<p class="error" role="alert">${error}</p>`
+      : !view ? html`<p class="muted" role="status">Reading onboarding…</p>`
+      : active === 'roles' ? html`<${Roles} view=${view} onRefresh=${refresh} onStaffing=${() => setStep('staffing')} />`
+      : active === 'staffing' ? html`<${Staffing} view=${view} />`
+      : html`<${Directions} view=${view} project=${dir.name} refresh=${refresh} onRoles=${() => setStep('roles')} />`}
     <${AiToast} toast=${dir.toast} />
   </div>`
 }

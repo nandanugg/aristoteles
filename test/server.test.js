@@ -303,7 +303,9 @@ describe('the onboarding pages', () => {
     expect((await onboard({ act: 'remove', direction: 'one-thing' })).out).toBe('one-thing is removed; nothing keeps it.')
     expect(has(p, '.work/assess/one-thing.yaml')).toBe(false)
     ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
-    expect((await onboard({ act: 'approve-all-directions' })).out).toBe('accepted: tsd-writing.')
+    expect((await onboard({ act: 'approve-all-directions' })).error).toContain('reviewed revisions')
+    const reviewed = (await get('/api/onboarding')).directions.map(({ id, revision }) => ({ id, revision }))
+    expect((await onboard({ act: 'approve-all-directions', reviewed })).out).toBe('accepted: tsd-writing.')
     // Ruling 7, P11: the toggle writes the persistence with a true reason; the role of the top
     // task has none (ruling 15).
     expect((await onboard({ act: 'persistence', role: 'writer', persistent: true })).error)

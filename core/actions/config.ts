@@ -214,7 +214,9 @@ export const startStateOf = (files: OnboardingFiles): StartState => {
   if (direction !== undefined) {
     return { _tag: 'Waiting', on: { _tag: 'Direction', direction: direction.id } }
   }
-  const role = files.roles.find((r) => r.decision._tag !== 'Accepted')
+  const request = files.roleRequests?.[0]
+  if (request !== undefined) return { _tag: 'Waiting', on: { _tag: 'Role', role: RoleName.make(request.role) } }
+  const role = files.roles.find((r) => r.decision._tag !== 'Accepted' || r.questions?.length)
   if (role !== undefined) return { _tag: 'Waiting', on: { _tag: 'Role', role: role.role } }
   if (files.staffingProblem !== undefined) {
     return {

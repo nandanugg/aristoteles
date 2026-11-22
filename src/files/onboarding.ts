@@ -24,7 +24,7 @@ import {
 import { basename, dirname, join } from 'node:path'
 import { Effect, Schema, type Scope } from 'effect'
 import { type ConfigRead, configOfText, draftConfigOfText } from '../config/config.ts'
-import { CONFIG, DRAFT, parseYaml, type Raw, refusing } from '../config/core.ts'
+import { CONFIG, DRAFT, parseYaml, type Raw, refusing, sha } from '../config/core.ts'
 import { mergeDraft } from '../config/settings.ts'
 import { STAFFING, staffingOfText } from '../config/staffing.ts'
 import type { Principle } from '../domain/closed.ts'
@@ -49,6 +49,7 @@ import {
   OnboardingDirection,
   type OnboardingRole,
   OnboardingRoleState,
+  type RoleReview,
   onlyLead,
   resetWords,
   touchedRoles,
@@ -269,6 +270,7 @@ const writeDraft = (dir: string, raw: Raw) =>
 // --- what the page and work onboard status read ----------------------------------------------------
 
 export interface OnboardingFiles {
+  readonly roleRequests?: ReadonlyArray<{ readonly role: string; readonly words: NonBlank }>
   // The config draft as the store start reads it; null: the host has written none yet.
   readonly config: ConfigFile | null
   readonly responsibilityOnly?: true
@@ -294,7 +296,10 @@ export const readOnboarding = (dir: string): Effect.Effect<OnboardingFiles, Refu
       }
       roles.push({ ...state, role: role as RoleName, file })
     }
-    return { config: draft?.read.config ?? null, directions, roles,
+    const configured = draft?.read.config.roles ?? {}
+    const roleRequests = Object.entries(states).flatMap(([role, { decision }]) =>
+      role.startsWith('requested-role-') && !(role in configured) && decision._tag === 'Revising' ? [{ role, words: decision.words }] : [])
+    return { config: draft?.read.config ?? null, directions, roles, roleRequests,
       ...(draft !== undefined ? { responsibilityOnly: true } : {}),
       ...(draft?.staffingProblem === undefined ? {} : { staffingProblem: draft.staffingProblem }) }
   })
@@ -327,7 +332,7 @@ export const onboardingExists = (dir: string): Effect.Effect<boolean> =>
 // --- the acts of the host ---------------------------------------------------------------------------
 
 // The card words of a role: its summary, and where the project has it (those come first).
-export interface RoleNotes {
+export type RoleNotes = typeof RoleReview.Type & {
   readonly summary: string
   readonly found: OnboardingRoleState['found']
 }
@@ -429,10 +434,16 @@ const statesAfter = (
       kept !== undefined &&
       !touched.includes(r) &&
       kept.summary === words.summary &&
-      Bun.deepEquals(kept.found, words.found)
-    return [[r, same ? kept : { summary: words.summary, found: words.found, decision: WAITING }]]
+      Bun.deepEquals(kept.found, words.found) &&
+      Bun.deepEquals(kept.principles, words.principles) &&
+      Bun.deepEquals(kept.directions, words.directions) &&
+      Bun.deepEquals(kept.questions, words.questions)
+    return [[r, same ? kept : { ...words, decision: WAITING }]]
   })
-  return Object.fromEntries(entries)
+  const requests = Object.entries(states).filter(([role, state]) =>
+    role.startsWith('requested-role-') && !(role in after.read.config.roles) &&
+    state.decision._tag === 'Revising')
+  return Object.fromEntries([...entries, ...requests])
 }
 
 // Each act returns the directions that it made, renamed or accepted (none for a role).
@@ -600,6 +611,12 @@ const folderId = (path: string): string =>
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '')
 
+const sameReview = (
+  received: ReadonlyArray<{ readonly id: string; readonly revision: string }>,
+  current: ReadonlyArray<{ readonly id: string; readonly revision: string }>,
+) => received.length === current.length &&
+  current.every((item) => received.some(({ id, revision }) => id === item.id && revision === item.revision))
+
 const roleIn = (draft: Draft, role: string) =>
   Object.hasOwn(draft.read.config.roles, role)
     ? Effect.succeed(draft.read.config.roles[role] as RoleFile)
@@ -685,7 +702,14 @@ export const personAct = (
           return []
         }
         case 'approve-all-directions': {
-          const ready = (yield* readDirections(dir)).flatMap((f) =>
+          const directions = yield* readDirections(dir)
+          if (act.reviewed !== undefined) {
+            const current = directions.flatMap(({ id, stage }) =>
+              stage._tag === 'Ready' ? [{ id, revision: sha(JSON.stringify(stage.draft)) }] : [])
+            if (directions.some(({ stage }) => stage._tag !== 'Ready' && stage._tag !== 'Accepted') ||
+              !sameReview(act.reviewed, current)) return yield* refuse('The directions changed while you were reviewing them')
+          }
+          const ready = directions.flatMap((f) =>
             f.stage._tag === 'Ready' ? [{ ...f, stage: { ...f.stage, _tag: 'Accepted' as const } }] : [],
           )
           if (ready.length === 0) {
@@ -693,6 +717,34 @@ export const personAct = (
           }
           for (const file of ready) yield* writeDirection(dir, file)
           return ready.map((f) => f.id)
+        }
+        case 'add-role': {
+          yield* needDraft(dir)
+          const states = yield* readRoleStates(dir)
+          let n = 1
+          while (Object.hasOwn(states, `requested-role-${n}`)) n++
+          yield* writeRoleStates(dir, {
+            ...states,
+            [`requested-role-${n}`]: { summary: act.words, found: { _tag: 'New' },
+              decision: { _tag: 'Revising', words: act.words } },
+          })
+          return []
+        }
+        case 'review-all-roles': {
+          const files = yield* readOnboarding(dir)
+          const waiting = files.roles.filter(({ decision }) => decision._tag === 'Waiting')
+          const current = waiting.map((r) => ({ id: r.role, revision: sha(JSON.stringify(r)) }))
+          if (files.directions.some(({ stage }) => stage._tag !== 'Accepted') || files.roleRequests?.length ||
+            files.roles.some(({ decision, questions }) => decision._tag === 'Revising' || questions?.length) ||
+            current.length === 0 || !sameReview(act.reviewed, current)) {
+            return yield* refuse('The roles changed or are still being drafted')
+          }
+          const states = yield* readRoleStates(dir)
+          yield* writeRoleStates(dir, {
+            ...states,
+            ...Object.fromEntries(waiting.map(({ role }) => [role, { ...states[role]!, decision: ACCEPTED }])),
+          })
+          return []
         }
         case 'accept-role':
         case 'revise-role': {
@@ -705,6 +757,9 @@ export const personAct = (
               `${ROLES} has no entry for ${act.role}`,
               `the host writes the role again: work onboard role ${act.role} --file=<role.yaml>`,
             )
+          }
+          if (act.act === 'accept-role' && state.questions?.length) {
+            return yield* refuse(`Questions for ${act.role} still need answers`)
           }
           if (act.act === 'accept-role' && state.decision._tag === 'Revising') {
             return yield* refuse(`a Revise of ${act.role} waits for the host`, 'work onboard status shows what waits')

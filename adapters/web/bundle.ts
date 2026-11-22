@@ -29,6 +29,7 @@ export const pageBundle = (): Promise<string> => {
 // icons when a grid of agents shows (adapters/web/app/agents.ts).
 export const PAGE_FILES: Readonly<Record<string, readonly [string, string]>> = {
   '/': ['adapters/web/app/index.html', 'text/html; charset=utf-8'],
+  '/onboarding.css': ['adapters/web/app/onboarding.css', 'text/css'],
   '/style.css': ['adapters/web/app/style.css', 'text/css'],
   '/vendor/xterm.js': ['node_modules/@xterm/xterm/lib/xterm.js', 'text/javascript'],
   '/vendor/xterm.css': ['node_modules/@xterm/xterm/css/xterm.css', 'text/css'],

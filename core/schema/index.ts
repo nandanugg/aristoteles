@@ -174,6 +174,7 @@ export {
   OnboardingAct,
   OnboardingDirection,
   OnboardingRoleState,
+  RoleReview,
   resetWords,
 } from '../../src/domain/onboarding.ts'
 export type { OnboardingDirectionState, OnboardingRole } from '../../src/domain/onboarding.ts'

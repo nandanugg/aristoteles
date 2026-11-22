@@ -90,6 +90,12 @@ export interface DirectionView {
       readonly id: Text
       readonly says: Text
       readonly checkedBy: Text | null
+      readonly test?: Text
+      readonly ref?: Text
+      readonly result?: Text
+      readonly examples?: ReadonlyArray<ExampleView>
+      readonly searched?: ReadonlyArray<Text>
+      readonly knownBreak?: boolean
     }>
   }>
   // The versions made during the project, and the drafts that wait.
@@ -153,6 +159,13 @@ export type PageMessage =
 // GET /api/onboarding: the directions page and the agents page (rulings 2, 3, 11). One view
 // serves both times: before the store it reads the onboarding files; after it, the store.
 export interface OnboardingView {
+  readonly discovery?: {
+    readonly summary: Text
+    readonly read: ReadonlyArray<Text>
+    readonly notSearched: ReadonlyArray<Text>
+    readonly app: boolean | null
+  }
+  readonly roleRequests?: ReadonlyArray<{ readonly role: Text; readonly words: Text }>
   readonly stage: 'files' | 'store'
   readonly directions: ReadonlyArray<DirectionCard>
   readonly roles: ReadonlyArray<RoleCard> // the roles that the project has come first
@@ -194,6 +207,8 @@ export type DirectionCard = CardHead &
     | { readonly state: 'ready' | 'accepted' | 'current'; readonly draft: DirectionWords }
   )
 interface CardHead {
+  readonly revision?: Text
+  readonly principles?: ReadonlyArray<Text>
   readonly id: Text
   readonly name: Text // before its first draft: the person's principle, or the company folder
   readonly origin: Text // where it comes from, in one line
@@ -251,6 +266,11 @@ export interface CaseLine {
 }
 // A question of the AI about a draft (ruling 5): an example, and the options A and B.
 export interface QuestionView {
+  readonly rule?: Text
+  readonly sides?: readonly [
+    { readonly source: Text; readonly words: Text },
+    { readonly source: Text; readonly words: Text },
+  ]
   readonly says: Text
   readonly example: ExampleView
   readonly options: readonly [Text, Text]
@@ -261,6 +281,11 @@ export interface AnsweredView extends QuestionView {
 // One card of the agents page (ruling 11); its window shows the rest. An agent role runs on its
 // model and has its persistence; a program runs in the CLI and has neither.
 interface RoleCardBase {
+  readonly revision?: Text
+  readonly builtIn?: 'host' | 'pipeline'
+  readonly principles?: ReadonlyArray<Text>
+  readonly directions?: ReadonlyArray<Text>
+  readonly questions?: ReadonlyArray<{ readonly says: Text; readonly choices: ReadonlyArray<Text> }>
   readonly role: Text
   readonly icon: Text // a name of ROLE_ICONS (adapters/web/vendor/role-icons.js draws it)
   readonly summary: Text // the line of the card; after the store, its description
