@@ -55,7 +55,7 @@ import {
 } from '../../core/services/index.ts'
 import { fold, momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
 import { foldWork } from '../../core/state/c16/fold.ts'
-import { sessionOf } from '../../core/effects/engine.ts'
+import { sessionAt } from '../../core/effects/engine.ts'
 import { keyOf } from '../../core/state/c16/types.ts'
 import { buildOf } from '../live/build.ts'
 import { readPane } from '../live/host-pane.ts'
@@ -248,7 +248,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     const events = storeEvents()
     const folded = foldWork(events)
     if (folded === null) return undefined
-    const { state, hostPane, forwards } = folded
+    const { state, hostPane, forwards, hostSession } = folded
     const now = Date.parse(clock())
     const terminals = pump?.status() ?? {}
     const persistent = [
@@ -257,7 +257,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     ]
     const tails = Object.fromEntries(
       persistent.flatMap((k) => {
-        const sid = sessionOf(k, state.ep.get(k) ?? 0)
+        const sid = sessionAt(hostSession, k, state.ep.get(k) ?? 0)
         return sid in terminals ? [[sid, pump?.tail(sid, 40) ?? '']] : []
       }),
     )
@@ -269,6 +269,7 @@ export function startServer(options: ServerOptions): ServerHandle {
       build,
       now,
       state,
+      hostSession,
       host: {
         model: '',
         reading: hostPane === null ? null : readPane(hostPane.socket, hostPane.pane),

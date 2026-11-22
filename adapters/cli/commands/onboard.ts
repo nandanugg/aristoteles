@@ -680,7 +680,7 @@ const approveRoles = Effect.gen(function* () {
     return yield* act(by, {
       _tag: 'DefineWorkflow',
       target: {},
-      content: { directions: start.directions },
+      content: { directions: start.directions, activation: null },
     })
   }).pipe(Effect.onError(() => Effect.ignore(start.restore)))
   yield* start.finish

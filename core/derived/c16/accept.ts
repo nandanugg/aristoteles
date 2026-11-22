@@ -476,6 +476,7 @@ const WORDS: Readonly<Record<RefusalName, string>> = {
   cap: 'enough questions to that actor: the next one raises the task',
   heard: 'that answer was already heard',
   terminal: 'run `work run continue` in a terminal',
+  inactive: 'the project is not activated yet',
 }
 // The refusal as the page and the CLI show it; a cap points the maker at AskRaise.
 export const refused = (s: WorkState, a: Act, via: Via = 'terminal'): RefusalRecord | null => {

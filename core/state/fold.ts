@@ -24,6 +24,9 @@ type Step<K extends Kind> = (work: Work, event: EventOf<K>, recorded: RecordedOf
 const STEPS: { readonly [K in Kind]: Step<K> } = {
   'Workflow.Defined': (_w, _e, r) => damaged(r, 'the workflow of a dir is defined once'),
   'Workflow.RoleWordsChanged': (w, e) => roleWordsChanged(w, e),
+  // Activation is read from the events (core/actions/activation.ts); the Work stays as it is.
+  'Workflow.Activated': (w) => unchanged(w),
+  'Workflow.HostRebound': (w) => unchanged(w),
   'Role.Fitted': roleFitted,
   'Send.Sent': sent,
   'Send.Delivered': delivered,

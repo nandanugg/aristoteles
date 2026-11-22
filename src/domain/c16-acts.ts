@@ -173,6 +173,7 @@ export const RefusalName = Schema.Literals([
   'cap',
   'heard',
   'terminal',
+  'inactive', // the workflow is not activated yet (onboarding's activation, contract 6c)
 ])
 export type RefusalNameCase = typeof RefusalName.Type
 export const Refusal = Schema.Struct({

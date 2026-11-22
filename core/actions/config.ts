@@ -233,6 +233,7 @@ export const defineWorkflow = (
   by: { readonly _tag: string; readonly name?: string },
   cwd: string,
   directions: ReadonlyArray<OnboardedDirection>,
+  activation: { readonly generation: number } | null,
 ): Effect.Effect<ReadonlyArray<Event>, Refusal, Files> =>
   Effect.gen(function* () {
     const { config, hashes, texts } = yield* readConfig(cwd).pipe(Effect.mapError(asWrite(CONFIG)))
@@ -240,7 +241,7 @@ export const defineWorkflow = (
     if (!config.people.includes(name)) return yield* fail(R.DefineWorkflow.notInPeople(name))
     const problem = startProblem(config, directions)
     if (problem !== undefined) return yield* fail(problem.refusal)
-    return [create('Workflow', { _tag: 'Defined', config, hashes, texts, directions })]
+    return [create('Workflow', { _tag: 'Defined', config, hashes, texts, directions, activation })]
   })
 
 const DefineWorkflow: Action<'DefineWorkflow'> = ({ by, input }) =>

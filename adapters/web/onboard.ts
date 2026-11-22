@@ -77,7 +77,7 @@ export const startStore = (
         }
         return yield* dispatch({
           by: { _tag: 'Person', name: person, channel: 'ui' },
-          input: { _tag: 'DefineWorkflow', target: {}, content: { directions: start.directions } },
+          input: { _tag: 'DefineWorkflow', target: {}, content: { directions: start.directions, activation: null } },
         })
       }).pipe(Effect.onError(() => Effect.ignore(start.restore)))
       yield* start.finish

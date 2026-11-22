@@ -573,6 +573,7 @@ const top: Command = (call) =>
       `Top "${name}" opened (event e${opened.seq}): ${goal}`,
       `Sections: ${sections.join(', ')}`,
       'Each actor runs work wait with its token:',
+      ...(opened.hostBound ? ['  host: holds its token from activation'] : []),
       ...opened.secrets.map((t) => `  ${t.actor}: ${workTokenOf(t.actor, 0, t.secret)}`),
     ]
   })
