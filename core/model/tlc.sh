@@ -64,6 +64,7 @@ run() {
 WORKER_SAFE=OldestFirst,NoIdentityCrossing,NoBlockedOnlyExecutor
 PERMIT_SAFE=AsksFollowState,NoWaitCycle,PermitsNeverExceeded,NoRecheckInParentContext
 PERMIT_LIVE=ParkedResumes,DeferredRuns,RechecksProgress,AdmittedProgress,AdmittedSettles
+ADMISSION_SAFE=PipeBound,PipeMatchesJobs,Ownership,RoleBound,TaskMatchesPermits,OneSerialTurn
 jobs() {
   cat <<EOF
 worker.qnt workerFixed holds $WORKER_SAFE G1All
@@ -87,6 +88,19 @@ permits.qnt permitsAdmission breaks NoSecondDenied -
 permits.qnt permitsDropParent breaks PermitsNeverExceeded -
 permits.qnt permitsRetained breaks NoRecheckInParentContext -
 permits.qnt permitsIgnore breaks - RechecksProgress
+admission.qnt admissionPipeOne holds $ADMISSION_SAFE,NoPipeOverlap -
+admission.qnt admissionPipeOne breaks NoPipeReuse -
+admission.qnt admissionPipeTwo holds $ADMISSION_SAFE -
+admission.qnt admissionPipeTwo breaks NoPipeOverlap -
+admission.qnt admissionSaturation holds $ADMISSION_SAFE -
+admission.qnt admissionSaturation breaks NoSaturatedSerial -
+admission.qnt admissionWait holds $ADMISSION_SAFE,NoSaturatedSerial -
+admission.qnt admissionWait breaks NoSaturatedWait -
+admission.qnt admissionCollocated holds $ADMISSION_SAFE -
+admission.qnt admissionCollocated breaks NoCollocatedOwners -
+admission.qnt admissionNoPipeCap breaks PipeBound -
+admission.qnt admissionDropsPipe breaks PipeMatchesJobs -
+admission.qnt admissionWrongOwner breaks Ownership -
 terminals.qnt termFixed holds Sane,ExactlyOnce G1All,SendDone
 terminals.qnt termFixed3 holds Sane,ExactlyOnce G1All,SendDone
 terminals.qnt termNoList breaks - G1All

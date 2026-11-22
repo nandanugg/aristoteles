@@ -375,6 +375,30 @@ witnesses. The composed fixture keeps the inspected versions fixed while a helpe
 runs. The existing store freshness guarantee still applies to a verdict racing a
 live edit.
 
+### Admission decision 3 draft
+
+`admission.qnt` is a bounded projection of accepted C16 actions and worker
+lifecycle events. It adds multiple Pipe jobs and two logical roles without
+changing the protocol's actor type or the original worker and permits instances.
+Its checks concern ownership, capacity and release. The existing composed
+`permits.qnt` remains the check of actual accept/take, asks and progress.
+
+- Pipe caps 1 and 2 illustrate queued versus simultaneous fixes. First accepted
+  work on a fix, or admitting a fresh recheck job, holds one Pipe permit. Routing
+  to the person or finishing releases it. A send-back is new admission.
+- With role capacity 2 and background child capacity 1, a second maker can use
+  the role worker in serial turns. Another instance leaves it queued until a
+  child permit frees. Both retain the parent's attempt through maker report,
+  review and a fenced maker exit. Maker report or confirmed exit releases the
+  child; terminal review or fenced reassignment releases the parent's attempt.
+- Two roles on one worker hold one attempt each. A worker turn controls execution
+  and the role controls admission. A background child may report during a serial
+  turn. The model leaves foreground-only child scheduling and recheck park
+  mechanics to the existing instances.
+- TLC checks safety and witnesses for both Pipe caps, positive saturation, waiting
+  and collocated owners. Mutants bypass the Pipe cap, drop a Pipe permit on yield
+  or debit a collocated attempt to the other role.
+
 ### terminals.qnt (G1)
 
 Contains: the host's pane in the person's own tmux (never revived by the engine: its end or
