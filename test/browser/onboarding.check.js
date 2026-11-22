@@ -1,5 +1,5 @@
 import { expect } from 'bun:test'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { startServer } from '../code.js'
@@ -194,6 +194,47 @@ try {
   expect(staleRoles.ok).toBe(false)
   await button('Accept all').click()
   await visible(page.getByRole('heading', { name: 'Staffing' }))
+  const staffingPath = join(p.dir, '.work/staffing.yaml')
+  const staffing = Bun.YAML.parse(readFileSync(staffingPath, 'utf8'))
+  staffing.accounts.fixture.limits = { weekly: '  40 credits / week  ', sessions: '2 sessions' }
+  p.write('.work/staffing.yaml', Bun.YAML.stringify(staffing, null, 2))
+  await page.getByRole('tab', { name: 'Roles' }).click()
+  await page.getByRole('tab', { name: 'Staffing' }).click()
+  await visible(button('Edit fixture weekly'))
+  expect(await page.locator('.staffing-table tbody tr').count()).toBe(2)
+  expect(await page.locator('.staffing-table tbody tr').filter({ hasText: 'weekly' }).textContent()).toContain('  40 credits / week  ')
+  expect(await page.locator('.staffing-table').textContent()).toContain('Unknown. No usage evidence yet: it is measured from the first tasks.')
+  expect(await page.locator('.staffing-role').filter({ hasText: 'writer' }).textContent()).toContain('self-review turns')
+  expect(await button('Review activation').count()).toBe(0)
+  await shot('04-staffing.png')
+
+  const baseline = readFileSync(staffingPath, 'utf8')
+  await button('Edit writer').click()
+  await dialog('Edit writer').getByLabel('Effective model').selectOption('sonnet')
+  await button('Preview changes', dialog('Edit writer')).click()
+  const previewStaffing = dialog('Staffing preview')
+  await visible(previewStaffing.getByText('writer.model: haiku -> sonnet', { exact: true }))
+  expect(await previewStaffing.getByRole('region', { name: 'Before' }).count()).toBe(1)
+  expect(await previewStaffing.getByRole('region', { name: 'After' }).count()).toBe(1)
+  expect(readFileSync(staffingPath, 'utf8')).toBe(baseline)
+  const comparison = previewStaffing.locator('.staffing-comparison')
+  expect(await comparison.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  await shot('05-staffing-preview.png')
+  await button('Cancel', previewStaffing).click()
+
+  await button('Edit fixture weekly').click()
+  const editLimit = dialog('Edit fixture · weekly')
+  await editLimit.getByRole('textbox').fill('  50 credits / week  ')
+  await button('Preview changes', editLimit).click()
+  await visible(previewStaffing.getByRole('region', { name: 'After' }))
+  expect(await previewStaffing.getByRole('region', { name: 'After' }).textContent()).toContain('  50 credits / week  ')
+  expect(readFileSync(staffingPath, 'utf8')).toBe(baseline)
+  await button('Apply and confirm', previewStaffing).click()
+  await visible(page.getByText('Staffing confirmed', { exact: true }))
+  expect(Bun.YAML.parse(readFileSync(staffingPath, 'utf8')).accounts.fixture.limits.weekly).toBe('  50 credits / week  ')
+  await button('Review activation').click()
+  await visible(dialog('Review activation'))
+  await button('Cancel', dialog('Review activation')).click()
   await page.getByRole('tab', { name: 'Roles' }).click()
   await button('Add role').click()
   const addRole = dialog('Add role')

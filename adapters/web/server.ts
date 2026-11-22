@@ -53,6 +53,10 @@ import {
   GitUser,
   readActivationRecord,
   activationLock,
+  applyStaffingReview,
+  previewStaffingReview,
+  readStaffingReview,
+  type Staffing,
   pathOf,
   personAct,
   readOnboarding,
@@ -83,6 +87,7 @@ import {
   Dash,
   DashMessage,
   ActivationPost,
+  StaffingPost, StaffingPreview, StaffingState,
   MarkerApproval,
   DirView,
   OnboardingView,
@@ -625,6 +630,47 @@ export function startServer(options: ServerOptions): ServerHandle {
     runSync(refresh)
     return Exit.isSuccess(exit) ? json({ out: exit.value }) : failed(Cause.squash(exit.cause))
   }
+  // The candidate belongs to the served project and the person who previewed it.
+  let staffingCandidate: { owner: string; revision: string; staffing: Staffing; ticket: string } | undefined
+  const staffingRequest = async (req: Request, srv: Bun.Server<undefined>) => {
+    const write = req.method === 'POST'
+    if (write && !sameOrigin(req, srv)) return json({ error: 'an act comes only from this page' }, 403)
+    const name = await gitName(dir)
+    if (name === '') return json({ error: NO_PERSON }, 400)
+    try {
+      const input = write ? Schema.decodeUnknownSync(StaffingPost)(await req.json()) : null
+      return await runtime.runPromise(Effect.scoped(Effect.gen(function* () {
+        if (input !== null) yield* activationLock(dir)
+        if (readActivationRecord(dir) !== null || (yield* activationEvents(dir)).length !== 0) {
+          return json({ error: 'Staffing review ends when activation begins.' }, 400)
+        }
+        const files = yield* readOnboarding(dir)
+        if (!files.config?.people.includes(name)) return json({ error: 'Only a person of this project can review its staffing.' }, 403)
+        if (input === null) return answer(StaffingState, yield* readStaffingReview(dir, name))
+        if (files.roles.length === 0 || files.roleRequests?.length ||
+          files.directions.some(({ stage }) => stage._tag !== 'Accepted') ||
+          files.roles.some(({ decision, questions }) => decision._tag !== 'Accepted' || questions?.length)) {
+          return json({ error: 'Accept the directions and roles before confirming staffing.' }, 400)
+        }
+        if (input.action === 'preview') {
+          const { preview, after } = yield* previewStaffingReview(dir, input.revision, input.edit)
+          const ticket = crypto.randomUUID()
+          staffingCandidate = { owner: name, revision: input.revision, staffing: after, ticket }
+          return answer(StaffingPreview, { ...preview, ticket })
+        }
+        const candidate = staffingCandidate
+        if (candidate?.owner !== name || candidate.ticket !== input.ticket) {
+          return json({ error: 'Preview staffing before applying it.' }, 400)
+        }
+        yield* applyStaffingReview(dir, name, candidate.revision, candidate.staffing)
+        staffingCandidate = undefined
+        send({ type: 'changed' })
+        return answer(StaffingState, yield* readStaffingReview(dir, name))
+      })))
+    } catch (error) {
+      return failed(error)
+    }
+  }
   const postOnboarding = async (req: Request, srv: Bun.Server<undefined>) => {
     if (!sameOrigin(req, srv)) {
       return json({ error: 'an act comes only from the page of this server' }, 403)
@@ -779,6 +825,9 @@ export function startServer(options: ServerOptions): ServerHandle {
           return json({ error: messageOf(error) }, 500)
         }
       }
+      if (url.pathname === '/api/staffing' && (req.method === 'GET' || req.method === 'POST')) {
+        return staffingRequest(req, srv)
+      }
       if (url.pathname === '/api/activation' && req.method === 'POST') {
         if (!sameOrigin(req, srv)) return json({ error: 'an act comes only from this page' }, 403)
         try {
@@ -788,7 +837,7 @@ export function startServer(options: ServerOptions): ServerHandle {
           const by = { _tag: 'Person' as const, name, channel: 'ui' as const }
           const task = Effect.gen(function* () {
             if (input.action === 'start') {
-              yield* prepareActivation(dir, by, input.entries, (files) => startRefusal(startStateOf(files)))
+              yield* prepareActivation(dir, by, input.entries, (files) => startRefusal(startStateOf(files)), true)
             }
             return yield* runActivation(dir, by, input.action === 'start' ? 'resume' : input.action)
           })

@@ -19,6 +19,10 @@ const onboardingAct = async (p, body, path = '/api/onboarding') => {
     const origin = `http://127.0.0.1:${s.port}`
     const headers = { origin, 'content-type': 'application/json' }
     if (body.action === 'start') {
+      const staffing = await (await fetch(`${origin}/api/staffing`)).json()
+      const update = (body) => fetch(`${origin}/api/staffing`, { method: 'POST', headers, body: JSON.stringify(body) })
+      const preview = await (await update({ action: 'preview', revision: staffing.revision })).json()
+      expect((await update({ action: 'apply', ticket: preview.ticket })).ok).toBe(true)
       const approval = await (await fetch(`${origin}/api/activation/approval`)).json()
       body = { ...body, entries: approval.entries }
     }

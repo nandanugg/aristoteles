@@ -1,11 +1,12 @@
 import { html } from 'htm/preact'
 import { useEffect, useState } from 'preact/hooks'
-import { type DirView, MarkerApproval, OnboardingView } from '../contract.ts'
+import { type DirView, OnboardingView } from '../contract.ts'
 import { AiToast } from './ai.ts'
-import { api, attempt, postActivation, postOnboarding, toast } from './api.ts'
+import { api, attempt, postOnboarding } from './api.ts'
 import { Modal } from './modal.ts'
 import { directionLabel, DirectionModal, ReviewInput } from './onboarding-review.ts'
 import { Roles } from './onboarding-roles.ts'
+import { Staffing } from './staffing.ts'
 
 type View = typeof OnboardingView.Type
 type Dir = typeof DirView.Type
@@ -120,33 +121,6 @@ function Directions({ view, project, refresh, onRoles }: {
   </section>`
 }
 
-function Staffing({ view }: { view: View }) {
-  const [manifest, setManifest] = useState<typeof MarkerApproval.Type | null>(null)
-  const preview = () => api('/api/activation/approval', MarkerApproval).then(setManifest, (error) =>
-    toast(error instanceof Error ? error.message : String(error)))
-  const start = attempt(async () => {
-    if (!manifest) return
-    const result = await postActivation({ action: 'start', entries: manifest.entries })
-    setManifest(null)
-    return result
-  })
-  return html`<section class="review-stage" aria-label="Staffing">
-    <header class="review-heading"><div><h2>Staffing</h2>
-      <p>Configure accounts and models for the accepted roles before starting the project.</p></div></header>
-    ${view.start.state === 'blocked' ? html`<p role="status">${view.start.says}. ${view.start.fix}.</p>` : ''}
-    <footer class="review-footer"><button class="btn primary" disabled=${view.start.state !== 'open'}
-      onClick=${preview}>Review activation</button></footer>
-    ${manifest ? html`<${Modal} title="Review activation" onClose=${() => setManifest(null)}>
-      <p>Instruction files to mark</p>
-      ${manifest.entries.length ? html`<ul>${manifest.entries.map(({ path }) => html`<li><code>${path}</code></li>`)}</ul>`
-        : html`<p class="muted">No instruction files found.</p>`}
-      ${manifest.reported.length ? html`<p>Other instruction sources: ${manifest.reported.join(', ')}.</p>` : ''}
-      <div class="modal-foot"><button class="btn" onClick=${() => setManifest(null)}>Cancel</button>
-        <button class="btn primary" onClick=${start}>Start activation</button></div>
-    <//>` : ''}
-  </section>`
-}
-
 export function Onboarding({ dir, version }: { dir: Dir; version: number }) {
   const [view, setView] = useState<View | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -179,7 +153,7 @@ export function Onboarding({ dir, version }: { dir: Dir; version: number }) {
     ${error ? html`<p class="error" role="alert">${error}</p>`
       : !view ? html`<p class="muted" role="status">Reading onboarding…</p>`
       : active === 'roles' ? html`<${Roles} view=${view} onRefresh=${refresh} onStaffing=${() => setStep('staffing')} />`
-      : active === 'staffing' ? html`<${Staffing} view=${view} />`
+      : active === 'staffing' ? html`<${Staffing} start=${view.start} version=${version} onApplied=${refresh} />`
       : html`<${Directions} view=${view} project=${dir.name} refresh=${refresh} onRoles=${() => setStep('roles')} />`}
     <${AiToast} toast=${dir.toast} />
   </div>`

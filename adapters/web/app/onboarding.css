@@ -78,3 +78,30 @@ button.review-card:hover { border-color: var(--focus); background: var(--surface
 @media (max-width: 540px) {
   .review-heading, .review-input { align-items: stretch; flex-direction: column; }
 }
+
+.staffing-details { display: grid; gap: 18px; }
+.staffing-details > section { min-width: 0; }
+.modal.staffing-preview { width: min(1200px, calc(100vw - 32px)); }
+.staffing-preview > .modal-foot { position: sticky; bottom: 0; background: var(--surface); padding-block: 8px; }
+.staffing-details h3, .staffing-details h4 { margin: 0 0 8px; }
+.staffing-account, .staffing-role {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+}
+.staffing-account + .staffing-account { margin-top: 6px; }
+.staffing-account > .muted { margin-inline-start: 12px; }
+.staffing-account dl { margin-block: 4px 0; }
+.staffing-account dl > div { display: grid; grid-template-columns: minmax(5rem, .25fr) 1fr; gap: 8px; align-items: center; }
+.staffing-account dd { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.staffing-typed { white-space: pre-wrap; overflow-wrap: anywhere; }
+.staffing-arrangement { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 8px; }
+.staffing-fields { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 4px 10px; margin: 8px 0 0; }
+.staffing-fields dt { color: var(--muted); }
+.staffing-fields dd, .staffing-account dd { margin: 0; overflow-wrap: anywhere; }
+.staffing-table-scroll { overflow-x: auto; }
+.staffing-table { width: 100%; text-align: left; border-collapse: collapse; background: var(--surface); }
+.staffing-table th, .staffing-table td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.staffing-warnings { margin: 0; padding-inline-start: 20px; }
+.staffing-warnings li + li { margin-top: 4px; }
+.staffing-comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 315px), 1fr)); gap: 12px; }
+.staffing-comparison > section { min-width: 0; border: 1px solid var(--line); padding: 12px; border-radius: 8px; }
+.staffing-comparison > section > h3 { margin-top: 0; }

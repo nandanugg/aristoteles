@@ -27,7 +27,8 @@ import { Effect, Schema, type Scope } from 'effect'
 import { type ConfigRead, configOfText, draftConfigOfText } from '../config/config.ts'
 import { CONFIG, DRAFT, parseYaml, type Raw, refusing, sha } from '../config/core.ts'
 import { mergeDraft } from '../config/settings.ts'
-import { STAFFING, staffingOfText } from '../config/staffing.ts'
+import { STAFFING, type Staffing, staffingOf, staffingOfText } from '../config/staffing.ts'
+import { staffingPreview, staffingView } from '../config/staffing-view.ts'
 import type { Principle } from '../domain/closed.ts'
 import { OutsideFailed, Refused, refuse } from '../domain/errors.ts'
 import type { OnboardedDirection } from '../domain/events.ts'
@@ -152,6 +153,69 @@ const writeWhole = (path: string, text: string) =>
     writeFileSync(tmp, text)
     renameSync(tmp, path)
   })
+// The confirmation refers to the exact file reviewed by the person.
+const staffingConfirmation = '.work/staffing-confirmed.json'
+const staffingText = (dir: string) => readText(join(dir, STAFFING))
+const confirmationOf = (person: string, revision: string) => JSON.stringify({ person, revision })
+
+export const staffingConfirmed = (dir: string, person: string) => io(() => {
+  const text = staffingText(dir)
+  return text !== null && readText(join(dir, staffingConfirmation)) === confirmationOf(person, sha(text))
+})
+export const readStaffingReview = (dir: string, person: string) => Effect.gen(function* () {
+  const text = staffingText(dir)
+  const staffing = yield* refusing(() => staffingOfText(text))
+  if (text === null || staffing === null) return null
+  const revision = sha(text)
+  return {
+    revision,
+    clis: Object.keys(staffing.clis).sort(),
+    confirmed: readText(join(dir, staffingConfirmation)) === confirmationOf(person, revision),
+    view: staffingView(staffing),
+  }
+})
+
+export type StaffingEdit =
+  | { readonly kind: 'limit'; readonly account: string; readonly limit: string; readonly typed: string }
+  | { readonly kind: 'role'; readonly role: string; readonly account: string; readonly cli: string
+      readonly model: string; readonly persistent: boolean; readonly concurrency: number; readonly subagentAllowance: number }
+
+const editedStaffing = (before: Staffing, edit: StaffingEdit | undefined): unknown => {
+  if (edit === undefined) return before
+  if (edit.kind === 'limit') {
+    const { account, limit, typed } = edit
+    if (!Object.hasOwn(before.accounts, account) || !Object.hasOwn(before.accounts[account]!.limits, limit)) {
+      throw refuse('This staffing limit no longer exists.')
+    }
+    return { ...before, accounts: { ...before.accounts,
+      [account]: { limits: { ...before.accounts[account]!.limits, [limit]: typed } },
+    } }
+  }
+  const { role, kind: _kind, ...values } = edit
+  if (!Object.hasOwn(before.roles, role)) throw refuse('This staffing role no longer exists.')
+  return { ...before, roles: { ...before.roles, [role]: { ...before.roles[role], ...values } } }
+}
+
+export const previewStaffingReview = (dir: string, revision: string, edit?: StaffingEdit) =>
+  Effect.gen(function* () {
+    const text = staffingText(dir)
+    if (text === null || sha(text) !== revision) return yield* refuse('Staffing changed. Reload it and preview again.')
+    const before = yield* refusing(() => staffingOfText(text)!)
+    const after = yield* refusing(() => staffingOf(editedStaffing(before, edit)))
+    return { preview: staffingPreview(before, after), after }
+  })
+
+export const applyStaffingReview = (dir: string, person: string, revision: string, candidate: Staffing) =>
+  Effect.gen(function* () {
+    const text = staffingText(dir)
+    if (text === null || sha(text) !== revision) return yield* refuse('Staffing changed. Reload it and preview again.')
+    const staffing = yield* refusing(() => staffingOf(candidate))
+    const before = yield* refusing(() => staffingOfText(text))
+    const next = Bun.deepEquals(before, staffing) ? text : yamlOf(staffing)
+    if (next !== text) yield* writeWhole(join(dir, STAFFING), next)
+    yield* writeWhole(join(dir, staffingConfirmation), confirmationOf(person, sha(next)))
+  })
+
 const yamlOf = (value: unknown): string => Bun.YAML.stringify(value, null, 2)
 
 // A file of onboarding that does not decode was edited by hand.
