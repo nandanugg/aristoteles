@@ -648,7 +648,7 @@ export function startServer(options: ServerOptions): ServerHandle {
         if (!files.config?.people.includes(name)) return json({ error: 'Only a person of this project can review its staffing.' }, 403)
         if (input === null) return answer(StaffingState, yield* readStaffingReview(dir, name))
         if (files.roles.length === 0 || files.roleRequests?.length ||
-          files.directions.some(({ stage }) => stage._tag !== 'Accepted') ||
+          files.directions.some(({ stage }) => stage._tag !== 'Accepted' && stage._tag !== 'Removed') ||
           files.roles.some(({ decision, questions }) => decision._tag !== 'Accepted' || questions?.length)) {
           return json({ error: 'Accept the directions and roles before confirming staffing.' }, 400)
         }

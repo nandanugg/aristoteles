@@ -678,7 +678,7 @@ const approveDirections = Effect.gen(function* () {
   }
   const show = `approve all accepts: ${ready.map((f) => f.id).join(', ')}`
   const accepted = yield* asPerson({ act: 'approve-all-directions', reviewed: directionReview(files.directions, files.discovery) }, { word: 'approve', show })
-  const waiting = files.directions.filter((f) => !accepted.includes(f.id) && f.stage._tag !== 'Accepted')
+  const waiting = files.directions.filter((f) => !accepted.includes(f.id) && f.stage._tag !== 'Accepted' && f.stage._tag !== 'Removed')
   return [
     `accepted: ${accepted.join(', ')}.`,
     ...(waiting.length
