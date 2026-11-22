@@ -92,6 +92,8 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
   const [saving, setSaving] = useState(false)
   const questions = card.state === 'question' ? card.open : []
   const draft = 'draft' in card ? card.draft : undefined
+  const answering = !readOnly && questions.length > 0
+  const Content = answering ? 'form' : 'div'
   const revise = attempt(async (words: string) => {
     const answer = await postOnboarding({ act: 'revise', direction: card.id, words })
     onClose()
@@ -120,7 +122,8 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
   </div>`
   const ruleIds = new Set(draft?.standards.flatMap((standard) => standard.rules.map((rule) => rule.id)))
   return html`<${Modal} title=${card.name} kind="wide onboarding-modal" onClose=${onClose}>
-    <div class="review-detail">
+    <${Content} class="review-detail" aria-label=${answering ? 'Direction answers' : undefined}
+      onSubmit=${answering ? (event: Event) => { event.preventDefault(); void submit() } : undefined}>
       ${card.principles?.length ? html`<div class="review-tags">${card.principles.map((name) => html`
         <span class="chip">${name}</span>`)}</div>` : ''}
       ${draft ? html`
@@ -142,14 +145,13 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
             </section>`
           })}</div></details>`)}
       ` : html`<p class="muted" role="status">The host is drafting this direction.</p>`}
-      ${!readOnly && questions.length ? html`<div class="review-questions">
+      ${answering ? html`<div class="review-questions">
         ${questions.map((q, i) => !q.rule || !ruleIds.has(q.rule) ? question(q, i) : '')}
-        <button class="btn primary" disabled=${saving || questions.some((_, i) => !choices[i])}
-          onClick=${submit}>Submit answers</button>
+        <button type="submit" class="btn primary" disabled=${saving || questions.some((_, i) => !choices[i])}>Submit answers</button>
       </div>` : !readOnly && draft && card.state !== 'loading'
         ? html`<${ReviewInput} label="What should change?" action="Revise" onSubmit=${revise} />` : ''}
       ${card.state === 'loading' && 'answered' in card && card.answered.length ? html`
         <p class="muted" role="status">Answers received. The host is re-verifying the draft.</p>` : ''}
-    </div>
+    <//>
   <//>`
 }

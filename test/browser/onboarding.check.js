@@ -30,7 +30,18 @@ const question = {
     code: { words: 'The code groups related facts.', source: code },
     principle: { words: 'Keep one topic per section.', source: principle } },
 }
-draft.questions = [question]
+const extra = {
+  id: 'explain-grouping', says: 'Explain how the topics are grouped.', checkedBy: rule.checkedBy,
+  ref: 'docs/facts.md#dedupe:3',
+  evidence: { ...rule.evidence, cases: [], check: { _tag: 'Reference', checker: 'linter', result: 'Reviewed grouping.' } },
+}
+draft.standards[0].rules.push(extra)
+const extraQuestion = {
+  says: 'When should the grouping be explained?',
+  options: ['Explain only surprising groups.', 'Explain every group.'],
+  target: { ...question.target, rule: extra.id },
+}
+draft.questions = [question, extraQuestion]
 p.write('draft.yaml', config)
 p.write('direction.yaml', Bun.YAML.stringify(draft))
 const discover = async (app) => {
@@ -107,19 +118,38 @@ try {
   expect(await button('Accept all').isDisabled()).toBe(true)
   await card('Conflict').click()
   const direction = dialog('One thing per section')
-  await visible(direction.getByText('Code side', { exact: true }))
-  await visible(direction.getByText('Principle side', { exact: true }))
-  expect(await direction.locator('textarea').count()).toBe(1)
+  const answers = direction.getByRole('form', { name: 'Direction answers' })
+  const grouping = answers.locator('.review-question-actions').filter({ hasText: question.says })
+  const explaining = answers.locator('.review-question-actions').filter({ hasText: extraQuestion.says })
+  await visible(grouping.getByText('Code side', { exact: true }))
+  await visible(grouping.getByText('Principle side', { exact: true }))
+  expect(await answers.locator('textarea').count()).toBe(2)
+  expect(await answers.locator('button[type=submit]').count()).toBe(1)
+  expect(await button('Send words', direction).count()).toBe(0)
   expect(await button('Revise', direction).count()).toBe(0)
   expect(await direction.locator('.flow').count()).toBeGreaterThan(0)
   await visible(direction.getByText('bun test', { exact: true }))
-  await visible(direction.getByRole('radio', { name: /Accept the code/ }))
-  await visible(direction.getByRole('radio', { name: /Keep the principle/ }))
-  await visible(direction.getByLabel('Answer in your own words'))
+  await visible(grouping.getByRole('radio', { name: /Accept the code/ }))
+  await visible(grouping.getByRole('radio', { name: /Keep the principle/ }))
+  await visible(explaining.getByLabel('Answer in your own words'))
   await modalShot('05-direction-conflict.png', direction)
-  await direction.getByRole('radio', { name: /Keep the principle/ }).check()
-  await button('Submit answers', direction).click()
+  const submit = button('Submit answers', answers)
+  await grouping.getByRole('radio', { name: /Keep the principle/ }).check()
+  expect(await submit.isDisabled()).toBe(true)
+  const ownWords = 'Explain groups that could mislead the reader.'
+  await explaining.getByLabel('Answer in your own words').fill(ownWords)
+  const submissions = []
+  const capture = (req) => {
+    if (req.url().endsWith('/api/onboarding') && req.method() === 'POST') submissions.push(req.postDataJSON())
+  }
+  page.on('request', capture)
+  await submit.click()
   await visible(card('Re-verifying'))
+  page.off('request', capture)
+  expect(submissions).toEqual([expect.objectContaining({
+    act: 'answer', direction: 'one-thing', revision: expect.any(String), options: ['B', { words: ownWords }],
+  })])
+  extra.says = ownWords
   expect(await button('Accept all').isDisabled()).toBe(true)
 
   ok(await p.nanda('onboard remove new-1'))
