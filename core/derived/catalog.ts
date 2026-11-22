@@ -20,6 +20,7 @@ import type {
   States,
 } from './types.ts'
 import {
+  currentVersion,
   type Direction,
   type EventRef,
   type Revision,
@@ -39,7 +40,7 @@ const need = <K, V>(value: V | undefined, what: string, key: K): V => {
 export const directionStateOf: DirectionStateOf = (m, id) => {
   const d = directionAt(m.work, id)
   if (d._tag === 'NewDirection') return { _tag: 'Drafted' }
-  const current = d.versions[d.versions.length - 1] ?? d.versions[0]
+  const current = currentVersion(d)
   return { _tag: 'Official', current: versionIdOf(current) }
 }
 
@@ -51,7 +52,8 @@ const conflictOf = (
   w: Work,
   x: Revision<Direction>,
 ): { readonly rule: string; readonly with: RevisionId | VersionId } | undefined => {
-  const base = x._tag === 'Change' ? versionAt(w, x.of, versionNumberOf(x.base)) : undefined
+  const base = x._tag !== 'Change' ? undefined : x.evidenceBase
+    ? draftAt(w, x.evidenceBase) : versionAt(w, x.of, versionNumberOf(x.base))
   const before = new Set((base?.standards ?? []).flatMap((e) => w.standards.get(e)?.rules ?? []))
   const rulesOf = (standards: ReadonlyArray<string>) =>
     standards.flatMap((e) => w.standards.get(e as never)?.rules ?? [])
@@ -60,7 +62,7 @@ const conflictOf = (
     .map((r) => ruleAt(w, r).id)
   for (const d of w.directions.values()) {
     if (d._tag !== 'Official' || d.id === x.of) continue
-    const now = d.versions[d.versions.length - 1] ?? d.versions[0]
+    const now = currentVersion(d)
     const ids = new Set(rulesOf(now.standards).map((r) => ruleAt(w, r).id))
     const twin = added.find((id) => ids.has(id))
     if (twin !== undefined) return { rule: twin, with: versionIdOf(now) }
@@ -80,8 +82,8 @@ const pending = (w: Work, y: Revision<Direction>): boolean => {
   if (madeBy(w, y.id) !== undefined || vetoOf(w, y.id) !== undefined) return false
   const d = w.directions.get(y.of)
   if (d?._tag !== 'Official') return y._tag === 'New'
-  const now = d.versions[d.versions.length - 1] ?? d.versions[0]
-  return y._tag === 'Change' && y.base === versionIdOf(now)
+  const now = currentVersion(d)
+  return y._tag === 'Change' && y.base === versionIdOf(now) && y.evidenceBase === d.currentEvidence?.revision
 }
 export const revisionStateOf: RevisionStateOf = (m, id, { direction }) => {
   const w = m.work
@@ -91,6 +93,11 @@ export const revisionStateOf: RevisionStateOf = (m, id, { direction }) => {
   // S6: Outdated before Vetoed: a draft on an old base is not revised again.
   if (direction._tag === 'Official' && (x._tag === 'New' || x.base !== direction.current)) {
     return { _tag: 'Outdated', current: direction.current }
+  }
+  const official = w.directions.get(x.of)
+  if (direction._tag === 'Official' && official?._tag === 'Official' &&
+    x._tag === 'Change' && x.evidenceBase !== official.currentEvidence?.revision) {
+    return { _tag: 'Outdated', current: direction.current, evidenceChanged: true }
   }
   const conflict = conflictOf(w, x)
   if (conflict !== undefined) return { _tag: 'Conflicted', ...conflict }

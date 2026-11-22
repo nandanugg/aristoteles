@@ -166,7 +166,7 @@ export const renderDirection = (d: Derived, version: VersionId): string => {
       state._tag === 'Vetoed'
         ? ' (ended by a Reject)'
         : state._tag === 'Outdated'
-          ? ' (built on an old version, so it stopped)'
+          ? state.evidenceChanged ? ' (built on older evidence, so it stopped)' : ' (built on an old version, so it stopped)'
           : ''
     lines.push(`draft: ${x.id}${end}; work direction show ${x.id}`)
   }

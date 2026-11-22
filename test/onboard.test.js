@@ -45,6 +45,56 @@ const acceptAll = async (p) => {
   for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
 }
 
+test('onboarding refuses flow cases and reopens an accepted legacy draft', async () => {
+  const p = await drafted()
+  const old = Bun.YAML.parse(ONBOARD_DIRECTION)
+  const sample = old.standards[0].rules[0].evidence.cases[0]
+  old.flow.at(-1).examples = [sample]
+  p.write('legacy.yaml', Bun.YAML.stringify(old))
+  expect((await p.agent('onboard draft tsd-writing --file=legacy.yaml')).err).toContain('put cases in rule evidence')
+
+  ok(await p.nanda('onboard approve-directions', 'approve'))
+  const path = '.work/assess/tsd-writing.yaml'
+  const accepted = Bun.YAML.parse(readFileSync(join(p.dir, path), 'utf8'))
+  expect(accepted.stage._tag).toBe('Accepted')
+  accepted.stage.draft.content.flow.at(-1).examples = [sample]
+  p.write(path, Bun.YAML.stringify(accepted))
+  expect(ok(await p.agent('onboard status')).out).toContain('tsd-writing is not in the current shape')
+  expect((await p.nanda('onboard accept tsd-writing')).err).toContain('tsd-writing is not in the current shape')
+  ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+  ok(await p.nanda('onboard approve-directions', 'approve'))
+})
+
+test('a live revise can carry accepted onboarding evidence with no observed break', async () => {
+  const p = await drafted()
+  const sparse = Bun.YAML.parse(ONBOARD_DIRECTION)
+  for (const rule of sparse.standards.flatMap((s) => s.rules)) {
+    if (rule.evidence) rule.evidence.cases = rule.evidence.cases.filter((e) => e.fit === 'Follows')
+  }
+  p.write('sparse.yaml', Bun.YAML.stringify(sparse))
+  ok(await p.agent('onboard draft tsd-writing --file=sparse.yaml'))
+  await acceptAll(p)
+  aLiveHost(p)
+  try {
+    ok(await p.nanda('onboard approve-roles', 'approve'))
+    await finishActivation(p)
+    p.write('unchanged-evidence.yaml', 'says: The reader can make a decision from the page.\n')
+    expect(ok(await p.agent('direction revise tsd-writing --file=unchanged-evidence.yaml --by=host')).out).toContain('d2 drafted')
+    ok(await p.nanda('direction accept d2', 'accept'))
+    // The exception survives the unrelated revision, including when the same flow is supplied.
+    p.write('same-flow.yaml', Bun.YAML.stringify({ flow: sparse.flow, says: 'Make the decision explicit.' }))
+    expect(ok(await p.agent('direction revise tsd-writing --file=same-flow.yaml --by=host')).out).toContain('d3 drafted')
+    const next = structuredClone(sparse.flow.at(-1))
+    next.says = 'A newly governed step'
+    p.write('new-flow.yaml', Bun.YAML.stringify({ flow: [next] }))
+    expect((await p.agent('direction revise tsd-writing --file=new-flow.yaml --by=host')).err).toContain(
+      'flow step 1: the rules it uses have no case that breaks',
+    )
+  } finally {
+    killBootstrap(p)
+  }
+})
+
 describe('the whole onboarding at a terminal', () => {
   test('config, found, draft, ask, answer, revise, remove, approve, roles, persistence, and the start', async () => {
     const p = onboardingProject()

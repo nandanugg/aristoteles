@@ -48,6 +48,11 @@ export const sameChecker = (a: Rule['checkedBy'], b: Rule['checkedBy']): boolean
 const sameRule = (a: Rule, b: Rule): boolean =>
   a.entry === b.entry ||
   (a.id === b.id && a.says === b.says && sameChecker(a.checkedBy, b.checkedBy))
+// Definition equality includes the check command/reference, but excludes observed evidence.
+export const sameRuleDefinition = (a: Rule, b: Pick<Rule, 'id' | 'says' | 'test' | 'ref' | 'checkedBy'>): boolean =>
+  a.id === b.id && a.says === b.says && a.test === b.test && a.ref === b.ref &&
+  sameChecker(a.checkedBy, b.checkedBy)
+
 // The order of the keys of a where says nothing, and nor does the order of the values of a key.
 const sameWhere = (a: Where, b: Where): boolean => {
   if (a._tag === 'Everywhere' || b._tag === 'Everywhere') return a._tag === b._tag
@@ -64,9 +69,9 @@ const sameWhere = (a: Where, b: Where): boolean => {
   )
 }
 // Two drafts' standards have the same words, rule by rule: each draft makes its own entries.
-export const sameWords = (w: Work, x: Standard, y: Standard): boolean =>
+export const sameWords = (w: Work, x: Standard, y: Standard, rulesEqual = sameRule): boolean =>
   x.id === y.id &&
   x.says === y.says &&
   sameWhere(x.where, y.where) &&
   x.rules.length === y.rules.length &&
-  x.rules.every((r) => y.rules.some((q) => sameRule(ruleAt(w, r), ruleAt(w, q))))
+  x.rules.every((r) => y.rules.some((q) => rulesEqual(ruleAt(w, r), ruleAt(w, q))))

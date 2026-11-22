@@ -435,7 +435,7 @@ const checkContextEntry = (where: string, what: string, key: string, value: unkn
 
 // The flow: key of a draft (Nanda, 2026-11-15: a direction has a flow): the steps from the first act
 // of an actor down to the output, each { from, to, says }, with its place where the project
-// defines it, and a step that the direction governs marked with uses and its examples. The Schema
+// defines it, and a step that the direction governs marked with uses. The Schema
 // is the rule; a refusal says where it stopped.
 const decodeFlow = Schema.decodeUnknownSync(Flow)
 const decodeDirection = Schema.decodeUnknownSync(DirectionFile)
@@ -448,8 +448,8 @@ const flowOf = (file: string, value: unknown): ReadonlyArray<FlowStep> => {
     return decodeFlow(value)
   } catch (e) {
     const hint =
-      'a step needs from, to and says; a step that the direction governs needs uses and examples ' +
-      'together (one that follows the direction, one that breaks it)'
+      'a step needs from, to and says; mark governed steps with uses and put cases in rule evidence. ' +
+      'The examples key on a flow step is obsolete'
     return fail(file, `flow: ${hint}; ${(e as Error).message.replace(/\s*\n\s*/g, ' ')}`)
   }
 }

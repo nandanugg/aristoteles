@@ -1,6 +1,7 @@
 // The reads of the records that a fold step needs: a record by its id (a missing one is a bug,
 // since the store was checked) and the versions of a direction. They read facts of the Work only.
 import {
+  currentVersion,
   type Direction,
   type DirectionId,
   type OfficialDirection,
@@ -34,7 +35,6 @@ export const officialAt = (w: Work, d: DirectionId): OfficialDirection | undefin
 }
 export const currentOf = (w: Work, d: DirectionId): Version<Direction> => {
   const official = officialAt(w, d)
-  const v = official?.versions[official.versions.length - 1]
-  if (v === undefined) throw new Error(`the work has no official direction ${d}`)
-  return v
+  if (official === undefined) throw new Error(`the work has no official direction ${d}`)
+  return currentVersion(official)
 }

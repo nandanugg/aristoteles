@@ -149,6 +149,7 @@ const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refus
             ...(r.checkedBy !== undefined ? { checkedBy: String(r.checkedBy) } : {}),
             ...(r.test !== undefined ? { test: String(r.test) } : {}),
             ...(r.ref !== undefined ? { ref: String(r.ref) } : {}),
+            ...(r.evidence !== undefined ? { evidence: r.evidence } : {}),
             supersedes: list(r.supersedes).map(String),
           })
         }
@@ -252,8 +253,15 @@ const asRevise = (w: Work, file: DirectionFile, name: string): Effect.Effect<Rev
     rules: s.rules.map((r) => ({ ...r, supersedes: [] })),
   })
   const add = file.standards.filter((s) => !was.some((y) => y.id === s.id)).map(standard)
+  const evidenceChanged = (before: (typeof was)[number], after: DirectionFile['standards'][number]) => {
+    const rules = new Map(before.rules.map((e) => {
+      const rule = ruleAt(w, e)
+      return [rule.id, rule.evidence] as const
+    }))
+    return after.rules.some((r) => r.evidence !== undefined && !Bun.deepEquals(r.evidence, rules.get(r.id)))
+  }
   const replace = file.standards
-    .filter((s) => was.some((y) => y.id === s.id && shapeOf(y) !== shape(s)))
+    .filter((s) => was.some((y) => y.id === s.id && (shapeOf(y) !== shape(s) || evidenceChanged(y, s))))
     .map((s) => ({ id: s.id, with: standard(s) }))
   const remove = was.filter((y) => !file.standards.some((s) => s.id === y.id)).map((y) => y.id)
   const flow = file.flow
@@ -279,10 +287,6 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
     const raw = yield* readYaml(d.moment.outside.cwd, file)
     const people = w.config.people
     const base = yield* readDirection(file, raw, people).pipe(Effect.mapError(asWrite(file)))
-    // The live flow (pass 3b): each marked step is shown followed and broken by the cases of the
-    // rules it uses. Onboarding's drafts may record no observed break (U5a), so this check is here.
-    const cases = casesProblem(base.id, base.flow, base.standards)
-    if (cases !== undefined) return yield* Effect.fail(DRAFT.cases(`${file}: ${cases}`))
     const why = yield* whyOf(input.content.why)
     const existing = w.directions.get(base.id as never)
     if (existing?.source._tag === 'External') return yield* fail(R.DraftDirection.company(base.id))
@@ -305,6 +309,9 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
       yield* checkRevised(d, by, revised)
       return [create('Revision', { _tag: 'Revised', ...revised })]
     }
+    // A newly drafted live direction needs both fits. Existing versions use the revise check.
+    const cases = casesProblem(base.id, base.flow, base.standards)
+    if (cases !== undefined) return yield* Effect.fail(DRAFT.cases(`${file}: ${cases}`))
     yield* answersFound(w, answers)
     const drafted = { direction: base, answers, why }
     yield* checkDrafted(d, by, drafted)

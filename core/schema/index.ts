@@ -86,6 +86,7 @@ export {
   Examples,
   casesOfRules,
   casesProblem,
+  rulesUsedBy,
   ExternalSource,
   firstSentence,
   Flow,

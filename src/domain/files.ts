@@ -285,7 +285,11 @@ export const spotsOf = (e: Example): ReadonlyArray<Spot> =>
 // standards, its rules). Cases live on RULES (RuleEvidence.cases: onboarding v2 U13, pass 3b),
 // never on a flow step: the flow only shows where the rules apply.
 const Place = Schema.Struct({ file: NonBlank, line: Schema.optionalKey(PositiveInt) })
-const StepAt = { from: NonBlank, to: NonBlank, says: NonBlank, place: Schema.optionalKey(Place) }
+const StepAt = {
+  from: NonBlank, to: NonBlank, says: NonBlank, place: Schema.optionalKey(Place),
+  // Refuse legacy inputs even when the decoder strips other excess properties.
+  examples: Schema.optionalKey(Schema.Never),
+}
 const Marked = Schema.Struct({
   ...StepAt,
   uses: Schema.NonEmptyArray(NonBlank),
@@ -310,31 +314,32 @@ export const Flow = Schema.Array(FlowStep).pipe(
 )
 export type Flow = typeof Flow.Type
 // The cases of the rules of a direction, in the order of its standards and rules.
-type RulesOf = ReadonlyArray<{
-  readonly id: string
-  readonly rules: ReadonlyArray<{ readonly id: string; readonly evidence?: RuleEvidence }>
-}>
-export const casesOfRules = (standards: RulesOf): ReadonlyArray<Example> =>
+type RulesOf<R> = ReadonlyArray<{ readonly id: string; readonly rules: ReadonlyArray<R> }>
+type RuleCases = { readonly id: string; readonly evidence?: RuleEvidence }
+export const casesOfRules = (standards: RulesOf<RuleCases>): ReadonlyArray<Example> =>
   standards.flatMap((s) => s.rules.flatMap((r) => r.evidence?.cases ?? []))
 
-// What is wrong with the cases of a direction in the live flow (Nanda 2026-11-15: each marked step
-// is shown followed and broken): the rules a marked step uses (the direction's id: all its rules; a
-// standard's id: its rules; a rule's id: that rule) hold, between them, a case that follows and a
-// case that breaks.
-export const casesProblem = (
+// A step can name the whole direction, a standard, or an individual rule.
+export const rulesUsedBy = <R extends { readonly id: string }>(
+  id: string, step: MarkedStep, standards: RulesOf<R>,
+): ReadonlyArray<R> => {
+  const uses = new Set<string>(step.uses)
+  return standards.flatMap((s) =>
+    uses.has(id) || uses.has(s.id) ? s.rules : s.rules.filter((r) => uses.has(r.id)))
+}
+
+export const casesProblem = <R extends RuleCases>(
   id: string,
   flow: ReadonlyArray<FlowStep>,
-  standards: RulesOf,
+  standards: RulesOf<R>,
+  keepsNoObservedBreak?: (step: MarkedStep, rules: ReadonlyArray<R>) => boolean,
 ): string | undefined => {
   for (const [i, s] of flow.entries()) {
     if (!isMarked(s)) continue
-    const rules = s.uses.flatMap((u) =>
-      u === id
-        ? standards.flatMap((x) => x.rules)
-        : standards.flatMap((x) => (x.id === u ? x.rules : x.rules.filter((r) => r.id === u))))
+    const rules = rulesUsedBy(id, s, standards)
     const cases = rules.flatMap((r) => r.evidence?.cases ?? [])
     const lacks = (['Follows', 'Breaks'] as const).find((fit) => !cases.some((e) => e.fit === fit))
-    if (lacks !== undefined) {
+    if (lacks !== undefined && !(lacks === 'Breaks' && keepsNoObservedBreak?.(s, rules))) {
       return `flow step ${i + 1}: the rules it uses have no case that ${lacks.toLowerCase()}; ` +
         'put the cases in the evidence of those rules'
     }

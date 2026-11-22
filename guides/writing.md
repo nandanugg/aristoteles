@@ -92,6 +92,11 @@ illustrative on the page).
             - { fit: Breaks, output: { written: "## Design and rollout" } }
 ```
 
+Use `replace` in a revise to update the evidence of an existing rule. When
+the person accepts an evidence-only draft, `work direction show <id>`
+shows the updated cases. Numbered versions keep the evidence they were
+made with.
+
 ## Write for contextual retrieval
 
 - The first paragraph of an entry says the whole entry. A brief shows only that paragraph and

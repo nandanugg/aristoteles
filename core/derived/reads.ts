@@ -1,20 +1,21 @@
 // The reads of the facts of a Work that the states and the actions of the drafts read: the
 // records by id, the versions of a direction, and the owner's decisions of its drafts.
 // A missing record is a bug here: callers look ids up first (canAct does).
-import type {
-  Direction,
-  DirectionId,
-  OfficialDirection,
-  RejectId,
-  Revision,
-  RevisionId,
-  Rule,
-  RuleEntry,
-  Standard,
-  StandardEntry,
-  Version,
-  VersionId,
-  Work,
+import {
+  currentVersion,
+  type Direction,
+  type DirectionId,
+  type OfficialDirection,
+  type RejectId,
+  type Revision,
+  type RevisionId,
+  type Rule,
+  type RuleEntry,
+  type Standard,
+  type StandardEntry,
+  type Version,
+  type VersionId,
+  type Work,
 } from '../schema/index.ts'
 
 // --- getters -------------------------------------------------------------------------------------
@@ -45,15 +46,22 @@ export const versionAt = (w: Work, d: DirectionId, n: number): Version<Direction
 }
 export const currentOf = (w: Work, d: DirectionId): Version<Direction> => {
   const official = officialAt(w, d)
-  const v = official?.versions[official.versions.length - 1]
-  if (v === undefined) throw new Error(`the work has no official direction ${d}`)
-  return v
+  if (official === undefined) throw new Error(`the work has no official direction ${d}`)
+  return currentVersion(official)
 }
 export const versionNumberOf = (id: VersionId): number => Number(id.slice(id.lastIndexOf('@') + 1))
-// A draft is official when a version has it as its revision.
+// An accepted draft either made a numbered version or updated its base's evidence.
 export const madeBy = (w: Work, draft: RevisionId): Version<Direction> | undefined => {
-  const d = w.directions.get(draftAt(w, draft).of)
-  return d?._tag === 'Official' ? d.versions.find((v) => v.revision === draft) : undefined
+  const x = draftAt(w, draft)
+  const d = officialAt(w, x.of)
+  const made = d?.versions.find((v) => v.revision === draft)
+  if (made !== undefined || d === undefined || x._tag !== 'Change') return made
+  for (const review of w.reviews.values()) {
+    if (review._tag === 'Accept' && review.of.id === draft) {
+      return d.versions[versionNumberOf(x.base) - 1]
+    }
+  }
+  return undefined
 }
 
 // --- the owner's rejects of drafts ---------------------------------------------------------------

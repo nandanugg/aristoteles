@@ -97,6 +97,10 @@ const reviewDraft = (c: Ctx, id: string, accept: boolean): CanAct => {
     case 'Official':
       return no(`${id} is official: it made ${direction.name}`, 'Pick', 'decide an open draft')
     case 'Outdated': {
+      if (state.evidenceChanged) {
+        return no(`${id} was drafted before ${state.current}'s latest evidence was accepted`,
+          'Pick', `decide a draft built on the current evidence of ${state.current}`)
+      }
       const on =
         draft._tag === 'Change'
           ? `is built on ${direction.name} ${draft.base}, an old version`

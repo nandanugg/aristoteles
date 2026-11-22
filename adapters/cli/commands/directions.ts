@@ -67,12 +67,20 @@ ${FLOW_FORM.replace(/^/gm, '  ')}
     <rule id>:
 ${RULE_EVIDENCE_FORM.split('\n').slice(1).map((l) => `    ${l}`).join('\n')}`
 
-const REVISE_TEMPLATE =
-  'write a file like this (any of the keys), then run the revise again:\n' +
-  '  add:\n    - { id: <new standard id>, says: <the standard>, rules: [ { id: <new rule id>, says: <the rule>, checkedBy: <role> } ] }\n' +
-  '  replace:\n    - { id: <standard id>, with: { id: <standard id>, says: <...>, rules: [ ... ] } }\n' +
-  '  remove: [<standard id>]\n  says: <a new spirit needs the accept of the owner>\n' +
-  '  summary: <one or two plain sentences: what the direction asks, and why it matters>'
+const REVISE_TEMPLATE = `write a file like this (any of the keys), then run the revise again:
+  add:                 # or use the same standard shape under replace[].with
+    - id: <new standard id>
+      says: <the standard>
+      rules:
+        - id: <new rule id>
+          says: <the rule>
+          checkedBy: <role>
+${RULE_EVIDENCE_FORM.replace(/^/gm, '          ')}
+  replace:
+    - { id: <standard id>, with: { id: <standard id>, says: <...>, rules: [ ... ] } }
+  remove: [<standard id>]
+  says: <a new spirit needs the accept of the owner>
+  summary: <one or two plain sentences: what the direction asks, and why it matters>`
 
 // The examples of a direction or of a new draft, by the step of its flow, each with its state
 // (ruling 4): the adapter reads the text of each file now, so an excerpt that left its file shows
@@ -306,6 +314,10 @@ const decideDraft = (call: Call, word: 'accept' | 'reject', ref: string) =>
     const state = (yield* derivedAfter(w)).states.revisions.get(revision.id)
     if (word === 'reject') return [`${vid}: reject of ${ref}; ${ref} is ended.`]
     if (state?._tag !== 'Official') return [`${vid}: accept of ${ref}.`]
+    const direction = w.directions.get(revision.of)
+    if (direction?._tag === 'Official' && direction.currentEvidence?.revision === revision.id) {
+      return [`${vid}: accept of ${ref}. Updated rule evidence for ${state.version}.`]
+    }
     const version = versionAt(w, revision.of, versionNumberOf(state.version))
     return [
       `${vid}: accept of ${ref}. ${ref} is official: ${state.version}.`,

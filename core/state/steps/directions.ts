@@ -16,6 +16,7 @@ import {
   type Human,
   type Limit,
   Moves,
+  type OfficialDirection,
   type OnboardedDirection,
   type PositiveInt,
   type Reviser,
@@ -29,6 +30,7 @@ import {
   type StandardEntry,
   type Stepped,
   type Time,
+  type Version,
   versionId,
   whereOf,
   type Why,
@@ -36,7 +38,7 @@ import {
 } from '../../schema/index.ts'
 import { type Act, type Build, built, damaged, put } from '../act.ts'
 import { currentOf, directionAt, draftAt, officialAt, ruleAt, standardAt } from '../records.ts'
-import { type Content, contentOf, sameChecker, sameWords } from '../versions.ts'
+import { type Content, contentOf, sameRuleDefinition, sameWords } from '../versions.ts'
 
 type StandardFile = DirectionFile['standards'][number]
 type Seq = { readonly seq: number }
@@ -79,15 +81,14 @@ const buildStandard = (
       r.checkedBy === undefined
         ? { _tag: 'Decider' }
         : { _tag: 'Role', role: r.checkedBy as RoleName }
-    const same = older.findLast(
-      (x) =>
-        x.id === r.id &&
-        x.says === r.says &&
-        x.test === r.test &&
-        x.ref === r.ref &&
-        sameChecker(x.checkedBy, checkedBy),
-    )
-    if (same && r.supersedes.length === 0) return same.entry
+    const sameDefinition = (x: Rule) => sameRuleDefinition(x, { ...r, checkedBy })
+    const same = baseRules.find(sameDefinition) ?? older.findLast(sameDefinition)
+    if (same && r.supersedes.length === 0) {
+      if (r.evidence === undefined || Bun.deepEquals(same.evidence, r.evidence)) return same.entry
+      const ruleEntry = `${entry}/${r.id}` as RuleEntry
+      scratch.rules.set(ruleEntry, { ...same, entry: ruleEntry, evidence: r.evidence })
+      return ruleEntry
+    }
     const supersedes = r.supersedes.flatMap((id) => {
       const old = baseRules.find((x) => x.id === id)
       return old ? [old.entry] : []
@@ -220,7 +221,7 @@ const revised = (
   w: Work,
   x: DraftOf,
   input: DraftFields & {
-    readonly direction: Direction
+    readonly direction: OfficialDirection
     readonly summary: string | undefined
     readonly flow: ReadonlyArray<FlowStep> | undefined
     readonly says: string | undefined
@@ -235,6 +236,7 @@ const revised = (
   const revision: Revision<Direction> = {
     _tag: 'Change',
     base: versionId(d.id, base.number ?? 0),
+    ...(d.currentEvidence ? { evidenceBase: d.currentEvidence.revision } : {}),
     id: x.id,
     of: d.id,
     summary: input.summary ?? current.summary,
@@ -450,12 +452,35 @@ export const drafted = (
 
 // --- the version of an accepted draft ------------------------------------------------------------
 
-// The draft becomes the next version (version 1 of a new direction).
+// Evidence can change independently of the numbered governance snapshot.
+const evidenceOnly = (w: Work, from: Version<Direction>, draft: Revision<Direction>): boolean => {
+  if (draft.origin._tag !== 'Written' || draft.summary !== from.summary || draft.says !== from.says ||
+    !Bun.deepEquals(draft.flow, from.flow) || draft.standards.length !== from.standards.length) return false
+  const previous = new Map(from.standards.map((entry) => {
+    const standard = standardAt(w, entry)
+    return [standard.id, standard] as const
+  }))
+  let changed = false
+  for (const entry of draft.standards) {
+    const after = standardAt(w, entry)
+    const before = previous.get(after.id)
+    if (before === undefined || !sameWords(w, before, after, sameRuleDefinition)) return false
+    changed ||= !sameWords(w, before, after, (a, b) =>
+      sameRuleDefinition(a, b) && Bun.deepEquals(a.evidence, b.evidence))
+  }
+  return changed
+}
+
+// An accepted draft changes the current evidence or makes the next numbered version.
 export const makeVersion = (b: Build, draft: RevisionId, when: Time): void => {
   const w = b.work
   const x = draftAt(w, draft)
   const d = directionAt(w, x.of)
   const from = d._tag === 'Official' ? currentOf(w, d.id) : undefined
+  if (d._tag === 'Official' && from !== undefined && evidenceOnly(w, from, x)) {
+    b.work = { ...w, directions: put(w.directions, d.id, Moves.acceptEvidence(d, x)) }
+    return
+  }
   const version = {
     of: d.id,
     number: ((from?.number ?? 0) + 1) as PositiveInt,

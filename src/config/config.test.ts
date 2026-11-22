@@ -333,6 +333,14 @@ describe('readDirection', () => {
     for (const uses of [[], 'tsd', [' ']]) {
       expect(await refused([step(uses)])).toContain('d.yaml: flow: ')
     }
+    for (const legacy of [
+      [{ ...step(['tsd']), examples: shown }],
+      [{ ...step(), examples: [] }, step(['tsd'])],
+    ]) {
+      const result = (await runNew(next.readFlow('legacy.yaml', legacy))) as Obj
+      expect(result.refused).toContain('put cases in rule evidence')
+      expect(result.refused).toContain('examples key on a flow step is obsolete')
+    }
     // readDirection reads a marked step whose rules hold no break (onboarding's no break observed,
     // U5a); the live draft refuses it (core/actions/directions.ts DraftDirection, casesProblem).
     expect(await read([step(['tsd'])], standardsWith(shown.slice(0, 1)))).toMatchObject({ ok: {} })

@@ -129,12 +129,11 @@ export type RevisionOrigin =
     }
 
 // page: Revision<T>. A draft of T: a new one, or a change of a version. Its reviews point to it
-// (Review.of); it is official when a version has it as its revision. The examples are in the
-// steps of its flow: a company draft of a new direction has no flow until a model adds it.
+// (Review.of). A company draft of a new direction has no flow until a model adds it.
 export type Revision<T extends Versioned> = ContentOf<T> &
   (
     | { readonly _tag: 'New' } // page: no base; version 1
-    | { readonly _tag: 'Change'; readonly base: VersionId } // the version that it changes
+    | { readonly _tag: 'Change'; readonly base: VersionId; readonly evidenceBase?: RevisionId }
   ) & {
     readonly id: RevisionId // not on the page: d3
     readonly of: IdOf<T>
@@ -154,7 +153,12 @@ export type Revision<T extends Versioned> = ContentOf<T> &
 export type Direction = DirectionBase &
   (
     | { readonly _tag: 'NewDirection' } // drafted, with no version yet
-    | { readonly _tag: 'Official'; readonly versions: NonEmpty<Version<Direction>> }
+    | {
+        readonly _tag: 'Official'
+        readonly versions: NonEmpty<Version<Direction>>
+        // Accepted rule evidence on the current version, separate from its original snapshot.
+        readonly currentEvidence?: { readonly revision: RevisionId; readonly standards: ReadonlyArray<StandardEntry> }
+      }
   )
 interface DirectionBase {
   readonly id: DirectionId // not on the page: the key of the direction in the dir
