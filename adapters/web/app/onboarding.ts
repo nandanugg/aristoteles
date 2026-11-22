@@ -24,7 +24,9 @@ function AddDirection({ onDone }: { onDone: () => void }) {
   const addCompany = attempt(async () => {
     setSaving(true)
     try {
-      const response = await postOnboarding({ act: 'add-company-direction', repo: repo.trim(), path: path.trim() })
+      const response = path.trim()
+        ? await postOnboarding({ act: 'add-company-direction', repo: repo.trim(), path: path.trim() })
+        : await postOnboarding({ act: 'add-company-url', url: repo.trim() })
       onDone()
       return response
     } finally { setSaving(false) }
@@ -37,9 +39,9 @@ function AddDirection({ onDone }: { onDone: () => void }) {
     ${company ? html`<form class="review-detail" onSubmit=${(event: Event) => { event.preventDefault(); void addCompany() }}>
       <label class="field"><span>Repository URL</span><input type="url" required value=${repo}
         onInput=${(e: Event) => setRepo((e.currentTarget as HTMLInputElement).value)} /></label>
-      <label class="field"><span>Direction folder in the repository</span><input required value=${path}
+      <label class="field"><span>Direction folder, if the URL has no folder fragment</span><input value=${path}
         onInput=${(e: Event) => setPath((e.currentTarget as HTMLInputElement).value)} /></label>
-      <button class="btn primary" disabled=${saving || !repo.trim() || !path.trim()}>Add direction</button>
+      <button class="btn primary" disabled=${saving || !repo.trim() || (!path.trim() && !repo.includes('#'))}>Add direction</button>
     </form>` : html`<${ReviewInput} label="What direction should the project follow?"
       action="Add direction" onSubmit=${addPrompt} />`}
   </div>`
@@ -55,8 +57,8 @@ function Directions({ view, project, refresh, onRoles }: {
   const selectedCard = view.directions.find((card) => card.id === selected)
   const ready = view.directions.filter((card) => card.state === 'ready')
   const blocked = !ready.length || view.directions.some((card) =>
-    card.state !== 'ready' && card.state !== 'accepted' || card.state === 'ready' && !card.revision)
-  const complete = view.directions.length > 0 && view.directions.every((card) => card.state === 'accepted')
+    card.state !== 'ready' && card.state !== 'accepted' && card.state !== 'removed' || card.state === 'ready' && !card.revision)
+  const complete = view.directions.length > 0 && view.directions.every((card) => card.state === 'accepted' || card.state === 'removed')
   const discovery = view.discovery
   const accept = attempt(async () => {
     setSaving(true)
@@ -92,7 +94,7 @@ function Directions({ view, project, refresh, onRoles }: {
       ${view.directions.map((card) => {
         const state = directionLabel(card)
         const title = card.state === 'loading' && card.why === 'drafting' ? 'Assessing new direction…' : card.name
-        const summary = card.state === 'question' ? card.open[0]?.says : 'draft' in card ? card.draft.summary : card.name
+        const summary = card.state === 'question' ? card.open[0]?.says : 'draft' in card ? card.draft?.summary ?? card.name : card.name
         return html`<button class="review-card" data-state=${state} onClick=${() => setSelected(card.id)}>
           <span class="review-card-top"><span class="chip review-state" data-state=${state}>${state}</span></span>
           <strong>${title}</strong>${summary && summary !== title ? html`<span class="review-description">${summary}</span>` : ''}
@@ -163,7 +165,7 @@ export function Onboarding({ dir, version }: { dir: Dir; version: number }) {
     return () => { current = false }
   }, [version, revision])
   const rolesOpen = view !== null && view.directions.length > 0 &&
-    view.directions.every((card) => card.state === 'accepted')
+    view.directions.every((card) => card.state === 'accepted' || card.state === 'removed')
   const staffingOpen = rolesOpen && view.roles.length > 0 && !view.roleRequests?.length &&
     view.roles.every((role) => role.state === 'accepted' && !role.questions?.length && !role.request)
   const active = step === 'staffing' && staffingOpen ? 'staffing' : step !== 'directions' && rolesOpen ? 'roles' : 'directions'

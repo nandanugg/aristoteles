@@ -15,6 +15,7 @@ export const onboardingWords = (
   switch (act.act) {
     case 'add-direction':
       return `${made.join(', ')}: a new direction; it shows Loading until the host drafts it.`
+    case 'add-company-url':
     case 'add-company-direction':
       return `${made.join(', ')}: a company direction; it shows Loading until the host drafts it.`
     case 'answer': {

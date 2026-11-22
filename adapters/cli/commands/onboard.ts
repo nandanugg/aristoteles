@@ -9,24 +9,29 @@ import { Effect, Schema } from 'effect'
 import { startStateOf } from '../../../core/actions/index.ts'
 import { onboardingStateOf, spotCurrent } from '../../../core/derived/index.ts'
 import {
+  AiQuestion,
+  deviationCases,
+  Discovery,
   answersIn,
   DirectionId,
   draftIn,
   Example,
-  examplesOfFlow,
   firstSentence,
   isNonBlank,
+  NonBlank,
   type OnboardingDirection,
   Refused,
   refuse,
   RoleName,
   RoleReview,
+  RuleEvidence,
   spotsOf,
   usesProblem,
 } from '../../../core/schema/index.ts'
 import {
   CONFIG,
   activationLock,
+  directionReview,
   draftConfigOfText,
   DRAFT,
   Dir,
@@ -63,7 +68,6 @@ import { type Confirm, personChannel, personOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
 import { activationEvents, markerApproval, prepareActivation, runActivation } from '../../live/activation.ts'
 import { configProblems } from '../../live/config-problems.ts'
-import { FLOW_FORM } from '../shared.ts'
 import { WAIT_SECONDS } from './wait.ts'
 
 const POLL_MS = 1000
@@ -84,7 +88,8 @@ const CONFIG_TEMPLATE = `write a file like this, then run the command again:
 ${ROLE_KEYS}`
 const ROLE_TEMPLATE = `write a file with the keys of one role, then run the command again:
 ${ROLE_KEYS.replaceAll('\n      ', '\n  ').replace(/^ {6}/, '  ')}`
-const FLOW = FLOW_FORM.replace(/^/gm, '  ')
+const FLOW = `  flow:
+    - { from: <actor>, to: <actor or file>, says: <what happens>, place: { file: <path>, line: <line> }, uses: [<direction, standard and rule ids>] }`
 const DRAFT_TEMPLATE = `write a file like this, then run the command again:
   id: <a short id; a new direction takes it from its first draft>
   name: <a short name>
@@ -96,21 +101,30 @@ ${FLOW}
     - id: <standard id>
       says: <how the output looks>
       rules:
-        - { id: <rule id>, says: <one check>, checkedBy: <a role of ${DRAFT}> }`
+        - { id: <rule id>, says: <one check>, checkedBy: <a role of ${DRAFT}> }
+          # Attach scope, cases, knownBreaks and the check result under evidence.
+  discovery:
+    scope: { searched: [<scope>], unknown: [<unknown area>] }
+    sources: [{ file: <path>, line: <line>, excerpt: <excerpt> }]`
 const COMPANY_TEMPLATE = `write a file like this, then run the command again (the words come from the company folder):
   checkedBy: <the role that checks each rule>
   rules: { <rule id>: <the role that checks this rule> }
 ${FLOW}`
 const QUESTIONS_TEMPLATE = `write a file like this, then run the command again:
   questions:
-    - says: <what the AI must know to draft the direction>
-      example: { fit: Follows | Breaks, output: { file: <path>, line: <n>, excerpt: <a short part of the file> } }   # as in a draft
-      options: [<option A>, <option B>]`
+    - says: <what needs a decision>
+      options: [<wording A>, <wording B>]
+      target:
+        _tag: Candidates
+        topic: <topic>
+        a: { words: <version A>, source: { file: <path>, line: <line>, excerpt: <excerpt> } }
+        b: { words: <version B>, source: { file: <path>, line: <line>, excerpt: <excerpt> } }
+  A deviation uses _tag: Deviation, a rule id, and code and principle in place of a and b.`
 // A draft of onboarding names no owner: readDirection checks the rest of the file with this one,
 // and the person who starts the store owns each direction.
 const OWNER = 'the person'
-const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'flow', 'says', 'standards']
-const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'flow']
+const DRAFT_KEYS = ['id', 'name', 'from', 'summary', 'flow', 'says', 'standards', 'questions', 'discovery']
+const COMPANY_KEYS = ['id', 'checkedBy', 'rules', 'flow', 'evidence', 'questions', 'discovery']
 
 const isRecord = (x: unknown): x is Readonly<Record<string, unknown>> =>
   typeof x === 'object' && x !== null && !Array.isArray(x)
@@ -219,8 +233,8 @@ const textsOf = (files: OnboardingFiles) =>
       const asked = f.stage._tag === 'Question' ? f.stage.open : answersIn(f.stage)
       const draft = draftIn(f.stage)
       const examples = [
-        ...(draft ? examplesOfFlow(draft.content.flow) : []),
-        ...asked.map((q) => q.example),
+        ...(draft?.content.standards.flatMap((s) => s.rules.flatMap((r) => r.evidence?.cases ?? [])) ?? []),
+        ...asked.flatMap((q) => q.example ? [q.example] : []),
       ]
       for (const { file } of examples.flatMap(spotsOf)) {
         if (!texts.has(file)) texts.set(file, yield* read.read(join(cwd, file)))
@@ -323,7 +337,7 @@ const localDraft = (file: string, raw: Readonly<Record<string, unknown>>, curren
         unknown === 'owner' ? 'the person who starts the store owns each direction' : DRAFT_TEMPLATE,
       )
     }
-    const first = current.asked._tag === 'New' && current.stage._tag === 'Drafting'
+    const first = current.asked._tag === 'New' && draftIn(current.stage) === undefined
     if (first && raw.id === undefined) {
       return yield* refuse(
         `${file}: a new direction takes its id from its first draft`,
@@ -387,6 +401,10 @@ const companyDraft = (
     const flow = yield* readFlow(file, raw.flow)
     const marks = usesProblem(id, flow, folder.standards)
     if (marks !== undefined) return yield* refuse(`${file}: ${marks}`, COMPANY_TEMPLATE)
+    const evidence = raw.evidence === undefined ? {} : yield* refusing(() =>
+      Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Struct({
+        evidence: RuleEvidence, test: Schema.optionalKey(NonBlank), ref: Schema.optionalKey(Schema.String),
+      })))(raw.evidence))
     const draft: DirectionDraft = {
       id,
       name: folder.name,
@@ -399,7 +417,8 @@ const companyDraft = (
         says: s.says,
         rules: s.rules.map((r) => {
           const by = checker(r.id)
-          return { id: r.id, says: r.says, ...(by ? { checkedBy: RoleName.make(by) } : {}), supersedes: [] }
+          return { id: r.id, says: r.says, ...(by ? { checkedBy: RoleName.make(by) } : {}),
+            ...evidence[r.id], supersedes: [] }
         }),
       })),
     }
@@ -418,21 +437,44 @@ const draft = (call: Call, id: string | undefined) =>
         `work onboard status lists them; the host makes one with work onboard found ${direction}`,
       )
     }
-    const template = current.asked._tag === 'Company' ? COMPANY_TEMPLATE : DRAFT_TEMPLATE
+    const adoptCompany = current.asked._tag === 'Company' && current.stage._tag === 'Answered' &&
+      current.stage.answered.some((q) => q.target?._tag === 'Deviation' && q.chosen !== 'B')
+    const template = current.asked._tag === 'Company' && !adoptCompany ? COMPANY_TEMPLATE : DRAFT_TEMPLATE
     const file = yield* fileFlag(call, template)
     const raw = yield* yamlIn(file)
     if (!isRecord(raw)) return yield* refuse(`${file}: write the keys of a draft`, template)
+    const provenance = raw.discovery === undefined ? undefined
+      : yield* refusing(() => Schema.decodeUnknownSync(Discovery)(raw.discovery))
+    if (provenance) yield* realExamples(file, provenance.sources.map((output) => ({ fit: 'Follows', output })))
     const words =
-      current.asked._tag === 'Company'
+      current.asked._tag === 'Company' && !adoptCompany
         ? yield* companyDraft(file, raw, current, current.asked)
         : yield* localDraft(file, raw, current)
-    const examples = examplesOfFlow(words.flow)
-    yield* realExamples(file, examples)
+    const rules = words.standards.flatMap((s) => s.rules)
+    const examples = rules.flatMap((r) => r.evidence?.cases ?? [])
+    if (words.flow.some((step) => step.examples !== undefined)) {
+      return yield* refuse('cases belong to rules, not flow steps', DRAFT_TEMPLATE)
+    }
+    for (const rule of rules) {
+      const evidence = rule.evidence
+      if (evidence === undefined) continue
+      if ((evidence.check._tag === 'Command' && rule.test === undefined) ||
+        (evidence.check._tag === 'Reference' && rule.ref === undefined)) {
+        return yield* refuse(`${rule.id}: check result requires its command or reference`, DRAFT_TEMPLATE)
+      }
+    }
+    yield* realExamples(file, [...examples, ...rules.flatMap((r) =>
+      (r.evidence?.knownBreaks ?? []).map((output) => ({ fit: 'Breaks' as const, output })))])
+    const questions = raw.questions === undefined ? undefined : yield* readQuestions(file, raw.questions)
+    const revision = textOf(call.args.one('revision'))
     const [made = direction] = yield* hostAct(cwd, {
       _tag: 'Draft',
       direction,
-      draft: words,
+      draft: { ...words, ...(provenance && { discovery: provenance }) },
       reopen: reopens(files, direction),
+      ...(revision === undefined ? {} : { revision }),
+      ...(questions === undefined ? {} : { questions }),
+      ...(adoptCompany && { adoptCompany: true as const }),
     })
     const state = yield* shownAs(cwd, made)
     return [
@@ -441,34 +483,33 @@ const draft = (call: Call, id: string | undefined) =>
     ]
   })
 
+const readQuestions = (file: string, raw: unknown) => Effect.gen(function* () {
+  const list = Array.isArray(raw) ? raw : []
+  const questions: Array<QuestionDraft> = []
+  for (const [i, q] of list.entries()) {
+    const decoded = Schema.decodeUnknownOption(AiQuestion)(q)
+    if (decoded._tag === 'None' || (decoded.value.target === undefined && decoded.value.example === undefined)) {
+      return yield* refuse(`${file}: invalid question ${i + 1}`, QUESTIONS_TEMPLATE)
+    }
+    questions.push(decoded.value)
+  }
+  yield* realExamples(file, questions.flatMap((q) => {
+    const target = q.target
+    const sources = target?._tag === 'Candidates' ? [target.a.source, target.b.source]
+      : target?._tag === 'Deviation' ? deviationCases(target).flatMap((pair) => [pair.code.source, pair.principle.source]) : []
+    return [...(q.example ? [q.example] : []), ...sources.map((output) => ({ fit: 'Follows' as const, output }))]
+  }))
+  const [first, ...rest] = questions
+  if (first === undefined) return yield* refuse(`${file}: questions lists none`, QUESTIONS_TEMPLATE)
+  return [first, ...rest] as const
+})
+
 const ask = (call: Call, id: string | undefined) =>
   Effect.gen(function* () {
     const direction = yield* idOf(id)
     const file = yield* fileFlag(call, QUESTIONS_TEMPLATE)
     const raw = yield* yamlIn(file)
-    const list = isRecord(raw) && Array.isArray(raw.questions) ? raw.questions : []
-    if (list.length === 0) return yield* refuse(`${file}: questions lists none`, QUESTIONS_TEMPLATE)
-    const questions: Array<QuestionDraft> = []
-    for (const [i, q] of list.entries()) {
-      const at = `${file}: question ${i + 1}`
-      if (!isRecord(q) || typeof q.says !== 'string' || !isNonBlank(q.says)) {
-        return yield* refuse(`${at} needs says: what the AI must know`, QUESTIONS_TEMPLATE)
-      }
-      const read = Schema.decodeUnknownOption(Example)(q.example)
-      if (read._tag === 'None') {
-        return yield* refuse(
-          `${at}: example is { fit: Follows | Breaks, output: { file, line, ` +
-            'excerpt } or { written } }',
-          QUESTIONS_TEMPLATE,
-        )
-      }
-      const [a, b, ...more] = Array.isArray(q.options) ? q.options : []
-      if (typeof a !== 'string' || !isNonBlank(a) || typeof b !== 'string' || !isNonBlank(b) || more.length > 0) {
-        return yield* refuse(`${at}: options lists two options, A and B`, QUESTIONS_TEMPLATE)
-      }
-      questions.push({ says: q.says, example: read.value, options: [a, b] })
-    }
-    yield* realExamples(file, questions.map((q) => q.example))
+    const questions = yield* readQuestions(file, isRecord(raw) ? raw.questions : undefined)
     const { cwd } = yield* Dir
     yield* hostAct(cwd, { _tag: 'Ask', direction, questions })
     const state = yield* shownAs(cwd, direction)
@@ -575,6 +616,11 @@ const wordsFlag = (call: Call, flag: string, what: string) => {
 
 const add = (call: Call) =>
   Effect.gen(function* () {
+    if (call.args.one('url') !== undefined) {
+      const url = yield* wordsFlag(call, 'url', 'git repo URL with #direction/folder')
+      const [made] = yield* asPerson({ act: 'add-company-url', url })
+      return [`${made}: a company direction; it shows Loading until the host drafts it.`]
+    }
     const principle = yield* wordsFlag(call, 'principle', 'the idea of the direction, in your words')
     const example = textOf(call.args.one('example'))
     const [made] = yield* asPerson({
@@ -591,17 +637,21 @@ const add = (call: Call) =>
 const answer = (call: Call, id: string | undefined) =>
   Effect.gen(function* () {
     const direction = yield* idOf(id)
-    const options = (textOf(call.args.one('options')) ?? '').split(',').map((o) => o.trim())
-    const chosen = options.filter((o): o is 'A' | 'B' => o === 'A' || o === 'B')
-    const [first, ...rest] = chosen
-    if (first === undefined || chosen.length !== options.length) {
-      return yield* refuse(
-        '--options gives A or B for each question, in order, such as --options=A,B',
-        `work onboard show ${direction} shows the questions`,
-      )
-    }
-    yield* asPerson({ act: 'answer', direction, options: [first, ...rest] })
     const { cwd } = yield* Dir
+    const current = directionIn(yield* readOnboarding(cwd), direction)
+    const revision = textOf(call.args.one('revision'))
+    const own = textOf(call.args.one('words'))
+    const options = (textOf(call.args.one('options')) ?? '').split(',').map((o) => o.trim())
+    const choices = options.flatMap<'A' | 'B'>((o) => o === 'A' || o === 'B' ? [o] : [])
+    if (own !== undefined && !isNonBlank(own)) return yield* refuse('enter your answer', 'give nonblank --words')
+    const [first, ...rest] = own !== undefined && isNonBlank(own) ? [{ words: own }] : choices
+    if (first === undefined || (own === undefined && choices.length !== options.length)) {
+      return yield* refuse('give A or B per question with --options, or --words for a single question',
+        `work onboard show ${direction} shows the questions and their revision`)
+    }
+    const legacy = current?.stage._tag === 'Question' && current.stage.open.every((q) => q.target === undefined)
+    yield* asPerson({ act: 'answer', direction, options: [first, ...rest],
+      ...(revision === undefined || legacy ? {} : { revision }) })
     const answered = directionIn(yield* readOnboarding(cwd), direction)
     const words = answered === undefined ? `the answers of ${direction} are in` : answersWords(answered)
     return [`${words}; it shows Loading until the host drafts it again.`]
@@ -630,7 +680,7 @@ const approveDirections = Effect.gen(function* () {
     return yield* refuse('no direction is ready; approve all accepts each ready one', 'work onboard status shows what waits')
   }
   const show = `approve all accepts: ${ready.map((f) => f.id).join(', ')}`
-  const accepted = yield* asPerson({ act: 'approve-all-directions' }, { word: 'approve', show })
+  const accepted = yield* asPerson({ act: 'approve-all-directions', reviewed: directionReview(files.directions, files.discovery) }, { word: 'approve', show })
   const waiting = files.directions.filter((f) => !accepted.includes(f.id) && f.stage._tag !== 'Accepted')
   return [
     `accepted: ${accepted.join(', ')}.`,
@@ -682,7 +732,29 @@ const approveRoles = Effect.gen(function* () {
   return [yield* runActivation(cwd, by, 'resume')]
 })
 
+const discovery = (call: Call) => Effect.gen(function* () {
+  const file = yield* fileFlag(call, 'write scope: { searched: [...], unknown: [...] } and sources: [{ file, line, excerpt }]')
+  const raw = yield* yamlIn(file)
+  const decoded = Schema.decodeUnknownOption(Discovery)(raw)
+  if (decoded._tag === 'None') {
+    return yield* refuse(`${file}: invalid discovery record`, 'write scope and list the sources read')
+  }
+  yield* realExamples(file, decoded.value.sources.map((output) => ({ fit: 'Follows', output })))
+  const { cwd } = yield* Dir
+  yield* hostAct(cwd, { _tag: 'Discovery', discovery: decoded.value })
+  return ['Discovery scope and sources recorded.']
+})
+
+const removed = (_call: Call, id: string | undefined) => Effect.gen(function* () {
+  const direction = yield* idOf(id)
+  const { cwd } = yield* Dir
+  yield* hostAct(cwd, { _tag: 'RemoveRevised', direction })
+  return [`${direction}: removed.`]
+})
+
 const ACTS: Readonly<Record<string, (call: Call, word: string | undefined) => ReturnType<Command>>> = {
+  discovery,
+  removed,
   config: (call) => config(call),
   role: (call, word) => role(call, word),
   found: (_call, word) => found(word),

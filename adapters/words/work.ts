@@ -166,6 +166,8 @@ const reviewWords = (s: WorkState, id: string, events: ReadonlyArray<Recorded>):
     rules.length === 0
       ? 'No rule applies.'
       : `Rules that apply: ${rules.map((x) => itemWords(s, x)).join('; ')}`,
+    ...rules.flatMap((x) => (s.items.get(x)?.knownBreaks ?? []).map((spot) =>
+      `Known break of ${s.items.get(x)?.name ?? x}: ${spot}. Raise it if you meet it in this review.`)),
     `Try ${(t?.tries ?? 0) + 1} of ${s.maxTries}. Pass it, fail it with points, or raise it:`,
     'raise-tries: the tries are used. raise-no-rule: nothing says what is wrong.' +
     ' raise-misses: a rule says it and the maker missed it.',

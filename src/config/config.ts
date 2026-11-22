@@ -503,6 +503,7 @@ export const readDirection = (
           says: r.says,
           ...(r.checkedBy !== undefined ? { checkedBy: r.checkedBy } : {}),
           ...evidenceOf(file, r),
+          ...(r.evidence === undefined ? {} : { evidence: r.evidence }),
           supersedes: list(r.supersedes),
         }
       })

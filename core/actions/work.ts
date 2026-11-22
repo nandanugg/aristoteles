@@ -374,7 +374,7 @@ const examplesOf = (
 ): ReadonlyArray<Example> =>
   flow.filter(isMarked).flatMap((s) =>
     s.uses.some((u) => ids.includes(u))
-      ? s.examples.map((e) => ({
+      ? (s.examples ?? []).map((e) => ({
           fits: e.fit === 'Follows' ? ('follows' as const) : ('breaks' as const),
           sample: isSpot(e.output) ? e.output.excerpt : e.output.written,
         }))
@@ -425,7 +425,16 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
           test: rule.test ?? null,
           ref: rule.ref ?? null,
           form: formOf(rule.test, rule.ref),
-          examples: examplesOf(v.flow, rule.id),
+          ...(rule.evidence?.knownBreaks.length ? {
+            knownBreaks: rule.evidence.knownBreaks.map((spot) =>
+              `${spot.file}:${spot.line} — ${spot.excerpt} (searched: ${rule.evidence!.scope.searched.join(', ')})`),
+          } : {}),
+          examples: rule.evidence === undefined
+            ? examplesOf(v.flow, rule.id)
+            : rule.evidence.cases.map((e) => ({
+                fits: e.fit === 'Follows' ? 'follows' : 'breaks',
+                sample: isSpot(e.output) ? e.output.excerpt : e.output.written,
+              })),
         }
         return [[`rule:${r}`, rr] as const]
       })

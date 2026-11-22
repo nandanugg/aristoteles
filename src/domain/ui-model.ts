@@ -184,11 +184,12 @@ export type DirectionCard = CardHead &
   (
     // the host drafts it: the first draft, or again because its file was in an older shape
     | { readonly state: 'loading'; readonly why: 'drafting' | 'reset' }
+    | { readonly state: 'removed' }
     // the host drafts it again after the person's answers
     | {
         readonly state: 'loading'
         readonly why: 'answered'
-        readonly draft: DirectionWords
+        readonly draft?: DirectionWords
         readonly answered: NonEmpty<AnsweredView>
       }
     // the host drafts it again from the person's words (a Revise)
@@ -196,12 +197,13 @@ export type DirectionCard = CardHead &
         readonly state: 'loading'
         readonly why: 'revise'
         readonly words: Text
+        readonly checkerChanged?: true
         readonly draft: DirectionWords
         readonly answered: ReadonlyArray<AnsweredView>
       }
     | {
         readonly state: 'question'
-        readonly draft: DirectionWords
+        readonly draft?: DirectionWords
         readonly open: NonEmpty<QuestionView>
       }
     | { readonly state: 'ready' | 'accepted' | 'current'; readonly draft: DirectionWords }
@@ -224,6 +226,7 @@ export interface DirectionWords {
   readonly says: Text
   readonly standards: DirectionView['standards'] // each rule names the role that checks it
   readonly diff: DraftChange
+  readonly discovery?: import('./onboarding.ts').Discovery
 }
 // One step of the flow of a direction (Nanda, 2026-11-15): an actor acts on another actor or on a
 // file (from equal to to: an act on its own). place: where the project defines the step, with the
@@ -272,11 +275,12 @@ export interface QuestionView {
     { readonly source: Text; readonly words: Text },
   ]
   readonly says: Text
-  readonly example: ExampleView
+  readonly example?: ExampleView
+  readonly caseSides?: ReadonlyArray<NonNullable<QuestionView['sides']>>
   readonly options: readonly [Text, Text]
 }
 export interface AnsweredView extends QuestionView {
-  readonly answer: 'A' | 'B'
+  readonly answer: typeof import('./onboarding.ts').OnboardingChoice.Type
 }
 // One card of the agents page (ruling 11); its window shows the rest. An agent role runs on its
 // model and has its persistence; a program runs in the CLI and has neither.

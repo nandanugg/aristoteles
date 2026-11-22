@@ -49,7 +49,7 @@ describe('T2: an onboarding file is one stage, so an accept always has its draft
     expect(start.code).toBe(1)
     expect(start.err).toBe(
       'refused: old-one is not accepted yet\n' +
-        'next: accept it or remove it (work onboard accept|remove old-one), then approve again',
+        'next: resolve old-one, then approve the reviewed directions together (work onboard approve-directions)',
     )
   })
 
@@ -111,7 +111,7 @@ describe('O1: one reader says whether the store can start', () => {
     expect(ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml')).out).toStartWith(
       'tsd-writing: drafted, with',
     )
-    ok(await p.nanda('onboard accept tsd-writing'))
+    ok(await p.nanda('onboard approve-directions', 'approve'))
     expect(ok(await p.agent('onboard status')).out).toContain(
       'next: everything is accepted; the person starts the store: work onboard approve-roles',
     )

@@ -32,6 +32,7 @@ export const onboardingStateOf = (file: OnboardingDirection): OnboardingDirectio
       return { _tag: 'Question', open: file.stage.open }
     case 'Ready':
     case 'Accepted':
+    case 'Removed':
       return { _tag: file.stage._tag }
     default:
       return { _tag: 'Loading' }

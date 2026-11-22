@@ -20,7 +20,7 @@ const SPOT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
 const CASE = { fit: 'Follows', output: SPOT } as unknown as Example
 const BREAKS = { fit: 'Breaks', output: { written: 'Intro: see PR 42.' } } as unknown as Example
 const STEP = { from: 'writer', to: 'docs/tsd.md', says: 'writes' }
-const FLOW = [{ ...STEP, uses: ['tsd-writing'], examples: [CASE, BREAKS] }]
+const FLOW = [{ ...STEP, uses: ['tsd-writing'] }]
 // The text of one file; any other file is not there.
 const only = (file: string, text: string) => (f: string) => (f === file ? text : null)
 
@@ -83,8 +83,8 @@ describe('the flow holds its examples', () => {
     expect(() => step({ ...marked, examples: [BREAKS] })).toThrow('no example that follows')
     expect(() => step({ ...marked, examples: [] })).toThrow()
   })
-  test('uses without examples, or examples without uses, do not read', () => {
-    expect(() => step({ ...STEP, uses: ['d'] })).toThrow()
+  test('uses can stand alone, but step examples still require uses', () => {
+    expect(step({ ...STEP, uses: ['d'] })).toEqual({ ...STEP, uses: ['d'] } as never)
     expect(() => step({ ...STEP, examples: [CASE, BREAKS] })).toThrow()
     expect(() => step({ ...marked, uses: [] })).toThrow()
   })

@@ -23,6 +23,7 @@ export const ItemRec = Schema.Struct({
   test: Schema.NullOr(Str),
   ref: Schema.NullOr(Str),
   form: Form,
+  knownBreaks: Schema.optionalKey(Strs),
   examples: Schema.Array(
     Schema.Struct({ fits: Schema.Literals(['follows', 'breaks']), sample: Str }),
   ),

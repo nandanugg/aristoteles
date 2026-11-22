@@ -3,7 +3,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { startServer } from '../code.js'
-import { ONBOARD_CONFIG, ONBOARD_NEW, ONBOARD_QUESTIONS, ok, onboardingProject } from '../harness.js'
+import { ONBOARD_CONFIG, ONBOARD_NEW, ok, onboardingProject } from '../harness.js'
 import { dbOf, gitPerson } from '../outside.js'
 
 const p = onboardingProject()
@@ -16,19 +16,36 @@ const config = ONBOARD_CONFIG
     questions:
       - says: Who checks the checker?
         choices: [The host, The reviewer]`)
-const rule = ONBOARD_NEW
-  .replace('uses: [one-thing, one-heading]', 'uses: [one-thing, one-heading, one-topic]')
-  .replace('checkedBy: linter }', 'checkedBy: linter, test: bun test }')
+const draft = Bun.YAML.parse(ONBOARD_NEW)
+const rule = draft.standards[0].rules[0]
+rule.test = 'bun test'
+rule.evidence.check = { _tag: 'Command', result: 'One observed break' }
+draft.flow[0].uses.push(rule.id)
+const code = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
+const principle = { file: 'docs/facts.md', line: 3, excerpt: '## Dedupe' }
+const question = {
+  says: 'Should facts be grouped?',
+  options: ['Group related facts.', 'Keep one topic per section.'],
+  target: { _tag: 'Deviation', rule: rule.id,
+    code: { words: 'The code groups related facts.', source: code },
+    principle: { words: 'Keep one topic per section.', source: principle } },
+}
+draft.questions = [question]
 p.write('draft.yaml', config)
-p.write('direction.yaml', rule)
-p.write('questions.yaml', ONBOARD_QUESTIONS)
+p.write('direction.yaml', Bun.YAML.stringify(draft))
+const discover = async (app) => {
+  p.write('survey.yaml', Bun.YAML.stringify({
+    summary: 'Documentation review in this repository.', app,
+    sources: [code, principle], scope: { searched: ['docs/'], unknown: ['deploy/'] },
+  }))
+  ok(await p.agent('onboard discovery --file=survey.yaml'))
+}
 ok(await p.agent('onboard config --file=draft.yaml'))
 const server = startServer({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) } })
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
-let discovery = 'none'
 const shots = process.env.ONBOARDING_SCREENSHOTS ?? join(p.dir, 'screenshots')
 mkdirSync(shots, { recursive: true })
 const shot = (name) => page.screenshot({ path: join(shots, name), animations: 'disabled' })
@@ -52,21 +69,6 @@ const expectWideGrid = async () => {
   expect((await page.locator('.review-grid').boundingBox()).width).toBeGreaterThan(1000)
 }
 try {
-  await page.route('**/api/onboarding', async (route) => {
-    if (discovery === 'none' || route.request().method() !== 'GET') return route.continue()
-    const response = await route.fetch()
-    const body = await response.json()
-    body.discovery = { summary: 'Documentation review in this repository.',
-      read: ['CLAUDE.md:3'], notSearched: ['deploy/'], app: discovery === 'summary' }
-    for (const card of body.directions) {
-      if (card.state !== 'question') continue
-      card.open[0] = { ...card.open[0], rule: 'one-topic', sides: [
-        { source: 'docs/tsd.md:3', words: 'The code groups related facts.' },
-        { source: 'CLAUDE.md:3', words: 'Keep one topic per section.' },
-      ] }
-    }
-    await route.fulfill({ response, json: body })
-  })
   await page.goto(server.url)
   const button = (name, scope = page) => scope.getByRole('button', { name, exact: true })
   const visible = async (locator) => locator.waitFor({ state: 'visible' })
@@ -78,7 +80,7 @@ try {
     getComputedStyle(bar, '::before').animationName)).toBe('review-progress')
   await shot('00-analyzing.png')
 
-  discovery = 'summary'
+  await discover(true)
   await page.reload()
   await visible(page.getByText('Please wait while the host drafts directions for this repository…', { exact: true }))
   expect(await page.locator('.review-card').count()).toBe(0)
@@ -87,10 +89,9 @@ try {
 
   ok(await p.nanda('onboard add --principle="One thing per section"'))
   ok(await p.agent('onboard draft new-1 --file=direction.yaml'))
-  ok(await p.agent('onboard ask one-thing --file=questions.yaml'))
   ok(await p.nanda('onboard add --principle="Describe the verification steps"'))
   ok(await p.nanda('onboard add --principle="Record the open questions"'))
-  discovery = 'conflict'
+  await discover(false)
   await page.reload()
   await visible(card('Conflict'))
   expect(await page.getByRole('progressbar', { name: 'Assessing' }).count()).toBe(2)
@@ -121,10 +122,17 @@ try {
   await visible(card('Re-verifying'))
   expect(await button('Accept all').isDisabled()).toBe(true)
 
-  discovery = 'none'
   ok(await p.nanda('onboard remove new-1'))
   ok(await p.nanda('onboard remove new-2'))
-  ok(await p.agent('onboard draft one-thing --file=direction.yaml'))
+  const shown = ok(await p.agent('onboard show one-thing')).out
+  const revision = shown.match(/^revision: (.+)$/m)?.[1]
+  expect(revision).toBeTruthy()
+  delete draft.questions
+  rule.says = question.options[1]
+  rule.evidence.knownBreaks = [code]
+  rule.evidence.check.result = 'The break remains in the existing code'
+  p.write('direction.yaml', Bun.YAML.stringify(draft))
+  ok(await p.agent(`onboard draft one-thing --file=direction.yaml --revision=${revision}`))
   await page.reload()
   await visible(card('Ready'))
   await card('Ready').click()

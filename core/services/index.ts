@@ -35,6 +35,8 @@ export { LOCK, readLock, writeLock, fetchFolder, readFolder, localDate } from '.
 export {
   ASSESS,
   finishOnboardingStart,
+  directionReview,
+  directionRevision,
   hostAct,
   onboardedOf,
   onboardingExists,

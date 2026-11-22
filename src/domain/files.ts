@@ -207,24 +207,6 @@ export const RuleRef = Schema.String.pipe(
     ),
   ),
 )
-// A rule and a standard, as a direction file or a revise file writes them.
-export const RuleFile = Schema.Struct({
-  id: Key,
-  says: Schema.String,
-  test: Schema.optionalKey(RuleTest),
-  ref: Schema.optionalKey(RuleRef),
-  checkedBy: Schema.optionalKey(RoleName),
-  supersedes: Schema.Array(Key),
-})
-export type RuleFile = typeof RuleFile.Type
-export const StandardFile = Schema.Struct({
-  id: Key,
-  says: Schema.String,
-  where: Schema.optionalKey(WhereFile),
-  rules: Schema.Array(RuleFile),
-})
-export type StandardFile = typeof StandardFile.Type
-
 // One place in a file of the project: the file, the line the page points to, and a short excerpt.
 export const Spot = Schema.Struct({ file: Schema.String, line: PositiveInt, excerpt: NonBlank })
 export type Spot = typeof Spot.Type
@@ -245,6 +227,43 @@ export const Example = Schema.Struct({
   output: Sample,
 })
 export type Example = typeof Example.Type
+// Search scope and the result recorded for a rule in onboarding.
+export const SearchScope = Schema.Struct({
+  searched: Schema.Array(NonBlank),
+  unknown: Schema.Array(NonBlank),
+})
+export type SearchScope = typeof SearchScope.Type
+export const RuleEvidence = Schema.Struct({
+  scope: SearchScope,
+  cases: Schema.Array(Example),
+  knownBreaks: Schema.Array(Spot),
+  check: Schema.Union([
+    Schema.TaggedStruct('Command', { result: NonBlank }),
+    Schema.TaggedStruct('Reference', { checker: NonBlank, result: NonBlank }),
+    Schema.TaggedStruct('Absent', {}),
+    Schema.TaggedStruct('Unknown', { question: NonBlank }),
+  ]),
+})
+export type RuleEvidence = typeof RuleEvidence.Type
+// A rule and a standard, as a direction file or a revise file writes them.
+export const RuleFile = Schema.Struct({
+  id: Key,
+  says: Schema.String,
+  test: Schema.optionalKey(RuleTest),
+  ref: Schema.optionalKey(RuleRef),
+  checkedBy: Schema.optionalKey(RoleName),
+  supersedes: Schema.Array(Key),
+  evidence: Schema.optionalKey(RuleEvidence),
+})
+export type RuleFile = typeof RuleFile.Type
+export const StandardFile = Schema.Struct({
+  id: Key,
+  says: Schema.String,
+  where: Schema.optionalKey(WhereFile),
+  rules: Schema.Array(RuleFile),
+})
+export type StandardFile = typeof StandardFile.Type
+
 // The examples of a marked step: at least one that follows the direction and one that breaks it.
 export const Examples = Schema.Array(Example).pipe(
   Schema.check(
@@ -270,7 +289,7 @@ const StepAt = { from: NonBlank, to: NonBlank, says: NonBlank, place: Schema.opt
 const Marked = Schema.Struct({
   ...StepAt,
   uses: Schema.NonEmptyArray(NonBlank),
-  examples: Examples,
+  examples: Schema.optionalKey(Examples),
 })
 const Unmarked = Schema.Struct({
   ...StepAt,
@@ -294,7 +313,7 @@ export const Flow = Schema.Array(FlowStep).pipe(
 export type Flow = typeof Flow.Type
 // The examples of a flow, in the order of its steps.
 export const examplesOfFlow = (flow: ReadonlyArray<FlowStep>): ReadonlyArray<Example> =>
-  flow.flatMap((s) => (isMarked(s) ? s.examples : []))
+  flow.flatMap((s) => (isMarked(s) ? (s.examples ?? []) : []))
 
 // What is wrong with the marks of a flow, for a draft: each id of uses is the direction, or a
 // standard or a rule of it.

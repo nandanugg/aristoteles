@@ -81,6 +81,7 @@ export {
   ContextKey,
   DirectionFile,
   Example,
+  RuleEvidence,
   Examples,
   examplesOfFlow,
   ExternalSource,
@@ -167,6 +168,10 @@ export {
 // The files of onboarding (before the store) and their derived states.
 export {
   AiQuestion,
+  Discovery,
+  QuestionTarget,
+  deviationCases,
+  OnboardingChoice,
   AnsweredQuestion,
   answersIn,
   draftIn,

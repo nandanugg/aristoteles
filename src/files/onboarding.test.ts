@@ -16,6 +16,8 @@ import {
   type HostAct,
   ONBOARDING_LOCK,
   type PersonAct,
+  directionReview,
+  onboardedOf,
   hostAct,
   personAct,
   readOnboarding,
@@ -50,7 +52,6 @@ const NOTES = Object.fromEntries(
 // output).
 const OUTPUT = { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' }
 const A_CASE = { fit: 'Follows', output: OUTPUT }
-const A_BREAK = { fit: 'Breaks', output: { written: 'Two changes, one reason.' } }
 const draftOf = (id: string): DirectionDraft =>
   ({
     id,
@@ -66,7 +67,6 @@ const draftOf = (id: string): DirectionDraft =>
         says: 'names one reason',
         place: { file: 'docs/tsd.md', line: 3 },
         uses: ['small-changes', 'says-why'],
-        examples: [A_CASE, A_BREAK],
       },
     ],
     says: 'A change does one thing.',
@@ -298,4 +298,77 @@ describe('a host edit of the config draft', () => {
     }))
     expect(await accepted(dir)).toEqual(['architect', 'section-lead', 'linter'])
   })
+})
+
+test('a deviation stays pending until its reviewed revision has recheck evidence', async () => {
+  const dir = await withConfig()
+  const direction = 'small-changes'
+  const code = { file: 'src/task.ts', line: 4, excerpt: 'return pending' }
+  const principle = { file: 'AGENTS.md', line: 5, excerpt: 'Explain why.' }
+  const draft = draftOf(direction) as Obj
+  draft.flow = draft.flow.map(({ examples: _examples, ...step }: Obj) => step)
+  const rule = draft.standards[0].rules[0]
+  rule.test = 'bun test task.test.ts'
+  rule.evidence = {
+    scope: { searched: ['src/task.ts'], unknown: ['scheduled jobs'] },
+    check: { _tag: 'Command', result: 'Missing reason at line 4' },
+    cases: [{ fit: 'Breaks', output: code }],
+    knownBreaks: [],
+  }
+  const question = {
+    says: 'Which rule should govern returning pending?',
+    target: {
+      _tag: 'Deviation', rule: rule.id,
+      code: { words: 'Pending results need no reason.', source: code },
+      principle: { words: 'Every result explains why.', source: principle },
+    },
+    options: ['Pending results need no reason.', 'Every result explains why.'],
+  }
+  await host(dir, { _tag: 'Found', direction })
+  const publish = { _tag: 'Draft', direction, draft, reopen: false }
+  await expect(host(dir, publish)).rejects.toThrow('unresolved deviation')
+  await host(dir, { ...publish, questions: [question] })
+  const { revision } = (await fileOf(dir, direction)).stage
+  await expect(nanda(dir, { act: 'approve-all-directions' })).rejects.toThrow('still waits')
+  await expect(nanda(dir, { act: 'answer', direction, revision: 'stale', options: ['B'] }))
+    .rejects.toThrow('question revision changed')
+  await nanda(dir, { act: 'answer', direction, revision, options: ['B'] })
+  await expect(host(dir, { ...publish, revision })).rejects.toThrow('lacks the chosen words or recheck evidence')
+  rule.says = question.options[1]
+  rule.evidence.knownBreaks = [code]
+  await host(dir, { ...publish, revision })
+  const files = await read(dir)
+  await expect(nanda(dir, { act: 'approve-all-directions', reviewed: [{ id: direction, revision: 'stale' }] }))
+    .rejects.toThrow('directions changed')
+  await nanda(dir, { act: 'approve-all-directions', reviewed: directionReview(files.directions) })
+  const accepted = (await fileOf(dir, direction)).stage
+  expect(accepted._tag).toBe('Accepted')
+  expect(onboardedOf(direction as DirectionDraft['id'], accepted.draft, 'Nanda', { _tag: 'Local' })
+    .direction.standards[0]?.rules[0]?.evidence?.knownBreaks).toEqual([code] as never)
+})
+
+test('the person can choose their own words before the first direction draft', async () => {
+  const dir = await withConfig()
+  const direction = 'small-changes'
+  const a = { words: 'one change', source: OUTPUT }
+  const b = { words: 'several changes', source: { ...OUTPUT, line: 5 } }
+  await host(dir, { _tag: 'Found', direction })
+  await host(dir, { _tag: 'Ask', direction, questions: [{
+    says: 'Which scope governs?', target: { _tag: 'Candidates', topic: 'scope', a, b },
+    options: [a.words, b.words],
+  }] })
+  const { revision, draft } = (await fileOf(dir, direction)).stage
+  expect(draft).toBeUndefined()
+  await nanda(dir, { act: 'answer', direction, revision, options: [{ words: 'one concern' }] })
+  expect((await fileOf(dir, direction)).stage.answered[0].chosen).toEqual({ words: 'one concern' })
+  const revised = draftOf(direction) as Obj
+  revised.standards[0].rules[0].evidence = {
+    scope: { searched: ['docs'], unknown: [] }, cases: [],
+    check: { _tag: 'Absent' }, knownBreaks: [],
+  }
+  const publish = { _tag: 'Draft', direction, draft: revised, revision, reopen: false }
+  await expect(host(dir, publish)).rejects.toThrow('lacks the source of the decision')
+  revised.discovery = { scope: { searched: ['docs'], unknown: [] }, sources: [a.source, b.source] }
+  await host(dir, publish)
+  expect((await fileOf(dir, direction)).stage._tag).toBe('Ready')
 })

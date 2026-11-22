@@ -120,7 +120,7 @@ describe('the whole onboarding at a terminal', () => {
     const events = eventsOf(p)
     expect(events.map((e) => `${e.record}.${e.member}`)).toEqual(['Workflow.Defined', 'Workflow.Activated'])
     const { directions } = JSON.parse(events[0].event).create
-    expect(directions.map((x) => [x.direction.id, x.direction.owner, x.direction.flow.flatMap((f) => f.examples ?? []).length, x.source._tag])).toEqual([
+    expect(directions.map((x) => [x.direction.id, x.direction.owner, x.direction.standards.flatMap((s) => s.rules.flatMap((r) => r.evidence?.cases ?? [])).length, x.source._tag])).toEqual([
       ['one-thing', 'Nanda', 3, 'Local'],
       ['tsd-writing', 'Nanda', 4, 'Local'],
     ])
@@ -157,9 +157,14 @@ flow:
     says: puts each change under a flag
     place: { file: docs/tsd.md, line: 7 }
     uses: [feature-flags, upper-snake]
-    examples:
-      - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
-      - { fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
+evidence:
+  upper-snake:
+    evidence:
+      scope: { searched: [docs/tsd.md], unknown: [] }
+      check: { _tag: Absent }
+      knownBreaks: []
+      cases:
+        - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
 `
 const withCompany = async () => {
   const company = await companyRepo()
@@ -179,7 +184,7 @@ describe('a company direction in onboarding (ruling 6)', () => {
     const { p, company } = await withCompany()
     ok(await p.nanda('onboard approve-roles', 'approve'))
     const { directions } = JSON.parse(eventsOf(p)[0].event).create
-    expect(directions[0].direction.standards[0].rules[0]).toEqual({
+    expect(directions[0].direction.standards[0].rules[0]).toMatchObject({
       id: 'upper-snake', says: 'The flag is FF_<FEATURE>.', checkedBy: 'linter', supersedes: [],
     })
     // Nanda, 2026-11-15: a direction has a summary. The host writes no words of a company
@@ -189,10 +194,6 @@ describe('a company direction in onboarding (ruling 6)', () => {
       {
         from: 'writer', to: 'docs/tsd.md', says: 'puts each change under a flag', place: { file: 'docs/tsd.md', line: 7 },
         uses: ['feature-flags', 'upper-snake'],
-        examples: [
-          { fit: 'Follows', output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' } },
-          { fit: 'Breaks', output: { file: 'docs/tsd.md', line: 5, excerpt: 'TODO' } },
-        ],
       },
     ])
     expect(directions[0].source).toEqual({
@@ -224,7 +225,7 @@ describe('what onboarding refuses', () => {
     for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
     const r = await p.nanda('onboard approve-roles', 'approve')
     expect(r.err).toContain('refused: tsd-writing is not accepted yet')
-    expect(r.err).toContain('next: accept it or remove it (work onboard accept|remove tsd-writing), then approve again')
+    expect(r.err).toContain('next: resolve tsd-writing, then approve the reviewed directions together (work onboard approve-directions)')
     expect(exists(p, 'aristoteles.yaml')).toBe(false)
     expect(exists(p, '.work/assess/tsd-writing.yaml')).toBe(true)
     expect(exists(p, '.work/aristoteles.db')).toBe(false)
@@ -239,7 +240,8 @@ describe('what onboarding refuses', () => {
     p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, '').replaceAll(', linter]', ']'))
     ok(await p.agent('onboard config --file=draft2.yaml'))
     const r = await p.nanda('onboard approve-roles', 'approve')
-    expect(r.err).toContain('refused: the store cannot start: rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role')
+    expect(r.err).toContain('refused: tsd-writing is not accepted yet')
+    expect(ok(await p.agent('onboard status')).out).toContain('Reverify checker responsibility for no-code-proof, no-ticket-ids, repeatable.')
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe(settings)
     expect(exists(p, '.work/assess/tsd-writing.yaml')).toBe(true)
     expect(exists(p, 'aristoteles.draft.yaml')).toBe(true)
@@ -259,19 +261,20 @@ describe('what onboarding refuses', () => {
 
   // P10 rejected, onboarding 2026-11-14: a direction starts with real examples. Nanda, 2026-11-15:
   // an output that follows and one that breaks for each marked step of the flow.
-  test('a draft refuses an example whose excerpt is not in its file, and a step with no break', async () => {
+  test('a rule case must match its excerpt and may have no observed break', async () => {
     const p = await drafted()
     p.write('stale.yaml', ONBOARD_DIRECTION.replace('excerpt: TODO', 'excerpt: DONE'))
     expect((await p.agent('onboard draft tsd-writing --file=stale.yaml')).err).toContain(
-      'refused: stale.yaml: example 3: "DONE" is not in docs/tsd.md',
+      'refused: stale.yaml: example 1: "DONE" is not in docs/tsd.md',
     )
-    p.write('few.yaml', ONBOARD_DIRECTION.replace(/ {6}- fit: Breaks\n {8}input: .*\n {8}output: \{ written: "Accept.*\n/, ''))
-    expect((await p.agent('onboard draft tsd-writing --file=few.yaml')).err).toContain(
-      'refused: few.yaml: flow: ',
-    )
-    expect((await p.agent('onboard draft tsd-writing --file=few.yaml')).err).toContain(
-      'the step has no example that breaks the direction',
-    )
+    const sparse = Bun.YAML.parse(ONBOARD_DIRECTION)
+    for (const rule of sparse.standards.flatMap((standard) => standard.rules)) {
+      if (rule.evidence) rule.evidence.cases = rule.evidence.cases.filter((sample) => sample.fit === 'Follows')
+    }
+    p.write('few.yaml', Bun.YAML.stringify(sparse))
+    ok(await p.agent('onboard draft tsd-writing --file=few.yaml'))
+    expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain('no break observed in docs/tsd.md')
+
   })
 
   // Nanda, 2026-11-15: a direction has a flow, from the first act down to the output, the steps
@@ -296,29 +299,18 @@ describe('what onboarding refuses', () => {
         '  5. linter -> docs/tsd.md: checks that each section says one thing [uses facts-not-proof, no-code-proof]\n' +
         'from: Pathos, Logos\n',
     )
-    expect(show).toContain(
-      'examples:\n' +
-        '  step 4 · writer -> docs/tsd.md\n' +
-        '    Follows\n' +
-        '      output · docs/tsd.md:3 "## Introduction"\n' +
-        '    Breaks\n' +
-        '      output · written by the host: "## Introduction and design, in one section"\n' +
-        '  step 5 · linter -> docs/tsd.md\n' +
-        '    Follows\n' +
-        '      input · docs/tsd.md:5 "TODO"\n' +
-        '      output · written by the host: "Reject: the Introduction holds no words yet"\n' +
-        '    Breaks\n' +
-        '      input · docs/tsd.md:5 "TODO"\n' +
-        '      output · written by the host: "Accept: the section says one thing"',
-    )
+    expect(show).toContain('no-code-proof (linter)')
+    expect(show).toContain('input · docs/tsd.md:5 "TODO"')
+    expect(show).toContain('output · docs/tsd.md:3 "## Introduction"')
     // The excerpt of an input leaves its file: each example with it is stale, and its line says so.
     p.write('docs/tsd.md', '# TSD\n\n## Introduction\n\nThe export ran twice.\n')
     expect(ok(await p.nanda('onboard show tsd-writing')).out).toContain(
       '      input · docs/tsd.md:5 "TODO" · stale\n',
     )
     expect(ok(await p.agent('onboard status')).out).toContain('found in the project · 4 examples, 2 stale')
-    const unmarked = ONBOARD_DIRECTION.replaceAll(/ {4}uses: .*\n {4}examples:\n( {6}.*\n)+/g, '')
-    p.write('unmarked.yaml', unmarked)
+    const unmarked = Bun.YAML.parse(ONBOARD_DIRECTION)
+    for (const step of unmarked.flow) delete step.uses
+    p.write('unmarked.yaml', Bun.YAML.stringify(unmarked))
     expect((await p.agent('onboard draft tsd-writing --file=unmarked.yaml')).err).toContain(
       'no flow step has uses: mark each step that the direction governs',
     )
@@ -347,7 +339,7 @@ describe('what onboarding refuses', () => {
     )
     p.write('tsd.yaml', ONBOARD_DIRECTION)
     ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
-    ok(await p.nanda('onboard accept tsd-writing'))
+    ok(await p.nanda('onboard approve-directions', 'approve'))
   })
 
   test('work init refuses while onboarding files exist', async () => {
@@ -434,4 +426,60 @@ test('embedded staffing is refused in both a responsibility file and a draft', a
   writeFileSync(join(p.dir, 'aristoteles.yaml'), ONBOARD_CONFIG)
   expect((await p.nanda('init')).err).toContain('move models')
   expect(eventsOf(p)).toEqual([])
+})
+
+test('a code-wins answer is reverified on its revision and starts with rule-local evidence', async () => {
+  const p = onboardingProject()
+  p.write('draft.yaml', ONBOARD_CONFIG)
+  p.write('docs/actual.md', 'The code permits two topics.\n')
+  p.write('docs/stated.md', 'One topic per section.\n')
+  ok(await p.agent('onboard config --file=draft.yaml'))
+  ok(await p.agent('onboard found one-thing'))
+  const draft = Bun.YAML.parse(ONBOARD_NEW)
+  const rule = draft.standards[0].rules[0]
+  rule.test = 'bun test headings.test.ts'
+  const code = { file: 'docs/actual.md', line: 1, excerpt: 'The code permits two topics.' }
+  const principle = { file: 'docs/stated.md', line: 1, excerpt: 'One topic per section.' }
+  const scope = { searched: ['docs/actual.md'], unknown: ['generated headings'] }
+  p.write('discovery.yaml', Bun.YAML.stringify({ scope, sources: [code, principle] }))
+  ok(await p.agent('onboard discovery --file=discovery.yaml'))
+  draft.discovery = { scope, sources: [code, principle] }
+  rule.evidence = {
+    scope, check: { _tag: 'Command', result: 'Two topics found' },
+    cases: [{ fit: 'Breaks', output: code }], knownBreaks: [],
+  }
+  draft.questions = [{
+    says: 'Should two topics be allowed?',
+    options: ['Two topics are allowed.', principle.excerpt],
+    target: { _tag: 'Deviation', rule: rule.id,
+      code: { words: 'Two topics are allowed.', source: code },
+      principle: { words: principle.excerpt, source: principle } },
+  }]
+  p.write('direction.yaml', Bun.YAML.stringify(draft))
+  ok(await p.agent('onboard draft one-thing --file=direction.yaml'))
+  const shown = ok(await p.nanda('onboard show one-thing')).out
+  const revision = shown.match(/^revision: (.+)$/m)?.[1]
+  expect(revision).toBeTruthy()
+  expect(shown).toContain('unknown: generated headings')
+  ok(await p.nanda(`onboard answer one-thing --revision=${revision} --options=A`))
+  rule.says = draft.questions[0].options[0]
+  delete draft.questions
+  rule.evidence.cases[0].fit = 'Follows'
+  rule.evidence.check.result = 'The result passes with two topics.'
+  p.write('direction.yaml', Bun.YAML.stringify(draft))
+  expect((await p.agent('onboard draft one-thing --file=direction.yaml')).err).toContain('answer revision changed')
+  ok(await p.agent(`onboard draft one-thing --file=direction.yaml --revision=${revision}`))
+  await acceptAll(p)
+  ok(await p.nanda('onboard approve-roles', 'approve'))
+  const saved = JSON.parse(eventsOf(p)[0].event).create.directions[0].direction
+  expect(saved.standards[0].rules[0]).toMatchObject({ says: 'Two topics are allowed.', evidence: rule.evidence })
+  expect(saved.flow.every((step) => !('examples' in step))).toBe(true)
+  expect(ok(await p.nanda('direction show one-thing')).out).toContain('cases of one-topic:')
+})
+
+test('adding a company URL publishes a loading card before fetching', async () => {
+  const p = onboardingProject()
+  ok(await p.nanda('onboard add --url="https://example.invalid/team/policy.git#directions/exports"'))
+  const status = ok(await p.agent('onboard status')).out
+  expect(status).toContain('exports · Loading · a company direction: directions/exports of https://example.invalid/team/policy.git')
 })

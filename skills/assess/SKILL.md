@@ -1,6 +1,6 @@
 ---
 name: assess
-description: Read a project (a repo of code or documents) and onboard it into aristoteles with the work CLI - draft its roles and its directions as files, with real examples, so that the person accepts or rejects each one on the page. Also drafts a new direction after the store exists. Use when the person asks to assess an app, to turn the agent harness of an app into aristoteles, to find or suggest the directions of an app, to onboard a dir, or when the person asks for a new direction.
+description: Read a project (a repo of code or documents) and onboard it into aristoteles with the work CLI - draft its roles and its directions as files, with scoped evidence and rule cases, so that the person reviews directions together before roles. Also drafts a new direction after the store exists. Use when the person asks to assess an app, to turn the agent harness of an app into aristoteles, to find or suggest the directions of an app, to onboard a dir, or when the person asks for a new direction.
 ---
 
 # assess
@@ -29,14 +29,9 @@ again. The store starts at the end, with only the accepted result.
    `.work/drafts/config.yaml` in that form (the part "The config draft" below says what it
    holds), then run `work onboard config --file=.work/drafts/config.yaml`. The command runs the
    checks of `work config check` on it, and prints `next: start the page (work start --detach)`,
-   then `found` and `draft` for each topic. Until the store starts, you may change any part of
-   the config draft (people, the models with their commands and limits, roles): send the whole
-   file again
-   with `work onboard config`, or one role with `work onboard role <role>`. A change clears only
-   the accepts that it touches: a role's own block or its card words clear that role, the entry of
-   a model (its commands or its limits) clears the roles that name it, and the people clear none.
-   The
-   person then accepts those roles again.
+   then `found` and `draft` for each topic. Use stable provisional role ids so each checker
+   can be named before role review. Revise a role with `work onboard role <role>`. Keep
+   staffing in the directory's staffing settings, separate from responsibilities.
 3. **Open the page** now, after the config: `work start --detach`. It keeps running when this AI
    CLI ends. Tell the person to read it: each role waits there as a card, and each direction
    appears as you name it, so the person sees it as it comes.
@@ -44,17 +39,17 @@ again. The store starts at the end, with only the accepted result.
    lower-case id with dashes). The page states of a direction are:
    - Loading: the host has nothing drafted yet, or must draft again; the host acts.
    - Question: the host asked, and the person must answer.
-   - Ready: drafted; the person decides (accept, revise, or remove).
-   - Accepted: the person accepted it.
+   - Ready: verified and available for review together with the other directions.
+   - Accepted: the person accepted the reviewed directions together.
+   - Removed: the host applied a removal requested in a Revise.
    A role shows Waiting (the person decides), Revise (the host writes it again), or Accepted.
 5. **Draft each direction:** write `.work/drafts/<id>.yaml` (the part "A direction draft"), then
    `work onboard draft <id> --file=.work/drafts/<id>.yaml`. The first draft of a new direction
    gives its `id`, and the module renames the file in one step. Draft them all; the person opens
    any one that is ready.
-6. **Ask only after a draft exists** (the part "Questions"): `work onboard ask <id>
-   --file=.work/drafts/<id>.questions.yaml` is refused before the first draft ("a question is
-   about a draft"). So draft first, then ask. When you cannot draft at all, draft what the
-   files show, and ask about the rest.
+6. **Surface uncertainties.** Ask about competing sources before drafting from them. Include
+   deviations in the draft with their rule and two versions. Keep a direction waiting for
+   review while the host rechecks an answer.
 7. **Wait for the person:** `work onboard wait` blocks until something waits for you, 540 seconds
    at most. When your AI CLI cannot run a command that long, or you cannot run it in the
    background (so that the person can still talk to you), loop a short wait: `work onboard wait
@@ -65,7 +60,7 @@ again. The store starts at the end, with only the accepted result.
    the command that answers it:
    - a direction to draft, or to draft again after a Revise (the words of the person): do step 5
      again, with the same id;
-   - answers that the person submitted: draft the direction again with them;
+   - answers that the person submitted: draft the direction again with the shown revision and recheck it;
    - a company direction that the person asked for: the part "A company direction";
    - a role to write again after a Revise: write its file (the part "One role"), then
      `work onboard role <role> --file=.work/drafts/<role>.yaml`.
@@ -91,8 +86,9 @@ again. The store starts at the end, with only the accepted result.
 
 ## Read the project
 
-Read in this order, and stop reading a topic when it has evidence in two places. Read at most
-40 files in all; name what you did not read in your report.
+Search across the project in this order. Record the source and location of each material
+finding, what area it supports, and where you looked for contrary evidence. Keep track of
+areas you could not search or verify and report them as unknown.
 
 - the agent files that exist: `CLAUDE.md` and `AGENTS.md` (at the root and in sub-folders),
   `.claude/` (also `.claude/agents/`), `.agents/skills/`, `skills/`, and the guides of the app;
@@ -104,44 +100,34 @@ Read in this order, and stop reading a topic when it has evidence in two places.
 
 Group what you found into directions, one idea each. Draft a direction only when the project
 shows it in at least two places, or a document of the project states it. Leave out a topic with
-one weak sign, and name it in your report. Read `work guide writing` and
+one weak sign, and name it in your report. Keep competing stated sources with their locations
+for a question on the direction. As you discover who makes or checks the work, draft
+provisional role responsibilities for the later roles step. Read `work guide writing` and
 `work guide direction-review` first: write and check every draft with them.
+
+Save the discovery ledger with `work onboard discovery --file=<file.yaml>`. Use the same
+`scope` and `sources` keys as a direction's `discovery` block. Add a short `summary` and set
+`app` to true or false only if established, or null if unknown. The page lists the files
+read and the unknown areas.
 
 ## The config draft
 
-The file has the keys of the form that `work onboard config` prints, and the keys of
-`aristoteles.yaml` (`schema/aristoteles.schema.json`): `people`, `models`, `roles`.
-
-- `people`: the exact name that `git config user.name` gives in the dir is the person. When it
-  gives none, ask the person for the name to set there.
-- `models`: each model that a role names, by its name, with the commands of the AI CLI (the
-  part "The models" below) and its `limits`. The limit that matters is `Assignment.attempts`:
-  the tries of a task before a raise (three when no model sets it; `work guide limits`).
-- `roles`: read `work guide roles` (the checks of work on the roles). Each agent role names its
-  `model` and its `acts`. Choose the model by the care that the work needs: a stronger model for
-  a role that reviews, splits, or directs, a smaller one for a maker that does one unit from
-  its brief. A dir has:
-  - one persistent role with `pipeline: true`, on a strong model: it evaluates raised tasks,
-    runs the direction pipeline, and reviews drafts. The top task cannot open without it;
-  - one persistent role with `split` (the config start checks it). The host sends it tasks of
-    the top. It usually holds `direct` and `fit` too;
-  - persistent roles that run a part (`{ assign: [<makers>] }`, `{ review: [<makers>] }`): each
-    gets a task, assigns a maker, and reviews the result itself;
-  - makers that assign nothing, each with its `output` form (the form of one result:
-    `<file>#<section>` for one section of a file, or `<repo>@<commit>` for a commit; the schema,
-    under `roles.<role>.output`, lists them). A maker is a subagent of its persistent role.
+The responsibility draft holds `people` and `roles`. Read `work guide roles` for the
+checks of work on roles. Describe the work that each role owns, what it outputs and what it
+checks. Keep the role's id stable while discovery and verification cite it. A program role
+needs its command. The pipeline role evaluates raised work and reviews drafts, and the role
+with `split` divides the top's work. Model, account, persistence and launcher choices
+belong to per-directory staffing.
 
 Each role has the keys of a role of `aristoteles.yaml`, and two more for its card:
 
 ```yaml
 roles:
   <role>:
-    model: <a name of the models table>
     description: <what the role does, in one line>
     intro: <the first words of its brief>
     responsibilities: [<one exact output or command>]
     acts: [{ do: <its work> }]   # or { review: [<role>] }, { assign: [<role>] }, split, direct, fit
-    persistence: { persistent: true | false, why: <one line> }
     pipeline: true   # only the one pipeline role
     icon: <a name of the list below>
     summary: <the one line of its card>
@@ -150,7 +136,7 @@ roles:
 
 Roles that the project has already come first: give them `found`, and take their `description`,
 `intro`, and `responsibilities` from that file. A role that the project needs and lacks is new:
-leave `found` out. A program role has no `persistence` and no `model`.
+leave `found` out. Record a program role with its command.
 
 Icons: bot, book-open, brain, clipboard-check, compass, crown, eye, feather, file-text,
 flask-conical, gavel, git-branch, hammer, layers, lightbulb, list-checks, map, microscope,
@@ -163,56 +149,6 @@ it. Its words give principles that work as criteria for its kind of work: what a
 is, so that the role can do it and a reviewer can review it. A responsibility that gives no
 criterion is not enough: say the exact output and the exact command (`work guide roles` lists
 the static checks, and `guides/fitness.yaml` the seven questions).
-
-### Persistence, and the Rumsfeld matrix
-
-Model and persistence are apart. Only a persistent role gets a terminal of its own, for the
-whole project; a role that is not persistent runs as a subagent of a terminal. Use the matrix to
-choose, and write the reason in `why`. Never write the matrix itself into the files: the page
-does not show it.
-
-- Known knowns and known unknowns: persistent. The role knows the work, or knows what it must
-  find out, so it starts cheaper subagents in parallel: workers, validators, and surveyors that
-  check a claim or fill in facts.
-- Unknown knowns and unknown unknowns: a big agent, disposable by default. Make it persistent
-  when the project needs it again and again, for example an advisor with the knowledge of its
-  domain.
-- Make at least one role that splits persistent, or the store start is refused. The pipeline
-  role is persistent too. The person has no toggle for them.
-- A disposable agent that starts disposable agents shows repetitive work: only a terminal (the
-  host, or a persistent agent) starts subagents. A role that is not persistent hands a need for
-  more agents back to the terminal above it. Write that in its `responsibilities`.
-- A role of any model can be persistent, also one that assigns nothing. A role that does one
-  short job again and again is disposable by default.
-
-### The models
-
-The UI starts each persistent agent with the commands of its model. Give each model a `launch`
-command, a `resume` command, and the `skills` folder of the AI CLI, relative to the dir.
-`launch` and `resume` name the model as `{model}` (the key of the entry), and have `{session}`
-(the session id that the UI gives the agent) and `{prompt}` (its first input). Give the commands
-of the CLI that you run in now; ask the person only for a command that you do not know. When the
-CLI can start subagents, set its limit on nested subagents in the command: only a terminal starts
-subagents, so a persistent agent must not let its subagents start more. For Claude Code, with
-the environment prefix:
-
-```yaml
-models:
-  opus:
-    launch: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 claude --model {model} --session-id {session} {prompt}
-    resume: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 claude --model {model} --resume {session} {prompt}
-    skills: .claude/skills
-    limits: { Review: { rules: 20 } }
-  sonnet:
-    # the same launch, resume, and skills
-    limits: { Review: { rules: 12 } }
-  haiku:
-    # the same launch, resume, and skills
-    limits: { Assignment: { attempts: 3 }, Review: { rules: 5 } }
-```
-
-The start words of a persistent agent have a default (its token, and "run work wait <token>");
-leave `start` out.
 
 ### One role
 
@@ -236,21 +172,21 @@ piece as below. The roles go into the config draft, the directions into directio
   command gets the files of the extracted sections as arguments. Name the program and its
   arguments in the report. A check that needs the judgment of a model is a rule that a role
   reviews, with a `ref` as evidence.
-- **Agents** -> roles, each with its model, its acts, its persistence, and its icon. Take the
+- **Agents** -> role responsibilities, acts, and an icon. Take the
   `description`, the `intro`, and the `responsibilities` from the prompt file of the agent, and
   put its path in `found`.
   - a writer: a role with `do` and its `output` form (`<file>#<section>` for one section
     of a markdown file; a maker of code reports `<repo>@<commit>`, one commit);
-  - a reviewer or a checker: a persistent role with `review: [<the writer>]` and
+  - a reviewer or a checker: a role with `review: [<the writer>]` and
     `assign: [<the writer>]`; each thing that it checks is a rule with `checkedBy: <it>`;
-  - an orchestrator that splits the work: the persistent role with `split`, which the host
+  - an orchestrator that splits the work: the role with `split`, which the host
     sends the tasks of the top to;
   - the evaluator of failures: the role with `pipeline: true`.
 - **The loop** -> tasks, reviews, and raises:
   - a write and a check for each section: the top task names its sections, and the host sends
     one task for each part; a standard for one section only has `where: { section: <heading id> }`,
     and a standard for some sections lists them: `where: { section: [<heading id>, <heading id>] }`;
-  - the tries of the loop: `models.<model>.limits.Assignment.attempts`;
+  - the tries of the loop: an input for staffing and runtime settings;
   - a step where the person says yes to each section: the person reads each result and can
     reject it; the review of the role decides it first;
   - a step that puts the parts together: a task of its own for a maker with a role of its own
@@ -263,40 +199,35 @@ piece as below. The roles go into the config draft, the directions into directio
 
 ## A direction draft
 
-A direction draft has exactly these keys: `id name from summary flow says standards`. It has
-no `owner` and no `approvedBy`: the person who starts the store owns each direction.
+Write the direction with its summary, diagram flow, words, standards and rules. It has no
+`owner` and no `approvedBy`. Name the candidate's sources and scope under `discovery`.
 
 ```yaml
-id: <direction id, lower case with dashes>
-name: <a short name>
-from: [<one or two principles of the eleven that ground it: Logos, Pathos, Ethos, Mythos,
-       Oikos, Nomos, Telos, Kairos, Mnēmē, Topoi, Aporia>]
-summary: <one or two plain sentences: what the direction asks, and why it matters>
+id: <direction id>
+name: <short name>
+from: [<grounding principles>]
+summary: <what the direction asks and why>
+discovery:
+  scope: { searched: [<path or workflow>], unknown: [<area not verified>] }
+  sources: [{ file: <path>, line: <line>, excerpt: <source wording> }]
 flow:
-  - { from: <an actor>, to: <an actor, or the file that it acts on>, says: <what happens, in one plain line>, place: { file: <where the project defines the step>, line: <n> } }
-  - from: <an actor>   # a step that the direction governs: it has uses and examples
-    to: <an actor, or the file that it acts on>
-    says: <what happens>
-    uses: [<the ids that apply there>]
-    examples:
-      - fit: <Follows or Breaks: the output follows the direction, or breaks it>
-        input: <only for a step that checks or decides: what it got, as an output below>
-        output: { file: <a real result>, line: <n>, excerpt: <a short part of it as it is now> }
-                # or { written: <the output in your words> } when the project has none
-      - { fit: <the other one>, output: ... }
-says: |
-  <what the work is for, in any markdown; the whole idea in the first paragraph>
+  - { from: <actor>, to: <actor or file>, says: <what happens>, place: { file: <path>, line: <line> }, uses: [<direction, standard and rule ids>] }
+says: <what the work is for>
 standards:
   - id: <standard id>
-    where: <optional: { section: <heading id> } for one section, or
-            { section: [<heading id>, <heading id>] } for some sections>
-    says: |
-      <how the output looks; one idea; headers for its pieces>
+    where: <optional context, such as { section: introduction }>
+    says: <how the output looks>
     rules:
-      - id: <rule id, unique in the project>
-        checkedBy: <a role of the config draft that reviews the maker>
-        says: |
-          <one check, in its first sentence; reasons and examples under headers>
+      - id: <unique rule id>
+        says: <one check>
+        checkedBy: <provisional role id>
+        test: <existing test command, when there is one>
+        evidence:
+          scope: { searched: [<coverage>], unknown: [<area not verified>] }
+          check: { _tag: Command, result: <what the command returned> }
+          cases:
+            - { fit: Follows, output: { file: <path>, line: <line>, excerpt: <real output> } }
+          knownBreaks: []
 ```
 
 Each standard follows from the words of its direction. Each rule is one check that a reviewer
@@ -342,8 +273,7 @@ summary, and the CLI prints it as numbered lines.
 - The place of the steps carries the sources, so leave out the words of where the direction
   comes from in `says`.
 - Mark each step that the direction governs with `uses`: the ids that apply there (the direction
-  id, standard ids, rule ids of this draft), and with its `examples`. A marked step has both, and
-  an unmarked step has neither. The page colors a marked step and tags it with its ids; the
+  id, standard ids, rule ids of this draft). A marked step has `uses`; an unmarked step leaves it out. The page colors a marked step and tags it with its ids; the
   others are gray. A flow marks at least one step, and the command refuses an id that is not in
   the draft.
 
@@ -367,64 +297,56 @@ flow:
   - { from: CI, to: src/export, says: fails the build on a direct os.Getenv, place: { file: .golangci.yml, line: 22 } }
 ```
 
-**Examples.** Write them inside each marked step of the flow: at least one output that follows
-the direction and one that breaks it. They live in the step that they show, so a new flow brings
-its examples with it. An example is about outputs only:
+**Cases.** Put the cases on the rule they follow or break. For an act that checks or
+decides, include the input as well as the output. A real case gives the exact file, line and
+excerpt. When real cases are sparse, record what you searched and use a labelled illustrative
+output (`{ written: ... }`) where it helps. With no observed break, leave the breaking case
+list empty and name the coverage. Unknown coverage stays unknown. Replacing cases during
+onboarding is an evidence revision and creates no direction version.
 
-- A step that makes something (a writer, a coder, any role that outputs) gives its `output`.
-- A step that checks or decides (a reviewer, a linter, a decider) gives its `input` (what it got)
-  and its `output` (what it said).
-- A sample is real when the project has one: a file, a line, and a short excerpt of the file as it
-  is now (the command refuses an excerpt that is not in its file). When the project has none,
-  write it: `{ written: <the output in your words> }`; the page labels it "written by the host".
+A check's evidence is `{ _tag: Command, result: ... }` with the rule's `test`, or
+`{ _tag: Reference, checker: ..., result: ... }` with the rule's `ref`. Record
+`{ _tag: Absent }` when no check exists and `{ _tag: Unknown, question: ... }` when it is open.
+Run a rule's own test on the claimed cases and record what actually happened. Verify the
+reference and checker route where the rule is checked against a reference.
 
-```yaml
-flow:
-  - from: writer
-    to: docs/tsd/export.md
-    says: fills the template one section at a time
-    uses: [tsd-writing, one-topic]
-    examples:
-      - { fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
-      - { fit: Breaks, output: { written: "## Design and rollout" } }
-  - from: linter
-    to: docs/tsd/export.md
-    says: checks that each section says one thing
-    uses: [one-topic]
-    examples:
-      - fit: Breaks
-        input: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
-        output: { written: "Accept: the section says one thing" }
-      - fit: Follows
-        input: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" }
-        output: { written: "Reject: the section says two things" }
-```
+## Questions and revisions
 
-A break is information for the person to judge the direction; it makes no task. More or other
-examples come on request (a Revise with a new `flow`); that makes a new version of the direction.
+Before drafting from competing sources, create the direction with `work onboard found <id>`
+and submit `work onboard ask <id> --file=<questions.yaml>`. Use a Candidates target, with two
+source records and the wording each choice gives.
 
-**Polish before you send.** Read the draft with each question of `work guide direction-review`,
-and fix it: the person reads it only after that polish.
-
-## Questions
-
-When you cannot draft a direction without an answer, write
-`.work/drafts/<id>.questions.yaml` and send it with `work onboard ask <id> --file=<it>`; the
-direction shows Question. Each question says what you must know, names one example, and gives
-exactly two options, A and B:
+For a deviation, include `questions` in the direction draft and publish both together with
+`work onboard draft <id> --file=<direction.yaml>`. Put a command or reference on the conflicting
+rule. Each question has `says`, `options: [<wording A>, <wording B>]`, and one target:
 
 ```yaml
-questions:
-  - says: <what you must know to draft the direction>
-    example: { fit: Follows | Breaks, output: { file: <path>, line: <n>, excerpt: <a short part of the file> } }
-    options: [<option A>, <option B>]
+target:
+  _tag: Deviation
+  rule: <the affected rule id>
+  code: { words: <what the code does>, source: { file: <path>, line: <line>, excerpt: <code> } }
+  principle: { words: <what the project states>, source: { file: <path>, line: <line>, excerpt: <stated text> } }
 ```
 
-Ask only what the files cannot answer. The person submits one answer for each question
-(`work onboard answer <id> --options=A,B`, or the page). `work onboard wait` then returns, and
-you draft the direction again with the answers; that clears the questions.
+For Candidates, use `_tag: Candidates`, `topic`, `a` and `b` with the same words/source shape.
+A deviation can also carry additional `cases` with the same code and principle shape.
+A deviation's A adopts the code and B keeps the stated rule. The person may give their own
+words. After an answer, read its revision with `work onboard show <id>`, redraft using
+`--revision=<revision>`, and recheck the cases, command or reference and checker routing.
+When the rule still holds and code still breaks it, keep the real spot in the rule's
+`knownBreaks` with its searched scope. This records the finding for later review. It grants
+no waiver and opens no task. A removal request is a Revise. After checking it, the host marks
+the result with `work onboard removed <id>`. The person approves the reviewed directions
+together after the questions and verification are complete.
 
 ## A company direction
+
+The person adds a URL in the form `https://host/owner/repo.git#directions/folder` or a prompt
+for a new local direction. The card appears immediately while the host works. The terminal
+forms are `work onboard add --url=<url>` and `work onboard add --principle=<prompt>`. If the
+person elects to change a company rule, draft the result as a local adaptation. The card
+retains the company source for review.
+
 
 A company direction is a folder of a git repo that other projects follow. The person asks for it
 on the page (add a company direction) or in the chat; then `work onboard company <id>
@@ -433,7 +355,7 @@ rules come from the folder at one commit: you do not write them. The summary is 
 sentence of the folder's words; you do not write it either. Your draft file has only
 `id` (optional), `checkedBy` (the role that checks each rule), `rules` (`{ <rule id>: <role> }`
 for a rule with another checker), `flow` (how the direction works in this project, its steps
-marked, each with its examples);
+marked with its applicable rule ids);
 send it with
 `work onboard draft <id> --file=<it>`. Do not copy its words into a direction of the project;
 when the project breaks it, say so in the report. When the person has no company repo, point to
@@ -451,7 +373,7 @@ an event.
   `work direction revise <direction id> --file=<edit.yaml> --by=assess`. Its owner accepts it with
   `work direction accept <draft>`, or rejects it with `work direction reject <draft>
   --reason=<why>`, before a top task is open.
-- The flow of a company draft (its steps marked, each with its examples), before its accept:
+- The flow of a company draft (its steps marked with its applicable rule ids), before its accept:
   `work direction examples <draft> --file=<flow.yaml> --by=assess`.
 - When a top task is open, the pipeline role changes directions through a raised task (the `work`
   skill, part "The pipeline role"); the person accepts that draft.
@@ -462,7 +384,7 @@ an event.
 
 End with one list for the person:
 
-- each direction: its id, its summary, and the evidence (the outputs of its examples);
+- each direction: its id, its summary, and the evidence (the outputs of its rule cases);
 - each role that you drafted: its model, its acts, its persistence and why, and where the
   project has it;
 - for an app with its own harness: each piece of the harness and where it went (a role, a rule,

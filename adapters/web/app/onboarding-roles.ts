@@ -46,7 +46,7 @@ function RoleModal({ role, directions, onClose }: {
   if (card) return html`<${DirectionModal} key=${card.id} card=${card} readOnly
     onClose=${() => setDirection(null)} />`
   const links = directions.filter((d) => role.directions?.includes(d.id) ||
-    ('draft' in d && d.draft.standards.some((s) => s.rules.some((r) => r.checkedBy === role.role))))
+    ('draft' in d && d.draft?.standards.some((s) => s.rules.some((r) => r.checkedBy === role.role))))
   return html`<${Modal} title=${roleLabel(role)} kind="onboarding-modal" onClose=${onClose}>
     <div class="review-detail">
       <p class="role-responsibility">${role.description || role.summary}</p>

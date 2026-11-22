@@ -4,7 +4,7 @@
 // config draft (P4). Nothing here is stored as an event: the store starts with the result only.
 import { Schema } from 'effect'
 import { Principle } from './closed.ts'
-import { Example, Flow, type RoleFile, StandardFile } from './files.ts'
+import { Example, Flow, type RoleFile, SearchScope, Spot, StandardFile } from './files.ts'
 import { DirectionId, NonBlank, RoleName } from './ids.ts'
 import type { NonEmpty } from './model.ts'
 
@@ -12,27 +12,50 @@ const Text = Schema.String
 
 // page: AiQuestion. What the AI must know to draft a direction: it names an example, and gives
 // the options A and B (ruling 5). An answered one names the option that the person chose.
+export const Discovery = Schema.Struct({
+  summary: Schema.optionalKey(NonBlank),
+  app: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
+  scope: SearchScope,
+  sources: Schema.Array(Spot),
+})
+export type Discovery = typeof Discovery.Type
+
+const Candidate = Schema.Struct({ words: NonBlank, source: Spot })
+export const QuestionTarget = Schema.Union([
+  Schema.TaggedStruct('Candidates', { topic: NonBlank, a: Candidate, b: Candidate }),
+  Schema.TaggedStruct('Deviation', {
+    rule: NonBlank, code: Candidate, principle: Candidate,
+    cases: Schema.optionalKey(Schema.Array(Schema.Struct({ code: Candidate, principle: Candidate }))),
+  }),
+])
+type Deviation = Extract<typeof QuestionTarget.Type, { readonly _tag: 'Deviation' }>
+export const deviationCases = (target: Deviation) =>
+  [{ code: target.code, principle: target.principle }, ...(target.cases ?? [])]
+
+export const OnboardingChoice = Schema.Union([Schema.Literals(['A', 'B']), Schema.Struct({ words: NonBlank })])
 const QuestionFields = {
+  target: Schema.optionalKey(QuestionTarget),
   says: NonBlank,
-  example: Example,
+  example: Schema.optionalKey(Example),
   options: Schema.Tuple([NonBlank, NonBlank]),
 }
 export const AiQuestion = Schema.Struct(QuestionFields)
 export type AiQuestion = typeof AiQuestion.Type
 export const AnsweredQuestion = Schema.Struct({
   ...QuestionFields,
-  chosen: Schema.Literals(['A', 'B']),
+  chosen: OnboardingChoice,
 })
 export type AnsweredQuestion = typeof AnsweredQuestion.Type
 
-// What a draft says: its summary and its flow with the examples of its marked steps (Nanda,
-// 2026-11-15), its words, and its standards;
-// each rule names the role that the AI proposes to check it.
+// The evidence belongs to the standards' rules. The flow only shows where they apply.
+const OnboardingFlow = Flow.pipe(Schema.check(Schema.makeFilter((flow) =>
+  flow.every((step) => step.examples === undefined) || 'cases belong to rules, not the onboarding flow')))
 const Content = Schema.Struct({
   summary: NonBlank,
-  flow: Flow,
+  flow: OnboardingFlow,
   says: Text,
   standards: Schema.Array(StandardFile),
+  discovery: Schema.optionalKey(Discovery),
 })
 // What the draft said before the host drafted it again (Nanda, 2026-11-15): the page shows what
 // changed.
@@ -42,8 +65,7 @@ const Previous = Schema.Struct({
   standards: Schema.Array(StandardFile),
 })
 export type Previous = typeof Previous.Type
-// The host's draft of a direction: its words (its flow holds its examples), and what the last
-// draft said.
+// The host's draft and the previous words for comparison.
 export const DraftOfFile = Schema.Struct({
   name: Text,
   from: Schema.Array(Principle),
@@ -57,7 +79,22 @@ export const Asked = Schema.Union([
   Schema.TaggedStruct('Found', {}), // the host found it in the project
   Schema.TaggedStruct('New', { principle: NonBlank, example: Schema.NullOr(Text) }),
   Schema.TaggedStruct('Company', { repo: Text, path: Text }),
+  Schema.TaggedStruct('AdoptedCompany', { repo: Text, path: Text }),
 ])
+// A company URL keeps the project-relative folder in its fragment.
+export const companyDirectionAt = (url: string): { repo: string; path: string } | undefined => {
+  try {
+    const source = new URL(url)
+    const path = decodeURIComponent(source.hash.slice(1))
+    if (!['https:', 'http:'].includes(source.protocol) || source.username || source.password ||
+      !path || path.split('/').some((part) => !part || part === '.' || part === '..')) return undefined
+    source.hash = ''
+    return { repo: source.href, path }
+  } catch {
+    return undefined
+  }
+}
+
 // Where a direction stands: one tag with only its own fields, so an accept always has a draft,
 // and a question always has one. Drafting, Reset, Answered and Revising wait for the host (the
 // page shows Loading); Question waits for the person's answers; Ready for the person's accept,
@@ -67,16 +104,26 @@ const draft = DraftOfFile
 export const DirectionStage = Schema.Union([
   Schema.TaggedStruct('Drafting', {}),
   Schema.TaggedStruct('Reset', {}),
-  Schema.TaggedStruct('Question', { draft, open: Schema.NonEmptyArray(AiQuestion) }),
-  Schema.TaggedStruct('Answered', { draft, answered: Schema.NonEmptyArray(AnsweredQuestion) }),
+  Schema.TaggedStruct('Question', {
+    draft: Schema.optionalKey(draft), revision: Schema.optionalKey(Text), open: Schema.NonEmptyArray(AiQuestion),
+  }).pipe(Schema.check(Schema.makeFilter((s) =>
+    s.draft !== undefined || s.open.every((q) => q.target?._tag === 'Candidates') ||
+    'only a source question can precede the first draft'))),
+  Schema.TaggedStruct('Answered', {
+    draft: Schema.optionalKey(draft), revision: Schema.optionalKey(Text), answered: Schema.NonEmptyArray(AnsweredQuestion),
+  }).pipe(Schema.check(Schema.makeFilter((s) =>
+    s.draft !== undefined || s.answered.every((q) => q.target?._tag === 'Candidates') ||
+    'only a source answer can precede the first draft'))),
   // The person's words; answers given before them stay for the next draft.
   Schema.TaggedStruct('Revising', {
     draft,
     words: NonBlank,
+    checkerChanged: Schema.optionalKey(Schema.Literal(true)),
     answered: Schema.Array(AnsweredQuestion),
   }),
   Schema.TaggedStruct('Ready', { draft }),
   Schema.TaggedStruct('Accepted', { draft }),
+  Schema.TaggedStruct('Removed', {}),
 ])
 export type DirectionStage = typeof DirectionStage.Type
 // page: OnboardingDirection. One file of .work/assess: where the direction comes from, and where
@@ -104,6 +151,7 @@ export type OnboardingDirectionState =
   | { readonly _tag: 'Question'; readonly open: NonEmpty<AiQuestion> } // the person answers
   | { readonly _tag: 'Ready' } // the person accepts, revises, or removes it
   | { readonly _tag: 'Accepted' }
+  | { readonly _tag: 'Removed' }
 
 // One entry of .work/assess/roles.yaml (P4): the onboarding state of a role, apart from its
 // config. found: the roles that the project has come first on the agents page. decision: the
@@ -188,11 +236,13 @@ export const OnboardingAct = Schema.Union([
     example: Schema.optionalKey(Text),
   }),
   Schema.Struct({ act: Schema.Literal('add-company-direction'), repo: Text, path: Text }),
+  Schema.Struct({ act: Schema.Literal('add-company-url'), url: NonBlank }),
   // One option for each question: the submit.
   Schema.Struct({
     act: Schema.Literal('answer'),
     direction: DirectionId,
-    options: Schema.NonEmptyArray(Schema.Literals(['A', 'B'])),
+    options: Schema.NonEmptyArray(OnboardingChoice),
+    revision: Schema.optionalKey(Text),
   }),
   Schema.Struct({ act: Schema.Literals(['accept', 'remove']), direction: DirectionId }),
   Schema.Struct({ act: Schema.Literal('revise'), direction: DirectionId, words: NonBlank }),

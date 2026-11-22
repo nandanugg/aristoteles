@@ -167,6 +167,48 @@ async function onboarding() {
 }
 
 describe('the onboarding pages', () => {
+  test('discovery and rule conflicts reach the review page on the current revision', async () => {
+    const p = await onboarding()
+    const code = { file: 'docs/tsd.md', line: 5, excerpt: 'TODO' }
+    const principle = { file: 'docs/facts.md', line: 3, excerpt: '## Dedupe' }
+    const scope = { searched: ['docs'], unknown: ['generated documents'] }
+    p.write('survey.yaml', Bun.YAML.stringify({
+      scope, sources: [code, principle], summary: 'The project writes design documents.', app: null,
+    }))
+    ok(await p.agent('onboard discovery --file=survey.yaml'))
+    const draft = Bun.YAML.parse(ONBOARD_DIRECTION)
+    const rule = draft.standards[0].rules[0]
+    rule.test = 'bun test docs.test.ts'
+    rule.evidence.check = { _tag: 'Command', result: 'One unresolved placeholder' }
+    draft.questions = [{
+      says: 'May a design document leave a placeholder?',
+      options: ['A placeholder is allowed.', 'Each section is complete.'],
+      target: { _tag: 'Deviation', rule: rule.id,
+        code: { words: 'The template leaves a placeholder.', source: code },
+        principle: { words: 'Each section is complete.', source: principle } },
+    }]
+    p.write('conflict.yaml', Bun.YAML.stringify(draft))
+    ok(await p.agent('onboard draft tsd-writing --file=conflict.yaml'))
+    const { get, onboard } = serve(p)
+    const view = await get('/api/onboarding')
+    expect(view.discovery).toEqual({
+      summary: 'The project writes design documents.',
+      read: ['docs/tsd.md:5', 'docs/facts.md:3'], notSearched: ['generated documents'], app: null,
+    })
+    const card = view.directions[0]
+    expect(card.open[0]).toMatchObject({
+      rule: rule.id,
+      sides: [{ source: 'docs/tsd.md:5' }, { source: 'docs/facts.md:3' }],
+    })
+    expect(card.draft.standards[0].rules[0]).toMatchObject({
+      test: rule.test, result: 'One unresolved placeholder', knownBreak: false,
+    })
+    const reply = { act: 'answer', direction: card.id, options: [{ words: 'Allow placeholders in drafts.' }] }
+    expect((await onboard({ ...reply, revision: 'stale' })).error).toContain('question revision changed')
+    expect((await onboard({ ...reply, revision: card.revision })).out).toContain('own words')
+    expect((await get('/api/onboarding')).directions[0]).toMatchObject({ state: 'loading', why: 'answered' })
+  })
+
   // Nanda, 2026-11-15: before the store, the config draft holds the settings: the role cards
   // read the models of the draft, and the page offers its names for the model of a role.
   test('before the store, role cards read local staffing without editing it', async () => {
@@ -193,16 +235,18 @@ describe('the onboarding pages', () => {
       ['tsd-writing', 'TSD writing', 'ready', 'found in the project by the host'],
     ])
     const tsd = view.directions[1]
-    expect(tsd.draft.standards[0].rules[0]).toEqual({ id: 'no-code-proof', says: 'No file paths with line numbers, no commit hashes in the body', checkedBy: 'linter' })
+    expect(tsd.draft.standards[0].rules[0]).toMatchObject({ id: 'no-code-proof', says: 'No file paths with line numbers, no commit hashes in the body', checkedBy: 'linter' })
     // Nanda, 2026-11-15: the marked steps of the flow carry the ids that apply there.
     expect(tsd.draft.flow.map((f) => f.uses)).toEqual([
       [], [], [], ['tsd-writing', 'intro-story', 'repeatable'], ['facts-not-proof', 'no-code-proof'],
     ])
     // Ruling 4: each example in its step, a real sample with its place and whether its excerpt is
     // in its file now, the host's words as they are (Nanda, 2026-11-15).
-    expect(tsd.draft.flow.map((f) => f.examples.length)).toEqual([0, 0, 0, 2, 2])
+    expect(tsd.draft.flow.every((f) => f.examples.length === 0)).toBe(true)
+    const casesOf = (d) => ['repeatable', 'no-code-proof'].flatMap((id) =>
+      d.draft.standards.flatMap((s) => s.rules).find((rule) => rule.id === id).examples ?? [])
     const sample = (x) => (x === null || 'written' in x ? x : (({ around: _, ...s }) => s)(x))
-    const examples = tsd.draft.flow.flatMap((f) => f.examples)
+    const examples = casesOf(tsd)
     expect(examples.map((e) => ({ ...e, input: sample(e.input), output: sample(e.output) }))).toEqual([
       { fit: 'Follows', input: null, output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction', current: true } },
       { fit: 'Breaks', input: null, output: { written: '## Introduction and design, in one section' } },
@@ -229,7 +273,7 @@ describe('the onboarding pages', () => {
     expect(examples[2].input.around.map((l) => `${l.line}${l.mark ? '*' : ''}`).join(' ')).toBe('2 3 4 5* 6 7 8')
     const text = readFileSync(join(p.dir, 'docs/tsd.md'), 'utf8')
     p.write('docs/tsd.md', text.replaceAll('TODO', 'Done'))
-    expect((await get('/api/onboarding')).directions[1].draft.flow.flatMap((f) => f.examples)[2].input.current).toBe(false)
+    expect(casesOf((await get('/api/onboarding')).directions[1])[2].input.current).toBe(false)
     p.write('docs/tsd.md', text)
     // Nanda, 2026-11-15: the words against the last draft; a first draft has none, so every line
     // comes: the summary, the words, each standard with each rule and its checker.
@@ -237,7 +281,9 @@ describe('the onboarding pages', () => {
     expect(tsd.draft.diff.lines.every((l) => l.startsWith('+'))).toBe(true)
     expect(tsd.draft.diff.lines).toContain('+  Rule no-code-proof (checked by linter): No file paths with line numbers, no commit hashes in the body')
     // A draft over it keeps the last one, and the diff shows what changed.
-    p.write('again.yaml', ONBOARD_DIRECTION.replace('says: Tell the story first, in plain words.', 'says: Tell the story first.'))
+    const changed = Bun.YAML.parse(ONBOARD_DIRECTION)
+    changed.standards[1].says = 'Tell the story first.'
+    p.write('again.yaml', Bun.YAML.stringify(changed))
     ok(await p.agent('onboard draft tsd-writing --file=again.yaml'))
     const again = (await get('/api/onboarding')).directions[1].draft.diff
     expect(again.direction).toBe('The last draft → this draft')
@@ -304,7 +350,7 @@ describe('the onboarding pages', () => {
     expect(has(p, '.work/assess/one-thing.yaml')).toBe(false)
     ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
     expect((await onboard({ act: 'approve-all-directions' })).error).toContain('reviewed revisions')
-    const reviewed = (await get('/api/onboarding')).directions.map(({ id, revision }) => ({ id, revision }))
+    const reviewed = (await get('/api/onboarding')).directions.filter((card) => card.state === 'ready').map(({ id, revision }) => ({ id, revision }))
     expect((await onboard({ act: 'approve-all-directions', reviewed })).out).toBe('accepted: tsd-writing.')
     // Ruling 7, P11: the toggle writes the persistence with a true reason; the role of the top
     // task has none (ruling 15).
@@ -339,13 +385,12 @@ describe('the onboarding pages', () => {
     ok(await p.agent('onboard config --file=draft2.yaml'))
     // The assign acts of the architect and the lead named the linter, so their cards changed too.
     for (const role of ['architect', 'section-lead']) ok(await p.nanda(`onboard accept-role ${role}`))
-    const blocked = 'rule no-code-proof of tsd-writing is checked by linter, which is not an accepted role'
-    expect((await get('/api/onboarding')).start).toEqual({
-      state: 'blocked',
-      says: blocked,
-      fix: 'the host drafts tsd-writing again (work onboard draft tsd-writing --file=<direction.yaml>), then the person accepts it',
+    const reopened = await get('/api/onboarding')
+    expect(reopened.start).toEqual({ state: 'waiting' })
+    expect(reopened.directions[0]).toMatchObject({
+      state: 'loading', why: 'revise', words: 'Reverify checker responsibility for no-code-proof, no-ticket-ids, repeatable.',
     })
-    expect((await approve()).error).toBe(`the store cannot start: ${blocked}`)
+    expect((await approve()).error).toBe('tsd-writing is not accepted yet')
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe('theme: dark\n')
     for (const path of ['.work/assess/tsd-writing.yaml', 'aristoteles.draft.yaml']) expect(has(p, path)).toBe(true)
     expect(has(p, '.work/onboarding.lock')).toBe(false)
@@ -356,6 +401,9 @@ describe('the onboarding pages', () => {
       'acts: [{ review: [writer] }]\nicon: shield-check\nsummary: Checks one section.\n')
     ok(await p.agent('onboard role linter --file=linter.yaml'))
     ok(await p.nanda('onboard accept-role linter'))
+    p.write('tsd.yaml', ONBOARD_DIRECTION)
+    ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
+    ok(await p.nanda('onboard approve-directions', 'approve'))
     p.write('.work/staffing.yaml', staffedFixture(ONBOARD_CONFIG).staffing)
     aLiveHost(p)
     try {
@@ -375,7 +423,7 @@ describe('the onboarding pages', () => {
     // After the start, the same view reads the store (the gear), and onboarding is over.
     const view = await get('/api/onboarding')
     expect(view.stage).toBe('store')
-    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.draft.flow.flatMap((f) => f.examples).length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 4]])
+    expect(view.directions.map((d) => [d.id, d.state, d.origin, d.draft.standards.flatMap((s) => s.rules.flatMap((r) => r.examples ?? [])).length])).toEqual([['tsd-writing', 'current', 'tsd-writing@1, owner Nanda', 4]])
     // Nanda, 2026-11-15: in the gear, a version against the one before it; the first has none.
     expect(view.directions[0].draft.diff.direction).toBe('tsd-writing@1, the first version: every line is new')
     expect(view.roles.map((r) => [r.role, r.state, r.toggle])).toEqual(ROLES.map((r) => [r, 'current', false]))

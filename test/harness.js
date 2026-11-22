@@ -161,9 +161,26 @@ export const ONBOARD_CONFIG = WORK_YAML
   .replace('icon: shield-check\n', 'icon: shield-check\n    summary: Checks one section.\n    found: .claude/agents/linter.md\n')
 // The host's draft of the direction that it found: the direction of the fixture with no owner (the
 // person who starts the store owns it).
-export const ONBOARD_DIRECTION = DIRECTION.replace('owner: Nanda\n', '')
+const casesOnRules = (yaml) => {
+  const file = Bun.YAML.parse(yaml)
+  for (const step of file.flow) {
+    if (!step.examples) continue
+    const rule = file.standards.flatMap((standard) => standard.rules)
+      .find((candidate) => step.uses.includes(candidate.id)) ?? file.standards[0].rules[0]
+    rule.evidence = {
+      scope: { searched: ['docs/tsd.md'], unknown: [] },
+      check: { _tag: 'Absent' },
+      cases: step.examples,
+      knownBreaks: step.examples.flatMap((sample) =>
+        sample.fit === 'Breaks' && 'file' in sample.output ? [sample.output] : []),
+    }
+    delete step.examples
+  }
+  return Bun.YAML.stringify(file, null, 2)
+}
+export const ONBOARD_DIRECTION = casesOnRules(DIRECTION.replace('owner: Nanda\n', ''))
 // The host's draft of a new direction that the person asked for: its first draft names its id.
-export const ONBOARD_NEW = `id: one-thing
+export const ONBOARD_NEW = casesOnRules(`id: one-thing
 name: One thing per section
 from: [Logos]
 summary: Each section of a TSD keeps to one topic, so a reader finds it fast.
@@ -182,7 +199,7 @@ standards:
     says: A section has one heading.
     rules:
       - { id: one-topic, says: "The section stays on its heading", checkedBy: linter }
-`
+`)
 // The host's questions about a draft: each names an example and gives two options.
 export const ONBOARD_QUESTIONS = `questions:
   - says: Does a section of facts count as one thing?

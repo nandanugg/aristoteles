@@ -100,6 +100,7 @@ const buildStandard = (
       ...(r.test === undefined ? {} : { test: r.test }),
       ...(r.ref === undefined ? {} : { ref: r.ref }),
       checkedBy,
+      ...(r.evidence === undefined ? {} : { evidence: r.evidence }),
       supersedes,
     }
     scratch.rules.set(ruleEntry, rule)

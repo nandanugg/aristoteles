@@ -1,3 +1,5 @@
+import { deviationCases } from '../../core/schema/index.ts'
+import { directionRevision } from '../../core/services/index.ts'
 // The views of the page, built from Derived and the files of the dir: the onboarding pages and
 // the gear (the directions and the roles), the person, and the dir. The JSON is the view data of
 // ui-model.ts part 4. The dashboard is built apart (dash.ts).
@@ -93,7 +95,28 @@ const flowStepView =
     uses: s.uses ?? [],
     examples: (s.examples ?? []).map(exampleOf),
   })
-const standardsOf = (w: Work, v: Version<Direction>): DirectionView['standards'] =>
+const ruleEvidenceView = (
+  evidence: import('../../src/domain/files.ts').RuleEvidence | undefined,
+  exampleOf: (e: Example) => ExampleView,
+) => {
+  if (!evidence) return {}
+  const { check, cases, knownBreaks, scope } = evidence
+  return {
+    result: check._tag === 'Command' ? check.result
+      : check._tag === 'Reference' ? `${check.checker}: ${check.result}`
+      : check._tag === 'Unknown' ? check.question : 'Check absent',
+    examples: [
+      ...cases.map(exampleOf),
+      ...knownBreaks.filter((spot) => !cases.some((sample) => sample.fit === 'Breaks' &&
+        'file' in sample.output && sample.output.file === spot.file && sample.output.line === spot.line &&
+        sample.output.excerpt === spot.excerpt)).map((output) => exampleOf({ fit: 'Breaks', output })),
+    ],
+    searched: scope.searched,
+    knownBreak: knownBreaks.length > 0,
+  }
+}
+
+const standardsOf = (w: Work, v: Version<Direction>, exampleOf: (e: Example) => ExampleView): DirectionView['standards'] =>
   v.standards.map((entry) => {
     const s = standardAt(w, entry)
     return {
@@ -103,6 +126,7 @@ const standardsOf = (w: Work, v: Version<Direction>): DirectionView['standards']
         id: r.id,
         says: r.says,
         checkedBy: r.checkedBy._tag === 'Role' ? r.checkedBy.role : null,
+        ...ruleEvidenceView(r.evidence, exampleOf), ...(r.test && { test: r.test }), ...(r.ref && { ref: r.ref }),
       })),
     }
   })
@@ -187,13 +211,12 @@ const diffOf = (title: string, before: Words | undefined, now: Words): DraftChan
   direction: title,
   lines: lineDiff(before ? wordsText(before) : '', wordsText(now)),
 })
-const standardsView = (standards: ReadonlyArray<StandardFile>): DirectionView['standards'] =>
+const standardsView = (standards: ReadonlyArray<StandardFile>, exampleOf: (e: Example) => ExampleView): DirectionView['standards'] =>
   standards.map((st) => ({
     id: st.id,
     says: st.says,
-    rules: st.rules.map((r) => ({ id: r.id, says: r.says, checkedBy: r.checkedBy ?? null,
-      ...(r.test === undefined ? {} : { test: r.test }),
-      ...(r.ref === undefined ? {} : { ref: r.ref }) })),
+    rules: st.rules.map(({ id, says, checkedBy, evidence, test, ref }) => ({ id, says, checkedBy: checkedBy ?? null,
+      ...ruleEvidenceView(evidence, exampleOf), ...(test && { test }), ...(ref && { ref }) })),
   }))
 
 const originOf = (asked: OnboardingDirection['asked']): string => {
@@ -202,6 +225,8 @@ const originOf = (asked: OnboardingDirection['asked']): string => {
       return 'found in the project by the host'
     case 'New':
       return 'asked for by the person'
+    case 'AdoptedCompany':
+      return `adapted from ${asked.path} of ${asked.repo}`
     case 'Company':
       return `a company direction: ${asked.path} of ${asked.repo}`
   }
@@ -210,11 +235,13 @@ const originOf = (asked: OnboardingDirection['asked']): string => {
 const onboardingDirectionCard = (
   f: OnboardingDirection,
   exampleOf: (e: Example) => ExampleView,
+  discovery?: OnboardingFiles['discovery'],
 ): DirectionCard => {
   const { asked, stage } = f
   const drafted = draftIn(stage)
   const head = {
-    ...(drafted ? { revision: sha(JSON.stringify(drafted)), principles: drafted.from } : {}),
+    ...(drafted ? { principles: drafted.from } : {}),
+    ...(stage._tag === 'Ready' ? { revision: directionRevision(stage.draft, discovery) } : {}),
     id: f.id,
     name:
       drafted?.name ??
@@ -223,45 +250,64 @@ const onboardingDirectionCard = (
     principle: asked._tag === 'New' ? asked.principle : null,
     example: asked._tag === 'New' ? asked.example : null,
   }
-  const question = (q: AiQuestion) => ({
-    says: q.says,
-    example: exampleOf(q.example),
-    options: q.options,
+  const side = ({ words, source }: { words: string; source: { file: string; line: number; excerpt: string } }) => ({
+    source: `${source.file}:${source.line}`,
+    words: `${words}\n\n${source.excerpt}`,
   })
+  const question = (q: AiQuestion) => {
+    const target = q.target
+    const sides = target?._tag === 'Candidates' ? [side(target.a), side(target.b)] as const
+      : target?._tag === 'Deviation' ? [side(target.code), side(target.principle)] as const : undefined
+    return {
+      says: q.says,
+      ...(q.example && { example: exampleOf(q.example) }),
+      ...(sides && { sides }),
+      ...(target?._tag === 'Deviation' && {
+        rule: target.rule,
+        caseSides: deviationCases(target).slice(1).map(({ code, principle }) => [side(code), side(principle)] as const),
+      }),
+      options: q.options,
+    }
+  }
   const answered = (q: AnsweredQuestion) => ({ ...question(q), answer: q.chosen })
   switch (stage._tag) {
     case 'Drafting':
       return { ...head, state: 'loading', why: 'drafting' }
     case 'Reset':
       return { ...head, state: 'loading', why: 'reset' }
+    case 'Removed':
+      return { ...head, state: 'removed' }
   }
-  const words = { ...stage.draft.content, standards: standardsView(stage.draft.content.standards) }
-  const last = stage.draft.previous
-  const title = last ? 'The last draft → this draft' : 'The first draft: every line is new'
-  const draft = {
-    ...words,
-    flow: words.flow.map(flowStepView(exampleOf)),
-    diff: diffOf(title, last && { ...last, standards: standardsView(last.standards) }, words),
+  const wordsOf = (d: NonNullable<typeof drafted>) => {
+    const words = { ...d.content, standards: standardsView(d.content.standards, exampleOf) }
+    const last = d.previous
+    return {
+      ...words,
+      flow: words.flow.map(flowStepView(exampleOf)),
+      diff: diffOf(last ? 'The last draft → this draft' : 'The first draft: every line is new',
+        last && { ...last, standards: standardsView(last.standards, exampleOf) }, words),
+    }
   }
   switch (stage._tag) {
     case 'Question': {
       const [first, ...rest] = stage.open
-      return { ...head, state: 'question', draft, open: [question(first), ...rest.map(question)] }
+      return { ...head, state: 'question', ...(stage.draft && { draft: wordsOf(stage.draft) }),
+        ...(stage.revision && { revision: stage.revision }), open: [question(first), ...rest.map(question)] }
     }
     case 'Answered': {
       const [first, ...rest] = stage.answered
-      const all = [answered(first), ...rest.map(answered)] as const
-      return { ...head, state: 'loading', why: 'answered', draft, answered: all }
+      return { ...head, state: 'loading', why: 'answered',
+        ...(stage.draft && { draft: wordsOf(stage.draft) }), answered: [answered(first), ...rest.map(answered)] }
     }
     case 'Revising': {
       const { words } = stage
       const all = stage.answered.map(answered)
-      return { ...head, state: 'loading', why: 'revise', words, draft, answered: all }
+      return { ...head, state: 'loading', why: 'revise', words, ...(stage.checkerChanged && { checkerChanged: true as const }), draft: wordsOf(stage.draft), answered: all }
     }
     case 'Ready':
-      return { ...head, state: 'ready', draft }
+      return { ...head, state: 'ready', draft: wordsOf(stage.draft) }
     case 'Accepted':
-      return { ...head, state: 'accepted', draft }
+      return { ...head, state: 'accepted', draft: wordsOf(stage.draft) }
   }
 }
 
@@ -314,7 +360,13 @@ export const onboardingFilesView = (
   return {
     stage: 'files',
     ...(files.roleRequests?.length ? { roleRequests: files.roleRequests } : {}),
-    directions: files.directions.map((f) => onboardingDirectionCard(f, exampleOf)),
+    ...(files.discovery && { discovery: {
+      summary: files.discovery.summary ?? 'Project discovery',
+      read: files.discovery.sources.map((source) => `${source.file}:${source.line}`),
+      notSearched: files.discovery.scope.unknown,
+      app: files.discovery.app ?? null,
+    } }),
+    directions: files.directions.map((f) => onboardingDirectionCard(f, exampleOf, files.discovery)),
     roles: [...roles.filter((r) => r.found !== null), ...roles.filter((r) => r.found === null)],
     models: files.responsibilityOnly === true ? [] : Object.keys(settings.models),
     start: startViewOf(files),
@@ -344,12 +396,12 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
     .map((x): DirectionCard => {
       const v = currentOf(w, x.id)
       const from = x.source._tag === 'External' ? `, from ${x.source.path} of ${x.source.repo}` : ''
-      const standards = standardsOf(w, v)
+      const standards = standardsOf(w, v, exampleOf)
       const before = x._tag === 'Official' ? x.versions[v.number - 2] : undefined
       const title = before
         ? `${versionIdOf(before)} → ${versionIdOf(v)}`
         : `${versionIdOf(v)}, the first version: every line is new`
-      const diff = diffOf(title, before && { ...before, standards: standardsOf(w, before) }, {
+      const diff = diffOf(title, before && { ...before, standards: standardsOf(w, before, exampleOf) }, {
         ...v,
         standards,
       })

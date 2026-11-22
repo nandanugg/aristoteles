@@ -5,6 +5,8 @@
 import { Schema } from 'effect'
 import {
   BodySchema,
+  Discovery,
+  OnboardingChoice,
   PositiveInt,
   QuestionBodySchema,
   RefusalSchema,
@@ -92,17 +94,19 @@ const QuestionFields = {
   rule: Schema.optionalKey(Text),
   sides: Schema.optionalKey(Schema.Tuple([QuestionSide, QuestionSide])),
   says: Text,
-  example: ExampleView,
+  example: Schema.optionalKey(ExampleView),
+  caseSides: Schema.optionalKey(Schema.Array(Schema.Tuple([QuestionSide, QuestionSide]))),
   options: Schema.Tuple([Text, Text]),
 }
 export const QuestionView = Schema.Struct(QuestionFields)
-const AnsweredView = Schema.Struct({ ...QuestionFields, answer: Schema.Literals(['A', 'B']) })
+const AnsweredView = Schema.Struct({ ...QuestionFields, answer: OnboardingChoice })
 const DirectionWords = Schema.Struct({
   summary: Text,
   flow: FlowView,
   says: Text,
   standards: StandardsView,
   diff: DraftChange,
+  discovery: Schema.optionalKey(Discovery),
 })
 const CardHead = {
   revision: Schema.optionalKey(Text),
@@ -124,7 +128,7 @@ export const DirectionCard = Schema.Union([
     ...CardHead,
     state: Schema.Literal('loading'),
     why: Schema.Literal('answered'),
-    draft,
+    draft: Schema.optionalKey(draft),
     answered: Schema.NonEmptyArray(AnsweredView),
   }),
   Schema.Struct({
@@ -132,15 +136,17 @@ export const DirectionCard = Schema.Union([
     state: Schema.Literal('loading'),
     why: Schema.Literal('revise'),
     words: Text,
+    checkerChanged: Schema.optionalKey(Schema.Literal(true)),
     draft,
     answered: Schema.Array(AnsweredView),
   }),
   Schema.Struct({
     ...CardHead,
     state: Schema.Literal('question'),
-    draft,
+    draft: Schema.optionalKey(draft),
     open: Schema.NonEmptyArray(QuestionView),
   }),
+  Schema.Struct({ ...CardHead, state: Schema.Literal('removed') }),
   Schema.Struct({ ...CardHead, state: Schema.Literals(['ready', 'accepted', 'current']), draft }),
 ])
 const RoleCardBase = {

@@ -210,7 +210,7 @@ export const startStateOf = (files: OnboardingFiles): StartState => {
   )
   const problem = startProblem(config, accepted)
   if (problem !== undefined) return { _tag: 'Blocked', ...problem }
-  const direction = files.directions.find((f) => f.stage._tag !== 'Accepted')
+  const direction = files.directions.find((f) => f.stage._tag !== 'Accepted' && f.stage._tag !== 'Removed')
   if (direction !== undefined) {
     return { _tag: 'Waiting', on: { _tag: 'Direction', direction: direction.id } }
   }

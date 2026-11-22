@@ -47,7 +47,7 @@ const sampleOf = (name: string, s: SampleData) => html`<div class="sample">
 export function ExampleBlock({ e }: { e: ExampleData }) {
   const fit = e.fit.toLowerCase()
   return html`<li class=${`example ${fit}`}>
-    <span class=${`fit-tag ${fit}`}>${e.fit}</span>
+    <span class=${`fit-tag ${fit}`}>${e.fit}${'written' in e.output ? ' (illustrative)' : ''}</span>
     ${e.input ? sampleOf('Input', e.input) : ''}
     ${sampleOf('Output', e.output)}
   </li>`
@@ -73,8 +73,16 @@ export function DirectionReview({ id, draft }: { id: string; draft: Draft }) {
   return html`<div class="direction-review">
     <p class="direction-summary">${draft.summary}</p>
     <${FlowDiagram} id=${id} flow=${draft.flow} />
+    ${draft.discovery && html`<details><summary>Sources and scope</summary>
+      <p>Searched: ${draft.discovery.scope.searched.join(', ')}</p>
+      <p>Unknown: ${draft.discovery.scope.unknown.join(', ')}</p>
+      <ul>${draft.discovery.sources.map((spot) => html`<li>${spot.file}:${spot.line} — ${spot.excerpt}</li>`)}</ul>
+    </details>`}
     <div class="section-title">The words</div>
     <${Change} change=${draft.diff} />
+    ${draft.standards.flatMap((standard) => standard.rules.map((rule) => rule.examples?.length
+      ? html`<section class="example-group"><h3>${rule.id}</h3><ul class="examples">
+        ${rule.examples.map((e) => html`<${ExampleBlock} e=${e} />`)}</ul></section>` : ''))}
     <${Examples} draft=${draft} />
   </div>`
 }

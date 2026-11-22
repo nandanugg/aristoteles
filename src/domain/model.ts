@@ -185,6 +185,7 @@ export interface Rule {
   readonly says: Text
   readonly test?: string // a shell command: no output = the rule holds, each line a point
   readonly ref?: string // file#anchor:lines
+  readonly evidence?: import('./files.ts').RuleEvidence
   // page: checkedBy?; none: the decider of the result checks it.
   readonly checkedBy:
     | { readonly _tag: 'Decider' }

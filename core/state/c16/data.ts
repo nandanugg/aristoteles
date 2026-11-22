@@ -25,6 +25,7 @@ export interface ItemRec {
   readonly ref: string | null
   readonly form: Form
   readonly examples: ReadonlyArray<Example>
+  readonly knownBreaks?: ReadonlyArray<string>
 }
 export type Versions = ReadonlyMap<ItemKey, number>
 

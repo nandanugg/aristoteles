@@ -2,12 +2,13 @@
 // flags and prints the words.
 import { join } from 'node:path'
 import { Effect } from 'effect'
-import { currentOf, draftAt, versionAt, versionNumberOf } from '../../../core/derived/reads.ts'
+import { currentOf, draftAt, rulesOfStandard, standardAt, versionAt, versionNumberOf } from '../../../core/derived/reads.ts'
 import {
   type AnswerId,
   type Author,
   DirectionId,
   type FlowStep,
+  type Rule,
   lookup,
   type RevisionId,
   refuse,
@@ -28,6 +29,7 @@ import {
   renderPiece,
   whyLines,
 } from '../../words/index.ts'
+import { exampleOneLines } from '../../words/show.ts'
 import { type Args, textOf, wordsOf } from '../args.ts'
 import { isPerson, personAuthor, verifyWork } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
@@ -68,17 +70,26 @@ const REVISE_TEMPLATE =
 // The examples of a direction or of a new draft, by the step of its flow, each with its state
 // (ruling 4): the adapter reads the text of each file now, so an excerpt that left its file shows
 // stale.
-const examplesOf = (flow: ReadonlyArray<FlowStep>) =>
+const examplesOf = (flow: ReadonlyArray<FlowStep>, rules: ReadonlyArray<Rule>) =>
   Effect.gen(function* () {
     const examples = examplesOfFlow(flow)
-    if (examples.length === 0) return []
+    const byRule = rules.flatMap((rule) => rule.evidence ? [{ id: rule.id, ...rule.evidence }] : [])
+    if (examples.length === 0 && byRule.length === 0) return []
     const { cwd } = yield* Dir
     const files = yield* Files
     const texts = new Map<string, string | null>()
-    for (const { file } of examples.flatMap(spotsOf)) {
+    for (const { file } of [...examples, ...byRule.flatMap((r) => r.cases)].flatMap(spotsOf)) {
       if (!texts.has(file)) texts.set(file, yield* files.read(join(cwd, file)))
     }
-    return ['examples:', ...exampleLines(flow, (file) => texts.get(file) ?? null)]
+    const textOf = (file: string) => texts.get(file) ?? null
+    return [
+      ...(examples.length ? ['examples:', ...exampleLines(flow, textOf)] : []),
+      ...byRule.flatMap((rule) => [
+        `cases of ${rule.id}:`,
+        ...rule.cases.flatMap((example) => exampleOneLines(example, textOf)),
+        ...rule.knownBreaks.map((s) => `  known break: ${s.file}:${s.line} — ${s.excerpt}`),
+      ]),
+    ]
   })
 
 // <id>[@<n>] or <draft>, then [#<standard, rule, or header>[#<header>]]: one piece.
@@ -90,7 +101,7 @@ const showDirection = (rest: ReadonlyArray<string>) =>
     if (/^d\d+$/.test(address)) {
       const { revision } = yield* lookupKind('Revision', ['d'], work, address)
       if (!keys.length) {
-        const examples = yield* examplesOf(revision.flow)
+        const examples = yield* examplesOf(revision.flow, revision.standards.flatMap((e) => rulesOfStandard(work, standardAt(work, e))))
         return [renderDraft(d, revision.id), ...whyLines(revision.why), ...examples]
       }
       v = revision.id
@@ -112,7 +123,7 @@ const showDirection = (rest: ReadonlyArray<string>) =>
       if (number && !numbered) return yield* refuse(`${id} has no version ${number}`)
       const version = numbered ?? currentOf(work, directionId)
       if (!keys.length) {
-        const examples = yield* examplesOf(currentOf(work, directionId).flow)
+        const examples = yield* examplesOf(version.flow, version.standards.flatMap((e) => rulesOfStandard(work, standardAt(work, e))))
         return [renderDirection(d, versionIdOf(version)), ...examples]
       }
       v = versionIdOf(version)

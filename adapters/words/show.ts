@@ -291,6 +291,6 @@ export const exampleLines = (
 ): ReadonlyArray<string> =>
   flow.flatMap((s, i) =>
     isMarked(s)
-      ? [`  step ${i + 1} · ${whoOfStep(s)}`, ...s.examples.flatMap((e) => exampleOneLines(e, textOf))]
+      ? [`  step ${i + 1} · ${whoOfStep(s)}`, ...(s.examples ?? []).flatMap((e) => exampleOneLines(e, textOf))]
       : [],
   )

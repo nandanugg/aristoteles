@@ -11,7 +11,7 @@ export type ReviewDirection = typeof DirectionCard.Type
 type Question = typeof QuestionView.Type
 type Draft = Extract<ReviewDirection, { draft: unknown }>['draft']
 type Rule = Draft['standards'][number]['rules'][number]
-type Choice = 'A' | 'B'
+type Choice = 'A' | 'B' | { readonly words: string }
 
 export function ReviewInput({ label, action, onSubmit }: {
   label: string
@@ -38,7 +38,7 @@ export const directionLabel = (card: ReviewDirection) => {
     return card.why === 'answered' ? 'Re-verifying' : card.why === 'revise' ? 'Revising' : 'Assessing'
   }
   if (card.state === 'question') return card.open.some((q) => q.rule) ? 'Conflict' : 'Question'
-  return card.state === 'ready' ? 'Ready' : 'Accepted'
+  return card.state === 'removed' ? 'Removed' : card.state === 'ready' ? 'Ready' : 'Accepted'
 }
 
 function QuestionOptions({ q, index, chosen, select }: {
@@ -49,10 +49,11 @@ function QuestionOptions({ q, index, chosen, select }: {
 }) {
   return html`<fieldset class="review-question">
     <legend><${Inline} text=${q.says} /></legend>
-    ${q.sides ? html`<div class="review-pair">${q.sides.map((side, i) => html`
-      <div class="review-evidence"><strong>${q.rule ? (i ? 'Principle side' : 'Code side') : 'Source ' + (i + 1)}</strong>
-        <code>${side.source}</code><pre>${side.words}</pre></div>`)}</div>`
-      : html`<ul class="examples"><${ExampleBlock} e=${q.example} /></ul>`}
+    ${q.sides ? [q.sides, ...(q.caseSides ?? [])].map((sides) =>
+      html`<div class="review-pair">${sides.map((side, i) => html`
+        <div class="review-evidence"><strong>${q.rule ? (i ? 'Principle side' : 'Code side') : 'Source ' + (i + 1)}</strong>
+          <code>${side.source}</code><pre>${side.words}</pre></div>`)}</div>`)
+      : q.example ? html`<ul class="examples"><${ExampleBlock} e=${q.example} /></ul>` : ''}
     ${(['A', 'B'] as const).map((choice, i) => html`<label class="review-option">
       <input type="radio" name=${`direction-question-${index}`} checked=${choice === chosen}
         onChange=${() => select(index, choice)} />
@@ -69,10 +70,10 @@ function RuleEvidence({ rule, examples }: { rule: Rule; examples: NonNullable<Ru
     ${rule.test ? html`<p><strong>Test command </strong><code>${rule.test}</code>
       <span class="muted"> · ${rule.result ?? 'Result unknown'}</span></p>`
       : rule.ref ? html`<p><strong>Reference </strong><code>${rule.ref}</code>
-        <span class="muted"> · ${rule.checkedBy ?? 'Checker unknown'}</span></p>`
-        : html`<p class="muted">${rule.checkedBy ? `Checker: ${rule.checkedBy}. ` : ''}Check unknown.</p>`}
+        <span class="muted"> · ${rule.result ?? rule.checkedBy ?? 'Checker unknown'}</span></p>`
+        : html`<p class="muted">${rule.checkedBy ? `Checker: ${rule.checkedBy}. ` : ''}${rule.result ?? 'Check unknown.'}</p>`}
     ${rule.knownBreak ? html`<span class="chip review-state" data-state="Conflict">Known break</span>` : ''}
-    ${rule.searched?.length && !invalid.length && !rule.knownBreak
+    ${rule.searched?.length && !invalid.some((item) => 'file' in item.output) && !rule.knownBreak
       ? html`<p class="muted">No break observed in ${rule.searched.join(', ')}.</p>` : ''}
     ${Array.from({ length: Math.max(valid.length, invalid.length) }, (_, i) => html`
       <ul class="examples review-pair">
@@ -87,7 +88,7 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
   onClose: () => void
   readOnly?: boolean
 }) {
-  const [choices, setChoices] = useState<Readonly<Record<number, Choice>>>({})
+  const [choices, setChoices] = useState<Readonly<Record<number, Choice | undefined>>>({})
   const [saving, setSaving] = useState(false)
   const questions = card.state === 'question' ? card.open : []
   const draft = 'draft' in card ? card.draft : undefined
@@ -102,7 +103,7 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
     const first = options[0]!
     setSaving(true)
     try {
-      const answer = await postOnboarding({ act: 'answer', direction: card.id, options: [first, ...options.slice(1)] })
+      const answer = await postOnboarding({ act: 'answer', direction: card.id, options: [first, ...options.slice(1)], ...(card.revision && { revision: card.revision }) })
       onClose()
       return answer
     } finally { setSaving(false) }
@@ -110,8 +111,12 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
   const question = (q: Question, index: number) => html`<div class="review-question-actions">
     <${QuestionOptions} q=${q} index=${index}
       chosen=${choices[index]} select=${(n: number, value: Choice) => setChoices((c) => ({ ...c, [n]: value }))} />
-    <${ReviewInput} label="Answer in your own words" action="Send words"
-      onSubmit=${(words: string) => revise(`${q.says}\n${words}`)} />
+    <label class="field"><span>Answer in your own words</span>
+      <textarea rows="2" value=${(choices[index] as { words?: string } | undefined)?.words ?? ''}
+        onInput=${(event: Event) => {
+          const words = (event.currentTarget as HTMLTextAreaElement).value
+          setChoices((current) => ({ ...current, [index]: words.trim() ? { words } : undefined }))
+        }} /></label>
   </div>`
   const ruleIds = new Set(draft?.standards.flatMap((standard) => standard.rules.map((rule) => rule.id)))
   return html`<${Modal} title=${card.name} kind="wide onboarding-modal" onClose=${onClose}>

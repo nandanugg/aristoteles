@@ -21,6 +21,7 @@ import {
   writeFileSync,
   writeSync,
 } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
 import { Effect, Schema, type Scope } from 'effect'
 import { type ConfigRead, configOfText, draftConfigOfText } from '../config/config.ts'
@@ -34,13 +35,16 @@ import {
   type CompanyFolder,
   type ConfigFile,
   checkerProblem,
-  type Example,
   type FlowStep,
   type RoleFile,
   type StandardFile,
 } from '../domain/files.ts'
-import { DirectionId, type NonBlank, type RoleName } from '../domain/ids.ts'
+import { DirectionId, NonBlank, type RoleName } from '../domain/ids.ts'
 import {
+  type AiQuestion,
+  Discovery,
+  companyDirectionAt,
+  deviationCases,
   type OnboardingAct,
   answersIn,
   Asked,
@@ -58,6 +62,7 @@ import type { Files, Spawn } from '../services/outside.ts'
 import { fetchFolder, LOCK, type LockEntry, readLock } from './company.ts'
 
 export const ASSESS = join('.work', 'assess')
+const DISCOVERY = join(ASSESS, 'discovery.report')
 const ROLES = join(ASSESS, 'roles.yaml')
 export const ONBOARDING_LOCK = join('.work', 'onboarding.lock')
 // A writer tries again every 50 ms for up to 5 s; a lock older than 30 s is a dead writer's.
@@ -276,13 +281,21 @@ export interface OnboardingFiles {
   readonly responsibilityOnly?: true
   readonly staffingProblem?: string
   readonly directions: ReadonlyArray<OnboardingDirection>
+  readonly discovery?: Discovery
   // The roles of the config draft in its order, each joined with its entry of roles.yaml.
   readonly roles: ReadonlyArray<OnboardingRole>
 }
 
+const readDiscovery = (dir: string) => Effect.gen(function* () {
+  const path = join(dir, DISCOVERY)
+  const text = readText(path)
+  return text === null ? undefined : yield* decodeIn(Discovery, path, text)
+})
+
 export const readOnboarding = (dir: string): Effect.Effect<OnboardingFiles, Refused> =>
   Effect.gen(function* () {
     const directions = yield* readDirections(dir)
+    const discovery = yield* readDiscovery(dir)
     const draft = yield* readDraft(dir)
     const states = yield* readRoleStates(dir)
     const roles: Array<OnboardingRole> = []
@@ -300,6 +313,7 @@ export const readOnboarding = (dir: string): Effect.Effect<OnboardingFiles, Refu
     const roleRequests = Object.entries(states).flatMap(([role, { decision }]) =>
       role.startsWith('requested-role-') && !(role in configured) && decision._tag === 'Revising' ? [{ role, words: decision.words }] : [])
     return { config: draft?.read.config ?? null, directions, roles, roleRequests,
+      ...(discovery === undefined ? {} : { discovery }),
       ...(draft !== undefined ? { responsibilityOnly: true } : {}),
       ...(draft?.staffingProblem === undefined ? {} : { staffingProblem: draft.staffingProblem }) }
   })
@@ -346,16 +360,23 @@ export interface DirectionDraft {
   readonly flow: ReadonlyArray<FlowStep>
   readonly says: string
   readonly standards: ReadonlyArray<StandardFile>
+  readonly discovery?: Discovery
 }
-export interface QuestionDraft {
-  readonly says: NonBlank
-  readonly example: Example
-  readonly options: readonly [NonBlank, NonBlank]
-}
+export type QuestionDraft = AiQuestion
+
+export const directionRevision = (draft: DraftOfFile, discovery?: Discovery): string =>
+  sha(JSON.stringify([draft, discovery]))
+
+export const directionReview = (files: ReadonlyArray<OnboardingDirection>, discovery?: Discovery) =>
+  files.flatMap(({ id, stage }) => stage._tag === 'Ready'
+    ? [{ id, revision: directionRevision(stage.draft, discovery) }] : [])
+
 // The CLI checks each file that the host names (its keys, real examples) before the act.
 // A Draft with reopen: the store start names this accepted direction, so the host drafts it again,
 // and the person decides it again.
 export type HostAct =
+  | { readonly _tag: 'Discovery'; readonly discovery: Discovery }
+  | { readonly _tag: 'RemoveRevised'; readonly direction: DirectionId }
   | {
       readonly _tag: 'Config'
       readonly config: Readonly<Record<string, unknown>>
@@ -379,6 +400,9 @@ export type HostAct =
       readonly direction: DirectionId
       readonly draft: DirectionDraft
       readonly reopen: boolean
+      readonly revision?: string
+      readonly questions?: readonly [AiQuestion, ...AiQuestion[]]
+      readonly adoptCompany?: true
     }
   | {
       readonly _tag: 'Ask'
@@ -446,6 +470,20 @@ const statesAfter = (
   return Object.fromEntries([...entries, ...requests])
 }
 
+const reopenCheckerDirections = (dir: string, roles: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    if (!roles.length) return
+    for (const file of yield* readDirections(dir)) {
+      if (file.stage._tag !== 'Ready' && file.stage._tag !== 'Accepted') continue
+      const draft = file.stage.draft
+      const changed = draft.content.standards.flatMap((s) => s.rules)
+        .filter((r) => r.checkedBy !== undefined && roles.includes(r.checkedBy))
+      if (!changed.length) continue
+      const words = NonBlank.make(`Reverify checker responsibility for ${changed.map((r) => r.id).join(', ')}.`)
+      yield* writeDirection(dir, { ...file, stage: { _tag: 'Revising', words, checkerChanged: true, draft, answered: [] } })
+    }
+  })
+
 // Each act returns the directions that it made, renamed or accepted (none for a role).
 export const hostAct = (
   dir: string,
@@ -455,6 +493,18 @@ export const hostAct = (
     Effect.gen(function* () {
       yield* locked(dir)
       switch (act._tag) {
+        case 'Discovery':
+          yield* io(() => mkdirSync(dirname(join(dir, DISCOVERY)), { recursive: true }))
+          yield* writeWhole(join(dir, DISCOVERY), yamlOf(act.discovery))
+          return []
+        case 'RemoveRevised': {
+          const file = yield* needDirection(dir, act.direction)
+          if (file.stage._tag !== 'Revising' || file.stage.checkerChanged) {
+            return yield* refuse(`${file.id} has no pending revision`, 'revise the direction first')
+          }
+          yield* writeDirection(dir, { ...file, stage: { _tag: 'Removed' } })
+          return [file.id]
+        }
         case 'Config': {
           const before = yield* readDraft(dir)
           const states = yield* readRoleStates(dir)
@@ -469,6 +519,11 @@ export const hostAct = (
           }
           yield* writeWhole(join(dir, DRAFT), text)
           yield* writeRoleStates(dir, statesAfter(before?.raw, after, states, act.notes))
+          if (before !== undefined) {
+            const edited = touchedRoles(before.raw, after.raw, after.read.config.roles)
+            const removed = Object.keys(before.raw.roles).filter((r) => !(r in after.raw.roles))
+            yield* reopenCheckerDirections(dir, [...edited, ...removed])
+          }
           return []
         }
         // The host's role answers a Revise of it, so the role waits for the person again.
@@ -479,6 +534,7 @@ export const hostAct = (
           const after = yield* writeDraft(dir, { ...draft.raw, roles })
           const next = statesAfter(draft.raw, after, states, { [act.role]: act.notes })
           yield* writeRoleStates(dir, { ...next, [act.role]: { ...act.notes, decision: WAITING } })
+          yield* reopenCheckerDirections(dir, touchedRoles(draft.raw, after.raw, after.read.config.roles))
           return []
         }
         case 'Found':
@@ -490,12 +546,15 @@ export const hostAct = (
             path: act.path,
           })
         case 'Draft':
-          return yield* writeDrafted(dir, act.direction, act.draft, act.reopen)
+          return yield* writeDrafted(dir, act.direction, act.draft, act.reopen, act.revision, act.questions, act.adoptCompany)
         case 'Ask': {
           const file = yield* needDirection(dir, act.direction)
           yield* notAccepted(file, false)
+          if (file.stage._tag === 'Removed' || (file.stage._tag === 'Answered' && file.stage.revision)) {
+            return yield* refuse(`${file.id} cannot take a new question now`, 'finish the current revision first')
+          }
           const draft = draftIn(file.stage)
-          if (draft === undefined) {
+          if (draft === undefined && act.questions.some((q) => q.target?._tag !== 'Candidates')) {
             return yield* refuse(
               file.stage._tag === 'Reset'
                 ? `${resetWords(file.id)}; a question is about a draft`
@@ -505,8 +564,10 @@ export const hostAct = (
           }
           const [first, ...rest] = act.questions
           if (first === undefined) return yield* refuse('ask names one question or more', 'write the questions in the file')
+          const problem = questionProblem(act.questions, draft?.content.standards ?? [])
+          if (problem !== undefined) return yield* refuse(problem, 'draft that rule first')
           // The questions answer a Revise too: the request is done.
-          yield* writeDirection(dir, { ...file, stage: { _tag: 'Question', draft, open: [first, ...rest] } })
+          yield* writeDirection(dir, { ...file, stage: { _tag: 'Question', ...(draft && { draft }), ...(act.questions.some((q) => q.target !== undefined) && { revision: randomUUID() }), open: [first, ...rest] } })
           return [file.id]
         }
       }
@@ -516,10 +577,91 @@ export const hostAct = (
 // A draft of the host: the rules are checked by roles of the config draft; a New direction takes
 // the id of its first draft (the file is renamed in the same locked step); the request and the
 // answers are done, and open questions stay open.
-const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft, reopen: boolean) =>
+const questionProblem = (questions: ReadonlyArray<AiQuestion>, standards: ReadonlyArray<StandardFile>) => {
+  for (const { target } of questions) {
+    if (target?._tag !== 'Deviation') continue
+    const rule = standards.flatMap((s) => s.rules).find((r) => r.id === target.rule)
+    if (rule === undefined || (rule.test === undefined && rule.ref === undefined)) {
+      return `deviation ${target.rule} needs a rule with a command or reference`
+    }
+  }
+}
+
+const writeDrafted = (
+  dir: string, id: DirectionId, draft: DirectionDraft, reopen: boolean, revision?: string,
+  questions?: readonly [AiQuestion, ...AiQuestion[]], adoptCompany?: true,
+) =>
   Effect.gen(function* () {
     const file = yield* needDirection(dir, id)
     yield* notAccepted(file, reopen)
+    if (draft.flow.some((step) => step.examples !== undefined)) {
+      return yield* refuse('cases belong to rules, not flow steps', 'move the cases to their rules and draft again')
+    }
+    if (file.stage._tag === 'Removed') return yield* refuse(`${file.id} was removed`, 'add another direction')
+    const open = questions ?? (file.stage._tag === 'Question' ? file.stage.open : undefined)
+    const problem = questionProblem(open ?? [], draft.standards)
+    if (problem !== undefined) return yield* refuse(problem, 'name the check on the conflicting rule')
+    const sameSpot = (a: { file: string; line: number; excerpt: string },
+      b: { file: string; line: number; excerpt: string }) =>
+      a.file === b.file && a.line === b.line && a.excerpt === b.excerpt
+    const answered = answersIn(file.stage)
+    if (file.stage._tag === 'Answered' && answered.some((q) => q.target !== undefined)) {
+      if (revision !== file.stage.revision) {
+        return yield* refuse('the answer revision changed', 'read the current answer and draft with --revision')
+      }
+      const rules = draft.standards.flatMap((s) => s.rules)
+      for (const q of answered) {
+        const target = q.target
+        if (target?._tag === 'Candidates') {
+          const selected = q.chosen === 'A' ? [target.a.source]
+            : q.chosen === 'B' ? [target.b.source] : [target.a.source, target.b.source]
+          if (!selected.some((source) => draft.discovery?.sources.some((s) => sameSpot(s, source)))) {
+            return yield* refuse('the revised direction lacks the source of the decision', 'cite its source in discovery')
+          }
+          if (!rules.some((r) => r.evidence !== undefined)) {
+            return yield* refuse('the source decision has no verification evidence', 'rerun verification and record the rule evidence')
+          }
+          continue
+        }
+        if (target?._tag !== 'Deviation') continue
+        const rule = rules.find((r) => r.id === target.rule)
+        const evidence = rule?.evidence
+        const words = typeof q.chosen === 'string' ? q.options[q.chosen === 'A' ? 0 : 1] : undefined
+        if (rule === undefined || (words !== undefined && rule.says !== words) || evidence === undefined ||
+          (evidence.check._tag !== 'Command' && evidence.check._tag !== 'Reference') ||
+          (q.chosen === 'B' && !deviationCases(target).every(({ code }) =>
+            evidence.knownBreaks.some((spot) => sameSpot(spot, code.source))))) {
+          return yield* refuse(`revision of ${target.rule} lacks the chosen words or recheck evidence`,
+            'rerun the rule verification and record its result and any known breaks')
+        }
+      }
+    }
+    for (const rule of draft.standards.flatMap((s) => s.rules)) {
+      const evidence = rule.evidence
+      if (evidence === undefined) continue
+      const priorBreaks = draftIn(file.stage)?.content.standards.flatMap((s) => s.rules)
+        .find((r) => r.id === rule.id)?.evidence?.knownBreaks ?? []
+      for (const spot of evidence.knownBreaks) {
+        const decided = answered.some(({ target, chosen }) => target?._tag === 'Deviation' &&
+          target.rule === rule.id && chosen !== 'A' &&
+          deviationCases(target).some(({ code }) => sameSpot(code.source, spot)))
+        if (!decided && !priorBreaks.some((known) => sameSpot(known, spot))) {
+          return yield* refuse(`${rule.id} has a known break without a decision at ${spot.file}:${spot.line}`,
+            'raise its two versions and record the break after the person decides')
+        }
+      }
+      for (const sample of evidence.cases) {
+        const spot = sample.output
+        if (sample.fit !== 'Breaks' || !('file' in spot)) continue
+        const recorded = evidence.knownBreaks.some((k) => sameSpot(k, spot))
+        const questioned = open?.some(({ target }) => target?._tag === 'Deviation' &&
+          target.rule === rule.id && deviationCases(target).some(({ code }) => sameSpot(code.source, spot)))
+        if (!recorded && !questioned) {
+          return yield* refuse(`${rule.id} has an unresolved deviation at ${spot.file}:${spot.line}`,
+            'raise its two versions on the rule before it can be approved')
+        }
+      }
+    }
     const { read } = yield* needDraft(dir)
     for (const rule of draft.standards.flatMap((s) => s.rules)) {
       const problem = checkerProblem(read.config.roles, rule.id, rule.checkedBy)
@@ -527,7 +669,7 @@ const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft, reope
         return yield* refuse(problem, `name a role of ${DRAFT} that checks it, in checkedBy`)
       }
     }
-    const renames = file.asked._tag === 'New' && file.stage._tag === 'Drafting'
+    const renames = file.asked._tag === 'New' && draftIn(file.stage) === undefined
     if (draft.id !== file.id && !renames) {
       return yield* refuse(
         `${file.id} keeps its id; the draft names ${draft.id}`,
@@ -547,16 +689,20 @@ const writeDrafted = (dir: string, id: DirectionId, draft: DirectionDraft, reope
         flow: draft.flow,
         says: draft.says,
         standards: draft.standards,
+        ...(draft.discovery && { discovery: draft.discovery }),
       },
       ...(last && {
         previous: { summary: last.summary, says: last.says, standards: last.standards },
       }),
     }
     const stage: OnboardingDirection['stage'] =
-      file.stage._tag === 'Question'
-        ? { _tag: 'Question', draft: words, open: file.stage.open }
+      open !== undefined
+        ? { _tag: 'Question', draft: words, open, ...(open.some((q) => q.target !== undefined) &&
+          { revision: randomUUID() }) }
         : { _tag: 'Ready', draft: words }
-    const next: OnboardingDirection = { ...file, id: draft.id, stage }
+    const asked = adoptCompany && file.asked._tag === 'Company'
+      ? { ...file.asked, _tag: 'AdoptedCompany' as const } : file.asked
+    const next: OnboardingDirection = { ...file, id: draft.id, stage, asked }
     // The new words go into the old file first, then the file takes its new name: a reader sees
     // one file of the direction at each moment.
     yield* writeWhole(directionPath(dir, file.id), yamlOf(Schema.encodeSync(OnboardingDirection)(next)))
@@ -578,6 +724,8 @@ const notReady = (file: OnboardingDirection): string | undefined => {
       return undefined
     case 'Accepted':
       return `${file.id} is accepted already`
+    case 'Removed':
+      return `${file.id} was removed`
     case 'Drafting':
       return `${file.id} has no draft yet; the host drafts it`
     case 'Reset':
@@ -587,7 +735,7 @@ const notReady = (file: OnboardingDirection): string | undefined => {
     case 'Question':
       return `${file.id} has questions for you; answer them first`
     case 'Answered':
-      return `the answers of ${file.stage.draft.name} (${file.id}) decide its next draft, and the host has not written it yet`
+      return `the answers of ${file.stage.draft?.name ?? file.id} (${file.id}) decide its next draft, and the host has not written it yet`
   }
 }
 // The rules of the drafted directions that a role checks: the store cannot start without it.
@@ -645,13 +793,19 @@ export const personAct = (
             principle: act.principle,
             example: act.example ?? null,
           })
+        case 'add-company-url':
         case 'add-company-direction': {
-          const id = folderId(act.path)
-          if (id === '') return yield* refuse(`${act.path} names no folder`, 'name the folder of the direction in its repo')
+          const source = act.act === 'add-company-url' ? companyDirectionAt(act.url) : act
+          if (source === undefined) {
+            return yield* refuse('the URL must name a git repo and a direction folder',
+              'use https://host/owner/repo.git#directions/folder')
+          }
+          const id = folderId(source.path)
+          if (id === '') return yield* refuse(`${source.path} names no folder`, 'name the folder of the direction in its repo')
           return yield* newFile(dir, DirectionId.make(id), {
             _tag: 'Company',
-            repo: act.repo,
-            path: act.path,
+            repo: source.repo,
+            path: source.path,
           })
         }
         case 'answer': {
@@ -659,7 +813,11 @@ export const personAct = (
           if (file.stage._tag !== 'Question') {
             return yield* refuse(`${file.id} has no open question`, 'work onboard status shows what waits')
           }
-          const { draft: words, open } = file.stage
+          const { draft: words, open, revision } = file.stage
+          if ((act.revision !== undefined || open.some((q) => q.target !== undefined)) &&
+            act.revision !== revision) {
+            return yield* refuse('the question revision changed', 'reload the direction before answering')
+          }
           if (act.options.length !== open.length) {
             return yield* refuse(
               `${file.id} has ${open.length} open questions, and ${act.options.length} options were given`,
@@ -670,7 +828,7 @@ export const personAct = (
           if (first === undefined) return []
           yield* writeDirection(dir, {
             ...file,
-            stage: { _tag: 'Answered', draft: words, answered: [first, ...rest] },
+            stage: { _tag: 'Answered', ...(words && { draft: words }), ...(revision && { revision }), answered: [first, ...rest] },
           })
           return []
         }
@@ -678,6 +836,9 @@ export const personAct = (
           const file = yield* needDirection(dir, act.direction)
           if (file.stage._tag !== 'Ready') {
             return yield* refuse(notReady(file) ?? '', 'work onboard status shows what waits')
+          }
+          if (file.stage.draft.content.standards.some((s) => s.rules.some((r) => r.evidence !== undefined))) {
+            return yield* refuse('accept all the reviewed directions together', 'work onboard approve-directions')
           }
           yield* writeDirection(dir, { ...file, stage: { _tag: 'Accepted', draft: file.stage.draft } })
           return [file.id]
@@ -687,6 +848,12 @@ export const personAct = (
           const words = draftIn(file.stage)
           if (words === undefined) {
             return yield* refuse(notReady(file) ?? '', 'work onboard status shows what waits')
+          }
+          if (file.stage._tag === 'Answered') {
+            return yield* refuse('the host is verifying your answers', 'wait for the revised direction')
+          }
+          if (file.stage._tag === 'Question' && file.stage.open.some((q) => q.target !== undefined)) {
+            return yield* refuse('answer the open questions on this revision', 'choose a version or enter your own words')
           }
           // Open questions go: the person's words come instead of the answers.
           const answered = answersIn(file.stage)
@@ -698,16 +865,23 @@ export const personAct = (
         }
         case 'remove': {
           const file = yield* needDirection(dir, act.direction)
+          if ((file.stage._tag === 'Question' && file.stage.revision !== undefined) ||
+            (file.stage._tag === 'Answered' && file.stage.revision !== undefined) ||
+            draftIn(file.stage)?.content.discovery !== undefined) {
+            return yield* refuse('remove through a reviewed revision', 'revise the direction and ask to remove it')
+          }
           yield* io(() => rmSync(directionPath(dir, file.id)))
           return []
         }
         case 'approve-all-directions': {
           const directions = yield* readDirections(dir)
-          if (act.reviewed !== undefined) {
-            const current = directions.flatMap(({ id, stage }) =>
-              stage._tag === 'Ready' ? [{ id, revision: sha(JSON.stringify(stage.draft)) }] : [])
-            if (directions.some(({ stage }) => stage._tag !== 'Ready' && stage._tag !== 'Accepted') ||
-              !sameReview(act.reviewed, current)) return yield* refuse('The directions changed while you were reviewing them')
+          const waiting = directions.find((f) => !['Ready', 'Accepted', 'Removed'].includes(f.stage._tag))
+          if (waiting !== undefined) {
+            return yield* refuse(`${waiting.id} still waits for review`, 'resolve all directions before approving them')
+          }
+          const current = directionReview(directions, yield* readDiscovery(dir))
+          if (act.reviewed === undefined || !sameReview(act.reviewed, current)) {
+            return yield* refuse('The directions changed while you were reviewing them', 'reload and review the current drafts')
           }
           const ready = directions.flatMap((f) =>
             f.stage._tag === 'Ready' ? [{ ...f, stage: { ...f.stage, _tag: 'Accepted' as const } }] : [],
@@ -734,7 +908,7 @@ export const personAct = (
           const files = yield* readOnboarding(dir)
           const waiting = files.roles.filter(({ decision }) => decision._tag === 'Waiting')
           const current = waiting.map((r) => ({ id: r.role, revision: sha(JSON.stringify(r)) }))
-          if (files.directions.some(({ stage }) => stage._tag !== 'Accepted') || files.roleRequests?.length ||
+          if (files.directions.some(({ stage }) => stage._tag !== 'Accepted' && stage._tag !== 'Removed') || files.roleRequests?.length ||
             files.roles.some(({ decision, questions }) => decision._tag === 'Revising' || questions?.length) ||
             current.length === 0 || !sameReview(act.reviewed, current)) {
             return yield* refuse('The roles changed or are still being drafted')
