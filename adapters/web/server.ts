@@ -1,3 +1,9 @@
+import { startStateOf } from '../../core/actions/index.ts'
+import { startRefusal } from '../words/index.ts'
+import { activationEvents, markerApproval, prepareActivation, runActivation } from '../live/activation.ts'
+import { bootstrapAlive, bootstrapPane, isBootstrapSession, isBootstrapSocket } from '../live/bootstrap.ts'
+import { initState } from '../../core/state/c16/state.ts'
+import { ACTIVATION, activationOf, gate, isInactive } from '../../core/actions/activation.ts'
 // startServer (frozen; package P9): the page of a dir. A terminal in the browser can run any
 // command. The server listens on every interface of the machine, with no key (Nanda, 2026-11-15:
 // a personal project), so anyone on its network can open the page and type into the terminals.
@@ -29,6 +35,7 @@ import {
   type Author,
   OnboardingAct,
   RefusalSchema,
+  SessionId,
   StoreDamaged,
   type Time,
   type Work,
@@ -43,6 +50,9 @@ import {
   FilesLive,
   Now,
   onboardingExists,
+  GitUser,
+  readActivationRecord,
+  activationLock,
   pathOf,
   personAct,
   readOnboarding,
@@ -55,7 +65,7 @@ import {
 } from '../../core/services/index.ts'
 import { fold, momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
 import { foldWork } from '../../core/state/c16/fold.ts'
-import { sessionOf } from '../../core/effects/engine.ts'
+import { sessionAt } from '../../core/effects/engine.ts'
 import { keyOf } from '../../core/state/c16/types.ts'
 import { buildOf } from '../live/build.ts'
 import { readPane } from '../live/host-pane.ts'
@@ -72,6 +82,8 @@ import {
   type ActResponse,
   Dash,
   DashMessage,
+  ActivationPost,
+  MarkerApproval,
   DirView,
   OnboardingView,
   PageAct,
@@ -81,7 +93,7 @@ import {
 import { dashOf } from './dash.ts'
 import type { ServerHandle, ServerOptions } from './frozen.ts'
 import { pipeMarks, pipeQueue } from './pipe-keys.ts'
-import { onboardingWords, startStore } from './onboard.ts'
+import { onboardingWords } from './onboard.ts'
 import {
   dirView,
   onboardingFilesView,
@@ -211,7 +223,9 @@ export function startServer(options: ServerOptions): ServerHandle {
   }
 
   // The host's pane is gone: its end is recorded (a failure here never stops the server).
-  runSync(Effect.asVoid(Effect.exit(checkHost(tmuxPaneExists))))
+  const checkManagedHost = () => checkHost(tmuxPaneExists,
+    (session) => Effect.sync(() => bootstrapAlive(dir, session.slice('boot-'.length))))
+  runSync(Effect.asVoid(Effect.exit(checkManagedHost())))
 
   // The Work now: the cache renews itself from the store, and folds only on a new last seq.
   const refresh = Effect.gen(function* () {
@@ -247,8 +261,43 @@ export function startServer(options: ServerOptions): ServerHandle {
   const dashNow = (): typeof Dash.Type | undefined => {
     const events = storeEvents()
     const folded = foldWork(events)
-    if (folded === null) return undefined
-    const { state, hostPane, forwards } = folded
+    if (folded === null) {
+      const record = readActivationRecord(dir)
+      if (!record) return undefined
+      const state = activationOf(events)
+      const binding = state?.binding
+      const relaunching = record.pending?.kind === 'rebind' && record.pending.launch !== binding?.launch
+      const hostLost = state?.active === true && binding !== null && binding !== undefined &&
+        !bootstrapAlive(dir, binding.launch)
+      const phase = record.phase === 'rolling back' ? 'rolling back'
+        : relaunching ? 'relaunching'
+        : hostLost ? 'host lost'
+        : state?.active ? 'active' : 'activating'
+      return {
+        ...dashOf({
+          dir: basename(dir), build, now: Date.parse(clock()),
+          state: initState({ name: '', goal: '', sections: [], directions: [] }, new Map(), new Map(), 3),
+          host: { model: '', reading: null }, hostSession: null, pipe: null,
+          terminals: {}, tails: {}, forwards: [], markers: [], principles: {},
+        }),
+        header: { dir: basename(dir), project: '', seq: events.at(-1)?.seq ?? 0, build },
+        activation: {
+          phase,
+          step: phase === 'active' ? 'Open the top to begin work.'
+            : record.pending?.acknowledged ? 'The host acknowledged its launch.'
+            : record.pending ? 'Waiting for the host to acknowledge.'
+            : 'Preparing the project.',
+          next: phase === 'active' ? null : phase === 'host lost' ? 'relaunch'
+            : phase === 'rolling back' ? 'roll back' : 'resume',
+        },
+      }
+    }
+    const { state, forwards, hostSession } = folded
+    const binding = activationOf(events)?.binding
+    const managed = binding && (state.ep.get('host') ?? 0) === 0 && hostSession !== null
+      ? bootstrapPane(dir, binding.launch) : null
+    if (managed && hostSession !== null) pump?.adopt(SessionId.make(hostSession), managed.socket, managed.pane)
+    const hostPane = folded.hostPane ?? managed
     const now = Date.parse(clock())
     const terminals = pump?.status() ?? {}
     const persistent = [
@@ -257,8 +306,8 @@ export function startServer(options: ServerOptions): ServerHandle {
     ]
     const tails = Object.fromEntries(
       persistent.flatMap((k) => {
-        const sid = sessionOf(k, state.ep.get(k) ?? 0)
-        return sid in terminals ? [[sid, pump?.tail(sid, 40) ?? '']] : []
+        const sid = sessionAt(hostSession, k, state.ep.get(k) ?? 0)
+        return !isBootstrapSession(sid) && sid in terminals ? [[sid, pump?.tail(sid, 40) ?? '']] : []
       }),
     )
     const old = readState()
@@ -269,9 +318,12 @@ export function startServer(options: ServerOptions): ServerHandle {
       build,
       now,
       state,
+      hostSession,
       host: {
         model: '',
-        reading: hostPane === null ? null : readPane(hostPane.socket, hostPane.pane),
+        reading: hostPane === null ? null : readPane(
+          hostPane.socket, hostPane.pane, isBootstrapSocket(dir, hostPane.socket) ? 0 : undefined,
+        ),
       },
       pipe: pipe === undefined || pipe[1].kind !== 'agent'
         ? null
@@ -421,6 +473,11 @@ export function startServer(options: ServerOptions): ServerHandle {
   const terminalMessage = (ws: Bun.ServerWebSocket<undefined>, m: typeof PageMessage.Type) => {
     const error = (words: string) =>
       ws.send(JSON.stringify({ type: 'term.error', session: m.session, error: words }))
+    // Bootstrap wait delivers its token in this pane. Keep its screen on the local machine.
+    if (isBootstrapSession(m.session)) {
+      if (m.type === 'term.open') error('The bootstrap host terminal is available in local tmux.')
+      return
+    }
     if (!pump) {
       error('tmux is not on this machine')
       return
@@ -497,6 +554,9 @@ export function startServer(options: ServerOptions): ServerHandle {
       send({ type: 'changed' })
       return by
     }
+    if (isInactive(storeEvents())) return json({
+      refused: 'inactive', words: ACTIVATION.inactive().message, next: ACTIVATION.inactive().next,
+    }, 400)
     const forward = 'confirm' in post
       ? foldWork(storeEvents())?.forwards.find((entry) => entry.id === post.confirm)
       : undefined
@@ -544,19 +604,21 @@ export function startServer(options: ServerOptions): ServerHandle {
   const onboardingAct = async (act: OnboardingAct): Promise<Response> => {
     const name = await gitName(dir)
     if (name === '') return json({ error: NO_PERSON }, 400)
+    if (isInactive(storeEvents())) return failed(ACTIVATION.inactive())
     if (readState()) {
       const over =
         'the store of this dir has started, so onboarding is over; a change now is an adjustment'
       return json({ error: over }, 400)
     }
-    const exit =
-      act.act === 'approve-all-roles'
-        ? await runtime.runPromiseExit(startStore(dir, name, env))
-        : await runtime.runPromiseExit(
-            Effect.flatMap(personAct(dir, name, act), (made) =>
-              Effect.map(readOnboarding(dir), (files) => onboardingWords(act, made, files)),
-            ),
-          )
+    if (act.act === 'approve-all-roles') {
+      return json({ error: 'approve the instruction manifest before starting' }, 400)
+    }
+    const exit = await runtime.runPromiseExit(Effect.scoped(Effect.gen(function* () {
+      yield* activationLock(dir)
+      yield* gate(yield* activationEvents(dir))
+      const made = yield* personAct(dir, name, act)
+      return onboardingWords(act, made, yield* readOnboarding(dir))
+    })))
     runSync(refresh)
     return Exit.isSuccess(exit) ? json({ out: exit.value }) : failed(Cause.squash(exit.cause))
   }
@@ -620,6 +682,9 @@ export function startServer(options: ServerOptions): ServerHandle {
       const work = readState()
       if (!work) return json({ error: `no work store in ${dir}` }, 404)
       return answer(PersonView, personView(work.config.people, await gitName(dir)))
+    }
+    if (path === '/api/activation/approval') {
+      return answer(MarkerApproval, await runtime.runPromise(markerApproval(dir)))
     }
     if (path === '/api/dash') {
       const dash = dashNow()
@@ -709,6 +774,26 @@ export function startServer(options: ServerOptions): ServerHandle {
           return await postAct(req, srv)
         } catch (error) {
           return json({ error: messageOf(error) }, 500)
+        }
+      }
+      if (url.pathname === '/api/activation' && req.method === 'POST') {
+        if (!sameOrigin(req, srv)) return json({ error: 'an act comes only from this page' }, 403)
+        try {
+          const input = Schema.decodeUnknownSync(ActivationPost)(await req.json())
+          const name = await gitName(dir)
+          if (name === '') return json({ error: NO_PERSON }, 400)
+          const by = { _tag: 'Person' as const, name, channel: 'ui' as const }
+          const task = Effect.gen(function* () {
+            if (input.action === 'start') {
+              yield* prepareActivation(dir, by, input.entries, (files) => startRefusal(startStateOf(files)))
+            }
+            return yield* runActivation(dir, by, input.action === 'start' ? 'resume' : input.action)
+          })
+          const out = await runtime.runPromise(task.pipe(Effect.provideService(GitUser, { name: Effect.succeed(name) })))
+          send({ type: 'changed' })
+          return json({ out })
+        } catch (error) {
+          return failed(error)
         }
       }
       if (url.pathname === '/api/onboarding' && req.method === 'POST') {
@@ -826,7 +911,7 @@ export function startServer(options: ServerOptions): ServerHandle {
   const onboardingStamp = (): string => {
     try {
       const names = existsSync(assess) ? readdirSync(assess).map((n) => join(assess, n)) : []
-      return [join(dir, DRAFT), ...names]
+      return [join(dir, DRAFT), join(dir, '.work/onboarding/activation/record.json'), ...names]
         .filter((path) => existsSync(path))
         .map((path) => `${path} ${statSync(path).mtimeMs} ${statSync(path).size}`)
         .join('\n')
@@ -840,6 +925,7 @@ export function startServer(options: ServerOptions): ServerHandle {
   armAssess()
   const poll = setInterval(() => {
     check()
+    void runtime.runPromiseExit(checkManagedHost())
     armAssess()
     const now = stamp()
     if (now !== seen) onboardingChanged()

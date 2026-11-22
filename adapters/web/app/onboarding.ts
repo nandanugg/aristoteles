@@ -3,10 +3,10 @@
 // the files and stores nothing (ruling 1); approve all roles starts the store with the result.
 import { html } from 'htm/preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { type DirView, OnboardingView } from '../contract.ts'
+import { type DirView, MarkerApproval, OnboardingView } from '../contract.ts'
 import { AiToast } from './ai.ts'
 import { RoleGrid } from './agents.ts'
-import { api, attempt, type OnboardingActJson, postOnboarding } from './api.ts'
+import { api, attempt, type OnboardingActJson, postActivation, postOnboarding, toast } from './api.ts'
 import { DirectionReview, ExampleBlock } from './direction.ts'
 import { Inline } from './markdown.ts'
 
@@ -239,7 +239,9 @@ function Directions({ view, onAgents }: { view: ViewData; onAgents: () => void }
 // The agents page (ruling 11): a card for each role, the roles that the project has first. A
 // persistent role gets a terminal of its own; a disposable role runs as a subagent of a terminal.
 function Agents({ view }: { view: ViewData }) {
-  const [confirm, setConfirm] = useState(false)
+  const [confirm, setConfirm] = useState<typeof MarkerApproval.Type | null>(null)
+  const preview = () => api('/api/activation/approval', MarkerApproval).then(setConfirm, (error) =>
+    toast(error instanceof Error ? error.message : String(error)))
   const toggle = attempt((role: string, persistent: boolean) =>
     postOnboarding({ act: 'persistence', role, persistent }),
   )
@@ -252,8 +254,10 @@ function Agents({ view }: { view: ViewData }) {
       attempt(() => postOnboarding({ act: 'model', role, model }))(),
   }
   const start = attempt(async () => {
-    setConfirm(false)
-    return postOnboarding({ act: 'approve-all-roles' })
+    if (!confirm) return
+    const approval = confirm
+    setConfirm(null)
+    return postActivation({ action: 'start', entries: approval.entries })
   })
   const directions = view.directions.map((d) => d.name).join(', ') || 'none'
   const roles = view.roles.map((r) => r.role).join(', ')
@@ -265,11 +269,13 @@ function Agents({ view }: { view: ViewData }) {
       acts=${acts} />`
       : html`<p class="muted">The host has not drafted the roles yet.</p>`}
     <div class="item-actions"><button class="btn primary" disabled=${view.start.state !== 'open'}
-      onClick=${() => setConfirm(true)}>Approve all</button></div>
+      onClick=${preview}>Approve all</button></div>
     ${confirm ? html`<${Confirm} title="Approve all roles and start the store"
       words=${`The store starts with the directions ${directions}, and the roles ${roles}; ` +
-        'the onboarding files go. Each role must be accepted first.'}
-      onYes=${start} onNo=${() => setConfirm(false)} />` : ''}
+        'each role must be accepted first. Instruction files to mark: ' +
+        (confirm.entries.map(({ path }) => path).join(', ') || 'none') +
+        (confirm.reported.length ? `. Other instruction sources: ${confirm.reported.join(', ')}` : '.')}
+      onYes=${start} onNo=${() => setConfirm(null)} />` : ''}
   </div>`
 }
 

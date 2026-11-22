@@ -68,11 +68,23 @@ export type OnboardedDirection = typeof OnboardedDirection.Type
 
 // work init (old config), or the store start of onboarding with the accepted directions; later
 // changes of the words of roles (old config.text). A dir has one workflow: its move names no id.
+// Onboarding's activation (contract 6c, core/model/activation.qnt): the store is made INACTIVE
+// under a generation; Activated makes it active, bound to a launch and its host credential's hash
+// (the verifier); HostRebound moves that binding to a relaunched host before the first top.
+const Generation = Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)))
+export const Activation = Schema.Struct({ generation: Generation })
 export const WorkflowMove = Schema.Union([
   Schema.TaggedStruct('RoleWordsChanged', {
     roles: Schema.Record(Text, RoleWords),
     hashes: Schema.Record(Text, Text),
     texts: Schema.Record(Text, Text),
+  }),
+  Schema.TaggedStruct('Activated', { generation: Generation, launch: NonBlank, hostVerifier: NonBlank }),
+  Schema.TaggedStruct('HostRebound', {
+    generation: Generation,
+    launch: NonBlank,
+    expected: NonBlank,
+    hostVerifier: NonBlank,
   }),
 ])
 const Workflow = Schema.Union([
@@ -83,6 +95,8 @@ const Workflow = Schema.Union([
       hashes: Schema.Record(Text, Text),
       texts: Schema.Record(Text, Text),
       directions: Schema.Array(OnboardedDirection),
+      // null: work init (active at once); a generation: onboarding's inactive start.
+      activation: Schema.NullOr(Activation),
     }),
   ),
   Schema.TaggedStruct('Workflow', { move: WorkflowMove }),
@@ -217,6 +231,9 @@ export const WorkOpened = Schema.TaggedStruct('Opened', {
   cards: Schema.Array(Schema.Tuple([Text, RoleDraft])),
   maxTries: Int,
   tokens: Schema.Array(TokenHash),
+  // An activated workflow (contract 6c): the bound host's managed session; the host starts UP at
+  // epoch 0 there (its bootstrap credential is its epoch-0 token). null: every actor starts down.
+  hostSession: Schema.NullOr(Text),
 })
 // One act the store accepted; token: the new token the act makes (a new maker, a revived actor, a
 // resumed maker, the host of a move), else null.
@@ -323,6 +340,8 @@ export const WRITTEN_BY = {
   Person: [
     'Workflow.Defined',
     'Workflow.RoleWordsChanged',
+    'Workflow.Activated',
+    'Workflow.HostRebound',
     'Role.Fitted',
     'Send.Sent',
     'Review.Accept',

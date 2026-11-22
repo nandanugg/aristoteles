@@ -1,3 +1,4 @@
+import { gate } from '../../../core/actions/activation.ts'
 // work onboard (BUILD.md 1e): onboarding at a terminal, before any store (ruling 1). The host (the
 // AI CLI in the person's pane: no token, no store yet) drafts into the files; the person decides,
 // as on the two pages of onboarding. Each act writes through src/files/onboarding.ts and stores
@@ -24,6 +25,7 @@ import {
 } from '../../../core/schema/index.ts'
 import {
   CONFIG,
+  activationLock,
   draftConfigOfText,
   DRAFT,
   Dir,
@@ -38,10 +40,8 @@ import {
   type PersonAct,
   parseYaml,
   personAct,
-  prepareStart,
   type QuestionDraft,
   type RoleNotes,
-  readConfig,
   readDirection,
   readFlow,
   readOnboarding,
@@ -60,7 +60,7 @@ import { short } from '../../words/common.ts'
 import { textOf } from '../args.ts'
 import { type Confirm, personChannel, personOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
-import { act } from '../runtime.ts'
+import { activationEvents, markerApproval, prepareActivation, runActivation } from '../../live/activation.ts'
 import { configProblems } from '../../live/config-problems.ts'
 import { FLOW_FORM } from '../shared.ts'
 import { WAIT_SECONDS } from './wait.ts'
@@ -659,39 +659,14 @@ const roleAct = (call: Call, name: string | undefined) =>
 // written from the draft, and the person stores the start; a refusal writes the files back.
 const approveRoles = Effect.gen(function* () {
   const { cwd } = yield* Dir
-  const files = yield* readOnboarding(cwd)
-  const directions = files.directions.map((f) => f.id).join(', ') || 'none'
-  const show =
-    `the store starts with the directions ${directions}, and the roles ` +
-    `${files.roles.map((r) => r.role).join(', ')}; the onboarding files go.`
+  const approval = yield* markerApproval(cwd)
+  const show = 'Start an inactive workflow and mark these approved instruction files:' +
+    `\n${approval.entries.map((entry) => entry.path).join('\n') || '(none)'}` +
+    (approval.reported.length ? `\nOther loaded instructions: ${approval.reported.join(', ')}` : '')
   const name = yield* personOf(undefined, { word: 'approve', show })
   const by = { _tag: 'Person' as const, name, channel: yield* personChannel }
-  const start = yield* prepareStart(cwd, name, (yield* Env).vars, (f) => startRefusal(startStateOf(f)))
-  // The checks of work config check on the file that the start wrote, then the store. The refusal
-  // is what the person reads; the write back runs before it shows.
-  const done = yield* Effect.gen(function* () {
-    const problems = yield* configProblems((yield* readConfig(cwd)).config)
-    if (problems.length) {
-      return yield* refuse(
-        `${CONFIG}: ${problems.join('; ')}`,
-        'the host writes the role again (work onboard role), and the person accepts it',
-      )
-    }
-    return yield* act(by, {
-      _tag: 'DefineWorkflow',
-      target: {},
-      content: { directions: start.directions },
-    })
-  }).pipe(Effect.onError(() => Effect.ignore(start.restore)))
-  yield* start.finish
-  const { config } = done.work
-  const roles = Object.keys(config.roles)
-  const withModel = roles.filter((r) => config.roles[r]?.kind !== 'program')
-  return [
-    `store made for ${config.project} in aristoteles: ${roles.length} roles and ` +
-      `${start.directions.length} directions; the onboarding files are gone.`,
-    `next: work role fit <role> for each role (${withModel.join(', ')}); then work start --detach`,
-  ]
+  yield* prepareActivation(cwd, by, approval.entries, (f) => startRefusal(startStateOf(f)))
+  return [yield* runActivation(cwd, by, 'resume')]
 })
 
 const ACTS: Readonly<Record<string, (call: Call, word: string | undefined) => ReturnType<Command>>> = {
@@ -727,6 +702,9 @@ const onboard: Command = (call) =>
         'work help lists the forms',
       )
     }
+    const { cwd } = yield* Dir
+    if (call.act !== 'approve-roles') yield* activationLock(cwd)
+    yield* gate(yield* activationEvents(cwd))
     yield* noStoreYet
     return yield* run(call, word)
   })

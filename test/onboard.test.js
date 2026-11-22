@@ -1,3 +1,4 @@
+import { aLiveHost, finishActivation, killBootstrap } from './activation-fixture.js'
 // Onboarding at a terminal (BUILD.md 1e; rulings 1 to 5, 7, 15, onboarding 2026-11-14): the host
 // drafts into the files with work onboard, the person decides as on the two pages, and nothing is
 // stored until approve-roles starts the store with the accepted result only. Each refusal of the
@@ -107,11 +108,17 @@ describe('the whole onboarding at a terminal', () => {
     expect(ok(await p.agent('onboard status')).out).toContain(
       'next: everything is accepted; the person starts the store: work onboard approve-roles',
     )
-    const started = ok(await p.nanda('onboard approve-roles', 'approve')).out
-    expect(started).toContain('store made for report-export in aristoteles: 4 roles and 2 directions; the onboarding files are gone.')
+    aLiveHost(p)
+    try {
+      const started = ok(await p.nanda('onboard approve-roles', 'approve')).out
+      expect(started).toContain('Bootstrap host started')
+      await finishActivation(p)
+    } finally {
+      killBootstrap(p)
+    }
     // Question 20, option A: one Workflow.Defined holds the config and the accepted directions.
     const events = eventsOf(p)
-    expect(events.map((e) => `${e.record}.${e.member}`)).toEqual(['Workflow.Defined'])
+    expect(events.map((e) => `${e.record}.${e.member}`)).toEqual(['Workflow.Defined', 'Workflow.Activated'])
     const { directions } = JSON.parse(events[0].event).create
     expect(directions.map((x) => [x.direction.id, x.direction.owner, x.direction.flow.flatMap((f) => f.examples ?? []).length, x.source._tag])).toEqual([
       ['one-thing', 'Nanda', 3, 'Local'],

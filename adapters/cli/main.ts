@@ -21,6 +21,7 @@ import {
 } from './args.ts'
 import { isPerson } from './caller.ts'
 import type { Call, Command, Commands } from './command.ts'
+import { commands as activation } from './commands/activation.ts'
 import { commands as acts } from './commands/acts.ts'
 import { commands as directions } from './commands/directions.ts'
 import { commands as onboard } from './commands/onboard.ts'
@@ -33,6 +34,7 @@ import { layerOf } from './runtime.ts'
 export type { WorkIo } from '../../core/services/index.ts'
 
 const COMMANDS: Commands = {
+  ...activation,
   ...setup,
   ...reads,
   ...directions,

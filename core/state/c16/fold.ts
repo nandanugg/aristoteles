@@ -31,6 +31,8 @@ export interface WorkFolded {
   // The host's pane in the person's tmux (the last one recorded), bookkeeping, not an act.
   readonly hostPane: HostPane | null
   readonly forwards: ReadonlyArray<PendingForward>
+  // The bound host's managed session at epoch 0 (an activated workflow), else null.
+  readonly hostSession: string | null
 }
 
 export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => {
@@ -39,6 +41,7 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
   const tokens = new Map<ActorKey, Array<WorkToken>>()
   let hostPane: HostPane | null = null
   let forwards: ReadonlyArray<PendingForward> = []
+  let hostSession: string | null = null
   for (const recorded of events) {
     const e = recorded.event
     if (e._tag !== 'Work') continue
@@ -46,8 +49,12 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
     if (c._tag === 'Opened') {
       if (state !== null) return damaged(recorded, 'the top is opened once')
       const start = initState(c.top, new Map(c.items), new Map(c.cards), c.maxTries)
-      // A project opens with every persistent actor down: the engine revives them.
-      state = { ...start, down: new Set(['host', 'pipe', ...[...start.cards.keys()].map((r) => `role:${r}`)]) }
+      // A project opens with every persistent actor down: the engine revives them. An activated
+      // one opens with its bound host UP at epoch 0 in its managed session (as the model's
+      // initStore: nobody down), so its bootstrap credential stays its token.
+      hostSession = c.hostSession
+      const down = ['pipe', ...[...start.cards.keys()].map((r) => `role:${r}`)]
+      state = { ...start, down: new Set(hostSession === null ? ['host', ...down] : down) }
       for (const [who, hash] of c.tokens) tokens.set(who, [{ ep: 0, hash }])
     } else if (c._tag === 'HostPane') {
       if (state === null) return damaged(recorded, 'a host pane before the top is opened')
@@ -68,5 +75,5 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
       }
     }
   }
-  return state === null ? null : { state, ids, tokens, hostPane, forwards }
+  return state === null ? null : { state, ids, tokens, hostPane, forwards, hostSession }
 }

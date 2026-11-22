@@ -5,7 +5,9 @@
 // the step was derived from. An agent's next step is not printed: it runs `work wait` again.
 import { isAbsolute, join } from 'node:path'
 import { Effect, Schema } from 'effect'
+import { activationOf, gate } from '../../../core/actions/activation.ts'
 import {
+  WORK,
   dispatchAct,
   formOf,
   openTop,
@@ -40,7 +42,12 @@ import { actorOf, keyOf, type Actor, type Body, type Reply } from '../../../core
 import type { ItemKey, ItemRec, Level, RoleDraft, TaskSpec, Verdict }
   from '../../../core/state/c16/data.ts'
 import { kindOf } from '../../../core/state/c16/data.ts'
-
+import { activationEvents, retireHostDelivery } from '../../live/activation.ts'
+import { bootstrapSession } from '../../live/bootstrap.ts'
+import { briefOf, hostWords, makerWords } from '../../words/work.ts'
+import { type Args, textOf } from '../args.ts'
+import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
+import type { CliServices, Command, Commands } from '../command.ts'
 
 // A new token's line; a maker's also gives the exact first prompt its role starts it with (the
 // launch opening, which the marker line in the project's instruction files names).
@@ -52,11 +59,6 @@ const madeLines = (actor: string, token: string): ReadonlyArray<string> =>
 const HUMAN = { _tag: 'Human' } as const
 const HOST = { _tag: 'Host' } as const
 const HARNESS = { _tag: 'Harness' } as const
-import { briefOf, hostWords, makerWords } from '../../words/work.ts'
-import { type Args, textOf } from '../args.ts'
-import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
-import type { CliServices, Command, Commands } from '../command.ts'
-import { WORK } from '../../../core/actions/work.ts'
 
 type Failure = Expected | ReturnType<typeof WORK.noTop>
 type Run<A> = Effect.Effect<A, Failure, CliServices>
@@ -455,6 +457,7 @@ const readFolded = Effect.gen(function* () {
   const { cwd } = yield* Dir
   const store = yield* (yield* Store).open(cwd, { create: false })
   const events = yield* store.events
+  yield* gate(events)
   const folded = foldWork(events)
   return folded === null ? yield* WORK.noTop() : { events, folded }
 })
@@ -500,6 +503,9 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
         ? { evidence: folded.state.ver }
         : {}),
     })
+    if (actor?.who === 'host' && call.token !== null) {
+      yield* retireHostDelivery((yield* Dir).cwd, call.token)
+    }
     const line = outcome(body, acted.seq, acted.again)
     const token = acted.token
     const made = token !== null
@@ -568,11 +574,17 @@ const top: Command = (call) =>
       return yield* usage('work top open needs --name="<...>" --goal="<...>" --sections=a,b')
     }
     const sections = listOf(call.args.one('sections'))
-    const opened = yield* openTop({ by, name, goal, sections })
+    const { cwd } = yield* Dir
+    const binding = activationOf(yield* activationEvents(cwd))?.binding
+    const opened = yield* openTop({
+      by, name, goal, sections,
+      ...(binding ? { hostSession: bootstrapSession(binding.launch), hostLaunch: binding.launch } : {}),
+    })
     return [
       `Top "${name}" opened (event e${opened.seq}): ${goal}`,
       `Sections: ${sections.join(', ')}`,
       'Each actor runs work wait with its token:',
+      ...(opened.hostBound ? ['  host: holds its token from activation'] : []),
       ...opened.secrets.map((t) => `  ${t.actor}: ${workTokenOf(t.actor, 0, t.secret)}`),
     ]
   })

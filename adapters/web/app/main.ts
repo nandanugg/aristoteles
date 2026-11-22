@@ -5,7 +5,7 @@ import { html, render } from 'htm/preact'
 import { SessionId } from '../../../src/domain/ids.ts'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { Dash as DashSchema, type DashTerminalCard, DirView } from '../contract.ts'
-import { api, chime, postForward, postWork, socket, toast } from './api.ts'
+import { api, attempt, chime, postActivation, postForward, postWork, socket, toast } from './api.ts'
 import type { WorkSender } from './api.ts'
 import { Board, Person, PipeRow, Results } from './board.ts'
 import { DirectionCard, DirectionModal } from './directions.ts'
@@ -22,31 +22,36 @@ type DashData = typeof DashSchema.Type
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 // The poll that repairs a lost push (G4).
-const POLL_MS = 5000
+const POLL_MS = 3000
 
 // The last whole Dash. A push is taken at once; a poll that was in flight while a push came is
 // older than it, so it is dropped. A Dash of another build reloads the page.
 const useDash = () => {
   const [dash, setDash] = useState<DashData | null>(null)
   const pushes = useRef(0)
-  const latest = useRef<DashData['header'] | null>(null)
+  const latest = useRef<DashData | null>(null)
   const take = useCallback((d: DashData) => {
     if (latest.current !== null) {
-      if (latest.current.build !== d.header.build) {
+      if (latest.current.header.build !== d.header.build) {
         socket.buildChanged(d.header.build)
         return
       }
-      if (latest.current.seq > d.header.seq) return
+      if (latest.current.header.seq > d.header.seq && !d.activation) return
     }
     socket.viewBuild(d.header.build)
-    latest.current = d.header
+    latest.current = d
     setDash(d)
   }, [])
   const poll = useCallback(() => {
     const before = pushes.current
     api('/api/dash', DashSchema).then(
       (d) => before === pushes.current && take(d),
-      () => {},
+      (error) => {
+        if (before !== pushes.current || !latest.current?.activation ||
+          !errorText(error).startsWith('no work store in ')) return
+        latest.current = null
+        setDash(null)
+      },
     )
   }, [take])
   useEffect(() => {
@@ -130,6 +135,25 @@ type Shown =
   | { readonly kind: 'escalation'; readonly id: string }
   | { readonly kind: 'direction'; readonly key: string; readonly edit: boolean }
 
+function ActivationPanel({ view, refresh }: {
+  view: NonNullable<DashData['activation']>
+  refresh: () => void
+}) {
+  const recover = (action: 'resume' | 'rollback' | 'relaunch') =>
+    attempt(async () => {
+      const result = await postActivation({ action })
+      refresh()
+      return result
+    })()
+  return html`<section class="empty" aria-label="Project activation">
+    <h2>${view.phase}</h2><p>${view.step}</p>
+    ${view.next === 'resume' ? html`<button onClick=${() => recover('resume')}>Resume</button>
+      <button onClick=${() => recover('rollback')}>Roll back</button>`
+      : view.next === 'roll back' ? html`<button onClick=${() => recover('rollback')}>Roll back</button>`
+      : view.next === 'relaunch' ? html`<button onClick=${() => recover('relaunch')}>Relaunch</button>` : ''}
+  </section>`
+}
+
 function App() {
   const [dir, setDir] = useState<DirData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -186,7 +210,7 @@ function App() {
       <p class="error">${error}</p></div></main>`
   }
   if (!dir) return html`<main class="canvas"></main>`
-  const title = dash ? `${dash.header.dir} / ${dash.header.project}` : dir.name
+  const title = dash ? `${dash?.activation ? html`<${ActivationPanel} view=${dash.activation} refresh=${poll} />` : dash.header.dir} / ${dash.header.project}` : dir.name
   const escalation = shown?.kind === 'escalation' ? dash?.row.find((e) => e.id === shown.id) : null
   const direction =
     shown?.kind === 'direction' ? dash?.directions.find((d) => d.key === shown.key) : null

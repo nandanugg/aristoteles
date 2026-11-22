@@ -68,7 +68,8 @@ export const SpawnLive = Layer.succeed(Spawn, {
         ...(options.cwd ? { cwd: options.cwd } : {}),
         // Always an env: with none, bun gives the child the env of its own start, and finds the
         // command on that PATH, so a later change of process.env (test/preload.js) does not count.
-        env: { ...(options.env ?? process.env) },
+        env: Object.fromEntries(Object.entries(options.env ?? process.env)
+          .filter(([name]) => name !== 'ARISTOTELES_LAUNCH_NONCE')),
         ...(options.timeoutMs ? { timeout: options.timeoutMs } : {}),
         ...(options.stdin !== undefined ? { stdin: Buffer.from(options.stdin) } : {}),
         stdout: 'pipe',
