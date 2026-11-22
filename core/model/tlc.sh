@@ -114,6 +114,7 @@ activation.qnt activationFixed breaks NoBlockedByEdit -
 activation.qnt activationFixed breaks NoReboundWork -
 activation.qnt activationFixed breaks NoCancelledByTop -
 activation.qnt activationFixed breaks NoLateCollection -
+activation.qnt activationFixed breaks NoLateNote -
 activation.qnt activationTrustRecord breaks ActiveMeansMarked -
 activation.qnt activationTrustRecord breaks NoLostEdit -
 activation.qnt activationStaleAck breaks ActivationNeedsCurrentAck -
@@ -124,6 +125,7 @@ activation.qnt activationOpenStore breaks NoWorkBeforeActive -
 activation.qnt activationRebindAfterTop breaks NoRebindAfterTop -
 activation.qnt activationDeliverPending breaks NoCredentialToPending -
 activation.qnt activationRetireAtOpen breaks - BoundHostServed
+activation.qnt activationNoReconcile breaks CommittedNeverCancelled -
 browser.qnt browserNoReconnect breaks - G4All
 browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All

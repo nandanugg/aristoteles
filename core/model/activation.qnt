@@ -27,7 +27,7 @@ module activation {
   // The design's choices, each off in one mutant (README, Properties).
   const Design: { checkFiles: bool, ackCurrent: bool, freshIds: bool, recordFirst: bool,
                   rollbackGuard: bool, storeRefuses: bool, rebindGuard: bool,
-                  deliverCommitted: bool, retireAtUse: bool }
+                  deliverCommitted: bool, retireAtUse: bool, reconcileFirst: bool }
   pure val FILES = Set(0, 1)
   pure val MAX_ID = 3          // launch identities 0..MAX_ID
   pure val MAX_DEATHS = 1
@@ -58,7 +58,7 @@ module activation {
     worked: bool, workWhileInactive: bool, workByOther: bool,
     activatedStale: bool, activatedUnmarked: bool, overwroteEdit: bool, rolledBackActive: bool,
     replaced: bool, deliveredWrong: bool, rebindAfterTop: bool, rebound: bool, cancelled: bool,
-    reboundWorked: bool, lateCollection: bool,
+    reboundWorked: bool, lateCollection: bool, stoppedCommitted: bool, notedLate: bool,
   }
   var world: World
 
@@ -70,6 +70,7 @@ module activation {
     activatedStale: false, activatedUnmarked: false, overwroteEdit: false,
     rolledBackActive: false, replaced: false, deliveredWrong: false, rebindAfterTop: false,
     rebound: false, cancelled: false, reboundWorked: false, lateCollection: false,
+    stoppedCommitted: false, notedLate: false,
   }
 
   def isActive(s: StoreState): bool = match s { | Active(_) => true | _ => false }
@@ -262,22 +263,34 @@ module activation {
   }
   // The commit: under the lock, the same pending launch, acknowledged by its current process and
   // alive, and no top (mutant rebindGuard off: a top is not checked).
+  // The append (HostRebound): the binding moves; the record still names the pending launch until
+  // the note (a crash may fall between them).
   action commitRebind = all {
-    world.pending >= 0, world.alive.contains(world.pending),
+    world.pending >= 0, world.pending != world.binding, world.alive.contains(world.pending),
     world.ackedNow.contains(world.pending),
     Design.rebindGuard implies world.top < 0,
-    world' = { ...world, binding: world.pending, pending: -1, rebound: true,
+    world' = { ...world, binding: world.pending, rebound: true,
                rebinds: world.rebinds.union(Set(world.pending)),
                rebindAfterTop: world.rebindAfterTop or world.top >= 0 },
+  }
+  // The record notes a committed rebind: any later command reconciles the pending record with the
+  // committed event first, and completes the note (the committed launch is kept).
+  action noteRebind = all {
+    world.pending >= 0, world.pending == world.binding,
+    world' = { ...world, pending: -1, notedLate: world.notedLate or world.top >= 0 },
   }
   // A rebind that lost (the top was opened first, or its process died): cancelled, its process
   // stopped; the launch record falls back to the committed binding.
   action cancelRebind = all {
     world.pending >= 0,
+    // only an UNCOMMITTED pending launch (mutant reconcileFirst off: a pending record is cancelled
+    // without checking the committed event, so a committed launch can be stopped)
+    Design.reconcileFirst implies world.pending != world.binding,
     world.top >= 0 or (world.spawned.contains(world.pending) and not(world.alive.contains(world.pending))),
     world' = { ...world, alive: world.alive.exclude(Set(world.pending)),
                ackedNow: world.ackedNow.exclude(Set(world.pending)), pending: -1,
-               launch: world.binding, cancelled: world.cancelled or world.top >= 0 },
+               launch: world.binding, cancelled: world.cancelled or world.top >= 0,
+               stoppedCommitted: world.stoppedCommitted or world.pending == world.binding },
   }
   // The person opens the first top: it binds the committed launch, whatever is pending.
   action openTop = all {
@@ -290,7 +303,7 @@ module activation {
     recordSpawned, activate, noteActive,
   }
   action rollbackStep = any { restoreFile, stopHost, deleteStore, finishRollback }
-  action rebindStep = any { spawnPending, commitRebind, cancelRebind }
+  action rebindStep = any { spawnPending, commitRebind, noteRebind, cancelRebind }
   action step = any {
     activatorStep, rollbackStep, startRollback, hostAcks, hostDies, hostWorks, personEdits,
     deliver, startRebind, rebindStep, openTop,
@@ -312,6 +325,8 @@ module activation {
   val NoCredentialToPending = not(world.deliveredWrong)
   // A rebind never commits once a top exists: the top's host is the one the workflow ends with.
   val NoRebindAfterTop = not(world.rebindAfterTop)
+  // A recovery never stops the launch a committed rebind bound.
+  val CommittedNeverCancelled = not(world.stoppedCommitted)
   // An active store is never rolled back; a finished roll back leaves nothing behind.
   val ActiveNeverRolledBack = not(world.rolledBackActive)
   val RolledBackClean = world.record == RolledBack implies
@@ -320,6 +335,7 @@ module activation {
   val ActivationSafe = NoWorkBeforeActive and OnlyActivatedHostWorks
     and ActivationNeedsCurrentAck and ActiveMeansMarked and NoLostEdit and NoOrphanHost
     and ActiveNeverRolledBack and RolledBackClean and NoCredentialToPending and NoRebindAfterTop
+    and CommittedNeverCancelled
 
   // Witnesses (must be reached): activation, a finished roll back, an activation under a
   // replaced launch (the first died after acknowledging: the host dead before activation), work taken, a stop by an edit.
@@ -329,6 +345,8 @@ module activation {
   // Witnesses of v5: a rebound host does C16 work after the top bound it; the host collects its
   // credential after the person opened the top first.
   val NoReboundWork = not(world.reboundWorked)
+  // A committed rebind noted only after the top opened (the crash window between append and note).
+  val NoLateNote = not(world.notedLate)
   val NoLateCollection = not(world.lateCollection and world.used)
   val NoCancelledByTop = not(world.cancelled)
   val NoBlockedByEdit = not(activating and world.store == Inactive
@@ -360,7 +378,7 @@ module activation {
 module activationCfgs {
   pure val DESIGN = { checkFiles: true, ackCurrent: true, freshIds: true, recordFirst: true,
                       rollbackGuard: true, storeRefuses: true, rebindGuard: true,
-                      deliverCommitted: true, retireAtUse: true }
+                      deliverCommitted: true, retireAtUse: true, reconcileFirst: true }
 }
 // ---- instances (tlc.sh keeps only the one it checks). The design, and one choice off each.
 module activationFixed {
@@ -398,6 +416,10 @@ module activationDeliverPending {
 module activationRetireAtOpen {
   import activationCfgs.*
   import activation(Design = { ...DESIGN, retireAtUse: false }).* from "./activation"
+}
+module activationNoReconcile {
+  import activationCfgs.*
+  import activation(Design = { ...DESIGN, reconcileFirst: false }).* from "./activation"
 }
 module activationOpenStore {
   import activationCfgs.*
