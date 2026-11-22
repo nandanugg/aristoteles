@@ -2,7 +2,8 @@
 # bun run spec:tlc: TLC on the two small models (README.md "The small models"): every
 # reachable state, safety and liveness, by `quint verify --backend=tlc`. One JVM at a time.
 # HEAP (default 3G), WORKERS (default 4), OUT (logs; default /tmp/spec-tlc), ONLY (run only
-# the lines whose module matches this grep pattern).
+# the lines whose module matches this grep pattern). APALACHE_ENDPOINT overrides the
+# default checker endpoint, for independent smoke groups in separate OUT dirs.
 # Each job: file, module, the answer expected (holds: no violation; breaks: a violation),
 # the invariants (comma-separated, or -) and the temporal properties (comma-separated, or -).
 # The whole script is one function, read before it runs (an edit during a run is safe).
@@ -32,8 +33,13 @@ extract() {
 run() {
   file=$1; module=$2; want=$3; inv=$4; temp=$5
   log=$OUT/$module-$want.log
-  set -- verify "$(extract "$file" "$module")" --main="$module" --backend=tlc \
-    --tlc-config "$CFG" --verbosity=3
+  if [ "$file" = permits.qnt ]; then
+    set -- verify "$file" --main=permits --init="init${module#permits}" --step=composedStep
+  else
+    set -- verify "$(extract "$file" "$module")" --main="$module"
+  fi
+  set -- "$@" --backend=tlc --tlc-config "$CFG" --verbosity=3
+  [ -z "${APALACHE_ENDPOINT:-}" ] || set -- "$@" --server-endpoint "$APALACHE_ENDPOINT"
   [ "$inv" = - ] || set -- "$@" --invariants $(echo "$inv" | tr ',' ' ')
   [ "$temp" = - ] || set -- "$@" --temporal "$temp"
   start=$(date +%s)
@@ -55,8 +61,32 @@ run() {
     fail=1
   fi
 }
+WORKER_SAFE=OldestFirst,NoIdentityCrossing,NoBlockedOnlyExecutor
+PERMIT_SAFE=AsksFollowState,NoWaitCycle,PermitsNeverExceeded,NoRecheckInParentContext
+PERMIT_LIVE=ParkedResumes,DeferredRuns,RechecksProgress,AdmittedProgress,AdmittedSettles
 jobs() {
   cat <<EOF
+worker.qnt workerFixed holds $WORKER_SAFE G1All
+worker.qnt workerSticky breaks - G1All
+worker.qnt workerWrongToken breaks NoIdentityCrossing -
+permits.qnt permitsPark holds $PERMIT_SAFE $PERMIT_LIVE
+permits.qnt permitsDefer holds $PERMIT_SAFE $PERMIT_LIVE
+permits.qnt permitsChild holds $PERMIT_SAFE $PERMIT_LIVE
+permits.qnt permitsSerial holds $PERMIT_SAFE $PERMIT_LIVE
+permits.qnt permitsAdmission holds $PERMIT_SAFE $PERMIT_LIVE
+permits.qnt permitsSerial breaks NoSerial -
+worker.qnt workerFixed breaks NoYield -
+worker.qnt workerFixed breaks NoAllIdentities -
+worker.qnt workerFixed breaks NoHeardAfterPark -
+worker.qnt workerFixed breaks NoStaleRefusal -
+permits.qnt permitsPark breaks NoPark -
+permits.qnt permitsPark breaks NoParkResume -
+permits.qnt permitsDefer breaks NoDefer -
+permits.qnt permitsChild breaks NoChild -
+permits.qnt permitsAdmission breaks NoSecondDenied -
+permits.qnt permitsDropParent breaks PermitsNeverExceeded -
+permits.qnt permitsRetained breaks NoRecheckInParentContext -
+permits.qnt permitsIgnore breaks - RechecksProgress
 terminals.qnt termFixed holds Sane,ExactlyOnce G1All,SendDone
 terminals.qnt termFixed3 holds Sane,ExactlyOnce G1All,SendDone
 terminals.qnt termNoList breaks - G1All

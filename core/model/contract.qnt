@@ -17,6 +17,13 @@ module contract {
   temporal G1(owes: bool, hears: bool, personOwes: bool): bool =
     always(eventually(not(owes) or hears or personOwes))
 
+  // Capacity is external to an owed recheck. If it remains waiting, a
+  // compatible admission must eventually be offered; the engine gives that
+  // admission to the oldest eligible waiter. Without this assumption a
+  // deferred recheck is visible but cannot be required to run.
+  temporal CapacityReturns(waiting: bool, offered: bool): bool =
+    always(eventually(not(waiting) or offered))
+
   // G3 (store.qnt proves it; check.qnt assumes it): an act takes effect only if it is fresh.
   // The facts the store knows of an act at its append. A stale act (built on an old view),
   // a recheck whose judged versions moved, a duplicate, an old epoch's token, an act from an

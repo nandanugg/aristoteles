@@ -8,6 +8,15 @@ set -u
 cd "$(dirname "$0")" || exit 1
 QUINT=../../node_modules/.bin/quint
 fail=0
+# The resource scheduler composes the core's init and step with its own state.
+modelRun() {
+  file=$1; shift
+  if [ "$file" = permits.qnt ]; then
+    scenario=${1#--main=permits}; shift
+    set -- --main=permits --init="init$scenario" --step=composedStep "$@"
+  fi
+  "$QUINT" run "$file" "$@"
+}
 MODE=all
 [ "${1:-}" = "__job" ] && MODE=job
 
@@ -22,14 +31,14 @@ done
 # "The small models"): a simulator smoke here; TLC proves them (tlc.sh, bun run spec:tlc).
 # $1 file, $2 module, $3 invariants.
 smallHolds() {
-  out=$($QUINT run "$1" --main="$2" --invariants $3 --max-samples="${SAMPLES:-400}" \
+  out=$(modelRun "$1" --main="$2" --invariants $3 --max-samples="${SAMPLES:-400}" \
     --max-steps="${STEPS:-200}" --seed=0x2a --n-threads=1 --verbosity=1 2>&1)
   if echo "$out" | grep -q '^\[ok\]'; then echo "holds  $1 $2 $3"
   else echo "FAIL   $1 $2 (expected no violation)"; echo "$out" | grep -E '❌' | head -3; fail=1; fi
 }
 # $1 file, $2 module, $3 invariant, $4 seed, $5 runs, $6 steps: a violation expected.
 smallBreaks() {
-  out=$($QUINT run "$1" --main="$2" --invariant="$3" --max-samples="$5" --max-steps="$6" \
+  out=$(modelRun "$1" --main="$2" --invariant="$3" --max-samples="$5" --max-steps="$6" \
     --seed="$4" --n-threads=1 --verbosity=1 2>&1)
   if echo "$out" | grep -q '^\[violation\]'; then echo "breaks $1 $2 $3"
   else echo "FAIL   $1 $2 $3 (expected a violation)"; fail=1; fi
@@ -83,10 +92,31 @@ smallHolds store.qnt storeFixed 'G3Holds'
 smallHolds browser.qnt browserFixed 'DashAfterRefresh'
 smallHolds pipe.qnt pipeFixed '$PIPE_INV'
 pipeWitnesses
+smallHolds worker.qnt workerFixed 'OldestFirst NoIdentityCrossing NoBlockedOnlyExecutor'
+smallHolds permits.qnt permitsPark 'AsksFollowState NoWaitCycle PermitsNeverExceeded NoRecheckInParentContext'
+smallHolds permits.qnt permitsDefer 'AsksFollowState NoWaitCycle PermitsNeverExceeded NoRecheckInParentContext'
+smallHolds permits.qnt permitsChild 'AsksFollowState NoWaitCycle PermitsNeverExceeded NoRecheckInParentContext'
+smallBreaks worker.qnt workerFixed NoYield 0x2a 100 50
+smallBreaks worker.qnt workerFixed NoAllIdentities 0x2a 100 50
+smallBreaks worker.qnt workerFixed NoHeardAfterPark 0x2a 100 50
+smallBreaks worker.qnt workerFixed NoStaleRefusal 0x2a 100 50
+smallBreaks permits.qnt permitsPark NoPark 0x2a 500 70
+smallBreaks permits.qnt permitsPark NoParkResume 0x2a 500 70
+smallHolds permits.qnt permitsSerial 'AsksFollowState NoWaitCycle PermitsNeverExceeded NoRecheckInParentContext'
+smallHolds permits.qnt permitsAdmission 'AsksFollowState NoWaitCycle PermitsNeverExceeded NoRecheckInParentContext'
+smallBreaks permits.qnt permitsSerial NoSerial 0x2a 100 70
+smallBreaks permits.qnt permitsAdmission NoSecondDenied 0x2a 100 70
+smallBreaks permits.qnt permitsDefer NoDefer 0x2a 500 70
+smallBreaks permits.qnt permitsChild NoChild 0x2a 500 70
 EOF2
 # Each property breaks in its mutant (README.md, Properties): file, module, property, seed,
 # runs, steps.
 [ "${1:-}" = "--check" ] && cat >> "$JOBLIST" <<'EOF2'
+smallBreaks worker.qnt workerSticky OldestFirst 0x2a 100 50
+smallBreaks worker.qnt workerWrongToken NoIdentityCrossing 0x2a 100 50
+smallBreaks permits.qnt permitsDropParent PermitsNeverExceeded 0x2a 200 70
+smallBreaks permits.qnt permitsRetained NoRecheckInParentContext 0x2a 500 70
+smallBreaks permits.qnt permitsIgnore NoIgnoredRecheck 0x2a 500 70
 smallBreaks configs.qnt coreAskReverse NoWaitCycle 0x2a 500 60
 smallBreaks configs.qnt coreTwoExit NoRestartAssigned 0x2a 2000 60
 smallBreaks configs.qnt coreTwoExit NoKeptCheckJudged 0x2a 2000 60

@@ -92,7 +92,7 @@ browser.qnt (G4), tlc.sh (`bun run spec:tlc`), spec.sh. The small models are pro
   its meaning; it exports `check`, which exports `protocol`, so an instance imports it alone (one copy of
   each: quint's TLA+ export overflows on two).
 - `canon.qnt`, module `canon`: `canon`, the state-space reduction (pure on the store).
-- `configs.qnt`: `configsBase` (`FIXED_OPTIONS`, `BASE_LIMITS`, the named causes) and the
+- `configsBase.qnt`: `FIXED_OPTIONS`, `BASE_LIMITS`, the named causes. `configs.qnt` has the
   instances and mutants (`coreTwo`, `coreTwoDir`, `coreTwoExit`, `coreLoops`, `coreAsks`,
   `coreAskRogue`, `coreAskReverse`, `coreCrossOnly`, `coreAll`, the `coreNo*` mutants).
 
@@ -286,6 +286,8 @@ part is a model small enough for TLC to visit every reachable state, liveness in
 | Model | Proves | Assumes |
 |---|---|---|
 | terminals.qnt | G1: an agent that owes work in the end hears its step | fairness of the engine parts only |
+| worker.qnt | Identity-bound, oldest-first delivery for one worker serving Host, Role and Pipe; G1 across park/relaunch | weak fairness of print, submit and relaunch |
+| permits.qnt | Resource-admitted core progress and settlement; separate permits; fresh child/session rechecks, park/resume and visible deferral | delivery of admitted steps, fair scheduler, compatible capacity returns for deferred progress |
 | store.qnt | G3: an act takes effect only if it is fresh | nothing (an adversary sends any act) |
 | browser.qnt | G4: what the person owes is in the end shown on the page | fairness of the engine parts only |
 | check.qnt | G2: every run reaches Final; agent changes stop | G1 (with A), G3, G4, engine fairness |
@@ -330,6 +332,47 @@ and browser shows the person every act it owes, so a Final that waits on the per
 wait the person can see, not a stall. One fairness is not from the contract: the engine runs
 a due rule test and revives a role (check.qnt `EngineFair`; the watcher's revive is proven in
 terminals).
+
+### Collapsed worker and permits
+
+`worker.qnt` abstracts one owed step per logical identity while allowing the protocol to
+offer and withdraw freely. One worker and slot serves Host, Role and Pipe. The wait
+prints the oldest ready step with its owner's token and consumes nothing. A single act
+ends the turn, including a refusal. Park or exit affects the whole worker, and an old
+printed view cannot consume an obligation after withdrawal or relaunch. The parked
+delivery witness carries an already-owed Host or Pipe step across the park. A sticky
+worker breaks the G1 liveness check; a wrong-token delivery breaks identity isolation.
+
+`permits.qnt` composes the resource scheduler with two tasks in the live core.
+A person edit after both finish creates actual non-test rechecks. Normal core
+acts preserve their existing authority and return to the shared wait after each act.
+A foreground maker holds the worker's turn. A background child does not. The role
+derives its top-level permit occupancy from Working and InReview tasks, so there is
+no independent counter to release at a yield. The admission case has spare child
+capacity and shows a second real sent task blocked while the first waits on its
+maker. Its mutant loses the first task's permit while suspended and admits the
+second through the same gate.
+
+With zero Role child allowance, the Role worker serves the logical Maker in
+foreground turns without a child permit. Opening the Maker, reading the brief,
+reporting and reviewing all go through the normal protocol's accept/take path.
+The witness records an accepted pass review of a Maker served this way.
+A background recheck child uses only a child
+permit. Otherwise a confirmed park releases the whole worker's slot for a fresh
+session. Each helper records its context at launch and reports for the dispatched
+task. Pipe records the verdict after the helper reports and, when parked, after
+resuming. The retained-context mutant records a real verdict after a helper used
+neither a child permit nor a fresh session. The invariant checks the recorded
+verdict's source. A failed or unavailable park gives a visible deferral.
+`CapacityReturns` in `contract.qnt` states the external capacity assumption for
+deferred progress. Deferral can also be reached with no slot available.
+
+The simulator witnesses all three identities heard, yield, stale delivery refusal,
+delivery after park, zero-child serial review, second-attempt denial, park/resume,
+child recheck and deferral. TLC additionally checks the serial and admission
+witnesses. The composed fixture keeps the inspected versions fixed while a helper
+runs. The existing store freshness guarantee still applies to a verdict racing a
+live edit.
 
 ### terminals.qnt (G1)
 
