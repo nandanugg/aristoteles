@@ -90,6 +90,7 @@ smallHolds configs.qnt coreCrossOnly 'Converges'
 smallHolds terminals.qnt termFixed 'Sane ExactlyOnce'
 smallHolds store.qnt storeFixed 'G3Holds'
 smallHolds browser.qnt browserFixed 'DashAfterRefresh'
+smallHolds activation.qnt activationFixed 'ActivationSafe'
 smallHolds pipe.qnt pipeFixed '$PIPE_INV'
 pipeWitnesses
 smallHolds worker.qnt workerFixed 'OldestFirst NoIdentityCrossing NoBlockedOnlyExecutor'

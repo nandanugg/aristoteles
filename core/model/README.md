@@ -290,6 +290,7 @@ part is a model small enough for TLC to visit every reachable state, liveness in
 | permits.qnt | Resource-admitted core progress and settlement; separate permits; fresh child/session rechecks, park/resume and visible deferral | delivery of admitted steps, fair scheduler, compatible capacity returns for deferred progress |
 | store.qnt | G3: an act takes effect only if it is fresh | nothing (an adversary sends any act) |
 | browser.qnt | G4: what the person owes is in the end shown on the page | fairness of the engine parts only |
+| activation.qnt | onboarding's activation: no work before it, only under a current launch, resumable, roll back safe | fairness of the activator and the host's acknowledgement |
 | check.qnt | G2: every run reaches Final; agent changes stop | G1 (with A), G3, G4, engine fairness |
 
 A (an agent that hears its step takes it) is not provable: it is assumed and bounded (tries,
@@ -510,6 +511,47 @@ TLC results:
 
 One owed act: every copy the page gets is the whole state, so each act behaves alone (two
 acts and a three-state escalation passed 3 million states).
+
+### activation.qnt (the end of onboarding: ONBOARDING-V2 sections 10-12, contract 6c v4)
+
+Contains: two instruction files (approved, marked, or changed by the person), the store (none,
+inactive, active), the activation record (none, activating, rolling back, activated, rolled back)
+with its per-file notes, launch identities 0..3, host processes (alive, spawned, acknowledgements),
+and after activation the committed binding (the activated launch, then each rebind), a pending
+rebind, the first top's bound launch and the launches that collected the credential. Every step is
+atomic and reads the record and the world before it acts; no step keeps memory, so a crash is any
+point where the steps stop and a resume is the same steps again. Once the store is active, resume
+only notes it: a host lost before the top is the person's REBIND (a new launch reserved, spawned,
+acknowledged, committed only while no top exists; cancelled if the person opens the top first).
+The adversary: one host death, one person edit at any time, late steps. The person's roll back,
+rebind and top open are choices (never fair); the activator, the roll back once begun, a pending
+rebind's steps, the delivery and the host's acknowledgement are weakly fair.
+
+Properties (`ActivationSafe`): `NoWorkBeforeActive`, `OnlyActivatedHostWorks` (only the bound
+host: the committed binding, or the top's), `ActivationNeedsCurrentAck`, `ActiveMeansMarked`,
+`NoLostEdit`, `NoOrphanHost` (every live host is the recorded launch or the committed binding),
+`ActiveNeverRolledBack`, `RolledBackClean`, `NoCredentialToPending` (the credential reaches only the
+committed binding), `NoRebindAfterTop`. Liveness: `ActivationEnds` (activated, rolled back, or
+stopped by a person's edit) and `RebindEnds` (a pending rebind commits or is cancelled);
+`ActivatesOrRollsBack` breaks (not vacuous). Witnesses: activated, rolled back, activated under a
+replaced launch, stopped by an edit, work by a rebound host after the top, a rebind cancelled by the
+top. TLC found, in this model, that a resume after the commit and before its note relaunched a
+host: fixed (launches only before the commit).
+
+| Module | Checked | Expected | Distinct states |
+|---|---|---|---|
+| activationFixed | ActivationSafe; ActivationEnds, RebindEnds | holds | 2,175 |
+| activationTrustRecord (files done by the record's notes, not the files) | ActiveMeansMarked, NoLostEdit | breaks | 1,221, 80 |
+| activationStaleAck (any acknowledgement counts) | ActivationNeedsCurrentAck | breaks | 620 |
+| activationReuseId (a dead launch respawned under its old identity) | ActivationNeedsCurrentAck | breaks | 1,033 |
+| activationSpawnFirst (spawn, then record the identity) | NoOrphanHost | breaks | 15 |
+| activationNoGuard (roll back without checking the store) | ActiveNeverRolledBack | breaks | 675 |
+| activationOpenStore (the inactive store takes work) | NoWorkBeforeActive | breaks | 133 |
+| activationRebindAfterTop (a rebind commits without checking the top) | NoRebindAfterTop | breaks | 1,847 |
+| activationDeliverPending (a pending launch may collect the credential) | NoCredentialToPending | breaks | 1,669 |
+
+Not modelled (the F6 fixtures cover them): hashing, the files on disk, the epoch after the top.
+The simulator rarely reaches activation: spec.sh checks the safety only, TLC the rest (~8 s each).
 
 ### pipe.qnt (the live terminal)
 
