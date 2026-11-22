@@ -15,6 +15,7 @@ export const readPane = (socket: string, pane: string, lines = 40): PaneReading 
   const info = tmux(socket, 'display-message', '-p', '-t', pane, '#{pane_dead} #{window_activity}')
   const [dead = '1', activity = '0'] = info.stdout.toString().trim().split(' ')
   if (!info.success || dead === '1') return { alive: false, lastOutput: 0, tail: '' }
+  if (lines === 0) return { alive: true, lastOutput: Number(activity) * 1000, tail: '' }
   const screen = tmux(socket, 'capture-pane', '-p', '-t', pane, '-S', `-${lines}`)
   return { alive: true, lastOutput: Number(activity) * 1000, tail: screen.stdout.toString() }
 }

@@ -86,6 +86,7 @@ const live = (): Record<string, TerminalReading> =>
 const input = (state: WorkState, over: Partial<DashInput> = {}): DashInput => ({
   dir: 'proj',
   build: 'b1',
+  hostSession: null,
   now: NOW,
   state,
   host: { model: '', reading: { alive: true, lastOutput: NOW, tail: '' } },

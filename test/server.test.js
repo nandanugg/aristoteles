@@ -1,3 +1,4 @@
+import { aLiveHost, finishActivation, killBootstrap } from './activation-fixture.js'
 import { staffedFixture } from './staffing-fixture.js'
 // The server of the UI, read only (plan/ui/BUILD.md part 2): every request needs the key of
 // `work start`; the API reads the store with the replay and the reads of the engine; a websocket
@@ -319,7 +320,15 @@ describe('the onboarding pages', () => {
   test('approve all roles starts the store and deletes the files; a refusal writes aristoteles.yaml back', async () => {
     const p = await onboarding()
     p.write('aristoteles.yaml', 'theme: dark\n')
-    const { get, onboard, act } = serve(p)
+    const { get, onboard, act, s } = serve(p)
+    const approve = async () => {
+      const origin = `http://127.0.0.1:${s.port}`
+      const approval = await get('/api/activation/approval')
+      return (await fetch(`${origin}/api/activation`, {
+        method: 'POST', headers: { origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'start', entries: approval.entries }),
+      })).json()
+    }
     ok(await p.nanda('onboard approve-directions', 'approve'))
     for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
     // The host drops the linter from the config draft, which checks two rules of tsd-writing: the
@@ -334,7 +343,7 @@ describe('the onboarding pages', () => {
       says: blocked,
       fix: 'the host drafts tsd-writing again (work onboard draft tsd-writing --file=<direction.yaml>), then the person accepts it',
     })
-    expect((await onboard({ act: 'approve-all-roles' })).error).toBe(`the store cannot start: ${blocked}`)
+    expect((await approve()).error).toBe(`the store cannot start: ${blocked}`)
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe('theme: dark\n')
     for (const path of ['.work/assess/tsd-writing.yaml', 'aristoteles.draft.yaml']) expect(has(p, path)).toBe(true)
     expect(has(p, '.work/onboarding.lock')).toBe(false)
@@ -346,7 +355,15 @@ describe('the onboarding pages', () => {
     ok(await p.agent('onboard role linter --file=linter.yaml'))
     ok(await p.nanda('onboard accept-role linter'))
     p.write('.work/staffing.yaml', staffedFixture(ONBOARD_CONFIG).staffing)
-    expect((await onboard({ act: 'approve-all-roles' })).out).toBe('store made for report-export in aristoteles: 4 roles and 1 directions; the onboarding files are gone.')
+    aLiveHost(p)
+    try {
+      expect((await approve()).out).toContain('Bootstrap host started')
+      expect((await get('/api/dash')).activation.phase).toBe('activating')
+      await finishActivation(p)
+      expect((await get('/api/dash')).activation.phase).toBe('active')
+    } finally {
+      killBootstrap(p)
+    }
     for (const path of ['.work/assess', 'aristoteles.draft.yaml', '.work/onboarding.lock']) expect(has(p, path)).toBe(false)
     // The models table of the draft is a settings block: it comes first, then the file's own.
     const written = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')

@@ -170,7 +170,7 @@ const mouseModesOf = (flags: ReadonlyArray<string>): string =>
 // No variable of a tmux call names the person's own tmux server (oh-my-tmux sends its theme to
 // $TMUX_SOCKET); the server copies its env from the first client, and the agents' panes inherit it.
 const tmuxEnv = (): Record<string, string | undefined> => {
-  const { TMUX: _t, TMUX_PANE: _p, TMUX_SOCKET: _s, ...rest } = process.env
+  const { TMUX: _t, TMUX_PANE: _p, TMUX_SOCKET: _s, ARISTOTELES_LAUNCH_NONCE: _nonce, ...rest } = process.env
   return rest
 }
 

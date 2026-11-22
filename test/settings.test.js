@@ -1,3 +1,4 @@
+import { aLiveHost, finishActivation, killBootstrap } from './activation-fixture.js'
 // One file for a dir (Nanda, 2026-11-11): aristoteles.yaml holds the mechanism (people, roles,
 // deciders, the limits of each model) and the settings of the UI (the commands of each model, the signs of a failed
 // session, the sound, the theme). It has a schema, so an editor completes its keys. The name of
@@ -12,12 +13,16 @@ import { act, api, dbOf, gitPerson, settingsOf } from './outside.js'
 import { staffedFixture } from './staffing-fixture.js'
 
 // An act of the onboarding pages (POST /api/onboarding), with the key and the page's own origin.
-const onboardingAct = async (p, body) => {
+const onboardingAct = async (p, body, path = '/api/onboarding') => {
   const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) } })
   try {
     const origin = `http://127.0.0.1:${s.port}`
     const headers = { origin, 'content-type': 'application/json' }
-    return await (await fetch(`${origin}/api/onboarding`, { method: 'POST', headers, body: JSON.stringify(body) })).json()
+    if (body.action === 'start') {
+      const approval = await (await fetch(`${origin}/api/activation/approval`)).json()
+      body = { ...body, entries: approval.entries }
+    }
+    return await (await fetch(`${origin}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })).json()
   } finally {
     s.stop()
   }
@@ -228,9 +233,14 @@ describe('the first start of a dir', () => {
     p.write('draft.yaml', hostDraft(ONBOARD_CONFIG))
     ok(await p.agent('onboard config --file=draft.yaml'))
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`onboard accept-role ${role}`))
-    expect((await onboardingAct(p, { act: 'approve-all-roles' })).out).toBe(
-      'store made for report-export in aristoteles: 4 roles and 0 directions; the onboarding files are gone.',
-    )
+    aLiveHost(p)
+    try {
+      const start = await onboardingAct(p, { action: 'start' }, '/api/activation')
+      expect(start.out).toContain('Bootstrap host started')
+      await finishActivation(p)
+    } finally {
+      killBootstrap(p)
+    }
     const text = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
     expect(Bun.YAML.parse(text).models).toBeUndefined()
     expect((await settingsOf(p)).models.opus).toMatchObject({ launch: 'host-cli --session-id {session} {prompt}', skills: '.host/skills' })

@@ -7,13 +7,16 @@ import { Effect, Fiber } from 'effect'
 import { folding } from '../../../core/actions/dispatch.ts'
 import { type WaitEnd, waitFor } from '../../../core/effects/wait.ts'
 import { refuse } from '../../../core/schema/index.ts'
-import { Dir, Env, Store } from '../../../core/services/index.ts'
+import { Dir, Env, Store, Terminal } from '../../../core/services/index.ts'
 import { foldWork } from '../../../core/state/c16/fold.ts'
 import { type Answered, actorOf } from '../../../core/state/c16/types.ts'
 import { BEAT_MS, markReturned, markWaiting, type WaitPlace } from '../../live/waiting.ts'
 import { buildOf } from '../../live/build.ts'
 import { stepLine, stepWords } from '../../words/work.ts'
 import type { Command, Commands } from '../command.ts'
+import { bootstrapRequest, retireHostDelivery } from '../../live/activation.ts'
+import { NONCE_ENV } from '../../live/bootstrap.ts'
+import { textOf } from '../args.ts'
 import { verifyWork } from '../caller.ts'
 
 // Under the 10-minute limit of a command in Claude Code (onboard waits no longer than this).
@@ -44,8 +47,39 @@ const answerWords = (a: Answered): string => {
 const tokenOf = (call: Parameters<Command>[0]): string | null =>
   call.token ?? call.args.positional.find((w) => /^(w|a\d+)\./.test(w)) ?? null
 
+const bootstrapWait: Command = (call) =>
+  Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    const { vars } = yield* Env
+    const launch = textOf(call.args.one('launch'))!
+    const terminal = yield* Terminal
+    const seconds = Number(textOf(call.args.one('seconds')) ?? WAIT_SECONDS)
+    if (!Number.isFinite(seconds) || seconds <= 0) return yield* refuse('wait needs a positive number of seconds')
+    const until = Date.now() + seconds * 1000
+    let delivered = false
+    let previous = ''
+    for (;;) {
+      const step = yield* bootstrapRequest(cwd, launch, vars[NONCE_ENV], 'wait')
+      if (step.token !== null && !delivered) {
+        yield* terminal.out(step.token)
+        delivered = true
+      }
+      if (step.line !== '' && step.line !== previous) {
+        yield* terminal.out(step.line)
+        previous = step.line
+      }
+      if (step.top) return []
+      if (Date.now() >= until) return ['Run the bootstrap wait again.']
+      yield* Effect.sleep(POLL_MS)
+    }
+  })
+
 const wait: Command = (call) =>
   Effect.gen(function* () {
+    if (textOf(call.args.one('launch')) !== undefined) {
+      if (call.token !== null) return yield* refuse('bootstrap wait takes a launch ID only')
+      return yield* bootstrapWait(call)
+    }
     const token = tokenOf(call)
     if (token === null) {
       return yield* refuse(
@@ -66,6 +100,7 @@ const wait: Command = (call) =>
     const folded = yield* folding(() => foldWork(events))
     if (folded === null) return yield* refuse(`no top is open in ${cwd}`, 'the person opens it')
     const { who, ep } = yield* verifyWork(folded, token)
+    if (who === 'host') yield* retireHostDelivery(cwd, token)
     const actor = actorOf(who)
     if (actor._tag === 'Harness' || actor._tag === 'Human') {
       return yield* refuse(`${who} does not wait`, 'work wait is for the agents and the host')

@@ -1,3 +1,4 @@
+import { type ActivationPost } from '../contract.ts'
 // The page's links to the server: the JSON routes (fetch, in Effect), the one websocket, the
 // acts of the person, and the toast at the bottom of the page.
 import { Data, Effect, Schema } from 'effect'
@@ -186,3 +187,9 @@ export const chime = (): void => {
     // No audio in this browser: the badge still shows.
   }
 }
+
+
+export const postActivation = (body: typeof ActivationPost.Type) =>
+  run(request('/api/activation', ActAnswer, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }))

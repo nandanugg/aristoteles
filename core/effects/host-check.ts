@@ -19,23 +19,29 @@ export const tmuxPaneExists = (socket: string, pane: string) =>
 
 export const checkHost = <R>(
   exists: (socket: string, pane: string) => Effect.Effect<boolean, never, R>,
+  managedExists?: (session: string) => Effect.Effect<boolean>,
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
       const { cwd } = yield* Dir
       const events = yield* (yield* (yield* Store).open(cwd, { create: false })).events
       const folded = foldWork(events)
-      if (folded === null || folded.hostPane === null) return
-      const { state, hostPane } = folded
-      if (state.down.has('host') || (yield* exists(hostPane.socket, hostPane.pane))) return
+      if (folded === null) return
+      const { state, hostPane, hostSession } = folded
+      const ep = epochOf(state, HOST)
+      if (state.down.has('host') || state.top.ended) return
+      const alive = hostPane !== null ? exists(hostPane.socket, hostPane.pane)
+        : hostSession !== null && ep === 0 ? managedExists?.(hostSession) : undefined
+      if (alive === undefined || (yield* alive)) return
       const body = { _tag: 'Exit', actor: HOST } as const
-      const id = sha(JSON.stringify(['host-check', epochOf(state, HOST)]))
+      const id = sha(JSON.stringify(['host-check', ep]))
       yield* dispatchAct({
         by: { _tag: 'System' },
         act: { id, who: { _tag: 'Harness' }, ep: 0, body },
         on: null,
         build: null,
         current: 'cli',
+        actorEpoch: ep,
       })
     }),
   )

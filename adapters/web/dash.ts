@@ -3,7 +3,7 @@
 // page draws from a whole copy of it (browser.qnt). No clock here: `now` comes in.
 import type { TerminalReading, WaitMarker } from '../../core/schema/outside.ts'
 import { dos, owed } from '../../core/derived/c16/obligations.ts'
-import { sessionOf } from '../../core/effects/engine.ts'
+import { sessionAt } from '../../core/effects/engine.ts'
 import { epochOf, liveMaker, verOf } from '../../core/state/c16/reads.ts'
 import type { Task, WorkState } from '../../core/state/c16/state.ts'
 import { type Actor, type Body, keyOf } from '../../core/state/c16/types.ts'
@@ -37,6 +37,8 @@ export interface DashInput {
   readonly build: string
   readonly now: number
   readonly state: WorkState
+  // The bound host's session of an activated workflow (core/state/c16/fold.ts), else null.
+  readonly hostSession: string | null
   // The config: the host's model (the person's AI CLI: '' when unknown) and the pipeline role.
   readonly host: { readonly model: string; readonly reading: Reading | null }
   readonly pipe: { readonly name: string; readonly model: string } | null
@@ -56,20 +58,20 @@ const FIRST = 3
 
 const readingOf = (i: DashInput, actor: Actor): Reading | null => {
   if (actor._tag === 'Host') return i.host.reading
-  const t = i.terminals[sessionOf(keyOf(actor), epochOf(i.state, actor))]
+  const t = i.terminals[sessionAt(i.hostSession, keyOf(actor), epochOf(i.state, actor))]
   return t === undefined
     ? null
     : {
       alive: t._tag === 'Live',
       lastOutput: t.lastOutput,
-      tail: i.tails[sessionOf(keyOf(actor), epochOf(i.state, actor))] ?? '',
+      tail: i.tails[sessionAt(i.hostSession, keyOf(actor), epochOf(i.state, actor))] ?? '',
     }
 }
 
 // The last wait beat of the actor's current terminal (a marker of another session is old).
 const beatOf = (i: DashInput, actor: Actor): number => {
   const key = keyOf(actor)
-  const session = sessionOf(key, epochOf(i.state, actor))
+  const session = sessionAt(i.hostSession, key, epochOf(i.state, actor))
   return i.markers
     .filter((m) => m.actor === key && (m.session === null || m.session === session))
     .reduce((at, m) => Math.max(at, m.beat), 0)
@@ -130,7 +132,7 @@ const workOf = (s: WorkState, actor: Actor): string => {
 
 const terminalOf = (i: DashInput, actor: Actor, role: string, model: string): DashTerminalCard => ({
   role,
-  session: sessionOf(keyOf(actor), epochOf(i.state, actor)),
+  session: sessionAt(i.hostSession, keyOf(actor), epochOf(i.state, actor)),
   model,
   status: statusOf(i, actor),
   work: workOf(i.state, actor),

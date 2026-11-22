@@ -220,11 +220,41 @@ const dirStore = (db: Database, dir: string): DirStore => {
         }),
     )
 
+  // Every table with a project column, and the project row itself.
+  const remove = (): void => {
+    const tables = db
+      .query<{ name: string }, []>(
+        "SELECT m.name AS name FROM sqlite_master m, pragma_table_info(m.name) c " +
+          "WHERE m.type = 'table' AND c.name = 'project'",
+      )
+      .all()
+    for (const { name } of tables) db.query(`DELETE FROM "${name}" WHERE project = ?`).run(dir)
+    db.query('DELETE FROM project WHERE name = ?').run(dir)
+  }
+  const forget = <E>(
+    allowed: (events: ReadonlyArray<Recorded>) => Effect.Effect<boolean, E>,
+  ): Effect.Effect<boolean, E | StoreDamaged | OutsideFailed> =>
+    Effect.acquireUseRelease(
+      sql(() => db.exec('BEGIN IMMEDIATE')),
+      () =>
+        Effect.gen(function* () {
+          const ok = yield* allowed(yield* events)
+          if (ok) yield* sql(() => remove())
+          yield* sql(() => db.exec('COMMIT'))
+          return ok
+        }),
+      (_, exit) =>
+        Effect.sync(() => {
+          if (Exit.isFailure(exit) && db.inTransaction) db.exec('ROLLBACK')
+        }),
+    )
+
   return {
     dir,
     name: basename(dir),
     events,
     write,
+    forget,
     query: (text, ...params) => Effect.sync(() => db.query(text).all(...params) as never),
   }
 }

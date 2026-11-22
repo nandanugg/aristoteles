@@ -52,6 +52,7 @@ for (const name of names) {
         const store = yield* (yield* Store).open(dir, { create: true })
         const event = create('Work', {
           _tag: 'Opened',
+          hostSession: null,
           top: seed.top,
           items: [...seed.items],
           cards: [...seed.cards, ['sibling', { role: 'sibling', words: 'Split sibling', model: 'fixture' }]],

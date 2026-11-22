@@ -57,6 +57,8 @@ export const logLine = (work: Work, logged: Logged): string => {
 const OLD_TYPE: Total<string> = {
   'Workflow.Defined': 'config',
   'Workflow.RoleWordsChanged': 'config.text',
+  'Workflow.Activated': 'activated',
+  'Workflow.HostRebound': 'host.rebound',
   'Role.Fitted': 'role.fit',
   'Send.Sent': 'send',
   'Send.Delivered': 'send.delivered',

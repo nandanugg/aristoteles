@@ -1,18 +1,7 @@
-// The acts of the onboarding pages (POST /api/onboarding, BUILD.md 1c and 1g): each one writes the
-// files through src/files/onboarding.ts and stores nothing (ruling 1), but approve all roles, which
-// starts the store with the accepted result only. The words are the page's own short lines.
-import { Effect } from 'effect'
-import { dispatch, startStateOf } from '../../core/actions/index.ts'
-import { type DirectionId, type OnboardingAct, refuse } from '../../core/schema/index.ts'
-import {
-  CONFIG,
-  GitUser,
-  type OnboardingFiles,
-  prepareStart,
-  readConfig,
-} from '../../core/services/index.ts'
-import { configProblems } from '../live/config-problems.ts'
-import { answersWords, startRefusal } from '../words/index.ts'
+// The words for the person’s file-only onboarding acts.
+import { type DirectionId, type OnboardingAct } from '../../core/schema/index.ts'
+import { type OnboardingFiles } from '../../core/services/index.ts'
+import { answersWords } from '../words/index.ts'
 
 type PersonAct = Exclude<OnboardingAct, { readonly act: 'approve-all-roles' }>
 
@@ -55,36 +44,3 @@ export const onboardingWords = (
         : `${act.role} is disposable: it runs as a subagent of a terminal.`
   }
 }
-
-// The store start. The page asked for the confirmation before this call, so the lock is held only
-// while the start runs. prepareStart writes aristoteles.yaml from the draft; the checks of work
-// config check run on it, and the person stores the start; a refusal writes the files back.
-export const startStore = (
-  dir: string,
-  person: string,
-  env: Readonly<Record<string, string | undefined>>,
-) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const start = yield* prepareStart(dir, person, env, (f) => startRefusal(startStateOf(f)))
-      const done = yield* Effect.gen(function* () {
-        const problems = yield* configProblems((yield* readConfig(dir)).config)
-        if (problems.length) {
-          return yield* refuse(
-            `${CONFIG}: ${problems.join('; ')}`,
-            'the host writes the role again (work onboard role), and you accept it',
-          )
-        }
-        return yield* dispatch({
-          by: { _tag: 'Person', name: person, channel: 'ui' },
-          input: { _tag: 'DefineWorkflow', target: {}, content: { directions: start.directions } },
-        })
-      }).pipe(Effect.onError(() => Effect.ignore(start.restore)))
-      yield* start.finish
-      const { project, roles } = done.work.config
-      return (
-        `store made for ${project} in aristoteles: ${Object.keys(roles).length} roles and ` +
-        `${start.directions.length} directions; the onboarding files are gone.`
-      )
-    }),
-  ).pipe(Effect.provideService(GitUser, { name: Effect.succeed(person) }))

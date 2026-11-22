@@ -6,6 +6,7 @@
 // as an argument of the launch command; the pump's status is the mark. A pane's silence restarts
 // nothing. The host's pane is the person's: never revived here. The tick's words: what it did
 // and what it could not.
+import { isInactive } from '../actions/activation.ts'
 import { Effect, Ref } from 'effect'
 import { folding } from '../actions/dispatch.ts'
 import { dispatchAct, type NewToken } from '../actions/work.ts'
@@ -34,6 +35,10 @@ export interface Words {
 // The tmux session of an actor's pane at an epoch (tmux-safe: no ':' and no '.').
 export const sessionOf = (actor: ActorKey, ep: number): SessionId =>
   SessionId.make(`${actor.replaceAll(':', '-')}-e${ep}`)
+// The session of an actor at an epoch, given the bound host's session of an activated workflow
+// (its host at epoch 0 runs in the session its activation launched).
+export const sessionAt = (hostSession: string | null, actor: ActorKey, ep: number): SessionId =>
+  hostSession !== null && actor === 'host' && ep === 0 ? SessionId.make(hostSession) : sessionOf(actor, ep)
 
 // The engine's memory (never the store): per actor, when its pane was last launched, the delay
 // before the next launch (doubles from 2 s to 5 min after a failed or short-lived launch; reset
@@ -100,11 +105,14 @@ export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
       Effect.map(pump.status, (status) => status[sid]?._tag === 'Live')
 
     const first = yield* read
+    // An inactive workflow (onboarding's activation, contract 6c): the engine writes nothing.
+    if (isInactive(first.events)) return lines
     if (first.folded === null) return lines
     let { state } = first.folded
+    const { hostSession } = first.folded
     if (state.top.ended) {
       for (const k of persistent(state)) {
-        const sid = sessionOf(k, epochOf(state, actorOf(k)))
+        const sid = sessionAt(hostSession, k, epochOf(state, actorOf(k)))
         if (yield* alive(sid)) yield* Effect.ignore(pump.stop(sid))
       }
       return lines
@@ -113,7 +121,7 @@ export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
     let exited = false
     for (const k of persistent(state)) {
       if (state.down.has(k)) continue
-      const sid = sessionOf(k, epochOf(state, actorOf(k)))
+      const sid = sessionAt(hostSession, k, epochOf(state, actorOf(k)))
       const e = yield* recall(k)
       if (yield* alive(sid)) {
         if (e.delay > 0 && t - e.launchedAt >= LIVED_MS) yield* remember(k, () => FRESH)

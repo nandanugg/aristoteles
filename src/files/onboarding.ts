@@ -54,7 +54,7 @@ import {
   touchedRoles,
 } from '../domain/onboarding.ts'
 import type { Files, Spawn } from '../services/outside.ts'
-import { fetchFolder, LOCK, type LockEntry, readLock, writeLock } from './company.ts'
+import { fetchFolder, LOCK, type LockEntry, readLock } from './company.ts'
 
 export const ASSESS = join('.work', 'assess')
 const ROLES = join(ASSESS, 'roles.yaml')
@@ -758,7 +758,14 @@ export const personAct = (
 
 // --- the store start (BUILD.md 1c) ----------------------------------------------------------------
 
+export interface StartFile {
+  readonly name: 'aristoteles.yaml' | 'aristoteles.lock'
+  readonly before: string | null
+  readonly after: string
+}
 export interface Start {
+  readonly files: ReadonlyArray<StartFile>
+  readonly install: Effect.Effect<void, OutsideFailed>
   // The accepted directions, each with where it comes from.
   readonly directions: ReadonlyArray<OnboardedDirection>
   // The store is refused: aristoteles.yaml and aristoteles.lock as they were; the files stay.
@@ -792,6 +799,7 @@ export const prepareStart = (
   person: string,
   env: Readonly<Record<string, string | undefined>>,
   blocked: (files: OnboardingFiles) => Refused | undefined,
+  install = true,
 ): Effect.Effect<Start, Refused | OutsideFailed, Files | Spawn | Scope.Scope> =>
   Effect.gen(function* () {
     yield* locked(dir)
@@ -838,20 +846,28 @@ export const prepareStart = (
       text === null ? io(() => rmSync(path, { force: true })) : writeWhole(path, text)
     const merged = draft.read.texts[CONFIG]
     if (merged === undefined) return yield* Effect.die('a read config has its text')
-    yield* writeWhole(configPath, merged)
-    if (Object.keys(lock).length > 0) {
-      yield* writeLock(dir, lock).pipe(
-        Effect.tapError(() => writeBack(configPath, oldConfig)),
-      )
-    }
+    const startFiles: ReadonlyArray<StartFile> = [
+      { name: CONFIG, before: oldConfig, after: merged },
+      ...(Object.keys(lock).length > 0
+        ? [{ name: LOCK, before: oldLock, after: yamlOf(lock) } as const]
+        : []),
+    ]
+    const apply = Effect.forEach(startFiles,
+      ({ name, after }) => writeWhole(join(dir, name), after), { discard: true })
+    const restore = Effect.forEach(startFiles,
+      ({ name, before }) => writeBack(join(dir, name), before), { discard: true })
+    if (install) yield* apply.pipe(Effect.onError(() => Effect.ignore(restore)))
     return {
       directions,
-      restore: Effect.all([writeBack(configPath, oldConfig), writeBack(lockPath, oldLock)]).pipe(
-        Effect.asVoid,
-      ),
-      finish: io(() => {
-        rmSync(join(dir, ASSESS), { recursive: true, force: true })
-        rmSync(join(dir, DRAFT), { force: true })
-      }),
+      files: startFiles,
+      install: apply,
+      restore,
+      finish: finishOnboardingStart(dir),
     }
   })
+
+
+export const finishOnboardingStart = (dir: string) => io(() => {
+  rmSync(join(dir, ASSESS), { recursive: true, force: true })
+  rmSync(join(dir, DRAFT), { force: true })
+})
