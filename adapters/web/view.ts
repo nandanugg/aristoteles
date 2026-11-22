@@ -36,7 +36,7 @@ import type {
   OnboardingView as OnboardingViewSchema,
 } from './contract.ts'
 import { startStateOf } from '../../core/actions/index.ts'
-import { type OnboardingFiles } from '../../core/services/index.ts'
+import { type OnboardingFiles, sha } from '../../core/services/index.ts'
 import { STATUS_MS, STATUS_WORDS } from '../live/status.ts'
 import { startFixWords } from '../words/index.ts'
 
@@ -191,7 +191,9 @@ const standardsView = (standards: ReadonlyArray<StandardFile>): DirectionView['s
   standards.map((st) => ({
     id: st.id,
     says: st.says,
-    rules: st.rules.map((r) => ({ id: r.id, says: r.says, checkedBy: r.checkedBy ?? null })),
+    rules: st.rules.map((r) => ({ id: r.id, says: r.says, checkedBy: r.checkedBy ?? null,
+      ...(r.test === undefined ? {} : { test: r.test }),
+      ...(r.ref === undefined ? {} : { ref: r.ref }) })),
   }))
 
 const originOf = (asked: OnboardingDirection['asked']): string => {
@@ -212,6 +214,7 @@ const onboardingDirectionCard = (
   const { asked, stage } = f
   const drafted = draftIn(stage)
   const head = {
+    ...(drafted ? { revision: sha(JSON.stringify(drafted)), principles: drafted.from } : {}),
     id: f.id,
     name:
       drafted?.name ??
@@ -294,6 +297,12 @@ export const onboardingFilesView = (
   const lead = onlyLead(files.config?.roles ?? {})
   const roles = files.roles.map((r) =>
     roleCardOf(settings, r.role, r.file, {
+      revision: sha(JSON.stringify(r)),
+      ...(r.role === lead ? { builtIn: 'host' as const }
+        : r.file.kind === 'agent' && r.file.pipeline ? { builtIn: 'pipeline' as const } : {}),
+      ...(r.principles ? { principles: r.principles } : {}),
+      ...(r.directions ? { directions: r.directions } : {}),
+      ...(r.questions ? { questions: r.questions } : {}),
       summary: r.summary,
       description: r.file.description,
       toggle: files.responsibilityOnly !== true && lead !== r.role,
@@ -304,6 +313,7 @@ export const onboardingFilesView = (
   )
   return {
     stage: 'files',
+    ...(files.roleRequests?.length ? { roleRequests: files.roleRequests } : {}),
     directions: files.directions.map((f) => onboardingDirectionCard(f, exampleOf)),
     roles: [...roles.filter((r) => r.found !== null), ...roles.filter((r) => r.found === null)],
     models: files.responsibilityOnly === true ? [] : Object.keys(settings.models),

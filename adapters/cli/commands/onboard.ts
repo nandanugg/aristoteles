@@ -20,6 +20,7 @@ import {
   Refused,
   refuse,
   RoleName,
+  RoleReview,
   spotsOf,
   usesProblem,
 } from '../../../core/schema/index.ts'
@@ -157,13 +158,20 @@ const notesOf = (file: string, where: string, raw: Readonly<Record<string, unkno
     if (found !== undefined && (typeof found !== 'string' || !isNonBlank(found))) {
       return yield* refuse(`${file}: ${where}found is the path where the project has the role`, ROLE_TEMPLATE)
     }
+    const review = Schema.decodeUnknownOption(RoleReview)(raw)
+    if (review._tag === 'None') {
+      return yield* refuse(`${file}: ${where}review needs principle names, direction IDs or questions with choices`, ROLE_TEMPLATE)
+    }
     const notes: RoleNotes = {
+      ...review.value,
       summary,
       found: found === undefined ? { _tag: 'New' } : { _tag: 'InProject', path: found },
     }
     return notes
   })
-const withoutNotes = ({ summary: _s, found: _f, ...role }: Readonly<Record<string, unknown>>) => role
+const withoutNotes = (
+  { summary: _s, found: _f, principles: _p, directions: _d, questions: _q, ...role }: Readonly<Record<string, unknown>>,
+) => role
 
 // The checks of work config check on the draft as it would be: it reads merged into
 // aristoteles.yaml, the git user is one of its people, and the words of each agent role fit.
@@ -494,10 +502,15 @@ const company = (call: Call, id: string | undefined) =>
 
 // --- what the host and the person read -----------------------------------------------------------
 
+const statusOf = (files: OnboardingFiles) => Effect.gen(function* () {
+  return [...onboardStatus(files, yield* textsOf(files)),
+    ...(files.roleRequests ?? []).map(({ role, words }) =>
+      `${role}: ${words} — draft with work onboard role ${role} --file=<role.yaml>`)]
+})
+
 const status = Effect.gen(function* () {
   const { cwd } = yield* Dir
-  const files = yield* readOnboarding(cwd)
-  return onboardStatus(files, yield* textsOf(files))
+  return yield* statusOf(yield* readOnboarding(cwd))
 })
 
 const show = (name: string | undefined) =>
@@ -530,11 +543,11 @@ const wait = (call: Call) =>
         ]
       }
       const files = yield* readOnboarding(cwd)
-      if (waitsForHost(files)) return onboardStatus(files, yield* textsOf(files))
+      if (files.roleRequests?.length || waitsForHost(files)) return yield* statusOf(files)
       if (left <= 0) {
         return [
           'nothing waits for the host yet; run work onboard wait again.',
-          ...onboardStatus(files, yield* textsOf(files)),
+          ...yield* statusOf(files),
         ]
       }
       yield* Effect.sleep(POLL_MS)

@@ -30,6 +30,10 @@ export const onboardingWords = (
       return `${act.direction} is removed; nothing keeps it.`
     case 'approve-all-directions':
       return `accepted: ${made.join(', ')}.`
+    case 'add-role':
+      return 'The role request is ready for the host.'
+    case 'review-all-roles':
+      return 'All roles accepted.'
     case 'accept-role':
       return `${act.role} is accepted.`
     case 'revise-role':

@@ -1,3 +1,5 @@
+@import url("/onboarding.css");
+
 /* The UI of aristoteles. The colors are tokens, set once for light and once for dark. */
 :root {
   --bg: #f5f6f8;
