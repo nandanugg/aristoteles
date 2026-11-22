@@ -105,7 +105,7 @@ store.qnt storeNoBuild breaks G3Holds -
 store.qnt storeNoAcceptCheck holds G3Holds -
 store.qnt storeBlind breaks G3Holds -
 browser.qnt browserFixed holds DashAfterRefresh G4All
-activation.qnt activationFixed holds ActivationSafe ActivationEnds,RebindEnds
+activation.qnt activationFixed holds ActivationSafe ActivationEnds,RebindEnds,BoundHostServed
 activation.qnt activationFixed breaks - ActivatesOrRollsBack
 activation.qnt activationFixed breaks NoActive -
 activation.qnt activationFixed breaks NoRolledBack -
@@ -113,6 +113,7 @@ activation.qnt activationFixed breaks NoReplacedActive -
 activation.qnt activationFixed breaks NoBlockedByEdit -
 activation.qnt activationFixed breaks NoReboundWork -
 activation.qnt activationFixed breaks NoCancelledByTop -
+activation.qnt activationFixed breaks NoLateCollection -
 activation.qnt activationTrustRecord breaks ActiveMeansMarked -
 activation.qnt activationTrustRecord breaks NoLostEdit -
 activation.qnt activationStaleAck breaks ActivationNeedsCurrentAck -
@@ -122,6 +123,7 @@ activation.qnt activationNoGuard breaks ActiveNeverRolledBack -
 activation.qnt activationOpenStore breaks NoWorkBeforeActive -
 activation.qnt activationRebindAfterTop breaks NoRebindAfterTop -
 activation.qnt activationDeliverPending breaks NoCredentialToPending -
+activation.qnt activationRetireAtOpen breaks - BoundHostServed
 browser.qnt browserNoReconnect breaks - G4All
 browser.qnt browserNoReload breaks - G4All
 browser.qnt browserNoPush breaks - G4All

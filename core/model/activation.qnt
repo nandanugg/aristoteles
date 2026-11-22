@@ -27,7 +27,7 @@ module activation {
   // The design's choices, each off in one mutant (README, Properties).
   const Design: { checkFiles: bool, ackCurrent: bool, freshIds: bool, recordFirst: bool,
                   rollbackGuard: bool, storeRefuses: bool, rebindGuard: bool,
-                  deliverCommitted: bool }
+                  deliverCommitted: bool, retireAtUse: bool }
   pure val FILES = Set(0, 1)
   pure val MAX_ID = 3          // launch identities 0..MAX_ID
   pure val MAX_DEATHS = 1
@@ -51,22 +51,25 @@ module activation {
     pending: int,             // a pending rebind's launch, -1 for none
     top: int,                 // the launch the first top bound, -1 before the top
     delivered: Set[int],      // launches that collected the credential
+    used: bool,               // the bound host's first authenticated use: retires the delivery
+    rebinds: Set[int],        // launches committed by a rebind
     // ghosts (the truth the steps never read)
     ackedNow: Set[int],       // identities whose CURRENT process acknowledged
     worked: bool, workWhileInactive: bool, workByOther: bool,
     activatedStale: bool, activatedUnmarked: bool, overwroteEdit: bool, rolledBackActive: bool,
     replaced: bool, deliveredWrong: bool, rebindAfterTop: bool, rebound: bool, cancelled: bool,
+    reboundWorked: bool, lateCollection: bool,
   }
   var world: World
 
   action init = world' = {
     files: FILES.mapBy(_ => Approved), store: NoStore, record: NoRecord, noted: Set(),
     launch: -1, spawned: Set(), alive: Set(), acks: Set(), nextId: 0, deaths: 0, edits: 0,
-    binding: -1, pending: -1, top: -1, delivered: Set(),
+    binding: -1, pending: -1, top: -1, delivered: Set(), used: false, rebinds: Set(),
     ackedNow: Set(), worked: false, workWhileInactive: false, workByOther: false,
     activatedStale: false, activatedUnmarked: false, overwroteEdit: false,
     rolledBackActive: false, replaced: false, deliveredWrong: false, rebindAfterTop: false,
-    rebound: false, cancelled: false,
+    rebound: false, cancelled: false, reboundWorked: false, lateCollection: false,
   }
 
   def isActive(s: StoreState): bool = match s { | Active(_) => true | _ => false }
@@ -158,20 +161,21 @@ module activation {
                  ackedNow: world.ackedNow.exclude(Set(id)), deaths: world.deaths + 1 },
     }
   }
-  // A work act of a host process: the store takes it only when active and from the
-  // activated launch. (Mutant storeRefuses off: the store takes work from any live host.)
+  // A work act of a host process (a C16 act: it needs a top): the store takes it only when
+  // active, from the launch the top bound, holding the credential; its first one is the first
+  // authenticated use, which retires the delivery. (Mutant storeRefuses off: the store takes work
+  // from any live host, even inactive.)
   action hostWorks = {
     nondet id = world.alive.oneOf()
-    val bound = if (world.top >= 0) world.top else world.binding
-    val taken = if (Design.storeRefuses) isActive(world.store) and id == bound
-                                          and world.delivered.contains(id)
+    val taken = if (Design.storeRefuses) isActive(world.store) and world.top >= 0
+                                          and id == world.top and world.delivered.contains(id)
                 else world.store != NoStore
     all {
       taken,
-      world' = { ...world, worked: true,
+      world' = { ...world, worked: true, used: world.used or id == world.top,
                  workWhileInactive: world.workWhileInactive or not(isActive(world.store)),
-                 workByOther: world.workByOther
-                   or id != (if (world.top >= 0) world.top else world.binding) },
+                 workByOther: world.workByOther or id != world.top,
+                 reboundWorked: world.reboundWorked or world.rebinds.contains(id) },
     }
   }
   // ---- 5. activation, then its note
@@ -228,16 +232,20 @@ module activation {
   }
 
   // ---- after activation, before the top (contract 6c v4)
-  // The credential goes only to the committed binding (mutant deliverCommitted off: a pending
-  // launch may collect it too).
+  // The credential goes only to the committed binding (after the top: the launch it bound), until
+  // its first authenticated use retires it; opening the top does NOT retire it. (Mutants:
+  // deliverCommitted off, a pending launch may collect it too; retireAtUse off, the top retires it.)
   action deliver = {
     nondet id = world.alive.oneOf()
+    val bound = if (world.top >= 0) world.top else world.binding
     all {
       isActive(world.store), not(world.delivered.contains(id)), world.acks.contains(id),
-      if (Design.deliverCommitted) id == world.binding
-      else (id == world.binding or id == world.pending),
+      not(world.used),
+      if (Design.retireAtUse) true else world.top < 0,
+      if (Design.deliverCommitted) id == bound else (id == bound or id == world.pending),
       world' = { ...world, delivered: world.delivered.union(Set(id)),
-                 deliveredWrong: world.deliveredWrong or id != world.binding },
+                 deliveredWrong: world.deliveredWrong or id != bound,
+                 lateCollection: world.lateCollection or world.top >= 0 },
     }
   }
   // The person relaunches a host lost before the top: a new launch reserved (pending).
@@ -259,6 +267,7 @@ module activation {
     world.ackedNow.contains(world.pending),
     Design.rebindGuard implies world.top < 0,
     world' = { ...world, binding: world.pending, pending: -1, rebound: true,
+               rebinds: world.rebinds.union(Set(world.pending)),
                rebindAfterTop: world.rebindAfterTop or world.top >= 0 },
   }
   // A rebind that lost (the top was opened first, or its process died): cancelled, its process
@@ -317,7 +326,10 @@ module activation {
   val NoActive = world.record != Activated
   val NoRolledBack = world.record != RolledBack
   val NoReplacedActive = not(world.replaced and isActive(world.store) and world.worked)
-  val NoReboundWork = not(world.rebound and world.worked and world.top >= 0)
+  // Witnesses of v5: a rebound host does C16 work after the top bound it; the host collects its
+  // credential after the person opened the top first.
+  val NoReboundWork = not(world.reboundWorked)
+  val NoLateCollection = not(world.lateCollection and world.used)
   val NoCancelledByTop = not(world.cancelled)
   val NoBlockedByEdit = not(activating and world.store == Inactive
     and FILES.exists(f => world.files.get(f) == Other) and world.launch >= 0)
@@ -334,6 +346,12 @@ module activation {
   temporal ActivationEnds = Fair implies eventually(settled)
   // Not vacuous: without the edit escape it breaks (an edit really stops activation).
   // A pending rebind ends: committed or cancelled.
+  // The bound host, alive and acknowledged, is in the end served its credential (or it is lost:
+  // after the top, a lost host is revived as today, outside this model).
+  temporal BoundHostServed = Fair implies always(
+    (isActive(world.store) and world.top >= 0 and world.alive.contains(world.top)
+      and world.acks.contains(world.top))
+    implies eventually(world.delivered.contains(world.top) or not(world.alive.contains(world.top))))
   temporal RebindEnds = Fair implies always(world.pending >= 0 implies eventually(world.pending < 0))
   temporal ActivatesOrRollsBack = Fair implies
     eventually(world.record == Activated or world.record == RolledBack)
@@ -342,7 +360,7 @@ module activation {
 module activationCfgs {
   pure val DESIGN = { checkFiles: true, ackCurrent: true, freshIds: true, recordFirst: true,
                       rollbackGuard: true, storeRefuses: true, rebindGuard: true,
-                      deliverCommitted: true }
+                      deliverCommitted: true, retireAtUse: true }
 }
 // ---- instances (tlc.sh keeps only the one it checks). The design, and one choice off each.
 module activationFixed {
@@ -376,6 +394,10 @@ module activationRebindAfterTop {
 module activationDeliverPending {
   import activationCfgs.*
   import activation(Design = { ...DESIGN, deliverCommitted: false }).* from "./activation"
+}
+module activationRetireAtOpen {
+  import activationCfgs.*
+  import activation(Design = { ...DESIGN, retireAtUse: false }).* from "./activation"
 }
 module activationOpenStore {
   import activationCfgs.*

@@ -531,16 +531,19 @@ Properties (`ActivationSafe`): `NoWorkBeforeActive`, `OnlyActivatedHostWorks` (o
 host: the committed binding, or the top's), `ActivationNeedsCurrentAck`, `ActiveMeansMarked`,
 `NoLostEdit`, `NoOrphanHost` (every live host is the recorded launch or the committed binding),
 `ActiveNeverRolledBack`, `RolledBackClean`, `NoCredentialToPending` (the credential reaches only the
-committed binding), `NoRebindAfterTop`. Liveness: `ActivationEnds` (activated, rolled back, or
-stopped by a person's edit) and `RebindEnds` (a pending rebind commits or is cancelled);
+committed binding; after the top, the launch it bound), `NoRebindAfterTop`. A host's C16 work
+needs a top; its first authenticated use retires the credential's delivery (opening the top does
+not). Liveness: `ActivationEnds` (activated, rolled back, or stopped by a person's edit),
+`RebindEnds` (a pending rebind commits or is cancelled) and `BoundHostServed` (the bound host,
+alive and acknowledged, is served its credential, even after the top opened first);
 `ActivatesOrRollsBack` breaks (not vacuous). Witnesses: activated, rolled back, activated under a
-replaced launch, stopped by an edit, work by a rebound host after the top, a rebind cancelled by the
-top. TLC found, in this model, that a resume after the commit and before its note relaunched a
+replaced launch, stopped by an edit, C16 work by a rebound host after the top bound it, a rebind
+cancelled by the top, a credential collected after the top opened first. TLC found, in this model, that a resume after the commit and before its note relaunched a
 host: fixed (launches only before the commit).
 
 | Module | Checked | Expected | Distinct states |
 |---|---|---|---|
-| activationFixed | ActivationSafe; ActivationEnds, RebindEnds | holds | 2,175 |
+| activationFixed | ActivationSafe; ActivationEnds, RebindEnds, BoundHostServed | holds | 2,163 |
 | activationTrustRecord (files done by the record's notes, not the files) | ActiveMeansMarked, NoLostEdit | breaks | 1,221, 80 |
 | activationStaleAck (any acknowledgement counts) | ActivationNeedsCurrentAck | breaks | 620 |
 | activationReuseId (a dead launch respawned under its old identity) | ActivationNeedsCurrentAck | breaks | 1,033 |
@@ -548,7 +551,8 @@ host: fixed (launches only before the commit).
 | activationNoGuard (roll back without checking the store) | ActiveNeverRolledBack | breaks | 675 |
 | activationOpenStore (the inactive store takes work) | NoWorkBeforeActive | breaks | 133 |
 | activationRebindAfterTop (a rebind commits without checking the top) | NoRebindAfterTop | breaks | 1,847 |
-| activationDeliverPending (a pending launch may collect the credential) | NoCredentialToPending | breaks | 1,669 |
+| activationDeliverPending (a pending launch may collect the credential) | NoCredentialToPending | breaks | 1,687 |
+| activationRetireAtOpen (opening the top retires the delivery) | BoundHostServed | breaks | 1,923 |
 
 Not modelled (the F6 fixtures cover them): hashing, the files on disk, the epoch after the top.
 The simulator rarely reaches activation: spec.sh checks the safety only, TLC the rest (~8 s each).
