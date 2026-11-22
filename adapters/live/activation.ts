@@ -10,7 +10,7 @@ import { type Author, type Refused, refuse } from '../../core/schema/index.ts'
 import {
   type ActivationRecord, type OnboardingFiles, activationId, activationIO, activationLock, applyStartupFiles,
   readConfigText, Env, finishOnboardingStart, keptOriginals, prepareStart, readActivationRecord, readLaunchFile,
-  removeActivationGeneration, removeActivationRecord, removeLaunch, retireSecret, sha, Store, writeActivationRecord,
+  removeActivationGeneration, removeActivationRecord, removeLaunch, retireSecret, sha, staffingConfirmed, Store, writeActivationRecord,
   writeLaunchFile,
 } from '../../core/services/index.ts'
 import { foldWork } from '../../core/state/c16/fold.ts'
@@ -45,11 +45,15 @@ export const markerApproval = (dir: string) => activationIO(() => {
 export const prepareActivation = (
   dir: string, by: Person, manifest: ActivationRecord['manifest'],
   blocked: (files: OnboardingFiles) => Refused | undefined,
+  requireStaffingConfirmation = false,
 ) => locked(dir, Effect.gen(function* () {
   if ((yield* recordAt(dir)) !== null) return yield* no('an activation already exists; use work activation resume')
   if ((yield* activationEvents(dir)).length !== 0) return yield* no('the workflow already exists')
   const env = (yield* Env).vars
   const start = yield* prepareStart(dir, by.name, env, blocked, false)
+  if (requireStaffingConfirmation && !(yield* staffingConfirmed(dir, by.name))) {
+    return yield* no('Confirm the current staffing before starting activation.')
+  }
   const problems = yield* activationIO(() => preflight(dir, manifest, scan(dir)))
   if (problems.length > 0) return yield* no(problems.join('\n'))
   const config = yield* readConfigText(dir, start.files[0]!.after)

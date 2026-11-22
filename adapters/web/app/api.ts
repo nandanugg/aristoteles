@@ -7,6 +7,7 @@ import { pipeOutbox } from './pipe-outbox.ts'
 import { createSocket } from './pipe-socket.ts'
 import {
   ActAnswer,
+  type StaffingPost,
   ActResponse,
   type PageActJson,
   ApiError as ApiErrorBody,
@@ -61,6 +62,12 @@ export const api = <S extends Schema.Top & { readonly DecodingServices: never }>
   path: string,
   schema: S,
 ): Promise<S['Type']> => run(request(path, schema))
+
+export const postStaffing = <S extends Schema.Top & { readonly DecodingServices: never }>(
+  body: typeof StaffingPost.Encoded, schema: S,
+): Promise<S['Type']> => run(request('/api/staffing', schema, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+}))
 
 // An act of the gear: the settings.
 export const post = (act: PageAct): Promise<ActOut> =>

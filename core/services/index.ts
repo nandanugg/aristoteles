@@ -60,6 +60,9 @@ export { Readings } from './readings.ts'
 // Additive (P7): what the CLI prints or reads that the doors above did not carry.
 export { refusing } from '../../src/config/core.ts'
 export { readStaffing } from '../../src/config/staffing.ts'
+export type { Staffing } from '../../src/config/staffing.ts'
+export { applyStaffingReview, previewStaffingReview, readStaffingReview, staffingConfirmed }
+  from '../../src/files/onboarding.ts'
 export { staffingPreview, staffingView } from '../../src/config/staffing-view.ts'
 export type {
   ArrangedRole, LimitConsequence, ReviewMode, StaffingPreview, StaffingView, StaffingWarning,

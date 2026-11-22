@@ -359,6 +359,22 @@ describe('the onboarding pages', () => {
     p.write('.work/staffing.yaml', staffedFixture(ONBOARD_CONFIG).staffing)
     aLiveHost(p)
     try {
+      expect((await approve()).error).toContain('Confirm the current staffing')
+      const origin = `http://127.0.0.1:${s.port}`
+      const staffingPost = (body) => fetch(`${origin}/api/staffing`, {
+        method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify(body),
+      })
+      const current = await get('/api/staffing')
+      expect((await staffingPost({ action: 'apply', ticket: 'never-previewed' })).ok).toBe(false)
+      const preview = await (await staffingPost({ action: 'preview', revision: current.revision })).json()
+      const file = join(p.dir, '.work/staffing.yaml')
+      const old = readFileSync(file, 'utf8')
+      p.write('.work/staffing.yaml', old + '\n# edited while previewing\n')
+      expect((await staffingPost({ action: 'apply', ticket: preview.ticket })).ok).toBe(false)
+      expect(readFileSync(file, 'utf8')).toContain('# edited while previewing')
+      const renewed = await get('/api/staffing')
+      const reviewed = await (await staffingPost({ action: 'preview', revision: renewed.revision })).json()
+      expect((await (await staffingPost({ action: 'apply', ticket: reviewed.ticket })).json()).confirmed).toBe(true)
       expect((await approve()).out).toContain('Bootstrap host started')
       expect((await get('/api/dash')).activation.phase).toBe('activating')
       await finishActivation(p)
