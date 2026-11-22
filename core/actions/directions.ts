@@ -14,7 +14,9 @@ import {
   oneOf,
   REASONS,
   ReviseFile,
+  RuleEvidence,
   RuleRef,
+  casesProblem,
   usesProblem,
   type Why,
   type Work,
@@ -277,6 +279,10 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
     const raw = yield* readYaml(d.moment.outside.cwd, file)
     const people = w.config.people
     const base = yield* readDirection(file, raw, people).pipe(Effect.mapError(asWrite(file)))
+    // The live flow (pass 3b): each marked step is shown followed and broken by the cases of the
+    // rules it uses. Onboarding's drafts may record no observed break (U5a), so this check is here.
+    const cases = casesProblem(base.id, base.flow, base.standards)
+    if (cases !== undefined) return yield* Effect.fail(DRAFT.cases(`${file}: ${cases}`))
     const why = yield* whyOf(input.content.why)
     const existing = w.directions.get(base.id as never)
     if (existing?.source._tag === 'External') return yield* fail(R.DraftDirection.company(base.id))
@@ -329,9 +335,10 @@ const ImportCompany: Action<'ImportCompany'> = ({ by, input }) =>
     return [create('Revision', { _tag: 'Imported', ...imported })]
   })
 
-// A model gives a company draft of a new direction its flow in this project: its steps marked,
-// each with its examples, before the accept (P10 rejected, onboarding 2026-11-14); the latest
-// counts.
+// A model gives a company draft of a new direction its flow in this project (its steps marked) and
+// each rule's evidence with its cases (pass 3b: cases live on rules), before the accept (P10
+// rejected, onboarding 2026-11-14); the latest counts. The file: { flow, rules: { <rule id>:
+// <evidence> } }.
 const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
@@ -348,7 +355,31 @@ const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
     })
     const marks = usesProblem(x.of, flow, standards)
     if (marks !== undefined) return yield* Effect.fail(DRAFT.uses(`${file}: ${marks}`))
-    return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow })]
+    const givenRules = (raw as { readonly rules?: unknown } | null)?.rules ?? {}
+    if (typeof givenRules !== 'object' || givenRules === null || Array.isArray(givenRules)) {
+      return yield* Effect.fail(DRAFT.cases(`${file}: rules is a map of rule id to its evidence`))
+    }
+    const ids = new Set(standards.flatMap((s) => s.rules.map((r) => r.id)))
+    const evidence: Array<readonly [string, RuleEvidence]> = []
+    for (const [id, value] of Object.entries(givenRules)) {
+      if (!ids.has(id)) return yield* Effect.fail(DRAFT.cases(`${file}: ${id} is not a rule of the draft`))
+      const decoded = Schema.decodeUnknownResult(RuleEvidence)(value)
+      if (decoded._tag === 'Failure') {
+        return yield* Effect.fail(DRAFT.cases(`${file}: rules.${id}: ${String(decoded.failure)}`))
+      }
+      evidence.push([id, decoded.success])
+    }
+    const given2 = new Map(evidence)
+    const withCases = standards.map((s) => ({
+      id: s.id,
+      rules: s.rules.map((r) => {
+        const e = given2.get(r.id) ?? r.evidence
+        return e === undefined ? { id: r.id } : { id: r.id, evidence: e }
+      }),
+    }))
+    const cases = casesProblem(x.of, flow, withCases)
+    if (cases !== undefined) return yield* Effect.fail(DRAFT.cases(`${file}: ${cases}`))
+    return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow, evidence })]
   })
 
 // --- the owner's decision, sources -------------------------------------------------------

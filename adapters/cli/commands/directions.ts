@@ -16,12 +16,10 @@ import {
   versionIdOf,
   type RejectId,
   spotsOf,
-  examplesOfFlow,
 } from '../../../core/schema/index.ts'
 import { Dir, Files, Now, Store } from '../../../core/services/index.ts'
 import { foldWork } from '../../../core/state/c16/fold.ts'
 import {
-  exampleLines,
   draftWaitsText,
   pieceNames,
   renderDirection,
@@ -38,6 +36,7 @@ import { followCommit } from '../refresh.ts'
 import { act, derivedAfter, peekWork, readWork } from '../runtime.ts'
 import {
   FLOW_FORM,
+  RULE_EVIDENCE_FORM,
 } from '../shared.ts'
 
 // The file of a new direction: the whole direction (guides/writing.md).
@@ -55,10 +54,18 @@ const DIRECTION_TEMPLATE = `write a file like this, then run the command again:
       says: |
         <how the output looks, in any markdown>
       rules:
-        - { id: <rule id>, says: <one check>, checkedBy: <role> }`
-
-const FLOW_TEMPLATE = `write a file like this, then run the command again:
+        - id: <rule id>
+          says: <one check>
+          checkedBy: <role>
+${RULE_EVIDENCE_FORM.replace(/^/gm, '          ')}
 ${FLOW_FORM.replace(/^/gm, '  ')}`
+
+// The file of work direction examples: the flow of a company draft and each rule's evidence.
+const FLOW_TEMPLATE = `write a file like this, then run the command again:
+${FLOW_FORM.replace(/^/gm, '  ')}
+  rules:
+    <rule id>:
+${RULE_EVIDENCE_FORM.split('\n').slice(1).map((l) => `    ${l}`).join('\n')}`
 
 const REVISE_TEMPLATE =
   'write a file like this (any of the keys), then run the revise again:\n' +
@@ -70,20 +77,19 @@ const REVISE_TEMPLATE =
 // The examples of a direction or of a new draft, by the step of its flow, each with its state
 // (ruling 4): the adapter reads the text of each file now, so an excerpt that left its file shows
 // stale.
-const examplesOf = (flow: ReadonlyArray<FlowStep>, rules: ReadonlyArray<Rule>) =>
+// The cases live on the rules (pass 3b); the flow only marks where they apply.
+const examplesOf = (_flow: ReadonlyArray<FlowStep>, rules: ReadonlyArray<Rule>) =>
   Effect.gen(function* () {
-    const examples = examplesOfFlow(flow)
     const byRule = rules.flatMap((rule) => rule.evidence ? [{ id: rule.id, ...rule.evidence }] : [])
-    if (examples.length === 0 && byRule.length === 0) return []
+    if (byRule.length === 0) return []
     const { cwd } = yield* Dir
     const files = yield* Files
     const texts = new Map<string, string | null>()
-    for (const { file } of [...examples, ...byRule.flatMap((r) => r.cases)].flatMap(spotsOf)) {
+    for (const { file } of byRule.flatMap((r) => r.cases).flatMap(spotsOf)) {
       if (!texts.has(file)) texts.set(file, yield* files.read(join(cwd, file)))
     }
     const textOf = (file: string) => texts.get(file) ?? null
     return [
-      ...(examples.length ? ['examples:', ...exampleLines(flow, textOf)] : []),
       ...byRule.flatMap((rule) => [
         `cases of ${rule.id}:`,
         ...rule.cases.flatMap((example) => exampleOneLines(example, textOf)),

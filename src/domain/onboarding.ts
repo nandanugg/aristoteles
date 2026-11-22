@@ -48,8 +48,7 @@ export const AnsweredQuestion = Schema.Struct({
 export type AnsweredQuestion = typeof AnsweredQuestion.Type
 
 // The evidence belongs to the standards' rules. The flow only shows where they apply.
-const OnboardingFlow = Flow.pipe(Schema.check(Schema.makeFilter((flow) =>
-  flow.every((step) => step.examples === undefined) || 'cases belong to rules, not the onboarding flow')))
+const OnboardingFlow = Flow
 const Content = Schema.Struct({
   summary: NonBlank,
   flow: OnboardingFlow,

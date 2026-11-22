@@ -135,10 +135,10 @@ const reviewDraft = (c: Ctx, id: string, accept: boolean): CanAct => {
   if (accept && draft._tag === 'New' && !draft.flow.some(isMarked)) {
     return no(
       `${id} drafts the new direction ${direction.name}, and its flow marks no step; a direction ` +
-        'starts with a flow whose marked steps each have an output that follows it and one that ' +
-        'breaks it',
+        'starts with a flow that marks its steps, and the rules each marked step uses hold a case ' +
+        'that follows it and one that breaks it',
       'Wait',
-      `a model adds its flow and examples first: work direction examples ${id} --file=<flow.yaml>`,
+      `a model adds its flow and its rules' cases first: work direction examples ${id} --file=<flow.yaml>`,
     )
   }
   return MAY

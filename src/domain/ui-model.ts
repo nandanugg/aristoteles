@@ -231,19 +231,17 @@ export interface DirectionWords {
 // One step of the flow of a direction (Nanda, 2026-11-15): an actor acts on another actor or on a
 // file (from equal to to: an act on its own). place: where the project defines the step, with the
 // line when it has one; null: it names none. uses: the ids that apply at a step that the direction
-// governs (the page marks it), and examples: what shows it followed and broken; both none: an
-// unmarked step.
+// governs (the page marks it); none: an unmarked step. The cases live on the rules (pass 3b).
 export interface FlowStepView {
   readonly from: Text
   readonly to: Text
   readonly says: Text
   readonly place: { readonly file: Text; readonly line: PositiveInt | null } | null
   readonly uses: ReadonlyArray<Text>
-  readonly examples: ReadonlyArray<ExampleView>
 }
-// An example (ruling 4; Nanda, 2026-11-15): an output of a marked step that follows or breaks
-// the direction (fit), with the input of a step that checks or decides. It sits in the step that
-// it shows. A stale spot asks for other examples.
+// An example (ruling 4; Nanda, 2026-11-15): an output that follows or breaks a rule (fit), with
+// the input of a step that checks or decides. It sits on its rule (pass 3b). A stale spot asks for
+// other examples.
 export interface ExampleView {
   readonly fit: 'Follows' | 'Breaks'
   readonly input: SampleView | null

@@ -373,8 +373,10 @@ an event.
   `work direction revise <direction id> --file=<edit.yaml> --by=assess`. Its owner accepts it with
   `work direction accept <draft>`, or rejects it with `work direction reject <draft>
   --reason=<why>`, before a top task is open.
-- The flow of a company draft (its steps marked with its applicable rule ids), before its accept:
-  `work direction examples <draft> --file=<flow.yaml> --by=assess`.
+- The flow of a company draft (its steps marked with its applicable rule ids) and its rules' cases,
+  before its accept: `work direction examples <draft> --file=<flow.yaml> --by=assess`, the file
+  `{ flow: [...], rules: { <rule id>: <evidence> } }` (cases live on rules, guides/writing.md
+  Cases).
 - When a top task is open, the pipeline role changes directions through a raised task (the `work`
   skill, part "The pipeline role"); the person accepts that draft.
 - When the owner rejects a draft, write a new draft that answers the reason and proposes

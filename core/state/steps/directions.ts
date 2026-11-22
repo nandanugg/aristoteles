@@ -476,5 +476,15 @@ export const examplesAdded = (work: Work, e: EventOf<'Revision.ExamplesAdded'>, 
   const x = work.drafts.get(e.id)
   if (x?._tag !== 'New') return damaged(r, `${e.id} is no draft of a new direction`)
   const added = Moves.MOVES['Revision.ExamplesAdded'](x, e.move.flow)
-  return { work: { ...work, drafts: put(work.drafts, e.id, added) }, created: [] }
+  // Each named rule of the draft gets its evidence (pass 3b: cases live on rules).
+  const given = new Map(e.move.evidence)
+  let rules = work.rules
+  for (const entry of x.standards) {
+    for (const r of work.standards.get(entry)?.rules ?? []) {
+      const rule = rules.get(r)
+      const evidence = rule === undefined ? undefined : given.get(rule.id)
+      if (rule !== undefined && evidence !== undefined) rules = put(rules, r, { ...rule, evidence })
+    }
+  }
+  return { work: { ...work, rules, drafts: put(work.drafts, e.id, added) }, created: [] }
 }

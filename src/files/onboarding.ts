@@ -658,9 +658,6 @@ const writeDrafted = (
   Effect.gen(function* () {
     const file = yield* needDirection(dir, id)
     yield* notAccepted(file, reopen)
-    if (draft.flow.some((step) => step.examples !== undefined)) {
-      return yield* refuse('cases belong to rules, not flow steps', 'move the cases to their rules and draft again')
-    }
     if (file.stage._tag === 'Removed') return yield* refuse(`${file.id} was removed`, 'add another direction')
     const open = questions ?? (file.stage._tag === 'Question' ? file.stage.open : undefined)
     const problem = questionProblem(open ?? [], draft.standards)

@@ -6,6 +6,7 @@ import { decodeRecorded } from '../../src/domain/events.ts'
 import {
   type Author,
   Example,
+  casesProblem,
   Flow,
   FlowStep,
   OnboardingDirection,
@@ -73,19 +74,29 @@ describe('Example', () => {
 
 // Nanda, 2026-11-15 (the owner's ruling: make illegal states unrepresentable): an example lives in
 // the marked step that it shows, so it cannot name a step that is gone or that is not marked.
-describe('the flow holds its examples', () => {
+describe('the flow marks where the rules apply (pass 3b: cases live on rules)', () => {
   const flow = Schema.decodeUnknownSync(Flow)
   const step = Schema.decodeUnknownSync(FlowStep)
-  const marked = { ...STEP, uses: ['d'], examples: [CASE, BREAKS] }
-  test('a marked step has uses and examples with one that follows and one that breaks', () => {
+  const strict = Schema.decodeUnknownSync(FlowStep, { onExcessProperty: 'error' })
+  const marked = { ...STEP, uses: ['d'] }
+  test('a marked step has uses; a flow step never carries cases', () => {
     expect(flow([STEP, marked])).toEqual([STEP, marked] as never)
-    expect(() => step({ ...marked, examples: [CASE] })).toThrow('no example that breaks')
-    expect(() => step({ ...marked, examples: [BREAKS] })).toThrow('no example that follows')
-    expect(() => step({ ...marked, examples: [] })).toThrow()
+    expect(() => strict({ ...marked, examples: [CASE, BREAKS] })).toThrow()
+    expect(() => strict({ ...STEP, examples: [CASE, BREAKS] })).toThrow()
   })
-  test('uses can stand alone, but step examples still require uses', () => {
+  test('casesProblem: the rules a marked step uses hold a case that follows and one that breaks', () => {
+    const ev = (cases: ReadonlyArray<unknown>) =>
+      ({ scope: { searched: [], unknown: [] }, check: { _tag: 'Absent' }, knownBreaks: [], cases }) as never
+    const standards = [{ id: 's', rules: [{ id: 'r', evidence: ev([CASE, BREAKS]) }, { id: 'q' }] }]
+    const flowOf = (...steps: ReadonlyArray<object>) => steps as never
+    expect(casesProblem('d', flowOf(marked), standards)).toBeUndefined()
+    expect(casesProblem('d', flowOf({ ...STEP, uses: ['q'] }), standards)).toContain('no case that follows')
+    expect(casesProblem('d', flowOf(marked), [{ id: 's', rules: [{ id: 'r', evidence: ev([CASE]) }] }]))
+      .toContain('no case that breaks')
+    expect(casesProblem('d', flowOf(STEP, { ...STEP, uses: ['s'] }), standards)).toBeUndefined()
+  })
+  test('uses stand alone; an empty uses is refused', () => {
     expect(step({ ...STEP, uses: ['d'] })).toEqual({ ...STEP, uses: ['d'] } as never)
-    expect(() => step({ ...STEP, examples: [CASE, BREAKS] })).toThrow()
     expect(() => step({ ...marked, uses: [] })).toThrow()
   })
   test('a flow that marks no step does not read', () => {
@@ -105,18 +116,17 @@ describe('the flow holds its examples', () => {
   })
   test('a stored event of an older shape does not decode: the store refuses to read it', () => {
     const direction = { id: 'd', name: 'D', owner: 'Nanda', from: [], summary: 'S.', says: 'S.', standards: [] }
-    const old = {
+    const now = {
       _tag: 'Drafted',
-      direction: { ...direction, flow: [{ ...STEP, uses: ['d'] }] },
-      examples: [CASE, BREAKS],
+      direction: { ...direction, flow: [marked] },
       answers: [],
       why: { _tag: 'NoneGiven' },
     }
-    const row = { seq: 1, at: '2026-10-25T09:00:00.000Z', author: HOST_RUN, event: { _tag: 'Revision', create: old } }
-    expect(() => decodeRecorded(row)).toThrow()
-    const { examples: _, ...rest } = old
-    const now = { ...rest, direction: { ...direction, flow: [marked] } }
-    expect(decodeRecorded({ ...row, event: { _tag: 'Revision', create: now } }).seq).toBe(1)
+    const row = { seq: 1, at: '2026-10-25T09:00:00.000Z', author: HOST_RUN, event: { _tag: 'Revision', create: now } }
+    expect(decodeRecorded(row).seq).toBe(1)
+    // format 7's shape: cases on a flow step
+    const old = { ...now, direction: { ...direction, flow: [{ ...marked, examples: [CASE, BREAKS] }] } }
+    expect(() => decodeRecorded({ ...row, event: { _tag: 'Revision', create: old } })).toThrow()
   })
 })
 

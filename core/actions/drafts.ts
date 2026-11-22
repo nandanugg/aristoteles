@@ -32,6 +32,7 @@ import {
   type RuleEntry,
   type StandardEntry,
   usesProblem,
+  casesProblem,
   type Work,
 } from '../schema/index.ts'
 import { foldStep } from '../state/index.ts'
@@ -130,6 +131,9 @@ export const DRAFT = {
     ),
   uses: (problem: string) =>
     no(problem, 'Write', 'give uses: only the ids of the direction, its standards and its rules'),
+  // pass 3b: the cases live on the rules (each rule's evidence), never on flow steps
+  cases: (problem: string) =>
+    no(problem, 'Write', 'give the rules a marked step uses a case that follows and one that breaks'),
   // --- a company commit ---
   localId: (id: string) =>
     no(
@@ -428,6 +432,8 @@ export const checkRevised = (
       const standards = [...kept, ...(edit.replace ?? []).map((r) => r.with), ...(edit.add ?? [])]
       const problem = usesProblem(official.id, edit.flow, standards)
       if (problem !== undefined) guard(DRAFT.uses(problem))
+      const cases = casesProblem(official.id, edit.flow, standards)
+      if (cases !== undefined) guard(DRAFT.cases(cases))
     }
   })
   if (problem !== undefined || answers.length === 0) return failIf(problem)

@@ -134,8 +134,7 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
           <summary><strong>${std.id}</strong><span><${Inline} text=${std.says} /></span>
             <span class="review-expand">Rules</span></summary>
           <div class="review-rules">${std.rules.map((rule) => {
-            const examples = rule.examples ?? draft.flow.flatMap((step) =>
-              step.uses.includes(rule.id) ? step.examples ?? [] : [])
+            const examples = rule.examples ?? []
             return html`<section class="review-rule">
               <h3>${rule.id}</h3><p><${Inline} text=${rule.says} /></p>
               <${RuleEvidence} rule=${rule} examples=${examples} />

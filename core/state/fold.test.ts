@@ -11,7 +11,6 @@ import {
   type DirectionId,
   type Draft,
   type Event,
-  type FlowStep,
   type OnboardedDirection,
   type Recorded,
   type RevisionId,
@@ -114,11 +113,20 @@ const withSupersedes = (standards: unknown) =>
     ...x,
     rules: x.rules.map((r) => ({ ...r, supersedes: [] })),
   }))
-// The flow of the harness direction, the examples inside its marked steps (P10 rejected,
-// onboarding 2026-11-14; Nanda, 2026-11-15), for the other directions of these scenarios.
-const { flow: FLOW } = Bun.YAML.parse(harness.DIRECTION) as {
-  readonly flow: ReadonlyArray<FlowStep>
+// The cases of the company flags direction, on its rule (pass 3b): EVIDENCE.
+const EVIDENCE = {
+  scope: { searched: ['docs/tsd.md'], unknown: [] },
+  check: { _tag: 'Absent' },
+  knownBreaks: [],
+  cases: [
+    { fit: 'Follows', output: { file: 'docs/tsd.md', line: 3, excerpt: '## Introduction' } },
+    { fit: 'Breaks', output: { written: 'FF_X' } },
+    { fit: 'Follows', output: { written: 'FF_EXPORT_RETRY' } },
+    { fit: 'Breaks', output: { written: 'retry' } },
+  ],
 }
+// The company flags direction's marked step uses its own ids.
+const FLAGS_FLOW = [{ from: 'writer', to: 'docs/tsd.md', says: 'adds a flag', uses: ['feature-flags'] }]
 
 // The fold of the store of the dir: every event is in the Work, and foldStep, one event at a time
 // from the first, is the same fold.
@@ -185,7 +193,7 @@ describe('fold gives the Work of a store', () => {
     ok(await p.nanda('log'))
     // P10 rejected, onboarding 2026-11-14: the company draft of a new direction gets its flow and
     // its examples from a model before the accept (the command comes in a later wave).
-    const move = { _tag: 'ExamplesAdded', flow: FLOW }
+    const move = { _tag: 'ExamplesAdded', flow: FLAGS_FLOW, evidence: [['upper-snake', EVIDENCE]] }
     const cases = { _tag: 'Revision', id: 'd2', move }
     await appendNow(p, HOST_RUN, cases as Event)
     ok(await p.nanda('direction accept d2', 'accept'))
@@ -226,7 +234,7 @@ describe('fold gives the Work of a store', () => {
         {
           id: 'naming',
           says: 'The flag name tells the project.',
-          rules: [{ id: 'upper-snake', says: 'The flag is FF_<PROJECT>_<FEATURE>.', supersedes: [] }],
+          rules: [{ id: 'upper-snake', says: 'The flag is FF_<PROJECT>_<FEATURE>.', supersedes: [], evidence: EVIDENCE }],
         },
       ],
     }
@@ -239,7 +247,7 @@ describe('fold gives the Work of a store', () => {
     }
     const directions = [
       { direction: { ...file, standards: withSupersedes(file.standards) }, source: { _tag: 'Local' } },
-      { direction: { ...flags, flow: FLOW }, source: external },
+      { direction: { ...flags, flow: FLAGS_FLOW }, source: external },
     ] as unknown as ReadonlyArray<OnboardedDirection>
     await startStore(p.dir, directions, p.now() as Time)
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) {
@@ -254,8 +262,9 @@ describe('fold gives the Work of a store', () => {
       const d = work.directions.get(id as DirectionId)
       if (d?._tag !== 'Official') throw new Error(`${id} is not official`)
       expect(d.versions.map((v) => v.number)).toEqual([1] as never)
-      // The examples came with the flow of each version.
-      expect(d.versions[0].flow.flatMap((s) => s.examples ?? [])).toHaveLength(4)
+      // The cases came with the rules of each version (pass 3b).
+      const rules = d.versions[0].standards.flatMap((e) => work.standards.get(e)?.rules ?? [])
+      expect(rules.flatMap((r) => work.rules.get(r)?.evidence?.cases ?? [])).toHaveLength(4)
       expect(d.source).toEqual(source)
       const draft = work.drafts.get(d.versions[0].revision as RevisionId)
       expect<unknown>(draft?.origin).toEqual({ _tag: 'Onboarded', event: 'e1' })

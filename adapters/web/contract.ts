@@ -86,7 +86,6 @@ export const FlowView = Schema.Array(
     says: Text,
     place: Schema.NullOr(Schema.Struct({ file: Text, line: Schema.NullOr(PositiveInt) })),
     uses: Schema.Array(Text),
-    examples: Schema.Array(ExampleView),
   }),
 )
 

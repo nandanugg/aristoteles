@@ -442,7 +442,7 @@ const decodeDirection = Schema.decodeUnknownSync(DirectionFile)
 const flowOf = (file: string, value: unknown): ReadonlyArray<FlowStep> => {
   if (!Array.isArray(value)) {
     const steps = 'the steps from the first act down to the output'
-    fail(file, `flow is required: ${steps}, each step that the direction governs with uses and examples`)
+    fail(file, `flow is required: ${steps}, each step that the direction governs with uses (the cases go on its rules)`)
   }
   try {
     return decodeFlow(value)

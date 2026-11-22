@@ -452,9 +452,6 @@ const draft = (call: Call, id: string | undefined) =>
         : yield* localDraft(file, raw, current)
     const rules = words.standards.flatMap((s) => s.rules)
     const examples = rules.flatMap((r) => r.evidence?.cases ?? [])
-    if (words.flow.some((step) => step.examples !== undefined)) {
-      return yield* refuse('cases belong to rules, not flow steps', DRAFT_TEMPLATE)
-    }
     for (const rule of rules) {
       const evidence = rule.evidence
       if (evidence === undefined) continue

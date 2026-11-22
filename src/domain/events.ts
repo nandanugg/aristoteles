@@ -13,7 +13,7 @@
 import { Schema } from 'effect'
 import { Author } from './actor.ts'
 import { Reason } from './closed.ts'
-import {
+import { RuleEvidence,
   CompanyCheckers,
   CompanyFolder,
   ConfigFile,
@@ -179,7 +179,12 @@ export const Why = Schema.Union([
 // project, its steps marked, each with its examples) from a model before the accept
 // (ExamplesAdded: the latest counts).
 export const RevisionMove = Schema.Union([
-  Schema.TaggedStruct('ExamplesAdded', { flow: Flow }),
+  // The flow (where the rules apply) and each rule's evidence with its cases (pass 3b: cases live
+  // on rules): [rule id, evidence].
+  Schema.TaggedStruct('ExamplesAdded', {
+    flow: Flow,
+    evidence: Schema.Array(Schema.Tuple([Schema.String, RuleEvidence])),
+  }),
 ])
 const Revision = Schema.Union([
   created(

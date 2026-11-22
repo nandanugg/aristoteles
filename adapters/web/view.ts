@@ -83,17 +83,16 @@ export const lineDiff = (before: string, after: string): ReadonlyArray<string> =
 
 // --- the decisions that reach the person ----------------------------------------------------
 
-// A step of the flow of a direction for the page: no place is null, an unmarked step uses and
-// shows none (Nanda, 2026-11-15).
+// A step of the flow of a direction for the page: no place is null, an unmarked step uses none
+// (Nanda, 2026-11-15). The cases are on the rules (pass 3b).
 const flowStepView =
-  (exampleOf: (e: Example) => ExampleView) =>
+  (_exampleOf: (e: Example) => ExampleView) =>
   (s: FlowStep): FlowStepView => ({
     from: s.from,
     to: s.to,
     says: s.says,
     place: s.place ? { file: s.place.file, line: s.place.line ?? null } : null,
     uses: s.uses ?? [],
-    examples: (s.examples ?? []).map(exampleOf),
   })
 const ruleEvidenceView = (
   evidence: import('../../src/domain/files.ts').RuleEvidence | undefined,
