@@ -41,10 +41,18 @@ import type { ItemKey, ItemRec, Level, RoleDraft, TaskSpec, Verdict }
   from '../../../core/state/c16/data.ts'
 import { kindOf } from '../../../core/state/c16/data.ts'
 
+
+// A new token's line; a maker's also gives the exact first prompt its role starts it with (the
+// launch opening, which the marker line in the project's instruction files names).
+const madeLines = (actor: string, token: string): ReadonlyArray<string> =>
+  actor.startsWith('maker:')
+    ? [`  ${actor}: ${token}`, `  its prompt: ${makerWords(actor, token)}`]
+    : [`  ${actor}: ${token}`]
+
 const HUMAN = { _tag: 'Human' } as const
 const HOST = { _tag: 'Host' } as const
 const HARNESS = { _tag: 'Harness' } as const
-import { briefOf, hostWords } from '../../words/work.ts'
+import { briefOf, hostWords, makerWords } from '../../words/work.ts'
 import { type Args, textOf } from '../args.ts'
 import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
 import type { CliServices, Command, Commands } from '../command.ts'
@@ -495,7 +503,7 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
     const line = outcome(body, acted.seq, acted.again)
     const token = acted.token
     const made = token !== null
-      ? [`  ${token.actor}: ${workTokenOf(token.actor, token.ep, token.secret)}`]
+      ? madeLines(token.actor, workTokenOf(token.actor, token.ep, token.secret))
       : acted.again && ((body._tag === 'Open' && body.open._tag === 'OpenMake') || body._tag === 'Resume')
       ? ['  its token was printed by the first run.']
       : []

@@ -8,8 +8,10 @@ import { initState, type WorkState } from '../../core/state/c16/state.ts'
 import type { Body, Step } from '../../core/state/c16/types.ts'
 import { kindOf, type ItemKey, type Level } from '../../core/state/c16/data.ts'
 import type { NewToken } from '../../core/actions/work.ts'
+import { launchOpening } from '../live/markers.ts'
 
 type Lines = ReadonlyArray<string>
+
 
 // A token of the work model: w.<actor>.<ep>.<secret>. The actor may hold dots (a role name): the
 // epoch (digits) and the secret (no dots) are the last two parts.
@@ -21,12 +23,18 @@ export const workTokenOf = (who: string, ep: number, secret: string): string =>
 export const launchWords = (actor: string, words: string, token: NewToken): string => {
   const t = workTokenOf(actor, token.ep, token.secret)
   return [
-    `You are ${actor} of an Aristoteles project. ${words}`,
+    `${launchOpening(actor)} ${words}`,
     `Your token is ${t}.`,
     `Run \`work wait ${t}\` now: it prints your next step. Do that step with the command it`,
     `prints, then run \`work wait ${t}\` again after every act. Never act without it.`,
   ].join(' ')
 }
+
+// The first prompt of a maker, which its role starts as a subagent with exactly these words: the
+// same launch opening, so the marker line covers makers too.
+export const makerWords = (actor: string, token: string): string =>
+  `${launchOpening(actor)} Use the work skill. Your token is ${token}. ` +
+  `Run \`work wait ${token}\`, and do what it prints.`
 
 // Ask occurrences may already be closed. Recover their subjects from the accepted history.
 const historyOf = (events: ReadonlyArray<Recorded>) => {

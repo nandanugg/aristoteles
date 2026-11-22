@@ -105,9 +105,10 @@ the person. Your steps:
 A persistent role has a terminal for the whole project and holds one task at a time.
 
 - **Assign a maker** for the task: `work assign <token> <task>`. It prints the token of the
-  maker (`maker:<id>: w.maker:...`). Start a subagent with this prompt, and nothing else: "Use
-  the work skill. Your token is <the maker token>. Run work wait <it>, and do what it prints."
-  You are in a terminal, so you start it; a maker starts no subagent.
+  maker (`maker:<id>: w.maker:...`) and its prompt (`its prompt: You are maker:<id> of an
+  Aristoteles project. ...`). Start a subagent with exactly that prompt, and nothing else (its
+  first words tell it to ignore the project's own instruction files). You are in a terminal, so
+  you start it; a maker starts no subagent.
 - **Review the result** when the maker reports: `work review <token> <ask-id> pass|fail|raise-tries|
   raise-no-rule|raise-misses --points="<...>" --on <n>`. Read the result and the rules that
   apply; one point for each rule that the result breaks or each thing that is wrong.
