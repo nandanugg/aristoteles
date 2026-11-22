@@ -32,6 +32,8 @@ export const staleItems = (s: WorkState, t: Task): ReadonlyArray<ItemKey> =>
 export const briefStale = (s: WorkState, brief: Versions, t: Task): boolean =>
   appliesTo(s, t).some((x) => verOf(brief, x) < verOf(s.ver, x))
 export const testRule = (s: WorkState, x: ItemKey): boolean => s.items.get(x)?.form === 'mech'
+export const recheckItems = (s: WorkState, t: Task): ReadonlyArray<ItemKey> =>
+  [...t.pending].filter((item) => !testRule(s, item))
 export const changedBy = (s: WorkState, draft: DraftItems): ReadonlySet<ItemKey> =>
   new Set([...draft].filter(([x, r]) =>
     r === null ? s.items.has(x) : JSON.stringify(s.items.get(x)) !== JSON.stringify(r)

@@ -530,7 +530,7 @@ describe('legal, act by act', () => {
     }
     expect(go(at('Drafting'), ship)).toBeNull()
     expect(go(at('InLoop'), ship)).toBe('legal')
-    const loop = (toPerson: boolean): Body => ({ _tag: 'LoopReview', fix: 't1', toPerson })
+    const loop = (toPerson: boolean): Body => ({ _tag: 'LoopReview', mode: 'self-review turns', fix: 't1', toPerson })
     expect(go(at('InLoop'), loop(true))).toBeNull()
     expect(go(at('InLoop', { needRevise: true }), loop(true))).toBe('legal')
     expect(go(at('InLoop', { needRevise: true }), loop(false))).toBeNull()

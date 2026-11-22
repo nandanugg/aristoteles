@@ -5,6 +5,7 @@
 import { Schema } from 'effect'
 import {
   BodySchema,
+  LoopReviewMode,
   Discovery,
   OnboardingChoice,
   PositiveInt,
@@ -305,6 +306,7 @@ const DashEscalation = Schema.Struct({
   reply: Schema.Array(Reply),
   status: Schema.Literals(['QUEUED', 'IN_PIPELINE', 'WAIT_FOR_REVIEW']),
   summary: Text,
+  reviewMode: Schema.optionalKey(LoopReviewMode),
   // The task's name, or 'your direction edit'.
   task: Text,
   changes: Schema.Array(DashChange),

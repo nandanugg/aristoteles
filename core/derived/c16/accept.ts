@@ -12,6 +12,7 @@ import {
   isLive,
   briefStale,
   testRule,
+  recheckItems,
   uncovered,
   vsum,
   verOf,
@@ -248,8 +249,6 @@ const verdictOk = (s: WorkState, t: Task, v: Verdict): boolean => {
       return true
   }
 }
-const recheckItems = (s: WorkState, t: Task): ReadonlyArray<string> =>
-  [...t.pending].filter((x) => !testRule(s, x))
 const recheckDue = (s: WorkState, t: Task | undefined): t is Task =>
   t !== undefined && t.state === 'Done' && recheckItems(s, t).length > 0
 // The recheck names the items it judged at the versions it saw: what is pending now.

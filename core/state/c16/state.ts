@@ -1,3 +1,4 @@
+import type { LoopReviewMode } from '../../schema/index.ts'
 // The C16 state the store folds: work.ts WorkState with the model's names (types.qnt Task, Fix,
 // MakerState, Store) and the asks of the contract (1.4). The acts' behaviour is elsewhere.
 import type {
@@ -67,6 +68,7 @@ export interface Maker {
 
 // The model's Fix. summary: the pending summary for the person (the conclusion first).
 export interface Fix {
+  readonly reviewMode?: LoopReviewMode
   readonly stage: Stage
   readonly entry: Stage
   readonly level: Level

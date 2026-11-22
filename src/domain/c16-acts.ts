@@ -13,6 +13,9 @@ import {
   Versions,
 } from './work-acts.ts'
 
+export const LoopReviewMode = Schema.Literals(['other provider', 'fresh subagent', 'self-review turns'])
+export type LoopReviewMode = typeof LoopReviewMode.Type
+
 const Str = Schema.String
 const Strs = Schema.Array(Str)
 const Min = <V extends Schema.Top>(item: V, n: number) =>
@@ -136,7 +139,7 @@ export const Body = Schema.Union([
     draft: DraftItems,
     resolvesFight: Schema.Boolean,
   }),
-  Schema.TaggedStruct('LoopReview', { fix: Str, toPerson: Schema.Boolean }),
+  Schema.TaggedStruct('LoopReview', { fix: Str, toPerson: Schema.Boolean, mode: LoopReviewMode }),
   Schema.TaggedStruct('Respond', { ask: Str, reply: Reply, points: Strs }),
   Schema.TaggedStruct('Reassign', {}),
   Schema.TaggedStruct('TopDone', {}),

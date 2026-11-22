@@ -164,7 +164,7 @@ const SAMPLES: { readonly [T in Body['_tag']]: Extract<Body, { _tag: T }> } = {
   WriteRule: { _tag: 'WriteRule', fix: 't1', rule: 'rule:r9', rec, refOk: true, fights: [] },
   RunTest: { _tag: 'RunTest', fix: 't1', own: false, contra: ['rule:r1'] },
   Ship: { _tag: 'Ship', fix: 't1', items: keys, draft, resolvesFight: false },
-  LoopReview: { _tag: 'LoopReview', fix: 't1', toPerson: true },
+  LoopReview: { _tag: 'LoopReview', mode: 'self-review turns', fix: 't1', toPerson: true },
   Respond: { _tag: 'Respond', ask: '9', reply: 'SendItBack', points: ['p'] },
   Reassign: { _tag: 'Reassign' },
   TopDone: { _tag: 'TopDone' },

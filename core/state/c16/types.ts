@@ -1,7 +1,7 @@
 // The core contract of C16 (plan/C16-CONTRACT.md, section 1 as amended): actors, asks, the typed
 // question, one record per act, the asks of the state, steps and obligations, refusal names.
 // Types, the key functions and the one answer validator; the behaviour is built on them.
-import { type ActorCase, type RefusalNameCase, actorOf, keyOf } from '../../schema/index.ts'
+import { type ActorCase, type LoopReviewMode, type RefusalNameCase, actorOf, keyOf } from '../../schema/index.ts'
 import type {
   DraftItems,
   ItemKey,
@@ -159,7 +159,12 @@ export type Body =
     // rule with a test command, the pipeline role's claim for a reference-only rule.
     readonly resolvesFight: boolean
   }
-  | { readonly _tag: 'LoopReview'; readonly fix: string; readonly toPerson: boolean }
+  | {
+      readonly _tag: 'LoopReview'
+      readonly fix: string
+      readonly toPerson: boolean
+      readonly mode: LoopReviewMode
+    }
   | {
     readonly _tag: 'Respond'
     readonly ask: AskId

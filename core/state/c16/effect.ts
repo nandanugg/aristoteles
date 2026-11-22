@@ -85,10 +85,18 @@ const setT = (s: WorkState, i: string, f: (t: Task) => Task): WorkState => ({
   ...s,
   tasks: put(s.tasks, i, { ...f(taskOf(s, i)), at: s.seq }),
 })
-const setF = (s: WorkState, i: string, f: (z: Fix) => Fix): WorkState => ({
-  ...s,
-  fixes: put(s.fixes, i, { ...f(fixOf(s, i)), at: s.seq }),
-})
+const setF = (s: WorkState, i: string, f: (z: Fix) => Fix): WorkState => {
+  const { reviewMode, ...fix } = f(fixOf(s, i))
+  // A report describes the draft at the person's decision. Leaving that stage clears it.
+  return {
+    ...s,
+    fixes: put(s.fixes, i, {
+      ...fix,
+      ...(fix.stage === 'AtPerson' && reviewMode !== undefined ? { reviewMode } : {}),
+      at: s.seq,
+    }),
+  }
+}
 const setM = (s: WorkState, m: string | null, f: (y: Maker) => Maker): WorkState => {
   const y = m === null ? undefined : s.makers.get(m)
   return m === null || y === undefined ? s : { ...s, makers: put(s.makers, m, f(y)) }
@@ -828,17 +836,14 @@ export const effect = (s: WorkState, a: Act): WorkState => {
     case 'Ship':
       return ship(s, w)
     case 'LoopReview':
-      return setF(bump(s, w.fix), w.fix, (z) =>
-        w.toPerson
+      return setF(bump(s, w.fix), w.fix, (z) => {
+        const next: Fix = w.toPerson
           ? { ...z, stage: 'AtPerson' }
           : z.loopRounds >= 1
           ? loopClimb(z)
-          : {
-            ...z,
-            revision: z.revision + 1,
-            loopRounds: z.loopRounds === 1 ? 2 : 1,
-            needRevise: false,
-          })
+          : { ...z, revision: z.revision + 1, loopRounds: z.loopRounds === 1 ? 2 : 1, needRevise: false }
+        return { ...next, reviewMode: w.mode }
+      })
     case 'RecheckDone':
       return rechecked(s, w.task, w.items, w.holds)
     // The harness's test commands of the pending rules, on a done result.

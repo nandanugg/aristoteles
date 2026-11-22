@@ -169,11 +169,21 @@ You are `pipe`. You run every evaluation, the direction pipeline, and the review
 - **Ship the draft:** `work ship <token> <fix> <draft-file> --on <n>`. The file maps item keys
   (`dir:<id>`, `std:<id>`, `rule:<id>`) to the whole record, or to `null` to remove one. Read
   `work guide writing` for how to write each, and `work guide direction-review` to polish it.
-- **Review loop:** `work loop <token> <fix> person|revise --on <n>`: hand the draft to the
-  person, or revise it once more. The person accepts it, or sends it back.
-- **Recheck** a done task after items changed: `work recheck <token> <task> holds|fails --on <n>`.
-  A task is rechecked only for what changed: a direction change rechecks every active and done
-  task, a standard change the tasks in its `where`, a rule change the tasks it applies to.
+  In the evaluation summary that goes with the draft, tell the person what changes, why it
+  changes, what work or rules it affects, and one concrete before/after example. At the review
+  loop, check that the story matches the draft before routing it to the person.
+- **Review loop:** `work loop <token> <fix> person|revise --mode="<actual mode>" --on <n>`: hand the draft to the
+  person, or revise it once more. Report the mode you used for this review:
+  `self-review turns`, or `fresh subagent` when staffing permits a background child. The
+  person accepts the draft or sends it back.
+- **Recheck** a done task after items changed. Read `work recheck-brief <task> --on <n>`
+  using the basis from the dispatched step. When staffing permits, give the brief to fresh
+  subagents to judge the result. If a fresh context is unavailable, defer the recheck. Each report names the exact item keys and versions it inspected, with evidence.
+  Aggregate reports only on that same basis. Record one verdict after covering the whole
+  required set with `work recheck <token> <task> holds|fails --items=<key,key,...> --on <n>`.
+  Keep the original `--on` through submission. If the store refuses stale evidence, dispatch
+  a new recheck on a fresh brief. The harness handles test-only rules. A rule with both a test
+  and a reference still needs judgment and appears in the brief.
 
 ## One source of instructions
 

@@ -17,11 +17,11 @@ import {
   BodySchema,
   writtenBy,
 } from '../schema/index.ts'
-import { activationLock, Dir, Now, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
+import { activationLock, Dir, Files, Now, readStaffing, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
 import { fold } from '../state/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { take } from '../state/c16/effect.ts'
-import { epochOf, testRule, vsum } from '../state/c16/reads.ts'
+import { epochOf, vsum } from '../state/c16/reads.ts'
 import type { WorkState } from '../state/c16/state.ts'
 import { actorOf, keyOf, type Act, type Actor, type Body, type RefusalName }
   from '../state/c16/types.ts'
@@ -108,7 +108,7 @@ const makesToken = (s: WorkState, a: Act): Actor | null => {
 
 // The view an act was derived from: the state after the first `on` acts (Acted events only;
 // the bookkeeping events of the Work group are no acts).
-const viewAt = (events: ReadonlyArray<Recorded>, on: number): WorkState | null => {
+export const workViewAt = (events: ReadonlyArray<Recorded>, on: number): WorkState | null => {
   let n = 0
   const prefix = events.filter(({ event: e }) =>
     e._tag === 'Work' &&
@@ -117,19 +117,11 @@ const viewAt = (events: ReadonlyArray<Recorded>, on: number): WorkState | null =
   return foldWork(prefix)?.state ?? null
 }
 
-// The act with the fields that the store takes from its view: the basis of the step (seen,
-// seenVer, vers) and, for a recheck, the items that the view's task waits to have rechecked.
-const viewed = (view: WorkState | null, a: ActCall['act']): Omit<Act, 'old'> => {
-  if (view === null) return { ...a, seen: -1, seenVer: 0, vers: new Map() }
-  const w = a.body
-  const body: Body = w._tag === 'RecheckDone'
-    ? {
-      ...w,
-      items: new Set([...(view.tasks.get(w.task)?.pending ?? [])].filter((x) => !testRule(view, x))),
-    }
-    : w
-  return { ...a, body, seen: basisOf(view, body), seenVer: vsum(view), vers: view.ver }
-}
+// The view contributes the basis and versions. The caller supplies what it inspected.
+const viewed = (view: WorkState | null, a: ActCall['act']): Omit<Act, 'old'> =>
+  view === null
+    ? { ...a, seen: -1, seenVer: 0, vers: new Map() }
+    : { ...a, seen: basisOf(view, a.body), seenVer: vsum(view), vers: view.ver }
 
 // The reader rows of the items whose version moved.
 const moved = (
@@ -145,6 +137,27 @@ const moved = (
 const named = (refused: RefusalName, words: string, next = 'Read the state again.'): Refusal =>
   new WorkRefusal({ message: words, choice: { kind: 'Pick', words: NonBlank.make(next) },
     refused, words, next })
+
+const checkLoopMode = (body: Body, events: ReadonlyArray<Recorded>, cwd: string) =>
+  Effect.gen(function* () {
+    if (body._tag !== 'LoopReview' || body.mode === 'self-review turns') return
+    if (body.mode === 'other provider') {
+      return yield* named('legal', 'No distinct provider is bound for pipeline review.',
+        'Report the review mode actually used within the staffing arrangement.')
+    }
+    const files = yield* Effect.serviceOption(Files)
+    const staffing = files._tag === 'Some'
+      ? yield* readStaffing(cwd).pipe(Effect.provideService(Files, files.value), Effect.orElseSucceed(() => null))
+      : null
+    const work = yield* folding(() => fold(events))
+    const name = Object.entries(work.config?.roles ?? {}).find(([, role]) =>
+      role.kind === 'agent' && role.pipeline === true)?.[0]
+    const pipeline = name === undefined ? undefined : staffing?.roles[name]
+    if (!pipeline || pipeline.subagentAllowance === 0 || staffing?.clis[pipeline.cli]?.backgroundChildren !== true) {
+      return yield* named('legal', 'Staffing does not allow the reported fresh-subagent review.',
+        'Report the review mode actually used within the staffing arrangement.')
+    }
+  })
 
 const requestOf = (call: ActCall): string => sha(JSON.stringify([
   call.by, keyOf(call.act.who), call.act.ep, Schema.encodeSync(BodySchema)(call.act.body),
@@ -184,7 +197,7 @@ export const dispatchAct = (call: ActCall) =>
         }
         const invalidView = call.on !== null && (call.on < 0 || call.on > now.seq)
         const act: Act = {
-          ...viewed(call.on === null ? now : invalidView ? null : viewAt(events, call.on), call.act),
+          ...viewed(call.on === null ? now : invalidView ? null : workViewAt(events, call.on), call.act),
           old: call.build !== null && call.build !== call.current,
         }
         const via = call.by._tag === 'Person' && call.by.channel === 'ui' ? 'page' : 'terminal'
@@ -198,6 +211,7 @@ export const dispatchAct = (call: ActCall) =>
           return yield* Effect.fail(named('basis', 'The act needs the basis of its current view.'))
         }
         if (check) return yield* Effect.fail(named(check.refused, check.words, check.next))
+        yield* checkLoopMode(act.body, events, cwd)
         if (act.body._tag === 'Exit' && call.actorEpoch !== undefined &&
           call.actorEpoch !== epochOf(now, act.body.actor)) {
           return yield* Effect.fail(named('epoch', 'This process was replaced by a newer one.'))

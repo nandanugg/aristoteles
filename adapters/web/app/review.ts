@@ -33,6 +33,7 @@ export function Review({ e, onAct, view, onClose }: ReviewProps) {
   }
   return html`<${Modal} title=${`Escalation ${e.id}: ${e.task}`} kind="wide" onClose=${onClose}>
     <${Pyramid} summary=${e.summary} />
+    ${e.reviewMode ? html`<p>Reviewed by: ${e.reviewMode} (as the pipeline role reports)</p>` : ''}
     <div class="section-title">Changes</div>
     ${e.changes.map((c) => html`<section class="change" key=${c.key} aria-label=${c.key}>
       <div class="change-title"><code>${c.key}</code> <span class="muted">version ${c.version}

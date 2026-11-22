@@ -5,7 +5,7 @@ import { Database } from 'bun:sqlite'
 import { join } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 import { Effect, Exit, Layer, type Scope } from 'effect'
-import { Dir, Env, Now, Store, StoreLive, Tokens } from '../services/index.ts'
+import { Dir, Env, Files, FilesLive, Now, Store, StoreLive, Tokens } from '../services/index.ts'
 import type { Time } from '../schema/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { actorOf, type Body } from '../state/c16/types.ts'
@@ -33,6 +33,7 @@ const layer = (dir: string, at: string) => {
         Layer.succeed(Env, { vars: { ARISTOTELES_DB: join(dir, '.work', 'aristoteles.db') } }),
       ),
     ),
+    FilesLive,
     Layer.succeed(Dir, { cwd: dir }),
     Layer.succeed(Now, { read: Effect.succeed(at as Time) }),
     Layer.succeed(Tokens, { random: Effect.sync(() => `k${++n}`) }),
@@ -41,7 +42,7 @@ const layer = (dir: string, at: string) => {
 const run = <A, E>(
   dir: string,
   at: string,
-  e: Effect.Effect<A, E, Store | Dir | Now | Tokens | Scope.Scope>,
+  e: Effect.Effect<A, E, Store | Dir | Files | Now | Tokens | Scope.Scope>,
 ) => Effect.runPromiseExit(Effect.scoped(e).pipe(Effect.provide(layer(dir, at))))
 const failed = (exit: Exit.Exit<unknown, unknown>) => {
   if (Exit.isSuccess(exit)) throw new Error('it did not fail')
@@ -297,4 +298,109 @@ test('question, replay, page-only and ended refusals are typed through the dispa
   await step(call('human', { _tag: 'EndProject' }))
   await fails(call('human', { _tag: 'EndProject' }), 'ended')
   expect(checks.size).toBe(12)
+}, 90000)
+
+test('the recheck brief is read-only and a verdict covers exactly the inspected items on its basis', async () => {
+  const { p } = await h.started({ 'aristoteles.yaml': PIPED, 'directions/tsd-writing.yaml': EVIDENT })
+  const at = p.now()
+  const top = value(await run(p.dir, at, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['intro'] })))
+  const pipe = `w.pipe.0.${top.secrets.find(({ actor }) => actor === 'pipe')?.secret}`
+  const current = () => foldWork(eventsOf(p.dir))!.state
+  const step = async (who: string, body: Body) =>
+    value(await run(p.dir, at, dispatchAct(call(who, body, { on: current().seq }))))
+  await step('host', send('t'))
+  await step('role:section-lead', make)
+  await step('maker:m1', { _tag: 'ReadBrief', maker: 'm1' })
+  await step('maker:m1', { _tag: 'Report', ask: askId(p.dir, 'Execute'), output: 'o', files: [], caught: new Set() })
+  await step('role:section-lead', { _tag: 'Review', ask: askId(p.dir, 'Check'), verdict: 'Pass', points: [] })
+  const edit = async (says: string) => {
+    const draft = new Map([...current().items].filter(([, item]) =>
+      item.kind === 'dir' || item.name === 'no-code-proof' || item.name === 'no-ticket-ids')
+      .map(([key, item]) => [key, { ...item, says }]))
+    await step('human', { _tag: 'AskEdit', draft })
+    await step('pipe', { _tag: 'Advance', fix: EDIT })
+    await step('pipe', { _tag: 'Advance', fix: EDIT })
+    const [rule, rec] = [...draft].find(([, item]) => item.name === 'no-code-proof')!
+    await step('pipe', { _tag: 'WriteRule', fix: EDIT, rule, rec, refOk: true, fights: [] })
+    await step('pipe', { _tag: 'RunTest', fix: EDIT, own: true, contra: [] })
+    await step('pipe', { _tag: 'Ship', fix: EDIT, items: new Set(draft.keys()), draft, resolvesFight: false })
+    await step('host', { _tag: 'Reassign' })
+  }
+  await edit('new evidence')
+  const basis = current().seq
+  const mech = [...current().items].find(([, item]) => item.name === 'no-code-proof')![0]
+  const both = [...current().items].find(([, item]) => item.name === 'no-ticket-ids')![0]
+  const dir = [...current().items].find(([, item]) => item.kind === 'dir')![0]
+  const count = () => eventsOf(p.dir).length
+  const before = count()
+  const brief = h.ok(await p.agent('recheck-brief t1')).out
+  expect(brief).toContain(`Basis: --on ${basis}`)
+  expect(brief).toContain(`${both} @1: new evidence`)
+  expect(brief).toContain(`${dir} @1: new evidence`)
+  expect(brief).not.toContain(mech)
+  expect(count()).toBe(before)
+  expect((await p.agent(`recheck ${pipe} t1 holds --on ${basis}`)).code).not.toBe(0)
+  expect((await p.agent(`recheck ${pipe} t1 holds --items=${both} --on ${basis}`)).code).not.toBe(0)
+  expect((await p.agent(`recheck ${pipe} t1 holds --items=${dir},${both},${mech} --on ${basis}`)).code).not.toBe(0)
+  expect(count()).toBe(before)
+
+  await edit('newer evidence')
+  expect(h.ok(await p.agent(`recheck-brief t1 --on ${basis}`)).out).toBe(brief)
+  const next = current().seq
+  expect((await p.agent(`recheck ${pipe} t1 holds --items=${dir},${both} --on ${basis}`)).code).not.toBe(0)
+  h.ok(await p.agent(`recheck ${pipe} t1 holds --items=${dir},${both} --on ${next}`))
+  expect([...current().tasks.get('t1')!.pending]).toEqual([mech])
+}, 90000)
+
+test('the pipeline records its reported mode within effective staffing limits', async () => {
+  const { p } = await h.started({ 'aristoteles.yaml': PIPED })
+  const at = p.now()
+  const top = value(await run(p.dir, at, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['intro'] })))
+  const pipe = `w.pipe.0.${top.secrets.find(({ actor }) => actor === 'pipe')?.secret}`
+  const current = () => foldWork(eventsOf(p.dir))!.state
+  const send = async (who: string, body: Body) =>
+    run(p.dir, at, dispatchAct(call(who, body, { on: current().seq })))
+  const step = async (who: string, body: Body) => value(await send(who, body))
+  const [direction, directionItem] = [...current().items].find(([, item]) => item.kind === 'dir')!
+  const [standard] = [...current().items].find(([, item]) => item.kind === 'std')!
+  const draft = new Map([[direction, { ...directionItem, says: 'revised' }]])
+  const rule = 'rule:extra-review-rule'
+  const rec = { kind: 'rule', parent: standard, name: 'extra-review-rule', says: 'Show evidence.',
+    where: null, test: 'true', ref: null, form: 'mech', examples: [] } as const
+  await step('human', { _tag: 'AskEdit', draft })
+  await step('pipe', { _tag: 'Advance', fix: EDIT })
+  await step('pipe', { _tag: 'Advance', fix: EDIT })
+  await step('pipe', { _tag: 'WriteRule', fix: EDIT, rule, rec, refOk: true, fights: [] })
+  await step('pipe', { _tag: 'RunTest', fix: EDIT, own: true, contra: [] })
+  draft.set(rule, rec)
+  await step('pipe', { _tag: 'Ship', fix: EDIT, items: new Set(draft.keys()), draft, resolvesFight: false })
+
+  const submit = (mode: Extract<Body, { _tag: 'LoopReview' }>['mode']) =>
+    send('pipe', { _tag: 'LoopReview', fix: EDIT, toPerson: true, mode })
+  const count = () => eventsOf(p.dir).length
+  const before = count()
+  expect(failed(await submit('other provider'))).toMatchObject({ refused: 'legal' })
+  expect(failed(await submit('fresh subagent'))).toMatchObject({ refused: 'legal' })
+  const staff = await Bun.file(join(p.dir, '.work/staffing.yaml')).text()
+  const staffing = Bun.YAML.parse(staff) as {
+    roles: { architect: { subagentAllowance: number } }
+    clis: { fixture: { backgroundChildren: boolean } }
+  }
+  staffing.roles.architect.subagentAllowance = 1
+  p.write('.work/staffing.yaml', Bun.YAML.stringify(staffing))
+  expect(failed(await submit('fresh subagent'))).toMatchObject({ refused: 'legal' })
+  expect(count()).toBe(before)
+
+  staffing.clis.fixture.backgroundChildren = true
+  p.write('.work/staffing.yaml', Bun.YAML.stringify(staffing))
+  h.ok(await p.agent(`loop ${pipe} ${EDIT} person --mode="fresh subagent" --on ${current().seq}`))
+  expect(current().fixes.get(EDIT)?.reviewMode).toBe('fresh subagent')
+  const saved = eventsOf(p.dir).at(-1)?.event
+  expect(saved).toMatchObject({ _tag: 'Work', create: { _tag: 'Acted', act: {
+    body: { _tag: 'LoopReview', mode: 'fresh subagent' },
+  } } })
+
+  const ask = [...current().asks.values()].find((item) => item.kind === 'Decide')!.id
+  await step('human', { _tag: 'Respond', ask, reply: 'SendItBack', points: ['Revise it.'] })
+  expect(current().fixes.get(EDIT)?.reviewMode).toBeUndefined()
 }, 90000)

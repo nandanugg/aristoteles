@@ -73,7 +73,7 @@ const ship = (s: WorkState): WorkState =>
   }, PIPE)
 const atPerson = (): WorkState =>
   go(ship(evaluate(raised(start()), 'Direct')), {
-    _tag: 'LoopReview', fix: 't1', toPerson: true,
+    _tag: 'LoopReview', mode: 'self-review turns', fix: 't1', toPerson: true,
   }, PIPE)
 
 const live = (): Record<string, TerminalReading> =>
@@ -230,6 +230,7 @@ describe('the pipeline row', () => {
     const waiting = dashOf(input(atPerson()))
     expect(waiting.row.map((e) => e.status)).toEqual(['WAIT_FOR_REVIEW'])
     expect(waiting.rowShown).toBe(true)
+    expect(waiting.row[0]?.reviewMode).toBe('self-review turns')
     expect(dashOf(input(start())).row).toEqual([])
   })
 
@@ -263,7 +264,7 @@ describe('the pipeline row', () => {
 
   test('F2.3 and F2.5 distinguish stale basis from a withdrawn occurrence', () => {
     const prior = ship(evaluate(raised(start()), 'Direct'))
-    const person = go(prior, { _tag: 'LoopReview', fix: 't1', toPerson: true }, PIPE)
+    const person = go(prior, { _tag: 'LoopReview', mode: 'self-review turns', fix: 't1', toPerson: true }, PIPE)
     const ask = askId(person, 'Decide')
     const body = { _tag: 'Respond', ask, reply: 'AcceptIt', points: [] } as const
     const response = {
@@ -275,6 +276,7 @@ describe('the pipeline row', () => {
     expect(refused(sentBack, response, 'page')?.refused).toBe('stale')
     const page = dashOf(input(sentBack))
     expect(page.row[0]?.ask).toBeNull()
+    expect(page.row[0]?.reviewMode).toBeUndefined()
     expect(page.row[0]?.reply).toEqual([])
     expect(page.person.owed.some((entry) => entry._tag === 'Decide')).toBe(false)
   })

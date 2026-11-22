@@ -182,6 +182,7 @@ const escalationsOf = (
       status: f.stage === 'Evaluating' ? 'QUEUED'
         : ask === null ? 'IN_PIPELINE' : 'WAIT_FOR_REVIEW',
       summary: f.summary,
+      ...(ask !== null && f.reviewMode !== undefined ? { reviewMode: f.reviewMode } : {}),
       task: task?.name ?? 'your direction edit',
       changes: changesOf(s, f.draft),
       card: f.roleDraft === null

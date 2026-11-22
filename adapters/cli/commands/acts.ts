@@ -13,6 +13,7 @@ import {
   openTop,
   recordForward,
   recordHostPane,
+  workViewAt,
 } from '../../../core/actions/work.ts'
 import {
   caughtOn,
@@ -29,6 +30,7 @@ import {
   refuse,
   UsageError,
   BodySchema,
+  LoopReviewMode,
   ActorSchema,
   AnswerBodySchema,
   QuestionBodySchema,
@@ -44,7 +46,7 @@ import type { ItemKey, ItemRec, Level, RoleDraft, TaskSpec, Verdict }
 import { kindOf } from '../../../core/state/c16/data.ts'
 import { activationEvents, retireHostDelivery } from '../../live/activation.ts'
 import { bootstrapSession } from '../../live/bootstrap.ts'
-import { briefOf, hostWords, makerWords } from '../../words/work.ts'
+import { briefOf, hostWords, makerWords, recheckBriefOf } from '../../words/work.ts'
 import { type Args, textOf } from '../args.ts'
 import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
 import type { CliServices, Command, Commands } from '../command.ts'
@@ -399,14 +401,23 @@ const SPECS: Readonly<Record<string, Spec>> = {
     Effect.gen(function* () {
       const fix = yield* word(c, 0, 'a fix')
       const toPerson = yield* pick(c, { person: true, revise: false }, 1)
-      return { _tag: 'LoopReview', fix, toPerson }
+      const mode = Schema.decodeUnknownOption(LoopReviewMode)(textOf(c.args.one('mode')))
+      if (mode._tag === 'None') {
+        return yield* usage('work loop needs --mode="self-review turns", "fresh subagent", or "other provider"')
+      }
+      return { _tag: 'LoopReview', fix, toPerson, mode: mode.value }
     })
   ),
   recheck: agent((c) =>
     Effect.gen(function* () {
       const task = yield* word(c, 0, 'a task')
       const holds = yield* pick(c, { holds: true, fails: false }, 1)
-      return { _tag: 'RecheckDone', task, items: new Set<ItemKey>(), holds }
+      if (onOf(c.args) === null) return yield* usage('work recheck needs --on from the dispatched brief')
+      const items = listOf(yield* flag(c, 'items'))
+      if (items.length === 0 || new Set(items).size !== items.length) {
+        return yield* usage('work recheck needs a nonempty list of distinct item keys in --items')
+      }
+      return { _tag: 'RecheckDone', task, items: new Set<ItemKey>(items), holds }
     })
   ),
   'rule-run': {
@@ -521,6 +532,23 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
       ? []
       : [`Your next step: run work wait ${call.token} again.`]
     return [line, ...made, ...next]
+  })
+
+const recheckBrief: Command = (call) =>
+  Effect.gen(function* () {
+    const [task, ...rest] = call.args.positional
+    if (!task || rest.length) return yield* usage('work recheck-brief needs one task')
+    const { folded, events } = yield* readFolded
+    const current = folded.state
+    const on = onOf(call.args)
+    if (call.args.one('on') !== undefined && (on === null || on > current.seq)) {
+      return yield* usage('work recheck-brief needs a valid --on from the dispatched step')
+    }
+    const state = on === null || on === current.seq ? current : workViewAt(events, on)
+    if (state === null) return yield* WORK.noTop()
+    const brief = recheckBriefOf(state, task)
+    return brief ?? (yield* refuse(`Task ${task} owes no pipeline recheck on --on ${state.seq}`,
+      'use the basis printed for its recheck step'))
   })
 
 // --- the commands --------------------------------------------------------------------------------
@@ -676,4 +704,4 @@ const run: Command = (call) =>
     ? runContinue(call)
     : usage('work run continue (the host, in its own tmux pane)')
 
-export const commands: Commands = { ...fresh(ACTS), run, top, hook, forward }
+export const commands: Commands = { ...fresh(ACTS), 'recheck-brief': recheckBrief, run, top, hook, forward }

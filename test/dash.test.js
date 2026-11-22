@@ -94,7 +94,7 @@ test('the dashboard page, in a real browser', async () => {
       }],
       [pipe, { _tag: 'RunTest', fix: 't1', own: true, contra: [] }],
       [pipe, { _tag: 'Ship', fix: 't1', items, draft, resolvesFight: false }],
-      [pipe, { _tag: 'LoopReview', fix: 't1', toPerson: true }],
+      [pipe, { _tag: 'LoopReview', mode: 'self-review turns', fix: 't1', toPerson: true }],
       [{ _tag: 'Harness' }, { _tag: 'Revive', actor: role }],
       [role, { _tag: 'Open', open: {
         _tag: 'OpenQuestion', to: human,

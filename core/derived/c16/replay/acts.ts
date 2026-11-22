@@ -332,7 +332,7 @@ export const tsAct = (
         }
       }
       case 'LoopReview':
-        return { _tag: 'LoopReview', fix: fixId(num(v['fix'])), toPerson: v['toPerson'] === true }
+        return { _tag: 'LoopReview', mode: 'self-review turns', fix: fixId(num(v['fix'])), toPerson: v['toPerson'] === true }
       case 'RecheckDone':
         return {
           _tag: 'RecheckDone',

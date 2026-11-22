@@ -90,8 +90,9 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   rule: ['on', 'fights'],
   'rule-test': ['on'],
   ship: ['on', 'resolves'],
-  loop: ['on'],
-  recheck: ['on'],
+  loop: ['mode', 'on'],
+  recheck: ['items', 'on'],
+  'recheck-brief': ['on'],
   top: { open: ['name', 'goal', 'sections'] },
   hook: { stopped: [] },
   ask: ['question', 'text', 'file'],
@@ -199,8 +200,9 @@ export const USAGE: ReadonlyArray<string> = [
     '[--parts=<file>] [--role-draft=<file>] --on=',
   '         work advance <token> <fix> | rule <token> <fix> <rule-file> [--fights=rule:a,rule:b] | rule-test <token> ' +
     '<fix> | ship <token> <fix> <draft-file> [--resolves]',
-  '         work loop <token> <fix> person|revise | recheck <token> <task> holds|fails (each ' +
+  '         work loop <token> <fix> person|revise --mode=<mode> | recheck <token> <task> holds|fails --items=<id,id,...> (each ' +
     'with --on=<n>)',
+  '         work recheck-brief <task> [--on=<n>] (read the exact required items and their versions)',
   '         work ask <token> <actor> --text=<question> | --file=<question.yaml>',
   '         work answer <token> <ask-id> --text=<answer> | --file=<answer.yaml>',
   '         work hear <token> <ask-id> | ask-raise <token> <actor>',
@@ -243,6 +245,7 @@ export const COMMAND_NAMES = [
   'report',
   'review',
   'recheck',
+  'recheck-brief',
   'ask',
   'answer',
   'hear',

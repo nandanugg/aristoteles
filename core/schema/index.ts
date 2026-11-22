@@ -36,6 +36,7 @@ export {
   QuestionBody as QuestionBodySchema,
   QuestionForm as QuestionFormSchema,
   Refusal as RefusalSchema,
+  LoopReviewMode,
 } from '../../src/domain/c16-acts.ts'
 export type { ActorCase, RefusalNameCase } from '../../src/domain/c16-acts.ts'
 

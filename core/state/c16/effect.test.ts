@@ -98,7 +98,7 @@ const ship = (s: WorkState, fix: string, item: string, r: ItemRec): WorkState =>
     resolvesFight: false,
   })
 const loop = (s: WorkState, fix: string, toPerson: boolean): WorkState =>
-  go(s, pipe, { _tag: 'LoopReview', fix, toPerson })
+  go(s, pipe, { _tag: 'LoopReview', mode: 'self-review turns', fix, toPerson })
 
 describe('the task cycle and its asks', () => {
   test('send, make, brief, report: the host, maker and check asks', () => {

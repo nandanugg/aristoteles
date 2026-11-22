@@ -3,7 +3,7 @@
 // core/derived/c16/obligations.ts (`dos`); this file only writes them.
 import type { Recorded } from '../../core/schema/index.ts'
 import { take } from '../../core/state/c16/effect.ts'
-import { appliesTo, depth, fixOf, uncovered } from '../../core/state/c16/reads.ts'
+import { appliesTo, depth, fixOf, recheckItems, uncovered, verOf } from '../../core/state/c16/reads.ts'
 import { initState, type WorkState } from '../../core/state/c16/state.ts'
 import type { Body, Step } from '../../core/state/c16/types.ts'
 import { kindOf, type ItemKey, type Level } from '../../core/state/c16/data.ts'
@@ -109,8 +109,8 @@ export const stepLine = (s: WorkState, step: Step, seq: number): string => {
     case 'WriteRule': return `work rule ${T} ${target} <rule-file> [--fights=rule:<id>]${basis}`
     case 'RunTest': return `work rule-test ${T} ${target}${basis}`
     case 'Ship': return `work ship ${T} ${target} <draft-file> [--resolves]${basis}`
-    case 'LoopReview': return `work loop ${T} ${target} person|revise${basis}`
-    case 'RecheckDone': return `work recheck ${T} ${target} holds|fails${basis}`
+    case 'LoopReview': return `work loop ${T} ${target} person|revise --mode="<actual mode>"${basis}`
+    case 'RecheckDone': return `work recheck ${T} ${target} holds|fails --items=<inspected-item-keys>${basis}`
     case 'RunRule': return `(the harness runs the rule tests on ${target})`
     default: return ''
   }
@@ -207,6 +207,31 @@ const stageWords = (s: WorkState, id: string): string => {
     : 'Assess the standards: does one cover this?'
 }
 
+const draftStory = 'State what changes, why, what it affects, and one before/after example.'
+
+export const recheckBriefOf = (s: WorkState, id: string): Lines | undefined => {
+  const task = s.tasks.get(id)
+  if (task?.state !== 'Done') return undefined
+  const items = [...recheckItems(s, task)].sort()
+  if (!items.length) return undefined
+  return [
+    `Recheck task ${id}: ${task.goal}`,
+    `Basis: --on ${s.seq}`,
+    `Sections: ${task.sections.join(', ')}`,
+    'Required items:',
+    ...items.flatMap((item) => {
+      const rule = s.items.get(item)
+      return [
+        `  ${item} @${verOf(s.ver, item)}: ${rule?.says ?? '(removed)'}`,
+        ...(rule?.ref ? [`    Reference: ${rule.ref}`] : []),
+        ...(rule?.test ? [`    Test command: ${rule.test}`] : []),
+        ...(rule?.knownBreaks ?? []).map((spot) => `    Known break: ${spot}`),
+      ]
+    }),
+    'Report the inspected item keys and versions with your evidence. Keep this basis.',
+  ]
+}
+
 export const stepWords = (s: WorkState, step: Step, events: ReadonlyArray<Recorded>): Lines => {
   const id = step.fix ?? step.task ?? ''
   switch (step.act) {
@@ -220,13 +245,13 @@ export const stepWords = (s: WorkState, step: Step, events: ReadonlyArray<Record
     }
     case 'Respond': return fixWords(s, id, 'Review the draft.')
     case 'Review': return reviewWords(s, id, events)
-    case 'Evaluate': return evaluateWords(s, id, events)
+    case 'Evaluate': return [...evaluateWords(s, id, events), draftStory]
     case 'Advance': return [`Fix ${id} climbs a level.`, stageWords(s, id)]
     case 'ReadBrief': return [`You are maker ${step.maker}. Read your brief first.`]
     case 'Report': return [`Make task ${id}: ${taskGoal(s, id)}`]
     case 'Resume': return [`The maker ${step.maker} is down.`]
     case 'RecheckDone': return [
-      `Task ${id} is done, but items moved: ${[...taskOf(s, id)?.pending ?? []].join(', ')}.`,
+      `Task ${id} owes a recheck. Read work recheck-brief ${id} --on ${s.seq} before dispatching it.`,
     ]
     case 'Revive': return [`${step.actor} is down.`]
     case 'EndProject': return ['Every task is done and the host returned the top.']
@@ -234,8 +259,8 @@ export const stepWords = (s: WorkState, step: Step, events: ReadonlyArray<Record
     case 'Reassign': return ['A fix is accepted. Send the affected work again.']
     case 'WriteRule': return [`Fix ${id} needs a rule with evidence.`]
     case 'RunTest': return [`Fix ${id} has a rule to test.`]
-    case 'Ship': return [`Fix ${id} is ready to draft.`]
-    case 'LoopReview': return [`Review the draft of fix ${id}.`]
+    case 'Ship': return [`Fix ${id} is ready to draft.`, draftStory]
+    case 'LoopReview': return [`Review the draft of fix ${id}.`, draftStory]
     default: return []
   }
 }
