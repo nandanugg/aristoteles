@@ -13,7 +13,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { Effect, Layer } from 'effect'
-import { OutsideFailed } from '../../core/schema/index.ts'
+import { OutsideFailed, type SessionId } from '../../core/schema/index.ts'
 import type { TerminalReading } from '../../core/schema/outside.ts'
 import { type PaneRef, pathOf, Pump, Spawn, SpawnLive } from '../../core/services/index.ts'
 
@@ -88,6 +88,7 @@ export interface TmuxPump {
   // A terminal that will not come back (its project ended): the pump drops what it keeps of it.
   readonly forget: (session: string) => void
   readonly snapshot: (session: string) => Uint8Array
+  readonly observe: (session: string) => 'live' | 'ended' | 'unknown'
   readonly status: () => Readonly<Record<string, TerminalStatus>>
   readonly tail: (session: string, lines?: number) => string
   readonly adopt: (session: string, socket: string, pane: string) => void
@@ -780,6 +781,11 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       return new TextEncoder().encode(`${screen}${mouseModes(sid)}`)
     },
     // The state of each terminal: runs, or ended (with its exit status), and its last output.
+    observe(sid) {
+      const rows = rowsNow()
+      if (rows === undefined) return 'unknown'
+      return rows.some((row) => row.sid === sid && !row.dead) ? 'live' : 'ended'
+    },
     status() {
       const own = list().map((p): [string, TerminalStatus] => [
         p.sid,
@@ -891,7 +897,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
 export type PumpFacade = Pick<
   TmuxPump,
   'start' | 'resume' | 'input' | 'stop' | 'forget' | 'status' | 'tail' | 'adopt' | 'release' | 'paneOf'
->
+> & Partial<Pick<TmuxPump, 'observe'>>
 
 // The time (ms) of the person's last key in the tmux session of their own pane: the newest
 // activity of a client attached there. The pump's send-keys moves no client, and the control
@@ -931,6 +937,7 @@ export const pumpLayerOf = (facade: PumpFacade): Layer.Layer<Pump> =>
     enter: (session) => attempt(() => facade.input(session, '\r')),
     stop: (session) => attempt(() => facade.stop(session)),
     forget: (session) => Effect.sync(() => facade.forget(session)),
+    ...(facade.observe ? { observe: (session: SessionId) => Effect.sync(() => facade.observe!(session)) } : {}),
     status: Effect.sync((): Readonly<Record<string, TerminalReading>> => facade.status()),
     tail: (session, lines) =>
       attempt(() => facade.tail(session, lines)).pipe(Effect.orElseSucceed(() => '')),

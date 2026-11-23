@@ -1,3 +1,4 @@
+import { workerIn } from './worker-fixture.js'
 import { expect, test } from 'bun:test'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -205,6 +206,8 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     delete staffedGroup.roles[persistentRole[0]].workerGroup
     yaml(staffingFile, staffedGroup)
 
+    expect(await api('staffing', { action: 'apply', ticket: sessions.ticket })).toMatchObject({ confirmed: true })
+
     const approval = await api('activation/approval')
     expect(approval.entries.map(({ path }) => path)).toEqual(expect.arrayContaining(['CLAUDE.md', 'AGENTS.md']))
     await api('activation', { action: 'start', entries: approval.entries })
@@ -226,10 +229,10 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     })).out, 'host')
     expect(JSON.stringify(await dash())).not.toContain(host)
 
-    const opened = ok(await p.nanda('top open --name="Export design" --goal="Explain the export" --sections=introduction')).out
-    const pipe = token(opened, 'pipe')
-    const lead = token(opened, 'role:section-lead')
+    ok(await p.nanda('top open --name="Export design" --goal="Explain the export" --sections=introduction'))
     expect(await agent(`wait ${host} --seconds=1`)).toContain('work send')
+    const pipe = (await workerIn(p, 'pipe')).token('pipe')
+    const lead = (await workerIn(p, 'role:section-lead')).token('role:section-lead')
     expect(recordOf(p).retired).toBe(true)
     expect((await dash()).directions.map(({ name }) => name)).toContain('TSD writing')
     await agent(`send ${host} --name="Introduction" --goal="Explain the export" --sections=introduction --role=section-lead`)

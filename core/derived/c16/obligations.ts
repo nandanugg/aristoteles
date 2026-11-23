@@ -191,7 +191,7 @@ export const toldSteps = (s: WorkState, actor: Actor): ReadonlyArray<Step> => {
   ]
 }
 
-const stepAge = (s: WorkState, x: Step): number =>
+export const stepAge = (s: WorkState, x: Step): number =>
   x.ask !== null
     ? s.asks.get(x.ask)?.at ?? s.answered.get(x.ask)?.at ?? 0
     : x.fix !== null

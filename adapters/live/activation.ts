@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto'
+import { bindWorker, reserveWorker } from '../../core/actions/worker.ts'
+import { foldRuntime } from '../../core/state/worker-runtime.ts'
+import { stageWorkerLaunch } from '../../core/services/index.ts'
 import { dispatch } from '../../core/actions/index.ts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -219,6 +223,22 @@ export const runActivation = (dir: string, by: Person, action: 'resume' | 'relau
 const prove = (nonce: string | undefined, hash: string | undefined) =>
   nonce !== undefined && hash !== undefined && sha(nonce) === hash
 
+// Transfer the existing live bootstrap session into the runtime exactly once.
+export const acquireBootstrapWorker = (dir: string, worker: string, session: string) =>
+  locked(dir, Effect.gen(function* () {
+    const events = yield* activationEvents(dir)
+    const state = activationOf(events)
+    if (!state?.topOpened || state.binding === null || session !== `boot-${state.binding.launch}`) return
+    if (foldRuntime(events).workers.has(worker)) return
+    const launch = randomUUID().replaceAll('-', '')
+    if ((yield* reserveWorker(worker, launch)) === null) return
+    const secret = randomUUID().replaceAll('-', '')
+    yield* Effect.sync(() => stageWorkerLaunch(dir, launch, 'secret', secret))
+    if (bootstrapAlive(dir, state.binding.launch)) {
+      yield* bindWorker(worker, 1, launch, session, secret)
+    }
+  }))
+
 export const bootstrapRequest = (
   dir: string, launch: string, nonce: string | undefined, action: 'ack' | 'wait',
 ) => locked(dir, Effect.gen(function* () {
@@ -239,7 +259,9 @@ export const bootstrapRequest = (
     if (record.pending?.launch !== launch) return yield* no('replaced; exit')
     return { line: 'Waiting for activation.', token: null, top: false }
   }
-  if (state.topOpened && (foldWork(events)?.state.ep.get('host') ?? 0) !== 0)
+  const host = [...foldRuntime(events).workers.values()].find(({ reservation }) => reservation.members.includes('host'))
+  if (state.topOpened && (host?.fenced || (host?.reservation.generation ?? 0) > 1 ||
+    (foldWork(events)?.state.ep.get('host') ?? 0) !== 0))
     return yield* no('replaced; exit')
   if (record.retired) return { line: 'Bound to the top: work wait <your token>.', token: null, top: true }
   const secret = yield* activationIO(() => readLaunchFile(dir, record.generation, launch, 'secret'))

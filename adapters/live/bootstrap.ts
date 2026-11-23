@@ -26,6 +26,18 @@ export const bootstrapPane = (dir: string, launch: string) => {
 }
 export const bootstrapAlive = (dir: string, launch: string): boolean =>
   bootstrapPane(dir, launch) !== null
+export const observeBootstrap = (dir: string, launch: string): 'live' | 'ended' | 'unknown' => {
+  try {
+    const result = tmux(dir, [
+      'list-panes', '-t', `=${bootstrapSession(launch)}`, '-F', '#{pane_dead}',
+    ])
+    if (result.exitCode === 0) return /^0$/m.test(result.stdout.toString()) ? 'live' : 'ended'
+    return /can't find session|no server running|No such file or directory/.test(result.stderr.toString())
+      ? 'ended' : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
 export const stopBootstrap = (dir: string, launch: string): void => {
   const result = tmux(dir, ['kill-session', '-t', `=boot-${launch}`])
   if (result.exitCode !== 0 && bootstrapAlive(dir, launch)) {
