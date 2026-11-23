@@ -208,9 +208,12 @@ const workersOf = (i: DashInput): ReadonlyArray<DashWorker> => {
         : null
       return reason === null ? [] : [{ actor, step: turnWords(i.state, step), reason }]
     }) : []
-    const candidate = online && (!jobs || !checkpointBlocksTurn(jobs, runtime, current)) && current.offer !== null && currentOffer(i.state, current.offer) ? current.offer : null
-    const offer = admission && candidate &&
-      admissionFor(admission, runtime, candidate.actor, stepDemand(candidate.step)).kind === 'waiting' ? null : candidate
+    const canOffer = online && (!jobs || !checkpointBlocksTurn(jobs, runtime, current))
+    const candidate = canOffer && current.offer !== null && currentOffer(i.state, current.offer) ? current.offer : null
+    const offer = candidate &&
+      (!admission || admissionFor(admission, runtime, candidate.actor, stepDemand(candidate.step)).kind !== 'waiting') &&
+      (candidate.step.act !== 'RecheckDone' || !jobs ||
+        readyRecheck(i.state, runtime, jobs, candidate.step.task ?? '')) ? candidate : null
     const session = charged ? current.binding?.session ?? null : null
     const label = id.replace(/^(?:group|role):/, '')
     const roles = members.filter((actor) => actor.startsWith('role:'))

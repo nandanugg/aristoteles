@@ -1,3 +1,5 @@
+import { replayAdmission } from '../core/derived/pass9/replay/driver.ts'
+import { readWitness } from '../core/derived/pass9/replay/model.ts'
 import { expect, test } from 'bun:test'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -38,6 +40,47 @@ const setup = async ({ allowance = 1, concurrency = 2, background = true, pipeAl
       a.about.id === task && (kind !== 'Execute' || a.to._tag === 'Maker')).id,
   }
 }
+
+test('pass 9 live admission replay holds one child and leaves the second attempt queued', async () => {
+  const fixture = await setup()
+  const { p } = fixture
+  try {
+    const trace = readWitness(join(import.meta.dir, '../core/derived/pass9/replay/traces/admission-wait.itf.json.gz'))
+    const read = async () => {
+      const folded = fixture.state()
+      const runtime = fixture.runtime()
+      const taskSlot = (id) => Number(id.slice(1)) - 1
+      return {
+        tasks: [...folded.state.tasks.values()].map((task) => ({
+          id: taskSlot(task.id), owner: task.role === 'section-lead' ? 0 : -1,
+          phase: task.state === 'Sent' ? 'Queued' : task.state === 'Working' ? 'Child' : task.state,
+        })),
+        attempts: [...folded.permits.roles].map(([task, actor]) => ({
+          subject: taskSlot(task), owner: actor === LEAD ? 0 : -1,
+        })),
+        children: [...runtime.children.values()].filter(({ released }) => released === null)
+          .map(({ reservation }) => ({
+            subject: taskSlot(reservation.attempt), owner: reservation.parentActor === LEAD ? 0 : -1,
+          })),
+        jobs: [], fixes: [], rechecks: [],
+      }
+    }
+    await replayAdmission(trace, {
+      read,
+      step: async (command) => {
+        if (command.kind !== 'openMake') throw new Error('unexpected action in child saturation witness')
+        ok(await fixture.assign(`t${command.task + 1}`))
+        const blocked = await fixture.assign(`t${2 - command.task}`)
+        if (blocked.code === 0 || !blocked.err.includes('waiting for child capacity')) {
+          throw new Error('live admission accepted a second child at the cap')
+        }
+        return read()
+      },
+    }, 1)
+  } finally {
+    rmSync(p.dir, { recursive: true, force: true })
+  }
+})
 
 test('a positive saturated child allowance leaves work owed until the exact allocation settles', async () => {
   const t = await setup()

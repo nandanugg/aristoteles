@@ -1,9 +1,10 @@
+import { recheckCheckpoints } from '../core/derived/pass9/replay/live-scheduler.ts'
 import { cliSession } from '../core/services/index.ts'
 import { foldRechecks } from '../core/state/rechecks.ts'
 import { foldRuntime } from '../core/state/worker-runtime.ts'
 import { recheckPumpIn, workerIn, workerTurn } from './worker-fixture.js'
 import { expect, test } from 'bun:test'
-import { readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { eventsOf } from '../core/actions/fixture.test.ts'
 import { foldWork } from '../core/state/c16/fold.ts'
@@ -25,6 +26,22 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
   p.realTime()
   const server = startServer({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) } })
   const origin = new URL(server.url).origin
+  let browser
+  let page
+  const showWorker = async (worker, status) => {
+    const shots = process.env.PASS9_INTEGRATION_SCREENSHOTS
+    if (!shots) return
+    if (!page) {
+      mkdirSync(shots, { recursive: true })
+      const { chromium } = await import('playwright')
+      browser = await chromium.launch()
+      page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+      await page.goto(server.url)
+    }
+    const label = (await dash()).workers.find(({ id }) => id === worker).label
+    await page.getByRole('article', { name: `Worker ${label}` }).getByText(status, { exact: true }).waitFor()
+    await page.screenshot({ path: join(shots, `worker-${status.toLowerCase()}.png`), animations: 'disabled' })
+  }
   const api = async (path, body) => {
     const response = await fetch(origin + '/api/' + path, body === undefined ? undefined : {
       method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify(body),
@@ -297,6 +314,8 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
     await fake.tick()
     const job = [...jobs().keys()][0]
     const first = jobs().get(job)
+    const compare = recheckCheckpoints(route)
+    const phase = (name, parentOnline) => compare(eventsOf(p.dir), job, name, { parentOnline })
     expect(first.queued.task).toBe('t1')
     expect(first.queued.items).toHaveLength(2)
     const forged = await p.agent(`recheck ${host} t1 holds --items=${direction.key},rule:explain-impact --on=${state().seq}`)
@@ -308,9 +327,11 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
       helper = (await agent(launch)).match(/h\.[a-f0-9.]+/)[0]
       await agent(`recheck-helper ack ${helper}`)
       expect(jobs().get(job).route.kind).toBe('child')
+      phase('RecheckChild', true)
     } else {
       expect(first.deferred).not.toBeNull()
       expect(first.route).toBeNull()
+      if (route === 'defer') phase('Deferred', true)
       if (route === 'park') {
         const handle = cliSession(boot.pending.launch)
         await agent(`worker checkpoint ${job} ${handle} --credential=${projectWorker}`)
@@ -323,6 +344,7 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
         fake.stopMode('unknown')
         await fake.tick()
         expect(jobs().get(job).park._tag).toBe('WorkerParkRequested')
+        phase('ParkRequested', false)
         expect(jobs().get(job).route).toBeNull()
         expect(runtime().workers.get(first.queued.worker).ended).toBe(false)
         await agent(`worker checkpoint ${job} ${handle} --credential=${projectWorker}`)
@@ -330,10 +352,12 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
         fake.running.set(`boot-${boot.pending.launch}`, 'ended')
         await fake.tick()
         expect(jobs().get(job).park._tag).toBe('WorkerParkConfirmed')
+        phase('Parked', false)
         expect(runtime().workers.get(first.queued.worker).ended).toBe(true)
         expect((await dash()).workers.find(({ id }) => id === first.queued.worker)).toMatchObject({
           status: 'parked', session: null, permits: { provider: { charged: false }, rechecks: { used: 1, limit: 1 } },
         })
+        await showWorker(first.queued.worker, 'Parked')
         await fake.tick()
       } else {
         expect((await agent(`worker wait ${projectWorker} --seconds=0.01`))).toContain('compatible child or session slot')
@@ -359,6 +383,7 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
       ok(await p.run(`recheck-helper ack ${helper}`, { env: { ARISTOTELES_SESSION: started.sid } }))
       fake.restart()
       await fake.tick()
+      phase('FreshSession', route === 'defer')
       expect(fake.starts.filter(({ env }) => env.ARISTOTELES_RECHECK_CREDENTIAL)).toHaveLength(route === 'defer' ? 2 : 1)
     }
     const brief = await agent(`recheck-brief ${helper} ${job}`)
@@ -393,6 +418,7 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
       expect((await dash()).workers.find(({ id }) => id === first.queued.worker)).toMatchObject({
         status: 'resuming', session: null, permits: { provider: { charged: true } },
       })
+      await showWorker(first.queued.worker, 'Resuming')
       expect(resumed.command).toContain(cliSession(boot.pending.launch))
       projectWorker = resumed.env.ARISTOTELES_WORKER_CREDENTIAL
       const [, launch, , root] = projectWorker.split('.')
@@ -402,6 +428,7 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
       await fake.tick()
       expect(jobs().get(job).resumed).toBe(true)
     }
+    phase('ReportReady', true)
     expect(await agent(`recheck-report ${helper} ${job} --file=recheck.yaml`)).toBe(helperReport)
     const dispatch = (await agent(`worker wait ${projectWorker} --seconds=0.01`)).split('\n')
       .find((line) => line.startsWith('work recheck ')).slice(5)
@@ -409,12 +436,14 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
     expect((await p.agent(dispatch.replace(/--report=report-\d+/, '--report=foreign'))).err).toContain('current helper job')
     expect((await p.agent(dispatch.replace(' holds ', ' fails '))).err).toContain('does not match the helper')
     await agent(dispatch)
+    phase('NoHelper', true)
     expect(state().tasks.get('t1').pending.size).toBe(0)
     expect((await dash()).pipe.work).not.toContain('Rechecking')
     expect(eventsOf(p.dir).at(-1).event.create.act.body).toMatchObject({
       _tag: 'RecheckDone', items: new Set([direction.key, 'rule:explain-impact']),
     })
   } finally {
+    await browser?.close()
     server.stop()
     killBootstrap(p)
     rmSync(p.dir, { recursive: true, force: true })

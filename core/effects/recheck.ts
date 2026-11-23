@@ -83,13 +83,14 @@ export const superviseRechecks = (say: HelperWords) =>
       return
     }
     const parent = runtime.workers.get(job.queued.worker)
-    if (parent?.binding && canCheckpoint(parent) && job.park?._tag !== 'WorkerParkConfirmed') {
+    const boundParent = parent?.binding && !parent.fenced && !parent.ended ? parent : undefined
+    if (boundParent && canCheckpoint(boundParent) && job.park?._tag !== 'WorkerParkConfirmed') {
       if ((yield* requestPark(id)) !== null) return
       yield* deferRecheck(id, job.park?._tag === 'WorkerParkCancelled'
         ? 'The worker stop failed. Waiting for a spare session or a new checkpoint.'
         : 'Waiting for a worker checkpoint or a spare session.')
     } else {
-      yield* deferRecheck(id, parent?.binding && !canCheckpoint(parent)
+      yield* deferRecheck(id, boundParent && !canCheckpoint(boundParent)
         ? 'Waiting for a compatible child or session slot. Parking needs a checkpoint-capable CLI and a resume profile.'
         : 'Waiting for a compatible child or session slot.')
     }
