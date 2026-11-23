@@ -91,6 +91,11 @@ smallHolds terminals.qnt termFixed 'Sane ExactlyOnce'
 smallHolds store.qnt storeFixed 'G3Holds'
 smallHolds browser.qnt browserFixed 'DashAfterRefresh'
 smallHolds activation.qnt activationFixed 'ActivationSafe'
+smallHolds admission.qnt admissionPipeOne 'PipeBound PipeMatchesJobs NoPipeOverlap RecheckIndependent'
+smallHolds admission.qnt admissionPipeTwo 'PipeBound PipeMatchesJobs RecheckIndependent'
+smallHolds admission.qnt admissionWait 'RoleBound NoSaturatedSerial NoSerialWithAllowance'
+smallHolds admission.qnt admissionZero 'RoleBound TaskMatchesPermits OneSerialTurn'
+smallHolds admission.qnt admissionCollocated 'Ownership RoleBound TaskMatchesPermits'
 smallHolds pipe.qnt pipeFixed '$PIPE_INV'
 pipeWitnesses
 smallHolds worker.qnt workerFixed 'OldestFirst NoIdentityCrossing NoBlockedOnlyExecutor'
@@ -109,16 +114,6 @@ smallBreaks permits.qnt permitsSerial NoSerial 0x2a 100 70
 smallBreaks permits.qnt permitsAdmission NoSecondDenied 0x2a 100 70
 smallBreaks permits.qnt permitsDefer NoDefer 0x2a 500 70
 smallBreaks permits.qnt permitsChild NoChild 0x2a 500 70
-smallHolds admission.qnt admissionPipeOne 'PipeBound PipeMatchesJobs NoPipeOverlap'
-smallHolds admission.qnt admissionPipeTwo 'PipeBound PipeMatchesJobs'
-smallHolds admission.qnt admissionSaturation 'RoleBound TaskMatchesPermits OneSerialTurn'
-smallHolds admission.qnt admissionWait 'RoleBound NoSaturatedSerial'
-smallHolds admission.qnt admissionCollocated 'Ownership RoleBound TaskMatchesPermits'
-smallBreaks admission.qnt admissionPipeOne NoPipeReuse 0x2a 100 40
-smallBreaks admission.qnt admissionPipeTwo NoPipeOverlap 0x2a 100 40
-smallBreaks admission.qnt admissionSaturation NoSaturatedSerial 0x2a 100 50
-smallBreaks admission.qnt admissionWait NoSaturatedWait 0x2a 100 40
-smallBreaks admission.qnt admissionCollocated NoCollocatedOwners 0x2a 100 40
 EOF2
 # Each property breaks in its mutant (README.md, Properties): file, module, property, seed,
 # runs, steps.
@@ -128,9 +123,6 @@ smallBreaks worker.qnt workerWrongToken NoIdentityCrossing 0x2a 100 50
 smallBreaks permits.qnt permitsDropParent PermitsNeverExceeded 0x2a 200 70
 smallBreaks permits.qnt permitsRetained NoRecheckInParentContext 0x2a 500 70
 smallBreaks permits.qnt permitsIgnore NoIgnoredRecheck 0x2a 500 70
-smallBreaks admission.qnt admissionNoPipeCap PipeBound 0x2a 100 40
-smallBreaks admission.qnt admissionDropsPipe PipeMatchesJobs 0x2a 100 40
-smallBreaks admission.qnt admissionWrongOwner Ownership 0x2a 100 40
 smallBreaks configs.qnt coreAskReverse NoWaitCycle 0x2a 500 60
 smallBreaks configs.qnt coreTwoExit NoRestartAssigned 0x2a 2000 60
 smallBreaks configs.qnt coreTwoExit NoKeptCheckJudged 0x2a 2000 60

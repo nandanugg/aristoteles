@@ -375,29 +375,37 @@ witnesses. The composed fixture keeps the inspected versions fixed while a helpe
 runs. The existing store freshness guarantee still applies to a verdict racing a
 live edit.
 
-### Admission decision 3 draft
+### admission.qnt (pass 9 decision 3, the coordinator's ruling)
 
-`admission.qnt` is a bounded projection of accepted C16 actions and worker
-lifecycle events. It adds multiple Pipe jobs and two logical roles without
-changing the protocol's actor type or the original worker and permits instances.
-Its checks concern ownership, capacity and release. The existing composed
+`admission.qnt` is a bounded projection of accepted C16 actions and worker lifecycle events. It
+adds several Pipe jobs and two logical roles without changing the protocol's actor type or the
+worker and permits instances. Its checks concern ownership, capacity and release; the composed
 `permits.qnt` remains the check of actual accept/take, asks and progress.
 
-- Pipe caps 1 and 2 illustrate queued versus simultaneous fixes. First accepted
-  work on a fix, or admitting a fresh recheck job, holds one Pipe permit. Routing
-  to the person or finishing releases it. A send-back is new admission.
-- With role capacity 2 and background child capacity 1, a second maker can use
-  the role worker in serial turns. Another instance leaves it queued until a
-  child permit frees. Both retain the parent's attempt through maker report,
-  review and a fenced maker exit. Maker report or confirmed exit releases the
-  child; terminal review or fenced reassignment releases the parent's attempt.
-- Two roles on one worker hold one attempt each. A worker turn controls execution
-  and the role controls admission. A background child may report during a serial
-  turn. The model leaves foreground-only child scheduling and recheck park
-  mechanics to the existing instances.
-- TLC checks safety and witnesses for both Pipe caps, positive saturation, waiting
-  and collocated owners. Mutants bypass the Pipe cap, drop a Pipe permit on yield
-  or debit a collocated attempt to the other role.
+- (a) Fixes alone share the Pipe cap, queued by age: first accepted work on a fix holds one Pipe
+  permit; routing it to the person or finishing releases it; a send-back is new admission. A
+  fresh recheck runs in its own lane (Pipe's child, or a fresh session in a parked slot, as
+  `permits.qnt` has it) and never takes a fix's permit: `RecheckIndependent`.
+- (b) A positive but saturated child allowance waits (queued, visible): `NoSerialWithAllowance`;
+  the serial fallback is only for an allowance of 0 (or a foreground-only CLI, in `permits.qnt`).
+  The parent keeps its attempt through maker report, review and a fenced maker exit; maker report
+  or a confirmed exit releases the child; terminal review or fenced reassignment releases the
+  attempt.
+- Two roles on one worker hold one attempt each: the worker turn controls execution, the role
+  controls admission.
+
+| Module | Checked | Expected | Distinct states |
+|---|---|---|---|
+| admissionPipeOne | safety, NoPipeOverlap; witness NoRecheckBesideFix | holds; breaks | 185; 63 |
+| admissionPipeTwo | safety; witness NoPipeOverlap | holds; breaks | 80; 48 |
+| admissionWait (allowance 1, saturated) | safety, NoSaturatedSerial; witness NoSaturatedWait | holds; breaks | 44; 2 |
+| admissionZero (allowance 0: serial) | safety; witness NoSerialReview | holds; breaks | 39; 24 |
+| admissionCollocated | safety; witness NoCollocatedOwners | holds; breaks | 67; 12 |
+| admissionNoPipeCap | PipeBound | breaks | 19 |
+| admissionDropsPipe (a permit lost at a yield) | PipeMatchesJobs | breaks | 19 |
+| admissionWrongOwner | Ownership | breaks | 4 |
+| admissionSharedLane (a recheck takes a fix's Pipe permit) | RecheckIndependent | breaks | 44 |
+| admissionSerialOnFull (serial turns with a positive allowance) | NoSerialWithAllowance | breaks | 5 |
 
 ### terminals.qnt (G1)
 

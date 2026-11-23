@@ -64,7 +64,7 @@ run() {
 WORKER_SAFE=OldestFirst,NoIdentityCrossing,NoBlockedOnlyExecutor
 PERMIT_SAFE=AsksFollowState,NoWaitCycle,PermitsNeverExceeded,NoRecheckInParentContext
 PERMIT_LIVE=ParkedResumes,DeferredRuns,RechecksProgress,AdmittedProgress,AdmittedSettles
-ADMISSION_SAFE=PipeBound,PipeMatchesJobs,Ownership,RoleBound,TaskMatchesPermits,OneSerialTurn
+ADMISSION_SAFE=PipeBound,PipeMatchesJobs,Ownership,RoleBound,TaskMatchesPermits,OneSerialTurn,RecheckIndependent,NoSerialWithAllowance
 jobs() {
   cat <<EOF
 worker.qnt workerFixed holds $WORKER_SAFE G1All
@@ -89,18 +89,20 @@ permits.qnt permitsDropParent breaks PermitsNeverExceeded -
 permits.qnt permitsRetained breaks NoRecheckInParentContext -
 permits.qnt permitsIgnore breaks - RechecksProgress
 admission.qnt admissionPipeOne holds $ADMISSION_SAFE,NoPipeOverlap -
-admission.qnt admissionPipeOne breaks NoPipeReuse -
+admission.qnt admissionPipeOne breaks NoRecheckBesideFix -
 admission.qnt admissionPipeTwo holds $ADMISSION_SAFE -
 admission.qnt admissionPipeTwo breaks NoPipeOverlap -
-admission.qnt admissionSaturation holds $ADMISSION_SAFE -
-admission.qnt admissionSaturation breaks NoSaturatedSerial -
 admission.qnt admissionWait holds $ADMISSION_SAFE,NoSaturatedSerial -
 admission.qnt admissionWait breaks NoSaturatedWait -
+admission.qnt admissionZero holds $ADMISSION_SAFE -
+admission.qnt admissionZero breaks NoSerialReview -
 admission.qnt admissionCollocated holds $ADMISSION_SAFE -
 admission.qnt admissionCollocated breaks NoCollocatedOwners -
 admission.qnt admissionNoPipeCap breaks PipeBound -
 admission.qnt admissionDropsPipe breaks PipeMatchesJobs -
 admission.qnt admissionWrongOwner breaks Ownership -
+admission.qnt admissionSharedLane breaks RecheckIndependent -
+admission.qnt admissionSerialOnFull breaks NoSerialWithAllowance -
 terminals.qnt termFixed holds Sane,ExactlyOnce G1All,SendDone
 terminals.qnt termFixed3 holds Sane,ExactlyOnce G1All,SendDone
 terminals.qnt termNoList breaks - G1All
