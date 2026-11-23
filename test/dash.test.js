@@ -6,7 +6,7 @@ import { expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { Effect, Layer } from 'effect'
-import { dispatchAct, openTop } from '../core/actions/work.ts'
+import { dispatchAct, writeTop } from '../core/actions/work.ts'
 import { eventsOf, h, NANDA } from '../core/actions/fixture.test.ts'
 import { Dir, Env, Now, Store, StoreLive, Tokens } from '../core/services/index.ts'
 import { foldWork } from '../core/state/c16/fold.ts'
@@ -34,7 +34,7 @@ const opened = async (steps) => {
   const { p } = await h.initiated({ 'aristoteles.yaml': PIPED })
   h.git(p.dir, 'init', '-q')
   h.git(p.dir, 'config', 'user.name', 'Nanda')
-  await run(p, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['introduction'] }))
+  await run(p, writeTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['introduction'] }, false))
   let id = 0
   for (const [who, next] of steps(p)) {
     const state = foldWork(eventsOf(p.dir))?.state

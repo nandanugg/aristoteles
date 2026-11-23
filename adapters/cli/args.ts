@@ -113,7 +113,8 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   run: { continue: [] },
   send: ['name', 'goal', 'sections', 'role'],
   wait: ['by', 'seconds', 'launch'],
-  worker: { wait: ['seconds', 'abandon'], ack: [] },
+  worker: { wait: ['seconds', 'abandon'], ack: [], 'child-start': [], 'child-reconcile': ['observation'],
+    'child-review': ['on', 'turn'], 'child-ack': [], 'child-review-done': [] },
   activation: { ack: [], resume: [], relaunch: [], rollback: [] },
   forward: {
     end: ['quote'],

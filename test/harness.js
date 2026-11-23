@@ -2,6 +2,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { writeTop } from '../core/actions/work.ts'
+import { topCommand } from '../adapters/cli/commands/acts.ts'
 import { main } from './code.js'
 import { staffedFixture } from './staffing-fixture.js'
 
@@ -197,7 +199,7 @@ export function project(files = {}, name = 'report-export') {
   return projectOf({
     'aristoteles.yaml': WORK_YAML, 'directions/tsd-writing.yaml': DIRECTION, 'fit.yaml': FIT,
     ...DOCS, ...files,
-  }, name)
+  }, name, true)
 }
 
 // Onboarding (BUILD.md 1e): a project with no aristoteles.yaml and no store, only its own files.
@@ -206,7 +208,10 @@ export function onboardingProject(files = {}, name = 'report-export') {
   return projectOf({ ...DOCS, '.claude/agents/linter.md': '# Linter\n\nChecks one section.\n', ...files }, name)
 }
 
-function projectOf(all, name) {
+// The C16 protocol fixtures inject a synthetic top. Onboarding and worker fixtures
+// use the production command and its staffing contract.
+const syntheticTop = { top: topCommand((call) => writeTop(call, false)) }
+function projectOf(all, name, protocolFixture = false) {
   const dir = join(mkdtempSync(join(tmpdir(), 'work-')), name)
   mkdirSync(dir)
   const writeFixture = (path, text) => {
@@ -224,7 +229,7 @@ function projectOf(all, name) {
   // A test with the server of the UI uses the real clock, because the server acts at the real time.
   let real = false
   let tokens = 0
-  const run = (line, { tty = false, typed, env = {}, channel } = {}) => {
+  const run = (line, { tty = false, typed, env = {}, channel, workerRuntime = false } = {}) => {
     const out = []
     const err = []
     const io = {
@@ -243,7 +248,7 @@ function projectOf(all, name) {
     const argv = split(line)
     // The project folder is new for each test; the golden text names it <project>.
     const clean = (lines) => lines.join('\n').replaceAll(dir, '<project>')
-    return main(argv, io).then((code) => ({ code, out: clean(out), err: clean(err) }))
+    return main(argv, io, protocolFixture && !workerRuntime ? syntheticTop : undefined).then((code) => ({ code, out: clean(out), err: clean(err) }))
   }
   // The person at a terminal, the person on the UI, and an agent in a shell with no terminal.
   const nanda = (line, typed) => run(line, { tty: true, typed })

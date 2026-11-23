@@ -6,7 +6,7 @@
 import { join } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 import { Effect, Exit, Layer, type Scope } from 'effect'
-import { Dir, Env, Now, sha, Store, StoreLive, Tokens } from '../services/index.ts'
+import { Dir, Env, FilesLive, Now, sha, Store, StoreLive, Tokens } from '../services/index.ts'
 import type { Time } from '../schema/index.ts'
 import { actorOf } from '../state/c16/types.ts'
 import {
@@ -32,6 +32,7 @@ const layer = (dir: string, at: string) => {
         Layer.succeed(Env, { vars: { ARISTOTELES_DB: join(dir, '.work', 'aristoteles.db') } }),
       ),
     ),
+    FilesLive,
     Layer.succeed(Dir, { cwd: dir }),
     Layer.succeed(Now, { read: Effect.succeed(at as Time) }),
     Layer.succeed(Tokens, { random: Effect.sync(() => `k${++n}`) }),
@@ -191,11 +192,13 @@ describe('work top open after activation', () => {
     expect(String(sessionAt(folded!.hostSession, 'host', 1))).toBe('host-e1')
   }, 60000)
 
-  test('a store work init made opens as before: a host secret is made', async () => {
+  test('a store work init made opens with workers and supplies no launch secrets', async () => {
     const { p } = await h.started({ 'aristoteles.yaml': PIPED })
     const opened = ok(await open(p))
     expect(opened.hostBound).toBe(false)
-    expect(opened.secrets.map((t) => t.actor)).toContain('host')
+    expect(opened.secrets).toEqual([])
+    const event = eventsOf(p.dir).at(-1)?.event
+    expect(event).toMatchObject({ _tag: 'Work', create: { _tag: 'Opened', placements: expect.any(Array) } })
   }, 60000)
 })
 

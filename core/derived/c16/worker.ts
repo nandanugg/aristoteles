@@ -7,11 +7,15 @@ import { dos, stepAge } from './obligations.ts'
 export const obligationOf = (s: WorkState, step: Step): string =>
   JSON.stringify([step.act, step.task, step.fix, step.ask, step.maker, step.actor, stepAge(s, step)])
 
-export const oldestWorkerStep = (state: WorkState, members: ReadonlyArray<string>) =>
+export const workerSteps = (state: WorkState, members: ReadonlyArray<string>) =>
   [...members].sort().flatMap((actor) =>
     state.down.has(actor) ? [] : dos(state, actorOf(actor)).map((step, index) => ({ actor, step, index }))
   ).sort((a, b) => stepAge(state, a.step) - stepAge(state, b.step) ||
-    a.index - b.index || a.actor.localeCompare(b.actor))[0]
+    a.index - b.index || a.actor.localeCompare(b.actor))
+
+export const oldestWorkerStep = (state: WorkState, members: ReadonlyArray<string>,
+  eligible: (actor: string, step: Step) => boolean = () => true,
+) => workerSteps(state, members).find(({ actor, step }) => eligible(actor, step))
 
 export const currentOffer = (s: WorkState, offer: Turn): boolean =>
   !s.top.ended && !s.down.has(offer.actor) &&

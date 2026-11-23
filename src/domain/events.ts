@@ -1,4 +1,4 @@
-import { RuntimeEvent, Turn, WorkerDelivery, WorkerPlacement } from './worker-runtime.ts'
+import { AdmissionPolicy, ChildRelease, ChildReservation, RuntimeEvent, SerialAssignment, Turn, WorkerDelivery, WorkerPlacement } from './worker-runtime.ts'
 // The stored events, grouped by the record that they happen to (the owner's rulings, 2026-11-12):
 //   - a creation goes under the record that it creates: { _tag: 'Revision', create: Drafted{...} };
 //   - a move goes under the record that it moves, which it names once, by its id: { _tag:
@@ -241,6 +241,7 @@ export const WorkOpened = Schema.TaggedStruct('Opened', {
   // epoch 0 there (its bootstrap credential is its epoch-0 token). null: every actor starts down.
   hostSession: Schema.NullOr(Text),
   placements: Schema.optionalKey(Schema.Array(WorkerPlacement)),
+  admission: Schema.optionalKey(Schema.Array(AdmissionPolicy)),
   placementRevision: Schema.optionalKey(Text),
 })
 // One act the store accepted; token: the new token the act makes (a new maker, a revived actor, a
@@ -249,6 +250,9 @@ export const WorkActed = Schema.TaggedStruct('Acted', {
   act: ActEnvelope,
   delivery: Schema.optionalKey(Schema.NullOr(WorkerDelivery)),
   inlineOffer: Schema.optionalKey(Turn),
+  childReserved: Schema.optionalKey(ChildReservation),
+  childReleased: Schema.optionalKey(ChildRelease),
+  serialAssigned: Schema.optionalKey(SerialAssignment),
   request: Text,
   forward: Schema.NullOr(Text),
   token: Schema.NullOr(TokenHash),
@@ -375,11 +379,13 @@ export const WRITTEN_BY = {
   System: [
     'Source.Moved', 'Source.Checked', 'Work.Forwarded', 'Work.Acted',
     'Runtime.WorkerReserved', 'Runtime.WorkerFenced', 'Runtime.TurnOffered', 'Runtime.TurnClosed',
+    'Runtime.ChildReserved', 'Runtime.ChildStarted',
   ],
   // The supervisor of the terminals: the fate of a send.
   Supervisor: [
     'Send.Delivered', 'Send.Dropped', 'Work.Acted',
     'Runtime.WorkerBound', 'Runtime.WorkerEnded', 'Runtime.WorkerFenced',
+    'Runtime.ChildBound', 'Runtime.ChildReleased',
   ],
   // The daily refresh of the company directions.
   Refresh: ['Revision.Imported', 'Work.Acted'],

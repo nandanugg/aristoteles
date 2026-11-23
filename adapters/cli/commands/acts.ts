@@ -38,7 +38,7 @@ import {
 } from '../../../core/schema/index.ts'
 import { activationLock, Dir, Env, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
 import { loadWork } from '../../../core/state/index.ts'
-import { foldRuntime, privateWorker } from '../../../core/state/worker-runtime.ts'
+import { childFor, foldRuntime, privateWorker } from '../../../core/state/worker-runtime.ts'
 import { foldWork } from '../../../core/state/c16/fold.ts'
 import { askCountOf, epochOf, findAsk, fixOf, vsum } from '../../../core/state/c16/reads.ts'
 import type { WorkState } from '../../../core/state/c16/state.ts'
@@ -493,10 +493,13 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
     const asAgent = spec.by === 'agent' || (spec.by === 'either' && call.token !== null)
     const asHuman = spec.by === 'person' || (spec.by === 'either' && !asAgent)
     const candidate = /^w\.(.+)\.(\d+)\.[a-z0-9]+$/.exec(call.token ?? '')
-    const managed = candidate?.[1] !== undefined &&
-      foldRuntime(events).placements.some((placement) => placement.members.includes(candidate[1]!))
-    const actor = !asAgent ? null : managed
-      ? { who: candidate[1]!, ep: Number(candidate[2]) }
+    const runtime = foldRuntime(events)
+    const identity = candidate?.[1]
+    if (identity?.startsWith('review:')) return yield* refuse('A review child only acknowledges and completes its allocation.')
+    const managed = identity !== undefined && (runtime.placements.some((placement) => placement.members.includes(identity)) ||
+      runtime.serial.has(identity) || childFor(runtime, identity) !== undefined)
+    const actor = !asAgent ? null : managed && identity !== undefined
+      ? { who: identity, ep: Number(candidate?.[2]) }
       : yield* verifyWork(folded, call.token)
     const author: Author = asHuman ? yield* personOf : { _tag: 'System' }
     const who = actor ? actorOf(actor.who) : asHuman ? HUMAN : HARNESS
@@ -530,18 +533,28 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
     }
     const line = outcome(body, acted.seq, acted.again)
     const token = acted.token
-    const made = token !== null
+    const route = acted.makerRoute
+    const made = route ? route.child === null
+      ? [`${route.actor} will work on this worker. Run the worker wait again for its turn.`]
+      : [`Reserved ${route.child} for ${route.actor}. Run work worker child-start ${call.token} ${route.child}.`]
+      : token !== null
       ? madeLines(token.actor, workTokenOf(token.actor, token.ep, token.secret))
       : acted.again && ((body._tag === 'Open' && body.open._tag === 'OpenMake') || body._tag === 'Resume')
       ? ['  its token was printed by the first run.']
       : []
     if (body._tag === 'ReadBrief') {
       const after = yield* (yield* (yield* Store).open((yield* Dir).cwd, { create: false })).events
-      return briefOf(acted.state, after, body.maker)
+      const brief = briefOf(acted.state, after, body.maker)
+      return runtime.serial.has(keyOf(who))
+        ? [...brief.slice(0, -2), 'Run work worker wait with your worker credential for the report turn.']
+        : brief
     }
-    const next = call.token === null
+    const placement = runtime.placements.find((entry) => entry.members.includes(keyOf(who)))
+    const groupWait = runtime.serial.has(keyOf(who)) || (placement !== undefined && !privateWorker(placement))
+    const next = call.token === null || body._tag === 'Report' && childFor(runtime, keyOf(who))
       ? []
-      : [`Your next step: run work wait ${call.token} again.`]
+      : [groupWait ? 'Your next step: run work worker wait with your worker credential.'
+        : `Your next step: run work wait ${call.token} again.`]
     return [line, ...made, ...next]
   })
 
@@ -601,7 +614,7 @@ const fresh = (names: ReadonlyArray<string>): Commands =>
   }))
 
 // work top open --name= --goal= --sections=a,b: the person opens the top; each actor's token.
-const top: Command = (call) =>
+export const topCommand = (open: typeof openTop): Command => (call) =>
   Effect.gen(function* () {
     if (call.args.positional[0] !== 'open') {
       return yield* usage('work top open --name= --goal= --sections=a,b')
@@ -615,7 +628,7 @@ const top: Command = (call) =>
     const sections = listOf(call.args.one('sections'))
     const { cwd } = yield* Dir
     const binding = activationOf(yield* activationEvents(cwd))?.binding
-    const opened = yield* openTop({
+    const opened = yield* open({
       by, name, goal, sections,
       ...(binding ? { hostSession: bootstrapSession(binding.launch), hostLaunch: binding.launch } : {}),
     })
@@ -694,7 +707,8 @@ const hook: Command = (call) =>
     const { events, folded } = yield* readFolded
     const { who, ep } = yield* verifyWork(folded, call.token)
     if (call.args.positional[0] !== 'stopped' ||
-      foldRuntime(events).placements.some((placement) => placement.members.includes(who))) return []
+      foldRuntime(events).placements.some((placement) => placement.members.includes(who)) ||
+      childFor(foldRuntime(events), who)) return []
     if (ep !== epochOf(folded.state, actorOf(who)) || folded.state.down.has(who)) return []
     const body: Body = { _tag: 'Exit', actor: actorOf(who) }
     yield* dispatchAct({
@@ -735,4 +749,4 @@ const run: Command = (call) =>
     ? runContinue(call)
     : usage('work run continue (the host, in its own tmux pane)')
 
-export const commands: Commands = { ...fresh(ACTS), 'recheck-brief': recheckBrief, run, top, hook, forward }
+export const commands: Commands = { ...fresh(ACTS), 'recheck-brief': recheckBrief, run, top: topCommand(openTop), hook, forward }

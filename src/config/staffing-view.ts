@@ -9,7 +9,6 @@ import type { Staffing } from './staffing.ts'
 // How a role's work is reviewed under its staffing (Nanda section 9: never claimed stronger).
 export type ReviewMode =
   | 'fresh subagent' // a child in the background: the worker yields while it runs
-  | 'fresh subagent, worker waits' // the CLI runs children in the foreground only
   | 'self-review turns' // no child allowed: make <-> review turns in one context
 
 export type Unknown = { readonly known: false; readonly why: string }
@@ -81,11 +80,9 @@ const NO_WINDOW: Unknown = {
 }
 
 const reviewOf = (staffing: Staffing, role: Staffing['roles'][string]): ReviewMode =>
-  role.subagentAllowance === 0
-    ? 'self-review turns'
-    : staffing.clis[role.cli]?.backgroundChildren === true
+  role.subagentAllowance > 0 && staffing.clis[role.cli]?.backgroundChildren === true
     ? 'fresh subagent'
-    : 'fresh subagent, worker waits'
+    : 'self-review turns'
 
 const sorted = <A>(xs: ReadonlyArray<A>, key: (a: A) => string): ReadonlyArray<A> =>
   [...xs].sort((a, b) => key(a).localeCompare(key(b)))
@@ -147,16 +144,10 @@ export const staffingView = (staffing: Staffing): StaffingView => {
   const warnings: Array<StaffingWarning> = []
   for (const r of arrangement) {
     if (r.review === 'self-review turns') {
-      warnings.push({
-        role: r.role,
-        says: 'its checks are not independent: it reviews its own work in turns (no subagent allowed)',
-      })
-    }
-    if (r.review === 'fresh subagent, worker waits') {
-      warnings.push({
-        role: r.role,
-        says: `${r.cli} runs subagents in the foreground: the worker waits while one runs`,
-      })
+      const reason = r.subagentAllowance === 0
+        ? 'the subagent allowance is zero'
+        : `${r.cli} does not support background children`
+      warnings.push({ role: r.role, says: `its checks are not independent: it reviews its own work in turns (${reason})` })
     }
   }
   for (const a of accounts) {

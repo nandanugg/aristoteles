@@ -9,9 +9,11 @@ import { Effect, Layer, Ref, type Scope } from 'effect'
 import { Dir, Env, Now, Store, StoreLive, Tokens } from '../services/index.ts'
 import type { Time } from '../schema/index.ts'
 import type { Actor, Body } from '../state/c16/types.ts'
-import { type ActCall, dispatchAct, openTop } from '../actions/work.ts'
+import { type ActCall, dispatchAct, writeTop } from '../actions/work.ts'
 import { h, NANDA } from '../actions/fixture.test.ts'
 import { type WaitEnd, type WaitOptions, waitFor } from './wait.ts'
+
+const openTop = (call: Parameters<typeof writeTop>[0]) => writeTop(call, false)
 
 const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
 const HOST: Actor = { _tag: 'Host' }

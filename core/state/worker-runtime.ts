@@ -1,5 +1,5 @@
 import type { Body } from './c16/types.ts'
-import type { Recorded, RuntimeEvent, Turn, WorkerPlacement } from '../schema/index.ts'
+import type { ChildRelease, ChildReservation, Recorded, RuntimeEvent, SerialAssignment, Turn, WorkerPlacement } from '../schema/index.ts'
 
 export type Reservation = Extract<RuntimeEvent, { _tag: 'WorkerReserved' }>
 export type Binding = Extract<RuntimeEvent, { _tag: 'WorkerBound' }>
@@ -11,13 +11,32 @@ export interface WorkerGeneration {
   readonly offer: Turn | null
 }
 
+export interface ChildAllocation {
+  readonly reservation: ChildReservation
+  readonly started: Extract<RuntimeEvent, { _tag: 'ChildStarted' }> | null
+  readonly binding: Extract<RuntimeEvent, { _tag: 'ChildBound' }> | null
+  readonly released: ChildRelease | null
+}
+
 export const foldRuntime = (events: ReadonlyArray<Recorded>) => {
+  const children = new Map<string, ChildAllocation>()
+  const serial = new Map<string, SerialAssignment>()
+  const reserve = (reservation: ChildReservation) => children.set(reservation.child, {
+    reservation, started: null, binding: null, released: null,
+  })
+  const release = (released: ChildRelease) => {
+    const child = children.get(released.child)
+    if (child && child.released === null) children.set(released.child, { ...child, released })
+  }
   const workers = new Map<string, WorkerGeneration>()
   let placements: ReadonlyArray<WorkerPlacement> = []
   for (const { event } of events) {
     if (event._tag === 'Work') {
       if (event.create._tag === 'Opened') placements = event.create.placements ?? []
       if (event.create._tag === 'Acted') {
+        if (event.create.childReserved) reserve(event.create.childReserved)
+        if (event.create.childReleased) release(event.create.childReleased)
+        if (event.create.serialAssigned) serial.set(event.create.serialAssigned.actor, event.create.serialAssigned)
         const delivery = event.create.delivery
         if (!delivery) continue
         const worker = workers.get(delivery.worker)
@@ -26,7 +45,7 @@ export const foldRuntime = (events: ReadonlyArray<Recorded>) => {
           const taken = offer && ('kind' in delivery
             ? offer.actor === delivery.actor && matchesStep(event.create.act.body, offer.step)
             : offer.turn === delivery.turn)
-          if (taken) {
+          if (taken || event.create.inlineOffer) {
             workers.set(delivery.worker, { ...worker, offer: null })
           }
         }
@@ -35,6 +54,13 @@ export const foldRuntime = (events: ReadonlyArray<Recorded>) => {
     }
     if (event._tag !== 'Runtime') continue
     const e = event.create
+    if (e._tag === 'ChildReserved') { reserve(e); continue }
+    if (e._tag === 'ChildReleased') { release(e); continue }
+    if (e._tag === 'ChildStarted' || e._tag === 'ChildBound') {
+      const child = children.get(e.child)
+      if (child) children.set(e.child, e._tag === 'ChildStarted' ? { ...child, started: e } : { ...child, binding: e })
+      continue
+    }
     if (e._tag === 'WorkerReserved') {
       workers.set(e.worker, { reservation: e, binding: null, fenced: false, ended: false, offer: null })
       continue
@@ -51,8 +77,17 @@ export const foldRuntime = (events: ReadonlyArray<Recorded>) => {
         break
     }
   }
-  return { workers, placements }
+  return { workers, placements, children, serial }
 }
+
+export type Runtime = ReturnType<typeof foldRuntime>
+
+export const childFor = (runtime: Runtime, actor: string): ChildAllocation | undefined =>
+  [...runtime.children.values()].findLast((entry) => entry.reservation.actor === actor)
+
+export const childLoad = (runtime: Runtime, actor: string): number =>
+  [...runtime.children.values()].filter(({ reservation, released }) =>
+    reservation.parentActor === actor && released === null).length
 
 export const privateWorker = (placement: WorkerPlacement): boolean =>
   placement.worker.startsWith('role:') && placement.members.length === 1

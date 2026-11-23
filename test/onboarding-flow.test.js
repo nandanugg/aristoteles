@@ -1,4 +1,4 @@
-import { workerIn } from './worker-fixture.js'
+import { workerIn, workerTurn } from './worker-fixture.js'
 import { expect, test } from 'bun:test'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -206,7 +206,10 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     delete staffedGroup.roles[persistentRole[0]].workerGroup
     yaml(staffingFile, staffedGroup)
 
-    expect(await api('staffing', { action: 'apply', ticket: sessions.ticket })).toMatchObject({ confirmed: true })
+    const restored = await api('staffing')
+    const finalPreview = await api('staffing', { action: 'preview', revision: restored.revision,
+      edit: { kind: 'sessions', account: 'fixture', sessionLimit: null } })
+    expect(await api('staffing', { action: 'apply', ticket: finalPreview.ticket })).toMatchObject({ confirmed: true })
 
     const approval = await api('activation/approval')
     expect(approval.entries.map(({ path }) => path)).toEqual(expect.arrayContaining(['CLAUDE.md', 'AGENTS.md']))
@@ -230,21 +233,30 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     expect(JSON.stringify(await dash())).not.toContain(host)
 
     ok(await p.nanda('top open --name="Export design" --goal="Explain the export" --sections=introduction'))
-    expect(await agent(`wait ${host} --seconds=1`)).toContain('work send')
-    const pipe = (await workerIn(p, 'pipe')).token('pipe')
-    const lead = (await workerIn(p, 'role:section-lead')).token('role:section-lead')
+    const handoff = await agent(`wait ${host} --seconds=1`)
+    const leader = await workerIn(p, 'role:section-lead')
+    const lead = leader.token('role:section-lead')
+    const projectWorker = handoff.match(/g\.[a-f0-9.]+/)[0]
+    const projectTurn = (command) => workerTurn(p, projectWorker, command)
+    const projectAct = async (command, fields = '') => {
+      const step = await projectTurn(command)
+      return agent(`${command} ${step.token} ${fields} ${step.args}`)
+    }
     expect(recordOf(p).retired).toBe(true)
     expect((await dash()).directions.map(({ name }) => name)).toContain('TSD writing')
-    await agent(`send ${host} --name="Introduction" --goal="Explain the export" --sections=introduction --role=section-lead`)
+    await projectAct('send', '--name="Introduction" --goal="Explain the export" --sections=introduction --role=section-lead')
     expect((await dash()).columns).toEqual(expect.arrayContaining([expect.objectContaining({ task: expect.objectContaining({ id: 't1', state: 'QUEUED' }) })]))
-    const maker = token(await agent(`assign ${lead} t1`), 'maker:m1')
-    await agent(`brief ${maker}`)
-    await run(`report ${maker} ${ask('Execute')} --output="Introduction explains the export"`)
+    expect(await agent(`assign ${lead} t1`)).toContain('will work on this worker')
+    const briefTurn = await workerTurn(p, leader.credential, 'brief')
+    await agent(`brief ${briefTurn.token} ${briefTurn.args}`)
+    const report = await workerTurn(p, leader.credential, 'report')
+    await agent(`report ${report.token} ${ask('Execute')} --output="Introduction explains the export" ${report.args}`)
     expect((await dash()).columns).toEqual(expect.arrayContaining([expect.objectContaining({ task: expect.objectContaining({ id: 't1', reject: true }) })]))
     const review = await agent(`wait ${lead} --seconds=1`)
     expect(review).toContain('Known break of')
     expect(review).toContain('docs/legacy.md:2')
     await run(`review ${lead} ${ask('Check')} pass`)
+    await projectAct('top-done')
 
     const beforeEdit = await dash()
     const direction = beforeEdit.directions.find(({ name }) => name === 'TSD writing')
@@ -256,26 +268,26 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     const editBasis = state().seq
     ok(await p.nanda(`ask-edit --file=edit.yaml --on ${editBasis}`))
     expect((await dash()).row).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'edit', status: 'IN_PIPELINE' })]))
-    await run(`advance ${pipe} edit`)
-    await run(`advance ${pipe} edit`)
+    await projectAct('advance', 'edit')
+    await projectAct('advance', 'edit')
     yaml('new-rule.yaml', write)
-    await run(`rule ${pipe} edit new-rule.yaml`)
+    await projectAct('rule', 'edit new-rule.yaml')
     yaml('ship.yaml', { [direction.key]: edit, 'rule:explain-impact': { ...write, parent: std.key } })
-    await run(`ship ${pipe} edit ship.yaml`)
-    expect(await agent(`wait ${pipe} --seconds=1`)).toContain('one before/after example')
-    await run(`loop ${pipe} edit person --mode="self-review turns"`)
+    await projectAct('ship', 'edit ship.yaml')
+    expect((await projectTurn('loop')).words).toContain('one before/after example')
+    await projectAct('loop', 'edit person --mode="self-review turns"')
     const decision = (await dash()).row.find(({ id }) => id === 'edit')
     expect(decision).toMatchObject({ status: 'WAIT_FOR_REVIEW', reviewMode: 'self-review turns' })
     ok(await p.nanda(`respond ${decision.ask} accept --on ${state().seq}`))
-    await agent(`reassign ${host}`)
-    const told = await agent(`wait ${pipe} --seconds=1`)
+    await projectAct('reassign')
+    const told = (await projectTurn('recheck')).words
     expect(told).toContain('recheck-brief t1')
     const basis = state().seq
     const brief = await agent(`recheck-brief t1 --on ${basis}`)
     expect(brief).toContain(`${direction.key} @1: Explain the export and its effect.`)
     expect(brief).toContain('rule:explain-impact @1: State the resulting effect.')
     expect((await dash()).pipe.work).toContain('Rechecking')
-    await agent(`recheck ${pipe} t1 holds --items=${direction.key},rule:explain-impact --on ${basis}`)
+    await projectAct('recheck', `t1 holds --items=${direction.key},rule:explain-impact`)
     expect(state().tasks.get('t1').pending.size).toBe(0)
     expect((await dash()).pipe.work).not.toContain('Rechecking')
     expect(eventsOf(p.dir).at(-1).event.create.act.body).toMatchObject({
