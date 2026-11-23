@@ -72,7 +72,11 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
         runtimeMembers.set(runtime.worker, runtime.members)
       }
       if (runtime._tag === 'WorkerFenced' || runtime._tag === 'WorkerEnded') {
-        state = { ...(state as WorkState), down: new Set([...state.down, ...(runtimeMembers.get(runtime.worker) ?? [])]) }
+        const members = runtimeMembers.get(runtime.worker) ?? []
+        state = { ...(state as WorkState), down: new Set([...state.down, ...members]) }
+        for (const actor of members) {
+          if (actor.startsWith('maker:')) state = childDown(state, actor)
+        }
       }
       if (runtime._tag === 'WorkerEnded') {
         for (const child of children.values()) {

@@ -157,7 +157,9 @@ export const reconcileChild = (id: string, parentToken: string, observation: str
     return Effect.succeed({
       _tag: 'ChildReleased', ...fieldsOf(child),
       reason: child.binding ? 'exited' : 'never launched',
-      observation: observation.trim() || 'No launch was authorized.',
+      observation: observation.trim()
+        ? `Native CLI observation sha256:${sha(observation.trim())}`
+        : 'No launch was authorized.',
     })
   }, SUPERVISOR)
 
