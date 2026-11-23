@@ -3,13 +3,15 @@
 // page draws from a whole copy of it (browser.qnt). No clock here: `now` comes in.
 import type { TerminalReading, WaitMarker } from '../../core/schema/outside.ts'
 import { dos, owed } from '../../core/derived/c16/obligations.ts'
-import { currentOffer } from '../../core/derived/c16/worker.ts'
+import { admissionFor, pipeFixesByAge, stepDemand } from '../../core/derived/c16/admission.ts'
+import { currentOffer, workerSerialActors, workerSteps } from '../../core/derived/c16/worker.ts'
 import { sessionAt } from '../../core/effects/engine.ts'
 import { epochOf, liveMaker, verOf } from '../../core/state/c16/reads.ts'
 import type { Task, WorkState } from '../../core/state/c16/state.ts'
 import { type Actor, type Body, type Step, keyOf } from '../../core/state/c16/types.ts'
 import { EDIT, type ItemKey, type ItemRec } from '../../core/state/c16/data.ts'
-import type { foldRuntime } from '../../core/state/worker-runtime.ts'
+import type { WorkFolded } from '../../core/state/c16/fold.ts'
+import { childLoad, type Runtime } from '../../core/state/worker-runtime.ts'
 import type { Dash, DashStatusWord, DashTerminalCard, DashWorker } from './contract.ts'
 
 const HOST: Actor = { _tag: 'Host' }
@@ -41,7 +43,8 @@ export interface DashInput {
   readonly state: WorkState
   // The bound host's session of an activated workflow (core/state/c16/fold.ts), else null.
   readonly hostSession: string | null
-  readonly runtime?: ReturnType<typeof foldRuntime>
+  readonly runtime?: Runtime
+  readonly admission?: Pick<WorkFolded, 'policy' | 'permits'>
   // Attach instructions are supplied only for a locally observed managed pane.
   readonly localAttach?: (session: string) => string | null
   // The config: the host's model (the person's AI CLI: '' when unknown) and the pipeline role.
@@ -155,7 +158,8 @@ const terminalOf = (
 
 const actorLabel = (key: string): string => key === 'host' ? 'Host'
   : key === 'pipe' ? 'Pipeline'
-  : key.startsWith('role:') ? key.slice('role:'.length) : key
+  : key.startsWith('role:') ? key.slice('role:'.length)
+  : key.startsWith('maker:') ? `Maker ${key.slice('maker:'.length)}` : key
 
 const turnWords = (state: WorkState, step: Step): string => {
   const question = step.ask === null ? undefined
@@ -167,7 +171,9 @@ const turnWords = (state: WorkState, step: Step): string => {
 
 const workersOf = (i: DashInput): ReadonlyArray<DashWorker> => {
   if (!i.runtime) return []
-  const { placements, workers } = i.runtime
+  const runtime = i.runtime
+  const { placements, workers } = runtime
+  const admission = i.admission && { ...i.admission, state: i.state }
   const accounts = new Map<string, number>()
   for (const { reservation, ended } of workers.values()) {
     if (!ended) {
@@ -183,24 +189,66 @@ const workersOf = (i: DashInput): ReadonlyArray<DashWorker> => {
     const used = accounts.get(account) ?? 0
     const full = !charged && limit !== null && used >= limit && !i.state.top.ended
     const online = charged && !current.fenced && current.binding !== null && !i.state.top.ended
-    const offer = online && current.offer !== null && currentOffer(i.state, current.offer) ? current.offer : null
+    const actors = [...members, ...workerSerialActors(i.state, runtime, id)]
+    const steps = workerSteps(i.state, actors)
+    const blocked = admission ? steps.flatMap(({ actor, step }) => {
+      const result = admissionFor(admission, runtime, actor, stepDemand(step))
+      return result.kind === 'waiting' ? [{ actor, step: turnWords(i.state, step), reason: result.reason }] : []
+    }) : []
+    const candidate = online && current.offer !== null && currentOffer(i.state, current.offer) ? current.offer : null
+    const offer = admission && candidate &&
+      admissionFor(admission, runtime, candidate.actor, stepDemand(candidate.step)).kind === 'waiting' ? null : candidate
     const session = charged ? current.binding?.session ?? null : null
+    const label = id.replace(/^(?:group|role):/, '')
+    const roles = members.filter((actor) => actor.startsWith('role:'))
+    const pipe = members.includes('pipe') ? admission?.policy.get('pipe') : undefined
+    const rechecks = pipe ? dos(i.state, PIPE).filter((step) => step.act === 'RecheckDone') : []
+    const selectedRecheck = offer?.step.act === 'RecheckDone' ? offer.step.task : null
+    const capacityWait = full ? [{
+      reason: 'The provider account has no free session slot.', actor: null, step: null,
+    }] : []
     return {
-      id, label: id.startsWith('group:') ? id.slice('group:'.length) : actorLabel(members[0]),
+      id, label: label === id ? actorLabel(members[0]) : label,
       account, cli, model,
-      identities: members.map((actor) => ({ actor, label: actorLabel(actor) })),
+      identities: actors.map((actor) => ({ actor, label: actorLabel(actor) })),
       generation: current?.reservation.generation ?? null,
       session: session === null ? null : { id: session, attach: online ? i.localAttach?.(session) ?? null : null },
       status: charged && (current.fenced || i.state.top.ended) ? 'stopping'
-        : online ? offer === null ? 'idle' : 'foreground occupied'
+        : online ? offer !== null ? 'foreground occupied'
+          : blocked.length > 0 && blocked.length === steps.length ? 'waiting for capacity' : 'idle'
         : full ? 'waiting for capacity'
         : i.state.top.ended || current?.ended ? 'stopped' : 'starting',
       turn: offer === null ? null : {
         id: offer.turn, actor: offer.actor, basis: offer.on,
         step: turnWords(i.state, offer.step),
       },
-      waits: full ? [{ reason: 'provider capacity', actor: null, step: null }] : null,
-      permits: { provider: { charged, used, limit }, attempts: null, children: null, fixes: null, rechecks: null },
+      waits: admission || full ? [...capacityWait, ...blocked] : null,
+      permits: {
+        provider: { charged, used, limit },
+        attempts: admission ? roles.map((actor) => ({
+          actor, used: [...admission.permits.roles.values()].filter((owner) => owner === actor).length,
+          limit: admission.policy.get(actor)?.concurrency ?? null,
+        })) : null,
+        children: admission ? members.flatMap((actor) => {
+          const policy = actor === 'host' ? undefined : admission.policy.get(actor)
+          return policy ? [{ actor, used: childLoad(runtime, actor), limit: policy.subagentAllowance }] : []
+        }) : null,
+        fixes: admission && pipe ? {
+          used: admission.permits.fixes.size, limit: pipe.concurrency,
+          entries: (i.state.top.ended ? [] : pipeFixesByAge(i.state)).map((id) => ({
+            id, label: nameOf(i.state, id),
+            state: admission.permits.fixes.has(id) ? 'held'
+              : admissionFor(admission, runtime, 'pipe', { fix: id }).kind === 'waiting' ? 'waiting' : 'ready',
+          })),
+        } : null,
+        // Unit 3 exposes owed C16 rechecks and the selected verdict. Helper capacity is Unit 4's.
+        rechecks: pipe ? {
+          used: selectedRecheck === null ? 0 : 1, limit: null,
+          entries: rechecks.flatMap((step) => step.task === null ? [] : [{
+            id: step.task, label: nameOf(i.state, step.task), state: step.task === selectedRecheck ? 'selected' : 'owed',
+          }]),
+        } : null,
+      },
     }
   })
 }

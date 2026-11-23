@@ -290,13 +290,17 @@ const DashWorkerIdentity = Schema.Struct({ actor: Text, label: Text })
 const DashWorkerPermit = Schema.Struct({ used: Schema.Int, limit: Schema.NullOr(Schema.Int) })
 const DashWorkerUsage = Schema.Struct({ actor: Text, ...DashWorkerPermit.fields })
 const DashWait = Schema.Struct({
-  reason: Schema.Literals([
-    'provider capacity', 'role attempt capacity', 'child capacity', 'fix capacity', 'recheck lane',
-    'foreground occupied',
-  ]),
+  reason: Text,
   actor: Schema.NullOr(Text),
   step: Schema.NullOr(Text),
 })
+const DashWorkerLane = Schema.Struct({
+  ...DashWorkerPermit.fields,
+  entries: Schema.Array(Schema.Struct({
+    id: Text, label: Text, state: Schema.Literals(['held', 'ready', 'waiting', 'selected', 'owed']),
+  })),
+})
+
 export const DashWorker = Schema.Struct({
   id: Text,
   label: Text,
@@ -315,8 +319,8 @@ export const DashWorker = Schema.Struct({
     provider: Schema.Struct({ ...DashWorkerPermit.fields, charged: Schema.Boolean }),
     attempts: Schema.NullOr(Schema.Array(DashWorkerUsage)),
     children: Schema.NullOr(Schema.Array(DashWorkerUsage)),
-    fixes: Schema.NullOr(DashWorkerPermit),
-    rechecks: Schema.NullOr(DashWorkerPermit),
+    fixes: Schema.NullOr(DashWorkerLane),
+    rechecks: Schema.NullOr(DashWorkerLane),
   }),
 })
 export type DashWorker = typeof DashWorker.Type

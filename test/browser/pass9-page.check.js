@@ -7,6 +7,7 @@ import { aLiveHost, bootstrapTmux, finishActivation, killBootstrap, launchEnv } 
 import { createPump, createWatcher, startServer } from '../code.js'
 import { ONBOARD_CONFIG, ok, onboardingProject } from '../harness.js'
 import { dbOf, gitPerson } from '../outside.js'
+import { workerTurn } from '../worker-fixture.js'
 
 const p = onboardingProject({}, 'worker-demo')
 let browser
@@ -48,8 +49,9 @@ try {
   host.workerGroup = 'delivery'
   Object.assign(staffing.roles['section-lead'], {
     workerGroup: host.workerGroup, account: host.account, cli: host.cli, model: host.model,
-    allowedModels: host.allowedModels, launch: host.launch,
+    allowedModels: host.allowedModels, launch: host.launch, concurrency: 2, subagentAllowance: 1,
   })
+  staffing.clis.fixture.backgroundChildren = true
   staffing.accounts.fixture.sessionLimit = 1
   staffing.accounts.review = { limits: {}, sessionLimit: 1 }
   staffing.roles.writer.account = 'review'
@@ -57,7 +59,7 @@ try {
   p.write(path, Bun.YAML.stringify(staffing))
   ok(await p.nanda('onboard approve-roles', 'approve'))
   const activation = await finishActivation(p)
-  ok(await p.nanda('top open --name="Release notes" --goal="Document the release" --sections=Overview'))
+  ok(await p.nanda('top open --name="Release notes" --goal="Document the release" --sections=Overview,Details'))
   const bootstrap = ok(await p.run(`wait --launch ${activation.pending.launch} --seconds=1`, {
     env: launchEnv(p, activation),
   })).out.match(/w\.host\.0\.[0-9a-f]+/)[0]
@@ -83,7 +85,9 @@ try {
   expect(read.pipe.session).toBe(group.session.id)
   expect(read.columns.find((column) => column.role === 'section-lead').card.session).toBe(group.session.id)
   expect(linter).toMatchObject({ status: 'waiting for capacity', session: null,
-    permits: { provider: { used: 1, limit: 1, charged: false }, attempts: null, children: null, fixes: null, rechecks: null },
+    permits: { provider: { used: 1, limit: 1, charged: false },
+      attempts: [{ actor: 'role:linter', used: 0, limit: 1 }],
+      children: [{ actor: 'role:linter', used: 0, limit: 0 }], fixes: null, rechecks: null },
   })
   // Confirm the fixture really has credential-bearing local screens before checking the wire.
   const pane = bootstrapTmux(p, 'list-panes', '-t', `=${group.session.id}`, '-F', '#{pane_id}').stdout.toString().trim()
@@ -176,7 +180,27 @@ try {
     if (publicText.includes(secret)) throw new Error('local terminal material escaped into a public observation')
   }
 
-  // Exercise the future display states through the wire without inventing Unit 2 scheduler events.
+  for (const section of ['Overview', 'Details']) {
+    const step = await workerTurn(p, credential, 'send')
+    ok(await p.agent(`send ${step.token} --name=${section} --goal=Document --sections=${section} --role=section-lead ${step.args}`))
+  }
+  const assign = await workerTurn(p, credential, 'assign')
+  const admitted = ok(await p.agent(`assign ${assign.token} t1 ${assign.args}`))
+  expect(admitted.out).toContain('Reserved child-')
+  const capacityReason = 'role:section-lead is waiting for child capacity (allowance 1).'
+  await delivery.getByText(capacityReason, { exact: false }).waitFor()
+  expect(await delivery.getByText('Waiting for capacity', { exact: true }).count()).toBe(1)
+  expect(await delivery.getByRole('region', { name: 'Fix lane' }).textContent()).toContain('0 / 1')
+  expect(await delivery.getByRole('region', { name: 'Recheck lane' }).textContent()).toContain('0 selected')
+  const scheduler = (await dash()).workers.find(({ id }) => id === group.id)
+  expect(scheduler.permits.attempts).toEqual([{ actor: 'role:section-lead', used: 1, limit: 2 }])
+  expect(scheduler.permits.children).toContainEqual({ actor: 'role:section-lead', used: 1, limit: 1 })
+  expect(scheduler.waits).toContainEqual({
+    actor: 'role:section-lead', step: 'Starting work on Details', reason: capacityReason,
+  })
+  await shot(page, '07-scheduler-child-capacity.png')
+
+  // Exercise the future park and resume display states while unit 4 is in progress.
   const active = await dash()
   server.send({ type: 'dash', dash: { ...active, workers: active.workers.map((worker) =>
     worker.id === group.id ? { ...worker, status: 'parked', session: null, turn: null }

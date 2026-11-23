@@ -14,20 +14,23 @@ const statuses: Record<DashWorker['status'], string> = {
   stopped: 'Stopped',
 }
 
-const waits: Record<NonNullable<DashWorker['waits']>[number]['reason'], string> = {
-  'provider capacity': 'The provider account has no free session slot.',
-  'role attempt capacity': 'The role has no free attempt permit.',
-  'child capacity': 'The role has no free child permit.',
-  'fix capacity': 'The pipeline has no free fix permit.',
-  'recheck lane': 'The recheck lane is occupied.',
-  'foreground occupied': 'Foreground work is using the worker.',
-}
-
-const count = ({ used, limit }: DashWorker['permits']['provider'] | NonNullable<DashWorker['permits']['fixes']>) =>
+const count = ({ used, limit }: Pick<DashWorker['permits']['provider'], 'used' | 'limit'>) =>
   limit === null ? String(used) : `${used} / ${limit}`
 
 const memberOf = (worker: DashWorker, actor: string) =>
   worker.identities.find((identity) => identity.actor === actor)?.label ?? actor
+
+function Lane({ lane, title, recheck = false }: {
+  lane: NonNullable<DashWorker['permits']['fixes']>
+  title: string
+  recheck?: boolean
+}) {
+  return html`<section class="worker-lane" aria-label=${title}>
+    <div><strong>${title}</strong><span>${recheck ? `${lane.used} selected` : count(lane)}</span></div>
+    ${lane.entries.length ? html`<ol>${lane.entries.map(({ id, label, state }) => html`
+      <li key=${id}><span>${label}</span><span data-lane-state=${state}>${state}</span></li>`)}</ol>` : ''}
+  </section>`
+}
 
 function WorkerCard({ worker, onOpen }: { worker: DashWorker; onOpen: () => void }) {
   const { label, status, turn, permits } = worker
@@ -47,12 +50,12 @@ function WorkerCard({ worker, onOpen }: { worker: DashWorker; onOpen: () => void
         <dt>Account sessions</dt><dd>${count(permits.provider)}${permits.provider.charged ? ' · slot held' : ''}</dd>
         ${permits.attempts?.map((permit) => html`<dt key=${`attempt-${permit.actor}`}>${memberOf(worker, permit.actor)} attempts</dt><dd>${count(permit)}</dd>`)}
         ${permits.children?.map((permit) => html`<dt key=${`child-${permit.actor}`}>${memberOf(worker, permit.actor)} children</dt><dd>${count(permit)}</dd>`)}
-        ${permits.fixes ? html`<dt>Fix permits</dt><dd>${count(permits.fixes)}</dd>` : ''}
-        ${permits.rechecks ? html`<dt>Recheck lane</dt><dd>${count(permits.rechecks)}</dd>` : ''}
       </dl>
+      ${permits.fixes ? html`<${Lane} title="Fix lane" lane=${permits.fixes} />` : ''}
+      ${permits.rechecks ? html`<${Lane} title="Recheck lane" lane=${permits.rechecks} recheck />` : ''}
       ${worker.waits?.length ? html`<ul class="worker-waits" aria-label="Why work waits">
         ${worker.waits.map(({ actor, step, reason }) => html`<li key=${[actor, step, reason].join('/')}>
-          ${actor ? html`<strong>${memberOf(worker, actor)}${step ? ` · ${step}` : ''}</strong> ` : ''}${waits[reason]}
+          ${actor ? html`<strong>${memberOf(worker, actor)}${step ? ` · ${step}` : ''}</strong> ` : ''}${reason}
         </li>`)}
       </ul>` : ''}
       ${worker.session?.attach ? html`<button class="btn worker-open" onClick=${onOpen}>Open in local tmux</button>` : ''}

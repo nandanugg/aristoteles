@@ -1,4 +1,5 @@
 import type { Turn } from '../../schema/index.ts'
+import type { Runtime } from '../../state/worker-runtime.ts'
 import type { WorkState } from '../../state/c16/state.ts'
 import { actorOf, type Step } from '../../state/c16/types.ts'
 import { dos, stepAge } from './obligations.ts'
@@ -12,6 +13,10 @@ export const workerSteps = (state: WorkState, members: ReadonlyArray<string>) =>
     state.down.has(actor) ? [] : dos(state, actorOf(actor)).map((step, index) => ({ actor, step, index }))
   ).sort((a, b) => stepAge(state, a.step) - stepAge(state, b.step) ||
     a.index - b.index || a.actor.localeCompare(b.actor))
+
+export const workerSerialActors = (state: WorkState, runtime: Runtime, worker: string) =>
+  [...runtime.serial.values()].filter((entry) => entry.worker === worker &&
+    state.makers.get(entry.actor.slice('maker:'.length))?.ended === false).map(({ actor }) => actor)
 
 export const oldestWorkerStep = (state: WorkState, members: ReadonlyArray<string>,
   eligible: (actor: string, step: Step) => boolean = () => true,

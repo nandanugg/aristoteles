@@ -339,6 +339,7 @@ export function startServer(options: ServerOptions): ServerHandle {
       state,
       hostSession,
       runtime: runtimeWorkers,
+      admission: { policy: folded.policy, permits: folded.permits },
       localAttach: (session) => isBootstrapSession(session)
         ? bootstrapAlive(dir, session.slice('boot-'.length)) ? bootstrapAttach(dir, session) : null
         : pump && terminals[session]?._tag === 'Live' ? workerAttach(pump.socket, pump.name, session) : null,

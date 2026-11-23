@@ -1187,6 +1187,7 @@ button.card { text-align: left; width: 100%; padding: 0; cursor: pointer; }
   display: grid; gap: 4px; margin: 0; padding: 8px 10px; list-style: none;
   background: var(--amber-tint); color: var(--amber); border-radius: 6px; font-size: 13px;
 }
+.worker-waits strong { display: block; }
 .worker-open { justify-self: start; }
 .card.worker-link {
   padding: 8px 11px; min-height: 38px; width: fit-content; max-width: 100%; cursor: pointer;
@@ -1209,3 +1210,13 @@ button.card { text-align: left; width: 100%; padding: 0; cursor: pointer; }
   border-radius: 6px; background: var(--surface-2); overflow-wrap: anywhere;
 }
 .staffing-placement li span { color: var(--muted); font-size: 13px; }
+.worker-lane {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+  font-size: 13px; background: var(--surface-2);
+}
+.worker-lane > div, .worker-lane li { display: flex; justify-content: space-between; gap: 8px; }
+.worker-lane > div span, .worker-lane li > span:last-child { color: var(--muted); }
+.worker-lane ol { list-style: none; padding: 0; margin: 5px 0 0; }
+.worker-lane li { padding: 3px 0; }
+.worker-lane li span { overflow-wrap: anywhere; }
+.worker-lane li span[data-lane-state="waiting"] { color: var(--amber); }
