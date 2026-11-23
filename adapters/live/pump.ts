@@ -747,7 +747,8 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     // A stop of the person: the window goes, and the watcher does not retry it.
     stop(sid) {
       if (adopted.has(sid)) ownPane(sid)
-      tmuxNow('kill-window', '-t', target(sid))
+      const stopped = tmuxNow('kill-window', '-t', target(sid))
+      if (stopped.code !== 0) return refuse(`tmux could not stop ${sid}`)
       known.delete(sid)
       gone.delete(sid)
     },

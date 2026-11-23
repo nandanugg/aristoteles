@@ -16,11 +16,14 @@ import { foldWork } from '../state/c16/fold.ts'
 import { type ActorKey } from '../state/c16/types.ts'
 import { nowMs } from './acting.ts'
 import { fill } from './lines.ts'
+import { superviseRechecks, type HelperWords } from './recheck.ts'
+import { settlePark } from '../actions/recheck.ts'
+import { foldRechecks } from '../state/rechecks.ts'
 import { ruleHolds } from './rules.ts'
 
 const ENGINE: Author = { _tag: 'System' }
 
-export interface Words {
+export interface Words extends HelperWords {
   readonly workerAck?: string
   readonly workerPrompt?: (members: ReadonlyArray<string>) => string
   readonly bootstrap?: (session: string) => { readonly state: 'live' | 'ended' | 'unknown'; readonly stop: () => void } | null
@@ -56,8 +59,11 @@ const supervise = (say: Words, events: Parameters<typeof foldRuntime>[0], hostSe
     if (placements.length === 0) return
     yield* activationLock(cwd)
     const store = yield* (yield* Store).open(cwd, { create: false })
+    let recheckAccount = yield* superviseRechecks(say)
     const now = yield* nowMs
-    for (const placement of placements) {
+    const parked = [...foldRechecks(yield* store.events).values()].filter((job) =>
+      job.park?._tag === 'WorkerParkConfirmed' && !job.resumed).map((job) => job.queued.worker)
+    for (const placement of [...placements].sort((a, b) => Number(parked.includes(b.worker)) - Number(parked.includes(a.worker)))) {
       const backoff = (yield* Ref.get(memory)).get(placement.worker)
       const current = foldRuntime(yield* store.events).workers.get(placement.worker)
       if (current && !current.ended) {
@@ -71,6 +77,28 @@ const supervise = (say: Words, events: Parameters<typeof foldRuntime>[0], hostSe
           return (yield* pump.status)[sid]?._tag === 'Live' ? 'live' : 'ended'
         })
         const process = yield* observe
+        if (current.parking) {
+          const job = current.parking.job
+          if (process === 'ended') {
+            yield* settlePark(job, launch, 'ended')
+            yield* pump.forget(sid)
+            recheckAccount = placement.account
+            continue
+          }
+          if (process === 'live') {
+            const external = bootstrap === null ? null : say.bootstrap?.(bootstrap)
+            const stopped = external ? yield* Effect.result(Effect.try(external.stop)) : yield* Effect.result(pump.stop(sid))
+            const observed = yield* observe
+            if (observed === 'ended') {
+              yield* settlePark(job, launch, 'ended')
+              yield* pump.forget(sid)
+              recheckAccount = placement.account
+              continue
+            }
+            if (stopped._tag === 'Failure' && observed === 'live') yield* settlePark(job, launch, 'stop failed')
+          }
+          continue
+        }
         if (ended || current.fenced || process === 'ended') {
           yield* settleWorker(worker, generation, launch)
           if (process === 'live') {
@@ -109,8 +137,14 @@ const supervise = (say: Words, events: Parameters<typeof foldRuntime>[0], hostSe
         continue
       }
       if (current?.ended) yield* settleGenerationChildren(placement.worker, current.reservation.generation)
-      if (ended || (backoff !== undefined && now < backoff.until)) continue
+      if (ended || recheckAccount === placement.account || (backoff !== undefined && now < backoff.until)) continue
       const launch = randomUUID().replaceAll('-', '')
+      const before = yield* store.events
+      const pendingResume = [...foldRechecks(before).values()].find((job) =>
+        job.queued.worker === placement.worker && job.park?._tag === 'WorkerParkConfirmed' && !job.resumed)
+      const checkpoint = pendingResume?.checkpoint
+      const handle = checkpoint ? readWorkerLaunch(cwd, checkpoint.checkpoint, 'checkpoint') : null
+      if (checkpoint && (!handle || sha(handle) !== checkpoint.digest || !placement.resume)) continue
       const reserved = yield* reserveWorker(placement.worker, launch)
       if (reserved === null) continue
       const generation = (current?.reservation.generation ?? 0) + 1
@@ -128,7 +162,8 @@ const supervise = (say: Words, events: Parameters<typeof foldRuntime>[0], hostSe
       const db = env._tag === 'Some' ? env.value.vars.ARISTOTELES_DB : undefined
       const launchEnv = { ...(db === undefined ? {} : { ARISTOTELES_DB: db }), ARISTOTELES_WORKER_CREDENTIAL: `g.${launch}.${generation}.${secret}` }
       const prompt = (say.workerPrompt?.(placement.members) ?? '') + ' Run work worker wait "$ARISTOTELES_WORKER_CREDENTIAL" and do the step it prints. Repeat the wait after each step.'
-      const command = fill(placement.launch, { session: sid, model: placement.model, prompt })
+      const command = fill(handle && placement.resume ? placement.resume : placement.launch,
+        { session: handle ?? sid, model: placement.model, prompt })
       yield* Ref.update(memory, (all) => new Map(all).set(placement.worker,
         { launchedAt: now, delay: backoff?.delay ?? 0, until: 0 }))
       const started = yield* Effect.result(pump.start(sid, {

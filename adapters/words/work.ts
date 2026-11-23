@@ -1,9 +1,10 @@
 // The words of the work model's told steps: the command of a step (with the basis `--on <seq>`
 // where the act has one), the plain lines above it, and the maker's brief. The steps come from
 // core/derived/c16/obligations.ts (`dos`); this file only writes them.
-import type { Recorded } from '../../core/schema/index.ts'
+import type { Recorded, RecheckBrief } from '../../core/schema/index.ts'
+import { recheckInput } from '../../core/derived/c16/recheck.ts'
 import { take } from '../../core/state/c16/effect.ts'
-import { appliesTo, depth, fixOf, recheckItems, uncovered, verOf } from '../../core/state/c16/reads.ts'
+import { appliesTo, depth, fixOf, uncovered } from '../../core/state/c16/reads.ts'
 import { initState, type WorkState } from '../../core/state/c16/state.ts'
 import type { Body, Step } from '../../core/state/c16/types.ts'
 import { kindOf, type ItemKey, type Level } from '../../core/state/c16/data.ts'
@@ -209,27 +210,25 @@ const stageWords = (s: WorkState, id: string): string => {
 
 const draftStory = 'State what changes, why, what it affects, and one before/after example.'
 
+export const recheckBriefWords = (id: string, on: number, brief: RecheckBrief): Lines => [
+  `Recheck task ${id}: ${brief.goal}`,
+  `Basis: --on ${on}`,
+  `Sections: ${brief.sections.join(', ')}`,
+  ...(brief.output ? [`Reported result: ${brief.output}`] : []),
+  ...(brief.files.length ? [`Result files: ${brief.files.join(', ')}`] : []),
+  'Required items:',
+  ...brief.rules.flatMap(({ item, version, says, reference, test, knownBreaks }) => [
+    `  ${item} @${version}: ${says}`,
+    ...(reference ? [`    Reference: ${reference}`] : []),
+    ...(test ? [`    Test command: ${test}`] : []),
+    ...knownBreaks.map((spot) => `    Known break: ${spot}`),
+  ]),
+  'Report the inspected item keys and versions with your evidence. Keep this basis.',
+]
+
 export const recheckBriefOf = (s: WorkState, id: string): Lines | undefined => {
-  const task = s.tasks.get(id)
-  if (task?.state !== 'Done') return undefined
-  const items = [...recheckItems(s, task)].sort()
-  if (!items.length) return undefined
-  return [
-    `Recheck task ${id}: ${task.goal}`,
-    `Basis: --on ${s.seq}`,
-    `Sections: ${task.sections.join(', ')}`,
-    'Required items:',
-    ...items.flatMap((item) => {
-      const rule = s.items.get(item)
-      return [
-        `  ${item} @${verOf(s.ver, item)}: ${rule?.says ?? '(removed)'}`,
-        ...(rule?.ref ? [`    Reference: ${rule.ref}`] : []),
-        ...(rule?.test ? [`    Test command: ${rule.test}`] : []),
-        ...(rule?.knownBreaks ?? []).map((spot) => `    Known break: ${spot}`),
-      ]
-    }),
-    'Report the inspected item keys and versions with your evidence. Keep this basis.',
-  ]
+  const input = recheckInput(s, id)
+  return input ? recheckBriefWords(id, input.on, input.brief) : undefined
 }
 
 export const stepWords = (s: WorkState, step: Step, events: ReadonlyArray<Recorded>): Lines => {

@@ -5,6 +5,9 @@
 // that the watcher does not take it for a silent terminal (adapters/live/waiting.ts).
 import { randomUUID } from 'node:crypto'
 import { Effect, Fiber } from 'effect'
+import { canCheckpoint, checkpointWorker, helperCredential } from '../../../core/actions/recheck.ts'
+import { readyRecheck } from '../../../core/derived/c16/recheck.ts'
+import { foldRechecks } from '../../../core/state/rechecks.ts'
 import { acknowledgeChild, authorizeChildStart, finishReviewChild, reconcileChild, reserveReviewChild } from '../../../core/actions/child.ts'
 import { admissionFor, stepDemand } from '../../../core/derived/c16/admission.ts'
 import { workerSteps } from '../../../core/derived/c16/worker.ts'
@@ -13,7 +16,7 @@ import { childFor, foldRuntime, privateWorker } from '../../../core/state/worker
 import { folding } from '../../../core/actions/dispatch.ts'
 import { type WaitEnd, waitFor } from '../../../core/effects/wait.ts'
 import { refuse } from '../../../core/schema/index.ts'
-import { Dir, Env, readWorkerLaunch, sha, stageWorkerLaunch, Store, Terminal } from '../../../core/services/index.ts'
+import { cliSession, Dir, Env, readWorkerLaunch, sha, stageWorkerLaunch, Store, Terminal } from '../../../core/services/index.ts'
 import { foldWork } from '../../../core/state/c16/fold.ts'
 import { type Answered, actorOf } from '../../../core/state/c16/types.ts'
 import { BEAT_MS, markReturned, markWaiting, type WaitPlace } from '../../live/waiting.ts'
@@ -90,12 +93,50 @@ const waitWorker = (
   hostToken?: string,
   privateActor?: string,
 ) => Effect.gen(function* () {
+  const { cwd } = yield* Dir
   const until = Date.now() + seconds * 1000
   if (abandon) {
     yield* offerWorker(worker, generation, secret, true)
     return ['The outstanding turn was abandoned.']
   }
   for (;;) {
+    const before = yield* store.events
+    const priorRuntime = foldRuntime(before)
+    const parent = priorRuntime.workers.get(worker)
+    if (parent?.reservation.generation === generation && !parent.fenced && !parent.ended &&
+      parent.binding?.waitVerifier === sha(secret)) {
+      const job = [...foldRechecks(before).values()].find((entry) =>
+        entry.queued.worker === worker && !entry.report && !entry.taken &&
+        (!entry.cancelled || (entry.route?.kind === 'child' &&
+          priorRuntime.children.get(entry.route.allocation)?.released === null)))
+      if (parent.parking) return [`Worker park for ${parent.parking.job} is awaiting a confirmed stop.`]
+      const route = job?.route?.kind === 'child' ? priorRuntime.children.get(job.route.allocation) : undefined
+      if (job && route && !route.released) {
+        const member = parent.binding.members.find(({ actor }) => actor === 'pipe')
+        if (member) {
+          const token = workTokenOf('pipe', member.epoch, memberSecretOf(secret, 'pipe', member.epoch))
+          if (route.started && (job.cancelled || route.reservation.generation !== generation)) {
+            return [`Confirm the native recheck child has stopped before settling ${route.reservation.child}.`,
+              `work worker child-reconcile ${token} ${route.reservation.child} --observation="<native CLI outcome>"`]
+          }
+          if (!job.cancelled && !route.started && route.reservation.generation === generation) {
+            return [`Fresh recheck for ${job.queued.task}: work worker child-start ${token} ${route.reservation.child}`]
+          }
+        }
+      }
+      if (job?.deferred && parent.binding && !parent.offer && canCheckpoint(parent) &&
+        (job.checkpoint?.generation !== generation ||
+          (job.park?._tag === 'WorkerParkCancelled' && job.park.checkpoint === job.checkpoint.checkpoint)) &&
+        ![...priorRuntime.children.values()].some(({ reservation, released }) =>
+          reservation.worker === worker && released === null)) {
+        const session = parent.binding.session
+        const handle = parent.reservation.checkpoint
+          ? readWorkerLaunch(cwd, parent.reservation.checkpoint, 'checkpoint')
+          : cliSession(session.startsWith('boot-') ? session.slice('boot-'.length) : session)
+        return [job.deferred.reason,
+          `After the native CLI saves its session, run work worker checkpoint ${job.queued.job} ${handle} --credential=<worker-credential>.`]
+      }
+    }
     yield* offerWorker(worker, generation, secret)
     const events = yield* store.events
     const folded = foldWork(events)
@@ -116,11 +157,20 @@ const waitWorker = (
         : shown
       const scoped = command.replace(/--on (\d+)(?=\s|$)/, '--on=$1')
       const on = /(?:^|\s)--on=/.test(scoped) ? '' : ` --on=${offer.on}`
+      const job = offer.step.act === 'RecheckDone'
+        ? readyRecheck(folded.state, runtime, foldRechecks(events), offer.step.task ?? '') : undefined
+      const verdict = job?.report
+      const payload = verdict && job
+        ? `work recheck ${token} ${job.queued.task} ${verdict.findings.every((finding) => finding.outcome === 'holds') ? 'holds' : 'fails'} --items=${job.queued.items.map(([id]) => id).join(',')} --job=${job.queued.job} --report=${verdict.report}`
+        : scoped
+      const basis = verdict ? ` --on=${offer.on}` : on
       const heard = offer.step.act === 'Hear' ? folded.state.answered.get(offer.step.ask ?? '') : undefined
       return [
-        ...stepWords(folded.state, offer.step, events),
+        ...(job && verdict
+          ? [`Helper report ${verdict.report} for ${job.queued.task} checked the exact items on basis ${job.queued.on}.`]
+          : stepWords(folded.state, offer.step, events)),
         ...(heard === undefined ? [] : [answerWords(heard)]),
-        privateSpelling ? `${scoped}${on}` : `${scoped}${on} --turn=${workerSecretOf(secret, offer.turn)}`,
+        privateSpelling ? `${payload}${basis}` : `${payload}${basis} --turn=${workerSecretOf(secret, offer.turn)}`,
       ]
     }
     if (Date.now() >= until) {
@@ -128,7 +178,9 @@ const waitWorker = (
         const route = admissionFor(folded, runtime, actor, stepDemand(step))
         return route.kind === 'waiting' ? [route.reason] : []
       }) : []
-      return [...new Set(blocked), 'Run the worker wait again.']
+      const job = [...foldRechecks(events).values()].find((entry) =>
+        entry.queued.worker === worker && !entry.taken && !entry.cancelled)
+      return [...new Set(blocked), ...(job?.deferred ? [job.deferred.reason] : []), 'Run the worker wait again.']
     }
     yield* Effect.sleep(POLL_MS)
   }
@@ -138,6 +190,13 @@ const worker: Command = (call) => Effect.gen(function* () {
   const { cwd } = yield* Dir
   const { vars } = yield* Env
   const [action, raw] = call.args.positional
+  if (action === 'checkpoint') {
+    const handle = call.args.positional[2]
+    const credential = textOf(call.args.one('credential')) ?? vars.ARISTOTELES_WORKER_CREDENTIAL
+    if (!raw || !handle || !credential) return yield* refuse('Supply the job, native session handle and worker credential.')
+    yield* checkpointWorker(raw, credential, handle)
+    return ['Checkpoint saved. Wait for the worker park to reconcile.']
+  }
   if (action === 'child-ack' || action === 'child-review-done') {
     if (!call.token) return yield* refuse('Supply the allocated child credential.')
     if (action === 'child-ack') yield* acknowledgeChild(call.token)
@@ -179,6 +238,12 @@ const worker: Command = (call) => Effect.gen(function* () {
     const draft = comparison ? JSON.stringify({
       summary: comparison.summary, role: comparison.roleDraft, items: [...comparison.draft],
     }) : '{}'
+    if (child.reservation.purpose === 'recheck') {
+      const helper = helperCredential(child.reservation.launch, secret)
+      const job = child.reservation.job
+      return [`Start one fresh background subagent using model ${model} with this prompt:`,
+        `You are a fresh recheck helper of an Aristoteles project. Run work recheck-helper ack ${helper}, then work recheck-brief ${helper} ${job}. Judge the exact result. Write YAML with on and findings (item, version, outcome holds or breaks, evidence). Submit work recheck-report ${helper} ${job} --file=<report>, then stop.`]
+    }
     const prompt = child.reservation.purpose === 'maker' ? makerWords(actor, token) :
       `You are a reviewer of an Aristoteles project. Acknowledge with work worker child-ack ${token}. ` +
       `Review draft ${child.reservation.subject} on basis ${child.reservation.on}. Keep the files unchanged. Draft: ${draft}\n` +

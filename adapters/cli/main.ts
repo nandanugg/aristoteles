@@ -25,6 +25,7 @@ import { commands as activation } from './commands/activation.ts'
 import { commands as acts } from './commands/acts.ts'
 import { commands as directions } from './commands/directions.ts'
 import { commands as onboard } from './commands/onboard.ts'
+import { commands as rechecks } from './commands/recheck.ts'
 import { commands as reads } from './commands/reads.ts'
 import { commands as setup } from './commands/setup.ts'
 import { commands as waits } from './commands/wait.ts'
@@ -39,6 +40,7 @@ const COMMANDS: Commands = {
   ...reads,
   ...directions,
   ...waits,
+  ...rechecks,
   ...onboard,
   ...acts,
 }

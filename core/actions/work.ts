@@ -6,6 +6,8 @@ import { memberSecretOf } from './worker.ts'
 import { ACTIVATION, activationOf, gate } from './activation.ts'
 import { Effect, Schema } from 'effect'
 import { currentOf, officialAt } from '../derived/reads.ts'
+import { readyRecheck } from '../derived/c16/recheck.ts'
+import { checkpointBlocksTurn, foldRechecks } from '../state/rechecks.ts'
 import { actDemand, admissionFor, stepDemand } from '../derived/c16/admission.ts'
 import { currentOffer, obligationOf, oldestWorkerStep } from '../derived/c16/worker.ts'
 import { childFor, foldRuntime, matchesStep, privateWorker } from '../state/worker-runtime.ts'
@@ -23,11 +25,12 @@ import {
   type ChildRelease,
   type ChildReservation,
   type SerialAssignment,
+  type RecheckUse,
   type Turn,
   type WorkerDelivery,
   type WorkerPlacement,
 } from '../schema/index.ts'
-import { activationLock, Dir, Files, Now, readStaffing, readWorkerLaunch, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
+import { activationLock, Dir, Files, Now, readSettings, readStaffing, readWorkerLaunch, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
 import { fold } from '../state/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { take } from '../state/c16/effect.ts'
@@ -65,6 +68,7 @@ export interface ActCall {
   readonly actorEpoch?: number
   readonly credential?: string
   readonly turn?: string
+  readonly recheck?: RecheckUse
 }
 // A token the act made: the actor, its epoch and the secret (the store keeps only the hash).
 export interface NewToken {
@@ -186,7 +190,7 @@ const checkLoopMode = (body: Body, events: ReadonlyArray<Recorded>, cwd: string,
 
 const requestOf = (call: ActCall): string => sha(JSON.stringify([
   call.by, keyOf(call.act.who), call.act.ep, Schema.encodeSync(BodySchema)(call.act.body),
-  call.on, call.build, call.forward ?? null, call.turn === undefined ? null : sha(call.turn),
+  call.on, call.build, call.forward ?? null, call.turn === undefined ? null : sha(call.turn), call.recheck ?? null,
 ]))
 
 const deliveryOf = (
@@ -228,7 +232,7 @@ const deliveryOf = (
   if (secret === undefined) {
     return yield* named('authority', 'The credential does not name the submitting identity.')
   }
-  if (!worker || worker.fenced || worker.ended || !member || member.epoch !== ep ||
+  if (!worker || worker.fenced || worker.parking || worker.ended || !member || member.epoch !== ep ||
     member.verifier !== sha(secret)) {
     return yield* named('epoch', 'This worker binding is no longer current.')
   }
@@ -239,13 +243,18 @@ const deliveryOf = (
     }
     return saved
   }
+  const jobs = foldRechecks(events)
+  if (checkpointBlocksTurn(jobs, runtime, worker)) {
+    return yield* named('legal', 'The worker has checkpointed and is waiting for park reconciliation.')
+  }
   const privateCall = serial === undefined && privateWorker(placement) && call.turn === undefined
   let offer = worker.offer
   if (privateCall && (!offer || !currentOffer(folded.state, offer))) {
     const admission = admissionFor(folded, runtime, actor, actDemand(call.act, folded))
     if (admission.kind === 'waiting') return yield* named('cap', admission.reason)
     const selected = oldestWorkerStep(folded.state, placement.members, (key, step) =>
-      admissionFor(folded, runtime, key, stepDemand(step)).kind !== 'waiting')
+      admissionFor(folded, runtime, key, stepDemand(step)).kind !== 'waiting' &&
+      (step.act !== 'RecheckDone' || readyRecheck(folded.state, runtime, jobs, step.task ?? '') !== undefined))
     if (!selected || selected.actor !== actor || !matchesStep(call.act.body, selected.step)) {
       return yield* named('authority', 'This act is not the next owed step of the private worker.')
     }
@@ -345,6 +354,21 @@ export const dispatchAct = (call: ActCall) =>
           return yield* Effect.fail(named('basis', 'The evidence was computed before items changed.'))
         }
         const runtime = foldRuntime(events)
+        if (act.body._tag === 'RecheckDone' && delivery) {
+          const { task, items, holds } = act.body
+          const job = readyRecheck(now, runtime, foldRechecks(events), task)
+          if (!job?.report || call.recheck?.job !== job.queued.job || call.recheck.report !== job.report.report) {
+            return yield* named('stale', 'Use the current helper job and report for this result.')
+          }
+          if (job.report.on !== job.queued.on ||
+            job.queued.items.length !== items.size ||
+            job.queued.items.some(([item]) => !items.has(item))) {
+            return yield* named('basis', 'The report does not match the original recheck set and basis.')
+          }
+          if (holds !== job.report.findings.every(({ outcome }) => outcome === 'holds')) {
+            return yield* named('form', 'The verdict does not match the helper findings.')
+          }
+        } else if (call.recheck) return yield* named('authority', 'Only a managed Pipe verdict can consume a helper report.')
         const demand = actDemand(act, folded)
         const route = admissionFor(folded, runtime, keyOf(act.who), demand)
         if (route.kind === 'waiting') return yield* named('cap', route.reason)
@@ -386,6 +410,7 @@ export const dispatchAct = (call: ActCall) =>
         const event = create('Work', {
           _tag: 'Acted',
           act, delivery,
+          ...(call.recheck ? { recheck: call.recheck } : {}),
           ...(inlineOffer === undefined ? {} : { inlineOffer }),
           ...(childReserved === undefined ? {} : { childReserved }),
           ...(childReleased === undefined ? {} : { childReleased }),
@@ -629,7 +654,9 @@ const triesOf = (w: Work): number => {
   return limits.length === 0 ? TRIES : Math.min(...limits)
 }
 
-const placementsOf = (work: Work, staffing: import('../services/index.ts').Staffing) => {
+const placementsOf = (work: Work, staffing: import('../services/index.ts').Staffing,
+  models: Effect.Success<ReturnType<typeof readSettings>>['models'],
+) => {
   const groups = new Map<string, WorkerPlacement>()
   const admission: AdmissionPolicy[] = []
   const roles = Object.entries(work.config.roles)
@@ -654,6 +681,8 @@ const placementsOf = (work: Work, staffing: import('../services/index.ts').Staff
     groups.set(worker, {
       worker, account: binding.account, cli: binding.cli, model: binding.model, launch: binding.launch,
       sessionLimit: staffing.accounts[binding.account]?.sessionLimit ?? null,
+      canPark: staffing.clis[binding.cli]?.canPark === true,
+      resume: models[binding.model]?.resume ?? null,
       members: [actor, ...(placement?.members ?? [])],
     })
   }
@@ -706,7 +735,9 @@ export const writeTop = (call: OpenCall, managed: boolean) =>
           ? yield* readStaffing(cwd).pipe(Effect.provideService(Files, files.value))
           : null
         if (managed && staffing === null) return yield* ACTIVATION.legal('Top open needs staffing for this directory.')
-        const arrangement = staffing === null ? undefined : placementsOf(work, staffing)
+        const settings = staffing !== null && files._tag === 'Some'
+          ? yield* readSettings(cwd).pipe(Effect.provideService(Files, files.value)) : null
+        const arrangement = staffing === null || settings === null ? undefined : placementsOf(work, staffing, settings.models)
         if (arrangement === null) {
           return yield* ACTIVATION.legal('Persistent role staffing does not define compatible workers.')
         }

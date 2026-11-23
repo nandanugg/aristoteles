@@ -7,6 +7,8 @@ import { epochOf } from '../state/c16/reads.ts'
 import { actorOf, type RefusalName } from '../state/c16/types.ts'
 import { childFor, childLoad, foldRuntime, type ChildAllocation, type Runtime } from '../state/worker-runtime.ts'
 import type { WorkFolded } from '../state/c16/fold.ts'
+import { currentRecheck } from '../derived/c16/recheck.ts'
+import { foldRechecks } from '../state/rechecks.ts'
 import { currentOffer } from '../derived/c16/worker.ts'
 import { workerRefusal, writeRuntime } from './worker.ts'
 
@@ -16,7 +18,7 @@ const SUPERVISOR = { _tag: 'Supervisor', name: 'worker runtime' } as const
 const currentWorker = (runtime: Runtime, child: ChildAllocation) => {
   const { worker, generation } = child.reservation
   const parent = runtime.workers.get(worker)
-  return parent?.reservation.generation === generation && !parent.fenced && !parent.ended
+  return parent?.reservation.generation === generation && !parent.fenced && !parent.ended && !parent.parking
     ? parent : undefined
 }
 const parsed = (token: string) => /^w\.(.+)\.(\d+)\.([a-z0-9]+)$/.exec(token)
@@ -39,9 +41,14 @@ const fieldsOf = ({ reservation }: ChildAllocation) => ({
 })
 const failure = (kind: RefusalName, message: string) => Effect.fail(workerRefusal(kind, message))
 
-const stillOwed = (folded: WorkFolded, { reservation }: ChildAllocation): boolean => {
+const stillOwed = (folded: WorkFolded, { reservation }: ChildAllocation, events: Parameters<typeof foldRechecks>[0]): boolean => {
   const { state, permits } = folded
   if (state.top.ended) return false
+  if (reservation.purpose === 'recheck') {
+    const job = reservation.job ? foldRechecks(events).get(reservation.job) : undefined
+    return job !== undefined && !job.cancelled && !job.taken && !job.report &&
+      job.route?.allocation === reservation.child && currentRecheck(state, job)
+  }
   if (reservation.purpose === 'review') {
     const fix = state.fixes.get(reservation.subject)
     return permits.fixes.has(reservation.attempt) && fix?.stage === 'InLoop' &&
@@ -100,7 +107,7 @@ export const authorizeChildStart = (id: string, parentToken: string, secret: str
     if (!child || !parentMatches(runtime, child, parentToken)) {
       return failure('authority', 'Only the current parent can launch this child.')
     }
-    if (child.released || !stillOwed(folded, child)) {
+    if (child.released || !stillOwed(folded, child, events)) {
       return failure('stale', 'The child reservation is no longer owed.')
     }
     return Effect.succeed(child.started ? null : {
@@ -116,7 +123,7 @@ export const acknowledgeChild = (token: string) =>
     if (!child) return failure('authority', 'There is no child for this credential.')
     if (!currentWorker(runtime, child) || child.released || folded.state.top.ended ||
       Number(match?.[2]) !== child.reservation.epoch || child.started?.verifier !== sha(match![3]!) ||
-      !stillOwed(folded, child)) {
+      !stillOwed(folded, child, events)) {
       return failure('epoch', 'This child allocation is no longer current.')
     }
     return Effect.succeed(child.binding ? null : {
@@ -135,7 +142,7 @@ export const finishReviewChild = (token: string) =>
       return failure('authority', 'Only the bound review child can complete its allocation.')
     }
     if (child.released?.reason === 'reported') return Effect.succeed(null)
-    if (child.released || !stillOwed(folded, child)) return failure('stale', 'This review is no longer owed.')
+    if (child.released || !stillOwed(folded, child, events)) return failure('stale', 'This review is no longer owed.')
     return Effect.succeed({
       _tag: 'ChildReleased', ...fieldsOf(child), reason: 'reported', observation: 'Review child completed.',
     })

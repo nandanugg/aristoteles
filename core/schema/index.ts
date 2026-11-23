@@ -191,4 +191,4 @@ export * from '../../src/domain/lookup.ts'
 // The moves of the records: only core/state (the fold) uses them (BUILD.md 3.3).
 export * as Moves from '../../src/domain/moves.ts'
 
-export { type AdmissionPolicy, type ChildRelease, type ChildReservation, RuntimeEvent, type SerialAssignment, Turn, WorkerDelivery, WorkerPlacement } from '../../src/domain/worker-runtime.ts'
+export { type AdmissionPolicy, type ChildRelease, type ChildReservation, type RecheckBrief, RecheckFinding, type RecheckUse, RuntimeEvent, type SerialAssignment, Turn, WorkerDelivery, WorkerPlacement } from '../../src/domain/worker-runtime.ts'

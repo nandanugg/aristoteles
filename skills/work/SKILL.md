@@ -186,14 +186,18 @@ You are `pipe`. You run every evaluation, the direction pipeline, and the review
   reviewer, run `work worker child-review <token> <fix>` with the offered basis and receipt.
   Follow the child-start instructions and wait for completion before submitting the verdict.
   The person accepts the draft or sends it back.
-- **Recheck** a done task after items changed. Read `work recheck-brief <task> --on <n>`
-  using the basis from the dispatched step. When staffing permits, give the brief to fresh
-  subagents to judge the result. If a fresh context is unavailable, defer the recheck. Each report names the exact item keys and versions it inspected, with evidence.
-  Aggregate reports only on that same basis. Record one verdict after covering the whole
-  required set with `work recheck <token> <task> holds|fails --items=<key,key,...> --on <n>`.
-  Keep the original `--on` through submission. If the store refuses stale evidence, dispatch
-  a new recheck on a fresh brief. The harness handles test-only rules. A rule with both a test
-  and a reference still needs judgment and appears in the brief.
+- **Recheck** a done task after items changed. The worker wait gives the fresh helper launch when
+  a background allocation is available. Follow the prompt exactly. If the wait asks for a
+  checkpoint, save the current native CLI session at the worker boundary and run the shown
+  `work worker checkpoint` command. Resume uses the same native session after the fresh helper
+  releases its provider slot. A deferred job waits for compatible capacity.
+- **Fresh recheck helper.** Read the immutable job with `work recheck-brief` using the job
+  credential. Write a YAML report with `on` and `findings`. Each finding has `item`, `version`,
+  `outcome` (`holds` or `breaks`) and `evidence`. Cover the exact required set once on the
+  original basis. Submit it with `work recheck-report`, then stop.
+- **Take the verdict.** Pipe waits for the normal C16 recheck command. Use the printed job and
+  report IDs, verdict, exact item set, basis and receipt together. The worker's own context
+  cannot substitute for a fresh helper. The harness still handles test-only rules.
 
 ## One source of instructions
 

@@ -78,6 +78,9 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
           if (actor.startsWith('maker:')) state = childDown(state, actor)
         }
       }
+      if (runtime._tag === 'WorkerParkConfirmed') {
+        state = { ...(state as WorkState), down: new Set([...state.down, ...(runtimeMembers.get(runtime.worker) ?? [])]) }
+      }
       if (runtime._tag === 'WorkerEnded') {
         for (const child of children.values()) {
           if (child.purpose === 'maker' && child.worker === runtime.worker && child.generation === runtime.generation &&

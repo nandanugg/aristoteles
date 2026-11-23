@@ -9,6 +9,7 @@ export interface WorkerGeneration {
   readonly fenced: boolean
   readonly ended: boolean
   readonly offer: Turn | null
+  readonly parking: Extract<RuntimeEvent, { _tag: 'WorkerParkRequested' }> | null
 }
 
 export interface ChildAllocation {
@@ -62,12 +63,18 @@ export const foldRuntime = (events: ReadonlyArray<Recorded>) => {
       continue
     }
     if (e._tag === 'WorkerReserved') {
-      workers.set(e.worker, { reservation: e, binding: null, fenced: false, ended: false, offer: null })
+      workers.set(e.worker, { reservation: e, binding: null, fenced: false, ended: false, offer: null, parking: null })
       continue
     }
+    if (!('worker' in e) || !('generation' in e)) continue
     const current = workers.get(e.worker)
     if (!current || current.reservation.generation !== e.generation) continue
     switch (e._tag) {
+      case 'WorkerParkRequested': workers.set(e.worker, { ...current, offer: null, parking: e }); break
+      case 'WorkerParkCancelled': workers.set(e.worker, { ...current, parking: null }); break
+      case 'WorkerParkConfirmed':
+        workers.set(e.worker, { ...current, ended: true, fenced: true, offer: null, parking: null })
+        break
       case 'WorkerBound': workers.set(e.worker, { ...current, binding: e }); break
       case 'WorkerFenced': workers.set(e.worker, { ...current, fenced: true, offer: null }); break
       case 'WorkerEnded': workers.set(e.worker, { ...current, ended: true, fenced: true, offer: null }); break
@@ -81,6 +88,10 @@ export const foldRuntime = (events: ReadonlyArray<Recorded>) => {
 }
 
 export type Runtime = ReturnType<typeof foldRuntime>
+
+export const slotAvailable = (runtime: Runtime, placement: WorkerPlacement): boolean =>
+  placement.sessionLimit === null || [...runtime.workers.values()].filter(({ reservation, ended }) =>
+    reservation.placement.account === placement.account && !ended).length < placement.sessionLimit
 
 export const childFor = (runtime: Runtime, actor: string): ChildAllocation | undefined =>
   [...runtime.children.values()].findLast((entry) => entry.reservation.actor === actor)

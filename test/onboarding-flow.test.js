@@ -1,4 +1,7 @@
-import { workerIn, workerTurn } from './worker-fixture.js'
+import { cliSession } from '../core/services/index.ts'
+import { foldRechecks } from '../core/state/rechecks.ts'
+import { foldRuntime } from '../core/state/worker-runtime.ts'
+import { recheckPumpIn, workerIn, workerTurn } from './worker-fixture.js'
 import { expect, test } from 'bun:test'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -16,7 +19,7 @@ const token = (output, who) => {
   return found
 }
 
-test('onboarding hands reviewed project guidance to the activated host and pipeline', async () => {
+test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance through a %s recheck', async (route) => {
   const p = onboardingProject()
   gitPerson(p)
   p.realTime()
@@ -169,6 +172,14 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     const staffingFile = '.work/staffing.yaml'
     const arrangement = Bun.YAML.parse(read(staffingFile))
     arrangement.roles[pending.role] = { ...arrangement.roles.linter }
+    if (route === 'child') {
+      arrangement.clis.fixture.backgroundChildren = true
+      arrangement.roles.architect.subagentAllowance = 1
+    }
+    if (route === 'park') {
+      arrangement.clis.fixture.canPark = true
+      arrangement.models.opus.resume = 'fixture --resume {session} {prompt}'
+    }
     arrangement.accounts.fixture.limits = { weekly: ' 40 jobs per week ', sessions: '2 sessions' }
     arrangement.accounts.fixture.sessionLimit = 2
     yaml(staffingFile, arrangement)
@@ -208,7 +219,7 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
 
     const restored = await api('staffing')
     const finalPreview = await api('staffing', { action: 'preview', revision: restored.revision,
-      edit: { kind: 'sessions', account: 'fixture', sessionLimit: null } })
+      edit: { kind: 'sessions', account: 'fixture', sessionLimit: route === 'child' ? null : 2 } })
     expect(await api('staffing', { action: 'apply', ticket: finalPreview.ticket })).toMatchObject({ confirmed: true })
 
     const approval = await api('activation/approval')
@@ -236,7 +247,7 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     const handoff = await agent(`wait ${host} --seconds=1`)
     const leader = await workerIn(p, 'role:section-lead')
     const lead = leader.token('role:section-lead')
-    const projectWorker = handoff.match(/g\.[a-f0-9.]+/)[0]
+    let projectWorker = handoff.match(/g\.[a-f0-9.]+/)[0]
     const projectTurn = (command) => workerTurn(p, projectWorker, command)
     const projectAct = async (command, fields = '') => {
       const step = await projectTurn(command)
@@ -280,14 +291,118 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     expect(decision).toMatchObject({ status: 'WAIT_FOR_REVIEW', reviewMode: 'self-review turns' })
     ok(await p.nanda(`respond ${decision.ask} accept --on ${state().seq}`))
     await projectAct('reassign')
-    const told = (await projectTurn('recheck')).words
-    expect(told).toContain('recheck-brief t1')
-    const basis = state().seq
-    const brief = await agent(`recheck-brief t1 --on ${basis}`)
+    const fake = await recheckPumpIn(p)
+    const jobs = () => foldRechecks(eventsOf(p.dir))
+    const runtime = () => foldRuntime(eventsOf(p.dir))
+    await fake.tick()
+    const job = [...jobs().keys()][0]
+    const first = jobs().get(job)
+    expect(first.queued.task).toBe('t1')
+    expect(first.queued.items).toHaveLength(2)
+    const forged = await p.agent(`recheck ${host} t1 holds --items=${direction.key},rule:explain-impact --on=${state().seq}`)
+    expect(forged.code).toBe(1)
+    let helper
+    if (route === 'child') {
+      const wait = await agent(`worker wait ${projectWorker} --seconds=0.01`)
+      const launch = wait.match(/work worker child-start [^\n]+/)[0].slice(5)
+      helper = (await agent(launch)).match(/h\.[a-f0-9.]+/)[0]
+      await agent(`recheck-helper ack ${helper}`)
+      expect(jobs().get(job).route.kind).toBe('child')
+    } else {
+      expect(first.deferred).not.toBeNull()
+      expect(first.route).toBeNull()
+      if (route === 'park') {
+        const handle = cliSession(boot.pending.launch)
+        await agent(`worker checkpoint ${job} ${handle} --credential=${projectWorker}`)
+        fake.restart()
+        fake.stopMode('failed')
+        await fake.tick()
+        expect(jobs().get(job).park._tag).toBe('WorkerParkCancelled')
+        expect(runtime().workers.get(first.queued.worker).ended).toBe(false)
+        await agent(`worker checkpoint ${job} ${handle} --credential=${projectWorker}`)
+        fake.stopMode('unknown')
+        await fake.tick()
+        expect(jobs().get(job).park._tag).toBe('WorkerParkRequested')
+        expect(jobs().get(job).route).toBeNull()
+        expect(runtime().workers.get(first.queued.worker).ended).toBe(false)
+        await agent(`worker checkpoint ${job} ${handle} --credential=${projectWorker}`)
+        fake.restart()
+        fake.running.set(`boot-${boot.pending.launch}`, 'ended')
+        await fake.tick()
+        expect(jobs().get(job).park._tag).toBe('WorkerParkConfirmed')
+        expect(runtime().workers.get(first.queued.worker).ended).toBe(true)
+        await fake.tick()
+      } else {
+        expect((await agent(`worker wait ${projectWorker} --seconds=0.01`))).toContain('compatible child or session slot')
+        const other = runtime().workers.get('role:section-lead')
+        fake.running.set(other.binding.session, 'ended')
+        await fake.tick()
+        await fake.tick()
+      }
+      let started = fake.starts.find(({ env }) => env.ARISTOTELES_RECHECK_CREDENTIAL)
+      expect(started).toBeDefined()
+      if (route === 'defer') {
+        const abandoned = started
+        fake.running.set(abandoned.sid, 'ended')
+        fake.restart()
+        await fake.tick()
+        await fake.tick()
+        started = fake.starts.filter(({ env }) => env.ARISTOTELES_RECHECK_CREDENTIAL).at(-1)
+        expect(started.sid).not.toBe(abandoned.sid)
+        expect((await p.run(`recheck-helper ack ${abandoned.env.ARISTOTELES_RECHECK_CREDENTIAL}`,
+          { env: { ARISTOTELES_SESSION: abandoned.sid } })).code).toBe(1)
+      }
+      helper = started.env.ARISTOTELES_RECHECK_CREDENTIAL
+      ok(await p.run(`recheck-helper ack ${helper}`, { env: { ARISTOTELES_SESSION: started.sid } }))
+      fake.restart()
+      await fake.tick()
+      expect(fake.starts.filter(({ env }) => env.ARISTOTELES_RECHECK_CREDENTIAL)).toHaveLength(route === 'defer' ? 2 : 1)
+    }
+    const brief = await agent(`recheck-brief ${helper} ${job}`)
     expect(brief).toContain(`${direction.key} @1: Explain the export and its effect.`)
     expect(brief).toContain('rule:explain-impact @1: State the resulting effect.')
     expect((await dash()).pipe.work).toContain('Rechecking')
-    await projectAct('recheck', `t1 holds --items=${direction.key},rule:explain-impact`)
+    const findings = first.queued.items.map(([item, version]) => ({
+      item, version, outcome: 'holds', evidence: 'Reviewed docs/checks.md:2',
+    }))
+    yaml('recheck.yaml', { on: first.queued.on - 1, findings })
+    expect((await p.agent(`recheck-report ${helper} ${job} --file=recheck.yaml`)).err).toContain('original recheck basis')
+    yaml('recheck.yaml', { on: first.queued.on, findings: findings.slice(0, 1) })
+    expect((await p.agent(`recheck-report ${helper} ${job} --file=recheck.yaml`)).err).toContain('every exact item')
+    yaml('recheck.yaml', { on: first.queued.on, findings })
+    const helperReport = await agent(`recheck-report ${helper} ${job} --file=recheck.yaml`)
+    fake.restart()
+    if (route === 'park') {
+      fake.stopMode('unknown')
+      await fake.tick()
+      const allocation = jobs().get(job).route.allocation
+      expect(runtime().workers.get(allocation).ended).toBe(false)
+      expect(fake.starts.some(({ command }) => command.includes('--resume'))).toBe(false)
+      fake.restart()
+      const helperSession = fake.starts.find(({ env }) => env.ARISTOTELES_RECHECK_CREDENTIAL).sid
+      fake.running.set(helperSession, 'ended')
+      fake.stopMode('ended')
+    }
+    await fake.tick()
+    if (route === 'park') {
+      const resumed = fake.starts.find(({ command }) => command.includes('--resume'))
+      expect(resumed).toBeDefined()
+      expect(resumed.command).toContain(cliSession(boot.pending.launch))
+      projectWorker = resumed.env.ARISTOTELES_WORKER_CREDENTIAL
+      const [, launch, , root] = projectWorker.split('.')
+      const { stageWorkerLaunch, sha } = await import('../core/services/index.ts')
+      stageWorkerLaunch(p.dir, launch, 'ack', sha(root))
+      fake.restart()
+      await fake.tick()
+      expect(jobs().get(job).resumed).toBe(true)
+    }
+    expect(await agent(`recheck-report ${helper} ${job} --file=recheck.yaml`)).toBe(helperReport)
+    const dispatch = (await agent(`worker wait ${projectWorker} --seconds=0.01`)).split('\n')
+      .find((line) => line.startsWith('work recheck ')).slice(5)
+    expect(dispatch).toContain(`--job=${job}`)
+    expect((await p.agent(dispatch.replace(/--report=report-\d+/, '--report=foreign'))).err).toContain('current helper job')
+    expect((await p.agent(dispatch.replace(' holds ', ' fails '))).err).toContain('does not match the helper')
+    await agent(dispatch)
     expect(state().tasks.get('t1').pending.size).toBe(0)
     expect((await dash()).pipe.work).not.toContain('Rechecking')
     expect(eventsOf(p.dir).at(-1).event.create.act.body).toMatchObject({

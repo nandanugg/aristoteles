@@ -48,3 +48,43 @@ export const workerTurn = async (p, credential, command) => {
   if ([...line.matchAll(/--on(?:=| )/g)].length !== 1) throw new Error(`Expected one basis in ${line}`)
   return { words: response.out, token: line.split(' ')[2], args: line.match(/--on=\d+ --turn=[a-f0-9]+/)[0] }
 }
+
+export const recheckPumpIn = async (p) => {
+  const { Pump, sha } = await import('../core/services/index.ts')
+  const { backoffMemory, engineTick } = await import('../core/effects/engine.ts')
+  const running = new Map()
+  const starts = []
+  const stopped = new Set()
+  let stopMode = 'ended'
+  for (const worker of foldRuntime(eventsOf(p.dir)).workers.values()) {
+    if (worker.binding) running.set(worker.binding.session, 'live')
+  }
+  const observe = (sid) => running.get(sid) ?? 'ended'
+  const stop = (sid) => {
+    if (stopMode === 'failed') throw new Error('fixture stop failed')
+    running.set(sid, stopMode)
+    if (stopMode === 'ended') stopped.add(sid)
+  }
+  const pump = Layer.succeed(Pump, {
+    start: (sid, input) => Effect.sync(() => {
+      running.set(sid, 'live')
+      starts.push({ sid, ...input })
+    }),
+    observe: (sid) => Effect.sync(() => observe(sid)),
+    stop: (sid) => Effect.try(() => stop(sid)),
+    forget: () => Effect.void,
+  })
+  let memory = Effect.runSync(backoffMemory)
+  return {
+    starts, stopped, running,
+    stopMode: (value) => { stopMode = value },
+    restart: () => { memory = Effect.runSync(backoffMemory) },
+    tick: () => workerRuntimeIn(p, engineTick({
+      bootstrap: (sid) => ({ state: observe(sid), stop: () => stop(sid) }),
+    }, memory).pipe(Effect.provide(pump))),
+    ack: (credential) => {
+      const [, launch, secret] = credential.split('.')
+      stageWorkerLaunch(p.dir, launch, 'ack', sha(secret))
+    },
+  }
+}

@@ -46,6 +46,7 @@ import { actorOf, keyOf, type Actor, type Body, type Reply } from '../../../core
 import type { ItemKey, ItemRec, Level, RoleDraft, TaskSpec, Verdict }
   from '../../../core/state/c16/data.ts'
 import { kindOf } from '../../../core/state/c16/data.ts'
+import { helperBrief } from './recheck.ts'
 import { acquireBootstrapWorker, activationEvents, retireHostDelivery } from '../../live/activation.ts'
 import { bootstrapSession } from '../../live/bootstrap.ts'
 import { briefOf, hostWords, makerWords, recheckBriefOf } from '../../words/work.ts'
@@ -515,12 +516,18 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
     const body = yield* spec.parse(ctx)
     const on = onOf(call.args)
     const turn = textOf(call.args.one('turn'))
+    const recheckJob = textOf(call.args.one('job'))
+    const recheckReport = textOf(call.args.one('report'))
+    if ((recheckJob === undefined) !== (recheckReport === undefined)) {
+      return yield* usage('Use both --job and --report for a helper verdict.')
+    }
     const baseId = idOf(who, ep, body, on, folded.state)
     const acted = yield* dispatchAct({
       by: author,
       act: { id: turn === undefined ? baseId : sha(JSON.stringify([who, ep, body._tag, on, turn])), who, ep, body },
       ...(asAgent && call.token !== null ? { credential: call.token } : {}),
       ...(turn === undefined ? {} : { turn }),
+      ...(recheckJob && recheckReport ? { recheck: { job: recheckJob, report: recheckReport } } : {}),
       on,
       build: null,
       current: 'cli',
@@ -560,6 +567,10 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
 
 const recheckBrief: Command = (call) =>
   Effect.gen(function* () {
+    const { vars } = yield* Env
+    if (call.args.positional[0]?.startsWith('h.') || vars.ARISTOTELES_RECHECK_CREDENTIAL) {
+      return yield* helperBrief(call)
+    }
     const [task, ...rest] = call.args.positional
     if (!task || rest.length) return yield* usage('work recheck-brief needs one task')
     const { folded, events } = yield* readFolded

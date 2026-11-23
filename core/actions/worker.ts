@@ -3,13 +3,15 @@ import { Effect } from 'effect'
 import { gate } from './activation.ts'
 import { Refusal } from '../schema/errors.ts'
 import { admissionFor, stepDemand } from '../derived/c16/admission.ts'
+import { readyRecheck } from '../derived/c16/recheck.ts'
+import { checkpointBlocksTurn, foldRechecks, routeSettled } from '../state/rechecks.ts'
 import { currentOffer, obligationOf, oldestWorkerStep } from '../derived/c16/worker.ts'
 import { create, NonBlank, type Author, type Recorded, type RuntimeEvent } from '../schema/index.ts'
 import { Dir, Now, sha, Store } from '../services/index.ts'
 import { foldWork, type WorkFolded } from '../state/c16/fold.ts'
 import { epochOf } from '../state/c16/reads.ts'
 import { actorOf, type RefusalName } from '../state/c16/types.ts'
-import { foldRuntime } from '../state/worker-runtime.ts'
+import { foldRuntime, slotAvailable } from '../state/worker-runtime.ts'
 
 export const workerRefusal = (kind: RefusalName, message: string) =>
   new Refusal({ refused: kind, words: message, message, next: 'Read the current worker state.',
@@ -42,19 +44,25 @@ export const memberSecretOf = (secret: string, actor: string, epoch: number): st
 
 export const reserveWorker = (worker: string, launch: string) =>
   writeRuntime((events, folded) => Effect.gen(function* () {
-    const { placements, workers } = foldRuntime(events)
+    const runtime = foldRuntime(events)
+    const { placements, workers } = runtime
     const placement = placements.find((entry) => entry.worker === worker)
     const previous = workers.get(worker)
     if (!placement || folded.state.top.ended || (previous && !previous.ended)) return null
     if (events.some(({ event }) => event._tag === 'Runtime' && event.create._tag === 'WorkerReserved' &&
       event.create.launch === launch)) return null
-    const charged = [...workers.values()].filter(({ reservation, ended }) =>
-      !ended && reservation.placement.account === placement.account).length
-    if (placement.sessionLimit !== null && charged >= placement.sessionLimit) return null
+    if (!slotAvailable(runtime, placement)) return null
+    const parked = [...foldRechecks(events).values()].find((job) => job.queued.worker === worker &&
+      job.park?._tag === 'WorkerParkConfirmed' && !job.resumed)
+    if (parked && (!parked.checkpoint || !routeSettled(parked, runtime) || (!parked.report && !parked.cancelled))) {
+      return null
+    }
     const expectedGeneration = previous?.reservation.generation ?? 0
     return {
       _tag: 'WorkerReserved', worker, generation: expectedGeneration + 1, expectedGeneration,
-      launch, purpose: 'work', placement, members: placement.members, slot: `${placement.account}:${launch}`,
+      launch, purpose: parked ? 'resume' : 'work',
+      ...(parked?.checkpoint ? { job: parked.queued.job, checkpoint: parked.checkpoint.checkpoint } : {}),
+      placement, members: placement.members, slot: `${placement.account}:${launch}`,
     }
   }), SYSTEM)
 
@@ -64,6 +72,7 @@ export const bindWorker = (worker: string, generation: number, launch: string, s
     if (!current || current.ended || current.fenced || current.reservation.generation !== generation ||
       current.reservation.launch !== launch) return yield* workerRefusal('epoch', 'Worker reservation has ended.')
     if (current.binding !== null) return null
+    if (current.reservation.purpose === 'recheck') return yield* workerRefusal('authority', 'A helper cannot bind worker identities.')
     const hostSession = generation === 1 && current.reservation.members.includes('host') ? folded.hostSession : null
     if (session !== (hostSession ?? workerSession(launch))) {
       return yield* workerRefusal('authority', 'Wrong session for the reserved worker.')
@@ -85,14 +94,14 @@ export const bindWorker = (worker: string, generation: number, launch: string, s
 export const settleWorker = (worker: string, generation: number, launch: string, observation?: string) =>
   writeRuntime((events) => Effect.gen(function* () {
     const current = foldRuntime(events).workers.get(worker)
-    if (!current || current.ended || current.reservation.generation !== generation ||
+    if (!current || current.ended || current.parking || current.reservation.generation !== generation ||
       current.reservation.launch !== launch) return null
     if (observation === undefined && !current.fenced) {
       return { _tag: 'WorkerFenced', worker, generation, launch, reason: 'session lost' }
     }
     if (observation !== undefined && current.fenced) {
       return { _tag: 'WorkerEnded', worker, generation, launch, reason: 'session ended',
-        session: current.binding?.session ?? null, observation }
+        session: current.binding?.session ?? (current.reservation.purpose === 'recheck' ? workerSession(launch) : null), observation }
     }
     return null
   }), SUPERVISOR)
@@ -105,10 +114,15 @@ export const offerWorker = (worker: string, generation: number, secret: string, 
       return yield* workerRefusal('epoch', 'Worker generation is no longer live.')
     }
     if (current.binding.waitVerifier !== sha(secret)) return yield* workerRefusal('authority', 'Wrong worker credential.')
+    if (current.parking) return null
+    const jobs = foldRechecks(events)
+    if (checkpointBlocksTurn(jobs, runtime, current)) return null
     const s = folded.state
+    const eligible = (actor: string, step: import('../state/c16/types.ts').Step) =>
+      admissionFor(folded, runtime, actor, stepDemand(step)).kind !== 'waiting' &&
+      (step.act !== 'RecheckDone' || readyRecheck(s, runtime, jobs, step.task ?? '') !== undefined)
     if (current.offer) {
-      const unavailable = admissionFor(folded, runtime, current.offer.actor, stepDemand(current.offer.step))
-      if (abandon || !currentOffer(s, current.offer) || unavailable.kind === 'waiting') {
+      if (abandon || !currentOffer(s, current.offer) || !eligible(current.offer.actor, current.offer.step)) {
         return { _tag: 'TurnClosed', worker, generation, turn: current.offer.turn,
           reason: abandon ? 'abandoned' : 'withdrawn' }
       }
@@ -118,7 +132,7 @@ export const offerWorker = (worker: string, generation: number, secret: string, 
     const serial = [...runtime.serial.values()].filter((entry) => entry.worker === worker &&
       s.makers.get(entry.actor.slice('maker:'.length))?.ended === false).map((entry) => entry.actor)
     const pick = s.top.ended ? undefined : oldestWorkerStep(s, [...current.reservation.members, ...serial],
-      (actor, step) => admissionFor(folded, runtime, actor, stepDemand(step)).kind !== 'waiting')
+      eligible)
     if (!pick) return null
     const turn = `turn-${(events.at(-1)?.seq ?? 0) + 1}`
     return {
