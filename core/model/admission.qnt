@@ -23,6 +23,7 @@ module admission {
     deniedPipe: bool, reusedPipe: bool, releasedChild: bool, releasedRole: bool,
     backgroundSerial: bool, serialChecks: Set[int], serialReviewed: bool, collocated: bool,
     lane: Set[int], recheckBehindFix: bool, recheckBesideFix: bool, serialWithAllowance: bool,
+    failed: Set[int],
   }
   var runtime: Runtime
 
@@ -47,6 +48,7 @@ module admission {
     deniedPipe: false, reusedPipe: false, releasedChild: false, releasedRole: false,
     backgroundSerial: false, serialChecks: Set(), serialReviewed: false, collocated: false,
     lane: Set(), recheckBehindFix: false, recheckBesideFix: false, serialWithAllowance: false,
+    failed: Set(),
   }
 
   // First accepted fix step or durable recheck admission. A queued job and a
@@ -153,7 +155,20 @@ module admission {
     }
   }
 
+  // A failed review sends the task back to the SAME maker (Nanda's design): its attempt stays, and
+  // the maker re-acquires a child permit through openMake before it works again (MakerDown: it
+  // waits while the allowance is full, visible and still owed).
+  action reviewFails = {
+    nondet t = taskIds.filter(t => runtime.tasks.get(t) == Checking).oneOf()
+    all {
+      workerFree,
+      runtime' = { ...runtime, tasks: runtime.tasks.set(t, MakerDown),
+        failed: runtime.failed.union(Set(t)) },
+    }
+  }
+
   action step = any {
+    reviewFails,
     startPipe, startRecheck, finishRecheck, waitPipe, yieldPipe, handToPerson, finishPipe, decide,
     openMake, endMaker, releaseAttempt,
     runtime' = runtime,
@@ -179,6 +194,9 @@ module admission {
   val NoRecheckBesideFix = not(runtime.recheckBesideFix)
   // Witness of the allowance-0 serial path: a serial maker's result reviewed and the attempt done.
   val NoSerialReview = not(runtime.serialReviewed)
+  // Witness: a maker sent back by a failed review waits for a child permit (the allowance full).
+  val NoFailWait = not(CHILD_ALLOW > 0 and taskIds.exists(t => runtime.failed.contains(t) and
+    runtime.tasks.get(t) == MakerDown and childLoad(owner(t)) >= CHILD_ALLOW))
   val NoSaturatedSerial = not(runtime.backgroundSerial and runtime.serialReviewed and
     runtime.releasedRole and runtime.releasedChild)
   val NoCollocatedOwners = not(runtime.collocated and runtime.role.size() == 2 and

@@ -1,5 +1,10 @@
 // U2 uses the live core's asks and acts for a task and a person edit to its
-// direction. The scheduler owns permits and sessions; it does not consume a
+// direction. Amended to the admission.qnt rules (the coordinator, 2026-11-23): a maker's child
+// permit is held only while its task is Working (released at Report; the role attempt stays);
+// after a failed review the same maker re-acquires a child permit before it works again and
+// WAITS when the allowance is saturated (acquireChild; these instances have maxTries 1, so a Fail
+// raises: admission.qnt witnesses the wait, NoFailWait); a foreground-only CLI runs serial turns (no foreground
+// child route). The scheduler owns permits and sessions; it does not consume a
 // told step just by preparing it. U1 supplies delivery per logical identity.
 module permits {
   import configsBase.* from "./configsBase"
@@ -16,7 +21,7 @@ module permits {
   type Scheduler = { scenario: Case, phase: RecheckPhase, editOffered: bool, serialReview: bool,
                      source: Context, target: int, badVerdict: bool,
                      parked: bool, resumed: bool, deferred: bool, childRan: bool,
-                     freshRan: bool }
+                     freshRan: bool, charged: Set[int] }
   var store: Store
   var scheduling: Scheduler
   val state = (store, scheduling)
@@ -25,7 +30,7 @@ module permits {
     { scenario: scenario, phase: NoHelper, source: NoContext, target: -1,
       badVerdict: false,
       editOffered: false, serialReview: false, parked: false, resumed: false,
-      deferred: false, childRan: false, freshRan: false }
+      deferred: false, childRan: false, freshRan: false, charged: Set() }
   val initialStore = initStore(Map(0 -> NoCause, 1 -> NoCause))
   // Separate init actions keep Quint's TLC init conversion from treating
   // a shared assignment as both an initial predicate and a transition.
@@ -51,18 +56,24 @@ module permits {
   def workingMakers = SLOTS.filter(slot =>
     taskOf(store, slot).state == Working and liveMaker(store, slot) != NoOne)
     .map(slot => liveMaker(store, slot))
-  def roleChildAllowance = if (scheduling.scenario == SerialCase) 0
+  // A foreground-only CLI has no child route: its allowance is effectively 0 (serial turns).
+  def roleChildAllowance = if (scheduling.scenario == SerialCase or not(background)) 0
     else if (Set(AdmissionCase, DropParent).contains(scheduling.scenario)) 2 else 1
+  def roleConcurrency = 1
   def onRoleWorker(maker: Actor): bool = isMakerActor(maker) and roleChildAllowance == 0
   def usesRoleChildPermit(maker: Actor): bool =
     isMakerActor(maker) and not(onRoleWorker(maker))
-  def roleChildren = SLOTS.filter(slot => usesRoleChildPermit(liveMaker(store, slot))).size()
+  // Child permits are held by Working tasks' makers that acquired one (released at Report).
+  def roleChildren = if (roleChildAllowance == 0) 0 else scheduling.charged.size()
+  def chargedMakers = scheduling.charged.map(slot => liveMaker(store, slot))
+  def workingSlots(s: Store): Set[int] = SLOTS.filter(slot =>
+    taskOf(s, slot).state == Working and liveMaker(s, slot) != NoOne)
   def usesChildPermit = scheduling.scenario != RecheckRetained
   def pipeChildren = if (scheduling.phase == RecheckChild and usesChildPermit) 1 else 0
   def recheckPending = SLOTS.exists(slot => recheckDue(store, slot))
   def nextRecheck = if (recheckDue(store, 0)) 0 else 1
   def workerOnline = not(Set(Parked, FreshSession, ResumeParent).contains(scheduling.phase))
-  def foregroundOccupied = workingMakers.exists(maker => onRoleWorker(maker) or not(background))
+  def foregroundOccupied = workingMakers.exists(maker => onRoleWorker(maker))
   def workerFree = workerOnline and not(foregroundOccupied)
   def providerSlots = if (workerOnline or scheduling.phase == FreshSession) 1 else 0
   def pipeAttempt = ownToldSteps(store, Pipe).size() > 0 or scheduling.phase != NoHelper
@@ -89,11 +100,12 @@ module permits {
       freshRan: scheduling.freshRan or destination == FreshSession },
   }
 
-  def canStartAttempt = rolePermits < 1
+  def canStartAttempt = rolePermits < roleConcurrency
   def freeChild = roleChildren < roleChildAllowance
   def canStartRole = canStartAttempt and (freeChild or roleChildAllowance == 0)
   def secondStartDenied = roleAttempts.size() == 1 and workingMakers != Set()
     and SLOTS.exists(slot => taskOf(store, slot).state == Sent) and freeChild and not(canStartRole)
+    and roleConcurrency == 1
   def roleAdmitted(body: Body): bool = match body {
     | Open(ask) => ask.to != NewMaker or canStartRole
     | _ => true
@@ -104,7 +116,9 @@ module permits {
   }
   def eligible(actor: Actor): bool =
     if (actor == Harness) true
+    // a child maker works only while it holds its child permit; a serial maker needs none
     else if (isMakerActor(actor)) workerOnline and workingMakers.contains(actor)
+      and (roleChildAllowance == 0 or chargedMakers.contains(actor))
     else workerFree
   def admitted(actor: Actor, body: Body): bool =
     (actor != Role or roleAdmitted(body)) and (actor != Pipe or recheckAdmitted(body))
@@ -117,13 +131,23 @@ module permits {
   }
   action perform(actor: Actor, body: Body): bool =
     val proposal = actAs(store, actor, contents(body))
-    all {
-      accept(store, proposal),
-      store' = take(match body {
+    val after = take(match body {
         | Open(ask) => if (ask.to == NewMaker) { ...store, nextMaker: ask.about } else store
         | _ => store
-      }, proposal),
-      scheduling' = match body {
+      }, proposal)
+    // Released when the task leaves Working (its Report, a raise, done); a NEW maker is charged
+    // at its OpenMake (admitted by canStartRole); a maker back to Working after a failed review
+    // is NOT charged: it must acquire (acquireChild) and waits while the allowance is full.
+    val opened = match body {
+      | Open(ask) => if (ask.to == NewMaker and roleChildAllowance > 0)
+          workingSlots(after).exclude(workingSlots(store)) else Set()
+      | _ => Set()
+    }
+    val charged = scheduling.charged.intersect(workingSlots(after)).union(opened)
+    all {
+      accept(store, proposal),
+      store' = after,
+      scheduling' = { ...(match body {
         | RecheckDone(_) => { ...scheduling, phase: NoHelper, source: NoContext, target: -1,
             badVerdict: scheduling.badVerdict
               or not(Set(ChildContext, FreshContext).contains(scheduling.source)) }
@@ -132,8 +156,16 @@ module permits {
                 and not(usesRoleChildPermit(judgement.ask.from))) }
         | AskEdit(_) => { ...scheduling, editOffered: true }
         | _ => scheduling
-      },
+      }), charged: charged },
     }
+  // The same maker re-acquires a child permit before it works again (after a failed review).
+  action acquireChild = {
+    nondet slot = workingSlots(store).exclude(scheduling.charged).oneOf()
+    all {
+      roleChildAllowance > 0, workerOnline, roleChildren < roleChildAllowance, keepCore,
+      scheduling' = { ...scheduling, charged: scheduling.charged.union(Set(slot)) },
+    }
+  }
   action agentsTurn = {
     nondet actor = Set(Host, Role, Pipe, Harness).union(workingMakers).filter(eligible).oneOf()
     nondet body = toldSteps(store, actor).filter(candidate => admitted(actor, candidate)).oneOf()
@@ -181,14 +213,14 @@ module permits {
   action composedStep = any {
     agentsTurn, humanTurn,
     routeRecheck, requestPark, confirmPark, failPark, capacityOffered,
-    startFresh, helperReports, resumeParent,
+    startFresh, helperReports, resumeParent, acquireChild,
   }
 
   val NoWaitCycle = not(waitClosure(store).exists(edge => edge._1 == edge._2))
   val AsksFollowState = asksMatchState(store)
   // Providers and role allowances are separate. A child uses no provider slot.
-  val PermitsNeverExceeded = roleAttempts.size() <= 1
-    and rolePermits <= 1 and pipePermits <= 1
+  val PermitsNeverExceeded = roleAttempts.size() <= roleConcurrency
+    and rolePermits <= roleConcurrency and pipePermits <= 1
     and roleChildren <= roleChildAllowance and pipeChildren <= childAllowance and providerSlots <= 1
   // Check the recorded verdict's source, derived from the allocation at
   // helper time. A fake helper in the resident parent's context breaks it.
@@ -205,11 +237,16 @@ module permits {
   val NoParkResume = not(ParkResumed)
   val NoChild = not(ChildRecheckRan)
   val NoIgnoredRecheck = not(ignoreRecheck and recheckPending)
+  // A child maker never works without its permit (no foreground child route).
+  val ChildMakersCharged = roleChildAllowance == 0 or
+    workingSlots(store).forall(slot => scheduling.charged.contains(slot) or
+      not(eligible(liveMaker(store, slot))))
 
   temporal SchedulerFair = all {
     weakFair(routeRecheck, state), weakFair(requestPark, state),
     weakFair(confirmPark, state), weakFair(startFresh, state),
     weakFair(helperReports, state), weakFair(resumeParent, state), weakFair(agentsTurn, state),
+    weakFair(acquireChild, state),
   }
   temporal CapacityFair = CapacityReturns(scheduling.phase == Deferred,
                                            mustChange(capacityOffered, state))
