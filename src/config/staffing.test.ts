@@ -16,7 +16,7 @@ const role = {
   subagentAllowance: 0,
   launch: 'agent --session {session}',
 }
-const clis = { terminal: { backgroundChildren: true } }
+const clis = { terminal: { backgroundChildren: true, canPark: false } }
 const accounts = { primary: { limits: { usage: '5 hours rolling', sessions: '2 slots' } } }
 
 test('staffing is read from the project directory and keeps user-entered limits', async () => {
@@ -42,4 +42,22 @@ test('a staffing binding needs a known account and an allowed effective model', 
     .toThrow('unknown account')
   expect(() => staffingOf({ accounts, clis, roles: { reviewer: { ...role, model: 'other' } } }))
     .toThrow('one of its allowed models')
+})
+
+// Pass 9 decision 1: worker groups, the session limit per account, the CLI's park capability.
+test('a worker group joins persistent roles that share account, CLI, model and launch', () => {
+  const roles = { a: { ...role, workerGroup: 'g' }, b: { ...role, workerGroup: 'g' } }
+  expect(staffingOf({ accounts, clis, roles }).roles.a?.workerGroup).toBe('g')
+  expect(() => staffingOf({ accounts, clis, roles: { ...roles, b: { ...roles.b, model: 'model-b' } } }))
+    .toThrow('workerGroup g: roles.b.model differs from roles.a.model')
+  expect(() => staffingOf({ accounts, clis, roles: { a: { ...role, persistent: false, workerGroup: 'g' } } }))
+    .toThrow('only a persistent role runs on a worker')
+})
+
+test('the session limit is a positive count; a CLI states whether it can park', () => {
+  const limited = { primary: { ...accounts.primary, sessionLimit: 2 } }
+  expect(staffingOf({ accounts: limited, clis, roles: { reviewer: role } }).accounts.primary?.sessionLimit).toBe(2 as never)
+  expect(() => staffingOf({ accounts: { primary: { ...accounts.primary, sessionLimit: 0 } }, clis, roles: {} }))
+    .toThrow()
+  expect(() => staffingOf({ accounts, clis: { terminal: { backgroundChildren: true } }, roles: {} })).toThrow()
 })

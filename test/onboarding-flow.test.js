@@ -169,6 +169,7 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     const arrangement = Bun.YAML.parse(read(staffingFile))
     arrangement.roles[pending.role] = { ...arrangement.roles.linter }
     arrangement.accounts.fixture.limits = { weekly: ' 40 jobs per week ', sessions: '2 sessions' }
+    arrangement.accounts.fixture.sessionLimit = 2
     yaml(staffingFile, arrangement)
     const staffing = await api('staffing')
     expect(staffing.confirmed).toBe(false)
@@ -180,6 +181,13 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
     expect(Bun.YAML.parse(read(staffingFile)).accounts.fixture.limits.weekly).toBe(' 40 jobs per week ')
     expect(await api('staffing', { action: 'apply', ticket: preview.ticket })).toMatchObject({ confirmed: true })
     expect(Bun.YAML.parse(read(staffingFile)).accounts.fixture.limits.weekly).toBe(typed)
+    // a limit edit keeps the account's session limit; a sessions edit shows in the preview (pass 9)
+    expect(Bun.YAML.parse(read(staffingFile)).accounts.fixture.sessionLimit).toBe(2)
+    const now = await api('staffing')
+    const sessions = await api('staffing', { action: 'preview', revision: now.revision,
+      edit: { kind: 'sessions', account: 'fixture', sessionLimit: null } })
+    expect(sessions.changed).toEqual(['sessions fixture: 2 -> no limit'])
+    expect(sessions.after.accounts.find((a) => a.account === 'fixture').sessionLimit).toBeNull()
 
     const approval = await api('activation/approval')
     expect(approval.entries.map(({ path }) => path)).toEqual(expect.arrayContaining(['CLAUDE.md', 'AGENTS.md']))

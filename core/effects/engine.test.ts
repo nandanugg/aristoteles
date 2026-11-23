@@ -142,7 +142,7 @@ describe('engineTick', () => {
       launch: 'staffed {model} {session}',
     }
     t.p.write('.work/staffing.yaml', Bun.YAML.stringify({
-      clis: { agent: { backgroundChildren: false } },
+      clis: { agent: { backgroundChildren: false, canPark: false } },
       accounts: { primary: { limits: {} } },
       roles: { architect: binding, 'section-lead': binding },
     }))

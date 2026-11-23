@@ -4,7 +4,7 @@ import { staffingPreview, staffingView } from './staffing-view.ts'
 
 const base = (): Staffing =>
   staffingOf({
-    clis: { claude: { backgroundChildren: true }, codex: { backgroundChildren: false } },
+    clis: { claude: { backgroundChildren: true, canPark: false }, codex: { backgroundChildren: false, canPark: false } },
     accounts: {
       max: { limits: { '5h': '45 messages', weekly: '240 hours' } },
       team: { limits: {} },
@@ -71,5 +71,38 @@ describe('staffingPreview', () => {
   })
   test('no change: nothing listed', () => {
     expect(staffingPreview(base(), base()).changed).toEqual([])
+  })
+})
+
+describe('workers (pass 9)', () => {
+  const grouped = (): Staffing => {
+    const s = base()
+    return {
+      ...s,
+      accounts: { ...s.accounts, max: { ...s.accounts.max!, sessionLimit: 1 as never } },
+      roles: {
+        ...s.roles,
+        host: { ...s.roles.host!, workerGroup: 'lead' },
+        reviewer: { ...s.roles.host!, workerGroup: 'lead' },
+        solo: { ...s.roles.host! },
+      },
+    }
+  }
+  test('roles of one group share a worker; a persistent role alone has its own; sessions count workers', () => {
+    const v = staffingView(grouped())
+    expect(v.workers).toEqual([
+      { worker: 'lead', roles: ['host', 'reviewer'], account: 'max', shared: true },
+      { worker: 'pipe', roles: ['pipe'], account: 'team', shared: false },
+      { worker: 'solo', roles: ['solo'], account: 'max', shared: false },
+    ])
+    expect(v.arrangement.find((r) => r.role === 'writer')?.worker).toBeNull()
+    expect(v.consequences.find((c) => c.account === 'max')?.peakSessions).toBe(2)
+    expect(v.accounts.find((a) => a.account === 'max')?.sessionLimit).toBe(1)
+    expect(v.warnings.some((w) => w.says.includes('runs 2 workers but its session limit is 1'))).toBe(true)
+  })
+  test('moving a role into a group shows in the preview', () => {
+    const before = grouped()
+    const after: Staffing = { ...before, roles: { ...before.roles, solo: { ...before.roles.solo!, workerGroup: 'lead' } } }
+    expect(staffingPreview(before, after).changed).toContain('solo.worker: solo -> lead')
   })
 })

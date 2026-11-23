@@ -22,6 +22,9 @@ export interface ArrangedRole {
   // The other allowed models: alternative scenarios in the preview (OV2-7).
   readonly alternatives: ReadonlyArray<string>
   readonly persistent: boolean
+  // The worker the role runs on: its workerGroup, or a private worker named after the role
+  // (persistent roles only; a disposable role runs as a subagent of the role that starts it).
+  readonly worker: string | null
   readonly concurrency: number
   readonly subagentAllowance: number
   readonly review: ReviewMode
@@ -35,9 +38,8 @@ export interface LimitConsequence {
   readonly limit: string
   readonly typed: string // as the user typed it
   readonly roles: ReadonlyArray<string> // the roles whose work this limit counts
-  // The sessions of the account the engine runs: one per persistent role (makers are subagents in
-  // their role's session). Until pass 9 the engine does not enforce concurrency or the subagent
-  // allowance, so they do not change this number (the coordinator's condition for the first run).
+  // The sessions of the account the engine runs: one per worker (a group of persistent roles, or a
+  // private one); makers are subagents in their worker's session.
   readonly peakSessions: number
   readonly workload: Unknown
 }
@@ -52,6 +54,15 @@ export interface StaffingView {
     readonly account: string
     readonly limits: ReadonlyArray<{ readonly limit: string; readonly typed: string }>
     readonly roles: ReadonlyArray<string>
+    // the managed sessions this dir may run at once (pass 9 enforces it for this dir only), or null
+    readonly sessionLimit: number | null
+  }>
+  // The workers: each a session with one wait over its roles' identities.
+  readonly workers: ReadonlyArray<{
+    readonly worker: string
+    readonly roles: ReadonlyArray<string>
+    readonly account: string
+    readonly shared: boolean
   }>
   readonly arrangement: ReadonlyArray<ArrangedRole>
   readonly consequences: ReadonlyArray<LimitConsequence>
@@ -87,6 +98,7 @@ export const staffingView = (staffing: Staffing): StaffingView => {
       model: r.model,
       alternatives: r.allowedModels.filter((m) => m !== r.model),
       persistent: r.persistent,
+      worker: r.persistent ? (r.workerGroup ?? name) : null,
       concurrency: r.concurrency,
       subagentAllowance: r.subagentAllowance,
       review: reviewOf(staffing, r),
@@ -104,11 +116,21 @@ export const staffingView = (staffing: Staffing): StaffingView => {
         (x) => x.limit,
       ),
       roles: rolesOf(account),
+      sessionLimit: a.sessionLimit ?? null,
     })),
     (x) => x.account,
   )
-  const peak = (account: string) =>
-    arrangement.filter((r) => r.account === account && r.persistent).length
+  const workerNames = [...new Set(arrangement.flatMap((r) => (r.worker === null ? [] : [r.worker])))]
+  const workers = workerNames.sort().map((worker) => {
+    const roles = arrangement.filter((r) => r.worker === worker)
+    return {
+      worker,
+      roles: roles.map((r) => r.role),
+      account: roles[0]?.account ?? '',
+      shared: roles.length > 1 || roles.some((r) => staffing.roles[r.role]?.workerGroup !== undefined),
+    }
+  })
+  const peak = (account: string) => workers.filter((w) => w.account === account).length
   const consequences = accounts.flatMap((a) =>
     a.limits.map((l) => ({
       account: a.account,
@@ -135,6 +157,13 @@ export const staffingView = (staffing: Staffing): StaffingView => {
     }
   }
   for (const a of accounts) {
+    if (a.sessionLimit !== null && peak(a.account) > a.sessionLimit) {
+      warnings.push({
+        role: a.roles.join(', '),
+        says: `account ${a.account} runs ${peak(a.account)} workers but its session limit is ` +
+          `${a.sessionLimit}: some wait for a free session`,
+      })
+    }
     if (a.limits.length === 0 && a.roles.length > 0) {
       warnings.push({
         role: a.roles.join(', '),
@@ -142,7 +171,7 @@ export const staffingView = (staffing: Staffing): StaffingView => {
       })
     }
   }
-  return { accounts, arrangement, consequences, warnings }
+  return { accounts, workers, arrangement, consequences, warnings }
 }
 
 // The preview of a change: the same view before and after, and what changed, before it is applied.
@@ -157,6 +186,7 @@ const FIELDS = [
   'cli',
   'model',
   'persistent',
+  'worker',
   'concurrency',
   'subagentAllowance',
   'review',
@@ -185,6 +215,12 @@ export const staffingPreview = (before: Staffing, after: Staffing): StaffingPrev
   for (const k of [...new Set([...lb.keys(), ...la.keys()])].sort()) {
     if (lb.get(k) !== la.get(k)) {
       changed.push(`limit ${k}: ${lb.get(k) ?? 'none'} -> ${la.get(k) ?? 'none'}`)
+    }
+  }
+  for (const x of a.accounts) {
+    const y = b.accounts.find((acc) => acc.account === x.account)
+    if (y !== undefined && y.sessionLimit !== x.sessionLimit) {
+      changed.push(`sessions ${x.account}: ${y.sessionLimit ?? 'no limit'} -> ${x.sessionLimit ?? 'no limit'}`)
     }
   }
   return { before: b, after: a, changed }

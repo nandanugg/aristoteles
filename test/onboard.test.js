@@ -449,7 +449,7 @@ test('accepted responsibilities are joined with staffing from the project direct
   expect(exists(p, '.work/aristoteles.db')).toBe(false)
 
   p.write('.work/staffing.yaml', Bun.YAML.stringify({
-    clis: { agent: { backgroundChildren: false } },
+    clis: { agent: { backgroundChildren: false, canPark: false } },
     accounts: { primary: { limits: { sessions: '1 session' } } },
     roles,
   }))

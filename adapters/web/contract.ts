@@ -496,10 +496,17 @@ export type Mismatches = [
 const StaffingUnknown = Schema.Struct({ known: Schema.Literal(false), why: Text })
 const StaffingLimit = Schema.Struct({ limit: Text, typed: Text })
 export const StaffingView = Schema.Struct({
-  accounts: Schema.Array(Schema.Struct({ account: Text, limits: Schema.Array(StaffingLimit), roles: Schema.Array(Text) })),
+  accounts: Schema.Array(Schema.Struct({
+    account: Text, limits: Schema.Array(StaffingLimit), roles: Schema.Array(Text),
+    sessionLimit: Schema.NullOr(Schema.Number),
+  })),
+  workers: Schema.Array(Schema.Struct({
+    worker: Text, roles: Schema.Array(Text), account: Text, shared: Schema.Boolean,
+  })),
   arrangement: Schema.Array(Schema.Struct({
     role: Text, account: Text, cli: Text, model: Text, alternatives: Schema.Array(Text),
-    persistent: Schema.Boolean, concurrency: Schema.Number, subagentAllowance: Schema.Number,
+    persistent: Schema.Boolean, worker: Schema.NullOr(Text),
+    concurrency: Schema.Number, subagentAllowance: Schema.Number,
     review: Schema.Literals(['fresh subagent', 'fresh subagent, worker waits', 'self-review turns']),
     fit: StaffingUnknown,
   })),
@@ -517,9 +524,11 @@ export const StaffingPreview = Schema.Struct({
 })
 const StaffingEdit = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('limit'), account: Text, limit: Text, typed: Text }),
+  Schema.Struct({ kind: Schema.Literal('sessions'), account: Text, sessionLimit: Schema.NullOr(Schema.Number) }),
   Schema.Struct({
     kind: Schema.Literal('role'), role: Text, account: Text, cli: Text, model: Text,
     persistent: Schema.Boolean, concurrency: Schema.Number, subagentAllowance: Schema.Number,
+    workerGroup: Schema.optionalKey(Schema.NullOr(Text)),
   }),
 ])
 export const StaffingPost = Schema.Union([
