@@ -31,7 +31,7 @@ describe('staffingView', () => {
     expect(v.arrangement.map((r) => [r.role, r.review, r.alternatives])).toEqual([
       ['host', 'fresh subagent', ['sonnet']],
       ['pipe', 'self-review turns', []],
-      ['writer', 'fresh subagent, worker waits', []],
+      ['writer', 'self-review turns', []],
     ])
     expect(v.arrangement.every((r) => !r.fit.known)).toBe(true)
   })

@@ -48,8 +48,8 @@ function StaffingDetails({ view, onEdit }: { view: View; onEdit?: ((edit: Edit) 
               const others = (w?.roles ?? []).filter((r) => r !== item.role)
               return item.workerGroup === null ? 'its own'
                 : others.length ? `group ${item.workerGroup} (with ${others.join(', ')})` : `group ${item.workerGroup}` })()}</dd>
-          <dt>Concurrency</dt><dd>${item.concurrency} <span class="muted">(not enforced yet)</span></dd>
-          <dt>Subagent allowance</dt><dd>${item.subagentAllowance} <span class="muted">(not enforced yet)</span></dd>
+          <dt>Concurrency</dt><dd>${item.concurrency}</dd>
+          <dt>Subagent allowance</dt><dd>${item.subagentAllowance}</dd>
           <dt>Review mode</dt><dd>${item.review}</dd><dt>Context fit</dt><dd>Unknown. ${item.fit.why}.</dd>
         </dl></article>`)}
     </div></section>
@@ -99,9 +99,9 @@ function StaffingEditor({ edit, state, busy, onChange, onPreview }: {
             onChange({ ...edit, persistent, ...(persistent ? {} : { workerGroup: null }) })
           }} />
           Persistent session</label>
-        <label class="field"><span>Concurrency (not enforced yet)</span><input type="number" min="1" required value=${edit.concurrency}
+        <label class="field"><span>Concurrency</span><input type="number" min="1" required value=${edit.concurrency}
           onInput=${(event: Event) => onChange({ ...edit, concurrency: Number(val(event)) })} /></label>
-        <label class="field"><span>Subagent allowance (not enforced yet)</span><input type="number" min="0" required value=${edit.subagentAllowance}
+        <label class="field"><span>Subagent allowance</span><input type="number" min="0" required value=${edit.subagentAllowance}
           onInput=${(event: Event) => onChange({ ...edit, subagentAllowance: Number(val(event)) })} /></label>
         ${edit.persistent ? html`<label class="field"><span>Worker group (empty: its own worker; the roles of one group share its account, CLI, model and launch)</span>
           <input value=${edit.workerGroup ?? ''}
