@@ -5,7 +5,7 @@ import { Refusal } from '../schema/errors.ts'
 import { admissionFor, stepDemand } from '../derived/c16/admission.ts'
 import { readyRecheck } from '../derived/c16/recheck.ts'
 import { checkpointBlocksTurn, foldRechecks, routeSettled } from '../state/rechecks.ts'
-import { currentOffer, obligationOf, oldestWorkerStep } from '../derived/c16/worker.ts'
+import { currentOffer, obligationOf, oldestWorkerStep, workerSerialActors } from '../derived/c16/worker.ts'
 import { create, NonBlank, type Author, type Recorded, type RuntimeEvent } from '../schema/index.ts'
 import { Dir, Now, sha, Store } from '../services/index.ts'
 import { foldWork, type WorkFolded } from '../state/c16/fold.ts'
@@ -129,8 +129,7 @@ export const offerWorker = (worker: string, generation: number, secret: string, 
       return null
     }
     if (abandon) return null
-    const serial = [...runtime.serial.values()].filter((entry) => entry.worker === worker &&
-      s.makers.get(entry.actor.slice('maker:'.length))?.ended === false).map((entry) => entry.actor)
+    const serial = workerSerialActors(s, runtime, worker)
     const pick = s.top.ended ? undefined : oldestWorkerStep(s, [...current.reservation.members, ...serial],
       eligible)
     if (!pick) return null

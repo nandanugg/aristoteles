@@ -2,6 +2,7 @@
 // hover strip, the escalation modal with its review, the folded sidebar and its DIR / PROJECT
 // picker, the poll that repairs a lost push, and the reload on a new build.
 import { expect } from 'bun:test'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { startServer } from '../code.js'
@@ -68,6 +69,7 @@ const texts = (page, sel) => page.locator(sel).allTextContents()
     await page.waitForSelector('.pipe-row')
     expect(await page.textContent('.escalation .status')).toBe('Waits for review')
     expect(await page.textContent('.escalation .conclusion')).toBe('Say it once.')
+    expect(await page.textContent('.escalation')).toContain('Reported review mode · self-review turns')
     expect(await page.textContent('.person')).toContain('Waits for you')
     const question = page.getByRole('form', { name: 'Which examples?' })
     const answer = 'first line\nsecond line'
@@ -107,6 +109,11 @@ const texts = (page, sel) => page.locator(sel).allTextContents()
     const dialog = page.locator('[role=dialog]')
     await dialog.waitFor()
     expect(await dialog.textContent()).toContain('Reviewed by: self-review turns (as the pipeline role reports)')
+    const shots = process.env.PASS9_SCREENSHOTS
+    if (shots) {
+      mkdirSync(shots, { recursive: true })
+      await page.screenshot({ path: join(shots, '06-reported-draft-review.png'), animations: 'disabled' })
+    }
     expect(await dialog.locator('.diff .add').count()).toBeGreaterThan(0)
     expect(await dialog.locator('button', { hasText: 'Accept' }).count()).toBe(1)
     expect(await dialog.locator('button', { hasText: 'Send back' }).isDisabled()).toBe(true)

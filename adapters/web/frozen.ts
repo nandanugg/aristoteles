@@ -38,6 +38,7 @@ export interface Pump {
   onAttach: ReadonlyArray<(session?: string) => void>
   readonly redraw: (session: string, show: (bytes: Uint8Array) => void) => void
   readonly inputTarget: (session: string) => TerminalTarget
+  readonly localOnly?: (session: string) => boolean
   readonly start: (session: string, command: string, options?: StartOptions) => string
   readonly resume: (session: string, command: string, options?: StartOptions) => string
   readonly input: (session: string, text: string) => void

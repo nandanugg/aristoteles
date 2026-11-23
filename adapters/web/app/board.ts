@@ -3,7 +3,7 @@
 import type { ComponentChildren } from 'preact'
 import { html } from 'htm/preact'
 import { useEffect, useState } from 'preact/hooks'
-import type { Dash, DashTerminalCard } from '../contract.ts'
+import type { Dash, DashTerminalCard, DashWorker } from '../contract.ts'
 import type { ActView, WorkOut, WorkSender } from './api.ts'
 import { QuestionForm } from './questions.ts'
 import { useSubmission } from './submission.ts'
@@ -86,23 +86,38 @@ const Column = ({ title, children }: { title: string; children: ComponentChildre
   html`<section class="col" aria-label=${title}><h2 class="col-title">${title}</h2>${children}
   </section>`
 
-interface BoardProps {
-  dash: Dash
+interface TerminalActions {
   onTerminal: (card: DashTerminalCard) => void
+  onWorker: (worker: string) => void
+}
+
+function RoleTerminal({ card, workers, onTerminal, onWorker }: TerminalActions & {
+  card: DashTerminalCard
+  workers: ReadonlyArray<DashWorker>
+}) {
+  const worker = workers.find(({ id }) => id === card.worker)
+  return worker ? html`<button class="card worker-link" onClick=${() => onWorker(worker.id)}>
+      <span>Worker</span> <strong>${worker.label}</strong>
+    </button>`
+    : html`<${TerminalCard} card=${card} onOpen=${() => onTerminal(card)} />`
+}
+
+interface BoardProps extends TerminalActions {
+  dash: Dash
   onAct: Act
 }
-export function Board({ dash, onTerminal, onAct }: BoardProps) {
+export function Board({ dash, onTerminal, onWorker, onAct }: BoardProps) {
   return html`<div class="board">
     <${Column} title="Task queue">
       ${dash.queue.map((t) => html`<${TaskCard} key=${t.id} task=${t}
         onAct=${onAct} view=${dash.header} />`)}
     <//>
     <${Column} title="Host">
-      <${TerminalCard} card=${dash.host.card} onOpen=${() => onTerminal(dash.host.card)} />
+      <${RoleTerminal} card=${dash.host.card} workers=${dash.workers} onTerminal=${onTerminal} onWorker=${onWorker} />
       ${dash.host.subagents.map((s, i) => html`<${SubagentCard} key=${i} s=${s} />`)}
     <//>
     ${dash.columns.map((c) => html`<${Column} key=${c.role} title=${c.role}>
-      <${TerminalCard} card=${c.card} onOpen=${() => onTerminal(c.card)} />
+      <${RoleTerminal} card=${c.card} workers=${dash.workers} onTerminal=${onTerminal} onWorker=${onWorker} />
       ${c.task ? html`<${TaskCard} task=${c.task} onAct=${onAct} view=${dash.header} />` : ''}
       ${c.subagents.map((s, i) => html`<${SubagentCard} key=${i} s=${s} />`)}
     <//>`)}
@@ -137,12 +152,11 @@ const STATUS_WORDS = {
 // The pipeline row: every escalation, and the pipeline role's card. It is hidden unless an
 // escalation waits for review; the strip at the bottom edge shows it while the pointer is on it
 // (DESIGN 10.1).
-interface RowProps {
+interface RowProps extends TerminalActions {
   dash: Dash
   onEscalation: (id: string) => void
-  onTerminal: (card: DashTerminalCard) => void
 }
-export function PipeRow({ dash, onEscalation, onTerminal }: RowProps) {
+export function PipeRow({ dash, onEscalation, onTerminal, onWorker }: RowProps) {
   const [peek, setPeek] = useState(false)
   // The row stays while the pointer is on it; a move anywhere else hides it again.
   useEffect(() => {
@@ -160,7 +174,7 @@ export function PipeRow({ dash, onEscalation, onTerminal }: RowProps) {
   return html`<section class="pipe-row" aria-label="Task pipeline">
     <h2 class="col-title">Task pipeline</h2>
     <div class="pipe-cards">
-      <${TerminalCard} card=${dash.pipe} onOpen=${() => onTerminal(dash.pipe)} />
+      <${RoleTerminal} card=${dash.pipe} workers=${dash.workers} onTerminal=${onTerminal} onWorker=${onWorker} />
       ${dash.row.map((e) => html`<${EscalationCard} key=${e.id} e=${e}
         onOpen=${() => onEscalation(e.id)} />`)}
       ${dash.row.length ? '' : html`<p class="muted">No escalation.</p>`}
@@ -173,7 +187,9 @@ function EscalationCard({ e, onOpen }: { e: Escalation; onOpen: () => void }) {
     aria-label=${`Escalation ${e.id}`} onClick=${onOpen}>
     <div class="card-head"><span class="status">${STATUS_WORDS[e.status]}</span>
       <span class="tags">${e.id}</span></div>
-    <div class="card-body"><div class="for">${e.task}</div><${Pyramid} summary=${e.summary} /></div>
+    <div class="card-body"><div class="for">${e.task}</div><${Pyramid} summary=${e.summary} />
+      ${e.reviewMode ? html`<p class="muted">Reported review mode · ${e.reviewMode}</p>` : ''}
+    </div>
   </button>`
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { Schema } from 'effect'
+import { dos } from '../../core/derived/c16/obligations.ts'
+import { obligationOf } from '../../core/derived/c16/worker.ts'
 import { basisOf, refused } from '../../core/derived/c16/accept.ts'
 import { sessionOf } from '../../core/effects/engine.ts'
 import type { TerminalReading } from '../../core/schema/outside.ts'
@@ -353,4 +355,122 @@ describe('the wire', () => {
       expect(Schema.decodeUnknownSync(Dash)(wire)).toEqual(d)
     }
   })
+})
+
+describe('managed workers', () => {
+  const shared = {
+    worker: 'group:delivery', members: ['host', 'role:dev', 'pipe'],
+    account: 'fixture', cli: 'cli', model: 'model', launch: 'SECRET_COMMAND', sessionLimit: 1,
+  } as const
+  const other = { ...shared, worker: 'private:role:qa', members: ['role:qa'] } as const
+  const launch = 'b'.repeat(32)
+  const session = `worker-${launch}`
+  const key = { worker: shared.worker, generation: 1, launch }
+  const reservation = {
+    _tag: 'WorkerReserved', ...key, expectedGeneration: 0, purpose: 'work',
+    members: shared.members, placement: shared, slot: 'slot',
+  } as const
+  const binding = {
+    _tag: 'WorkerBound', ...key, session, members: [{ actor: 'host', epoch: 0, verifier: 'MEMBER_VERIFIER' }],
+    waitVerifier: 'WAIT_VERIFIER',
+  } as const
+
+  test('three identities link to one observed session and one selected turn', () => {
+    const state = start()
+    const offer = {
+      ...key, turn: 'turn-7', actor: 'host', epoch: 0, on: state.seq, receiptVerifier: 'TURN_VERIFIER',
+      obligation: JSON.stringify(['Open', 'a', null, null, null, null, 0]),
+      step: { act: 'Open', task: 'a', fix: null, ask: null, maker: null, actor: null },
+    } as const
+    const runtime = {
+      placements: [shared, other], children: new Map(), serial: new Map(),
+      workers: new Map([[shared.worker, { reservation, binding, offer, fenced: false, ended: false, parking: null }]]),
+    }
+    const dash = dashOf(input(state, { runtime, localAttach: () => 'tmux attach' }))
+    const [worker, waiting] = dash.workers
+    expect(worker).toMatchObject({
+      id: shared.worker, identities: [{ actor: 'host', label: 'Host' }, { actor: 'role:dev', label: 'dev' },
+        { actor: 'pipe', label: 'Pipeline' }],
+      status: 'foreground occupied',
+      turn: { id: 'turn-7', actor: 'host', step: 'Starting work on a', basis: 0 },
+      session: { id: session, attach: 'tmux attach' },
+      permits: { provider: { charged: true, used: 1, limit: 1 }, attempts: null, children: null,
+        fixes: null, rechecks: null },
+    })
+    expect([dash.host.card, dash.pipe, dash.columns[0]?.card].map((card) => [card?.worker, card?.session]))
+      .toEqual([[shared.worker, session], [shared.worker, session], [shared.worker, session]])
+    expect(waiting).toMatchObject({
+      status: 'waiting for capacity', session: null, turn: null,
+      waits: [{ reason: 'The provider account has no free session slot.', actor: null, step: null }],
+      permits: { provider: { charged: false, used: 1, limit: 1 } },
+    })
+    expect(JSON.stringify(Schema.encodeSync(Dash)(dash))).not.toMatch(/SECRET_COMMAND|MEMBER_VERIFIER|WAIT_VERIFIER|TURN_VERIFIER/)
+    const withdrawn = dashOf(input(send(state), { runtime }))
+    expect(withdrawn.workers[0]).toMatchObject({ status: 'idle', turn: null })
+  })
+
+  test('a fenced generation holds its slot until confirmed end and has no attach action', () => {
+    const state = { ...start(), down: new Set(['host']) }
+    const page = (ended: boolean) => dashOf(input(state, {
+      runtime: {
+        placements: [shared, other], children: new Map(), serial: new Map(),
+        workers: new Map([[shared.worker, { reservation, binding, offer: null, fenced: true, ended, parking: null }]]),
+      },
+      localAttach: () => 'tmux attach',
+    }))
+    expect(page(false).workers[0]).toMatchObject({
+      status: 'stopping', session: { attach: null }, permits: { provider: { charged: true, used: 1 } },
+    })
+    expect(page(false).person.owed.some((entry) => entry._tag === 'ReviveHost')).toBe(false)
+    expect(page(true).workers[0]).toMatchObject({
+      status: 'stopped', session: null, permits: { provider: { charged: false, used: 0 } },
+    })
+    expect(page(true).workers[1]).toMatchObject({ status: 'starting', waits: null })
+  })
+})
+
+
+test('the dashboard keeps the fix age order and a selected recheck outside the fix cap', () => {
+  const topology = reviewed(reported(send(start()), 't1', 'm1'), 'Pass')
+  const finished = topology.tasks.get('t1')!
+  const fixtureFix = raised(start()).fixes.get('t1')!
+  const state = {
+    ...topology,
+    tasks: new Map(topology.tasks).set('t1', { ...finished, pending: new Set(['rule:r1']) }),
+    fixes: new Map([
+      ['t2', { ...fixtureFix, at: 6 }],
+      ['t3', { ...fixtureFix, at: 5 }],
+      ['edit', { ...fixtureFix, at: 3 }],
+    ]),
+  }
+  const step = dos(state, PIPE).find(({ act }) => act === 'RecheckDone')!
+  const placement = { worker: 'role:architect', members: ['pipe'], account: 'fixture',
+    cli: 'fixture', model: 'test', launch: 'test', sessionLimit: null } as const
+  const key = { worker: placement.worker, generation: 1, launch: 'launch' }
+  const runtime = {
+    placements: [placement], children: new Map(), serial: new Map(),
+    workers: new Map([[placement.worker, {
+      reservation: { ...key, _tag: 'WorkerReserved' as const, placement, members: placement.members,
+        expectedGeneration: 0, purpose: 'work' as const, slot: 'slot' },
+      binding: { ...key, _tag: 'WorkerBound' as const, session: 'session', members: [], waitVerifier: 'verifier' },
+      fenced: false, ended: false, parking: null,
+      offer: { ...key, turn: 'turn', actor: 'pipe', epoch: 0, on: state.seq, receiptVerifier: 'receipt',
+        step, obligation: obligationOf(state, step) },
+    }]]),
+  }
+  const permit = { actor: 'pipe', concurrency: 1, subagentAllowance: 0, backgroundChildren: true }
+  const page = (fixes: Set<string>) => dashOf(input(state, { runtime,
+    admission: { policy: new Map([['pipe', permit]]), permits: { roles: new Map(), fixes } },
+  })).workers[0]!
+  const held = page(new Set(['edit']))
+  expect(held.permits.fixes).toMatchObject({
+    used: 1, limit: 1, entries: [{ id: 'edit', state: 'held' }, { id: 't3', state: 'waiting' }, { id: 't2', state: 'waiting' }],
+  })
+  expect(held.permits.rechecks).toMatchObject({ used: 1, limit: null, entries: [{ id: 't1', state: 'selected' }] })
+  expect(held.turn?.actor).toBe('pipe')
+  expect(held.waits).toEqual([
+    { actor: 'pipe', step: 'Evaluating top', reason: 'Fix t3 is waiting for a Pipe attempt permit (limit 1).' },
+    { actor: 'pipe', step: 'Evaluating top', reason: 'Fix t2 is waiting for a Pipe attempt permit (limit 1).' },
+  ])
+  expect(page(new Set()).permits.fixes?.entries.map(({ state }) => state)).toEqual(['ready', 'waiting', 'waiting'])
 })

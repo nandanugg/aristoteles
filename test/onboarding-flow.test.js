@@ -331,6 +331,9 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
         await fake.tick()
         expect(jobs().get(job).park._tag).toBe('WorkerParkConfirmed')
         expect(runtime().workers.get(first.queued.worker).ended).toBe(true)
+        expect((await dash()).workers.find(({ id }) => id === first.queued.worker)).toMatchObject({
+          status: 'parked', session: null, permits: { provider: { charged: false }, rechecks: { used: 1, limit: 1 } },
+        })
         await fake.tick()
       } else {
         expect((await agent(`worker wait ${projectWorker} --seconds=0.01`))).toContain('compatible child or session slot')
@@ -387,6 +390,9 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
     if (route === 'park') {
       const resumed = fake.starts.find(({ command }) => command.includes('--resume'))
       expect(resumed).toBeDefined()
+      expect((await dash()).workers.find(({ id }) => id === first.queued.worker)).toMatchObject({
+        status: 'resuming', session: null, permits: { provider: { charged: true } },
+      })
       expect(resumed.command).toContain(cliSession(boot.pending.launch))
       projectWorker = resumed.env.ARISTOTELES_WORKER_CREDENTIAL
       const [, launch, , root] = projectWorker.split('.')

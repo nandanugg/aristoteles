@@ -66,6 +66,19 @@ function StaffingDetails({ view, onEdit }: { view: View; onEdit?: ((edit: Edit) 
   </div>`
 }
 
+function WorkerPlacement({ title, workers }: { title: string; workers: View['workers'] }) {
+  return html`<section class="staffing-placement" aria-label=${title}>
+    <h3>${title}</h3>
+    ${workers.length ? html`<ul>${workers.map(({ worker, roles, account, shared }) => html`
+      <li key=${worker}>
+        <strong>${worker.replace(/^(?:group|role):/, '')}</strong>
+        <span>${shared ? 'Group' : 'Private'} · ${account}</span>
+        <span>${joined(roles)}</span>
+      </li>`
+    )}</ul>` : html`<p class="muted">No persistent workers.</p>`}
+  </section>`
+}
+
 function StaffingEditor({ edit, state, busy, onChange, onPreview }: {
   edit: Edit; state: State; busy: boolean; onChange: (next: Edit) => void; onPreview: () => void
 }) {
@@ -179,6 +192,10 @@ export function Staffing({ start, version, onApplied }: {
       ${alert()}
       ${preview.changed.length ? html`<ul>${preview.changed.map((line) => html`<li class="staffing-typed">${line}</li>`)}</ul>`
         : html`<p>No changes to the arrangement or limits.</p>`}
+      <div class="staffing-placement-comparison">
+        <${WorkerPlacement} title="Current worker placement" workers=${preview.before.workers} />
+        <${WorkerPlacement} title="Proposed worker placement" workers=${preview.after.workers} />
+      </div>
       <div class="staffing-comparison">
         <section aria-label="Before"><h3>Before</h3><${StaffingDetails} view=${preview.before} /></section>
         <section aria-label="After"><h3>After</h3><${StaffingDetails} view=${preview.after} /></section>

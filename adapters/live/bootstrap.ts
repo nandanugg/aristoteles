@@ -7,12 +7,12 @@ import { fill } from '../../core/effects/lines.ts'
 import { launchOpening } from './markers.ts'
 
 export const NONCE_ENV = 'ARISTOTELES_LAUNCH_NONCE'
-const socket = (dir: string) => `ar-bootstrap-${sha(dir).slice(0, 20)}`
-export const isBootstrapSocket = (dir: string, path: string): boolean => basename(path) === socket(dir)
+export const bootstrapSocket = (dir: string) => `ar-bootstrap-${sha(dir).slice(0, 20)}`
+export const isBootstrapSocket = (dir: string, path: string): boolean => basename(path) === bootstrapSocket(dir)
 const tmux = (dir: string, args: readonly string[]) => {
   const env = { ...process.env }
   for (const name of ['TMUX', 'TMUX_PANE', 'TMUX_SOCKET', NONCE_ENV]) delete env[name]
-  return Bun.spawnSync(['tmux', '-f', '/dev/null', '-L', socket(dir), ...args], { env })
+  return Bun.spawnSync(['tmux', '-f', '/dev/null', '-L', bootstrapSocket(dir), ...args], { env })
 }
 export const bootstrapSession = (launch: string): string => `boot-${launch}`
 export const isBootstrapSession = (session: string): boolean => /^boot-[a-f0-9]{32}$/.test(session)

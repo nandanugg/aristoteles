@@ -1,4 +1,5 @@
 import type { WorkFolded } from '../../state/c16/fold.ts'
+import type { WorkState } from '../../state/c16/state.ts'
 import { pipeStage } from '../../state/c16/reads.ts'
 import { keyOf, type Act, type Step } from '../../state/c16/types.ts'
 import { childLoad, type Runtime } from '../../state/worker-runtime.ts'
@@ -30,10 +31,17 @@ export type Admission =
 const waiting = (reason: string): Admission => ({ kind: 'waiting', reason })
 const ordinary: Admission = { kind: 'ordinary' }
 
+// The age order is shared by admission and the dashboard's fix lane.
+export const pipeFixesByAge = (state: WorkState) =>
+  [...state.fixes]
+    .filter(([, entry]) => pipeStage(entry.stage))
+    .sort(([left, a], [right, b]) => a.at - b.at || left.localeCompare(right))
+    .map(([id]) => id)
+
 // The same predicate is used for each offered step and at the commit boundary.
 // A permit is owned by the C16 role identity even when its worker hosts other roles.
 export const admissionFor = (
-  folded: WorkFolded, runtime: Runtime, actor: string, demand: Demand,
+  folded: Pick<WorkFolded, 'state' | 'policy' | 'permits'>, runtime: Runtime, actor: string, demand: Demand,
 ): Admission => {
   const { state, policy, permits } = folded
   const limits = policy.get(actor)
@@ -42,11 +50,9 @@ export const admissionFor = (
   if (actor === 'pipe' && demand.fix !== undefined) {
     const fix = demand.fix
     if (permits.fixes.has(fix)) return ordinary
-    const waitingFixes = [...state.fixes]
-      .filter(([id, entry]) => pipeStage(entry.stage) && !permits.fixes.has(id))
-      .sort(([left, a], [right, b]) => a.at - b.at || left.localeCompare(right))
+    const waitingFixes = pipeFixesByAge(state).filter((id) => !permits.fixes.has(id))
     const free = limits.concurrency - permits.fixes.size
-    const place = waitingFixes.findIndex(([id]) => id === fix)
+    const place = waitingFixes.indexOf(fix)
     return place >= 0 && place >= free
       ? waiting(`Fix ${fix} is waiting for a Pipe attempt permit (limit ${limits.concurrency}).`)
       : ordinary
