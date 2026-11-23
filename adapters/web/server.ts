@@ -35,7 +35,6 @@ import {
   type Author,
   OnboardingAct,
   RefusalSchema,
-  SessionId,
   StoreDamaged,
   type Time,
   type Work,
@@ -69,7 +68,9 @@ import {
 } from '../../core/services/index.ts'
 import { fold, momentOf, WorkCache, workCacheLayer } from '../../core/state/index.ts'
 import { foldWork } from '../../core/state/c16/fold.ts'
+import { workerSession } from '../../core/actions/worker.ts'
 import { sessionAt } from '../../core/effects/engine.ts'
+import { foldRuntime } from '../../core/state/worker-runtime.ts'
 import { keyOf } from '../../core/state/c16/types.ts'
 import { buildOf } from '../live/build.ts'
 import { readPane } from '../live/host-pane.ts'
@@ -77,6 +78,7 @@ import { readingsLive } from '../live/readings.ts'
 import { readStatus, statusStamp } from '../live/status.ts'
 import { tokenSecret } from '../live/tokens.ts'
 import { readMarkers } from '../live/waiting.ts'
+import { bootstrapAttach, isLocalTerminalSession, workerAttach } from '../live/worker-terminal.ts'
 import {
   forwardedPageBody, pageBodyOf, pagePointsOk, type WorkPost, workPostOf,
 } from './acts.ts'
@@ -263,6 +265,11 @@ export function startServer(options: ServerOptions): ServerHandle {
   const picksNow = (): typeof DirView.Type['picks'] => [
     { dir: basename(dir), project: foldWork(storeEvents())?.state.top.name ?? null, path: '/' },
   ]
+  // Include recorded binding IDs as well as the reserved tmux names. Past generations
+  // stay local even if their pane has stopped or the browser has a queued key.
+  const localSessions = new Set<string>()
+  const localOnly = (session: string): boolean =>
+    isLocalTerminalSession(session) || localSessions.has(session) || pump?.localOnly?.(session) === true
   const dashNow = (): typeof Dash.Type | undefined => {
     const events = storeEvents()
     const folded = foldWork(events)
@@ -298,11 +305,17 @@ export function startServer(options: ServerOptions): ServerHandle {
       }
     }
     const { state, forwards, hostSession } = folded
+    const runtimeWorkers = foldRuntime(events)
+    const managedActors = new Set(runtimeWorkers.placements.flatMap(({ members }) => members))
+    for (const { event } of events) {
+      if (event._tag !== 'Runtime') continue
+      if (event.create._tag === 'WorkerBound') localSessions.add(event.create.session)
+      if (event.create._tag === 'WorkerReserved') localSessions.add(workerSession(event.create.launch))
+    }
     const binding = activationOf(events)?.binding
-    const managed = binding && (state.ep.get('host') ?? 0) === 0 && hostSession !== null
+    const managed = !managedActors.has('host') && binding && (state.ep.get('host') ?? 0) === 0 && hostSession !== null
       ? bootstrapPane(dir, binding.launch) : null
-    if (managed && hostSession !== null) pump?.adopt(SessionId.make(hostSession), managed.socket, managed.pane)
-    const hostPane = folded.hostPane ?? managed
+    const hostPane = managedActors.has('host') ? null : folded.hostPane ?? managed
     const now = Date.parse(clock())
     const terminals = pump?.status() ?? {}
     const persistent = [
@@ -311,8 +324,9 @@ export function startServer(options: ServerOptions): ServerHandle {
     ]
     const tails = Object.fromEntries(
       persistent.flatMap((k) => {
+        if (managedActors.has(k)) return []
         const sid = sessionAt(hostSession, k, state.ep.get(k) ?? 0)
-        return !isBootstrapSession(sid) && sid in terminals ? [[sid, pump?.tail(sid, 40) ?? '']] : []
+        return !localOnly(sid) && sid in terminals ? [[sid, pump?.tail(sid, 40) ?? '']] : []
       }),
     )
     const old = readState()
@@ -324,10 +338,16 @@ export function startServer(options: ServerOptions): ServerHandle {
       now,
       state,
       hostSession,
+      runtime: runtimeWorkers,
+      localAttach: (session) => isBootstrapSession(session)
+        ? bootstrapAlive(dir, session.slice('boot-'.length)) ? bootstrapAttach(dir, session) : null
+        : pump && terminals[session]?._tag === 'Live' ? workerAttach(pump.socket, pump.name, session) : null,
       host: {
         model: '',
         reading: hostPane === null ? null : readPane(
-          hostPane.socket, hostPane.pane, isBootstrapSocket(dir, hostPane.socket) ? 0 : undefined,
+          hostPane.socket, hostPane.pane,
+          isBootstrapSocket(dir, hostPane.socket) || localOnly(sessionAt(hostSession, 'host', state.ep.get('host') ?? 0))
+            ? 0 : undefined,
         ),
       },
       pipe: pipe === undefined || pipe[1].kind !== 'agent'
@@ -390,6 +410,7 @@ export function startServer(options: ServerOptions): ServerHandle {
   const attachments = new Map<string, number>()
   const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64')
   const toWatchers = (session: string, message: unknown) => {
+    if (localOnly(session)) return
     const text = JSON.stringify(message)
     for (const [ws, set] of watching) {
       if (set.has(session) && ws.send(text) === 0) ws.close(1013, 'redraw terminal')
@@ -402,6 +423,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     if (keys) return keys
     marks = pipeMarks(dbPath(env), dir)
     keys = pipeQueue(marks, (key) => {
+      if (localOnly(key.session)) return { state: 'gone' }
       const target = pump?.inputTarget(key.session)
       if (!target || target.state === 'gone') return { state: 'gone' }
       if (target.state !== 'ready') return { state: 'waiting' }
@@ -413,6 +435,10 @@ export function startServer(options: ServerOptions): ServerHandle {
   }
   const waitingBindings = new Set<string>()
   const bind = (session: string) => {
+    if (localOnly(session)) {
+      waitingBindings.delete(session)
+      return false
+    }
     const target = pump?.inputTarget(session)
     if (target?.state !== 'ready') {
       if (!waitingBindings.has(session)) {
@@ -428,9 +454,9 @@ export function startServer(options: ServerOptions): ServerHandle {
     return true
   }
   const redraw = (session: string) => {
-    if (!pump || !shown(session)) return
+    if (!pump || localOnly(session) || !shown(session)) return
     pump.redraw(session, (frame) => {
-      if (!shown(session)) return
+      if (localOnly(session) || !shown(session)) return
       const attach = (attachments.get(session) ?? 0) + 1
       attachments.set(session, attach)
       const size = pump.size(session)
@@ -479,7 +505,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     const error = (words: string) =>
       ws.send(JSON.stringify({ type: 'term.error', session: m.session, error: words }))
     // These panes receive raw turn or activation credentials. Keep their screens local.
-    if (isBootstrapSession(m.session) || /^worker-[a-f0-9]{32}$/.test(m.session)) {
+    if (localOnly(m.session)) {
       if (m.type === 'term.open') error('The managed terminal is available in local tmux.')
       return
     }

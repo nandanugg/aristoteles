@@ -1141,3 +1141,71 @@ button.card { text-align: left; width: 100%; padding: 0; cursor: pointer; }
 .sidebar-list .card { flex: none; }
 .sidebar-list { overflow: auto; }
 .sidebar-head, .sidebar-list { width: calc(var(--sidebar-open) - 12px); }
+
+/* Managed workers have their own session status and are linked from the role board. */
+.workers { margin: 0 0 24px; }
+.workers > h2 { margin-bottom: 10px; }
+.worker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 265px), 1fr));
+  gap: 12px;
+}
+.worker-card { width: 100%; min-width: 0; overflow: hidden; }
+.worker-card-head {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: 6px 12px; padding: 12px 14px; border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.worker-card-head h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.worker-state {
+  padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line);
+  color: var(--muted); background: var(--surface); font-size: 12px; font-weight: 650;
+}
+.worker-state[data-state="idle"] { color: var(--accept); background: var(--accept-tint); }
+.worker-state[data-state="foreground occupied"], .worker-state[data-state="resuming"] {
+  color: var(--blue); background: var(--blue-tint); border-color: var(--blue-line);
+}
+.worker-state[data-state="waiting for capacity"], .worker-state[data-state="parked"] {
+  color: var(--amber); background: var(--amber-tint); border-color: var(--amber-line);
+}
+.worker-card-body { display: grid; gap: 10px; padding: 12px 14px; }
+.worker-profile { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.worker-identities {
+  display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0;
+}
+.worker-identities li {
+  border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px;
+  background: var(--surface-2); font-size: 12px; overflow-wrap: anywhere; min-width: 0;
+}
+.worker-facts {
+  display: grid; grid-template-columns: minmax(0, 118px) minmax(0, 1fr);
+  align-items: baseline; gap: 6px 8px; margin: 0; font-size: 13px;
+}
+.worker-facts dt { color: var(--muted); }
+.worker-facts dd { margin: 0; overflow-wrap: anywhere; }
+.worker-waits {
+  display: grid; gap: 4px; margin: 0; padding: 8px 10px; list-style: none;
+  background: var(--amber-tint); color: var(--amber); border-radius: 6px; font-size: 13px;
+}
+.worker-open { justify-self: start; }
+.card.worker-link {
+  padding: 8px 11px; min-height: 38px; width: fit-content; max-width: 100%; cursor: pointer;
+  text-align: left; overflow-wrap: anywhere; color: var(--blue); background: var(--blue-tint);
+}
+.worker-link span { color: var(--muted); margin-right: 5px; }
+.worker-terminal-state { font-weight: 600; }
+.worker-attach {
+  padding: 12px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface-2); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all;
+}
+.staffing-placement-comparison {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 315px), 1fr)); gap: 12px;
+  margin-bottom: 16px;
+}
+.staffing-placement h3 { margin: 0 0 8px; }
+.staffing-placement ul { display: grid; gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; }
+.staffing-placement li {
+  display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--surface-2); overflow-wrap: anywhere;
+}
+.staffing-placement li span { color: var(--muted); font-size: 13px; }

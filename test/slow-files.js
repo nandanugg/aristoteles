@@ -6,6 +6,7 @@
 const SLOW = [
   'test/pump.test.js', // real tmux and the fake AI tool
   'test/dash.test.js', // a real browser
+  'test/pass9-page.test.js', // a real browser and managed tmux workers
 ]
 
 const skip = process.argv.includes('--skip')

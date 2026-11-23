@@ -15,6 +15,7 @@ import { Modal } from './modal.ts'
 import { Onboarding } from './onboarding.ts'
 import { Review } from './review.ts'
 import { Terminal } from './terminal.ts'
+import { Workers, WorkerTerminal } from './workers.ts'
 
 type DirData = typeof DirView.Type
 type DashData = typeof DashSchema.Type
@@ -132,6 +133,7 @@ function Sidebar({ title, dash, picks, open, onToggle, onSettings, onDirection }
 // What a modal shows: a terminal, an escalation, or a direction (by key, so a new Dash keeps it).
 type Shown =
   | { readonly kind: 'terminal'; readonly card: DashTerminalCard }
+  | { readonly kind: 'worker'; readonly id: string }
   | { readonly kind: 'escalation'; readonly id: string }
   | { readonly kind: 'direction'; readonly key: string; readonly edit: boolean }
 
@@ -210,12 +212,14 @@ function App() {
       <p class="error">${error}</p></div></main>`
   }
   if (!dir) return html`<main class="canvas"></main>`
-  const title = dash ? `${dash?.activation ? html`<${ActivationPanel} view=${dash.activation} refresh=${poll} />` : dash.header.dir} / ${dash.header.project}` : dir.name
+  const title = dash && !dash.activation ? `${dash.header.dir} / ${dash.header.project}` : dir.name
+  const worker = shown?.kind === 'worker' ? dash?.workers.find(({ id }) => id === shown.id) : null
   const escalation = shown?.kind === 'escalation' ? dash?.row.find((e) => e.id === shown.id) : null
   const direction =
     shown?.kind === 'direction' ? dash?.directions.find((d) => d.key === shown.key) : null
   const close = () => setShown(null)
   const terminal = (card: DashTerminalCard) => setShown({ kind: 'terminal', card })
+  const openWorker = (id: string) => setShown({ kind: 'worker', id })
   const review = (id: string) => setShown({ kind: 'escalation', id })
   return html`<div class="layout">
     <${Sidebar} title=${title} dash=${dash} picks=${dir.picks} open=${sidebar}
@@ -223,12 +227,15 @@ function App() {
       onSettings=${() => setSettings(true)}
       onDirection=${(key: string, edit: boolean) => setShown({ kind: 'direction', key, edit })} />
     <main class="canvas">
-      ${dash
+      ${dash?.activation
+        ? html`<${ActivationPanel} view=${dash.activation} refresh=${poll} />`
+        : dash
         ? html`<header class="dash-head"><h1>${title}</h1></header>
           <${Person} dash=${dash} onAct=${act} onForward=${forward} onEscalation=${review} />
-          <${Board} dash=${dash} onTerminal=${terminal} onAct=${act} />
+          <${Workers} workers=${dash.workers} onOpen=${openWorker} />
+          <${Board} dash=${dash} onTerminal=${terminal} onWorker=${openWorker} onAct=${act} />
           <${Results} dash=${dash} onAct=${act} />
-          <${PipeRow} dash=${dash} onEscalation=${review} onTerminal=${terminal} />`
+          <${PipeRow} dash=${dash} onEscalation=${review} onTerminal=${terminal} onWorker=${openWorker} />`
         : !dir.initialized
         ? dir.onboarding
           ? html`<${Onboarding} dir=${dir} version=${version} />`
@@ -241,6 +248,7 @@ function App() {
           <${Terminal} label=${shown.card.role} session=${SessionId.make(shown.card.session)}
             live=${shown.card.status !== 'Inactive'} /><//>`
       : ''}
+    ${worker ? html`<${WorkerTerminal} key=${worker.id} worker=${worker} onClose=${close} />` : ''}
     ${escalation ? html`<${Review} key=${escalation.ask ?? escalation.id} e=${escalation}
         onAct=${act} view=${dash?.header} onClose=${close} />` : ''}
     ${direction ? html`<${DirectionModal} d=${direction}

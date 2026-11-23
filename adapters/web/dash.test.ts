@@ -354,3 +354,75 @@ describe('the wire', () => {
     }
   })
 })
+
+describe('managed workers', () => {
+  const shared = {
+    worker: 'group:delivery', members: ['host', 'role:dev', 'pipe'],
+    account: 'fixture', cli: 'cli', model: 'model', launch: 'SECRET_COMMAND', sessionLimit: 1,
+  } as const
+  const other = { ...shared, worker: 'private:role:qa', members: ['role:qa'] } as const
+  const launch = 'b'.repeat(32)
+  const session = `worker-${launch}`
+  const key = { worker: shared.worker, generation: 1, launch }
+  const reservation = {
+    _tag: 'WorkerReserved', ...key, expectedGeneration: 0, purpose: 'work',
+    members: shared.members, placement: shared, slot: 'slot',
+  } as const
+  const binding = {
+    _tag: 'WorkerBound', ...key, session, members: [{ actor: 'host', epoch: 0, verifier: 'MEMBER_VERIFIER' }],
+    waitVerifier: 'WAIT_VERIFIER',
+  } as const
+
+  test('three identities link to one observed session and one selected turn', () => {
+    const state = start()
+    const offer = {
+      ...key, turn: 'turn-7', actor: 'host', epoch: 0, on: state.seq, receiptVerifier: 'TURN_VERIFIER',
+      obligation: JSON.stringify(['Open', 'a', null, null, null, null, 0]),
+      step: { act: 'Open', task: 'a', fix: null, ask: null, maker: null, actor: null },
+    } as const
+    const runtime = {
+      placements: [shared, other],
+      workers: new Map([[shared.worker, { reservation, binding, offer, fenced: false, ended: false }]]),
+    }
+    const dash = dashOf(input(state, { runtime, localAttach: () => 'tmux attach' }))
+    const [worker, waiting] = dash.workers
+    expect(worker).toMatchObject({
+      id: shared.worker, identities: [{ actor: 'host', label: 'Host' }, { actor: 'role:dev', label: 'dev' },
+        { actor: 'pipe', label: 'Pipeline' }],
+      status: 'foreground occupied',
+      turn: { id: 'turn-7', actor: 'host', step: 'Starting work on a', basis: 0 },
+      session: { id: session, attach: 'tmux attach' },
+      permits: { provider: { charged: true, used: 1, limit: 1 }, attempts: null, children: null,
+        fixes: null, rechecks: null },
+    })
+    expect([dash.host.card, dash.pipe, dash.columns[0]?.card].map((card) => [card?.worker, card?.session]))
+      .toEqual([[shared.worker, session], [shared.worker, session], [shared.worker, session]])
+    expect(waiting).toMatchObject({
+      status: 'waiting for capacity', session: null, turn: null,
+      waits: [{ reason: 'provider capacity', actor: null, step: null }],
+      permits: { provider: { charged: false, used: 1, limit: 1 } },
+    })
+    expect(JSON.stringify(Schema.encodeSync(Dash)(dash))).not.toMatch(/SECRET_COMMAND|MEMBER_VERIFIER|WAIT_VERIFIER|TURN_VERIFIER/)
+    const withdrawn = dashOf(input(send(state), { runtime }))
+    expect(withdrawn.workers[0]).toMatchObject({ status: 'idle', turn: null })
+  })
+
+  test('a fenced generation holds its slot until confirmed end and has no attach action', () => {
+    const state = { ...start(), down: new Set(['host']) }
+    const page = (ended: boolean) => dashOf(input(state, {
+      runtime: {
+        placements: [shared, other],
+        workers: new Map([[shared.worker, { reservation, binding, offer: null, fenced: true, ended }]]),
+      },
+      localAttach: () => 'tmux attach',
+    }))
+    expect(page(false).workers[0]).toMatchObject({
+      status: 'stopping', session: { attach: null }, permits: { provider: { charged: true, used: 1 } },
+    })
+    expect(page(false).person.owed.some((entry) => entry._tag === 'ReviveHost')).toBe(false)
+    expect(page(true).workers[0]).toMatchObject({
+      status: 'stopped', session: null, permits: { provider: { charged: false, used: 0 } },
+    })
+    expect(page(true).workers[1]).toMatchObject({ status: 'starting', waits: null })
+  })
+})

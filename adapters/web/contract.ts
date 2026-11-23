@@ -283,7 +283,44 @@ const DashTerminal = Schema.Struct({
   model: Text,
   status: DashStatus,
   work: Text,
+  worker: Schema.optionalKey(Text),
 })
+
+const DashWorkerIdentity = Schema.Struct({ actor: Text, label: Text })
+const DashWorkerPermit = Schema.Struct({ used: Schema.Int, limit: Schema.NullOr(Schema.Int) })
+const DashWorkerUsage = Schema.Struct({ actor: Text, ...DashWorkerPermit.fields })
+const DashWait = Schema.Struct({
+  reason: Schema.Literals([
+    'provider capacity', 'role attempt capacity', 'child capacity', 'fix capacity', 'recheck lane',
+    'foreground occupied',
+  ]),
+  actor: Schema.NullOr(Text),
+  step: Schema.NullOr(Text),
+})
+export const DashWorker = Schema.Struct({
+  id: Text,
+  label: Text,
+  account: Text,
+  cli: Text,
+  model: Text,
+  identities: Schema.Array(DashWorkerIdentity),
+  generation: Schema.NullOr(Schema.Int),
+  session: Schema.NullOr(Schema.Struct({ id: Text, attach: Schema.NullOr(Text) })),
+  status: Schema.Literals([
+    'starting', 'idle', 'foreground occupied', 'parked', 'waiting for capacity', 'resuming', 'stopping', 'stopped',
+  ]),
+  turn: Schema.NullOr(Schema.Struct({ id: Text, actor: Text, step: Text, basis: Schema.Int })),
+  waits: Schema.NullOr(Schema.Array(DashWait)),
+  permits: Schema.Struct({
+    provider: Schema.Struct({ ...DashWorkerPermit.fields, charged: Schema.Boolean }),
+    attempts: Schema.NullOr(Schema.Array(DashWorkerUsage)),
+    children: Schema.NullOr(Schema.Array(DashWorkerUsage)),
+    fixes: Schema.NullOr(DashWorkerPermit),
+    rechecks: Schema.NullOr(DashWorkerPermit),
+  }),
+})
+export type DashWorker = typeof DashWorker.Type
+
 const DashColumn = Schema.Struct({
   role: Text,
   card: DashTerminal,
@@ -379,6 +416,7 @@ export const Dash = Schema.Struct({
   host: Schema.Struct({ card: DashTerminal, subagents: Schema.Array(DashSubagent) }),
   columns: Schema.Array(DashColumn),
   pipe: DashTerminal,
+  workers: Schema.Array(DashWorker),
   row: Schema.Array(DashEscalation),
   rowShown: Schema.Boolean,
   person: Schema.Struct({ owed: Schema.Array(DashOwed) }),

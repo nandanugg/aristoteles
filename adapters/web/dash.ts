@@ -3,12 +3,14 @@
 // page draws from a whole copy of it (browser.qnt). No clock here: `now` comes in.
 import type { TerminalReading, WaitMarker } from '../../core/schema/outside.ts'
 import { dos, owed } from '../../core/derived/c16/obligations.ts'
+import { currentOffer } from '../../core/derived/c16/worker.ts'
 import { sessionAt } from '../../core/effects/engine.ts'
 import { epochOf, liveMaker, verOf } from '../../core/state/c16/reads.ts'
 import type { Task, WorkState } from '../../core/state/c16/state.ts'
-import { type Actor, type Body, keyOf } from '../../core/state/c16/types.ts'
+import { type Actor, type Body, type Step, keyOf } from '../../core/state/c16/types.ts'
 import { EDIT, type ItemKey, type ItemRec } from '../../core/state/c16/data.ts'
-import type { Dash, DashStatusWord, DashTerminalCard } from './contract.ts'
+import type { foldRuntime } from '../../core/state/worker-runtime.ts'
+import type { Dash, DashStatusWord, DashTerminalCard, DashWorker } from './contract.ts'
 
 const HOST: Actor = { _tag: 'Host' }
 const PIPE: Actor = { _tag: 'Pipe' }
@@ -39,6 +41,9 @@ export interface DashInput {
   readonly state: WorkState
   // The bound host's session of an activated workflow (core/state/c16/fold.ts), else null.
   readonly hostSession: string | null
+  readonly runtime?: ReturnType<typeof foldRuntime>
+  // Attach instructions are supplied only for a locally observed managed pane.
+  readonly localAttach?: (session: string) => string | null
   // The config: the host's model (the person's AI CLI: '' when unknown) and the pipeline role.
   readonly host: { readonly model: string; readonly reading: Reading | null }
   readonly pipe: { readonly name: string; readonly model: string } | null
@@ -130,13 +135,75 @@ const workOf = (s: WorkState, actor: Actor): string => {
     : 'Waits for a task'
 }
 
-const terminalOf = (i: DashInput, actor: Actor, role: string, model: string): DashTerminalCard => ({
-  role,
-  session: sessionAt(i.hostSession, keyOf(actor), epochOf(i.state, actor)),
-  model,
-  status: statusOf(i, actor),
-  work: workOf(i.state, actor),
-})
+const terminalOf = (
+  i: DashInput, actor: Actor, role: string, model: string, worker: DashWorker | undefined,
+): DashTerminalCard => {
+  const work = workOf(i.state, actor)
+  if (worker) {
+    return {
+      worker: worker.id, role, model: worker.model, work,
+      session: worker.session?.id ?? (actor._tag === 'Host' && worker.generation === null ? i.hostSession ?? '' : ''),
+      status: worker.turn?.actor === keyOf(actor) ? 'Working'
+        : worker.status === 'idle' || worker.status === 'foreground occupied' ? 'Waiting' : 'Inactive',
+    }
+  }
+  return {
+    role, session: sessionAt(i.hostSession, keyOf(actor), epochOf(i.state, actor)),
+    model, status: statusOf(i, actor), work,
+  }
+}
+
+const actorLabel = (key: string): string => key === 'host' ? 'Host'
+  : key === 'pipe' ? 'Pipeline'
+  : key.startsWith('role:') ? key.slice('role:'.length) : key
+
+const turnWords = (state: WorkState, step: Step): string => {
+  const question = step.ask === null ? undefined
+    : (state.asks.get(step.ask) ?? state.answered.get(step.ask)?.ask)?.question
+  const section = step.act === 'Open' && step.ask === null ? step.task : null
+  const subject = question?.title ?? section ?? nameOf(state, step.fix ?? step.task ?? step.maker)
+  return `${DOING[step.act] ?? step.act} ${subject}`
+}
+
+const workersOf = (i: DashInput): ReadonlyArray<DashWorker> => {
+  if (!i.runtime) return []
+  const { placements, workers } = i.runtime
+  const accounts = new Map<string, number>()
+  for (const { reservation, ended } of workers.values()) {
+    if (!ended) {
+      const account = reservation.placement.account
+      accounts.set(account, (accounts.get(account) ?? 0) + 1)
+    }
+  }
+  return placements.map((configured) => {
+    const current = workers.get(configured.worker)
+    const charged = current !== undefined && !current.ended
+    const placement = charged ? current.reservation.placement : configured
+    const { worker: id, members, model, account, cli, sessionLimit: limit } = placement
+    const used = accounts.get(account) ?? 0
+    const full = !charged && limit !== null && used >= limit && !i.state.top.ended
+    const online = charged && !current.fenced && current.binding !== null && !i.state.top.ended
+    const offer = online && current.offer !== null && currentOffer(i.state, current.offer) ? current.offer : null
+    const session = charged ? current.binding?.session ?? null : null
+    return {
+      id, label: id.startsWith('group:') ? id.slice('group:'.length) : actorLabel(members[0]),
+      account, cli, model,
+      identities: members.map((actor) => ({ actor, label: actorLabel(actor) })),
+      generation: current?.reservation.generation ?? null,
+      session: session === null ? null : { id: session, attach: online ? i.localAttach?.(session) ?? null : null },
+      status: charged && (current.fenced || i.state.top.ended) ? 'stopping'
+        : online ? offer === null ? 'idle' : 'foreground occupied'
+        : full ? 'waiting for capacity'
+        : i.state.top.ended || current?.ended ? 'stopped' : 'starting',
+      turn: offer === null ? null : {
+        id: offer.turn, actor: offer.actor, basis: offer.on,
+        step: turnWords(i.state, offer.step),
+      },
+      waits: full ? [{ reason: 'provider capacity', actor: null, step: null }] : null,
+      permits: { provider: { charged, used, limit }, attempts: null, children: null, fixes: null, rechecks: null },
+    }
+  })
+}
 
 // --- tasks and subagents -------------------------------------------------------------------------
 
@@ -274,7 +341,10 @@ const humanOwed = (s: WorkState): Dash['person']['owed'] =>
 export const dashOf = (i: DashInput): Dash => {
   const s = i.state
   const tasks = [...s.tasks.values()]
-  const person = humanOwed(s)
+  const workers = workersOf(i)
+  const byActor = new Map(workers.flatMap((worker) =>
+    worker.identities.map(({ actor }) => [actor, worker] as const)))
+  const person = humanOwed(s).filter((entry) => entry._tag !== 'ReviveHost' || !byActor.has('host'))
   const row = escalationsOf(s, new Map(person.flatMap((x) =>
     x._tag === 'Decide' ? [[x.fix, x.ask] as const] : [])))
   return {
@@ -284,18 +354,19 @@ export const dashOf = (i: DashInput): Dash => {
       .map((t) => taskCard(s, t)),
     results: tasks.filter((t) => !s.top.ended && t.state === 'Done' && t.resultId >= 0)
       .map(({ id, name }) => ({ id, name })),
-    host: { card: terminalOf(i, HOST, 'host', i.host.model), subagents: [] },
+    host: { card: terminalOf(i, HOST, 'host', i.host.model, byActor.get('host')), subagents: [] },
     columns: [...s.cards].map(([role, card]) => {
       const current = tasks.find((t) =>
         t.role === role && t.state !== 'Done' && t.state !== 'Split')
       return {
         role,
-        card: terminalOf(i, { _tag: 'Role', name: role }, role, card.model),
+        card: terminalOf(i, { _tag: 'Role', name: role }, role, card.model, byActor.get(`role:${role}`)),
         task: current === undefined ? null : taskCard(s, current),
         subagents: subagentsOf(s, role, card.model),
       }
     }),
-    pipe: terminalOf(i, PIPE, i.pipe?.name ?? 'pipeline', i.pipe?.model ?? ''),
+    pipe: terminalOf(i, PIPE, i.pipe?.name ?? 'pipeline', i.pipe?.model ?? '', byActor.get('pipe')),
+    workers,
     row,
     rowShown: row.some((e) => e.status === 'WAIT_FOR_REVIEW'),
     person: { owed: person },

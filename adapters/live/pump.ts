@@ -16,6 +16,8 @@ import { Effect, Layer } from 'effect'
 import { OutsideFailed, type SessionId } from '../../core/schema/index.ts'
 import type { TerminalReading } from '../../core/schema/outside.ts'
 import { type PaneRef, pathOf, Pump, Spawn, SpawnLive } from '../../core/services/index.ts'
+import { isBootstrapSocket } from './bootstrap.ts'
+import { isLocalTerminalSession } from './worker-terminal.ts'
 
 export interface TmuxPumpOptions {
   readonly dir: string
@@ -80,6 +82,7 @@ export interface TmuxPump {
   onAttach: ReadonlyArray<(session?: string) => void>
   readonly redraw: (session: string, show: (bytes: Uint8Array) => void) => void
   readonly inputTarget: (session: string) => TerminalTarget
+  readonly localOnly: (session: string) => boolean
   readonly start: (session: string, command: string, options?: StartOptions) => string
   readonly resume: (session: string, command: string, options?: StartOptions) => string
   readonly input: (session: string, text: string) => void
@@ -144,6 +147,7 @@ type ControlClient = Bun.Subprocess<'pipe', 'pipe', 'ignore'>
 
 // The host's own pane on the person's tmux server.
 interface Adopted {
+  readonly localOnly: boolean
   readonly socket: string
   readonly pane: string
   // The clock time when the look of each second last saw new output: #{window_activity} (the
@@ -327,10 +331,12 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
 
   // Each output and each new size of a terminal, to the listeners.
   const emit = (sid: string, bytes: Uint8Array) => {
+    if (localOnly(sid)) return
     onOutput(sid, bytes)
     for (const fn of pump.onOutputs) fn(sid, bytes)
   }
   const emitSize = (sid: string, size: TerminalSize) => {
+    if (localOnly(sid)) return
     for (const fn of pump.onSizes) fn(sid, size)
   }
 
@@ -368,7 +374,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     if (!output) return
     if (!panes.has(output.pane)) refreshPanes()
     const sid = panes.get(output.pane)
-    if (!sid) return
+    if (!sid || localOnly(sid)) return
     const data = unescapeOutput(output.escaped)
     keep(sid, data)
     emit(sid, data)
@@ -413,6 +419,8 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
   // person's server streams it to every tab that shows it; ignore-size keeps that client out of
   // the window's size. The pump types into it with send-keys.
   const adopted = new Map<string, Adopted>()
+  const localOnly = (sid: string) => isLocalTerminalSession(sid) || adopted.get(sid)?.localOnly === true
+  const ownSocket = tmuxNow('display-message', '-p', '-t', name, '#{socket_path}').out.trim()
   const hostSize = (a: Adopted): TerminalSize | undefined => {
     const format = '#{pane_width} #{pane_height}'
     const r = onPersonServer(a.socket, ['display-message', '-p', '-t', a.pane, format])
@@ -567,7 +575,9 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     onOutputs: [],
     onSizes: [],
     onAttach: [],
+    localOnly,
     redraw(sid, show) {
+      if (localOnly(sid)) return
       const a = adopted.get(sid)
       const control = a?.client ?? client
       if (!control || (a ? !readyHosts.has(sid) : !ownReady)) return
@@ -585,7 +595,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       )
       const capture: Capture = {
         pane, lines: [], show: (bytes) => {
-          if (a ? adopted.get(sid) !== a || a.client !== control : client !== control) return
+          if (localOnly(sid) || (a ? adopted.get(sid) !== a || a.client !== control : client !== control)) return
           const frame = new Uint8Array(bytes.length + cursor.length)
           frame.set(bytes)
           frame.set(cursor, bytes.length)
@@ -600,6 +610,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       }
     },
     inputTarget(sid) {
+      if (localOnly(sid)) return { state: 'gone' }
       const adoptedPane = adopted.get(sid)
       if (adoptedPane ? !readyHosts.has(sid) : !ownReady) return { state: 'waiting' }
       const run = (args: string[]) => {
@@ -642,6 +653,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
             args: string[], cleanup?: () => void,
           ): PreparedTerminalWrite => ({
             run() {
+              if (localOnly(sid)) return 'target'
               const result = run([...check, ...args])
               if (result.out.includes('target-changed') ||
                 /can't find pane:/.test(result.err)) {
@@ -763,6 +775,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     // before the ring started (Claude scrolls its own view with the wheel) needs them in the
     // page too, else the wheel scrolls the page's own history, which is empty.
     snapshot(sid) {
+      if (localOnly(sid)) return new Uint8Array()
       const a = adopted.get(sid)
       if (a) return hostFrame(a)
       const modes = new TextEncoder().encode(mouseModes(sid))
@@ -805,6 +818,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     },
     // The last lines of a terminal, for the words of an event.
     tail(sid, lines = 12) {
+      if (localOnly(sid)) return ''
       const a = adopted.get(sid)
       const capture = ['capture-pane', '-p', '-J', '-S', '-500', '-t']
       const r = a
@@ -827,6 +841,8 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
       const b: Adopted = {
         socket: on,
         pane,
+        localOnly: isBootstrapSocket(dir, on) ||
+          (on === ownSocket && list().some((row) => row.pane === pane && isLocalTerminalSession(row.sid))),
         last: clock(),
         activity: 0,
         ended: false,
@@ -874,6 +890,7 @@ export const createTmuxPump = (options: TmuxPumpOptions): TmuxPump => {
     // while a page shows it. From the first show its window keeps its size (window-size manual),
     // so the person's terminal no longer resizes it: only the page's resize button does.
     show(sid) {
+      if (localOnly(sid)) return
       const a = adopted.get(sid)
       if (!a || a.client) return
       onPersonServer(a.socket, ['set-option', '-w', '-t', a.pane, 'window-size', 'manual'])
