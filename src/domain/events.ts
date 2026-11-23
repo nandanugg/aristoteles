@@ -382,6 +382,7 @@ export const WRITTEN_BY = {
     'Runtime.WorkerReserved', 'Runtime.WorkerFenced', 'Runtime.TurnOffered', 'Runtime.TurnClosed',
     'Runtime.ChildReserved', 'Runtime.ChildStarted', 'Runtime.RecheckQueued', 'Runtime.CheckpointSaved',
     'Runtime.WorkerParkRequested', 'Runtime.RecheckDeferred', 'Runtime.RecheckReported', 'Runtime.RecheckCancelled',
+    'Runtime.WorkerRecoveryRequested',
   ],
   // The supervisor of the terminals: the fate of a send.
   Supervisor: [

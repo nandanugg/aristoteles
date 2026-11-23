@@ -107,6 +107,7 @@ export const RuntimeEvent = Schema.Union([
   Schema.TaggedStruct('RecheckReported', {
     job: Text, helper: Text, report: Text, on: Number, items: Versions, findings: Schema.Array(RecheckFinding),
   }),
+  Schema.TaggedStruct('WorkerRecoveryRequested', { ...Binding, job: Text, checkpoint: Text, reason: Text }),
   Schema.TaggedStruct('RecheckCancelled', { job: Text, reason: Text }),
   Schema.TaggedStruct('TurnOffered', Turn.fields),
   Schema.TaggedStruct('TurnClosed', {

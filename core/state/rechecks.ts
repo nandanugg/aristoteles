@@ -21,6 +21,7 @@ export interface RecheckJob {
   readonly cancelled: boolean
   readonly taken: boolean
   readonly resumed: boolean
+  readonly recovery: Event<'WorkerRecoveryRequested'> | null
 }
 
 export const foldRechecks = (events: ReadonlyArray<Recorded>) => {
@@ -39,7 +40,7 @@ export const foldRechecks = (events: ReadonlyArray<Recorded>) => {
     switch (e._tag) {
       case 'RecheckQueued':
         jobs.set(e.job, { queued: e, checkpoint: null, park: null, deferred: null, route: null,
-          helper: null, report: null, cancelled: false, taken: false, resumed: false })
+          helper: null, report: null, cancelled: false, taken: false, resumed: false, recovery: null })
         break
       case 'CheckpointSaved': change(e.job, { checkpoint: e }); break
       case 'WorkerParkRequested':
@@ -54,7 +55,7 @@ export const foldRechecks = (events: ReadonlyArray<Recorded>) => {
       case 'WorkerReserved':
         if (e.purpose === 'recheck' && e.job) {
           change(e.job, { route: { kind: 'session', allocation: e.worker, launch: e.launch }, helper: null, deferred: null })
-        } else if (e.purpose === 'resume' && e.job) {
+        } else if (e.job && (e.purpose === 'resume' || jobs.get(e.job)?.recovery)) {
           resuming.set(e.launch, e.job)
         }
         break
@@ -65,6 +66,7 @@ export const foldRechecks = (events: ReadonlyArray<Recorded>) => {
       }
       case 'RecheckHelperBound': change(e.job, { helper: e }); break
       case 'RecheckReported': change(e.job, { report: e }); break
+      case 'WorkerRecoveryRequested': change(e.job, { recovery: e, cancelled: true }); break
       case 'RecheckCancelled': change(e.job, { cancelled: true }); break
     }
   }

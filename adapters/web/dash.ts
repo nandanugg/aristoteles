@@ -195,6 +195,7 @@ const workersOf = (i: DashInput): ReadonlyArray<DashWorker> => {
     const job = jobs ? activeRecheck(jobs, runtime) : undefined
     const ownJob = job?.queued.worker === configured.worker ? job : undefined
     const parked = ownJob?.park?._tag === 'WorkerParkConfirmed' && !ownJob.resumed
+    const recovery = parked ? ownJob?.recovery : undefined
     const resuming = charged && current.reservation.purpose === 'resume' && current.binding === null
     const online = charged && !current.parking && !current.fenced && current.binding !== null && !i.state.top.ended
     const actors = [...members, ...workerSerialActors(i.state, runtime, id)]
@@ -230,6 +231,7 @@ const workersOf = (i: DashInput): ReadonlyArray<DashWorker> => {
       generation: current?.reservation.generation ?? null,
       session: session === null ? null : { id: session, attach: online ? i.localAttach?.(session) ?? null : null },
       status: charged && (current.parking || current.fenced || i.state.top.ended) ? 'stopping'
+        : recovery ? 'recovering'
         : resuming ? 'resuming'
         : parked ? 'parked'
         : online ? offer !== null ? 'foreground occupied'
@@ -240,7 +242,8 @@ const workersOf = (i: DashInput): ReadonlyArray<DashWorker> => {
         id: offer.turn, actor: offer.actor, basis: offer.on,
         step: turnWords(i.state, offer.step),
       },
-      waits: admission || full ? [...capacityWait, ...blocked,
+      waits: admission || full || recovery ? [...capacityWait, ...blocked,
+        ...(recovery ? [{ actor: null, step: null, reason: recovery.reason }] : []),
         ...(ownJob?.deferred && !blocked.some(({ reason }) => reason === ownJob.deferred?.reason)
           ? [{ actor: 'pipe', step: `Rechecking ${nameOf(i.state, ownJob.queued.task)}`, reason: ownJob.deferred.reason }] : []),
       ] : null,

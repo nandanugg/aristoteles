@@ -10,6 +10,7 @@ const statuses: Record<DashWorker['status'], string> = {
   parked: 'Parked',
   'waiting for capacity': 'Waiting for capacity',
   resuming: 'Resuming',
+  recovering: 'Recovering',
   stopping: 'Stopping',
   stopped: 'Stopped',
 }

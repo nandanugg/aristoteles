@@ -100,14 +100,15 @@ const waitWorker = (
     return ['The outstanding turn was abandoned.']
   }
   for (;;) {
+    let observation: string[] = []
     const before = yield* store.events
     const priorRuntime = foldRuntime(before)
     const parent = priorRuntime.workers.get(worker)
     if (parent?.reservation.generation === generation && !parent.fenced && !parent.ended &&
       parent.binding?.waitVerifier === sha(secret)) {
       const job = [...foldRechecks(before).values()].find((entry) =>
-        entry.queued.worker === worker && !entry.report && !entry.taken &&
-        (!entry.cancelled || (entry.route?.kind === 'child' &&
+        entry.queued.worker === worker && !entry.taken &&
+        ((!entry.report && !entry.cancelled) || (entry.route?.kind === 'child' &&
           priorRuntime.children.get(entry.route.allocation)?.released === null)))
       if (parent.parking) return [`Worker park for ${parent.parking.job} is awaiting a confirmed stop.`]
       const route = job?.route?.kind === 'child' ? priorRuntime.children.get(job.route.allocation) : undefined
@@ -115,8 +116,8 @@ const waitWorker = (
         const member = parent.binding.members.find(({ actor }) => actor === 'pipe')
         if (member) {
           const token = workTokenOf('pipe', member.epoch, memberSecretOf(secret, 'pipe', member.epoch))
-          if (route.started && (job.cancelled || route.reservation.generation !== generation)) {
-            return [`Confirm the native recheck child has stopped before settling ${route.reservation.child}.`,
+          if (route.started && (job.report || job.cancelled || route.reservation.generation !== generation)) {
+            observation = [`Confirm the native recheck child has stopped before settling ${route.reservation.child}.`,
               `work worker child-reconcile ${token} ${route.reservation.child} --observation="<native CLI outcome>"`]
           }
           if (!job.cancelled && !route.started && route.reservation.generation === generation) {
@@ -166,6 +167,7 @@ const waitWorker = (
       const basis = verdict ? ` --on=${offer.on}` : on
       const heard = offer.step.act === 'Hear' ? folded.state.answered.get(offer.step.ask ?? '') : undefined
       return [
+        ...observation,
         ...(job && verdict
           ? [`Helper report ${verdict.report} for ${job.queued.task} checked the exact items on basis ${job.queued.on}.`]
           : stepWords(folded.state, offer.step, events)),
@@ -173,6 +175,7 @@ const waitWorker = (
         privateSpelling ? `${payload}${basis}` : `${payload}${basis} --turn=${workerSecretOf(secret, offer.turn)}`,
       ]
     }
+    if (observation.length) return observation
     if (Date.now() >= until) {
       const blocked = folded ? workerSteps(folded.state, current.reservation.members).flatMap(({ actor, step }) => {
         const route = admissionFor(folded, runtime, actor, stepDemand(step))

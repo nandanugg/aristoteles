@@ -20,7 +20,8 @@ const token = (output, who) => {
   return found
 }
 
-test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance through a %s recheck', async (route) => {
+test.each(['child', 'park', 'defer', 'missing checkpoint', 'changed checkpoint'])('onboarding hands reviewed guidance through a %s recheck', async (route) => {
+  const parks = route !== 'child' && route !== 'defer'
   const p = onboardingProject()
   gitPerson(p)
   p.realTime()
@@ -193,7 +194,7 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
       arrangement.clis.fixture.backgroundChildren = true
       arrangement.roles.architect.subagentAllowance = 1
     }
-    if (route === 'park') {
+    if (parks) {
       arrangement.clis.fixture.canPark = true
       arrangement.models.opus.resume = 'fixture --resume {session} {prompt}'
     }
@@ -314,7 +315,7 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
     await fake.tick()
     const job = [...jobs().keys()][0]
     const first = jobs().get(job)
-    const compare = recheckCheckpoints(route)
+    const compare = recheckCheckpoints(parks ? 'park' : route)
     const phase = (name, parentOnline) => compare(eventsOf(p.dir), job, name, { parentOnline })
     expect(first.queued.task).toBe('t1')
     expect(first.queued.items).toHaveLength(2)
@@ -332,7 +333,7 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
       expect(first.deferred).not.toBeNull()
       expect(first.route).toBeNull()
       if (route === 'defer') phase('Deferred', true)
-      if (route === 'park') {
+      if (parks) {
         const handle = cliSession(boot.pending.launch)
         await agent(`worker checkpoint ${job} ${handle} --credential=${projectWorker}`)
         fake.restart()
@@ -400,7 +401,20 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
     yaml('recheck.yaml', { on: first.queued.on, findings })
     const helperReport = await agent(`recheck-report ${helper} ${job} --file=recheck.yaml`)
     fake.restart()
-    if (route === 'park') {
+    if (route === 'child') {
+      await fake.tick()
+      const allocation = jobs().get(job).route.allocation
+      expect(runtime().children.get(allocation).released).toBeNull()
+      expect(jobs().get(job).report).not.toBeNull()
+      const notice = await agent(`worker wait ${projectWorker} --seconds=0.01`)
+      expect(notice).not.toContain('work recheck ')
+      expect(notice).toContain('Confirm the native recheck child has stopped')
+      const command = notice.split('\n').find((line) => line.startsWith('work worker child-reconcile ')).slice(5)
+      expect((await p.agent(command.split(' --observation=')[0])).err).toContain('native CLI observation')
+      await agent(command.replace('<native CLI outcome>', 'Native CLI confirmed the helper exited'))
+      expect(runtime().children.get(allocation).released.reason).toBe('exited')
+    }
+    if (parks) {
       fake.stopMode('unknown')
       await fake.tick()
       const allocation = jobs().get(job).route.allocation
@@ -411,8 +425,39 @@ test.each(['child', 'park', 'defer'])('onboarding hands reviewed guidance throug
       fake.running.set(helperSession, 'ended')
       fake.stopMode('ended')
     }
+    if (parks && route !== 'park') {
+      const checkpoint = jobs().get(job).checkpoint.checkpoint
+      const file = `.work/runtime/launch-${checkpoint}/checkpoint`
+      if (route === 'missing checkpoint') rmSync(join(p.dir, file))
+      else p.write(file, 'changed handle')
+      await fake.tick()
+      expect(jobs().get(job)).toMatchObject({ cancelled: true, resumed: false, recovery: {
+        _tag: 'WorkerRecoveryRequested',
+      } })
+      expect((await dash()).workers.find(({ id }) => id === first.queued.worker)).toMatchObject({
+        status: 'recovering', waits: expect.arrayContaining([
+          expect.objectContaining({ reason: expect.stringContaining('checkpoint is unavailable or changed') }),
+        ]),
+      })
+      await showWorker(first.queued.worker, 'Recovering')
+      fake.restart()
+      await fake.tick()
+      const fresh = fake.starts.find(({ env }) => env.ARISTOTELES_WORKER_CREDENTIAL)
+      expect(fresh.command).not.toContain('--resume')
+      const [, launch, , root] = fresh.env.ARISTOTELES_WORKER_CREDENTIAL.split('.')
+      const { stageWorkerLaunch, sha } = await import('../core/services/index.ts')
+      stageWorkerLaunch(p.dir, launch, 'ack', sha(root))
+      fake.restart()
+      await fake.tick()
+      expect(jobs().get(job).resumed).toBe(true)
+      await fake.tick()
+      expect([...jobs().values()].some((entry) => entry.queued.job !== job && entry.queued.task === 't1')).toBe(true)
+      expect(fake.starts.filter(({ env }) => env.ARISTOTELES_WORKER_CREDENTIAL)).toHaveLength(1)
+      expect(state().tasks.get('t1').pending.size).toBe(2)
+      return
+    }
     await fake.tick()
-    if (route === 'park') {
+    if (parks) {
       const resumed = fake.starts.find(({ command }) => command.includes('--resume'))
       expect(resumed).toBeDefined()
       expect((await dash()).workers.find(({ id }) => id === first.queued.worker)).toMatchObject({

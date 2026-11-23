@@ -195,6 +195,7 @@ You are `pipe`. You run every evaluation, the direction pipeline, and the review
   credential. Write a YAML report with `on` and `findings`. Each finding has `item`, `version`,
   `outcome` (`holds` or `breaks`) and `evidence`. Cover the exact required set once on the
   original basis. Submit it with `work recheck-report`, then stop.
+  The parent reconciles a native child after the native CLI confirms its exit or fence.
 - **Take the verdict.** Pipe waits for the normal C16 recheck command. Use the printed job and
   report IDs, verdict, exact item set, basis and receipt together. The worker's own context
   cannot substitute for a fresh helper. The harness still handles test-only rules.

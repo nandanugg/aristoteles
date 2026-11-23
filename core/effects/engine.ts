@@ -17,7 +17,7 @@ import { type ActorKey } from '../state/c16/types.ts'
 import { nowMs } from './acting.ts'
 import { fill } from './lines.ts'
 import { superviseRechecks, type HelperWords } from './recheck.ts'
-import { settlePark } from '../actions/recheck.ts'
+import { recoverParkedWorker, settlePark } from '../actions/recheck.ts'
 import { foldRechecks } from '../state/rechecks.ts'
 import { ruleHolds } from './rules.ts'
 
@@ -142,9 +142,15 @@ const supervise = (say: Words, events: Parameters<typeof foldRuntime>[0], hostSe
       const before = yield* store.events
       const pendingResume = [...foldRechecks(before).values()].find((job) =>
         job.queued.worker === placement.worker && job.park?._tag === 'WorkerParkConfirmed' && !job.resumed)
-      const checkpoint = pendingResume?.checkpoint
-      const handle = checkpoint ? readWorkerLaunch(cwd, checkpoint.checkpoint, 'checkpoint') : null
-      if (checkpoint && (!handle || sha(handle) !== checkpoint.digest || !placement.resume)) continue
+      const checkpoint = pendingResume?.recovery ? null : pendingResume?.checkpoint
+      const handle = checkpoint ? yield* Effect.try(() => readWorkerLaunch(cwd, checkpoint.checkpoint, 'checkpoint'))
+        .pipe(Effect.orElseSucceed(() => null)) : null
+      if (pendingResume && !pendingResume.recovery && (!checkpoint || !handle || sha(handle) !== checkpoint.digest || !placement.resume)) {
+        const recovered = yield* recoverParkedWorker(pendingResume.queued.job,
+          'The checkpoint is unavailable or changed. A fresh worker will recover the outstanding work.')
+        if (recovered !== null) recheckAccount = placement.account
+        continue
+      }
       const reserved = yield* reserveWorker(placement.worker, launch)
       if (reserved === null) continue
       const generation = (current?.reservation.generation ?? 0) + 1

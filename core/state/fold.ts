@@ -53,6 +53,7 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
   'Runtime.RecheckDeferred': (w) => unchanged(w),
   'Runtime.RecheckHelperBound': (w) => unchanged(w),
   'Runtime.RecheckReported': (w) => unchanged(w),
+  'Runtime.WorkerRecoveryRequested': (w) => unchanged(w),
   'Runtime.RecheckCancelled': (w) => unchanged(w),
   'Runtime.ChildReserved': (w) => unchanged(w),
   'Runtime.ChildStarted': (w) => unchanged(w),

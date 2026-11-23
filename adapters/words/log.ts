@@ -83,6 +83,7 @@ const OLD_TYPE: Total<string> = {
   'Runtime.RecheckDeferred': 'deferred a recheck',
   'Runtime.RecheckHelperBound': 'bound a recheck helper',
   'Runtime.RecheckReported': 'received a recheck report',
+  'Runtime.WorkerRecoveryRequested': 'requested fresh worker recovery',
   'Runtime.RecheckCancelled': 'cancelled a recheck',
   'Runtime.ChildReserved': 'reserved a child',
   'Runtime.ChildStarted': 'authorized a child launch',

@@ -282,11 +282,28 @@ export const settleRecheckChild = (id: string) =>
     const job = foldRechecks(events).get(id)
     if (job?.route?.kind !== 'child') return Effect.succeed(null)
     const child = foldRuntime(events).children.get(job.route.allocation)
-    if (!child || child.released || (!job.report && !(job.cancelled && !child.started))) {
+    if (!child || child.released || child.started || !job.cancelled) {
       return Effect.succeed(null)
     }
     const { child: childId, worker, generation, launch } = child.reservation
     return Effect.succeed({ _tag: 'ChildReleased', child: childId, worker, generation, launch,
-      reason: job.report ? 'reported' : 'never launched',
-      observation: job.report ? `Accepted recheck ${job.report.report}.` : 'The cancelled child never received a launch.' })
+      reason: 'never launched', observation: 'The cancelled child never received a launch.' })
   }, SUPERVISOR)
+
+
+// Recovery retires the old report and restores the logical worker in a fresh context.
+// Keep both the parked generation and its helper allocation settled before recording it.
+export const recoverParkedWorker = (id: string, reason: string) =>
+  writeRuntime((events) => {
+    const runtime = foldRuntime(events)
+    const job = foldRechecks(events).get(id)
+    const park = job?.park
+    if (!job || park?._tag !== 'WorkerParkConfirmed' || job.resumed || job.recovery ||
+      !routeSettled(job, runtime) || (!job.cancelled && !job.report)) return Effect.succeed(null)
+    const worker = runtime.workers.get(park.worker)
+    if (!worker?.ended || worker.reservation.generation < park.generation) return Effect.succeed(null)
+    return Effect.succeed({
+      _tag: 'WorkerRecoveryRequested', job: id, worker: park.worker,
+      generation: park.generation, checkpoint: park.checkpoint, reason,
+    })
+  }, SYSTEM)

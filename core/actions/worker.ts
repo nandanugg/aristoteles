@@ -54,14 +54,15 @@ export const reserveWorker = (worker: string, launch: string) =>
     if (!slotAvailable(runtime, placement)) return null
     const parked = [...foldRechecks(events).values()].find((job) => job.queued.worker === worker &&
       job.park?._tag === 'WorkerParkConfirmed' && !job.resumed)
-    if (parked && (!parked.checkpoint || !routeSettled(parked, runtime) || (!parked.report && !parked.cancelled))) {
+    if (parked && ((!parked.checkpoint && !parked.recovery) || !routeSettled(parked, runtime) || (!parked.report && !parked.cancelled))) {
       return null
     }
     const expectedGeneration = previous?.reservation.generation ?? 0
     return {
       _tag: 'WorkerReserved', worker, generation: expectedGeneration + 1, expectedGeneration,
-      launch, purpose: parked ? 'resume' : 'work',
-      ...(parked?.checkpoint ? { job: parked.queued.job, checkpoint: parked.checkpoint.checkpoint } : {}),
+      launch, purpose: parked && !parked.recovery ? 'resume' : 'work',
+      ...(parked ? { job: parked.queued.job } : {}),
+      ...(parked?.checkpoint && !parked.recovery ? { checkpoint: parked.checkpoint.checkpoint } : {}),
       placement, members: placement.members, slot: `${placement.account}:${launch}`,
     }
   }), SYSTEM)

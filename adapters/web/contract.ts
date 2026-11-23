@@ -311,7 +311,7 @@ export const DashWorker = Schema.Struct({
   generation: Schema.NullOr(Schema.Int),
   session: Schema.NullOr(Schema.Struct({ id: Text, attach: Schema.NullOr(Text) })),
   status: Schema.Literals([
-    'starting', 'idle', 'foreground occupied', 'parked', 'waiting for capacity', 'resuming', 'stopping', 'stopped',
+    'starting', 'idle', 'foreground occupied', 'parked', 'waiting for capacity', 'resuming', 'recovering', 'stopping', 'stopped',
   ]),
   turn: Schema.NullOr(Schema.Struct({ id: Text, actor: Text, step: Text, basis: Schema.Int })),
   waits: Schema.NullOr(Schema.Array(DashWait)),
