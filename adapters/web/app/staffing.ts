@@ -39,13 +39,14 @@ function StaffingDetails({ view, onEdit }: { view: View; onEdit?: ((edit: Edit) 
           <dt>Account</dt><dd>${item.account}</dd><dt>CLI</dt><dd>${item.cli}</dd>
           <dt>Effective model</dt><dd>${item.model}</dd><dt>Alternatives</dt><dd>${joined(item.alternatives)}</dd>
           <dt>Session</dt><dd>${item.persistent ? 'Persistent' : 'Disposable'}</dd>
-          <dt>Concurrency</dt><dd>${item.concurrency}</dd><dt>Subagent allowance</dt><dd>${item.subagentAllowance}</dd>
+          <dt>Concurrency</dt><dd>${item.concurrency} <span class="muted">(not enforced yet)</span></dd>
+          <dt>Subagent allowance</dt><dd>${item.subagentAllowance} <span class="muted">(not enforced yet)</span></dd>
           <dt>Review mode</dt><dd>${item.review}</dd><dt>Context fit</dt><dd>Unknown. ${item.fit.why}.</dd>
         </dl></article>`)}
     </div></section>
     <section><h3>Consequences per limit</h3>
       ${view.consequences.length ? html`<div class="staffing-table-scroll"><table class="staffing-table">
-        <thead><tr><th>Account</th><th>Limit</th><th>As entered</th><th>Roles counted</th><th>Peak sessions</th><th>Workload</th></tr></thead>
+        <thead><tr><th>Account</th><th>Limit</th><th>As entered</th><th>Roles counted</th><th title="one per persistent role: the engine runs no more">Sessions</th><th>Workload</th></tr></thead>
         <tbody>${view.consequences.map((row) => html`<tr>
           <td>${row.account}</td><th scope="row">${row.limit}</th><td class="staffing-typed">${row.typed}</td>
           <td>${joined(row.roles)}</td><td>${row.peakSessions}</td><td>Unknown. ${row.workload.why}.</td>
@@ -78,9 +79,9 @@ function StaffingEditor({ edit, state, busy, onChange, onPreview }: {
         <label><input type="checkbox" checked=${edit.persistent}
           onChange=${(event: Event) => onChange({ ...edit, persistent: (event.currentTarget as HTMLInputElement).checked })} />
           Persistent session</label>
-        <label class="field"><span>Concurrency</span><input type="number" min="1" required value=${edit.concurrency}
+        <label class="field"><span>Concurrency (not enforced yet)</span><input type="number" min="1" required value=${edit.concurrency}
           onInput=${(event: Event) => onChange({ ...edit, concurrency: Number(val(event)) })} /></label>
-        <label class="field"><span>Subagent allowance</span><input type="number" min="0" required value=${edit.subagentAllowance}
+        <label class="field"><span>Subagent allowance (not enforced yet)</span><input type="number" min="0" required value=${edit.subagentAllowance}
           onInput=${(event: Event) => onChange({ ...edit, subagentAllowance: Number(val(event)) })} /></label>`}
     <div class="modal-foot"><button class="btn primary" disabled=${busy}>Preview changes</button></div>
   </form>`

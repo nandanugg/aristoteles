@@ -40,9 +40,9 @@ describe('staffingView', () => {
     const v = staffingView(base())
     expect(v.consequences).toEqual([
       expect.objectContaining({ account: 'max', limit: '5h', typed: '45 messages',
-        roles: ['host', 'writer'], peakSessions: 3 }),
+        roles: ['host', 'writer'], peakSessions: 1 }),
       expect.objectContaining({ account: 'max', limit: 'weekly', typed: '240 hours',
-        roles: ['host', 'writer'], peakSessions: 3 }),
+        roles: ['host', 'writer'], peakSessions: 1 }),
     ])
     expect(v.consequences.every((c) => !c.workload.known && c.workload.why !== '')).toBe(true)
   })

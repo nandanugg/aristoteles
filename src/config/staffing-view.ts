@@ -35,8 +35,9 @@ export interface LimitConsequence {
   readonly limit: string
   readonly typed: string // as the user typed it
   readonly roles: ReadonlyArray<string> // the roles whose work this limit counts
-  // At most this many sessions of the account at once (persistent roles hold one each; each role
-  // may start up to its concurrency): a bound from the arrangement alone, no evidence needed.
+  // The sessions of the account the engine runs: one per persistent role (makers are subagents in
+  // their role's session). Until pass 9 the engine does not enforce concurrency or the subagent
+  // allowance, so they do not change this number (the coordinator's condition for the first run).
   readonly peakSessions: number
   readonly workload: Unknown
 }
@@ -107,9 +108,7 @@ export const staffingView = (staffing: Staffing): StaffingView => {
     (x) => x.account,
   )
   const peak = (account: string) =>
-    arrangement
-      .filter((r) => r.account === account)
-      .reduce((n, r) => n + (r.persistent ? Math.max(1, r.concurrency) : r.concurrency), 0)
+    arrangement.filter((r) => r.account === account && r.persistent).length
   const consequences = accounts.flatMap((a) =>
     a.limits.map((l) => ({
       account: a.account,
