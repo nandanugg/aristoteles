@@ -5,6 +5,7 @@
 import { Effect } from 'effect'
 import type { Derived } from '../derived/index.ts'
 import {
+  currentOf,
   directionAt,
   draftAt,
   officialAt,
@@ -22,6 +23,7 @@ import {
   type Direction,
   type DirectionId,
   type EventOf,
+  isMarked,
   type Limit,
   lookup,
   type PositiveInt,
@@ -32,13 +34,15 @@ import {
   type RuleEntry,
   type StandardEntry,
   usesProblem,
+  casesProblem,
+  rulesUsedBy,
   type Work,
 } from '../schema/index.ts'
 import { foldStep } from '../state/index.ts'
 import {
   type Content,
   contentNow,
-  sameChecker,
+  sameRuleDefinition,
   sameWords,
 } from '../state/versions.ts'
 import { asPick, no, type RefusalsOf } from './support.ts'
@@ -130,6 +134,9 @@ export const DRAFT = {
     ),
   uses: (problem: string) =>
     no(problem, 'Write', 'give uses: only the ids of the direction, its standards and its rules'),
+  // pass 3b: the cases live on the rules (each rule's evidence), never on flow steps
+  cases: (problem: string) =>
+    no(problem, 'Write', 'give the rules a marked step uses a case that follows and one that breaks'),
   // --- a company commit ---
   localId: (id: string) =>
     no(
@@ -236,14 +243,8 @@ const rulesOfFile = (
   return file.rules.map((r): Built => {
     if (r.supersedes.includes(r.id)) guard(DRAFT.supersedesItself(r.id))
     const checkedBy = checkerOf(roles, r.id, r.checkedBy, guard)
-    const same = older.findLast(
-      (x) =>
-        x.id === r.id &&
-        x.says === r.says &&
-        x.test === r.test &&
-        x.ref === r.ref &&
-        sameChecker(x.checkedBy, checkedBy),
-    )
+    const sameDefinition = (x: Rule) => sameRuleDefinition(x, { ...r, checkedBy })
+    const same = baseRules.find(sameDefinition) ?? older.findLast(sameDefinition)
     if (same && r.supersedes.length === 0) return { id: r.id, entry: same.entry }
     for (const id of r.supersedes) {
       if (!baseRules.some((x) => x.id === id)) guard(DRAFT.supersedesMissing(r.id, id))
@@ -419,20 +420,33 @@ export const checkRevised = (
       rules: rulesOfFile(w, roles, r.with, base, guard),
     }))
     standardChecks(w, official, base.standards, { add, remove: edit.remove ?? [], replace }, guard)
-    // A new flow marks its steps with the ids of the direction as the change leaves it.
-    if (edit.flow !== undefined) {
-      const kept = base.standards
-        .map((e) => standardAt(w, e))
-        .filter((s) => !(edit.remove ?? []).includes(s.id))
-        .map((s) => ({ id: s.id, rules: s.rules.map((e) => ruleAt(w, e)) }))
-      const standards = [...kept, ...(edit.replace ?? []).map((r) => r.with), ...(edit.add ?? [])]
-      const problem = usesProblem(official.id, edit.flow, standards)
-      if (problem !== undefined) guard(DRAFT.uses(problem))
-    }
   })
-  if (problem !== undefined || answers.length === 0) return failIf(problem)
+  if (problem !== undefined) return failIf(problem)
   const { work, draft } = withDraft(d, by, create('Revision', { _tag: 'Revised', ...data }))
   if (draft === undefined) return Effect.void
+
+  // The fold substitutes replacements, prunes superseded rules and inherits omitted flow.
+  const standardsOf = (work: Work, entries: Content['standards']) => entries.map((entry) => {
+    const standard = standardAt(work, entry)
+    return { id: standard.id, rules: standard.rules.map((rule) => ruleAt(work, rule)) }
+  })
+  const standards = standardsOf(work, draft.standards)
+  const marks = usesProblem(official.id, draft.flow, standards)
+  if (marks !== undefined) return fail(DRAFT.uses(marks))
+  const previous = standardsOf(w, base.standards)
+  const oldFlow = currentOf(w, official.id).flow
+  const cases = casesProblem(official.id, draft.flow, standards, (step, rules) => {
+    // Onboarding can accept a step with no observed break. Carry that exception forward only
+    // for the same step and rule definitions, and never lose a break case the step already had.
+    if (!oldFlow.some((old) => isMarked(old) && Bun.deepEquals(old, step))) return false
+    const before = rulesUsedBy(official.id, step, previous)
+    return before.length === rules.length &&
+      before.every((rule) => !rule.evidence?.knownBreaks.length &&
+        !rule.evidence?.cases.some((e) => e.fit === 'Breaks') &&
+        rules.some((after) => !after.evidence?.knownBreaks.length && sameRuleDefinition(rule, after)))
+  })
+  if (cases !== undefined) return fail(DRAFT.cases(cases))
+
   const to = contentOfDraft(draft)
   for (const a of answers) {
     const refused = a._tag === 'Reject' ? draftRejectAnswered(work, a.reject, base, to) : undefined

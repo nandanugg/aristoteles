@@ -42,10 +42,15 @@ export const changeRoleWords = (
 
 // The owner's accept of a draft makes its version official: a new direction
 // becomes official with it; an official one adds it as its current version.
-export const makeOfficial = (d: Direction, version: Version<Direction>): OfficialDirection =>
-  d._tag === 'NewDirection'
-    ? { ...d, _tag: 'Official', versions: [version] }
-    : { ...d, versions: [...d.versions, version] as NonEmpty<Version<Direction>> }
+export const makeOfficial = (d: Direction, version: Version<Direction>): OfficialDirection => {
+  if (d._tag === 'NewDirection') return { ...d, _tag: 'Official', versions: [version] }
+  const { currentEvidence: _evidence, ...official } = d
+  return { ...official, versions: [...d.versions, version] as NonEmpty<Version<Direction>> }
+}
+
+export const acceptEvidence = (d: OfficialDirection, draft: Revision<Direction>): OfficialDirection => ({
+  ...d, currentEvidence: { revision: draft.id, standards: draft.standards },
+})
 
 // Revision.ExamplesAdded: a model gives a company draft of a new direction its flow, the marked
 // steps with their examples, before the accept (P10 rejected, onboarding 2026-11-14). The latest

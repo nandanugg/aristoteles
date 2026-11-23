@@ -47,15 +47,12 @@ flow:
     to: docs/tsd.md
     says: writes the reel
     uses: [reels, one-flow]
-    examples:
-      - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
-      - { fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
 says: A reel shows one flow.
 standards:
   - id: one-flow
     says: One flow per reel.
     rules:
-      - { id: one-flow-only, says: "The reel shows one flow", checkedBy: section-lead }
+      - { id: one-flow-only, says: "The reel shows one flow", evidence: { scope: { searched: [docs/tsd.md], unknown: [] }, check: { _tag: Absent }, knownBreaks: [], cases: [ { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }, { fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } } ] }, checkedBy: section-lead }
 `
 
 // The started scenario, and the person's Reject of a first draft of a new direction, Reels.
@@ -165,9 +162,10 @@ describe('a draft of a direction', () => {
 
   test('a new direction keeps its limit of standards, and a rule id of another', () => {
     const e = '[{ fit: Follows, output: { written: x } }, { fit: Breaks, output: { written: y } }]'
-    const flow = `flow: [{ from: a, to: b, says: c, uses: [big], examples: ${e} }]`
+    const flow = 'flow: [{ from: a, to: b, says: c, uses: [big] }]'
+    const evidence = `{ scope: { searched: [a], unknown: [] }, check: { _tag: Absent }, knownBreaks: [], cases: ${e} }`
     const big = `id: big\nname: Big\nowner: Nanda\nsummary: Big.\n${flow}\nsays: Big.\nmaxStandards: 1\nstandards:
-  - { id: one, says: One. }
+  - { id: one, says: One., rules: [ { id: big-one, says: One rule., evidence: ${evidence} } ] }
   - { id: two, says: Two. }
 `
     expect(refusedWith(d, ASSESS(p), draft('m1.yaml', big))).toBe(
@@ -266,10 +264,12 @@ describe('an import of a company commit', () => {
     // onboarding 2026-11-14: a model gives the company draft its flow and its examples before
     // the accept.
     const [second] = write(REFRESH, importOf(2))
+    // pass 3b: the flow marks where the rules apply; each rule's evidence holds its cases
     const output = '{ file: docs/tsd.md, line: 5, excerpt: TODO }'
-    const examples = ['Follows', 'Breaks'].map((fit) => `      - { fit: ${fit}, output: ${output} }`)
+    const examples = ['Follows', 'Breaks'].map((fit) => `        - { fit: ${fit}, output: ${output} }`)
     const step = '  - from: writer\n    to: docs/tsd.md\n    says: writes\n    uses: [acme]\n'
-    p.write('cases.yaml', `flow:\n${step}    examples:\n${examples.join('\n')}\n`)
+    p.write('cases.yaml', `flow:\n${step}rules:\n  short:\n    scope: { searched: [docs/tsd.md], unknown: [] }\n` +
+      `    check: { _tag: Absent }\n    knownBreaks: []\n    cases:\n${examples.join('\n')}\n`)
     const cases = { _tag: 'AddExamples', target: { draft: second }, content: { file: 'cases.yaml' } }
     write(HOST_RUN, cases as ActionInput)
     write(NANDA, review(String(second), true))

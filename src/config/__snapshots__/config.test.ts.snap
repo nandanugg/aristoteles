@@ -823,20 +823,6 @@ exports[`readDirection a minimal direction 1`] = `
   "ok": {
     "flow": [
       {
-        "examples": [
-          {
-            "fit": "Follows",
-            "output": {
-              "written": "a",
-            },
-          },
-          {
-            "fit": "Breaks",
-            "output": {
-              "written": "b",
-            },
-          },
-        ],
         "from": "writer",
         "says": "writes",
         "to": "doc",
@@ -850,7 +836,45 @@ exports[`readDirection a minimal direction 1`] = `
     "name": "TSD",
     "owner": "Nanda",
     "says": "S",
-    "standards": [],
+    "standards": [
+      {
+        "id": "sc",
+        "rules": [
+          {
+            "evidence": {
+              "cases": [
+                {
+                  "fit": "Follows",
+                  "output": {
+                    "written": "a",
+                  },
+                },
+                {
+                  "fit": "Breaks",
+                  "output": {
+                    "written": "b",
+                  },
+                },
+              ],
+              "check": {
+                "_tag": "Absent",
+              },
+              "knownBreaks": [],
+              "scope": {
+                "searched": [
+                  "doc",
+                ],
+                "unknown": [],
+              },
+            },
+            "id": "rc",
+            "says": "has cases",
+            "supersedes": [],
+          },
+        ],
+        "says": "cases",
+      },
+    ],
     "summary": "U",
   },
 }
@@ -862,20 +886,6 @@ exports[`readDirection a full direction 1`] = `
     "approvedBy": "checker",
     "flow": [
       {
-        "examples": [
-          {
-            "fit": "Follows",
-            "output": {
-              "written": "a",
-            },
-          },
-          {
-            "fit": "Breaks",
-            "output": {
-              "written": "b",
-            },
-          },
-        ],
         "from": "writer",
         "says": "writes",
         "to": "doc",
@@ -915,6 +925,43 @@ exports[`readDirection a full direction 1`] = `
         "where": {
           "section": "x",
         },
+      },
+      {
+        "id": "sc",
+        "rules": [
+          {
+            "evidence": {
+              "cases": [
+                {
+                  "fit": "Follows",
+                  "output": {
+                    "written": "a",
+                  },
+                },
+                {
+                  "fit": "Breaks",
+                  "output": {
+                    "written": "b",
+                  },
+                },
+              ],
+              "check": {
+                "_tag": "Absent",
+              },
+              "knownBreaks": [],
+              "scope": {
+                "searched": [
+                  "doc",
+                ],
+                "unknown": [],
+              },
+            },
+            "id": "rc",
+            "says": "has cases",
+            "supersedes": [],
+          },
+        ],
+        "says": "cases",
       },
     ],
     "summary": "U",

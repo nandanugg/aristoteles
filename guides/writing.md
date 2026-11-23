@@ -52,8 +52,8 @@ actor down to the output. The page draws it as a sequence diagram under the summ
 - Name each actor the same way in each step; the lifelines are the actors in the order that they
   first appear.
 - `uses` marks a step that the direction governs: the ids that apply there (the direction id,
-  standard ids, rule ids), and its `examples` come with it (see Examples). A flow marks at least
-  one step; the page colors the marked ones.
+  standard ids, rule ids). The cases that show it followed and broken live on those rules (see
+  Cases), never on the step. A flow marks at least one step; the page colors the marked ones.
 
 ```yaml
 flow:
@@ -65,27 +65,37 @@ flow:
     says: fills the template one section at a time
     place: { file: docs/templates/tsd.md, line: 1 }
     uses: [tsd-writing, one-topic]
-    examples:
-      - { fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
-      - { fit: Breaks, output: { written: "## Design and rollout" } }
 ```
 
-A revise may change the flow (`flow:` in the edit gives the whole new flow, with the examples of
-its marked steps).
+A revise may change the flow (`flow:` in the edit gives the whole new flow).
 
-## Examples
+## Cases
 
-A marked step of the flow has its examples inside it (`examples:` under the step): an output that
-follows the direction and one that breaks it, at least one of each. A step that makes something
-gives its output; a step that checks or decides gives its input and its output. A sample is real
-(a file, a line, a short excerpt of the file as it is today; stale when the excerpt
-leaves the file) or, when the project has none, written: `{ written: <the output> }`.
+A rule holds its cases in its `evidence` (one format, onboarding and after): what was searched
+(`scope`), how it is checked (`check`), the places that break it today (`knownBreaks`), and its
+`cases`: outputs that follow it and outputs that break it. The rules each marked step uses hold,
+between them, at least one case that follows and one that breaks. A case of a step that makes
+something gives its output; of a step that checks or decides, its input and its output. A sample is
+real (a file, a line, a short excerpt of the file as it is today; stale when the excerpt leaves
+the file) or, when the project has none, written: `{ written: <the output> }` (labelled
+illustrative on the page).
 
 ```yaml
-    examples:
-      - { fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
-      - { fit: Breaks, output: { written: "## Design and rollout" } }
+      - id: one-topic
+        says: A section keeps to one topic.
+        evidence:
+          scope: { searched: [docs/tsd], unknown: [] }
+          check: { _tag: Absent }
+          knownBreaks: []
+          cases:
+            - { fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
+            - { fit: Breaks, output: { written: "## Design and rollout" } }
 ```
+
+Use `replace` in a revise to update the evidence of an existing rule. When
+the person accepts an evidence-only draft, `work direction show <id>`
+shows the updated cases. Numbered versions keep the evidence they were
+made with.
 
 ## Write for contextual retrieval
 

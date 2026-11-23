@@ -49,7 +49,7 @@ export type DirectionStateOf = (m: Moment, direction: DirectionId) => DirectionS
 // again; a new draft is made on the current version.
 export type RevisionState =
   | { readonly _tag: 'Official'; readonly version: VersionId }
-  | { readonly _tag: 'Outdated'; readonly current: VersionId }
+  | { readonly _tag: 'Outdated'; readonly current: VersionId; readonly evidenceChanged?: true }
   // S7: a rule id that another open draft of the direction, or the current version, also adds.
   | { readonly _tag: 'Conflicted'; readonly rule: string; readonly with: RevisionId | VersionId }
   | { readonly _tag: 'Vetoed'; readonly by: RejectId }

@@ -242,7 +242,7 @@ describe('the onboarding pages', () => {
     ])
     // Ruling 4: each example in its step, a real sample with its place and whether its excerpt is
     // in its file now, the host's words as they are (Nanda, 2026-11-15).
-    expect(tsd.draft.flow.every((f) => f.examples.length === 0)).toBe(true)
+    expect(tsd.draft.flow.every((f) => f.examples === undefined)).toBe(true)
     const casesOf = (d) => ['repeatable', 'no-code-proof'].flatMap((id) =>
       d.draft.standards.flatMap((s) => s.rules).find((rule) => rule.id === id).examples ?? [])
     const sample = (x) => (x === null || 'written' in x ? x : (({ around: _, ...s }) => s)(x))

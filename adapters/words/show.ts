@@ -15,7 +15,6 @@ import {
   type DirectionId,
   type Example,
   type FlowStep,
-  isMarked,
   isSpot,
   type Revision,
   type RevisionId,
@@ -167,7 +166,7 @@ export const renderDirection = (d: Derived, version: VersionId): string => {
       state._tag === 'Vetoed'
         ? ' (ended by a Reject)'
         : state._tag === 'Outdated'
-          ? ' (built on an old version, so it stopped)'
+          ? state.evidenceChanged ? ' (built on older evidence, so it stopped)' : ' (built on an old version, so it stopped)'
           : ''
     lines.push(`draft: ${x.id}${end}; work direction show ${x.id}`)
   }
@@ -284,13 +283,3 @@ export const exampleOneLines = (
     sample('output', e.output),
   ]
 }
-// The examples of a flow, under the marked step that each shows.
-export const exampleLines = (
-  flow: ReadonlyArray<FlowStep>,
-  textOf?: (file: string) => string | null,
-): ReadonlyArray<string> =>
-  flow.flatMap((s, i) =>
-    isMarked(s)
-      ? [`  step ${i + 1} · ${whoOfStep(s)}`, ...(s.examples ?? []).flatMap((e) => exampleOneLines(e, textOf))]
-      : [],
-  )

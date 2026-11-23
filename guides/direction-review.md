@@ -28,7 +28,8 @@ good. Else revise it, with one note for each problem in this form:
    other rule's following example)?
 10. **Summary.** Does the summary say in one or two plain sentences what the direction asks and
     why it matters, for a person who reads it the first time?
-11. **Examples.** Does each marked step have an output that follows and one that breaks? Is each
+11. **Cases.** Do the rules each marked step uses hold a case that follows and one that breaks (in
+    their evidence, never on the step)? Is each
     an output (a document, code, a verdict), not an instruction, with the input of a step that
     checks or decides? Is each real where the project has one?
 12. **Flow.** Does the flow show how the direction works, from its first act down to the output?

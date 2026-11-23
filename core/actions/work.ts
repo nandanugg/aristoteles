@@ -9,8 +9,6 @@ import {
   type Author,
   create,
   type Draft,
-  type FlowStep,
-  isMarked,
   isSpot,
   type Recorded,
   type Work,
@@ -380,20 +378,13 @@ export interface Opened {
 
 const none = { test: null, ref: null, form: 'none', examples: [] } as const
 
-// The examples that the marked steps of a flow give to the ids they use: a written text, or the
-// excerpt of a spot.
-const examplesOf = (
-  flow: ReadonlyArray<FlowStep>,
-  ...ids: ReadonlyArray<string>
-): ReadonlyArray<Example> =>
-  flow.filter(isMarked).flatMap((s) =>
-    s.uses.some((u) => ids.includes(u))
-      ? (s.examples ?? []).map((e) => ({
-          fits: e.fit === 'Follows' ? ('follows' as const) : ('breaks' as const),
-          sample: isSpot(e.output) ? e.output.excerpt : e.output.written,
-        }))
-      : [],
-  )
+// The cases of a rule (its evidence: pass 3b, cases live on rules): a written text, or the excerpt
+// of a spot.
+const examplesOf = (cases: ReadonlyArray<import('../schema/index.ts').Example>): ReadonlyArray<Example> =>
+  cases.map((e) => ({
+    fits: e.fit === 'Follows' ? ('follows' as const) : ('breaks' as const),
+    sample: isSpot(e.output) ? e.output.excerpt : e.output.written,
+  }))
 
 // The form of a rule by its evidence: none means a reader alone judges it (WriteRule refuses it).
 export const formOf = (test: string | undefined, ref: string | undefined): ItemRec['form'] =>
@@ -411,7 +402,9 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
       name: w.directions.get(id)?.name ?? id,
       says: v.says,
       where: null,
-      examples: examplesOf(v.flow, id),
+      // a direction shows the cases of all its rules
+      examples: examplesOf(v.standards.flatMap((entry) =>
+        (w.standards.get(entry)?.rules ?? []).flatMap((r) => w.rules.get(r)?.evidence?.cases ?? []))),
     }
     const parts = v.standards.flatMap((entry) => {
       const std = w.standards.get(entry)
@@ -424,7 +417,8 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
         name: std.id,
         says: std.says,
         where: sections ?? null,
-        examples: examplesOf(v.flow, std.id),
+        // a standard shows the cases of its rules
+        examples: examplesOf(std.rules.flatMap((r) => w.rules.get(r)?.evidence?.cases ?? [])),
       }
       const rules = std.rules.flatMap((r) => {
         const rule = w.rules.get(r)
@@ -443,12 +437,7 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
             knownBreaks: rule.evidence.knownBreaks.map((spot) =>
               `${spot.file}:${spot.line} — ${spot.excerpt} (searched: ${rule.evidence!.scope.searched.join(', ')})`),
           } : {}),
-          examples: rule.evidence === undefined
-            ? examplesOf(v.flow, rule.id)
-            : rule.evidence.cases.map((e) => ({
-                fits: e.fit === 'Follows' ? 'follows' : 'breaks',
-                sample: isSpot(e.output) ? e.output.excerpt : e.output.written,
-              })),
+          examples: examplesOf(rule.evidence?.cases ?? []),
         }
         return [[`rule:${r}`, rr] as const]
       })

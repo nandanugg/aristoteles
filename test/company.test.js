@@ -34,13 +34,19 @@ const FLAGS = {
 const lockOf = (repo) => `feature-flags:\n  repo: ${repo}\n  path: directions/feature-flags\n  owner: Nanda\n  checkedBy: linter\n`
 const readLock = (p) => Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.lock'), 'utf8'))
 // P10 rejected, onboarding 2026-11-14: a model gives the company draft of a new direction its flow
-// in this project and its examples before the owner accepts it, with work direction examples.
+// in this project and its rules' cases (pass 3b: cases live on rules) before the owner accepts it,
+// with work direction examples.
 const FLAGS_EXAMPLES = `flow:
   - from: writer
     to: docs/tsd.md
     says: adds the flag
     uses: [feature-flags, upper-snake]
-    examples:
+rules:
+  upper-snake:
+    scope: { searched: [docs/tsd.md], unknown: [] }
+    check: { _tag: Absent }
+    knownBreaks: []
+    cases:
       - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
       - { fit: Breaks, output: { written: "const fast = process.env.FAST_EXPORT" } }
 `
@@ -71,10 +77,10 @@ describe('a company direction', () => {
     expect(show).toContain('\n    one-read (linter):\n        Each flag is read in one if.\n\n        ## Example')
     expect(ok(await p.nanda('direction show d2#one-read#example')).out).toContain('d2 · rule one-read · Example\n## Example')
     await addExamples(p, 'd2')
-    // P10 rejected, onboarding 2026-11-14: the draft shows its examples, each with its state.
-    // Nanda, 2026-11-15: by the marked step of the flow, real or written by the host.
+    // P10 rejected, onboarding 2026-11-14: the draft shows its cases, each with its state, under
+    // the rule that holds them (pass 3b), real or written by the host.
     expect(ok(await p.nanda('direction show d2')).out).toContain(
-      'examples:\n  step 1 · writer -> docs/tsd.md\n    Follows\n      output · docs/tsd.md:3 "## Introduction"\n' +
+      'cases of upper-snake:\n    Follows\n      output · docs/tsd.md:3 "## Introduction"\n' +
         '    Breaks\n      output · written by the host: "const fast = process.env.FAST_EXPORT"',
     )
     const accept = ok(await p.nanda('direction accept d2', 'accept')).out

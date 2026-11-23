@@ -6,7 +6,6 @@ import type { Logged, Work } from '../../core/schema/index.ts'
 import { logLine as logLineOf } from './log.ts'
 
 export {
-  exampleLines,
   pieceNames,
   renderDirection,
   renderDraft,

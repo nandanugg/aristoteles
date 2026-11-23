@@ -78,7 +78,7 @@ const askId = (dir: string, kind: 'Check' | 'Execute') =>
 
 
 describe('the items of openTop', () => {
-  test('a rule has its form by its evidence, and examples from the flow', async () => {
+  test('a rule has its form by its evidence, and its cases from its evidence (pass 3b)', async () => {
     const { p } = await h.started({
       'aristoteles.yaml': PIPED,
       'directions/tsd-writing.yaml': EVIDENT,
@@ -100,7 +100,8 @@ describe('the items of openTop', () => {
       { fits: 'breaks', sample: '## Introduction and design, in one section' },
     ])
     const dir = [...(items ?? [])].find(([, r]) => r.kind === 'dir')?.[1]
-    expect(dir?.examples.length).toBe(2)
+    // a direction shows the cases of all its rules (pass 3b)
+    expect(dir?.examples.length).toBe(4)
   }, 90000)
 
   test('no pipeline role: the top is refused', async () => {

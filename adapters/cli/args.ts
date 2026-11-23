@@ -208,7 +208,7 @@ export const USAGE: ReadonlyArray<string> = [
   '         work hear <token> <ask-id> | ask-raise <token> <actor>',
   '         work direction new [<token>] --file=<direction.yaml> [--by=<model run>] (a model drafts a new direction)',
   '         work direction revise [<token>] <direction> --file=<edit.yaml> [--by=<model run>] (a model drafts a change of a direction)',
-  '         work direction examples [<token>] <draft> --file=<flow.yaml> [--by=<model run>] (the flow of a company draft, its marked steps with their examples, before its accept)',
+  '         work direction examples [<token>] <draft> --file=<flow.yaml> [--by=<model run>] (the flow of a company draft and the cases of its rules: { flow, rules: { <rule id>: <evidence> } }, before its accept)',
   '         work direction accept <draft> | reject <draft> --reason=<why> (the owner, before a top is open)',
   '         work role fit <role> --answers=<file> --by=<model run> (the host that drafted the roles records their fits)',
   '         work source <token> <source>@<revision> (a source of the project is read again)',

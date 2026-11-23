@@ -63,7 +63,7 @@ describe('the store start of onboarding (Question 20, option A)', () => {
   test('the start with two directions is one event in one store write', async () => {
     const p = h.project()
     const tsd = Bun.YAML.parse(h.DIRECTION) as Record<string, unknown>
-    // Nanda, 2026-11-15: a direction has examples inside the marked steps of its flow.
+    // Nanda, 2026-11-15: a direction has a flow with its governed steps marked; the cases live on its rules (pass 3b).
     const file = tsd
     const standards = (file.standards as ReadonlyArray<{ rules: ReadonlyArray<object> }>).map(
       (x) => ({ ...x, rules: x.rules.map((r) => ({ ...r, supersedes: [] })) }),

@@ -14,7 +14,9 @@ import {
   oneOf,
   REASONS,
   ReviseFile,
+  RuleEvidence,
   RuleRef,
+  casesProblem,
   usesProblem,
   type Why,
   type Work,
@@ -147,6 +149,7 @@ const readRevise = (file: string, raw: unknown): Effect.Effect<ReviseFile, Refus
             ...(r.checkedBy !== undefined ? { checkedBy: String(r.checkedBy) } : {}),
             ...(r.test !== undefined ? { test: String(r.test) } : {}),
             ...(r.ref !== undefined ? { ref: String(r.ref) } : {}),
+            ...(r.evidence !== undefined ? { evidence: r.evidence } : {}),
             supersedes: list(r.supersedes).map(String),
           })
         }
@@ -250,8 +253,15 @@ const asRevise = (w: Work, file: DirectionFile, name: string): Effect.Effect<Rev
     rules: s.rules.map((r) => ({ ...r, supersedes: [] })),
   })
   const add = file.standards.filter((s) => !was.some((y) => y.id === s.id)).map(standard)
+  const evidenceChanged = (before: (typeof was)[number], after: DirectionFile['standards'][number]) => {
+    const rules = new Map(before.rules.map((e) => {
+      const rule = ruleAt(w, e)
+      return [rule.id, rule.evidence] as const
+    }))
+    return after.rules.some((r) => r.evidence !== undefined && !Bun.deepEquals(r.evidence, rules.get(r.id)))
+  }
   const replace = file.standards
-    .filter((s) => was.some((y) => y.id === s.id && shapeOf(y) !== shape(s)))
+    .filter((s) => was.some((y) => y.id === s.id && (shapeOf(y) !== shape(s) || evidenceChanged(y, s))))
     .map((s) => ({ id: s.id, with: standard(s) }))
   const remove = was.filter((y) => !file.standards.some((s) => s.id === y.id)).map((y) => y.id)
   const flow = file.flow
@@ -299,6 +309,9 @@ const DraftDirection: Action<'DraftDirection'> = ({ by, input }) =>
       yield* checkRevised(d, by, revised)
       return [create('Revision', { _tag: 'Revised', ...revised })]
     }
+    // A newly drafted live direction needs both fits. Existing versions use the revise check.
+    const cases = casesProblem(base.id, base.flow, base.standards)
+    if (cases !== undefined) return yield* Effect.fail(DRAFT.cases(`${file}: ${cases}`))
     yield* answersFound(w, answers)
     const drafted = { direction: base, answers, why }
     yield* checkDrafted(d, by, drafted)
@@ -329,9 +342,10 @@ const ImportCompany: Action<'ImportCompany'> = ({ by, input }) =>
     return [create('Revision', { _tag: 'Imported', ...imported })]
   })
 
-// A model gives a company draft of a new direction its flow in this project: its steps marked,
-// each with its examples, before the accept (P10 rejected, onboarding 2026-11-14); the latest
-// counts.
+// A model gives a company draft of a new direction its flow in this project (its steps marked) and
+// each rule's evidence with its cases (pass 3b: cases live on rules), before the accept (P10
+// rejected, onboarding 2026-11-14); the latest counts. The file: { flow, rules: { <rule id>:
+// <evidence> } }.
 const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
   Effect.gen(function* () {
     const d = yield* current
@@ -348,7 +362,31 @@ const AddExamples: Action<'AddExamples'> = ({ by, input }) =>
     })
     const marks = usesProblem(x.of, flow, standards)
     if (marks !== undefined) return yield* Effect.fail(DRAFT.uses(`${file}: ${marks}`))
-    return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow })]
+    const givenRules = (raw as { readonly rules?: unknown } | null)?.rules ?? {}
+    if (typeof givenRules !== 'object' || givenRules === null || Array.isArray(givenRules)) {
+      return yield* Effect.fail(DRAFT.cases(`${file}: rules is a map of rule id to its evidence`))
+    }
+    const ids = new Set(standards.flatMap((s) => s.rules.map((r) => r.id)))
+    const evidence: Array<readonly [string, RuleEvidence]> = []
+    for (const [id, value] of Object.entries(givenRules)) {
+      if (!ids.has(id)) return yield* Effect.fail(DRAFT.cases(`${file}: ${id} is not a rule of the draft`))
+      const decoded = Schema.decodeUnknownResult(RuleEvidence)(value)
+      if (decoded._tag === 'Failure') {
+        return yield* Effect.fail(DRAFT.cases(`${file}: rules.${id}: ${String(decoded.failure)}`))
+      }
+      evidence.push([id, decoded.success])
+    }
+    const given2 = new Map(evidence)
+    const withCases = standards.map((s) => ({
+      id: s.id,
+      rules: s.rules.map((r) => {
+        const e = given2.get(r.id) ?? r.evidence
+        return e === undefined ? { id: r.id } : { id: r.id, evidence: e }
+      }),
+    }))
+    const cases = casesProblem(x.of, flow, withCases)
+    if (cases !== undefined) return yield* Effect.fail(DRAFT.cases(`${file}: ${cases}`))
+    return [move('Revision', input.target.draft, { _tag: 'ExamplesAdded', flow, evidence })]
   })
 
 // --- the owner's decision, sources -------------------------------------------------------

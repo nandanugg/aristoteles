@@ -91,9 +91,9 @@ export const FLOW_FILES = {
 }
 // How the TSD direction works, from the person's first act down to the document: five steps, one
 // of them an act of the writer on its own. The direction governs two: the writer makes the
-// document (step 4), the linter checks it (step 5); each uses the ids that apply there, and shows
-// an output that follows and one that breaks (Nanda, 2026-11-15): the writer's output only, the
-// linter's input and output; real where the project has one, else written by the host.
+// document (step 4), the linter checks it (step 5); each uses the ids that apply there. The cases
+// that show them followed and broken live on the rules those steps use (pass 3b): repeatable has
+// the writer's output, no-code-proof the linter's input and output.
 export const FLOW = `flow:
   - { from: Person, to: architect, says: asks for a TSD of the export }
   - { from: architect, to: writer, says: gives each section to a writer, place: { file: CLAUDE.md, line: 3 } }
@@ -103,33 +103,10 @@ export const FLOW = `flow:
     says: fills the template one section at a time
     place: { file: docs/template.md, line: 3 }
     uses: [tsd-writing, intro-story, repeatable]
-    examples:
-      - fit: Follows
-        output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" }
-      - fit: Breaks
-        output: { written: "## Introduction and design, in one section" }
   - from: linter
     to: docs/tsd.md
     says: checks that each section says one thing
     uses: [facts-not-proof, no-code-proof]
-    examples:
-      - fit: Follows
-        input: { file: docs/tsd.md, line: 5, excerpt: TODO }
-        output: { written: "Reject: the Introduction holds no words yet" }
-      - fit: Breaks
-        input: { file: docs/tsd.md, line: 5, excerpt: TODO }
-        output: { written: "Accept: the section says one thing" }
-`
-// For the direction <id> of a test: a flow of one step that it governs, and an output there that
-// follows it and one that breaks it.
-export const markedOf = (id) => `flow:
-  - from: writer
-    to: docs/tsd.md
-    says: writes one section
-    uses: [${id}]
-    examples:
-      - { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }
-      - { fit: Breaks, output: { file: docs/tsd.md, line: 5, excerpt: TODO } }
 `
 // The flow comes before the standards, so that a test that appends a standard to the fixture
 // stays inside the standards. Nanda, 2026-11-15: a direction has a summary, before its words.
@@ -143,13 +120,13 @@ standards:
   - id: facts-not-proof
     says: The body states facts; the proof stays in the agreed facts.
     rules:
-      - { id: no-code-proof, says: "No file paths with line numbers, no commit hashes in the body", checkedBy: linter }
+      - { id: no-code-proof, says: "No file paths with line numbers, no commit hashes in the body", evidence: { scope: { searched: [docs/tsd.md], unknown: [] }, check: { _tag: Absent }, knownBreaks: [], cases: [ { fit: Follows, input: { file: docs/tsd.md, line: 5, excerpt: TODO }, output: { written: "Reject: the Introduction holds no words yet" } }, { fit: Breaks, input: { file: docs/tsd.md, line: 5, excerpt: TODO }, output: { written: "Accept: the section says one thing" } } ] }, checkedBy: linter }
       - { id: no-ticket-ids, says: "No ticket ids and no chat-thread citations", checkedBy: linter }
   - id: intro-story
     where: { section: introduction }
     says: Tell the story first, in plain words.
     rules:
-      - { id: repeatable, says: "A reviewer can repeat the problem without the design", checkedBy: section-lead }
+      - { id: repeatable, says: "A reviewer can repeat the problem without the design", evidence: { scope: { searched: [docs/tsd.md], unknown: [] }, check: { _tag: Absent }, knownBreaks: [], cases: [ { fit: Follows, output: { file: docs/tsd.md, line: 3, excerpt: "## Introduction" } }, { fit: Breaks, output: { written: "## Introduction and design, in one section" } } ] }, checkedBy: section-lead }
 `
 
 // Onboarding (BUILD.md 1e): the files that the host writes before any store. The config draft is

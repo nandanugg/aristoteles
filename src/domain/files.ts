@@ -264,12 +264,12 @@ export const StandardFile = Schema.Struct({
 })
 export type StandardFile = typeof StandardFile.Type
 
-// The examples of a marked step: at least one that follows the direction and one that breaks it.
+// Cases: at least one that follows and one that breaks (the cases of the rules a marked step uses).
 export const Examples = Schema.Array(Example).pipe(
   Schema.check(
     Schema.makeFilter((xs: ReadonlyArray<Example>) => {
       const lacks = (['Follows', 'Breaks'] as const).find((fit) => !xs.some((e) => e.fit === fit))
-      return lacks === undefined || `the step has no example that ${lacks.toLowerCase()} the direction`
+      return lacks === undefined || `no case ${lacks.toLowerCase()} the direction`
     }),
   ),
 )
@@ -282,19 +282,21 @@ export const spotsOf = (e: Example): ReadonlyArray<Spot> =>
 // something to another actor, or to a file that it acts on (from equal to to: an act on its own).
 // place: where the project defines the step, when it does; a line needs its file. A marked step
 // is one that the direction governs: uses are the ids that apply there (the direction, its
-// standards, its rules), and its examples show it followed and broken. An unmarked step has
-// neither.
+// standards, its rules). Cases live on RULES (RuleEvidence.cases: onboarding v2 U13, pass 3b),
+// never on a flow step: the flow only shows where the rules apply.
 const Place = Schema.Struct({ file: NonBlank, line: Schema.optionalKey(PositiveInt) })
-const StepAt = { from: NonBlank, to: NonBlank, says: NonBlank, place: Schema.optionalKey(Place) }
+const StepAt = {
+  from: NonBlank, to: NonBlank, says: NonBlank, place: Schema.optionalKey(Place),
+  // Refuse legacy inputs even when the decoder strips other excess properties.
+  examples: Schema.optionalKey(Schema.Never),
+}
 const Marked = Schema.Struct({
   ...StepAt,
   uses: Schema.NonEmptyArray(NonBlank),
-  examples: Schema.optionalKey(Examples),
 })
 const Unmarked = Schema.Struct({
   ...StepAt,
   uses: Schema.optionalKey(Schema.Never),
-  examples: Schema.optionalKey(Schema.Never),
 })
 export const FlowStep = Schema.Union([Marked, Unmarked])
 export type FlowStep = typeof FlowStep.Type
@@ -311,9 +313,39 @@ export const Flow = Schema.Array(FlowStep).pipe(
   ),
 )
 export type Flow = typeof Flow.Type
-// The examples of a flow, in the order of its steps.
-export const examplesOfFlow = (flow: ReadonlyArray<FlowStep>): ReadonlyArray<Example> =>
-  flow.flatMap((s) => (isMarked(s) ? (s.examples ?? []) : []))
+// The cases of the rules of a direction, in the order of its standards and rules.
+type RulesOf<R> = ReadonlyArray<{ readonly id: string; readonly rules: ReadonlyArray<R> }>
+type RuleCases = { readonly id: string; readonly evidence?: RuleEvidence }
+export const casesOfRules = (standards: RulesOf<RuleCases>): ReadonlyArray<Example> =>
+  standards.flatMap((s) => s.rules.flatMap((r) => r.evidence?.cases ?? []))
+
+// A step can name the whole direction, a standard, or an individual rule.
+export const rulesUsedBy = <R extends { readonly id: string }>(
+  id: string, step: MarkedStep, standards: RulesOf<R>,
+): ReadonlyArray<R> => {
+  const uses = new Set<string>(step.uses)
+  return standards.flatMap((s) =>
+    uses.has(id) || uses.has(s.id) ? s.rules : s.rules.filter((r) => uses.has(r.id)))
+}
+
+export const casesProblem = <R extends RuleCases>(
+  id: string,
+  flow: ReadonlyArray<FlowStep>,
+  standards: RulesOf<R>,
+  keepsNoObservedBreak?: (step: MarkedStep, rules: ReadonlyArray<R>) => boolean,
+): string | undefined => {
+  for (const [i, s] of flow.entries()) {
+    if (!isMarked(s)) continue
+    const rules = rulesUsedBy(id, s, standards)
+    const cases = rules.flatMap((r) => r.evidence?.cases ?? [])
+    const lacks = (['Follows', 'Breaks'] as const).find((fit) => !cases.some((e) => e.fit === fit))
+    if (lacks !== undefined && !(lacks === 'Breaks' && keepsNoObservedBreak?.(s, rules))) {
+      return `flow step ${i + 1}: the rules it uses have no case that ${lacks.toLowerCase()}; ` +
+        'put the cases in the evidence of those rules'
+    }
+  }
+  return undefined
+}
 
 // What is wrong with the marks of a flow, for a draft: each id of uses is the direction, or a
 // standard or a rule of it.

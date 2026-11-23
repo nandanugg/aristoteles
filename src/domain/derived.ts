@@ -9,9 +9,11 @@ import type { Work } from './work.ts'
 // The id of a version, as the CLI prints it: tsd-writing@2.
 export const versionIdOf = (v: Version<Direction>): VersionId => versionId(v.of, v.number)
 
-// The current version of an official direction: its last.
-export const currentVersion = (d: OfficialDirection): Version<Direction> =>
-  d.versions[d.versions.length - 1] ?? d.versions[0]
+// Current readers see evidence accepted since the latest numbered version was made.
+export const currentVersion = (d: OfficialDirection): Version<Direction> => {
+  const version = d.versions[d.versions.length - 1] ?? d.versions[0]
+  return d.currentEvidence ? { ...version, standards: d.currentEvidence.standards } : version
+}
 
 // The official directions of the dir, in their order.
 export const officialDirections = (work: Work): ReadonlyArray<OfficialDirection> =>

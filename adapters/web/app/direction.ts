@@ -1,15 +1,15 @@
 // A direction as the person reviews it (Nanda, 2026-11-15): its summary, its flow with the steps
 // that it governs marked, what its words changed (the last draft against this one, or the version
-// before against this one), and its examples by marked step, each sample with the real code
+// before against this one), and the cases of its rules (pass 3b), each sample with the real code
 // around it or the host's words. The gear's directions entry and the onboarding pages show it.
 import { html } from 'htm/preact'
 import type { DirectionCard } from '../contract.ts'
 import { Change } from './change.ts'
-import { FlowDiagram, whoOf } from './flow.ts'
+import { FlowDiagram } from './flow.ts'
 
 // The words of a draft or of a version: a card in any state but the first loading has them.
 type Draft = Extract<typeof DirectionCard.Type, { readonly draft: unknown }>['draft']
-type ExampleData = Draft['flow'][number]['examples'][number]
+type ExampleData = NonNullable<Draft['standards'][number]['rules'][number]['examples']>[number]
 type SampleData = ExampleData['output']
 type SpotData = Extract<SampleData, { file: string }>
 
@@ -53,19 +53,6 @@ export function ExampleBlock({ e }: { e: ExampleData }) {
   </li>`
 }
 
-// The examples by marked step, in the order of the flow.
-export function Examples({ draft }: { draft: Pick<Draft, 'flow'> }) {
-  const groups = draft.flow
-    .map((s, i) => ({ head: `Step ${i + 1} · ${whoOf(s)}`, of: s.examples }))
-    .filter((g) => g.of.length)
-  const count = groups.reduce((sum, g) => sum + g.of.length, 0)
-  if (!count) return null
-  return html`<div class="section-title">Examples (${count})</div>
-    ${groups.map((g) => html`<section class="example-group" aria-label=${g.head}>
-      <h3 class="example-step">${g.head}</h3>
-      <ul class="examples">${g.of.map((e) => html`<${ExampleBlock} e=${e} />`)}</ul>
-    </section>`)}`
-}
 
 // The direction for its review, in its order: the summary, the flow with its marks, the change of
 // the words (each standard and each rule with its checker inside it), then the examples.
@@ -83,6 +70,5 @@ export function DirectionReview({ id, draft }: { id: string; draft: Draft }) {
     ${draft.standards.flatMap((standard) => standard.rules.map((rule) => rule.examples?.length
       ? html`<section class="example-group"><h3>${rule.id}</h3><ul class="examples">
         ${rule.examples.map((e) => html`<${ExampleBlock} e=${e} />`)}</ul></section>` : ''))}
-    <${Examples} draft=${draft} />
   </div>`
 }

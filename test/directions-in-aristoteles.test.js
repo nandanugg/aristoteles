@@ -1,7 +1,7 @@
 // The directions live in aristoteles (Nanda, 2026-11-10): aristoteles.yaml names none, a model run
 // drafts each new direction (such as the skill that reads an app), and its owner accepts it.
 import { describe, expect, test } from 'bun:test'
-import { DIRECTION, ok, project, WORK_YAML } from './harness.js'
+import { DIRECTION, ok, project, started, WORK_YAML } from './harness.js'
 
 // A new standard, as a list item of a direction file or of the add of a revise.
 const COST = '  - id: cost-first\n    says: Say what the problem costs.\n    rules:\n' +
@@ -53,6 +53,73 @@ describe('a new direction', () => {
     const now = ok(await p.nanda('direction show tsd-writing')).out
     expect(now).toContain('tsd-writing@2 TSD writing (owner Nanda) · current\nmade from d2, drafted by host')
     expect(now).toContain('+ cost-first: Say what the problem costs.')
+  })
+
+  test('revises validate the folded replacement, inherited flow, and superseded rules', async () => {
+    const { p } = await started()
+    const file = Bun.YAML.parse(DIRECTION)
+    const revise = async (edit) => {
+      p.write('edit.yaml', Bun.YAML.stringify(edit))
+      return p.agent('direction revise tsd-writing --file=edit.yaml --by=host')
+    }
+    const step = { ...file.flow.at(-1), uses: ['facts-not-proof'] }
+    const standard = structuredClone(file.standards[0])
+    standard.rules[0].says += '.'
+    standard.rules[0].evidence.cases = standard.rules[0].evidence.cases.filter((e) => e.fit === 'Follows')
+    const replace = [{ id: standard.id, with: standard }]
+    expect((await revise({ flow: [step], replace })).err).toContain('flow step 1: the rules it uses have no case that breaks')
+    expect((await revise({ replace })).err).toContain('flow step 5: the rules it uses have no case that breaks')
+    expect((await revise({ remove: [standard.id] })).err).toContain('flow step 5 uses "facts-not-proof"')
+    expect((await revise({ add: [{ id: 'new-facts', says: 'Facts only.', rules: [
+      { id: 'new-facts-rule', says: 'Keep to facts.', supersedes: ['no-code-proof'], evidence: file.standards[0].rules[0].evidence },
+    ] }] })).err).toContain('flow step 5 uses "no-code-proof"')
+    expect((await revise({ replace: [{ id: standard.id, with: { ...standard, rules: [
+      { ...standard.rules[0], evidence: { cases: 'not an array' } },
+    ] } }] })).err).toContain('evidence')
+    // The same replacement is valid once both fits are actually present in the parsed evidence.
+    standard.rules[0].evidence = file.standards[0].rules[0].evidence
+    expect(ok(await revise({ flow: [step], replace })).out).toContain('d2 drafted')
+  })
+
+  test('accepting cases changes the current evidence while preserving numbered snapshots', async () => {
+    const { p } = await started()
+    const original = '## Introduction and design, in one section'
+    const revised = 'A concrete example of two topics in one section'
+    const newest = 'A different example of mixed topics'
+    const file = Bun.YAML.parse(DIRECTION)
+    const standard = file.standards.find(({ id }) => id === 'intro-story')
+    const sample = standard.rules.find(({ id }) => id === 'repeatable').evidence.cases.find(({ fit }) => fit === 'Breaks')
+    const revise = async (name, edit) => {
+      p.write(name, Bun.YAML.stringify(edit))
+      return ok(await p.agent(`direction revise tsd-writing --file=${name} --by=host`)).out
+    }
+    const show = async (id) => ok(await p.nanda(`direction show ${id}`)).out
+
+    await revise('old-pending.yaml', { says: 'A proposed governance change.' })
+    sample.output.written = revised
+    await revise('cases.yaml', { replace: [{ id: standard.id, with: standard }] })
+    expect(await show('d3')).toContain(revised)
+    expect(await show('tsd-writing')).toContain(original)
+    expect(ok(await p.nanda('direction accept d3', 'accept')).out).toContain('Updated rule evidence for tsd-writing@1.')
+    expect((await p.nanda('direction accept d2', 'accept')).err).toContain("before tsd-writing@1's latest evidence was accepted")
+    expect(await show('tsd-writing')).toContain(revised)
+    expect(await show('tsd-writing@1')).toContain(original)
+    expect((await p.nanda('direction show tsd-writing@2')).err).toContain('has no version 2')
+
+    // The whole-file entry point detects case-only edits too.
+    sample.output.written = newest
+    p.write('whole.yaml', Bun.YAML.stringify(file))
+    expect(ok(await p.agent('direction new --file=whole.yaml --by=host')).out).toContain('d4 drafted')
+    expect(await show('d4')).toContain(newest)
+    expect(ok(await p.nanda('direction accept d4', 'accept')).out).toContain('Updated rule evidence for tsd-writing@1.')
+    expect(await show('d3')).toContain(revised)
+    expect(await show('tsd-writing')).toContain(newest)
+
+    // A later change to governance still makes version 2 and carries the current cases forward.
+    await revise('governance.yaml', { says: 'Updated direction words.' })
+    expect(ok(await p.nanda('direction accept d5', 'accept')).out).toContain('tsd-writing@2')
+    expect(await show('tsd-writing@2')).toContain(newest)
+    expect(await show('tsd-writing@1')).toContain(original)
   })
 
   test('only the owner accepts the first version, also when approvedBy names a role', async () => {
