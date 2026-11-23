@@ -17,7 +17,7 @@ const joined = (items: ReadonlyArray<string>) => items.join(', ') || 'None'
 const editRole = (item: Role): Extract<Edit, { kind: 'role' }> => ({
   kind: 'role', role: item.role, account: item.account, cli: item.cli, model: item.model,
   persistent: item.persistent, concurrency: item.concurrency, subagentAllowance: item.subagentAllowance,
-  workerGroup: item.worker !== null && item.worker !== item.role ? item.worker : null,
+  workerGroup: item.workerGroup,
 })
 
 function StaffingDetails({ view, onEdit }: { view: View; onEdit?: ((edit: Edit) => void) | undefined }) {
@@ -25,8 +25,8 @@ function StaffingDetails({ view, onEdit }: { view: View; onEdit?: ((edit: Edit) 
     <section><h3>Accounts</h3>
       ${view.accounts.length ? view.accounts.map(({ account, limits, roles, sessionLimit }) => html`
         <div class="staffing-account"><strong>${account}</strong><span class="muted">${joined(roles)}</span>
-          <p>Sessions at once: ${sessionLimit === null ? html`<span class="muted">no limit given</span>` : `${sessionLimit} (this project only)`}
-            ${onEdit ? html`<button class="btn" aria-label=${`Edit ${account} sessions`}
+          <p>Session cap: ${sessionLimit === null ? html`<span class="muted">no limit given</span>` : `${sessionLimit} at once (this project only)`}
+            ${onEdit ? html`<button class="btn" aria-label=${`Edit ${account} session cap`}
               onClick=${() => onEdit({ kind: 'sessions', account, sessionLimit })}>Edit</button>` : ''}</p>
           ${limits.length ? html`<dl>${limits.map(({ limit, typed }) => html`
             <div><dt>${limit}</dt><dd><span class="staffing-typed">${typed}</span>
@@ -45,7 +45,9 @@ function StaffingDetails({ view, onEdit }: { view: View; onEdit?: ((edit: Edit) 
           <dt>Session</dt><dd>${item.persistent ? 'Persistent' : 'Disposable'}</dd>
           <dt>Worker</dt><dd>${item.worker === null ? html`<span class="muted">a subagent of its role</span>`
             : (() => { const w = view.workers.find((x) => x.worker === item.worker)
-              return w && w.roles.length > 1 ? `${w.worker} (shared with ${w.roles.filter((r) => r !== item.role).join(', ')})` : `${item.worker} (its own)` })()}</dd>
+              const others = (w?.roles ?? []).filter((r) => r !== item.role)
+              return item.workerGroup === null ? 'its own'
+                : others.length ? `group ${item.workerGroup} (with ${others.join(', ')})` : `group ${item.workerGroup}` })()}</dd>
           <dt>Concurrency</dt><dd>${item.concurrency} <span class="muted">(not enforced yet)</span></dd>
           <dt>Subagent allowance</dt><dd>${item.subagentAllowance} <span class="muted">(not enforced yet)</span></dd>
           <dt>Review mode</dt><dd>${item.review}</dd><dt>Context fit</dt><dd>Unknown. ${item.fit.why}.</dd>
@@ -75,7 +77,7 @@ function StaffingEditor({ edit, state, busy, onChange, onPreview }: {
         <textarea required rows="2" value=${edit.typed} onInput=${(event: Event) => onChange({ ...edit, typed: val(event) })} /></label>`
     }
     if (edit.kind === 'sessions') {
-      return html`<label class="field"><span>Sessions at once on ${edit.account} (this project only; empty: no limit)</span>
+      return html`<label class="field"><span>Session cap on ${edit.account}: sessions at once (this project only; empty: no limit)</span>
         <input type="number" min="1" value=${edit.sessionLimit ?? ''}
           onInput=${(event: Event) => onChange({ ...edit, sessionLimit: val(event) === '' ? null : Number(val(event)) })} /></label>`
     }
@@ -91,7 +93,11 @@ function StaffingEditor({ edit, state, busy, onChange, onPreview }: {
           ${role ? [role.model, ...role.alternatives].map((model) => html`<option value=${model}>${model}</option>`) : ''}
         </select></label>
         <label><input type="checkbox" checked=${edit.persistent}
-          onChange=${(event: Event) => onChange({ ...edit, persistent: (event.currentTarget as HTMLInputElement).checked })} />
+          onChange=${(event: Event) => {
+            const persistent = (event.currentTarget as HTMLInputElement).checked
+            // a disposable role runs on no worker: its group goes with it (44b finding 2)
+            onChange({ ...edit, persistent, ...(persistent ? {} : { workerGroup: null }) })
+          }} />
           Persistent session</label>
         <label class="field"><span>Concurrency (not enforced yet)</span><input type="number" min="1" required value=${edit.concurrency}
           onInput=${(event: Event) => onChange({ ...edit, concurrency: Number(val(event)) })} /></label>
@@ -163,7 +169,7 @@ export function Staffing({ start, version, onApplied }: {
         <button class="btn primary" disabled=${busy || start.state !== 'open'} onClick=${begin}>Review activation</button>`
         : html`<button class="btn primary" disabled=${busy} onClick=${() => showPreview()}>Preview current staffing</button>`}
     </footer>` : ''}
-    ${state && edit ? html`<${Modal} title=${edit.kind === 'role' ? `Edit ${edit.role}` : edit.kind === 'sessions' ? `Edit ${edit.account} · sessions` : `Edit ${edit.account} · ${edit.limit}`}
+    ${state && edit ? html`<${Modal} title=${edit.kind === 'role' ? `Edit ${edit.role}` : edit.kind === 'sessions' ? `Edit ${edit.account} · session cap` : `Edit ${edit.account} · ${edit.limit}`}
       onClose=${() => { if (!busy) setEdit(null) }}>
       ${alert()}<${StaffingEditor} edit=${edit} state=${state} busy=${busy} onChange=${setEdit}
         onPreview=${() => showPreview(edit)} />

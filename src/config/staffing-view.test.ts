@@ -91,9 +91,9 @@ describe('workers (pass 9)', () => {
   test('roles of one group share a worker; a persistent role alone has its own; sessions count workers', () => {
     const v = staffingView(grouped())
     expect(v.workers).toEqual([
-      { worker: 'lead', roles: ['host', 'reviewer'], account: 'max', shared: true },
-      { worker: 'pipe', roles: ['pipe'], account: 'team', shared: false },
-      { worker: 'solo', roles: ['solo'], account: 'max', shared: false },
+      { worker: 'group:lead', roles: ['host', 'reviewer'], account: 'max', shared: true },
+      { worker: 'role:pipe', roles: ['pipe'], account: 'team', shared: false },
+      { worker: 'role:solo', roles: ['solo'], account: 'max', shared: false },
     ])
     expect(v.arrangement.find((r) => r.role === 'writer')?.worker).toBeNull()
     expect(v.consequences.find((c) => c.account === 'max')?.peakSessions).toBe(2)
@@ -103,6 +103,14 @@ describe('workers (pass 9)', () => {
   test('moving a role into a group shows in the preview', () => {
     const before = grouped()
     const after: Staffing = { ...before, roles: { ...before.roles, solo: { ...before.roles.solo!, workerGroup: 'lead' } } }
-    expect(staffingPreview(before, after).changed).toContain('solo.worker: solo -> lead')
+    expect(staffingPreview(before, after).changed).toContain('solo.worker: role:solo -> group:lead')
+  })
+  test('a private role and a group of the same name are two workers (44b finding 1)', () => {
+    const s = base()
+    const named: Staffing = { ...s, roles: { ...s.roles, writer: { ...s.roles.host!, account: 'team', workerGroup: 'host' } } }
+    const v = staffingView(named)
+    expect(v.workers.map((w) => [w.worker, w.account])).toEqual([
+      ['group:host', 'team'], ['role:host', 'max'], ['role:pipe', 'team'],
+    ])
   })
 })

@@ -505,7 +505,7 @@ export const StaffingView = Schema.Struct({
   })),
   arrangement: Schema.Array(Schema.Struct({
     role: Text, account: Text, cli: Text, model: Text, alternatives: Schema.Array(Text),
-    persistent: Schema.Boolean, worker: Schema.NullOr(Text),
+    persistent: Schema.Boolean, worker: Schema.NullOr(Text), workerGroup: Schema.NullOr(Text),
     concurrency: Schema.Number, subagentAllowance: Schema.Number,
     review: Schema.Literals(['fresh subagent', 'fresh subagent, worker waits', 'self-review turns']),
     fit: StaffingUnknown,

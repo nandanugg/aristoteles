@@ -22,9 +22,11 @@ export interface ArrangedRole {
   // The other allowed models: alternative scenarios in the preview (OV2-7).
   readonly alternatives: ReadonlyArray<string>
   readonly persistent: boolean
-  // The worker the role runs on: its workerGroup, or a private worker named after the role
-  // (persistent roles only; a disposable role runs as a subagent of the role that starts it).
+  // The worker the role runs on, a tagged key: `group:<workerGroup>`, or `role:<role>` for a private
+  // worker (persistent roles only; a disposable role runs as a subagent of the role that starts it).
   readonly worker: string | null
+  // the explicit group as the staffing names it (null: none)
+  readonly workerGroup: string | null
   readonly concurrency: number
   readonly subagentAllowance: number
   readonly review: ReviewMode
@@ -98,7 +100,8 @@ export const staffingView = (staffing: Staffing): StaffingView => {
       model: r.model,
       alternatives: r.allowedModels.filter((m) => m !== r.model),
       persistent: r.persistent,
-      worker: r.persistent ? (r.workerGroup ?? name) : null,
+      worker: !r.persistent ? null : r.workerGroup !== undefined ? `group:${r.workerGroup}` : `role:${name}`,
+      workerGroup: r.workerGroup ?? null,
       concurrency: r.concurrency,
       subagentAllowance: r.subagentAllowance,
       review: reviewOf(staffing, r),
@@ -127,7 +130,7 @@ export const staffingView = (staffing: Staffing): StaffingView => {
       worker,
       roles: roles.map((r) => r.role),
       account: roles[0]?.account ?? '',
-      shared: roles.length > 1 || roles.some((r) => staffing.roles[r.role]?.workerGroup !== undefined),
+      shared: worker.startsWith('group:'),
     }
   })
   const peak = (account: string) => workers.filter((w) => w.account === account).length

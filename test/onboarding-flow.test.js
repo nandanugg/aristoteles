@@ -188,6 +188,22 @@ test('onboarding hands reviewed project guidance to the activated host and pipel
       edit: { kind: 'sessions', account: 'fixture', sessionLimit: null } })
     expect(sessions.changed).toEqual(['sessions fixture: 2 -> no limit'])
     expect(sessions.after.accounts.find((a) => a.account === 'fixture').sessionLimit).toBeNull()
+    // a staffedGroup persistent role made disposable: its group must go with it (44b finding 2)
+    const staffedGroup = Bun.YAML.parse(read(staffingFile))
+    const persistentRole = Object.entries(staffedGroup.roles).find(([, r]) => r.persistent)
+    staffedGroup.roles[persistentRole[0]].workerGroup = 'pair'
+    yaml(staffingFile, staffedGroup)
+    const groupState = await api('staffing')
+    const base = groupState.view.arrangement.find((r) => r.role === persistentRole[0])
+    const roleEdit = { kind: 'role', role: base.role, account: base.account, cli: base.cli, model: base.model,
+      persistent: false, concurrency: base.concurrency, subagentAllowance: base.subagentAllowance }
+    await expect(api('staffing', { action: 'preview', revision: groupState.revision, edit: { ...roleEdit, workerGroup: 'pair' } }))
+      .rejects.toThrow('only a persistent role runs on a worker')
+    const cleared = await api('staffing', { action: 'preview', revision: groupState.revision, edit: { ...roleEdit, workerGroup: null } })
+    expect(cleared.changed).toContain(`${base.role}.persistent: true -> false`)
+    expect(cleared.after.arrangement.find((r) => r.role === base.role).workerGroup).toBeNull()
+    delete staffedGroup.roles[persistentRole[0]].workerGroup
+    yaml(staffingFile, staffedGroup)
 
     const approval = await api('activation/approval')
     expect(approval.entries.map(({ path }) => path)).toEqual(expect.arrayContaining(['CLAUDE.md', 'AGENTS.md']))
