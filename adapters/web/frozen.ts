@@ -46,6 +46,7 @@ export interface Pump {
   // A terminal that will not come back (its project ended): the pump drops what it keeps of it.
   readonly forget: (session: string) => void
   readonly snapshot: (session: string) => Uint8Array
+  readonly observe?: (session: string) => 'live' | 'ended' | 'unknown'
   readonly status: () => Readonly<Record<string, TerminalStatus>>
   readonly tail: (session: string, lines?: number) => string
   readonly adopt: (session: string, socket: string, pane: string) => void

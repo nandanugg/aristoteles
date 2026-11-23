@@ -1,3 +1,7 @@
+import { workerIn, workerRuntimeIn } from './worker-fixture.js'
+import { eventsOf } from '../core/actions/fixture.test.ts'
+import { settleWorker } from '../core/actions/worker.ts'
+import { foldRuntime } from '../core/state/worker-runtime.ts'
 import { expect, test } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
@@ -18,6 +22,102 @@ const fixture = async () => {
   aLiveHost(p)
   return p
 }
+
+test('a shared worker offers one identity and fences the entire generation', async () => {
+  const p = await fixture()
+  try {
+    const file = '.work/staffing.yaml'
+    const staffing = Bun.YAML.parse(readFileSync(join(p.dir, file), 'utf8'))
+    const pipe = staffing.roles.architect
+    pipe.workerGroup = 'delivery'
+    Object.assign(staffing.roles['section-lead'], {
+      workerGroup: pipe.workerGroup, account: pipe.account, cli: pipe.cli,
+      model: pipe.model, allowedModels: pipe.allowedModels, launch: pipe.launch,
+    })
+    p.write(file, Bun.YAML.stringify(staffing))
+    ok(await p.nanda('onboard approve-roles', 'approve'))
+    const record = await finishActivation(p)
+    ok(await p.nanda('top open --name=x --goal=y --sections=z'))
+    const bootstrap = ok(await p.run(`wait --launch ${record.pending.launch} --seconds=1`, {
+      env: launchEnv(p, record),
+    })).out.match(/w\.host\.0\.[0-9a-f]+/)[0]
+    // The fixture pipeline is architect, so its worker also hosts the person-facing identity.
+    const handoff = ok(await p.agent(`wait ${bootstrap} --seconds=1`)).out
+    const credential = handoff.match(/g\.[a-f0-9.]+/)[0]
+    const wait = () => p.agent(`worker wait ${credential} --seconds=1`)
+    const first = ok(await wait()).out
+    const command = first.split('\n').find((line) => line.startsWith('work send '))
+    const turn = command.match(/--turn=([a-f0-9]+)/)[1]
+    const basis = command.match(/--on=(\d+)/)[1]
+    expect(ok(await wait()).out).toBe(first)
+    const send = `send ${bootstrap} --name=x --goal=y --sections=z --role=section-lead --on=${basis}`
+    expect((await p.agent(`${send} --turn=wrong`)).code).toBe(1)
+    expect(ok(await p.agent(`${send} --turn=${turn}`)).out).toContain('taken')
+    expect(ok(await p.agent(`${send} --turn=${turn}`)).out).toContain('already')
+    const next = ok(await wait()).out
+    expect(next).toContain('work assign w.role:section-lead.0.')
+    expect(next).not.toContain(turn)
+    const { reservation } = [...foldRuntime(eventsOf(p.dir)).workers.values()][0]
+    const { worker, generation, launch } = reservation
+    await workerRuntimeIn(p, settleWorker(worker, generation, launch))
+    expect((await p.agent(`${send} --turn=${turn}`)).err).toContain('no longer current')
+    await workerRuntimeIn(p, settleWorker(worker, generation, launch, 'fixture process ended'))
+    const replacement = await workerIn(p, 'host')
+    const newTurn = ok(await p.agent(`worker wait ${replacement.credential} --seconds=1`)).out
+    expect(newTurn).toContain(`work assign ${replacement.token('role:section-lead')}`)
+    expect(newTurn).not.toContain(turn)
+    expect(ok(await p.agent(`worker wait ${replacement.credential} --seconds=1`)).out).toBe(newTurn)
+    ok(await p.agent(`worker wait ${replacement.credential} --abandon`))
+    expect(ok(await p.agent(`worker wait ${replacement.credential} --seconds=1`)).out).not.toBe(newTurn)
+  } finally {
+    killBootstrap(p)
+    rmSync(p.dir, { recursive: true, force: true })
+  }
+})
+
+test('the supervisor replaces an unspawned reservation and binds only the acknowledged launch', async () => {
+  const p = await fixture()
+  let pump
+  let watcher
+  try {
+    const file = '.work/staffing.yaml'
+    const staffing = Bun.YAML.parse(readFileSync(join(p.dir, file), 'utf8'))
+    for (const role of Object.values(staffing.roles)) role.launch = 'sleep 60 # {session}'
+    p.write(file, Bun.YAML.stringify(staffing))
+    ok(await p.nanda('onboard approve-roles', 'approve'))
+    await finishActivation(p)
+    ok(await p.nanda('top open --name=x --goal=y --sections=z'))
+    const find = (actor) => {
+      const { placements, workers } = foldRuntime(eventsOf(p.dir))
+      return workers.get(placements.find(({ members }) => members.includes(actor)).worker)
+    }
+    const { reserveWorker, workerSession } = await import('../core/actions/worker.ts')
+    const placement = foldRuntime(eventsOf(p.dir)).placements.find(({ members }) => members.includes('pipe'))
+    const lost = 'e'.repeat(32)
+    expect(await workerRuntimeIn(p, reserveWorker(placement.worker, lost))).not.toBeNull()
+    pump = createPump({ dir: p.dir, socket: `ar-workers-${crypto.randomUUID()}` })
+    const logs = []
+    watcher = createWatcher({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) }, pump,
+      log: (line) => logs.push(line) })
+    const until = Date.now() + 8000
+    while (!find('pipe')?.binding && Date.now() < until) {
+      await watcher.tick()
+      await Bun.sleep(50)
+    }
+    const current = find('pipe')
+    expect(current.reservation.generation).toBe(2)
+    expect(current.reservation.launch).not.toBe(lost)
+    expect(current.binding?.session).toBe(workerSession(current.reservation.launch))
+    expect(pump.status()[workerSession(lost)]).toBeUndefined()
+    expect(find('host')?.binding?.session).toMatch(/^boot-/)
+    expect(logs.join('\n')).not.toContain('the engine:')
+  } finally {
+    watcher?.stop()
+    pump?.killServer()
+    killBootstrap(p)
+    rmSync(p.dir, { recursive: true, force: true })
+  }
+})
 
 test('F6.1 F6.2 F6.4 F6.15 F6.21 F6.22 F6.23: an inactive start marks the manifest and the bound launch collects after top open', async () => {
   const p = await fixture()
@@ -264,7 +364,7 @@ test('F6.5 F6.15 F6.23: pre-top, wrong binding and stale epoch requests do not r
       tty: true,
       env: { TMUX: '/tmp/fixture-host.sock,1,0', TMUX_PANE: '%3' },
     }))
-    expect(moved.out).toContain('w.host.1.')
+    expect(moved.out).toContain('new managed session')
     const oldWait = await p.agent(`wait ${token} --seconds=1`)
     expect(oldWait.out).toContain("this terminal's token is old")
     expect(oldWait.out).toContain('STOP')

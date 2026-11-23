@@ -79,6 +79,10 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   },
   role: { fit: ['answers', 'by'], list: [], show: [] },
   assign: [],
+  brief: [],
+  resume: [],
+  reassign: [],
+  'top-done': [],
   report: ['output', 'files', 'on'],
   // The acts of the work model (adapters/cli/commands/acts.ts): --on is the basis of the step.
   review: ['points', 'on'],
@@ -109,6 +113,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   run: { continue: [] },
   send: ['name', 'goal', 'sections', 'role'],
   wait: ['by', 'seconds', 'launch'],
+  worker: { wait: ['seconds', 'abandon'], ack: [] },
   activation: { ack: [], resume: [], relaunch: [], rollback: [] },
   forward: {
     end: ['quote'],
@@ -149,13 +154,14 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
 }
 
 // The flags that stand alone, with no value.
-export const SWITCHES: ReadonlyArray<string> = ['resolves']
+export const SWITCHES: ReadonlyArray<string> = ['resolves', 'abandon']
 
 // The word that names the act of a command with several acts.
 const first = (words: ReadonlyArray<string>) => words[0]
 type ActOf = (words: ReadonlyArray<string>) => string | undefined
 export const ACT_OF: Readonly<Record<string, ActOf>> = {
   activation: first,
+  worker: first,
   top: first,
   hook: first,
   direction: first,
@@ -173,7 +179,8 @@ export const knownFlags = (
 ): ReadonlyArray<string> | undefined => {
   if (!Object.hasOwn(FLAGS, name)) return undefined
   const table = FLAGS[name]
-  if (Array.isArray(table)) return table
+  if (Array.isArray(table)) return table.includes('on') || ['ask', 'answer', 'hear', 'send', 'assign', 'brief', 'ask-raise', 'resume', 'reassign', 'top-done'].includes(name)
+    ? [...table, 'on', 'turn'] : table
   if (act === undefined || table === undefined || !Object.hasOwn(table, act)) return undefined
   return (table as Readonly<Record<string, ReadonlyArray<string>>>)[act]
 }
@@ -231,6 +238,7 @@ export const USAGE: ReadonlyArray<string> = [
 // Every command, so that a name with no command is "unknown".
 export const COMMAND_NAMES = [
   'activation',
+  'worker',
   'init',
   'config',
   'role',

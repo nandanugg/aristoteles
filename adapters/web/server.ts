@@ -478,9 +478,9 @@ export function startServer(options: ServerOptions): ServerHandle {
   const terminalMessage = (ws: Bun.ServerWebSocket<undefined>, m: typeof PageMessage.Type) => {
     const error = (words: string) =>
       ws.send(JSON.stringify({ type: 'term.error', session: m.session, error: words }))
-    // Bootstrap wait delivers its token in this pane. Keep its screen on the local machine.
-    if (isBootstrapSession(m.session)) {
-      if (m.type === 'term.open') error('The bootstrap host terminal is available in local tmux.')
+    // These panes receive raw turn or activation credentials. Keep their screens local.
+    if (isBootstrapSession(m.session) || /^worker-[a-f0-9]{32}$/.test(m.session)) {
+      if (m.type === 'term.open') error('The managed terminal is available in local tmux.')
       return
     }
     if (!pump) {
