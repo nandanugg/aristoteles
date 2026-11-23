@@ -19,7 +19,7 @@ import {
 import type { ItemKey, ItemRec, Level, TaskSpec, Verdict } from '../../../state/c16/data.ts'
 import { basisOf } from '../accept.ts'
 import { type Plain, picked } from './itf.ts'
-import { type MAsk, type MStore, applies } from './model.ts'
+import { EDIT, type MAsk, type MStore, applies } from './model.ts'
 import { type Ctx, KEY, ROLE, actorOfName, askText, sectionsOf } from './project.ts'
 
 // A model act: its sender, and its body (a tag alone, or { tag, value }).
@@ -165,9 +165,11 @@ const spec = (slot: number, sections: ReadonlyArray<string>): TaskSpec => ({
   role: ROLE,
 })
 
-// The other rules of the direction: the model has two, one per task, and the TS world has both.
+// The replay writes an existing rule to exercise the model's evidence-form transition.
+// A person edit has no task slot, so use the first rule in that case.
+const ruleForFix = (fix: number): ItemKey => fix === EDIT ? 'rule:0' : `rule:${fix}`
 const otherRules = (fix: number): ReadonlyArray<ItemKey> =>
-  ['rule:0', 'rule:1'].filter((x) => x !== `rule:${fix}`)
+  ['rule:0', 'rule:1'].filter((x) => x !== ruleForFix(fix))
 
 export const tsAct = (
   m: ModelAct,
@@ -180,7 +182,7 @@ export const tsAct = (
 ): Act => {
   const who: Actor = actorOfName(c, m.who)
   const slotTask = (slot: number): string => c.slotTask.get(slot) ?? `?${slot}`
-  const fixId = (fix: number): string => (fix === 2 ? 'edit' : slotTask(fix))
+  const fixId = (fix: number): string => (fix === EDIT ? 'edit' : slotTask(fix))
   const find = (from: Iterable<OpenAsk>, a: MAsk): string => {
     const want = `${a.kind}|${a.from}|${a.to}|${a.about}`
     const found = [...from].find((x) => askText(c, x) === want)
@@ -203,7 +205,7 @@ export const tsAct = (
           return { _tag: 'Open', open: { _tag: 'OpenQuestion', to, question } }
         }
         if (a.from === 'Host') {
-          const sp = spec(a.about, sectionsOf(a.about))
+          const sp = spec(a.about, sectionsOf(a.about, c.sections))
           return { _tag: 'Open', open: { _tag: 'OpenSend', spec: sp } }
         }
         if (a.from === 'Role') {
@@ -290,7 +292,7 @@ export const tsAct = (
         return { _tag: 'Advance', fix: fixId(num(v['fix'])) }
       case 'WriteRule': {
         const fix = num(v['fix'])
-        const rule = `rule:${fix}`
+        const rule = ruleForFix(fix)
         const rec = RULE_REC(s.items.get(rule)!, text(v['form']), `r${n}`)
         // the role's claim of the other rules its rule contradicts: only for a rule with no test
         // command (a test command's verdict comes with RunTest)

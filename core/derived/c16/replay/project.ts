@@ -30,8 +30,8 @@ export const KEY: { readonly [item: string]: ItemKey } = {
 const NAME: ReadonlyMap<ItemKey, string> = new Map(Object.entries(KEY).map(([n, k]) => [k, n]))
 export const nameOf = (k: ItemKey): string | undefined => NAME.get(k)
 const SECTIONS = 2 // OPTIONS.sections: the sections a task of the top owns
-export const sectionsOf = (slot: number): ReadonlyArray<string> =>
-  ['a', 'b'].slice(0, SECTIONS).map((x) => `s${slot}${x}`)
+export const sectionsOf = (slot: number, count = SECTIONS): ReadonlyArray<string> =>
+  ['a', 'b'].slice(0, count).map((x) => `s${slot}${x}`)
 
 const rec = (over: Partial<ItemRec>): ItemRec => ({
   kind: 'dir',
@@ -46,32 +46,35 @@ const rec = (over: Partial<ItemRec>): ItemRec => ({
   ...over,
 })
 
-export const initial = (slots: ReadonlyArray<number>): WorkState =>
+export const initial = (
+  slots: ReadonlyArray<number>, { sections = SECTIONS, maxTries = 2 } = {},
+): WorkState =>
   initState(
-    { name: 'top', goal: 'g', sections: slots.flatMap(sectionsOf), directions: ['d'] },
+    { name: 'top', goal: 'g', sections: slots.flatMap((slot) => sectionsOf(slot, sections)), directions: ['d'] },
     new Map<ItemKey, ItemRec>([
       ['dir:d', rec({})],
-      ['std:0', rec({ kind: 'std', parent: 'dir:d', where: sectionsOf(0) })],
+      ['std:0', rec({ kind: 'std', parent: 'dir:d', where: sectionsOf(0, sections) })],
       ['std:1', rec({ kind: 'std', parent: 'dir:d' })],
-      ['std:1b', rec({ kind: 'std', parent: 'dir:d', where: sectionsOf(1) })],
+      ['std:1b', rec({ kind: 'std', parent: 'dir:d', where: sectionsOf(1, sections) })],
       ['rule:0', rec({ kind: 'rule', parent: 'std:0', form: 'ref', ref: 'f#a:1-2' })],
       ['rule:1', rec({ kind: 'rule', parent: 'std:1b', form: 'ref', ref: 'f#a:1-2' })],
     ]),
     new Map([[ROLE, { role: ROLE, words: 'w', model: 'm' }]]),
-    2, // OPTIONS.maxTries
+    maxTries,
   )
 
 // What the replay knows besides the state: which task is a slot's now, which maker.
 export interface Ctx {
   readonly slots: ReadonlyArray<number>
+  readonly sections: number
   readonly slotTask: ReadonlyMap<number, string>
   readonly slotMaker: ReadonlyMap<number, string>
   // The other parts of a split: the model's single successor is the first part, these are left out
   // of the comparison (see canonState).
   readonly ignored: ReadonlySet<string>
 }
-export const start = (slots: ReadonlyArray<number>): Ctx => ({
-  slots,
+export const start = (slots: ReadonlyArray<number>, sections = SECTIONS): Ctx => ({
+  slots, sections,
   slotTask: new Map(),
   slotMaker: new Map(),
   ignored: new Set(),
@@ -167,7 +170,7 @@ const taskCmp = (s: WorkState, c: Ctx, slot: number): CTask => {
       checked: versOf(s.ver),
       pending: [],
       taken: false,
-      sections: SECTIONS,
+      sections: c.sections,
       floor: 'Split',
     }
   }
