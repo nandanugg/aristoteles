@@ -82,7 +82,7 @@ const checkLine = (call: Call) =>
     }
   })
 
-const attempt = (argv: ReadonlyArray<string>) =>
+const attempt = (argv: ReadonlyArray<string>, commands: Commands) =>
   Effect.gen(function* () {
     const terminal = yield* Terminal
     const parsed = parseArgs(argv)
@@ -100,7 +100,7 @@ const attempt = (argv: ReadonlyArray<string>) =>
     const call: Call = { argv, args, name, act: ACT_OF[name]?.(rest) ?? null, token }
     yield* checkLine(call)
     yield* refresh(name)
-    const command: Command | undefined = COMMANDS[name]
+    const command: Command | undefined = commands[name]
     if (!command) return yield* Effect.die(`cli command ${name} is not built`)
     const lines = yield* command(call)
     yield* terminal.out(lines.join('\n'))
@@ -125,7 +125,7 @@ const nextFor = (argv: ReadonlyArray<string>) =>
     return `next: run work wait ${token} and do the step it prints`
   })
 
-const runCli = (argv: ReadonlyArray<string>) => {
+const runCli = (argv: ReadonlyArray<string>, commands: Commands) => {
   const fail = (code: 1 | 2 | 3, message: string, next: string | null) =>
     Effect.gen(function* () {
       const terminal = yield* Terminal
@@ -134,7 +134,7 @@ const runCli = (argv: ReadonlyArray<string>) => {
       if (line) yield* terminal.err(line)
       return code
     })
-  return Effect.scoped(attempt(argv)).pipe(
+  return Effect.scoped(attempt(argv, commands)).pipe(
     Effect.catchTags({
       Refusal: (e) =>
         Effect.gen(function* () {
@@ -155,8 +155,8 @@ const runCli = (argv: ReadonlyArray<string>) => {
   )
 }
 
-export async function main(argv: ReadonlyArray<string>, io: WorkIo): Promise<number> {
-  const exit = await Effect.runPromiseExit(runCli(argv).pipe(Effect.provide(layerOf(io))))
+export async function main(argv: ReadonlyArray<string>, io: WorkIo, overrides?: Commands): Promise<number> {
+  const exit = await Effect.runPromiseExit(runCli(argv, overrides ? { ...COMMANDS, ...overrides } : COMMANDS).pipe(Effect.provide(layerOf(io))))
   if (Exit.isSuccess(exit)) return exit.value
   io.err(`bug: ${Cause.pretty(exit.cause)}`)
   return 70

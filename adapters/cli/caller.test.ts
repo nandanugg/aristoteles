@@ -213,6 +213,8 @@ describe('a token', () => {
 describe('the work token, as its epoch is checked', () => {
   const folded: WorkFolded = {
     state: undefined as never,
+    policy: new Map(),
+    permits: { roles: new Map(), fixes: new Set() },
     ids: new Map(),
     hostSession: null,
     hostPane: null,

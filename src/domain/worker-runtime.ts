@@ -33,6 +33,30 @@ export const WorkerDelivery = Schema.Union([
 ])
 export type WorkerDelivery = typeof WorkerDelivery.Type
 
+export const AdmissionPolicy = Schema.Struct({
+  actor: Text, concurrency: Number, subagentAllowance: Number, backgroundChildren: Schema.Boolean,
+})
+export type AdmissionPolicy = typeof AdmissionPolicy.Type
+
+export const ChildReservation = Schema.Struct({
+  ...Launch, child: Text, parentActor: Text, parentEpoch: Number, attempt: Text,
+  purpose: Schema.Literals(['maker', 'review']), subject: Text, on: Number, execution: Schema.Literal('background'),
+  reviewBasis: Schema.optionalKey(Number),
+  actor: Text, epoch: Number,
+})
+export type ChildReservation = typeof ChildReservation.Type
+
+export const SerialAssignment = Schema.Struct({
+  ...Binding, parentActor: Text, attempt: Text, actor: Text, epoch: Number, verifier: Text,
+})
+export type SerialAssignment = typeof SerialAssignment.Type
+
+export const ChildRelease = Schema.Struct({
+  ...Launch, child: Text, reason: Schema.Literals(['reported', 'exited', 'never launched', 'generation ended']),
+  observation: Text,
+})
+export type ChildRelease = typeof ChildRelease.Type
+
 export const RuntimeEvent = Schema.Union([
   Schema.TaggedStruct('WorkerReserved', {
     ...Launch, expectedGeneration: Number, purpose: Schema.Literal('work'),
@@ -43,6 +67,10 @@ export const RuntimeEvent = Schema.Union([
   }),
   Schema.TaggedStruct('WorkerFenced', { ...Launch, reason: Text }),
   Schema.TaggedStruct('WorkerEnded', { ...Launch, session: Nullable, reason: Text, observation: Text }),
+  Schema.TaggedStruct('ChildReserved', ChildReservation.fields),
+  Schema.TaggedStruct('ChildStarted', { ...Launch, child: Text, verifier: Text }),
+  Schema.TaggedStruct('ChildBound', { ...Launch, child: Text, handle: Text, verifier: Text }),
+  Schema.TaggedStruct('ChildReleased', ChildRelease.fields),
   Schema.TaggedStruct('TurnOffered', Turn.fields),
   Schema.TaggedStruct('TurnClosed', {
     ...Binding, turn: Text, reason: Schema.Literals(['abandoned', 'withdrawn', 'refused']),

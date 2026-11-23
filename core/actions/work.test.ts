@@ -10,11 +10,13 @@ import type { Time } from '../schema/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { actorOf, type Body } from '../state/c16/types.ts'
 import { EDIT } from '../state/c16/data.ts'
-import { type ActCall, dispatchAct, openTop, recordHostPane } from './work.ts'
+import { type ActCall, dispatchAct, writeTop, recordHostPane } from './work.ts'
 import { eventsOf, h, NANDA } from './fixture.test.ts'
 
 // The fixture with the pipeline role, and a direction whose rules give evidence: no-code-proof a
 // test, no-ticket-ids a test and a ref, repeatable none.
+const openTop = (call: Parameters<typeof writeTop>[0]) => writeTop(call, false)
+
 const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
 const EVIDENT = h.DIRECTION.replace(
   'checkedBy: linter }\n      - { id: no-ticket-ids',

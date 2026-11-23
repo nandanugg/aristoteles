@@ -52,7 +52,10 @@ test('a shared worker offers one identity and fences the entire generation', asy
     expect(ok(await wait()).out).toBe(first)
     const send = `send ${bootstrap} --name=x --goal=y --sections=z --role=section-lead --on=${basis}`
     expect((await p.agent(`${send} --turn=wrong`)).code).toBe(1)
-    expect(ok(await p.agent(`${send} --turn=${turn}`)).out).toContain('taken')
+    const taken = ok(await p.agent(`${send} --turn=${turn}`)).out
+    expect(taken).toContain('taken')
+    expect(taken).toContain('work worker wait')
+    expect(taken).not.toContain(`work wait ${bootstrap}`)
     expect(ok(await p.agent(`${send} --turn=${turn}`)).out).toContain('already')
     const next = ok(await wait()).out
     expect(next).toContain('work assign w.role:section-lead.0.')
@@ -92,7 +95,7 @@ test('the supervisor replaces an unspawned reservation and binds only the acknow
       return workers.get(placements.find(({ members }) => members.includes(actor)).worker)
     }
     const { reserveWorker, workerSession } = await import('../core/actions/worker.ts')
-    const placement = foldRuntime(eventsOf(p.dir)).placements.find(({ members }) => members.includes('pipe'))
+    const placement = foldRuntime(eventsOf(p.dir)).placements.find(({ members }) => members.includes('role:section-lead'))
     const lost = 'e'.repeat(32)
     expect(await workerRuntimeIn(p, reserveWorker(placement.worker, lost))).not.toBeNull()
     pump = createPump({ dir: p.dir, socket: `ar-workers-${crypto.randomUUID()}` })
@@ -100,11 +103,11 @@ test('the supervisor replaces an unspawned reservation and binds only the acknow
     watcher = createWatcher({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) }, pump,
       log: (line) => logs.push(line) })
     const until = Date.now() + 8000
-    while (!find('pipe')?.binding && Date.now() < until) {
+    while (!find('role:section-lead')?.binding && Date.now() < until) {
       await watcher.tick()
       await Bun.sleep(50)
     }
-    const current = find('pipe')
+    const current = find('role:section-lead')
     expect(current.reservation.generation).toBe(2)
     expect(current.reservation.launch).not.toBe(lost)
     expect(current.binding?.session).toBe(workerSession(current.reservation.launch))
@@ -137,8 +140,9 @@ test('F6.1 F6.2 F6.4 F6.15 F6.21 F6.22 F6.23: an inactive start marks the manife
     })).out
     expect(collected).toMatch(/w\.host\.0\.[0-9a-f]+/)
     const token = collected.match(/w\.host\.0\.[0-9a-f]+/)[0]
-    const wait = ok(await p.agent(`wait ${token}`)).out
-    expect(wait).toContain('work send')
+    const handoff = ok(await p.agent(`wait ${token}`)).out
+    const credential = handoff.match(/g\.[a-f0-9.]+/)[0]
+    expect(ok(await p.agent(`worker wait ${credential}`)).out).toContain('work send')
     expect(recordOf(p).retired).toBe(true)
     expect(existsSync(join(launchDir(p, record), 'secret'))).toBe(false)
     expect((await p.run(`activation ack ${record.pending.launch}`, { env: launchEnv(p, record) })).err)
@@ -360,11 +364,13 @@ test('F6.5 F6.15 F6.23: pre-top, wrong binding and stale epoch requests do not r
     expect(open.out).not.toContain(token)
     expect((await p.agent('wait w.host.0.wrong --seconds=1')).code).not.toBe(0)
     expect(recordOf(p).retired).toBe(false)
-    const moved = ok(await p.run('run continue', {
-      tty: true,
-      env: { TMUX: '/tmp/fixture-host.sock,1,0', TMUX_PANE: '%3' },
-    }))
-    expect(moved.out).toContain('new managed session')
+    const attemptedMove = await p.nanda('run continue')
+    expect(attemptedMove.err).toContain('shares a worker')
+    const { acquireBootstrapWorker } = await import('../adapters/live/activation.ts')
+    const placement = foldRuntime(eventsOf(p.dir)).placements.find(({ members }) => members.includes('host'))
+    await workerRuntimeIn(p, acquireBootstrapWorker(p.dir, placement.worker, `boot-${record.pending.launch}`))
+    const { reservation } = foldRuntime(eventsOf(p.dir)).workers.get(placement.worker)
+    await workerRuntimeIn(p, settleWorker(reservation.worker, reservation.generation, reservation.launch))
     const oldWait = await p.agent(`wait ${token} --seconds=1`)
     expect(oldWait.out).toContain("this terminal's token is old")
     expect(oldWait.out).toContain('STOP')

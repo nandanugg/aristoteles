@@ -2,6 +2,7 @@
 import { Effect } from 'effect'
 import { gate } from './activation.ts'
 import { Refusal } from '../schema/errors.ts'
+import { admissionFor, stepDemand } from '../derived/c16/admission.ts'
 import { currentOffer, obligationOf, oldestWorkerStep } from '../derived/c16/worker.ts'
 import { create, NonBlank, type Author, type Recorded, type RuntimeEvent } from '../schema/index.ts'
 import { Dir, Now, sha, Store } from '../services/index.ts'
@@ -16,7 +17,7 @@ export const workerRefusal = (kind: RefusalName, message: string) =>
 
 const SYSTEM = { _tag: 'System' } as const
 const SUPERVISOR = { _tag: 'Supervisor', name: 'worker runtime' } as const
-const writeRuntime = (
+export const writeRuntime = (
   select: (events: ReadonlyArray<Recorded>, folded: WorkFolded) =>
     Effect.Effect<RuntimeEvent | null, Refusal>,
   author: Author,
@@ -70,7 +71,10 @@ export const bindWorker = (worker: string, generation: number, launch: string, s
     const keepHost = hostSession !== null ? folded.tokens.get('host')?.at(-1) : undefined
     return {
       _tag: 'WorkerBound', worker, generation, launch, session, waitVerifier: sha(secret),
-      members: current.reservation.members.map((actor) => {
+      members: [...current.reservation.members, ...[...foldRuntime(events).serial.values()]
+        .filter((entry) => entry.worker === worker &&
+          folded.state.makers.get(entry.actor.slice('maker:'.length))?.ended === false)
+        .map((entry) => entry.actor)].map((actor) => {
         const epoch = epochOf(folded.state, actorOf(actor))
         return { actor, epoch, verifier: actor === 'host' && keepHost !== undefined
           ? keepHost.hash : sha(memberSecretOf(secret, actor, epoch)) }
@@ -95,21 +99,26 @@ export const settleWorker = (worker: string, generation: number, launch: string,
 
 export const offerWorker = (worker: string, generation: number, secret: string, abandon = false) =>
   writeRuntime((events, folded) => Effect.gen(function* () {
-    const current = foldRuntime(events).workers.get(worker)
+    const runtime = foldRuntime(events)
+    const current = runtime.workers.get(worker)
     if (!current || current.fenced || current.ended || current.reservation.generation !== generation || !current.binding) {
       return yield* workerRefusal('epoch', 'Worker generation is no longer live.')
     }
     if (current.binding.waitVerifier !== sha(secret)) return yield* workerRefusal('authority', 'Wrong worker credential.')
     const s = folded.state
     if (current.offer) {
-      if (abandon || !currentOffer(s, current.offer)) {
+      const unavailable = admissionFor(folded, runtime, current.offer.actor, stepDemand(current.offer.step))
+      if (abandon || !currentOffer(s, current.offer) || unavailable.kind === 'waiting') {
         return { _tag: 'TurnClosed', worker, generation, turn: current.offer.turn,
           reason: abandon ? 'abandoned' : 'withdrawn' }
       }
       return null
     }
     if (abandon) return null
-    const pick = s.top.ended ? undefined : oldestWorkerStep(s, current.reservation.members)
+    const serial = [...runtime.serial.values()].filter((entry) => entry.worker === worker &&
+      s.makers.get(entry.actor.slice('maker:'.length))?.ended === false).map((entry) => entry.actor)
+    const pick = s.top.ended ? undefined : oldestWorkerStep(s, [...current.reservation.members, ...serial],
+      (actor, step) => admissionFor(folded, runtime, actor, stepDemand(step)).kind !== 'waiting')
     if (!pick) return null
     const turn = `turn-${(events.at(-1)?.seq ?? 0) + 1}`
     return {

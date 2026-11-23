@@ -3,9 +3,13 @@
 // the agent does it and runs work wait again. Nothing is typed into a terminal: this command is how
 // they hear of work. While it blocks, a marker next to the store says that the actor waits, so
 // that the watcher does not take it for a silent terminal (adapters/live/waiting.ts).
+import { randomUUID } from 'node:crypto'
 import { Effect, Fiber } from 'effect'
+import { acknowledgeChild, authorizeChildStart, finishReviewChild, reconcileChild, reserveReviewChild } from '../../../core/actions/child.ts'
+import { admissionFor, stepDemand } from '../../../core/derived/c16/admission.ts'
+import { workerSteps } from '../../../core/derived/c16/worker.ts'
 import { memberSecretOf, offerWorker, workerSecretOf, workerSession } from '../../../core/actions/worker.ts'
-import { foldRuntime, privateWorker } from '../../../core/state/worker-runtime.ts'
+import { childFor, foldRuntime, privateWorker } from '../../../core/state/worker-runtime.ts'
 import { folding } from '../../../core/actions/dispatch.ts'
 import { type WaitEnd, waitFor } from '../../../core/effects/wait.ts'
 import { refuse } from '../../../core/schema/index.ts'
@@ -14,7 +18,7 @@ import { foldWork } from '../../../core/state/c16/fold.ts'
 import { type Answered, actorOf } from '../../../core/state/c16/types.ts'
 import { BEAT_MS, markReturned, markWaiting, type WaitPlace } from '../../live/waiting.ts'
 import { buildOf } from '../../live/build.ts'
-import { stepLine, stepWords, workTokenOf } from '../../words/work.ts'
+import { makerWords, stepLine, stepWords, workTokenOf } from '../../words/work.ts'
 import type { Command, Commands } from '../command.ts'
 import { acquireBootstrapWorker, bootstrapRequest, retireHostDelivery } from '../../live/activation.ts'
 import { NONCE_ENV } from '../../live/bootstrap.ts'
@@ -84,7 +88,7 @@ const waitWorker = (
   seconds: number,
   abandon: boolean,
   hostToken?: string,
-  privateSpelling = false,
+  privateActor?: string,
 ) => Effect.gen(function* () {
   const until = Date.now() + seconds * 1000
   if (abandon) {
@@ -95,28 +99,37 @@ const waitWorker = (
     yield* offerWorker(worker, generation, secret)
     const events = yield* store.events
     const folded = foldWork(events)
-    const current = foldRuntime(events).workers.get(worker)
+    const runtime = foldRuntime(events)
+    const current = runtime.workers.get(worker)
     if (current?.reservation.generation !== generation || current.fenced) {
       return yield* refuse('This worker generation is no longer live.')
     }
     if (folded?.state.top.ended) return ['The project has ended.']
     const offer = current.offer
     if (offer && folded) {
+      const privateSpelling = offer.actor === privateActor
       const token = offer.actor === 'host' && hostToken !== undefined ? hostToken :
         workTokenOf(offer.actor, offer.epoch, memberSecretOf(secret, offer.actor, offer.epoch))
       const shown = stepLine(folded.state, offer.step, offer.on).replaceAll('<token>', token)
       const command = !privateSpelling && offer.step.act === 'Open' && offer.actor === 'host'
         ? shown.replace(/--sections=\S+/, () => `--sections=${JSON.stringify(offer.step.task)}`)
         : shown
-      const on = command.includes('--on=') ? '' : ` --on=${offer.on}`
+      const scoped = command.replace(/--on (\d+)(?=\s|$)/, '--on=$1')
+      const on = /(?:^|\s)--on=/.test(scoped) ? '' : ` --on=${offer.on}`
       const heard = offer.step.act === 'Hear' ? folded.state.answered.get(offer.step.ask ?? '') : undefined
       return [
         ...stepWords(folded.state, offer.step, events),
         ...(heard === undefined ? [] : [answerWords(heard)]),
-        privateSpelling ? command : `${command}${on} --turn=${workerSecretOf(secret, offer.turn)}`,
+        privateSpelling ? `${scoped}${on}` : `${scoped}${on} --turn=${workerSecretOf(secret, offer.turn)}`,
       ]
     }
-    if (Date.now() >= until) return ['Run the worker wait again.']
+    if (Date.now() >= until) {
+      const blocked = folded ? workerSteps(folded.state, current.reservation.members).flatMap(({ actor, step }) => {
+        const route = admissionFor(folded, runtime, actor, stepDemand(step))
+        return route.kind === 'waiting' ? [route.reason] : []
+      }) : []
+      return [...new Set(blocked), 'Run the worker wait again.']
+    }
     yield* Effect.sleep(POLL_MS)
   }
 })
@@ -125,6 +138,53 @@ const worker: Command = (call) => Effect.gen(function* () {
   const { cwd } = yield* Dir
   const { vars } = yield* Env
   const [action, raw] = call.args.positional
+  if (action === 'child-ack' || action === 'child-review-done') {
+    if (!call.token) return yield* refuse('Supply the allocated child credential.')
+    if (action === 'child-ack') yield* acknowledgeChild(call.token)
+    else yield* finishReviewChild(call.token)
+    return [action === 'child-ack' ? 'Child bound.' : 'Review allocation complete. Return the review to the parent.']
+  }
+  if (action === 'child-review') {
+    const on = textOf(call.args.one('on'))
+    const turn = textOf(call.args.one('turn'))
+    if (!call.token || !raw || !on || !/^\d+$/.test(on) || !turn) {
+      return yield* refuse('Use work worker child-review <Pipe-token> <fix> with the offered --on and --turn.')
+    }
+    const seq = yield* reserveReviewChild(call.token, raw, Number(on), turn)
+    return [seq === null ? 'A review is already reserved or has completed for this draft.'
+      : `Reserved child-${seq} for this review. Run work worker child-start ${call.token} child-${seq}.`]
+  }
+  if (action === 'child-start' || action === 'child-reconcile') {
+    if (!raw || !call.token) return yield* refuse('Supply the child allocation ID and the parent identity credential.')
+    if (action === 'child-reconcile') {
+      yield* reconcileChild(raw, call.token, textOf(call.args.one('observation')) ?? '')
+      return ['The child allocation is settled.']
+    }
+    const secret = randomUUID().replaceAll('-', '')
+    const seq = yield* authorizeChildStart(raw, call.token, secret)
+    if (seq === null) return ['A launch was already authorized. Check the native CLI before doing anything else.']
+    const store = yield* (yield* Store).open(cwd, { create: false })
+    const runtime = foldRuntime(yield* store.events)
+    const child = runtime.children.get(raw)
+    if (!child || child.released) return yield* refuse('This child was withdrawn.')
+    const { actor, epoch, worker: workerId, generation: ownerGeneration } = child.reservation
+    const owner = runtime.workers.get(workerId)
+    if (!owner?.binding || owner.fenced || owner.ended || owner.reservation.generation !== ownerGeneration) {
+      return yield* refuse('This child belongs to a retired worker generation.')
+    }
+    const token = workTokenOf(actor, epoch, secret)
+    const model = owner.reservation.placement.model
+    const folded = foldWork(yield* store.events)
+    const comparison = folded?.state.fixes.get(child.reservation.subject)
+    const draft = comparison ? JSON.stringify({
+      summary: comparison.summary, role: comparison.roleDraft, items: [...comparison.draft],
+    }) : '{}'
+    const prompt = child.reservation.purpose === 'maker' ? makerWords(actor, token) :
+      `You are a reviewer of an Aristoteles project. Acknowledge with work worker child-ack ${token}. ` +
+      `Review draft ${child.reservation.subject} on basis ${child.reservation.on}. Keep the files unchanged. Draft: ${draft}\n` +
+      `When finished run work worker child-review-done ${token}, then return your findings to the parent.`
+    return [`Start one native background subagent for ${raw} using model ${model} with this prompt:`, prompt]
+  }
   const match = /^g\.([a-f0-9]{32})\.([1-9][0-9]*)\.([a-f0-9]{32})$/.exec(raw ?? vars.ARISTOTELES_WORKER_CREDENTIAL ?? '')
   if (!match) return yield* refuse('Supply the current worker credential.')
   const [, launch, epoch, secret] = match as unknown as [string, string, string, string]
@@ -184,7 +244,12 @@ const wait: Command = (call) =>
     const { cwd } = yield* Dir
     const { vars } = yield* Env
     const store = yield* (yield* Store).open(cwd, { create: false })
-    const events = yield* store.events
+    let events = yield* store.events
+    const maker = /^w\.(maker:[^.]+)\./.exec(token)?.[1]
+    if (maker && childFor(foldRuntime(events), maker)) {
+      yield* acknowledgeChild(token)
+      events = yield* store.events
+    }
     const folded = yield* folding(() => foldWork(events))
     if (folded === null) return yield* refuse(`no top is open in ${cwd}`, 'the person opens it')
     const { who, ep } = yield* verifyWork(folded, token)
@@ -214,7 +279,7 @@ const wait: Command = (call) =>
       if (!Number.isFinite(seconds) || seconds <= 0) return yield* refuse('wait needs a positive number of seconds')
       if (who === 'host') yield* retireHostDelivery(cwd, token)
       return yield* waitWorker(store, placement.worker, current.reservation.generation, secret, seconds,
-        false, who === 'host' ? token : undefined, privateWorker(placement))
+        false, who === 'host' ? token : undefined, privateWorker(placement) ? who : undefined)
     }
     if (who === 'host') yield* retireHostDelivery(cwd, token)
     const actor = actorOf(who)

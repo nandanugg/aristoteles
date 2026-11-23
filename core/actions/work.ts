@@ -1,11 +1,14 @@
+import { randomUUID } from 'node:crypto'
 // The new path of the work model (P2): the person opens the top, and each act of an actor is one
 // event, checked against the folded state by `refusal` (core/derived/c16/accept.ts) inside the
 // store write. An act id is stored once: a second copy gets the first outcome (G3 firstTime).
+import { memberSecretOf } from './worker.ts'
 import { ACTIVATION, activationOf, gate } from './activation.ts'
 import { Effect, Schema } from 'effect'
 import { currentOf, officialAt } from '../derived/reads.ts'
+import { actDemand, admissionFor, stepDemand } from '../derived/c16/admission.ts'
 import { currentOffer, obligationOf, oldestWorkerStep } from '../derived/c16/worker.ts'
-import { foldRuntime, matchesStep, privateWorker } from '../state/worker-runtime.ts'
+import { childFor, foldRuntime, matchesStep, privateWorker } from '../state/worker-runtime.ts'
 import { basisOf, refused } from '../derived/c16/accept.ts'
 import {
   type Author,
@@ -16,11 +19,15 @@ import {
   type Work,
   BodySchema,
   writtenBy,
+  type AdmissionPolicy,
+  type ChildRelease,
+  type ChildReservation,
+  type SerialAssignment,
   type Turn,
   type WorkerDelivery,
   type WorkerPlacement,
 } from '../schema/index.ts'
-import { activationLock, Dir, Files, Now, readStaffing, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
+import { activationLock, Dir, Files, Now, readStaffing, readWorkerLaunch, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
 import { fold } from '../state/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { take } from '../state/c16/effect.ts'
@@ -71,6 +78,7 @@ export interface Acted {
   readonly state: WorkState
   readonly again: boolean
   readonly token: NewToken | null
+  readonly makerRoute?: { readonly actor: string; readonly child: string | null }
 }
 
 export const WORK = {
@@ -145,12 +153,22 @@ const named = (refused: RefusalName, words: string, next = 'Read the state again
   new WorkRefusal({ message: words, choice: { kind: 'Pick', words: NonBlank.make(next) },
     refused, words, next })
 
-const checkLoopMode = (body: Body, events: ReadonlyArray<Recorded>, cwd: string) =>
+const checkLoopMode = (body: Body, events: ReadonlyArray<Recorded>, cwd: string,
+  folded: NonNullable<ReturnType<typeof foldWork>>, delivery: WorkerDelivery | null) =>
   Effect.gen(function* () {
     if (body._tag !== 'LoopReview' || body.mode === 'self-review turns') return
     if (body.mode === 'other provider') {
       return yield* named('legal', 'No distinct provider is bound for pipeline review.',
         'Report the review mode actually used within the staffing arrangement.')
+    }
+    if (delivery && folded.policy.has('pipe')) {
+      const basis = folded.state.fixes.get(body.fix)?.at
+      const complete = [...foldRuntime(events).children.values()].some(({ reservation, released }) =>
+        reservation.purpose === 'review' && reservation.subject === body.fix && reservation.reviewBasis === basis &&
+        reservation.worker === delivery.worker && reservation.generation === delivery.generation &&
+        released?.reason === 'reported')
+      if (!complete) return yield* named('legal', 'This draft has no completed fresh review allocation.')
+      return
     }
     const files = yield* Effect.serviceOption(Files)
     const staffing = files._tag === 'Some'
@@ -174,26 +192,44 @@ const requestOf = (call: ActCall): string => sha(JSON.stringify([
 const deliveryOf = (
   call: ActCall, events: ReadonlyArray<Recorded>, folded: NonNullable<ReturnType<typeof foldWork>>,
   saved?: WorkerDelivery | null,
+  retry = false,
   synthesize?: (offer: Turn) => void,
 ) => Effect.gen(function* () {
   const actor = keyOf(call.act.who)
   const ep = call.act.ep
-  const { placements, workers } = foldRuntime(events)
-  const placement = placements.find((p) => p.members.includes(actor))
+  const runtime = foldRuntime(events)
+  const { placements, workers } = runtime
+  const serial = runtime.serial.get(actor)
+  const child = childFor(runtime, actor)
+  const match = /^w\.(.+)\.(\d+)\.([a-z0-9]+)$/.exec(call.credential ?? '')
+  const secret = match?.[1] === actor && Number(match[2]) === ep ? match[3] : undefined
+  if (child) {
+    const parent = workers.get(child.reservation.worker)
+    const reportedRetry = retry && child.released?.reason === 'reported' &&
+      (call.act.body._tag === 'Report' || call.act.body._tag === 'AskRaise')
+    if (!parent || parent.fenced || parent.ended || parent.reservation.generation !== child.reservation.generation ||
+      !child.binding || child.reservation.epoch !== ep || secret === undefined ||
+      child.binding.verifier !== sha(secret) || (child.released !== null && !reportedRetry) ||
+      folded.state.makers.get(actor.slice('maker:'.length))?.ended !== false && !reportedRetry) {
+      return yield* named('epoch', 'This child allocation is no longer current.')
+    }
+    if (call.turn !== undefined) return yield* named('authority', 'A child does not take its parent worker turn.')
+    return null
+  }
+  const placement = placements.find((p) => p.members.includes(actor) || p.worker === serial?.worker)
   if (!placement) {
     if (call.turn !== undefined) return yield* named('authority', 'This actor has no worker turn.')
     return null
   }
   if (call.credential === undefined) return yield* named('authority', 'This act needs the current worker identity credential.')
   const worker = workers.get(placement.worker)
-  const member = worker?.binding?.members.find((m) => m.actor === actor)
-  const match = /^w\.(.+)\.(\d+)\.([a-z0-9]+)$/.exec(call.credential)
-  if (!match || match[1] !== actor || Number(match[2]) !== ep) {
+  const member = worker?.binding?.members.find((m) => m.actor === actor) ??
+    (serial && serial.generation === worker?.reservation.generation ? serial : undefined)
+  if (secret === undefined) {
     return yield* named('authority', 'The credential does not name the submitting identity.')
   }
-  const secret = match[3]
   if (!worker || worker.fenced || worker.ended || !member || member.epoch !== ep ||
-    secret === undefined || member.verifier !== sha(secret)) {
+    member.verifier !== sha(secret)) {
     return yield* named('epoch', 'This worker binding is no longer current.')
   }
   const generation = worker.reservation.generation
@@ -203,10 +239,13 @@ const deliveryOf = (
     }
     return saved
   }
-  const privateCall = privateWorker(placement) && call.turn === undefined
+  const privateCall = serial === undefined && privateWorker(placement) && call.turn === undefined
   let offer = worker.offer
   if (privateCall && (!offer || !currentOffer(folded.state, offer))) {
-    const selected = oldestWorkerStep(folded.state, placement.members)
+    const admission = admissionFor(folded, runtime, actor, actDemand(call.act, folded))
+    if (admission.kind === 'waiting') return yield* named('cap', admission.reason)
+    const selected = oldestWorkerStep(folded.state, placement.members, (key, step) =>
+      admissionFor(folded, runtime, key, stepDemand(step)).kind !== 'waiting')
     if (!selected || selected.actor !== actor || !matchesStep(call.act.body, selected.step)) {
       return yield* named('authority', 'This act is not the next owed step of the private worker.')
     }
@@ -262,18 +301,26 @@ export const dispatchAct = (call: ActCall) =>
             saved.create.request !== request) {
             return yield* Effect.fail(named('legal', 'This act ID names a different submission.'))
           }
-          yield* deliveryOf(call, events, folded, saved.create.delivery)
-          done = { seq: first, state: now, again: true, token: null }
+          yield* deliveryOf(call, events, folded, saved.create.delivery, true)
+          done = {
+            seq: first, state: now, again: true, token: null,
+            ...(saved.create.childReserved ? { makerRoute: {
+              actor: saved.create.childReserved.actor, child: saved.create.childReserved.child,
+            } } : saved.create.serialAssigned ? { makerRoute: {
+              actor: saved.create.serialAssigned.actor, child: null,
+            } } : {}),
+          }
           return null
         }
         if (call.forward !== undefined && !folded.forwards.some((f) => f.id === call.forward)) {
           return yield* Effect.fail(WORK.noForward(call.forward))
         }
         let inlineOffer: Turn | undefined
-        const delivery = yield* deliveryOf(call, events, folded, undefined, (offer) => { inlineOffer = offer })
-        const invalidView = call.on !== null && (call.on < 0 || call.on > now.seq)
+        const delivery = yield* deliveryOf(call, events, folded, undefined, false, (offer) => { inlineOffer = offer })
+        const on = call.on ?? (delivery && 'kind' in delivery ? delivery.on : null)
+        const invalidView = on !== null && (on < 0 || on > now.seq)
         const act: Act = {
-          ...viewed(call.on === null ? now : invalidView ? null : workViewAt(events, call.on), call.act),
+          ...viewed(on === null ? now : invalidView ? null : workViewAt(events, on), call.act),
           old: call.build !== null && call.build !== call.current,
         }
         const via = call.by._tag === 'Person' && call.by.channel === 'ui' ? 'page' : 'terminal'
@@ -283,11 +330,11 @@ export const dispatchAct = (call: ActCall) =>
         }
         const needsBasis = basisOf(now, act.body) >= 0 ||
           act.body._tag === 'AskEdit'
-        if (invalidView || (call.on === null && needsBasis)) {
+        if (invalidView || (on === null && needsBasis)) {
           return yield* Effect.fail(named('basis', 'The act needs the basis of its current view.'))
         }
         if (check) return yield* Effect.fail(named(check.refused, check.words, check.next))
-        yield* checkLoopMode(act.body, events, cwd)
+        yield* checkLoopMode(act.body, events, cwd, folded, delivery)
         if (act.body._tag === 'Exit' && call.actorEpoch !== undefined &&
           call.actorEpoch !== epochOf(now, act.body.actor)) {
           return yield* Effect.fail(named('epoch', 'This process was replaced by a newer one.'))
@@ -297,13 +344,52 @@ export const dispatchAct = (call: ActCall) =>
           [...evidence].some(([item, version]) => now.ver.get(item) !== version))) {
           return yield* Effect.fail(named('basis', 'The evidence was computed before items changed.'))
         }
+        const runtime = foldRuntime(events)
+        const demand = actDemand(act, folded)
+        const route = admissionFor(folded, runtime, keyOf(act.who), demand)
+        if (route.kind === 'waiting') return yield* named('cap', route.reason)
         const actor = makesToken(now, act)
-        const secret = actor === null ? null : yield* tokens.random
+        const state = take(now, act)
+        let childReserved: ChildReservation | undefined
+        let serialAssigned: SerialAssignment | undefined
+        let childReleased: ChildRelease | undefined
+        if (actor && delivery && demand.task !== undefined && route.kind !== 'ordinary') {
+          const parentActor = keyOf(act.who)
+          const maker = keyOf(actor)
+          const epoch = epochOf(state, actor)
+          if (route.kind === 'child') {
+            childReserved = {
+              child: `child-${(events.at(-1)?.seq ?? 0) + 1}`,
+              worker: delivery.worker, generation: delivery.generation, parentActor, parentEpoch: act.ep,
+              attempt: demand.task, purpose: 'maker', subject: demand.task, on: now.seq,
+              launch: randomUUID().replaceAll('-', ''), execution: 'background', actor: maker, epoch,
+            }
+          } else {
+            const launch = runtime.workers.get(delivery.worker)?.reservation.launch
+            const root = launch === undefined ? null : readWorkerLaunch(cwd, launch, 'secret')
+            if (!root) return yield* named('epoch', 'The worker launch credential is unavailable.')
+            serialAssigned = {
+              worker: delivery.worker, generation: delivery.generation, parentActor,
+              attempt: demand.task, actor: maker, epoch, verifier: sha(memberSecretOf(root, maker, epoch)),
+            }
+          }
+        }
+        if (act.body._tag === 'Report' || act.body._tag === 'AskRaise') {
+          const child = childFor(runtime, keyOf(act.who))
+          if (child && child.released === null) {
+            const { child: id, worker, generation, launch } = child.reservation
+            childReleased = { child: id, worker, generation, launch, reason: 'reported', observation: act.body._tag }
+          }
+        }
+        const secret = actor === null || childReserved || serialAssigned ? null : yield* tokens.random
         const made = actor === null || secret === null ? null : { actor: keyOf(actor), secret }
         const event = create('Work', {
           _tag: 'Acted',
           act, delivery,
           ...(inlineOffer === undefined ? {} : { inlineOffer }),
+          ...(childReserved === undefined ? {} : { childReserved }),
+          ...(childReleased === undefined ? {} : { childReleased }),
+          ...(serialAssigned === undefined ? {} : { serialAssigned }),
           request,
           forward: call.forward ?? null,
           token: made === null ? null : [made.actor, sha(made.secret)],
@@ -313,11 +399,12 @@ export const dispatchAct = (call: ActCall) =>
         }
         const draft: Draft = { at: yield* clock.read, author: call.by, event }
         const next = (events.at(-1)?.seq ?? 0) + 1
-        const state = take(now, act)
         done = {
           seq: next,
           state,
           again: false,
+          ...(childReserved ? { makerRoute: { actor: childReserved.actor, child: childReserved.child } } :
+            serialAssigned ? { makerRoute: { actor: serialAssigned.actor, child: null } } : {}),
           token: made === null ? null : { ...made, ep: epochOf(state, actorOf(made.actor)) },
         }
         return { draft, rows: moved(now.ver, state.ver, opened.dir, next) }
@@ -544,11 +631,13 @@ const triesOf = (w: Work): number => {
 
 const placementsOf = (work: Work, staffing: import('../services/index.ts').Staffing) => {
   const groups = new Map<string, WorkerPlacement>()
+  const admission: AdmissionPolicy[] = []
   const roles = Object.entries(work.config.roles)
   const host = roles.find(([, role]) => role.kind === 'agent' && role.persistence.persistent &&
     role.acts.includes('split'))?.[0]
+  if (host === undefined) return null
   const assignments = [
-    ...(host === undefined ? [] : [['host', host] as const]),
+    ['host', host] as const,
     ...roles.flatMap(([name, role]) => role.kind !== 'agent' ? [] :
       role.pipeline === true ? [['pipe', name] as const] :
         role.persistence.persistent ? [[keyOf(roleActor(name)), name] as const] : []),
@@ -556,6 +645,8 @@ const placementsOf = (work: Work, staffing: import('../services/index.ts').Staff
   for (const [actor, name] of assignments) {
     const binding = staffing.roles[name]
     if (!binding?.persistent) return null
+    admission.push({ actor, concurrency: binding.concurrency, subagentAllowance: binding.subagentAllowance,
+      backgroundChildren: staffing.clis[binding.cli]?.backgroundChildren === true })
     const worker = binding.workerGroup === undefined ? `role:${name}` : `group:${binding.workerGroup}`
     const placement = groups.get(worker)
     if (placement && (placement.account !== binding.account || placement.model !== binding.model ||
@@ -566,7 +657,7 @@ const placementsOf = (work: Work, staffing: import('../services/index.ts').Staff
       members: [actor, ...(placement?.members ?? [])],
     })
   }
-  return [...groups.values()]
+  return { placements: [...groups.values()], admission }
 }
 
 export const writeTop = (call: OpenCall, managed: boolean) =>
@@ -615,11 +706,11 @@ export const writeTop = (call: OpenCall, managed: boolean) =>
           ? yield* readStaffing(cwd).pipe(Effect.provideService(Files, files.value))
           : null
         if (managed && staffing === null) return yield* ACTIVATION.legal('Top open needs staffing for this directory.')
-        const placements = staffing === null ? undefined : placementsOf(work, staffing)
-        if (placements === null) {
+        const arrangement = staffing === null ? undefined : placementsOf(work, staffing)
+        if (arrangement === null) {
           return yield* ACTIVATION.legal('Persistent role staffing does not define compatible workers.')
         }
-        const made = placements !== undefined ? [] : bound === null ? actors :
+        const made = arrangement !== undefined ? [] : bound === null ? actors :
           actors.filter((a) => keyOf(a) !== keyOf(HOST))
         secrets = yield* Effect.forEach(made, (actor) =>
           Effect.map(tokens.random, (secret) => ({ actor: keyOf(actor), secret })),
@@ -642,8 +733,8 @@ export const writeTop = (call: OpenCall, managed: boolean) =>
           cards,
           maxTries: triesOf(work),
           tokens: hashes,
-          ...(placements === undefined ? {} : {
-            placements, placementRevision: sha(JSON.stringify(placements)),
+          ...(arrangement === undefined ? {} : {
+            ...arrangement, placementRevision: sha(JSON.stringify(arrangement)),
           }),
           hostSession: bound === null ? null : (call.hostSession ?? null),
         })

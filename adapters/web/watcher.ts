@@ -35,8 +35,6 @@ import { workCacheLayer } from '../../core/state/index.ts'
 import { pumpLayerOf } from '../live/pump.ts'
 import { readingsLive } from '../live/readings.ts'
 import { tokenSecret } from '../live/tokens.ts'
-import { stopHookSettings } from '../live/stop-hook.ts'
-import { launchWords, workTokenOf } from '../words/work.ts'
 import type { Watcher, WatcherOptions } from './frozen.ts'
 
 export type { Watcher, WatcherOptions, WatcherTiming } from './frozen.ts'
@@ -104,7 +102,6 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
   // The engine (the revives, the evidence, the rule runs) for a store with a top; then the
   // person's typed sends.
   const say = {
-    prompt: launchWords,
     workerAck: `${quote(process.execPath)} ${quote(fileURLToPath(new URL('../../bin/work.js', import.meta.url)))} worker ack`,
     workerPrompt: (members: ReadonlyArray<string>) =>
       `${launchOpening('a worker')} Your identities are ${members.join(', ')}. Use the identity and receipt selected by each wait.`,
@@ -113,8 +110,6 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
       const launch = session.slice('boot-'.length)
       return { state: observeBootstrap(dir, launch), stop: () => stopBootstrap(dir, launch) }
     },
-    hook: (actor: string, t: { readonly ep: number; readonly secret: string }) =>
-      stopHookSettings(workTokenOf(actor, t.ep, t.secret)),
   }
   const memory = Effect.runSync(backoffMemory)
   const round = Effect.gen(function* () {

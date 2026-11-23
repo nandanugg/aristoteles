@@ -4,7 +4,7 @@
 import { join } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 import { Effect, Layer, type Scope } from 'effect'
-import { dispatchAct, openTop } from '../../core/actions/work.ts'
+import { dispatchAct, writeTop } from '../../core/actions/work.ts'
 import { h, NANDA } from '../../core/actions/fixture.test.ts'
 import type { Time } from '../../core/schema/index.ts'
 import { Dir, Env, Now, Store, StoreLive, Tokens } from '../../core/services/index.ts'
@@ -29,7 +29,7 @@ const setup = async () => {
   )
   const run = <A, E>(e: Effect.Effect<A, E, Store | Dir | Now | Tokens | Scope.Scope>) =>
     Effect.runPromise(Effect.scoped(e).pipe(Effect.provide(layer)))
-  const opened = await run(openTop({ by: NANDA, name: 'T', goal: 'g', sections: ['a', 'b'] }))
+  const opened = await run(writeTop({ by: NANDA, name: 'T', goal: 'g', sections: ['a', 'b'] }, false))
   let n = 0
   const act = (who: string, body: Body, ep = 0) =>
     run(

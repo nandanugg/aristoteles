@@ -38,3 +38,13 @@ export const workerIn = async (p, actor) => {
     credential: `g.${launch}.${generation}.${secret}`,
   }
 }
+
+
+export const workerTurn = async (p, credential, command) => {
+  const response = await p.agent(`worker wait ${credential} --seconds=0.01`)
+  if (response.code !== 0) throw new Error(response.err)
+  const line = response.out.split('\n').find((text) => text.startsWith(`work ${command} `))
+  if (!line) throw new Error(`Expected ${command} in ${response.out}`)
+  if ([...line.matchAll(/--on(?:=| )/g)].length !== 1) throw new Error(`Expected one basis in ${line}`)
+  return { words: response.out, token: line.split(' ')[2], args: line.match(/--on=\d+ --turn=[a-f0-9]+/)[0] }
+}

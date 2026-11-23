@@ -102,13 +102,20 @@ the person. Your steps:
 
 ## A persistent role
 
-A persistent role has a terminal for the whole project and holds one task at a time.
+A persistent role owns its attempt permits even when it shares a terminal. Follow the commands
+from `work worker wait`, including the identity, basis and turn receipt it gives you. A private
+role can also use its usual `work wait <token>` spelling.
 
-- **Assign a maker** for the task: `work assign <token> <task>`. It prints the token of the
-  maker (`maker:<id>: w.maker:...`) and its prompt (`its prompt: You are maker:<id> of an
-  Aristoteles project. ...`). Start a subagent with exactly that prompt, and nothing else (its
-  first words tell it to ignore the project's own instruction files). You are in a terminal, so
-  you start it; a maker starts no subagent.
+- **Assign a maker** with the offered `work assign`. If it reserves a background child, run the
+  printed `work worker child-start` command before starting one native subagent. Use the named
+  model and exactly the printed prompt. Its first wait acknowledges the reservation. After
+  starting it, return to the worker wait. If the native CLI confirms that it exited without
+  reporting or that the launch failed, use `work worker child-reconcile <parent-token> <child-id>
+  --observation="<what the CLI reported>"`. A second authorization message is a request to
+  check the native CLI for the first launch.
+- If assignment says the maker works on this worker, return to the worker wait for its maker
+  turns. Run the separate role review when the Check is offered. The worker keeps one context
+  through these turns. If capacity is full, leave the task queued and wait for an eligible step.
 - **Review the result** when the maker reports: `work review <token> <ask-id> pass|fail|raise-tries|
   raise-no-rule|raise-misses --points="<...>" --on <n>`. Read the result and the rules that
   apply; one point for each rule that the result breaks or each thing that is wrong.
@@ -119,13 +126,13 @@ A persistent role has a terminal for the whole project and holds one task at a t
   - `raise-misses`: a rule says it, and the maker missed it again.
   Use the Check ask ID printed by `work wait`. A raise goes to the pipeline role.
   The harness runs rules that have a `test`.
-- **Resume** a maker that is down: `work resume <token> <maker>`.
+- **Resume** a down maker with the offered `work resume` and follow the resulting route.
 - Do not start a subagent for any other work. A question that you cannot settle goes to the
   person: `work ask <token> human --text="<...>"`.
 
 ## A maker
 
-You are a subagent for one task.
+You have one task. A background maker uses its own wait. A serial maker receives its steps through the worker wait.
 
 1. Run `work wait <token>`: your first step is to read your brief, `work brief <token>`. It
    gives the task, its sections, what applies (directions, standards, rules with their evidence),
@@ -133,8 +140,9 @@ You are a subagent for one task.
 2. Do the work, in the files that the brief names.
 3. Report it: `work report <token> <ask-id> --output="<what you made>" --files=a.md,b.md --on <n>`.
    Use the Execute ask ID printed by `work wait`. `--files` names the files of the project that you changed.
-4. Run `work wait <token>`. If the review fails, it gives you the points: work again, and
-   report again. When the task is done or raised, your wait ends: stop.
+4. A background maker stops after reporting. If the role requests revisions, a fresh background
+   allocation gets the next attempt’s brief and points. A serial maker yields to the worker wait
+   for the review and any later revision turn.
 
 A maker starts no subagent. When the work needs more agents, hand the need back with
 `work ask <token> role:<name> --text="<...>"` and wait.
@@ -174,8 +182,10 @@ You are `pipe`. You run every evaluation, the direction pipeline, and the review
   loop, check that the story matches the draft before routing it to the person.
 - **Review loop:** `work loop <token> <fix> person|revise --mode="<actual mode>" --on <n>`: hand the draft to the
   person, or revise it once more. Report the mode you used for this review:
-  `self-review turns`, or `fresh subagent` when staffing permits a background child. The
-  person accepts the draft or sends it back.
+  `self-review turns`, or `fresh subagent` after a reserved reviewer completes. To use a fresh
+  reviewer, run `work worker child-review <token> <fix>` with the offered basis and receipt.
+  Follow the child-start instructions and wait for completion before submitting the verdict.
+  The person accepts the draft or sends it back.
 - **Recheck** a done task after items changed. Read `work recheck-brief <task> --on <n>`
   using the basis from the dispatched step. When staffing permits, give the brief to fresh
   subagents to judge the result. If a fresh context is unavailable, defer the recheck. Each report names the exact item keys and versions it inspected, with evidence.
