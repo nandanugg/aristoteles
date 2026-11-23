@@ -1,5 +1,8 @@
 // Fixture ports for exercising the replay before the pass 9 scheduler lands.
 // The permit fixture uses the real SQLite store for every C16 act.
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Effect, Layer } from 'effect'
 import { dispatchAct } from '../actions/work.ts'
 import { tsAct } from '../derived/c16/replay/acts.ts'
@@ -17,6 +20,16 @@ import { epochOf, testRule } from '../state/c16/reads.ts'
 import type { WorkState } from '../state/c16/state.ts'
 import type { Actor, Body } from '../state/c16/types.ts'
 
+export const inProject = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
+  const dir = mkdtempSync(join(tmpdir(), 'pass9-replay-'))
+  writeFileSync(join(dir, 'aristoteles.yaml'), '')
+  try {
+    return await run(dir)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 const recording = () => {
   const rows: JournalRow[] = []
   return {
@@ -26,7 +39,7 @@ const recording = () => {
   }
 }
 
-export const fixtureWorker = (): RuntimeDriver<WorkerCommand, WorkerObservation> => {
+export const fixtureWorkerPark = (): RuntimeDriver<WorkerCommand, WorkerObservation> => {
   const journal = recording()
   const owed = new Map<Identity, Owed>()
   let generation = 0

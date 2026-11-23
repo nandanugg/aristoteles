@@ -1,7 +1,6 @@
 #!/bin/sh
-# Mutate the observation-side implementation in a disposable copy. A load or setup
-# error does not count as a kill. Wire the real pass 9 runtime into these witnesses
-# when its unit lands so implementation mutants can target it directly.
+# Mutate the Unit 2 implementation in a disposable copy. A load or setup
+# error does not count as a kill. Each mutant must hit its named replay check.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)
@@ -14,29 +13,41 @@ import subprocess
 import sys
 
 root, scratch = map(Path, sys.argv[1:])
-shutil.copytree(root / "core", scratch / "core", ignore=shutil.ignore_patterns("_apalache-out", "tmp"))
-for name in ("src", "test", "adapters", "node_modules", "package.json", "tsconfig.json", "bunfig.toml"):
+for name in ("core", "adapters"):
+    shutil.copytree(root / name, scratch / name, ignore=shutil.ignore_patterns("_apalache-out", "tmp"))
+for name in ("src", "test", "node_modules", "package.json", "tsconfig.json", "bunfig.toml"):
     (scratch / name).symlink_to(root / name)
-test = "core/effects/pass9-conformance.test.ts"
-fixture = "core/effects/pass9-conformance-fixtures.ts"
-journal = "core/derived/pass9/replay/journal.ts"
+test = "adapters/cli/pass9-conformance.test.ts"
+worker = "core/derived/c16/worker.ts"
+wait = "adapters/cli/commands/wait.ts"
+intake = "core/actions/work.ts"
+lifecycle = "core/actions/worker.ts"
+fold = "core/state/worker-runtime.ts"
 mutants = [
-    ("newest obligation first", fixture, "owed.values().next().value", "[...owed.values()].at(-1)",
+    ("newest obligation first", worker, ")[0]", ").at(-1)",
      "wait skipped the oldest ready obligation"),
-    ("wrong identity is printed", fixture, "tokenActor: scope.actor,", "tokenActor: 'Host',",
+    ("wrong identity printed", wait,
+     "workTokenOf(offer.actor, offer.epoch, memberSecretOf(secret, offer.actor, offer.epoch))",
+     'workTokenOf("host", offer.epoch, memberSecretOf(secret, "host", offer.epoch))',
      "wait printed a credential for a different identity"),
-    ("stale wait treated as successful retry", fixture, "outcome: accepted ? 'taken' : 'refused',",
-     "outcome: accepted ? 'taken' : 'retry',", "model submission requires a fresh intake outcome"),
-    ("rechecks take a fix permit", fixture, "rechecks.add(2)", "rechecks.add(2); fixes.add(2)",
-     "Pipe fix cap exceeded"),
-    ("role permit charged to the resident role", fixture, "attempts.set(command.task, r)",
-     "attempts.set(command.task, 0)", "allocation charged to a different role"),
-    ("release slot on logical fence", journal, "w.state !== 'Exited' && w.state !== 'Parked'",
-     "w.state !== 'Exited' && w.state !== 'Parked' && w.state !== 'Fenced'", "fenced allocation until confirmation"),
-    ("helper report releases its child", journal,
-     "jobs.set(event.job, { ...job, report: event.report })",
-     "jobs.set(event.job, { ...job, report: event.report }); children.delete(job.allocation ?? '')",
-     "separates helper report, child release, and verdict"),
+    ("withdrawn occurrence reaches C16 intake", intake,
+     "if (!currentOffer(folded.state, offer))", "if (false && !currentOffer(folded.state, offer))",
+     "expected stale refusal, got heard"),
+    ("accept another subject with the same receipt", intake,
+     "offer.actor !== actor || offer.epoch !== ep || !matchesStep(call.act.body, offer.step)",
+     "offer.actor !== actor || offer.epoch !== ep",
+     "expected authority refusal, got stale"),
+    ("ignore the offered basis", intake, "if (!privateCall && offer.on !== call.on)",
+     "if (!privateCall && call.on === null)", "expected basis refusal, got null"),
+    ("retry after the generation was fenced", intake,
+     "yield* deliveryOf(call, events, folded, saved.create.delivery)", "void saved.create.delivery",
+     "live intake retries only within its authenticated generation"),
+    ("release a provider slot on logical fence", lifecycle,
+     ".filter(({ reservation, ended }) =>\n      !ended && reservation",
+     ".filter(({ reservation, ended, fenced }) =>\n      !ended && !fenced && reservation",
+     "live session capacity stays charged while a fenced process is unknown"),
+    ("keep a taken turn in the worker fold", fold, "if (taken) {", "if (false && taken) {",
+     "folded worker turn differs from the journal"),
 ]
 
 def run():
