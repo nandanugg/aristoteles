@@ -177,8 +177,11 @@ export const readStaffingReview = (dir: string, person: string) => Effect.gen(fu
 
 export type StaffingEdit =
   | { readonly kind: 'limit'; readonly account: string; readonly limit: string; readonly typed: string }
+  | { readonly kind: 'sessions'; readonly account: string; readonly sessionLimit: number | null }
   | { readonly kind: 'role'; readonly role: string; readonly account: string; readonly cli: string
-      readonly model: string; readonly persistent: boolean; readonly concurrency: number; readonly subagentAllowance: number }
+      readonly model: string; readonly persistent: boolean; readonly concurrency: number; readonly subagentAllowance: number
+      // pass 9: the worker group (null: a private worker)
+      readonly workerGroup?: string | null }
 
 const editedStaffing = (before: Staffing, edit: StaffingEdit | undefined): unknown => {
   if (edit === undefined) return before
@@ -187,13 +190,25 @@ const editedStaffing = (before: Staffing, edit: StaffingEdit | undefined): unkno
     if (!Object.hasOwn(before.accounts, account) || !Object.hasOwn(before.accounts[account]!.limits, limit)) {
       throw refuse('This staffing limit no longer exists.')
     }
+    // keep the account's other keys (its session limit)
     return { ...before, accounts: { ...before.accounts,
-      [account]: { limits: { ...before.accounts[account]!.limits, [limit]: typed } },
+      [account]: { ...before.accounts[account]!, limits: { ...before.accounts[account]!.limits, [limit]: typed } },
     } }
   }
-  const { role, kind: _kind, ...values } = edit
+  if (edit.kind === 'sessions') {
+    const { account, sessionLimit } = edit
+    if (!Object.hasOwn(before.accounts, account)) throw refuse('This staffing account no longer exists.')
+    const { sessionLimit: _old, ...rest } = before.accounts[account]!
+    return { ...before, accounts: { ...before.accounts,
+      [account]: sessionLimit === null ? rest : { ...rest, sessionLimit },
+    } }
+  }
+  const { role, kind: _kind, workerGroup, ...values } = edit
   if (!Object.hasOwn(before.roles, role)) throw refuse('This staffing role no longer exists.')
-  return { ...before, roles: { ...before.roles, [role]: { ...before.roles[role], ...values } } }
+  const { workerGroup: _group, ...kept } = before.roles[role]!
+  const group = workerGroup === undefined ? before.roles[role]!.workerGroup : workerGroup ?? undefined
+  return { ...before, roles: { ...before.roles,
+    [role]: { ...kept, ...values, ...(group === undefined ? {} : { workerGroup: group }) } } }
 }
 
 export const previewStaffingReview = (dir: string, revision: string, edit?: StaffingEdit) =>

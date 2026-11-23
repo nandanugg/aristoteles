@@ -14,6 +14,9 @@ const RoleStaffing = Schema.Struct({
   model: NonBlank,
   persistent: Schema.Boolean,
   concurrency: PositiveInt,
+  // Pass 9 (decision 1): persistent roles that name the same group share one worker (one session,
+  // one wait); omitted: a private worker (a group of one).
+  workerGroup: Schema.optionalKey(NonBlank),
   subagentAllowance: Schema.Number.pipe(
     Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
   ),
@@ -22,9 +25,17 @@ const RoleStaffing = Schema.Struct({
 
 const Staffing = Schema.Struct({
   models: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-  clis: Schema.Record(Schema.String, Schema.Struct({ backgroundChildren: Schema.Boolean })),
+  // canPark: the CLI can checkpoint and resume a session (pass 9: a parked worker frees its slot);
+  // without it a fresh recheck that needs the slot is deferred.
+  clis: Schema.Record(Schema.String, Schema.Struct({
+    backgroundChildren: Schema.Boolean,
+    canPark: Schema.Boolean,
+  })),
+  // limits: as the user typed them (shown, never parsed); sessionLimit: the managed sessions this
+  // dir may run at once on the account (pass 9 enforces it for THIS dir only); none: no limit given.
   accounts: Schema.Record(Schema.String, Schema.Struct({
     limits: Schema.Record(Schema.String, NonBlank),
+    sessionLimit: Schema.optionalKey(PositiveInt),
   })),
   roles: Schema.Record(Schema.String, RoleStaffing),
 })
@@ -50,6 +61,27 @@ export const staffingOf = (raw: unknown): Staffing => {
     }
     if (new Set(role.allowedModels).size !== role.allowedModels.length) {
       fail(STAFFING, `${path}.allowedModels lists a model twice`)
+    }
+    if (role.workerGroup !== undefined && !role.persistent) {
+      fail(STAFFING, `${path}.workerGroup: only a persistent role runs on a worker`)
+    }
+  }
+  // OV3-3: the identities on one worker share its session: one account, CLI, model and launch.
+  const groups = new Map<string, Array<[string, Staffing['roles'][string]]>>()
+  for (const [name, role] of Object.entries(staffing.roles)) {
+    if (role.workerGroup === undefined) continue
+    groups.set(role.workerGroup, [...(groups.get(role.workerGroup) ?? []), [name, role]])
+  }
+  for (const [group, members] of groups) {
+    const [first, ...rest] = members
+    if (first === undefined) continue
+    for (const [name, role] of rest) {
+      for (const key of ['account', 'cli', 'model', 'launch'] as const) {
+        if (role[key] !== first[1][key]) {
+          fail(STAFFING, `workerGroup ${group}: roles.${name}.${key} differs from roles.${first[0]}.${key}; ` +
+            'the roles of one worker share its account, CLI, model and launch')
+        }
+      }
     }
   }
   return staffing

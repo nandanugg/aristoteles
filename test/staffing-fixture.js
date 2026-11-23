@@ -20,7 +20,7 @@ export function staffedFixture(text) {
     config: [...text.matchAll(/^#.*$/gm)].map(([line]) => line + '\n').join('') +
       Bun.YAML.stringify(config, null, 2) + '\n',
     staffing: Bun.YAML.stringify({
-      clis: { fixture: { backgroundChildren: false } },
+      clis: { fixture: { backgroundChildren: false, canPark: false } },
       accounts: { fixture: { limits: {} } },
       models, roles,
     }),
