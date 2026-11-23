@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 // The engine's tick (terminals.qnt, G1; the harness's obligations of protocol.qnt: ReviveOb and
 // RuleRunOb, from c16 dos(state, Harness)): what the harness owes, done from the store alone. A
 // persistent actor that is up but has no live pane `<actor>.<epoch>` is recorded as exited (the
@@ -8,11 +9,14 @@
 // and what it could not.
 import { isInactive } from '../actions/activation.ts'
 import { Effect, Ref } from 'effect'
+import { bindWorker, reserveWorker, settleWorker, workerSession } from '../actions/worker.ts'
+import { foldRuntime } from '../state/worker-runtime.ts'
+import { activationLock, readWorkerLaunch, stageWorkerLaunch } from '../services/index.ts'
 import { folding } from '../actions/dispatch.ts'
 import { dispatchAct, type NewToken } from '../actions/work.ts'
 import { dos } from '../derived/c16/obligations.ts'
 import { type Author, SessionId } from '../schema/index.ts'
-import { Dir, Pump, readStaffing, sha, Store } from '../services/index.ts'
+import { Dir, Env, Pump, readStaffing, sha, Store } from '../services/index.ts'
 import { fold } from '../state/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { epochOf } from '../state/c16/reads.ts'
@@ -29,6 +33,9 @@ const ENGINE: Author = { _tag: 'System' }
 // hook (--settings, beside the prompt), which records the actor's exit.
 export interface Words {
   readonly prompt: (actor: ActorKey, words: string, token: NewToken) => string
+  readonly workerAck?: string
+  readonly workerPrompt?: (members: ReadonlyArray<string>) => string
+  readonly bootstrap?: (session: string) => { readonly state: 'live' | 'ended' | 'unknown'; readonly stop: () => void } | null
   readonly hook: (actor: ActorKey, token: NewToken) => string
 }
 
@@ -63,6 +70,78 @@ const persistent = (s: WorkState): ReadonlyArray<ActorKey> => [
   PIPE,
   ...[...s.cards.keys()].map((name) => keyOf({ _tag: 'Role', name })),
 ]
+
+const supervise = (say: Words, events: Parameters<typeof foldRuntime>[0], hostSession: string | null, ended: boolean) =>
+  Effect.scoped(Effect.gen(function* () {
+    const { cwd } = yield* Dir
+    const pump = yield* Pump
+    const { placements } = foldRuntime(events)
+    const env = yield* Effect.serviceOption(Env)
+    if (placements.length === 0) return
+    yield* activationLock(cwd)
+    const store = yield* (yield* Store).open(cwd, { create: false })
+    for (const placement of placements) {
+      const current = foldRuntime(yield* store.events).workers.get(placement.worker)
+      if (current && !current.ended) {
+        const { worker, launch, generation, members } = current.reservation
+        const bootstrap = generation === 1 && members.includes('host') ? hostSession : null
+        const sid = SessionId.make(current.binding?.session ?? bootstrap ?? workerSession(launch))
+        const observe = Effect.gen(function* () {
+          const external = bootstrap === null ? null : say.bootstrap?.(bootstrap)
+          if (external) return external.state
+          if (pump.observe) return yield* pump.observe(sid)
+          return (yield* pump.status)[sid]?._tag === 'Live' ? 'live' : 'ended'
+        })
+        const process = yield* observe
+        if (ended || current.fenced || process === 'ended') {
+          yield* settleWorker(worker, generation, launch)
+          if (process === 'live') {
+            const external = bootstrap === null ? null : say.bootstrap?.(bootstrap)
+            if (external) yield* Effect.ignore(Effect.try(external.stop))
+            else yield* Effect.ignore(pump.stop(sid))
+          }
+          if ((yield* observe) === 'ended') {
+            yield* settleWorker(worker, generation, launch, 'managed session absent or ended')
+            yield* pump.forget(sid)
+          }
+          continue
+        }
+        if (process === 'unknown') continue
+        if (current.binding === null) {
+          const secret = yield* Effect.sync(() => readWorkerLaunch(cwd, launch, 'secret'))
+          const ack = yield* Effect.sync(() => readWorkerLaunch(cwd, launch, 'ack'))
+          if (secret !== null && (bootstrap !== null || ack === sha(secret))) {
+            yield* bindWorker(worker, generation, launch, sid, secret)
+          }
+        }
+        continue
+      }
+      if (ended) continue
+      const launch = randomUUID().replaceAll('-', '')
+      const reserved = yield* reserveWorker(placement.worker, launch)
+      if (reserved === null) continue
+      const generation = (current?.reservation.generation ?? 0) + 1
+      const secret = randomUUID().replaceAll('-', '')
+      yield* Effect.sync(() => stageWorkerLaunch(cwd, launch, 'secret', secret))
+      if (generation === 1 && placement.members.includes('host') && hostSession !== null) {
+        const bootstrap = say.bootstrap?.(hostSession)
+        const live = bootstrap ? bootstrap.state === 'live' : (yield* pump.status)[hostSession]?._tag === 'Live'
+        if (live) {
+          yield* bindWorker(placement.worker, generation, launch, hostSession, secret)
+        }
+        continue
+      }
+      const sid = SessionId.make(workerSession(launch))
+      const db = env._tag === 'Some' ? env.value.vars.ARISTOTELES_DB : undefined
+      const launchEnv = { ...(db === undefined ? {} : { ARISTOTELES_DB: db }), ARISTOTELES_WORKER_CREDENTIAL: `g.${launch}.${generation}.${secret}` }
+      const prompt = (say.workerPrompt?.(placement.members) ?? '') + ' Run work worker wait "$ARISTOTELES_WORKER_CREDENTIAL" and do the step it prints. Repeat the wait after each step.'
+      const command = fill(placement.launch, { session: sid, model: placement.model, prompt })
+      yield* Effect.ignore(pump.start(sid, {
+        command: `${say.workerAck ?? 'work worker ack'} && ${command}`,
+        env: launchEnv, cols: 160, rows: 48,
+      }))
+    }
+  }))
 
 export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
   Effect.gen(function* () {
@@ -110,8 +189,10 @@ export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
     if (first.folded === null) return lines
     let { state } = first.folded
     const { hostSession } = first.folded
+    const managed = new Set(foldRuntime(first.events).placements.flatMap((placement) => placement.members))
+    yield* supervise(say, first.events, hostSession, state.top.ended)
     if (state.top.ended) {
-      for (const k of persistent(state)) {
+      for (const k of persistent(state).filter((actor) => !managed.has(actor))) {
         const sid = sessionAt(hostSession, k, epochOf(state, actorOf(k)))
         if (yield* alive(sid)) yield* Effect.ignore(pump.stop(sid))
       }
@@ -119,7 +200,7 @@ export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
     }
     // The evidence: an actor that is up and has no live pane exited.
     let exited = false
-    for (const k of persistent(state)) {
+    for (const k of persistent(state).filter((actor) => !managed.has(actor))) {
       if (state.down.has(k)) continue
       const sid = sessionAt(hostSession, k, epochOf(state, actorOf(k)))
       const e = yield* recall(k)
@@ -174,7 +255,7 @@ export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
         yield* act(state, { _tag: 'RunRule', task: target, holds: holds.success })
       } else if (step.act === 'Revive') {
         const target = step.actor ?? ''
-        if (t < (yield* recall(target)).until) continue
+        if (managed.has(target) || t < (yield* recall(target)).until) continue
         const how = yield* Effect.result(launchOf(target))
         if (how._tag === 'Failure' || how.success === null) {
           lines.push(`${target}: no launch command for its model; it stays down`)

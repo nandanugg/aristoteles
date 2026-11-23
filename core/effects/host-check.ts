@@ -6,6 +6,7 @@ import { Effect } from 'effect'
 import { dispatchAct } from '../actions/work.ts'
 import { Dir, sha, Spawn, Store } from '../services/index.ts'
 import { pathOf } from '../services/paths.ts'
+import { foldRuntime } from '../state/worker-runtime.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { epochOf } from '../state/c16/reads.ts'
 const HOST = { _tag: 'Host' } as const
@@ -25,6 +26,7 @@ export const checkHost = <R>(
     Effect.gen(function* () {
       const { cwd } = yield* Dir
       const events = yield* (yield* (yield* Store).open(cwd, { create: false })).events
+      if (foldRuntime(events).placements.some(({ members }) => members.includes('host'))) return
       const folded = foldWork(events)
       if (folded === null) return
       const { state, hostPane, hostSession } = folded

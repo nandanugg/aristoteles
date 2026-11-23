@@ -41,9 +41,28 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
   const tokens = new Map<ActorKey, Array<WorkToken>>()
   let hostPane: HostPane | null = null
   let forwards: ReadonlyArray<PendingForward> = []
+  const runtimeMembers = new Map<string, ReadonlyArray<ActorKey>>()
   let hostSession: string | null = null
   for (const recorded of events) {
     const e = recorded.event
+    if (e._tag === 'Runtime' && state !== null) {
+      const runtime = e.create
+      if (runtime._tag === 'WorkerReserved') {
+        runtimeMembers.set(runtime.worker, runtime.members)
+      }
+      if (runtime._tag === 'WorkerFenced' || runtime._tag === 'WorkerEnded') {
+        state = { ...(state as WorkState), down: new Set([...state.down, ...(runtimeMembers.get(runtime.worker) ?? [])]) }
+      }
+      if (runtime._tag === 'WorkerBound') {
+        const down: Set<ActorKey> = new Set(state.down)
+        for (const { actor, epoch, verifier } of runtime.members) {
+          down.delete(actor)
+          tokens.set(actor, [...(tokens.get(actor) ?? []).filter((key) => key.ep !== epoch), { ep: epoch, hash: verifier }])
+        }
+        state = { ...(state as WorkState), down }
+      }
+      continue
+    }
     if (e._tag !== 'Work') continue
     const c = e.create
     if (c._tag === 'Opened') {
@@ -75,5 +94,6 @@ export const foldWork = (events: ReadonlyArray<Recorded>): WorkFolded | null => 
       }
     }
   }
-  return state === null ? null : { state, ids, tokens, hostPane, forwards, hostSession }
+  if (state === null) return null
+  return { state, ids, tokens, hostPane, forwards, hostSession }
 }

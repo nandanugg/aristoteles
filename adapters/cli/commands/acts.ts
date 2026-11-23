@@ -6,6 +6,7 @@
 import { isAbsolute, join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { activationOf, gate } from '../../../core/actions/activation.ts'
+import { settleWorker } from '../../../core/actions/worker.ts'
 import {
   WORK,
   dispatchAct,
@@ -35,8 +36,9 @@ import {
   AnswerBodySchema,
   QuestionBodySchema,
 } from '../../../core/schema/index.ts'
-import { Dir, Env, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
+import { activationLock, Dir, Env, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
 import { loadWork } from '../../../core/state/index.ts'
+import { foldRuntime, privateWorker } from '../../../core/state/worker-runtime.ts'
 import { foldWork } from '../../../core/state/c16/fold.ts'
 import { askCountOf, epochOf, findAsk, fixOf, vsum } from '../../../core/state/c16/reads.ts'
 import type { WorkState } from '../../../core/state/c16/state.ts'
@@ -44,7 +46,7 @@ import { actorOf, keyOf, type Actor, type Body, type Reply } from '../../../core
 import type { ItemKey, ItemRec, Level, RoleDraft, TaskSpec, Verdict }
   from '../../../core/state/c16/data.ts'
 import { kindOf } from '../../../core/state/c16/data.ts'
-import { activationEvents, retireHostDelivery } from '../../live/activation.ts'
+import { acquireBootstrapWorker, activationEvents, retireHostDelivery } from '../../live/activation.ts'
 import { bootstrapSession } from '../../live/bootstrap.ts'
 import { briefOf, hostWords, makerWords, recheckBriefOf } from '../../words/work.ts'
 import { type Args, textOf } from '../args.ts'
@@ -490,7 +492,12 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
     const { events, folded } = yield* readFolded
     const asAgent = spec.by === 'agent' || (spec.by === 'either' && call.token !== null)
     const asHuman = spec.by === 'person' || (spec.by === 'either' && !asAgent)
-    const actor = asAgent ? yield* verifyWork(folded, call.token) : null
+    const candidate = /^w\.(.+)\.(\d+)\.[a-z0-9]+$/.exec(call.token ?? '')
+    const managed = candidate?.[1] !== undefined &&
+      foldRuntime(events).placements.some((placement) => placement.members.includes(candidate[1]!))
+    const actor = !asAgent ? null : managed
+      ? { who: candidate[1]!, ep: Number(candidate[2]) }
+      : yield* verifyWork(folded, call.token)
     const author: Author = asHuman ? yield* personOf : { _tag: 'System' }
     const who = actor ? actorOf(actor.who) : asHuman ? HUMAN : HARNESS
     const ep = actor?.ep ?? 0
@@ -504,9 +511,13 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
     }
     const body = yield* spec.parse(ctx)
     const on = onOf(call.args)
+    const turn = textOf(call.args.one('turn'))
+    const baseId = idOf(who, ep, body, on, folded.state)
     const acted = yield* dispatchAct({
       by: author,
-      act: { id: idOf(who, ep, body, on, folded.state), who, ep, body },
+      act: { id: turn === undefined ? baseId : sha(JSON.stringify([who, ep, body._tag, on, turn])), who, ep, body },
+      ...(asAgent && call.token !== null ? { credential: call.token } : {}),
+      ...(turn === undefined ? {} : { turn }),
       on,
       build: null,
       current: 'cli',
@@ -635,8 +646,27 @@ const paneOfPerson = Effect.gen(function* () {
 // host's first words.
 const runContinue: Command = () =>
   Effect.gen(function* () {
-    const { folded } = yield* readFolded
+    const { events, folded } = yield* readFolded
     const by = yield* personOf
+    const runtime = foldRuntime(events)
+    const placement = runtime.placements.find(({ members }) => members.includes('host'))
+    if (placement) {
+      if (!privateWorker(placement)) {
+        return yield* refuse('The Host shares a worker. Its identity cannot move on its own.')
+      }
+      const { cwd } = yield* Dir
+      if (folded.hostSession !== null) {
+        yield* acquireBootstrapWorker(cwd, placement.worker, folded.hostSession)
+      }
+      yield* activationLock(cwd)
+      const current = foldRuntime(yield* activationEvents(cwd)).workers.get(placement.worker)
+      if (current && !current.ended) {
+        const { worker, generation, launch } = current.reservation
+        const fenced = yield* settleWorker(worker, generation, launch)
+        if (fenced === null) return ['The Host worker is already being replaced.']
+      }
+      return ['The Host worker will resume in a new managed session.']
+    }
     const pane = yield* paneOfPerson
     const s = folded.state
     const body: Body = s.down.has('host')
@@ -661,9 +691,10 @@ const runContinue: Command = () =>
 // no output, and no failure.
 const hook: Command = (call) =>
   Effect.gen(function* () {
-    const { folded } = yield* readFolded
+    const { events, folded } = yield* readFolded
     const { who, ep } = yield* verifyWork(folded, call.token)
-    if (call.args.positional[0] !== 'stopped') return []
+    if (call.args.positional[0] !== 'stopped' ||
+      foldRuntime(events).placements.some((placement) => placement.members.includes(who))) return []
     if (ep !== epochOf(folded.state, actorOf(who)) || folded.state.down.has(who)) return []
     const body: Body = { _tag: 'Exit', actor: actorOf(who) }
     yield* dispatchAct({

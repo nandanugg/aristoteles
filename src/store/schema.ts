@@ -7,7 +7,7 @@
 // stored.
 
 // PRAGMA user_version of a store that this code reads.
-export const FORMAT = 8
+export const FORMAT = 9
 
 export const EVENT_TABLE = `
 CREATE TABLE IF NOT EXISTS event (

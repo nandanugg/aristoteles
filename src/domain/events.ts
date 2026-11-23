@@ -1,3 +1,4 @@
+import { RuntimeEvent, Turn, WorkerDelivery, WorkerPlacement } from './worker-runtime.ts'
 // The stored events, grouped by the record that they happen to (the owner's rulings, 2026-11-12):
 //   - a creation goes under the record that it creates: { _tag: 'Revision', create: Drafted{...} };
 //   - a move goes under the record that it moves, which it names once, by its id: { _tag:
@@ -239,11 +240,15 @@ export const WorkOpened = Schema.TaggedStruct('Opened', {
   // An activated workflow (contract 6c): the bound host's managed session; the host starts UP at
   // epoch 0 there (its bootstrap credential is its epoch-0 token). null: every actor starts down.
   hostSession: Schema.NullOr(Text),
+  placements: Schema.optionalKey(Schema.Array(WorkerPlacement)),
+  placementRevision: Schema.optionalKey(Text),
 })
 // One act the store accepted; token: the new token the act makes (a new maker, a revived actor, a
 // resumed maker, the host of a move), else null.
 export const WorkActed = Schema.TaggedStruct('Acted', {
   act: ActEnvelope,
+  delivery: Schema.optionalKey(Schema.NullOr(WorkerDelivery)),
+  inlineOffer: Schema.optionalKey(Turn),
   request: Text,
   forward: Schema.NullOr(Text),
   token: Schema.NullOr(TokenHash),
@@ -277,6 +282,7 @@ export const Event = Schema.Union([
   ...Revision.members,
   ...Source.members,
   WorkEvent,
+  created('Runtime', RuntimeEvent),
 ])
 export type Event = typeof Event.Type
 // The record that an event happens to.
@@ -366,9 +372,15 @@ export const WRITTEN_BY = {
     'Work.Acted',
   ],
   // The engine's acts, and the host's reads of a source.
-  System: ['Source.Moved', 'Source.Checked', 'Work.Forwarded', 'Work.Acted'],
+  System: [
+    'Source.Moved', 'Source.Checked', 'Work.Forwarded', 'Work.Acted',
+    'Runtime.WorkerReserved', 'Runtime.WorkerFenced', 'Runtime.TurnOffered', 'Runtime.TurnClosed',
+  ],
   // The supervisor of the terminals: the fate of a send.
-  Supervisor: ['Send.Delivered', 'Send.Dropped', 'Work.Acted'],
+  Supervisor: [
+    'Send.Delivered', 'Send.Dropped', 'Work.Acted',
+    'Runtime.WorkerBound', 'Runtime.WorkerEnded', 'Runtime.WorkerFenced',
+  ],
   // The daily refresh of the company directions.
   Refresh: ['Revision.Imported', 'Work.Acted'],
 } as const satisfies { readonly [A in Author['_tag']]: ReadonlyArray<Kind> }

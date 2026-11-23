@@ -75,3 +75,5 @@ export {
   writeLaunchFile,
 } from '../../src/files/activation.ts'
 export type { ActivationRecord, PendingLaunch } from '../../src/files/activation.ts'
+
+export { readWorkerLaunch, stageWorkerLaunch } from '../../src/files/worker-runtime.ts'

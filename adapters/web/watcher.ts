@@ -1,3 +1,7 @@
+import { fileURLToPath } from 'node:url'
+import { quote } from '../../core/effects/lines.ts'
+import { isBootstrapSession, observeBootstrap, stopBootstrap } from '../live/bootstrap.ts'
+import { launchOpening } from '../live/markers.ts'
 // createWatcher (frozen; package P6): the engine of the terminals. tick() runs engineTick (the
 // revives of the work model, from the store alone), then renews the Work from the store (its own
 // WorkCache), reads the outside, derives, and runs reconcile(EFFECTS) once (core/effects). Ticks
@@ -101,6 +105,14 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
   // person's typed sends.
   const say = {
     prompt: launchWords,
+    workerAck: `${quote(process.execPath)} ${quote(fileURLToPath(new URL('../../bin/work.js', import.meta.url)))} worker ack`,
+    workerPrompt: (members: ReadonlyArray<string>) =>
+      `${launchOpening('a worker')} Your identities are ${members.join(', ')}. Use the identity and receipt selected by each wait.`,
+    bootstrap: (session: string) => {
+      if (!isBootstrapSession(session)) return null
+      const launch = session.slice('boot-'.length)
+      return { state: observeBootstrap(dir, launch), stop: () => stopBootstrap(dir, launch) }
+    },
     hook: (actor: string, t: { readonly ep: number; readonly secret: string }) =>
       stopHookSettings(workTokenOf(actor, t.ep, t.secret)),
   }
