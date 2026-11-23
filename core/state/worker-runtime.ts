@@ -54,6 +54,9 @@ export const foldRuntime = (events: ReadonlyArray<Recorded>) => {
   return { workers, placements }
 }
 
+export const privateWorker = (placement: WorkerPlacement): boolean =>
+  placement.worker.startsWith('role:') && placement.members.length === 1
+
 export const matchesStep = (body: Body, step: Turn['step']): boolean => {
   if (step.act !== body._tag) return false
   if (body._tag === 'Open') {

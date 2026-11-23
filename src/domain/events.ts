@@ -1,4 +1,4 @@
-import { RuntimeEvent, WorkerDelivery, WorkerPlacement } from './worker-runtime.ts'
+import { RuntimeEvent, Turn, WorkerDelivery, WorkerPlacement } from './worker-runtime.ts'
 // The stored events, grouped by the record that they happen to (the owner's rulings, 2026-11-12):
 //   - a creation goes under the record that it creates: { _tag: 'Revision', create: Drafted{...} };
 //   - a move goes under the record that it moves, which it names once, by its id: { _tag:
@@ -248,6 +248,7 @@ export const WorkOpened = Schema.TaggedStruct('Opened', {
 export const WorkActed = Schema.TaggedStruct('Acted', {
   act: ActEnvelope,
   delivery: Schema.optionalKey(Schema.NullOr(WorkerDelivery)),
+  inlineOffer: Schema.optionalKey(Turn),
   request: Text,
   forward: Schema.NullOr(Text),
   token: Schema.NullOr(TokenHash),

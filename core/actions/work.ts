@@ -4,8 +4,8 @@
 import { ACTIVATION, activationOf, gate } from './activation.ts'
 import { Effect, Schema } from 'effect'
 import { currentOf, officialAt } from '../derived/reads.ts'
-import { currentOffer } from '../derived/c16/worker.ts'
-import { foldRuntime, matchesStep } from '../state/worker-runtime.ts'
+import { currentOffer, obligationOf, oldestWorkerStep } from '../derived/c16/worker.ts'
+import { foldRuntime, matchesStep, privateWorker } from '../state/worker-runtime.ts'
 import { basisOf, refused } from '../derived/c16/accept.ts'
 import {
   type Author,
@@ -16,6 +16,7 @@ import {
   type Work,
   BodySchema,
   writtenBy,
+  type Turn,
   type WorkerDelivery,
   type WorkerPlacement,
 } from '../schema/index.ts'
@@ -173,6 +174,7 @@ const requestOf = (call: ActCall): string => sha(JSON.stringify([
 const deliveryOf = (
   call: ActCall, events: ReadonlyArray<Recorded>, folded: NonNullable<ReturnType<typeof foldWork>>,
   saved?: WorkerDelivery | null,
+  synthesize?: (offer: Turn) => void,
 ) => Effect.gen(function* () {
   const actor = keyOf(call.act.who)
   const ep = call.act.ep
@@ -201,16 +203,24 @@ const deliveryOf = (
     }
     return saved
   }
-  const offer = worker.offer
-  const privateCall = placement.worker.startsWith('private:') && call.turn === undefined
+  const privateCall = privateWorker(placement) && call.turn === undefined
+  let offer = worker.offer
+  if (privateCall && (!offer || !currentOffer(folded.state, offer))) {
+    const selected = oldestWorkerStep(folded.state, placement.members)
+    if (!selected || selected.actor !== actor || !matchesStep(call.act.body, selected.step)) {
+      return yield* named('authority', 'This act is not the next owed step of the private worker.')
+    }
+    const turn = `turn-${(events.at(-1)?.seq ?? 0) + 1}`
+    offer = {
+      worker: placement.worker, generation, actor, epoch: ep, turn, step: selected.step,
+      obligation: obligationOf(folded.state, selected.step), on: folded.state.seq,
+      receiptVerifier: sha(JSON.stringify([secret, turn, 'private'])),
+    }
+    synthesize?.(offer)
+  }
   const privateDelivery = { worker: placement.worker, generation, actor, epoch: ep,
-    on: call.on ?? offer?.on ?? folded.state.seq, kind: 'private' as const }
-  // Existing singleton commands may be discretionary. If they match a live offer, they
-  // claim that same offer inside the write. Both forms reach the same C16 intake below.
-  const privateMatches = privateCall && offer && matchesStep(call.act.body, offer.step) &&
-    currentOffer(folded.state, offer)
-  if (privateCall && !privateMatches) return privateDelivery
-  const verifier = privateMatches ? offer.receiptVerifier :
+    on: offer?.on ?? folded.state.seq, kind: 'private' as const }
+  const verifier = privateCall && offer ? offer.receiptVerifier :
     call.turn === undefined ? null : sha(call.turn)
   if (!offer || offer.receiptVerifier !== verifier) {
     return yield* named('stale', 'The worker turn is missing or no longer current.')
@@ -219,7 +229,7 @@ const deliveryOf = (
     return yield* named('authority', 'This act is not the step offered to this identity.')
   }
   if (!currentOffer(folded.state, offer)) return yield* named('stale', 'The offered obligation was withdrawn.')
-  if (!privateCall && offer.on !== call.on) {
+  if ((!privateCall || call.on !== null) && offer.on !== call.on) {
     return yield* named('basis', 'Use the offered turn basis.')
   }
   if (privateCall) return privateDelivery
@@ -259,7 +269,8 @@ export const dispatchAct = (call: ActCall) =>
         if (call.forward !== undefined && !folded.forwards.some((f) => f.id === call.forward)) {
           return yield* Effect.fail(WORK.noForward(call.forward))
         }
-        const delivery = yield* deliveryOf(call, events, folded)
+        let inlineOffer: Turn | undefined
+        const delivery = yield* deliveryOf(call, events, folded, undefined, (offer) => { inlineOffer = offer })
         const invalidView = call.on !== null && (call.on < 0 || call.on > now.seq)
         const act: Act = {
           ...viewed(call.on === null ? now : invalidView ? null : workViewAt(events, call.on), call.act),
@@ -292,6 +303,7 @@ export const dispatchAct = (call: ActCall) =>
         const event = create('Work', {
           _tag: 'Acted',
           act, delivery,
+          ...(inlineOffer === undefined ? {} : { inlineOffer }),
           request,
           forward: call.forward ?? null,
           token: made === null ? null : [made.actor, sha(made.secret)],
@@ -544,7 +556,7 @@ const placementsOf = (work: Work, staffing: import('../services/index.ts').Staff
   for (const [actor, name] of assignments) {
     const binding = staffing.roles[name]
     if (!binding?.persistent) return null
-    const worker = binding.workerGroup === undefined ? `private:${actor}` : `group:${binding.workerGroup}`
+    const worker = binding.workerGroup === undefined ? `role:${name}` : `group:${binding.workerGroup}`
     const placement = groups.get(worker)
     if (placement && (placement.account !== binding.account || placement.model !== binding.model ||
       placement.cli !== binding.cli || placement.launch !== binding.launch)) return null
@@ -557,7 +569,7 @@ const placementsOf = (work: Work, staffing: import('../services/index.ts').Staff
   return [...groups.values()]
 }
 
-export const openTop = (call: OpenCall) =>
+export const writeTop = (call: OpenCall, managed: boolean) =>
   Effect.gen(function* () {
     const store = yield* Store
     const { cwd } = yield* Dir
@@ -599,9 +611,10 @@ export const openTop = (call: OpenCall) =>
           )
         }
         const files = yield* Effect.serviceOption(Files)
-        const staffing = bound !== null && files._tag === 'Some'
+        const staffing = managed && files._tag === 'Some'
           ? yield* readStaffing(cwd).pipe(Effect.provideService(Files, files.value))
           : null
+        if (managed && staffing === null) return yield* ACTIVATION.legal('Top open needs staffing for this directory.')
         const placements = staffing === null ? undefined : placementsOf(work, staffing)
         if (placements === null) {
           return yield* ACTIVATION.legal('Persistent role staffing does not define compatible workers.')
@@ -646,6 +659,8 @@ export const openTop = (call: OpenCall) =>
     if (seq === null) return yield* Effect.die('openTop: the store built no top')
     return { seq, secrets, hostBound }
   }).pipe(Effect.scoped)
+
+export const openTop = (call: OpenCall) => writeTop(call, true)
 
 // The person's pane for the host: bookkeeping that the engine and the page read (no act).
 export const recordHostPane = (

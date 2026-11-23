@@ -5,7 +5,7 @@
 // that the watcher does not take it for a silent terminal (adapters/live/waiting.ts).
 import { Effect, Fiber } from 'effect'
 import { memberSecretOf, offerWorker, workerSecretOf, workerSession } from '../../../core/actions/worker.ts'
-import { foldRuntime } from '../../../core/state/worker-runtime.ts'
+import { foldRuntime, privateWorker } from '../../../core/state/worker-runtime.ts'
 import { folding } from '../../../core/actions/dispatch.ts'
 import { type WaitEnd, waitFor } from '../../../core/effects/wait.ts'
 import { refuse } from '../../../core/schema/index.ts'
@@ -199,13 +199,13 @@ const wait: Command = (call) =>
       const current = foldRuntime(yield* store.events).workers.get(placement.worker)
       if (current?.fenced) return ["this terminal's token is old. STOP: do nothing more in this terminal."]
       if (!current?.binding) return ['The worker is starting. Run the wait again.']
-      if (!placement.worker.startsWith('private:') &&
+      if (!privateWorker(placement) &&
         !(who === 'host' && current.reservation.generation === 1 && current.binding.session === folded.hostSession)) {
         return yield* refuse('Use work worker wait with the worker credential.')
       }
       const secret = readWorkerLaunch(cwd, current.reservation.launch, 'secret')
       if (!secret) return yield* refuse('The worker launch credential is unavailable.')
-      if (!placement.worker.startsWith('private:')) {
+      if (!privateWorker(placement)) {
         yield* Effect.sync(() => stageWorkerLaunch(cwd, current.reservation.launch, 'host', token))
         yield* retireHostDelivery(cwd, token)
         return [`Run work worker wait g.${current.reservation.launch}.${current.reservation.generation}.${secret}`]
@@ -214,7 +214,7 @@ const wait: Command = (call) =>
       if (!Number.isFinite(seconds) || seconds <= 0) return yield* refuse('wait needs a positive number of seconds')
       if (who === 'host') yield* retireHostDelivery(cwd, token)
       return yield* waitWorker(store, placement.worker, current.reservation.generation, secret, seconds,
-        false, who === 'host' ? token : undefined, placement.worker.startsWith('private:'))
+        false, who === 'host' ? token : undefined, privateWorker(placement))
     }
     if (who === 'host') yield* retireHostDelivery(cwd, token)
     const actor = actorOf(who)

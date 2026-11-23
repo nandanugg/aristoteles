@@ -38,7 +38,7 @@ import {
 } from '../../../core/schema/index.ts'
 import { activationLock, Dir, Env, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
 import { loadWork } from '../../../core/state/index.ts'
-import { foldRuntime } from '../../../core/state/worker-runtime.ts'
+import { foldRuntime, privateWorker } from '../../../core/state/worker-runtime.ts'
 import { foldWork } from '../../../core/state/c16/fold.ts'
 import { askCountOf, epochOf, findAsk, fixOf, vsum } from '../../../core/state/c16/reads.ts'
 import type { WorkState } from '../../../core/state/c16/state.ts'
@@ -651,7 +651,7 @@ const runContinue: Command = () =>
     const runtime = foldRuntime(events)
     const placement = runtime.placements.find(({ members }) => members.includes('host'))
     if (placement) {
-      if (!placement.worker.startsWith('private:')) {
+      if (!privateWorker(placement)) {
         return yield* refuse('The Host shares a worker. Its identity cannot move on its own.')
       }
       const { cwd } = yield* Dir
