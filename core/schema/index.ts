@@ -190,3 +190,5 @@ export * from '../../src/domain/context.ts'
 export * from '../../src/domain/lookup.ts'
 // The moves of the records: only core/state (the fold) uses them (BUILD.md 3.3).
 export * as Moves from '../../src/domain/moves.ts'
+
+export { RuntimeEvent, Turn, WorkerDelivery, WorkerPlacement } from '../../src/domain/worker-runtime.ts'

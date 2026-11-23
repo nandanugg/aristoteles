@@ -45,6 +45,12 @@ const STEPS: { readonly [K in Kind]: Step<K> } = {
       ? unchanged(w)
       : damaged(r, `${e.id} is no outside source`),
   // The work model folds apart (core/state/c16/fold.ts); the Work stays as it is.
+  'Runtime.WorkerReserved': (w) => unchanged(w),
+  'Runtime.WorkerBound': (w) => unchanged(w),
+  'Runtime.WorkerFenced': (w) => unchanged(w),
+  'Runtime.WorkerEnded': (w) => unchanged(w),
+  'Runtime.TurnOffered': (w) => unchanged(w),
+  'Runtime.TurnClosed': (w) => unchanged(w),
   'Work.Opened': (w) => unchanged(w),
   'Work.Acted': (w) => unchanged(w),
   'Work.HostPane': (w) => unchanged(w),

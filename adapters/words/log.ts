@@ -75,6 +75,12 @@ const OLD_TYPE: Total<string> = {
   'Work.Acted': 'work.act',
   'Work.HostPane': 'work.host-pane',
   'Work.Forwarded': 'work.forwarded',
+  'Runtime.WorkerReserved': 'reserved a worker',
+  'Runtime.WorkerBound': 'bound a worker',
+  'Runtime.WorkerFenced': 'fenced a worker',
+  'Runtime.WorkerEnded': 'ended a worker',
+  'Runtime.TurnOffered': 'offered a worker turn',
+  'Runtime.TurnClosed': 'closed a worker turn',
   'Work.ForwardDropped': 'work.forward-dropped',
 }
 export const oldType = (event: Event): string => OLD_TYPE[kindOf(event)]
