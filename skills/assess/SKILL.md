@@ -302,8 +302,10 @@ flow:
   - { from: CI, to: src/export, says: fails the build on a direct os.Getenv, place: { file: .golangci.yml, line: 22 } }
 ```
 
-**Cases.** Put the cases on the rule they follow or break. For an act that checks or
-decides, include the input as well as the output. A real case gives the exact file, line and
+**Cases.** Put the cases on the rule they follow or break. Give a case its input when the
+output answers something: what the maker or checker received (its instruction, such as "check
+X" or "make Y", or the file it worked from). A following and a breaking case form a pair with the
+same input, so the two outputs show what the rule tells apart. A real case gives the exact file, line and
 excerpt. When real cases are sparse, record what you searched and use a labelled illustrative
 output (`{ written: ... }`) where it helps. With no observed break, leave the breaking case
 list empty and name the coverage. Unknown coverage stays unknown. Replacing cases during

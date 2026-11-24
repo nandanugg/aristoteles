@@ -74,8 +74,9 @@ A revise may change the flow (`flow:` in the edit gives the whole new flow).
 A rule holds its cases in its `evidence` (one format, onboarding and after): what was searched
 (`scope`), how it is checked (`check`), the places that break it today (`knownBreaks`), and its
 `cases`: outputs that follow it and outputs that break it. The rules each marked step uses hold,
-between them, at least one case that follows and one that breaks. A case of a step that makes
-something gives its output; of a step that checks or decides, its input and its output. A sample is
+between them, at least one case that follows and one that breaks. A case gives its output, and
+the input it answers when there is one: the instruction or file the maker or checker received
+(the two cases of a pair share it). A sample is
 real (a file, a line, a short excerpt of the file as it is today; stale when the excerpt leaves
 the file) or, when the project has none, written: `{ written: <the output> }` (labelled
 illustrative on the page).

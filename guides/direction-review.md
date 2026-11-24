@@ -32,8 +32,9 @@ good. Else revise it, with one note for each problem in this form:
     why it matters, for a person who reads it the first time?
 11. **Cases.** Do the rules each marked step uses hold a case that follows and one that breaks (in
     their evidence, never on the step)? Is each
-    an output (a document, code, a verdict), not an instruction, with the input of a step that
-    checks or decides? Is each real where the project has one?
+    an output (a document, code, a verdict), not an instruction, with the input it answers (the
+    instruction or file the maker or checker received), shared by the pair? Is each real where
+    the project has one?
 12. **Flow.** Does the flow show how the direction works, from its first act down to the output?
     Does each step name who acts, on whom or on what file, and where the project defines it? Does
     `uses` mark each step that the direction governs, with the ids that apply there?
