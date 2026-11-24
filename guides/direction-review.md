@@ -21,8 +21,10 @@ good. Else revise it, with one note for each problem in this form:
    text under each header stand alone? Is there filler that a model reads and does not use?
 6. **Negative parallelism.** Does a sentence say "not X but Y", where "Y" alone is enough?
 7. **Concise.** Can a sentence go, with nothing lost?
-8. **Checkable.** Can a reviewer check each rule on one result? Has each rule a `test` that
-   prints on each breaking example and not on a following one, or a `ref` that exists?
+8. **Checkable.** Can a reviewer check each rule on one result? Is each rule one condition (a
+   program that finds several kinds of break is several rules)? Has each rule a `test` that
+   prints its own point on each breaking example and nothing on a following one, or a `ref` that
+   exists?
 9. **Fit.** Does each standard follow from the words of its direction? Does each rule check its
    standard? Does a rule contradict another rule of the direction (its test prints on the
    other rule's following example)?

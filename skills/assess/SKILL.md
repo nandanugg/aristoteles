@@ -167,9 +167,14 @@ piece as below. The roles go into the config draft, the directions into directio
   list of checks in a doc becomes one rule for each check. A sentence that no reviewer can
   check on one result (for example "write for the reader") is no rule: say its idea in the
   words of the direction or the standard, or name it in the report.
-- **Check programs** (validators, linters, test scripts) -> the `test` of a rule: a command whose
-  output is empty when the result holds, and one line for each point when it does not. The
-  command gets the files of the extracted sections as arguments. Name the program and its
+- **Check programs** (validators, linters, test scripts) -> evidence for rules, not one rule
+  each. Read the program's code, its tests and how the project invokes it: one program often
+  holds several checks. Draft one rule for each condition that fails on its own and has its own
+  fix, or name in the report why a condition is out of scope. Its `test` is a command whose
+  output is empty when the result holds and one line for each point when it does not; it gets
+  the files of the extracted sections as arguments, and prints only its own condition where the
+  program allows. Where the program runs (on each section while writing, or on the assembled
+  result) sets the rule's `where` and its checker (the scope, below). Name the program and its
   arguments in the report. A check that needs the judgment of a model is a rule that a role
   reviews, with a `ref` as evidence.
 - **Agents** -> role responsibilities, acts, and an icon. Take the
@@ -307,7 +312,9 @@ onboarding is an evidence revision and creates no direction version.
 A check's evidence is `{ _tag: Command, result: ... }` with the rule's `test`, or
 `{ _tag: Reference, checker: ..., result: ... }` with the rule's `ref`. Record
 `{ _tag: Absent }` when no check exists and `{ _tag: Unknown, question: ... }` when it is open.
-Run a rule's own test on the claimed cases and record what actually happened. Verify the
+Run a rule's own test on the claimed cases and record what actually happened: nothing on the
+following case, exactly this rule's point on the breaking one. Where you can, make the two cases
+differ in that one point, so the pair shows what the rule detects. Verify the
 reference and checker route where the rule is checked against a reference.
 
 ## Questions and revisions
