@@ -173,6 +173,8 @@ configs.qnt coreCrossOnly holds - CoreChangesStop
 configs.qnt coreNoRaise breaks - CoreChangesStop
 configs.qnt coreNoCross breaks - CoreChangesStop
 configs.qnt coreNoSplit breaks - CoreChangesStop
+configs.qnt coreWhereContext holds Sane,OutputScopeSound -
+configs.qnt coreWhereContext breaks NoAddedOutputScope -
 EOF
 }
 # One run by hand: sh tlc.sh one FILE MODULE holds|breaks INVARIANTS|- TEMPORAL|-

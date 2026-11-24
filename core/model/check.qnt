@@ -105,8 +105,9 @@ module check {
     | Evaluate(evaluation) => LEVELS.fold(Set(), (acts, level) => acts.union(
         if (level == Fit) BOOLS.map(flag => withBody(draft, Evaluate({ ...evaluation,
           finding: FitsRole({ label: flag, only: flag }) })))
-        else if (level == Split) LIMITS.causesTask0.map(cause =>
-          withBody(draft, Evaluate({ ...evaluation, finding: Splits({ cause: cause }) })))
+        else if (level == Split) LIMITS.causesTask0.fold(Set(), (splits, cause) => splits.union(
+          (if (OPTIONS.scopeOutput) BOOLS else Set(false)).map(addsOutput =>
+            withBody(draft, Evaluate({ ...evaluation, finding: Splits({ cause: cause, addsOutput: addsOutput }) })))))
         else Set(withBody(draft, Evaluate({ ...evaluation, finding:
           FixAt({ level: level, base: store.versions, trueBase: store.versions }) })))))
     | WriteRule(rule) => LIMITS.ruleForms.fold(Set(), (acts, form) => acts.union(
@@ -115,7 +116,7 @@ module check {
             testOk: testOk, refOk: true, fights: fights })))))))
     // The draft of task n's raise changes items that apply to task n.
     | Ship(shipment) =>
-        ITEMSETS.filter(items => items.forall(record => applies(record, shipment.fix)))
+        ITEMSETS.filter(items => items.forall(record => itemApplies(store, record, shipment.fix)))
           .fold(Set(), (acts, items) => acts.union(others(shipment.fix).map(breaksTasks =>
             withBody(draft, Ship({ ...shipment, items: items, real: items,
                                   breaksTasks: breaksTasks })))))

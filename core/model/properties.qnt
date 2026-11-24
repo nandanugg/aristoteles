@@ -120,6 +120,13 @@ module properties {
   // for a live maker: resumeAllowed, resumeTold).
   val NoExecuteToEndedMaker: bool = store.asks.forall(ask =>
     not(ask.kind == Execute and isMakerActor(ask.to)) or isLive(store, ask.to))
+  val OutputScopeSound: bool = SLOTS.forall(slot =>
+    val task = taskOf(store, slot)
+    (itemsFor(store, slot).contains(ItemStandard(1)) == task.outputHld)
+      and task.pending.subseteq(itemsFor(store, slot)))
+  // A slot represents one part after a split. Task 0 starts without the output fact.
+  val NoAddedOutputScope: bool = not(taskOf(store, 0).sections < OPTIONS.sections
+    and itemsFor(store, 0).contains(ItemStandard(1)))
   // A repeat past the cap raised its task.
   val NoAskRaise: bool = not(store.ghost.askRaised)
   // Witness: after a maker's AskRaise, the person takes the earlier result as is and a recheck

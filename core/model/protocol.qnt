@@ -32,7 +32,7 @@ module protocol {
   def freshTask(generation: int, cause: Cause): Task = { generation: generation,
     state: Unsent, tries: 0, maker: NoOne, resultId: NONE, checked: ZERO, pending: Set(),
     badResult: false,
-    broken: false, taken: false, cause: cause, sections: OPTIONS.sections, floor: Split }
+    broken: false, taken: false, cause: cause, sections: OPTIONS.sections, outputHld: false, floor: Split }
   // The person opened the top task before the model starts; the host holds it in session 0.
   def initStore(causes: int -> Cause): Store = {
     top: { hostSession: 0, done: false, ended: false }, session: 0,
@@ -66,13 +66,15 @@ module protocol {
   // The sum of all versions: it grows with every change (an act's view of the versions).
   def versionSum(store: Store): int =
     ITEMS.fold(0, (sum, record) => sum + store.versions.get(record))
-  def itemsFor(slot: int): Set[Item] = ITEMS.filter(record => applies(record, slot))
+  def itemApplies(store: Store, record: Item, slot: int): bool =
+    applies(record, slot, if (not(OPTIONS.scopeOutput) or free(slot)) true else taskOf(store, slot).outputHld)
+  def itemsFor(store: Store, slot: int): Set[Item] = ITEMS.filter(record => itemApplies(store, record, slot))
   // The items of the task changed since its result was checked; of the maker's brief.
   def staleItems(store: Store, slot: int): Set[Item] =
-    itemsFor(slot).filter(record =>
+    itemsFor(store, slot).filter(record =>
       taskOf(store, slot).checked.get(record) < store.versions.get(record))
   def briefStale(store: Store, maker: Actor): bool =
-    itemsFor(makerOf(store, maker).slot).exists(record =>
+    itemsFor(store, makerOf(store, maker).slot).exists(record =>
       makerOf(store, maker).brief.get(record) < store.versions.get(record))
   def hasMech(form: Form): bool = form == Mech or form == Both
   def hasRef(form: Form): bool = form == Ref or form == Both
@@ -82,7 +84,7 @@ module protocol {
     isRule(record) and store.ruleForm.get(ruleNumber(record)) == Mech
   // A rule with only a test command applies to the task: its test catches a bad result.
   def mechCatches(store: Store, slot: int): bool =
-    itemsFor(slot).exists(record => testRule(store, record))
+    itemsFor(store, slot).exists(record => testRule(store, record))
   // The items of a done task the pipeline role must recheck, and what its recheck must name.
   def recheckDue(store: Store, slot: int): bool =
     taskOf(store, slot).state == Done
@@ -270,7 +272,7 @@ module protocol {
         or fix.real.exists(record => fix.trueBase.get(record) < store.versions.get(record)),
       unrechecked: ghost.unrechecked or SLOTS.exists(other => other != fixId
         and taskOf(store, other).state != Raised and taskOf(store, other).state != Unsent
-        and missed.exists(record => applies(record, other))) })
+        and missed.exists(record => itemApplies(store, record, other))) })
     val versioned = resolveCause(counted({ ...marked,
       fixDepth: if (free(fixId)) store.fixDepth else
         store.fixDepth.keys().mapBy(record =>
@@ -288,7 +290,7 @@ module protocol {
     val fightsBack = fix.fights and rules != Set()
     val fought = if (not(fightsBack)) versioned else mark(
       SLOTS.fold(versioned, (soFar, other) =>
-        if (other != fixId and not(rules.contains(ItemRule(other)))
+        if (other != fixId and not(rules.contains(ItemRule(other))) and itemApplies(soFar, ItemRule(other), other)
             and Set(Working, InReview, Done, Raised).contains(taskOf(soFar, other).state))
           // A done task is rechecked against its own rule (the one the change contradicts).
           setTask(soFar, other, task => { ...task, broken: true,
@@ -300,13 +302,13 @@ module protocol {
         else soFar), ghost => { ...ghost, fightShipped: true })
     val afterBreaks = SLOTS.fold(fought, (soFar, other) =>
       if (other != fixId and breaksTasks.contains(other)
-          and fix.real.exists(record => applies(record, other))
+          and fix.real.exists(record => itemApplies(soFar, record, other))
           and Set(Working, InReview, Done, Raised).contains(taskOf(soFar, other).state))
         setTask(soFar, other, task => { ...task, broken: true,
                                       badResult: task.badResult or task.state != Working })
       else soFar)
     val rechecked = SLOTS.fold(afterBreaks, (soFar, other) =>
-      val touched = changed.filter(record => applies(record, other))
+      val touched = changed.filter(record => itemApplies(soFar, record, other))
       if (other != fixId and taskOf(soFar, other).state == Done and touched != Set())
         mark(setTask(soFar, other, task => { ...task, pending: task.pending.union(touched) }),
              ghost => { ...ghost, recheckFired: true })
@@ -387,7 +389,8 @@ module protocol {
     else if (ask.from == Role) assignMaker(store, ask.about)
     else openAsk(store, ask)   // the mutant's: a maker's Execute to its role
   def sendTask(store: Store, slot: int): Store =
-    openAsk(setTask(store, slot, task => { ...task, state: Sent }), executeAsk(Host, Role, slot))
+    openAsk(setTask(store, slot, task => { ...task, state: Sent,
+      outputHld: OPTIONS.scopeOutput and slot == 1 }), executeAsk(Host, Role, slot))
   // A fresh maker takes the task: its Execute is open. The id is fresh for each assignment
   // (nextMaker counts up); the checking model sets it to the task's slot before the act and
   // drops ended makers (check.qnt, canon.qnt), so in the checked states the id carries no state.
@@ -611,7 +614,7 @@ module protocol {
           val counting = mark(counted(leveled, true),
                               ghost => { ...ghost, refix: ghost.refix or task.floor == Standard })
           setFix(setTask(counting, fixId, row => { ...freshTask(row.generation + 1, split.cause),
-                   state: Sent, floor: Standard,
+                   state: Sent, floor: Standard, outputHld: row.outputHld or split.addsOutput,
                    sections: if (OPTIONS.strictScope) row.sections - 1 else row.sections }),
                  fixId, fix => { ...CLOSED, basisStep: fix.basisStep })
       | FitsRole(fit) =>

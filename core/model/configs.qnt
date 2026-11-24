@@ -174,3 +174,13 @@ module coreNoSplit {
     LIMITS = { ...BASE_LIMITS, causesTask0: Set(AT_SPLIT), causesTask1: Set(NO_CAUSE),
                maxPersonActs: 0 }).* from "./properties"
 }
+
+// A send to slot 1 carries an output fact. A representative split part can acquire it in
+// either slot, and all scope reads must use the current task's facts.
+module coreWhereContext {
+  import configsBase.* from "./configsBase"
+  import types.* from "./types"
+  import properties(OPTIONS = { ...FIXED_OPTIONS, scopeOutput: true },
+    LIMITS = { ...BASE_LIMITS, causesTask0: Set(AT_SPLIT, NO_CAUSE),
+               causesTask1: Set(NO_CAUSE), maxPersonActs: 0, testsMayFail: false }).* from "./properties"
+}

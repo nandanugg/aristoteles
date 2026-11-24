@@ -14,7 +14,7 @@ module configsBase {
     passTests: true, fullBrief: true, endedCheck: true, formCheck: true, refCheck: true,
     epochs: true, reviseCheck: true, rebind: true, pumpReattach: true, hostWatched: true,
     promptArg: true, idleSeen: true, silentSteps: 3, reviewSubagents: false, editBack: 1,
-    acceptCheck: true, decideRecheck: true, briefCheck: true, strictScope: true, sections: 2,
+    acceptCheck: true, decideRecheck: true, briefCheck: true, strictScope: true, scopeOutput: false, sections: 2,
     listOnAttach: true, ladderRoute: true, ruleLadder: true, loopLadder: true, maxTries: 2,
     makerAsks: false }
   // The limits a run starts from (a task may start with no cause or a standard one); each

@@ -32,6 +32,7 @@ module types {
     decideRecheck: bool, // a task the person takes as it is is first rechecked
     briefCheck: bool,    // a report made under an old brief is refused
     strictScope: bool,   // a split part owns fewer sections: a one-section task is not split
+    scopeOutput: bool,   // standard 1 and its rule require the output fact
     sections: int,       // the sections a task of the top owns
     listOnAttach: bool,  // tmux: the pump lists the panes when it attaches
     ladderRoute: bool,   // a draft entered at direction or principle goes to the loop and the
@@ -58,11 +59,12 @@ module types {
   // An item is a direction, a standard or a rule, each with its own version.
   type Item = ItemDirection | ItemStandard(int) | ItemRule(int)
   pure val ITEMS = Set(ItemDirection, ItemStandard(0), ItemStandard(1), ItemRule(0), ItemRule(1))
-  // A standard applies to the tasks inside its `where`, a rule to the tasks it names.
-  pure def applies(record: Item, slot: int): bool = match record {
+  // The slot abstracts the original scope. Standard 1 (and its rule) can additionally
+  // require a fact that is acquired when the task is sent or split.
+  pure def applies(record: Item, slot: int, outputMatches: bool): bool = match record {
     | ItemDirection => true
-    | ItemStandard(number) => number == 1 or slot == 0  // standard 0: task 0; 1: both tasks
-    | ItemRule(number) => slot == number                // rule 0: task 0; rule 1: task 1
+    | ItemStandard(number) => if (number == 1) outputMatches else slot == 0
+    | ItemRule(number) => slot == number and (number == 0 or outputMatches)
   }
   pure def isRule(record: Item): bool = match record { | ItemRule(_) => true | _ => false }
   pure def ruleNumber(record: Item): int = match record { | ItemRule(number) => number | _ => -1 }
@@ -110,7 +112,7 @@ module types {
   // What the evaluation found: a split (the real cause of the new part), a change of the
   // role's own card, or a fix at a level of the ladder (built on `base`, really on `trueBase`).
   type Finding =
-    | Splits({ cause: Cause })
+    | Splits({ cause: Cause, addsOutput: bool })
     | FitsRole({ label: bool, only: bool })
     | FixAt({ level: Level, base: Item -> int, trueBase: Item -> int })
 
@@ -163,7 +165,7 @@ module types {
   // truth): a change that landed broke its work. taken: the person took the result as it is.
   type Task = { generation: int, state: TaskState, tries: int, maker: Actor, resultId: int,
                 checked: Item -> int, pending: Set[Item], badResult: bool, broken: bool,
-                taken: bool, cause: Cause, sections: int, floor: Level }
+                taken: bool, cause: Cause, sections: int, outputHld: bool, floor: Level }
   // brief: the item versions of the brief it read. revisions: the revisions it was sent.
   type MakerState = { slot: int, ended: bool, claimed: bool, brief: Item -> int, revisions: int }
   // A raise and what follows it. testOk: the test command behaves on its examples. refOk: the
