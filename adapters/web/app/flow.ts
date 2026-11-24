@@ -6,6 +6,7 @@
 // apply there; once a step is marked, the others are gray. Plain SVG with no library; on a narrow
 // screen the diagram scrolls inside its own box.
 import { html } from 'htm/preact'
+import { useState } from 'preact/hooks'
 import type { FlowView } from '../contract.ts'
 
 type Step = (typeof FlowView.Type)[number]
@@ -31,7 +32,12 @@ const markOf = (s: Step, any: boolean): string =>
   s.uses.length ? 'marked' : any ? 'gray' : ''
 
 // id names the arrow head of this diagram, as two diagrams can be on one page.
-export function FlowDiagram({ id, flow }: { id: string; flow: ReadonlyArray<Step> }) {
+export function FlowDiagram({ id, flow, showSteps = true }: {
+  id: string
+  flow: ReadonlyArray<Step>
+  showSteps?: boolean
+}) {
+  const [selected, setSelected] = useState<number | null>(null)
   if (!flow.length) return null
   const lifelines = [...new Set(flow.flatMap((s) => [s.from, s.to]))]
   const gaps = lifelines.length - 1
@@ -65,17 +71,32 @@ export function FlowDiagram({ id, flow }: { id: string; flow: ReadonlyArray<Step
     const y = tops[i] ?? top
     const n = i + 1
     const mark = markOf(s, any)
+    const details = [`${whoOf(s)} · ${s.says}`, s.place && placeOf(s.place),
+      s.uses.length && s.uses.join(' · ')].filter(Boolean).join(' · ')
+    const toggle = () => setSelected((current) => current === i ? null : i)
+    const row = (content: unknown) => showSteps ? content : html`<g class="flow-step" role="button"
+      tabindex="0" aria-label=${details} aria-pressed=${selected === i} onClick=${toggle}
+      onKeyDown=${(event: KeyboardEvent) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          toggle()
+        }
+      }}>
+      <title>${details}</title>
+      <rect class="flow-step-hit" x="2" y=${y} width=${width - 4} height=${ROW + (s.uses.length ? TAG : 0) - 2} rx="5" />
+      ${content}
+    </g>`
     if (s.from === s.to) {
       // The box of an act on its own may cover the lifelines beside its own.
       const room = Math.min(width - 12, gap * 2.4) - 20
       const words = cut(s.says, Math.floor(room / CHAR) - String(n).length - 1)
       const box = (words.length + String(n).length + 1) * CHAR + 20
       const left = Math.max(6, Math.min(x(s.from) - box / 2, width - 6 - box))
-      return html`<g class=${`flow-act ${mark}`}>
+      return row(html`<g class=${`flow-act ${mark}`}>
         <rect x=${left} y=${y + 6} width=${box} height="26" rx="5" />
         <text x=${left + box / 2} y=${y + 23} text-anchor="middle">${number(n)}${words}</text>
         ${tagOf(s, y, left)}
-      </g>`
+      </g>`)
     }
     const [a, b] = [x(s.from), x(s.to)]
     const dir = b > a ? 1 : -1
@@ -86,13 +107,13 @@ export function FlowDiagram({ id, flow }: { id: string; flow: ReadonlyArray<Step
     const [toRight, toLeft] = [letters(width - left - 24), letters(right - 20)]
     const leftward = s.says.length > toRight && toLeft > toRight
     const words = cut(s.says, leftward ? toLeft : toRight)
-    return html`<g class=${`flow-arrow ${mark}`}>
+    return row(html`<g class=${`flow-arrow ${mark}`}>
       <text x=${leftward ? right - 10 : left + 10} y=${y + 16}
         text-anchor=${leftward ? 'end' : 'start'}>${number(n)}${words}</text>
       <line x1=${a + 3 * dir} y1=${y + 24} x2=${b - 5 * dir} y2=${y + 24}
         marker-end=${`url(#${arrowHead}${mark === 'gray' ? '-gray' : ''})`} />
       ${tagOf(s, y, left + 10)}
-    </g>`
+    </g>`)
   })
   const heads = lifelines.map((actor) => {
     const box = headBox
@@ -103,11 +124,14 @@ export function FlowDiagram({ id, flow }: { id: string; flow: ReadonlyArray<Step
         cut(actor, Math.floor((box - 14) / NAME_CHAR))}</text>
     </g>`
   })
+  const step = selected === null ? undefined : flow[selected]
   return html`<figure class="flow">
     <div class="flow-scroll" tabindex="0" role="group"
       aria-label="The flow of the direction; it scrolls sideways on a narrow screen">
       <svg class="flow-svg" width=${width} height=${height} viewBox=${`0 0 ${width} ${height}`}
-        role="img" aria-label="A sequence diagram of the flow; the list under it gives each step">
+        role=${showSteps ? 'img' : 'group'} aria-label=${showSteps
+          ? 'A sequence diagram of the flow; the list under it gives each step'
+          : 'Sequence diagram. Select a step to view its details.'}>
         <defs>${['', '-gray'].map((k) => html`<marker id=${`${arrowHead}${k}`}
           class=${k ? 'gray' : ''} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7"
           markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" /></marker>`)}
@@ -115,10 +139,14 @@ export function FlowDiagram({ id, flow }: { id: string; flow: ReadonlyArray<Step
         ${heads}${rows}
       </svg>
     </div>
-    <ol class="flow-steps">${flow.map((s) => html`<li class=${markOf(s, any)}>
+    ${showSteps ? html`<ol class="flow-steps">${flow.map((s) => html`<li class=${markOf(s, any)}>
       <span class="flow-who">${whoOf(s)}</span>: ${s.says}${s.place === null ? '' : ' '}${
         s.place === null ? '' : html`<code class="where">${placeOf(s.place)}</code>`}${
         s.uses.length ? html` <span class="uses-tag">${s.uses.join(' · ')}</span>` : ''}
-    </li>`)}</ol>
+    </li>`)}</ol>` : step ? html`
+      <figcaption class="flow-selection"><strong>${whoOf(step)}</strong> · ${step.says}
+        ${step.place ? html` <code>${placeOf(step.place)}</code>` : ''}
+        ${step.uses.length ? html` <span class="uses-tag">${step.uses.join(' · ')}</span>` : ''}
+      </figcaption>` : ''}
   </figure>`
 }

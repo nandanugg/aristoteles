@@ -7,10 +7,11 @@ import { ICONS, icon } from './icons.ts'
 interface ModalProps {
   readonly title: string
   readonly kind?: string
+  readonly headingAside?: ComponentChildren
   readonly onClose: () => void
   readonly children: ComponentChildren
 }
-export function Modal({ title, kind = '', onClose, children }: ModalProps) {
+export function Modal({ title, kind = '', headingAside, onClose, children }: ModalProps) {
   useEffect(() => {
     const on = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', on)
@@ -19,7 +20,9 @@ export function Modal({ title, kind = '', onClose, children }: ModalProps) {
   const back = (e: Event) => e.target === e.currentTarget && onClose()
   return html`<div class="modal-back" onClick=${back}>
     <div class=${`modal ${kind}`} role="dialog" aria-modal="true" aria-label=${title}>
-      <div class="modal-top"><h2>${title}</h2>
+      <div class="modal-top">${headingAside
+        ? html`<div class="modal-heading"><h2>${title}</h2>${headingAside}</div>`
+        : html`<h2>${title}</h2>`}
         <button class="icon-button" aria-label="Close"
           onClick=${onClose}>${icon(ICONS.close)}</button></div>
       ${children}

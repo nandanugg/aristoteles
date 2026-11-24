@@ -44,12 +44,14 @@ const sampleOf = (name: string, s: SampleData) => html`<div class="sample">
 </div>`
 
 // One example: its fit, the input of a step that checks or decides, and the output.
-export function ExampleBlock({ e }: { e: ExampleData }) {
+export function ExampleBlock({ e, label }: { e: ExampleData; label?: string }) {
   const fit = e.fit.toLowerCase()
   return html`<li class=${`example ${fit}`}>
-    <span class=${`fit-tag ${fit}`}>${e.fit}${'written' in e.output ? ' (illustrative)' : ''}</span>
-    ${e.input ? sampleOf('Input', e.input) : ''}
-    ${sampleOf('Output', e.output)}
+    <span class=${label ? 'review-case-label' : `fit-tag ${fit}`}>${label ?? e.fit}${
+      'written' in e.output ? label ? ' (made up)' : ' (illustrative)' : ''}</span>
+    ${label ? html`<div class="review-case-box">${e.input ? sampleOf('Input', e.input) : ''}
+      ${sampleOf('Output', e.output)}</div>` : html`${e.input ? sampleOf('Input', e.input) : ''}
+      ${sampleOf('Output', e.output)}`}
   </li>`
 }
 
