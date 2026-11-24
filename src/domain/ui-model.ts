@@ -92,6 +92,7 @@ export interface DirectionView {
       readonly checkedBy: Text | null
       readonly test?: Text
       readonly ref?: Text
+      readonly checkPrompt?: Text
       readonly result?: Text
       readonly examples?: ReadonlyArray<ExampleView>
       readonly searched?: ReadonlyArray<Text>

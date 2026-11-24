@@ -2,7 +2,7 @@ import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
 import type { DirectionCard, QuestionView } from '../contract.ts'
 import { attempt, postOnboarding } from './api.ts'
-import { ExampleBlock } from './direction.ts'
+import { ExampleBlock, SampleBlock } from './direction.ts'
 import { FlowDiagram } from './flow.ts'
 import { Inline } from './markdown.ts'
 import { Modal } from './modal.ts'
@@ -11,6 +11,8 @@ export type ReviewDirection = typeof DirectionCard.Type
 type Question = typeof QuestionView.Type
 type Draft = Extract<ReviewDirection, { draft: unknown }>['draft']
 type Rule = Draft['standards'][number]['rules'][number]
+type Example = NonNullable<Rule['examples']>[number]
+type Sample = Example['output']
 type Choice = 'A' | 'B' | { readonly words: string }
 
 export function ReviewInput({ label, action, onSubmit, compact = false }: {
@@ -80,14 +82,45 @@ function QuestionOptions({ q, chosen, choose, ownWords, onWords, sendWords, sing
 }
 
 function RuleCheck({ rule }: { rule: Rule }) {
+  const checkerPrefix = rule.checkedBy ? `${rule.checkedBy}: ` : ''
+  const promptResult = checkerPrefix && rule.result?.startsWith(checkerPrefix)
+    ? rule.result.slice(checkerPrefix.length) : rule.result
   return html`<div class="rule-check">
     ${rule.test ? html`<strong>Test command</strong><code>${rule.test}</code>
       <span>${rule.result ?? 'Result unknown'}</span>`
-      : rule.ref ? html`<strong>Reference</strong><code>${rule.ref}</code>
-        <span>${rule.result ?? rule.checkedBy ?? 'Checker unknown'}</span>`
+      : rule.ref || rule.checkedBy ? html`<strong>Check prompt</strong>
+        ${rule.checkPrompt ? html`<pre>${rule.checkPrompt}</pre>` : rule.ref ? html`<code>${rule.ref}</code>` : ''}
+        ${rule.checkedBy ? html`<span>Checker · ${rule.checkedBy}</span>` : ''}
+        ${promptResult ? html`<span>${promptResult}</span>` : ''}
+        ${!rule.ref && !promptResult ? html`<span>Check unknown</span>` : ''}
+        ${!rule.checkedBy && !promptResult ? html`<span>Checker unknown</span>` : ''}`
         : html`<strong>${rule.result === 'Check absent' ? 'Check absent' : 'Check unknown'}</strong>
-          ${rule.result && rule.result !== 'Check absent' ? html`<span>${rule.result}</span>` : ''}
-          ${rule.checkedBy ? html`<span>Checker · ${rule.checkedBy}</span>` : ''}`}
+          ${rule.result && rule.result !== 'Check absent' ? html`<span>${rule.result}</span>` : ''}`}
+  </div>`
+}
+
+const sameInput = (a: Sample, b: Sample) => 'file' in a
+  ? 'file' in b && a.file === b.file && a.line === b.line
+  : 'written' in b && a.written === b.written
+
+function CasePair({ pass, fail }: { pass: Example | undefined; fail: Example | undefined }) {
+  const passInput = pass?.input
+  const failInput = fail?.input
+  const input = passInput ?? failInput
+  return html`<div class="review-rule-case-pair">
+    ${passInput && failInput && !sameInput(passInput, failInput) ? html`
+      <div class="review-case-input">
+        <strong class="review-case-label">Input</strong>
+        <div class="review-case-columns">
+          <div class="review-case-box"><${SampleBlock} name="For passing output" sample=${passInput} /></div>
+          <div class="review-case-box"><${SampleBlock} name="For failing output" sample=${failInput} /></div>
+        </div>
+      </div>` : input ? html`
+      <div class="review-case-input review-case-box"><${SampleBlock} name="Input" sample=${input} /></div>` : ''}
+    <div class="review-case-columns review-case-outputs">
+      ${pass ? html`<div class="review-case-box"><${SampleBlock} name="Output that passes" sample=${pass.output} writtenLabel="made up" /></div>` : ''}
+      ${fail ? html`<div class="review-case-box"><${SampleBlock} name="Output that fails" sample=${fail.output} writtenLabel="made up" /></div>` : ''}
+    </div>
   </div>`
 }
 
@@ -99,12 +132,9 @@ function RuleEvidence({ rule, paired, conflict }: { rule: Rule; paired: boolean;
     ${rule.knownBreak ? html`<span class="chip review-state" data-state="Conflict">Known break</span>` : ''}
     ${!conflict && rule.searched?.length && !invalid.some((item) => 'file' in item.output) && !rule.knownBreak
       ? html`<p class="muted">No break observed in ${rule.searched.join(', ')}.</p>` : ''}
-    ${paired ? html`<div class="review-case-list">
-      ${Array.from({ length: Math.max(valid.length, invalid.length) }, (_, i) => html`
-        <ul class="examples review-pair">
-          ${valid[i] ? html`<${ExampleBlock} e=${valid[i]} label="Valid case" />` : ''}
-          ${invalid[i] ? html`<${ExampleBlock} e=${invalid[i]} label="Invalid case" />` : ''}
-        </ul>`)}
+    ${paired && examples.length ? html`<div class="review-case-list">
+      ${Array.from({ length: Math.max(valid.length, invalid.length) }, (_, i) =>
+        html`<${CasePair} pass=${valid[i]} fail=${invalid[i]} />`)}
     </div>` : ''}
   </div>`
 }
@@ -165,7 +195,7 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
   const principles = card.principles?.length ? html`<div class="review-tags">${card.principles.map((name) => html`
     <span class="chip">${name}</span>`)}</div>` : undefined
   return html`<${Modal} title=${card.name} headingAside=${principles}
-    kind="wide onboarding-modal onboarding-direction-modal" onClose=${onClose}>
+    kind="onboarding-modal onboarding-direction-modal" onClose=${onClose}>
     <${Content} class="review-detail" aria-label=${answering ? 'Direction answers' : undefined}
       onSubmit=${answering ? (event: Event) => { event.preventDefault(); void submit() } : undefined}>
       ${draft ? html`

@@ -136,24 +136,32 @@ const REF = /^([^#:]+)#([^:]+):(\d+)(?:-(\d+))?$/
 const slug = (heading: string): string =>
   heading.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s+/g, '-')
 
+export const ruleRefLocation = (ref: string) => {
+  const match = REF.exec(ref)
+  if (match === null) return undefined
+  const [, file = '', anchor = '', from = '', to = from] = match
+  if (isAbsolute(file) || file.split('/').includes('..')) return undefined
+  return { file, anchor, from: Number(from), to: Number(to) }
+}
+
+export const ruleRefText = (text: string, { anchor, from, to }: NonNullable<ReturnType<typeof ruleRefLocation>>) => {
+  const lines = text.split('\n')
+  if (lines.at(-1) === '') lines.pop()
+  if (from < 1 || to < from || to > lines.length) return undefined
+  const anchored = lines.some((line) => {
+    const heading = /^#{1,6}\s+(.*)$/.exec(line)
+    return (heading !== null && slug(heading[1] ?? '') === anchor) || line.includes(anchor)
+  })
+  return anchored ? lines.slice(from - 1, to).join('\n') : undefined
+}
+
 // The reference is real: a file under the project dir, the anchor in it, the lines within it.
 export const refExists = (dir: string, ref: string): Effect.Effect<boolean, never, Files> =>
   Effect.gen(function* () {
-    const m = REF.exec(ref)
-    if (m === null) return false
-    const [, file = '', anchor = '', from = '', to = from] = m
-    if (isAbsolute(file) || file.split('/').includes('..')) return false
-    const text = yield* (yield* Files).read(join(dir, file))
-    if (text === null) return false
-    const lines = text.split('\n')
-    if (lines.at(-1) === '') lines.pop()
-    const a = Number(from)
-    const b = Number(to)
-    if (a < 1 || b < a || b > lines.length) return false
-    return lines.some((l) => {
-      const h = /^#{1,6}\s+(.*)$/.exec(l)
-      return (h !== null && slug(h[1] ?? '') === anchor) || l.includes(anchor)
-    })
+    const location = ruleRefLocation(ref)
+    if (!location) return false
+    const text = yield* (yield* Files).read(join(dir, location.file))
+    return text !== null && ruleRefText(text, location) !== undefined
   })
 
 // The sections of a markdown text: each heading (any level) whose text or slug is a name, with

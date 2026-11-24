@@ -35,23 +35,25 @@ function SpotCode({ s }: { s: SpotData }) {
 }
 
 // One sample: a real place with its code, or the host's words, labeled so.
-const sampleOf = (name: string, s: SampleData) => html`<div class="sample">
-  <div class="sample-head"><span class="sample-name">${name}</span>${'file' in s
-    ? html`<code class="where">${s.file}:${s.line}</code>${s.current ? ''
-      : html`<span class="stale">Stale: the excerpt is not in the file now</span>`}`
-    : html`<span class="written-tag">written by the host</span>`}</div>
-  ${'file' in s ? html`<${SpotCode} s=${s} />` : html`<pre class="written">${s.written}</pre>`}
-</div>`
+export function SampleBlock({ name, sample, writtenLabel = 'written by the host' }: {
+  name: string; sample: SampleData; writtenLabel?: string
+}) {
+  return html`<div class="sample">
+    <div class="sample-head"><span class="sample-name">${name}</span>${'file' in sample
+      ? html`<code class="where">${sample.file}:${sample.line}</code>${sample.current ? ''
+        : html`<span class="stale">Stale: the excerpt is not in the file now</span>`}`
+      : html`<span class="written-tag">${writtenLabel}</span>`}</div>
+    ${'file' in sample ? html`<${SpotCode} s=${sample} />` : html`<pre class="written">${sample.written}</pre>`}
+  </div>`
+}
 
 // One example: its fit, the input of a step that checks or decides, and the output.
-export function ExampleBlock({ e, label }: { e: ExampleData; label?: string }) {
+export function ExampleBlock({ e }: { e: ExampleData }) {
   const fit = e.fit.toLowerCase()
   return html`<li class=${`example ${fit}`}>
-    <span class=${label ? 'review-case-label' : `fit-tag ${fit}`}>${label ?? e.fit}${
-      'written' in e.output ? label ? ' (made up)' : ' (illustrative)' : ''}</span>
-    ${label ? html`<div class="review-case-box">${e.input ? sampleOf('Input', e.input) : ''}
-      ${sampleOf('Output', e.output)}</div>` : html`${e.input ? sampleOf('Input', e.input) : ''}
-      ${sampleOf('Output', e.output)}`}
+    <span class=${`fit-tag ${fit}`}>${e.fit}${'written' in e.output ? ' (illustrative)' : ''}</span>
+    ${e.input ? html`<${SampleBlock} name="Input" sample=${e.input} />` : ''}
+    <${SampleBlock} name="Output" sample=${e.output} />
   </li>`
 }
 

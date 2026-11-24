@@ -850,7 +850,7 @@ button { font: inherit; color: inherit; }
 }
 .fit-tag.follows { background: var(--accept-tint); color: var(--accept); }
 .fit-tag.breaks { background: var(--reject-tint); color: var(--reject); }
-.example .stale { color: var(--reject); font-size: 12px; }
+.sample .stale { color: var(--reject); font-size: 12px; }
 .sample-code {
   margin: 0;
   font: 12px/1.55 var(--mono);

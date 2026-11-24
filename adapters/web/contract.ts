@@ -74,6 +74,7 @@ const StandardsView = Schema.Array(
     rules: Schema.Array(Schema.Struct({
       id: Text, says: Text, checkedBy: Schema.NullOr(Text),
       test: Schema.optionalKey(Text), ref: Schema.optionalKey(Text), result: Schema.optionalKey(Text),
+      checkPrompt: Schema.optionalKey(Text),
       examples: Schema.optionalKey(Schema.Array(ExampleView)),
       searched: Schema.optionalKey(Schema.Array(Text)), knownBreak: Schema.optionalKey(Schema.Boolean),
     })),

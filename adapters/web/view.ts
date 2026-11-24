@@ -3,8 +3,9 @@ import { directionRevision } from '../../core/services/index.ts'
 // The views of the page, built from Derived and the files of the dir: the onboarding pages and
 // the gear (the directions and the roles), the person, and the dir. The JSON is the view data of
 // ui-model.ts part 4. The dashboard is built apart (dash.ts).
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
+import { isAbsolute, join, relative, sep } from 'node:path'
+import { ruleRefLocation, ruleRefText } from '../../core/effects/rules.ts'
 import type { AiStatus } from '../live/status.ts'
 import { spotCurrent, type Derived } from '../../core/derived/index.ts'
 import { currentOf, rulesOfStandard, standardAt } from '../../core/derived/reads.ts'
@@ -115,7 +116,7 @@ const ruleEvidenceView = (
   }
 }
 
-const standardsOf = (w: Work, v: Version<Direction>, exampleOf: (e: Example) => ExampleView): DirectionView['standards'] =>
+const standardsOf = (w: Work, v: Version<Direction>, { exampleOf, promptOf }: EvidenceReader): DirectionView['standards'] =>
   v.standards.map((entry) => {
     const s = standardAt(w, entry)
     return {
@@ -125,7 +126,7 @@ const standardsOf = (w: Work, v: Version<Direction>, exampleOf: (e: Example) => 
         id: r.id,
         says: r.says,
         checkedBy: r.checkedBy._tag === 'Role' ? r.checkedBy.role : null,
-        ...ruleEvidenceView(r.evidence, exampleOf), ...(r.test && { test: r.test }), ...(r.ref && { ref: r.ref }),
+        ...ruleEvidenceView(r.evidence, exampleOf), ...checkView(r, promptOf),
       })),
     }
   })
@@ -157,32 +158,51 @@ const aroundOf = (text: string | null, s: Spot): SpotView['around'] => {
 
 // Each real sample of an example with its state and its code (ruling 4), and the host's words as
 // they are: each file is read once a view.
-const exampleReader = (dir: string) => {
+const evidenceReader = (dir: string) => {
   const texts = new Map<string, string | null>()
   const textOf = (file: string): string | null => {
     if (!texts.has(file)) {
       try {
-        texts.set(file, readFileSync(join(dir, file), 'utf8'))
+        texts.set(file, readFileSync(file, 'utf8'))
       } catch {
         texts.set(file, null)
       }
     }
     return texts.get(file) ?? null
   }
-  const spotOf = (s: Spot): SpotView => ({
-    file: s.file,
-    line: s.line,
-    excerpt: s.excerpt,
-    current: spotCurrent(textOf(s.file), s),
-    around: aroundOf(textOf(s.file), s),
-  })
+  const spotOf = (s: Spot): SpotView => {
+    const text = textOf(join(dir, s.file))
+    return { file: s.file, line: s.line, excerpt: s.excerpt, current: spotCurrent(text, s), around: aroundOf(text, s) }
+  }
   const sampleOf = (s: Example['output']): ExampleView['output'] =>
     isSpot(s) ? spotOf(s) : { written: s.written }
-  return (e: Example): ExampleView => ({
+  const exampleOf = (e: Example): ExampleView => ({
     fit: e.fit,
     input: e.input ? sampleOf(e.input) : null,
     output: sampleOf(e.output),
   })
+  const promptOf = (ref: string): string | undefined => {
+    const location = ruleRefLocation(ref)
+    if (!location) return undefined
+    try {
+      const root = realpathSync(dir)
+      const file = realpathSync(join(root, location.file))
+      const local = relative(root, file)
+      if (isAbsolute(local) || local.split(sep)[0] === '..' || !statSync(file).isFile()) return undefined
+      const text = textOf(file)
+      const prompt = text === null ? undefined : ruleRefText(text, location)
+      return prompt?.trim() ? prompt : undefined
+    } catch {
+      return undefined
+    }
+  }
+  return { exampleOf, promptOf }
+}
+type EvidenceReader = ReturnType<typeof evidenceReader>
+
+const checkView = ({ test, ref }: { test?: string; ref?: string }, promptOf: EvidenceReader['promptOf']) => {
+  const checkPrompt = !test && ref ? promptOf(ref) : undefined
+  return { ...(test && { test }), ...(ref && { ref }), ...(checkPrompt && { checkPrompt }) }
 }
 
 // The words of a direction as one text for its diff (Nanda, 2026-11-15): the summary, the words,
@@ -210,12 +230,12 @@ const diffOf = (title: string, before: Words | undefined, now: Words): DraftChan
   direction: title,
   lines: lineDiff(before ? wordsText(before) : '', wordsText(now)),
 })
-const standardsView = (standards: ReadonlyArray<StandardFile>, exampleOf: (e: Example) => ExampleView): DirectionView['standards'] =>
+const standardsView = (standards: ReadonlyArray<StandardFile>, { exampleOf, promptOf }: EvidenceReader): DirectionView['standards'] =>
   standards.map((st) => ({
     id: st.id,
     says: st.says,
-    rules: st.rules.map(({ id, says, checkedBy, evidence, test, ref }) => ({ id, says, checkedBy: checkedBy ?? null,
-      ...ruleEvidenceView(evidence, exampleOf), ...(test && { test }), ...(ref && { ref }) })),
+    rules: st.rules.map((rule) => ({ id: rule.id, says: rule.says, checkedBy: rule.checkedBy ?? null,
+      ...ruleEvidenceView(rule.evidence, exampleOf), ...checkView(rule, promptOf) })),
   }))
 
 const originOf = (asked: OnboardingDirection['asked']): string => {
@@ -233,10 +253,11 @@ const originOf = (asked: OnboardingDirection['asked']): string => {
 // One file of .work/assess, for the directions page: its stage says what the card has.
 const onboardingDirectionCard = (
   f: OnboardingDirection,
-  exampleOf: (e: Example) => ExampleView,
+  evidence: EvidenceReader,
   discovery?: OnboardingFiles['discovery'],
 ): DirectionCard => {
   const { asked, stage } = f
+  const { exampleOf } = evidence
   const drafted = draftIn(stage)
   const head = {
     ...(drafted ? { principles: drafted.from } : {}),
@@ -278,13 +299,13 @@ const onboardingDirectionCard = (
       return { ...head, state: 'removed' }
   }
   const wordsOf = (d: NonNullable<typeof drafted>) => {
-    const words = { ...d.content, standards: standardsView(d.content.standards, exampleOf) }
+    const words = { ...d.content, standards: standardsView(d.content.standards, evidence) }
     const last = d.previous
     return {
       ...words,
       flow: words.flow.map(flowStepView(exampleOf)),
       diff: diffOf(last ? 'The last draft → this draft' : 'The first draft: every line is new',
-        last && { ...last, standards: standardsView(last.standards, exampleOf) }, words),
+        last && { ...last, standards: standardsView(last.standards, evidence) }, words),
     }
   }
   switch (stage._tag) {
@@ -338,7 +359,7 @@ export const onboardingFilesView = (
   settings: Settings,
   dir: string,
 ): OnboardingView => {
-  const exampleOf = exampleReader(dir)
+  const evidence = evidenceReader(dir)
   const lead = onlyLead(files.config?.roles ?? {})
   const roles = files.roles.map((r) =>
     roleCardOf(settings, r.role, r.file, {
@@ -365,7 +386,7 @@ export const onboardingFilesView = (
       notSearched: files.discovery.scope.unknown,
       app: files.discovery.app ?? null,
     } }),
-    directions: files.directions.map((f) => onboardingDirectionCard(f, exampleOf, files.discovery)),
+    directions: files.directions.map((f) => onboardingDirectionCard(f, evidence, files.discovery)),
     roles: [...roles.filter((r) => r.found !== null), ...roles.filter((r) => r.found === null)],
     models: files.responsibilityOnly === true ? [] : Object.keys(settings.models),
     start: startViewOf(files),
@@ -389,18 +410,18 @@ const startViewOf = (files: OnboardingFiles): OnboardingView['start'] => {
 // the stored config, and the adjustments that wait for the person.
 export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingView => {
   const w = workOf(d)
-  const exampleOf = exampleReader(ctx.dir)
+  const evidence = evidenceReader(ctx.dir)
   const directions = [...w.directions.values()]
     .filter((x) => d.states.directions.get(x.id)?._tag === 'Official')
     .map((x): DirectionCard => {
       const v = currentOf(w, x.id)
       const from = x.source._tag === 'External' ? `, from ${x.source.path} of ${x.source.repo}` : ''
-      const standards = standardsOf(w, v, exampleOf)
+      const standards = standardsOf(w, v, evidence)
       const before = x._tag === 'Official' ? x.versions[v.number - 2] : undefined
       const title = before
         ? `${versionIdOf(before)} → ${versionIdOf(v)}`
         : `${versionIdOf(v)}, the first version: every line is new`
-      const diff = diffOf(title, before && { ...before, standards: standardsOf(w, before, exampleOf) }, {
+      const diff = diffOf(title, before && { ...before, standards: standardsOf(w, before, evidence) }, {
         ...v,
         standards,
       })
@@ -413,7 +434,7 @@ export const onboardingStoreView = (d: Derived, ctx: ViewContext): OnboardingVie
         example: null,
         draft: {
           summary: v.summary,
-          flow: v.flow.map(flowStepView(exampleOf)),
+          flow: v.flow.map(flowStepView(evidence.exampleOf)),
           says: v.says,
           standards,
           diff,

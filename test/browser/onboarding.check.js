@@ -34,8 +34,9 @@ const question = {
 }
 const extra = {
   id: 'explain-grouping', says: 'Explain how the topics are grouped.', checkedBy: rule.checkedBy,
-  ref: 'docs/facts.md#dedupe:3',
-  evidence: { ...rule.evidence, cases: [{ fit: 'Follows', output: { written: 'Name groups by topic.' } }], check: { _tag: 'Reference', checker: 'linter', result: 'Reviewed grouping.' } },
+  ref: 'docs/grouping-check.md#grouping:3-4',
+  evidence: { ...rule.evidence, cases: [{ fit: 'Follows', input: { written: 'Describe how the sections are grouped.' },
+    output: { written: 'Name groups by topic.' } }], check: { _tag: 'Reference', checker: 'linter', result: 'Reviewed grouping.' } },
 }
 draft.standards[0].rules.push(extra)
 const extraQuestion = {
@@ -188,6 +189,10 @@ try {
   expect(await grouping.locator('.review-pair').first().locator('.review-case').count()).toBe(2)
   expect(await direction.locator('.review-rule h3').filter({ hasText: 'Conflict' }).count()).toBe(2)
   expect(await direction.getByText('No break observed in', { exact: false }).count()).toBe(0)
+  const checkPrompt = direction.getByRole('region', { name: extra.id }).locator('.rule-check')
+  await visible(checkPrompt.getByText('Check prompt', { exact: true }))
+  await visible(checkPrompt.getByText(extra.ref, { exact: true }))
+  await visible(checkPrompt.getByText('Checker · linter', { exact: true }))
   await visible(explaining.getByLabel('Answer in your own words'))
   await modalShot('05-direction-conflict.png', direction)
   const submit = button('Submit answers', answers)
@@ -233,6 +238,21 @@ try {
   rule.says = question.options[1]
   rule.evidence.knownBreaks = [code]
   rule.evidence.check.result = 'The break remains in the existing code'
+  const sharedFile = { file: 'docs/grouping-check.md', line: 3, excerpt: 'Check that each heading names its topic.' }
+  const sharedInstruction = { written: 'Check how this document separates topics.' }
+  const writtenCase = (fit, output, input) => ({ fit, output: { written: output }, input })
+  rule.evidence.cases = [
+    { ...rule.evidence.cases[0], input: sharedFile },
+    { ...rule.evidence.cases[2], input: sharedFile },
+    { ...rule.evidence.cases[1], input: principle },
+    { fit: 'Breaks', input: { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice' }, output: code },
+    writtenCase('Follows', 'One heading for each topic.', sharedInstruction),
+    writtenCase('Breaks', 'Two topics under one heading.', sharedInstruction),
+    writtenCase('Follows', 'A section with one topic.'),
+    writtenCase('Breaks', 'A section with two topics.'),
+  ]
+  const prompt = `${sharedFile.excerpt}\nFlag any sections that combine topics.`
+  p.write(sharedFile.file, `# Grouping\n\n${prompt}\n\nThis line is outside the reference.\n`)
   p.write('direction.yaml', Bun.YAML.stringify(draft))
   ok(await p.agent(`onboard draft one-thing --file=direction.yaml --revision=${revision}`))
   await page.reload()
@@ -256,28 +276,69 @@ try {
   await standard.focus()
   await page.keyboard.press('Enter')
   await visible(standard.getByText('Hide rules', { exact: true }))
+  const expectModalWidth = async () => {
+    const box = await direction.boundingBox()
+    expect(box.x).toBe(16)
+    expect(box.width).toBe(page.viewportSize().width - 32)
+  }
+  await expectModalWidth()
+  expect(await direction.locator('..').evaluate((backdrop) => getComputedStyle(backdrop).backgroundColor)).toBe('rgb(245, 246, 248)')
+  await visible(direction.getByText('Test command', { exact: true }))
   await visible(direction.getByText('bun test', { exact: true }))
-  const pair = direction.locator('.review-pair').first()
-  const follows = await pair.locator('.example.follows').boundingBox()
-  const breaks = await pair.locator('.example.breaks').boundingBox()
-  expect(follows.y).toBe(breaks.y)
-  expect(follows.x).toBeLessThan(breaks.x)
+  expect(await checkPrompt.locator('pre').textContent()).toBe(prompt)
+  expect(await checkPrompt.getByText(extra.ref, { exact: true }).count()).toBe(0)
+  const pairs = direction.getByRole('region', { name: rule.id }).locator('.review-rule-case-pair')
+  const sharedPair = pairs.nth(0)
+  const differentPair = pairs.nth(1)
+  const sharedInput = sharedPair.locator('.review-case-input')
+  const differentInputs = differentPair.locator('.review-case-input .review-case-box')
+  const outputs = (pair) => pair.locator('.review-case-outputs .review-case-box')
+  const expectOnSameRow = async (boxes) => {
+    const left = await boxes.first().boundingBox()
+    const right = await boxes.last().boundingBox()
+    expect(left.y).toBe(right.y)
+    expect(left.x).toBeLessThan(right.x)
+  }
+  expect(await sharedInput.locator('.sample').count()).toBe(1)
+  await visible(sharedInput.getByText(`${sharedFile.file}:${sharedFile.line}`, { exact: true }))
+  expect((await sharedInput.boundingBox()).width).toBe((await sharedPair.boundingBox()).width)
+  await visible(sharedPair.getByText('Output that passes', { exact: true }))
+  await visible(sharedPair.getByText('Output that fails', { exact: true }))
+  await visible(outputs(sharedPair).last().getByText('made up', { exact: true }))
+  expect((await sharedInput.boundingBox()).y).toBeLessThan((await outputs(sharedPair).first().boundingBox()).y)
+  await expectOnSameRow(outputs(sharedPair))
+  await visible(differentInputs.first().getByText('docs/facts.md:3', { exact: true }))
+  await visible(differentInputs.last().getByText('docs/facts.md:5', { exact: true }))
+  await expectOnSameRow(differentInputs)
+  await expectOnSameRow(outputs(differentPair))
+  expect(await pairs.nth(2).locator('.review-case-input .sample').count()).toBe(1)
+  await visible(pairs.nth(2).getByText(sharedInstruction.written, { exact: true }))
+  expect(await pairs.nth(3).locator('.review-case-input').count()).toBe(0)
   const loneRule = direction.getByRole('region', { name: extra.id })
-  await visible(loneRule.getByText('Valid case (made up)', { exact: true }))
+  await visible(loneRule.getByText('Output that passes', { exact: true }))
   await visible(loneRule.getByText('No break observed in', { exact: false }))
-  const lonePair = loneRule.locator('.review-pair')
-  expect(await lonePair.locator('.example').count()).toBe(1)
-  expect((await lonePair.locator('.review-case-box').boundingBox()).width).toBe((await lonePair.boundingBox()).width)
+  const lonePair = loneRule.locator('.review-rule-case-pair')
+  await visible(lonePair.getByText('Input', { exact: true }))
+  expect(await outputs(lonePair).count()).toBe(1)
+  expect((await outputs(lonePair).boundingBox()).width).toBe((await lonePair.boundingBox()).width)
   await visible(direction.getByRole('textbox', { name: 'What should change?' }))
   expect(await direction.getByText('What should change?', { exact: true }).count()).toBe(0)
-  await modalShot('04-direction-modal.png', direction)
+  await sharedPair.scrollIntoViewIfNeeded()
+  await shot('04-direction-shared-input.png')
+  await differentPair.scrollIntoViewIfNeeded()
+  await shot('05-direction-differing-inputs.png')
   await loneRule.screenshot({ path: join(shots, '06-direction-valid-only.png'), animations: 'disabled' })
   await page.setViewportSize({ width: 420, height: 900 })
-  await pair.scrollIntoViewIfNeeded()
-  const narrowValid = await pair.locator('.example.follows').boundingBox()
-  const narrowInvalid = await pair.locator('.example.breaks').boundingBox()
-  expect(narrowValid.x).toBe(narrowInvalid.x)
-  expect(narrowValid.y).toBeLessThan(narrowInvalid.y)
+  await expectModalWidth()
+  await differentPair.scrollIntoViewIfNeeded()
+  const expectStacked = async (boxes) => {
+    const top = await boxes.first().boundingBox()
+    const bottom = await boxes.last().boundingBox()
+    expect(top.x).toBe(bottom.x)
+    expect(top.y).toBeLessThan(bottom.y)
+  }
+  await expectStacked(differentInputs)
+  await expectStacked(outputs(differentPair))
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
   await shot('07-direction-narrow-dark.png')
   await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
