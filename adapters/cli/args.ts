@@ -133,6 +133,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   // Onboarding, before the store (BUILD.md 1e): the host's acts, then the person's.
   onboard: {
     config: ['file'],
+    staffing: ['file'],
     role: ['file'],
     found: [],
     draft: ['file', 'revision'],
@@ -197,6 +198,7 @@ export const USAGE: ReadonlyArray<string> = [
   '',
   'setup:   work skill install (links the /aristoteles skill in this dir, out of git; no aristoteles.yaml needed)',
   'host:    work onboard config --file=<draft.yaml> | role <role> --file=<role.yaml> (the config draft, and one role)',
+  '         work onboard staffing --file=<staffing.yaml> (propose staffing for review)',
   '         work onboard found <id> | draft <id> --file=<direction.yaml> [--revision=<id>] | ask <id> --file=<questions.yaml>',
   '         work onboard discovery --file=<scope.yaml> | removed <id>',
   '         work onboard company <id> --repo=<repo> --path=<folder> | status | show <id>|<role> | wait [--seconds=<n>]',

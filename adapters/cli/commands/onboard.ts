@@ -749,10 +749,19 @@ const removed = (_call: Call, id: string | undefined) => Effect.gen(function* ()
   return [`${direction}: removed.`]
 })
 
+const staffing = (call: Call) => Effect.gen(function* () {
+  const file = yield* fileFlag(call, 'write accounts, clis, models and a binding for every agent role')
+  const draft = yield* yamlIn(file)
+  const { cwd } = yield* Dir
+  yield* hostAct(cwd, { _tag: 'Staffing', draft })
+  return ['Staffing proposed for review on the page.']
+})
+
 const ACTS: Readonly<Record<string, (call: Call, word: string | undefined) => ReturnType<Command>>> = {
   discovery,
   removed,
   config: (call) => config(call),
+  staffing,
   role: (call, word) => role(call, word),
   found: (_call, word) => found(word),
   draft: (call, word) => draft(call, word),

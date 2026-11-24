@@ -55,6 +55,7 @@ import {
   applyStaffingReview,
   previewStaffingReview,
   readStaffingReview,
+  STAFFING_PROPOSAL,
   type Staffing,
   pathOf,
   personAct,
@@ -681,8 +682,12 @@ export function startServer(options: ServerOptions): ServerHandle {
           files.roles.some(({ decision, questions }) => decision._tag !== 'Accepted' || questions?.length)) {
           return json({ error: 'Accept the directions and roles before confirming staffing.' }, 400)
         }
+        if (input.action === 'arrange') {
+          return answer(StaffingState, yield* readStaffingReview(dir, name, input.revision, input.edits))
+        }
         if (input.action === 'preview') {
-          const { preview, after } = yield* previewStaffingReview(dir, input.revision, input.edit)
+          const { preview, after } = yield* previewStaffingReview(dir, input.revision,
+            input.edits ?? (input.edit ? [input.edit] : []))
           const ticket = crypto.randomUUID()
           staffingCandidate = { owner: name, revision: input.revision, staffing: after, ticket }
           return answer(StaffingPreview, { ...preview, ticket })
@@ -992,7 +997,8 @@ export function startServer(options: ServerOptions): ServerHandle {
   const onboardingStamp = (): string => {
     try {
       const names = existsSync(assess) ? readdirSync(assess).map((n) => join(assess, n)) : []
-      return [join(dir, DRAFT), join(dir, '.work/onboarding/activation/record.json'), ...names]
+      return [join(dir, DRAFT), join(dir, STAFFING_PROPOSAL), join(dir, '.work/staffing.yaml'),
+        join(dir, '.work/onboarding/activation/record.json'), ...names]
         .filter((path) => existsSync(path))
         .map((path) => `${path} ${statSync(path).mtimeMs} ${statSync(path).size}`)
         .join('\n')

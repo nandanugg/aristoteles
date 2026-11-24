@@ -63,7 +63,7 @@ export { Readings } from './readings.ts'
 export { refusing } from '../../src/config/core.ts'
 export { readStaffing } from '../../src/config/staffing.ts'
 export type { Staffing } from '../../src/config/staffing.ts'
-export { applyStaffingReview, previewStaffingReview, readStaffingReview, staffingConfirmed }
+export { applyStaffingReview, previewStaffingReview, readStaffingReview, staffingConfirmed, STAFFING_PROPOSAL }
   from '../../src/files/onboarding.ts'
 export { staffingPreview, staffingView } from '../../src/config/staffing-view.ts'
 export type {

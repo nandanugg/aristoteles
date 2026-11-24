@@ -168,3 +168,11 @@ button.review-card:hover { border-color: var(--focus); background: var(--surface
 .staffing-comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 315px), 1fr)); gap: 12px; }
 .staffing-comparison > section { min-width: 0; border: 1px solid var(--line); padding: 12px; border-radius: 8px; }
 .staffing-comparison > section > h3 { margin-top: 0; }
+
+.staffing-catalog, .staffing-catalog > div {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.staffing-catalog { gap: 8px 18px; }
+.staffing-model-options { display: flex; flex-wrap: wrap; gap: 8px 16px; border: 1px solid var(--line); border-radius: 8px; }
+.staffing-limit-entry { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.staffing-limit-entry .field { flex: 1; min-width: 11rem; margin: 0; }

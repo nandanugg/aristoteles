@@ -30,8 +30,8 @@ again. The store starts at the end, with only the accepted result.
    holds), then run `work onboard config --file=.work/drafts/config.yaml`. The command runs the
    checks of `work config check` on it, and prints `next: start the page (work start --detach)`,
    then `found` and `draft` for each topic. Use stable provisional role ids so each checker
-   can be named before role review. Revise a role with `work onboard role <role>`. Keep
-   staffing in the directory's staffing settings, separate from responsibilities.
+   can be named before role review. Revise a role with `work onboard role <role>`. Draft staffing
+   for the CLI you run in and submit it with `work onboard staffing --file=.work/drafts/staffing.yaml`.
 3. **Open the page** now, after the config: `work start --detach`. It keeps running when this AI
    CLI ends. Tell the person to read it: each role waits there as a card, and each direction
    appears as you name it, so the person sees it as it comes.

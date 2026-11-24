@@ -26,7 +26,7 @@ import { basename, dirname, join } from 'node:path'
 import { Effect, Schema, type Scope } from 'effect'
 import { type ConfigRead, configOfText, draftConfigOfText } from '../config/config.ts'
 import { CONFIG, DRAFT, parseYaml, type Raw, refusing, sha } from '../config/core.ts'
-import { mergeDraft } from '../config/settings.ts'
+import { mergeDraft, readSettingsOf } from '../config/settings.ts'
 import { STAFFING, type Staffing, staffingOf, staffingOfText } from '../config/staffing.ts'
 import { staffingPreview, staffingView } from '../config/staffing-view.ts'
 import type { Principle } from '../domain/closed.ts'
@@ -65,6 +65,7 @@ import { fetchFolder, LOCK, type LockEntry, readLock } from './company.ts'
 export const ASSESS = join('.work', 'assess')
 const DISCOVERY = join(ASSESS, 'discovery.report')
 const ROLES = join(ASSESS, 'roles.yaml')
+export const STAFFING_PROPOSAL = join('.work', 'onboarding', 'staffing-proposal.yaml')
 export const ONBOARDING_LOCK = join('.work', 'onboarding.lock')
 // A writer tries again every 50 ms for up to 5 s; a lock older than 30 s is a dead writer's.
 const RETRY_MS = 50
@@ -162,35 +163,100 @@ export const staffingConfirmed = (dir: string, person: string) => io(() => {
   const text = staffingText(dir)
   return text !== null && readText(join(dir, staffingConfirmation)) === confirmationOf(person, sha(text))
 })
-export const readStaffingReview = (dir: string, person: string) => Effect.gen(function* () {
-  const text = staffingText(dir)
-  const staffing = yield* refusing(() => staffingOfText(text))
-  if (text === null || staffing === null) return null
-  const revision = sha(text)
+const EMPTY_STAFFING: Staffing = { accounts: {}, clis: {}, roles: {} }
+
+const staffingBasis = (dir: string) => Effect.gen(function* () {
+  const draft = yield* needDraft(dir)
+  const config = draft.read.texts[CONFIG]!
+  const required = Object.entries(draft.read.config.roles).filter(([, role]) => role.kind === 'agent').map(([name]) => name)
+  const saved = staffingText(dir)
+  const proposal = saved === null ? readText(join(dir, STAFFING_PROPOSAL)) : null
+  const source = saved !== null ? 'saved' as const : proposal !== null ? 'proposal' as const : 'empty' as const
+  const staffing = (yield* refusing(() => staffingOfText(saved ?? proposal))) ?? EMPTY_STAFFING
+  // The config may have gained or lost roles since the host submitted a proposal.
+  const current = source !== 'proposal' ? staffing : { ...staffing, roles: Object.fromEntries(
+    Object.entries(staffing.roles).filter(([name]) => required.includes(name)),
+  ) }
+  return { config, saved, source, required, staffing: current,
+    revision: sha(JSON.stringify([source, saved ?? proposal, config])) }
+})
+
+const checkRevision = (current: string, expected: string | undefined) =>
+  expected !== undefined && expected !== current
+    ? Effect.fail(refuse('Staffing changed. Reload it and preview again.'))
+    : Effect.void
+
+const modelOptions = (staffing: Staffing) =>
+  [...new Set([...Object.keys(staffing.models ?? {}), ...Object.values(staffing.roles).flatMap((role) => role.allowedModels)])]
+    .sort().map((model) => {
+      const entry = staffing.models?.[model]
+      const launch = typeof entry === 'object' && entry !== null && 'launch' in entry ? entry.launch : null
+      return { model, launch: typeof launch === 'string' ? launch : null }
+    })
+
+export const readStaffingReview = (
+  dir: string, person: string, revision?: string, edits: readonly StaffingEdit[] = [],
+) => Effect.gen(function* () {
+  const basis = yield* staffingBasis(dir)
+  yield* checkRevision(basis.revision, revision)
+  const staffing = yield* refusing(() => staffingAfterEdits(basis.staffing, basis.required, edits))
   return {
-    revision,
+    source: basis.source,
+    revision: basis.revision,
     clis: Object.keys(staffing.clis).sort(),
-    confirmed: readText(join(dir, staffingConfirmation)) === confirmationOf(person, revision),
-    view: staffingView(staffing),
+    models: modelOptions(staffing),
+    confirmed: edits.length === 0 && (yield* staffingConfirmed(dir, person)),
+    view: staffingView(staffing, basis.required),
   }
 })
 
 export type StaffingEdit =
   | { readonly kind: 'limit'; readonly account: string; readonly limit: string; readonly typed: string }
   | { readonly kind: 'sessions'; readonly account: string; readonly sessionLimit: number | null }
+  | { readonly kind: 'add-account'; readonly account: string; readonly sessionLimit: number | null
+      readonly limits: readonly { readonly limit: string; readonly typed: string }[] }
+  | { readonly kind: 'add-cli'; readonly cli: string; readonly backgroundChildren: boolean; readonly canPark: boolean }
+  | { readonly kind: 'add-model'; readonly model: string; readonly launch: string; readonly resume: string | null }
   | { readonly kind: 'role'; readonly role: string; readonly account: string; readonly cli: string
       readonly model: string; readonly persistent: boolean; readonly concurrency: number; readonly subagentAllowance: number
-      // pass 9: the worker group (null: a private worker)
-      readonly workerGroup?: string | null }
+      readonly workerGroup?: string | null; readonly launch?: string; readonly allowedModels?: readonly string[] }
 
-const editedStaffing = (before: Staffing, edit: StaffingEdit | undefined): unknown => {
-  if (edit === undefined) return before
+const newKey = (table: object, key: string, kind: string): string => {
+  const name = key.trim()
+  if (!name || Object.hasOwn(Object.prototype, name)) throw refuse(`Enter a valid ${kind} name.`)
+  if (Object.hasOwn(table, name)) throw refuse(`The ${kind} "${name}" already exists.`)
+  return name
+}
+
+const editedStaffing = (before: Staffing, required: readonly string[], edit: StaffingEdit): unknown => {
+  if (edit.kind === 'add-account') {
+    const account = newKey(before.accounts, edit.account, 'account')
+    const limits = new Map<string, string>()
+    for (const { limit, typed } of edit.limits) {
+      const name = limit.trim()
+      if (!name || limits.has(name)) throw refuse('Give each limit a distinct name.')
+      limits.set(name, typed)
+    }
+    return { ...before, accounts: { ...before.accounts, [account]: { limits: Object.fromEntries(limits),
+      ...(edit.sessionLimit === null ? {} : { sessionLimit: edit.sessionLimit }) } } }
+  }
+  if (edit.kind === 'add-cli') {
+    const cli = newKey(before.clis, edit.cli, 'CLI')
+    return { ...before, clis: { ...before.clis, [cli]: {
+      backgroundChildren: edit.backgroundChildren, canPark: edit.canPark,
+    } } }
+  }
+  if (edit.kind === 'add-model') {
+    const model = newKey(before.models ?? {}, edit.model, 'model')
+    const entry = { launch: edit.launch, ...(edit.resume === null ? {} : { resume: edit.resume }) }
+    readSettingsOf({ models: { [model]: entry } })
+    return { ...before, models: { ...before.models, [model]: entry } }
+  }
   if (edit.kind === 'limit') {
     const { account, limit, typed } = edit
     if (!Object.hasOwn(before.accounts, account) || !Object.hasOwn(before.accounts[account]!.limits, limit)) {
       throw refuse('This staffing limit no longer exists.')
     }
-    // keep the account's other keys (its session limit)
     return { ...before, accounts: { ...before.accounts,
       [account]: { ...before.accounts[account]!, limits: { ...before.accounts[account]!.limits, [limit]: typed } },
     } }
@@ -204,30 +270,41 @@ const editedStaffing = (before: Staffing, edit: StaffingEdit | undefined): unkno
     } }
   }
   const { role, kind: _kind, workerGroup, ...values } = edit
-  if (!Object.hasOwn(before.roles, role)) throw refuse('This staffing role no longer exists.')
-  const { workerGroup: _group, ...kept } = before.roles[role]!
-  const group = workerGroup === undefined ? before.roles[role]!.workerGroup : workerGroup ?? undefined
+  if (!required.includes(role)) throw refuse('This agent role no longer exists.')
+  const previous = Object.hasOwn(before.roles, role) ? before.roles[role] : undefined
+  const { workerGroup: _group, ...kept } = previous ?? {}
+  const group = workerGroup === undefined ? previous?.workerGroup : workerGroup ?? undefined
   return { ...before, roles: { ...before.roles,
     [role]: { ...kept, ...values, ...(group === undefined ? {} : { workerGroup: group }) } } }
 }
 
-export const previewStaffingReview = (dir: string, revision: string, edit?: StaffingEdit) =>
+const staffingAfterEdits = (staffing: Staffing, required: readonly string[], edits: readonly StaffingEdit[]) =>
+  edits.reduce((before, edit) => staffingOf(editedStaffing(before, required, edit)), staffing)
+
+const checkStaffingConfig = (dir: string, config: string, staffing: Staffing) => Effect.gen(function* () {
+  yield* configOfText(dir, config, staffing)
+  yield* refusing(() => readSettingsOf({ ...parseYaml(config), models: staffing.models ?? {} }))
+})
+
+export const previewStaffingReview = (dir: string, revision: string, edits: readonly StaffingEdit[]) =>
   Effect.gen(function* () {
-    const text = staffingText(dir)
-    if (text === null || sha(text) !== revision) return yield* refuse('Staffing changed. Reload it and preview again.')
-    const before = yield* refusing(() => staffingOfText(text)!)
-    const after = yield* refusing(() => staffingOf(editedStaffing(before, edit)))
-    return { preview: staffingPreview(before, after), after }
+    const basis = yield* staffingBasis(dir)
+    yield* checkRevision(basis.revision, revision)
+    const after = yield* refusing(() => staffingAfterEdits(basis.staffing, basis.required, edits))
+    const checked = yield* Effect.result(checkStaffingConfig(dir, basis.config, after))
+    return { preview: {
+      ...staffingPreview(basis.saved === null ? EMPTY_STAFFING : basis.staffing, after),
+      ...(checked._tag === 'Failure' && { blocked: checked.failure.message }),
+    }, after }
   })
 
 export const applyStaffingReview = (dir: string, person: string, revision: string, candidate: Staffing) =>
   Effect.gen(function* () {
-    const text = staffingText(dir)
-    if (text === null || sha(text) !== revision) return yield* refuse('Staffing changed. Reload it and preview again.')
-    const staffing = yield* refusing(() => staffingOf(candidate))
-    const before = yield* refusing(() => staffingOfText(text))
-    const next = Bun.deepEquals(before, staffing) ? text : yamlOf(staffing)
-    if (next !== text) yield* writeWhole(join(dir, STAFFING), next)
+    const basis = yield* staffingBasis(dir)
+    yield* checkRevision(basis.revision, revision)
+    yield* checkStaffingConfig(dir, basis.config, candidate)
+    const next = basis.saved !== null && Bun.deepEquals(basis.staffing, candidate) ? basis.saved : yamlOf(candidate)
+    if (next !== basis.saved) yield* writeWhole(join(dir, STAFFING), next)
     yield* writeWhole(join(dir, staffingConfirmation), confirmationOf(person, sha(next)))
   })
 
@@ -455,6 +532,7 @@ export const directionReview = (files: ReadonlyArray<OnboardingDirection>, disco
 // and the person decides it again.
 export type HostAct =
   | { readonly _tag: 'Discovery'; readonly discovery: Discovery }
+  | { readonly _tag: 'Staffing'; readonly draft: unknown }
   | { readonly _tag: 'RemoveRevised'; readonly direction: DirectionId }
   | {
       readonly _tag: 'Config'
@@ -572,6 +650,13 @@ export const hostAct = (
     Effect.gen(function* () {
       yield* locked(dir)
       switch (act._tag) {
+        case 'Staffing': {
+          const { read } = yield* needDraft(dir)
+          const staffing = yield* refusing(() => staffingOf(act.draft))
+          yield* checkStaffingConfig(dir, read.texts[CONFIG]!, staffing)
+          yield* writeWhole(join(dir, STAFFING_PROPOSAL), yamlOf(staffing))
+          return []
+        }
         case 'Discovery':
           yield* io(() => mkdirSync(dirname(join(dir, DISCOVERY)), { recursive: true }))
           yield* writeWhole(join(dir, DISCOVERY), yamlOf(act.discovery))

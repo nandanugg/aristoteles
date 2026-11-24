@@ -549,9 +549,10 @@ export const StaffingView = Schema.Struct({
   })),
   arrangement: Schema.Array(Schema.Struct({
     role: Text, account: Text, cli: Text, model: Text, alternatives: Schema.Array(Text),
+    launch: Text,
     persistent: Schema.Boolean, worker: Schema.NullOr(Text), workerGroup: Schema.NullOr(Text),
     concurrency: Schema.Number, subagentAllowance: Schema.Number,
-    review: Schema.Literals(['fresh subagent', 'self-review turns']),
+    review: Schema.NullOr(Schema.Literals(['fresh subagent', 'self-review turns'])),
     fit: StaffingUnknown,
   })),
   consequences: Schema.Array(Schema.Struct({
@@ -560,11 +561,14 @@ export const StaffingView = Schema.Struct({
   })),
   warnings: Schema.Array(Schema.Struct({ role: Text, says: Text })),
 })
-export const StaffingState = Schema.NullOr(Schema.Struct({
-  revision: Text, clis: Schema.Array(Text), confirmed: Schema.Boolean, view: StaffingView,
-}))
+export const StaffingState = Schema.Struct({
+  source: Schema.Literals(['saved', 'proposal', 'empty']), revision: Text, clis: Schema.Array(Text),
+  models: Schema.Array(Schema.Struct({ model: Text, launch: Schema.NullOr(Text) })),
+  confirmed: Schema.Boolean, view: StaffingView,
+})
 export const StaffingPreview = Schema.Struct({
   ticket: Text, before: StaffingView, after: StaffingView, changed: Schema.Array(Text),
+  blocked: Schema.optionalKey(Text),
 })
 const StaffingEdit = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('limit'), account: Text, limit: Text, typed: Text }),
@@ -573,9 +577,17 @@ const StaffingEdit = Schema.Union([
     kind: Schema.Literal('role'), role: Text, account: Text, cli: Text, model: Text,
     persistent: Schema.Boolean, concurrency: Schema.Number, subagentAllowance: Schema.Number,
     workerGroup: Schema.optionalKey(Schema.NullOr(Text)),
+    launch: Schema.optionalKey(Text),
+    allowedModels: Schema.optionalKey(Schema.Array(Text)),
   }),
+  Schema.Struct({ kind: Schema.Literal('add-account'), account: Text,
+    sessionLimit: Schema.NullOr(Schema.Number), limits: Schema.Array(StaffingLimit) }),
+  Schema.Struct({ kind: Schema.Literal('add-cli'), cli: Text, backgroundChildren: Schema.Boolean, canPark: Schema.Boolean }),
+  Schema.Struct({ kind: Schema.Literal('add-model'), model: Text, launch: Text, resume: Schema.NullOr(Text) }),
 ])
 export const StaffingPost = Schema.Union([
-  Schema.Struct({ action: Schema.Literal('preview'), revision: Text, edit: Schema.optionalKey(StaffingEdit) }),
+  Schema.Struct({ action: Schema.Literal('preview'), revision: Text,
+    edit: Schema.optionalKey(StaffingEdit), edits: Schema.optionalKey(Schema.Array(StaffingEdit)) }),
+  Schema.Struct({ action: Schema.Literal('arrange'), revision: Text, edits: Schema.Array(StaffingEdit) }),
   Schema.Struct({ action: Schema.Literal('apply'), ticket: Text }),
 ])

@@ -18,6 +18,7 @@ export interface ArrangedRole {
   readonly account: string
   readonly cli: string
   readonly model: string
+  readonly launch: string
   // The other allowed models: alternative scenarios in the preview (OV2-7).
   readonly alternatives: ReadonlyArray<string>
   readonly persistent: boolean
@@ -28,7 +29,7 @@ export interface ArrangedRole {
   readonly workerGroup: string | null
   readonly concurrency: number
   readonly subagentAllowance: number
-  readonly review: ReviewMode
+  readonly review: ReviewMode | null
   // Does an attempt fit the model's window? Unknown until the model's window and the role's
   // peak context are evidenced (ROLE-WEIGHT.md section 1).
   readonly fit: Unknown
@@ -87,7 +88,7 @@ const reviewOf = (staffing: Staffing, role: Staffing['roles'][string]): ReviewMo
 const sorted = <A>(xs: ReadonlyArray<A>, key: (a: A) => string): ReadonlyArray<A> =>
   [...xs].sort((a, b) => key(a).localeCompare(key(b)))
 
-export const staffingView = (staffing: Staffing): StaffingView => {
+export const staffingView = (staffing: Staffing, required: readonly string[] = []): StaffingView => {
   const roles = Object.entries(staffing.roles)
   const arrangement: ReadonlyArray<ArrangedRole> = sorted(
     roles.map(([name, r]) => ({
@@ -95,6 +96,7 @@ export const staffingView = (staffing: Staffing): StaffingView => {
       account: r.account,
       cli: r.cli,
       model: r.model,
+      launch: r.launch,
       alternatives: r.allowedModels.filter((m) => m !== r.model),
       persistent: r.persistent,
       worker: !r.persistent ? null : r.workerGroup !== undefined ? `group:${r.workerGroup}` : `role:${name}`,
@@ -165,7 +167,11 @@ export const staffingView = (staffing: Staffing): StaffingView => {
       })
     }
   }
-  return { accounts, workers, arrangement, consequences, warnings }
+  const unbound = required.filter((role) => !Object.hasOwn(staffing.roles, role)).map((role) => ({
+    role, account: '', cli: '', model: '', launch: '', alternatives: [], persistent: true,
+    worker: null, workerGroup: null, concurrency: 1, subagentAllowance: 0, review: null, fit: NO_WINDOW,
+  }))
+  return { accounts, workers, arrangement: sorted([...arrangement, ...unbound], (r) => r.role), consequences, warnings }
 }
 
 // The preview of a change: the same view before and after, and what changed, before it is applied.
@@ -179,6 +185,7 @@ const FIELDS = [
   'account',
   'cli',
   'model',
+  'launch',
   'persistent',
   'worker',
   'concurrency',
@@ -200,6 +207,9 @@ export const staffingPreview = (before: Staffing, after: Staffing): StaffingPrev
       for (const f of FIELDS) {
         if (x[f] !== y[f]) changed.push(`${name}.${f}: ${String(x[f])} -> ${String(y[f])}`)
       }
+      if (!Bun.deepEquals([x.model, ...x.alternatives].sort(), [y.model, ...y.alternatives].sort())) {
+        changed.push(`${name}.allowedModels: ${[x.model, ...x.alternatives].join(', ')} -> ${[y.model, ...y.alternatives].join(', ')}`)
+      }
     }
   }
   const limitsOf = (v: StaffingView) =>
@@ -213,9 +223,25 @@ export const staffingPreview = (before: Staffing, after: Staffing): StaffingPrev
   }
   for (const x of a.accounts) {
     const y = b.accounts.find((acc) => acc.account === x.account)
-    if (y !== undefined && y.sessionLimit !== x.sessionLimit) {
-      changed.push(`sessions ${x.account}: ${y.sessionLimit ?? 'no limit'} -> ${x.sessionLimit ?? 'no limit'}`)
+    if (y === undefined) changed.push(`account ${x.account}: added`)
+    if ((y?.sessionLimit ?? null) !== x.sessionLimit) {
+      changed.push(`sessions ${x.account}: ${y?.sessionLimit ?? 'no limit'} -> ${x.sessionLimit ?? 'no limit'}`)
     }
+  }
+  for (const name of Object.keys(after.clis).sort()) {
+    if (Object.hasOwn(before.clis, name)) continue
+    const cli = after.clis[name]!
+    changed.push(`CLI ${name}: added (background children ${cli.backgroundChildren ? 'on' : 'off'}, parking ${cli.canPark ? 'on' : 'off'})`)
+  }
+  for (const name of Object.keys(after.models ?? {}).sort()) {
+    if (Object.hasOwn(before.models ?? {}, name)) continue
+    const model = after.models?.[name]
+    const commands = typeof model === 'object' && model !== null
+      ? [
+        ...('launch' in model && typeof model.launch === 'string' ? [`Launch: ${model.launch}`] : []),
+        ...('resume' in model && typeof model.resume === 'string' ? [`Resume: ${model.resume}`] : []),
+      ] : []
+    changed.push([`model ${name}: added`, ...commands].join('\n'))
   }
   return { before: b, after: a, changed }
 }
