@@ -277,12 +277,20 @@ try {
   await page.keyboard.press('Enter')
   await visible(standard.getByText('Hide rules', { exact: true }))
   const expectModalWidth = async () => {
+    // A modal over the dashboard: wide, with the dashboard still showing around it.
     const box = await direction.boundingBox()
-    expect(box.x).toBe(16)
-    expect(box.width).toBe(page.viewportSize().width - 32)
+    const viewport = page.viewportSize().width
+    if (viewport <= 720) {
+      expect(box.width).toBe(viewport - 32)
+      expect(box.x).toBe(16)
+    } else {
+      expect(box.width).toBe(Math.min(1280, viewport - 96))
+      expect(box.x).toBeGreaterThanOrEqual(48)
+    }
   }
   await expectModalWidth()
-  expect(await direction.locator('..').evaluate((backdrop) => getComputedStyle(backdrop).backgroundColor)).toBe('rgb(245, 246, 248)')
+  const backdrop = await direction.locator('..').evaluate((back) => getComputedStyle(back).backgroundColor)
+  expect(backdrop).toMatch(/^rgba\(.*, 0\.\d+\)$/)
   await visible(direction.getByText('Test command', { exact: true }))
   await visible(direction.getByText('bun test', { exact: true }))
   expect(await checkPrompt.locator('pre').textContent()).toBe(prompt)

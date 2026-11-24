@@ -44,8 +44,8 @@ button.review-card:hover { border-color: var(--focus); background: var(--surface
 .review-discovery ul { margin: 6px 0 0; padding-inline-start: 20px; }
 .onboarding-modal .review-detail, .review-detail, .review-questions { display: grid; gap: 14px; }
 .review-detail p, .review-detail h3 { margin: 0; }
-.modal-back:has(> .onboarding-direction-modal) { background: var(--bg); }
-.modal.onboarding-direction-modal { width: calc(100vw - 32px); }
+.modal.onboarding-direction-modal { width: min(1280px, calc(100vw - 96px)); }
+@media (max-width: 720px) { .modal.onboarding-direction-modal { width: calc(100vw - 32px); } }
 .onboarding-direction-modal .modal-top { margin-bottom: 14px; }
 .onboarding-direction-modal .modal-heading { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
 .onboarding-direction-modal .modal-top h2 { margin: 0; }
