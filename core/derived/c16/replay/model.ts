@@ -1,7 +1,7 @@
 // The model's store (types.qnt Store, as itf.ts decodes it), what is compared of it (Cmp: the
 // state that both the model and the TS core project to), and what the model's wait tells each
 // actor (protocol.qnt toldSteps, as one text per step).
-import type { Plain } from './itf.ts'
+import type { Plain, Trace } from './itf.ts'
 
 // --- the model's store, as decoded ---------------------------------------------------------------
 
@@ -22,6 +22,7 @@ export interface MTask {
   readonly broken: boolean
   readonly taken: boolean
   readonly sections: number
+  readonly outputHld?: boolean
   readonly floor: string
 }
 export interface MMaker {
@@ -50,6 +51,7 @@ export interface MFix {
   readonly contradicted: boolean
 }
 export interface MStore {
+  readonly outputScoped?: boolean
   readonly top: { readonly hostSession: number; readonly done: boolean; readonly ended: boolean }
   readonly session: number
   readonly tasks: ReadonlyMap<number, MTask>
@@ -66,6 +68,9 @@ export interface MStore {
   readonly askCount: ReadonlyMap<string, number>
 }
 export const storeOf = (p: Plain): MStore => p as unknown as MStore
+export const traceStore = (trace: Trace, index: number): MStore => ({
+  ...storeOf(trace.states[index]!.store), outputScoped: trace.instance === 'coreWhereContext',
+})
 
 export const EDIT = 2
 export const ITEMS = ['D', 'R0', 'R1', 'S0', 'S1'] as const
@@ -74,9 +79,12 @@ export const askStr = (a: MAsk): string => `${a.kind}|${a.from}|${a.to}|${a.abou
 export const pairStr = (from: string, to: string): string => JSON.stringify([from, to])
 const SEND_BACKS = 3 // PERSON_SEND_BACKS: canon.qnt keeps a fix's sendBacks up to it
 
-// types.qnt applies: an item applies to a slot.
-export const applies = (item: string, slot: number): boolean =>
-  item === 'D' || (item.startsWith('S') ? item === 'S1' || slot === 0 : item === `R${slot}`)
+// protocol.qnt itemApplies: the slot and the task's optional output fact.
+export const applies = (store: MStore, item: string, slot: number): boolean => {
+  const output = !store.outputScoped || slot === EDIT || store.tasks.get(slot)?.outputHld === true
+  return item === 'D' || item === 'S0' && slot === 0 || item === 'S1' && output
+    || item === `R${slot}` && (slot === 0 || output)
+}
 export const versOf = (m: ReadonlyMap<string, number>): Vers =>
   Object.fromEntries(ITEMS.map((x) => [x, m.get(x) ?? 0]))
 
@@ -91,6 +99,7 @@ export interface CTask {
   readonly pending: ReadonlyArray<string>
   readonly taken: boolean
   readonly sections: number
+  readonly outputHld: boolean
   readonly floor: string
 }
 export interface CMaker {
@@ -155,6 +164,7 @@ export const modelCmp = (m: MStore): Cmp => ({
       pending: sorted(t.pending),
       taken: t.taken,
       sections: t.sections,
+      outputHld: t.outputHld ?? false,
       floor: t.floor,
     }])),
   ),
@@ -248,7 +258,7 @@ export const canonical = (c: Cmp): Cmp => {
 const slotsOf = (m: MStore): ReadonlyArray<number> => [...m.tasks.keys()]
 const fixIds = (m: MStore): ReadonlyArray<number> => [EDIT, ...slotsOf(m)]
 const fixOf = (m: MStore, id: number): MFix | undefined => m.fixes.get(id)
-const itemsFor = (slot: number): ReadonlyArray<string> => ITEMS.filter((x) => applies(x, slot))
+const itemsFor = (m: MStore, slot: number): ReadonlyArray<string> => ITEMS.filter((x) => applies(m, x, slot))
 const testRule = (m: MStore, x: string): boolean =>
   x.startsWith('R') && m.ruleForm.get(Number(x.slice(1))) === 'Mech'
 const recheckDue = (m: MStore, slot: number): boolean => {
@@ -262,7 +272,7 @@ const runRuleDue = (m: MStore, slot: number): boolean => {
 const allDone = (m: MStore): boolean =>
   [...m.tasks.values()].every((t) => t.state === 'Done' && t.pending.length === 0)
 const briefStale = (m: MStore, y: MMaker): boolean =>
-  itemsFor(y.slot).some((x) => (y.brief.get(x) ?? 0) < (m.versions.get(x) ?? 0))
+  itemsFor(m, y.slot).some((x) => (y.brief.get(x) ?? 0) < (m.versions.get(x) ?? 0))
 // The maker is told something now: it holds the working task and is up.
 const makerLive = (m: MStore, id: string): MMaker | null => {
   const y = m.makers.get(id)

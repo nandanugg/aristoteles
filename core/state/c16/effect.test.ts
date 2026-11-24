@@ -38,7 +38,7 @@ const card = (role: string): RoleDraft => ({ role, words: 'w', model: 'm' })
 
 const start = (): WorkState =>
   initState(
-    { name: 'top', goal: 'g', sections: ['a', 'b'], directions: ['d1'] },
+    { name: 'top', goal: 'g', sections: ['a', 'b'], facts: {}, directions: ['d1'] },
     new Map([['dir:d1', dir], ['std:s1', std], ['rule:r1', rule]]),
     new Map([['dev', card('dev')], ['qa', card('qa')]]),
     2,
@@ -54,7 +54,7 @@ const one = (s: WorkState, kind: AskKind): OpenAsk => {
   return a[0]!
 }
 const spec = (sections: ReadonlyArray<string>, name = 'n') =>
-  ({ name, goal: 'g', sections, role: 'dev' })
+  ({ name, goal: 'g', sections, facts: {}, role: 'dev' })
 
 const send = (s: WorkState): WorkState =>
   go(s, host, { _tag: 'Open', open: { _tag: 'OpenSend', spec: spec(['a', 'b']) } })
@@ -490,23 +490,26 @@ describe('the sweep and the split', () => {
   })
 
   test('a split: the parent is Split; the host ask is replaced by one per part, at once', () => {
-    const base = rejected(start())
+    const root = start()
+    const base = rejected({ ...root, top: { ...root.top, facts: { audience: 'reviewer' } } })
     const s = go(base, pipe, {
       _tag: 'Evaluate',
       fix: 't1',
       level: 'Split',
-      parts: [spec(['a'], 'p1'), spec(['b'], 'p2')],
+      parts: [{ ...spec(['a'], 'p1'), facts: { output: 'hld' } }, spec(['b'], 'p2')],
       roleDraft: null,
       summary: 'big',
     })
-    expect(taskOf(s, 't1')).toMatchObject({ state: 'Split', maker: null })
+    expect(taskOf(s, 't1')).toMatchObject({ state: 'Split', maker: null, facts: { audience: 'reviewer' } })
     expect(taskOf(s, 't2')).toMatchObject({
       state: 'Sent',
       parent: 't1',
       floor: 'Standard',
       sections: ['a'],
+      facts: { audience: 'reviewer', output: 'hld' },
     })
     expect(taskOf(s, 't3')).toMatchObject({ state: 'Sent', parent: 't1', sections: ['b'] })
+    expect(taskOf(s, 't3').facts).toEqual({ audience: 'reviewer' })
     expect(fixOf(s, 't1').stage).toBe('Closed')
     const hostAsks = asks(s, 'Execute')
     expect(hostAsks.length).toBe(2)

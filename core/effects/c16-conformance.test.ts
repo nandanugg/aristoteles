@@ -9,7 +9,7 @@ import { Effect, Layer } from 'effect'
 import { dispatchAct } from '../actions/work.ts'
 import { modelActOf, tsAct } from '../derived/c16/replay/acts.ts'
 import { readTrace } from '../derived/c16/replay/itf.ts'
-import { canonical, modelActors, modelCmp, modelTold, storeOf } from '../derived/c16/replay/model.ts'
+import { canonical, modelActors, modelCmp, modelTold, traceStore } from '../derived/c16/replay/model.ts'
 import {
   actorOfName, advance, canonState, initial, project, start, stepText,
 } from '../derived/c16/replay/project.ts'
@@ -46,9 +46,9 @@ for (const name of names) {
     )
     try {
       await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-        const modelFirst = storeOf(trace.states[0]!.store)
+        const modelFirst = traceStore(trace, 0)
         let ctx = start([...modelFirst.tasks.keys()])
-        const seed = initial(ctx.slots)
+        const seed = initial(ctx.slots, { outputScoped: modelFirst.outputScoped })
         const store = yield* (yield* Store).open(dir, { create: true })
         const event = create('Work', {
           _tag: 'Opened',
@@ -81,9 +81,9 @@ for (const name of names) {
         }
         for (let i = 0; i < trace.states.length; i++) {
           const frame = trace.states[i]!
-          const model = storeOf(frame.store)
+          const model = traceStore(trace, i)
           if (i > 0) {
-            const pre = storeOf(trace.states[i - 1]!.store)
+            const pre = traceStore(trace, i - 1)
             const step = modelActOf(frame.action, frame.picks, pre)
             const resolves = step.tag === 'Ship' &&
               shipResolves(trace, i, step.value['fix'] as number)

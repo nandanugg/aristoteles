@@ -148,7 +148,7 @@ Review accepts it.
 |---|---|---|
 | `id` | text | e.g. `facts-not-proof` |
 | `says` | text | |
-| `where` | `Everywhere \| Where { conditions }` | where it applies: each condition a context key (`section`, `system`, `field`, `language`, `repo`, `audience`) with the values that match |
+| `where` | `Everywhere \| Where { conditions }` | where it applies: each condition a context key (`section`, `system`, `field`, `language`, `repo`, `audience`, `output`) with the values that match |
 | `rules` | Rule ids | |
 
 **Rule**: one check that a reviewer does on one result of a maker.
@@ -227,7 +227,7 @@ At top open, staffing becomes the runtime:
 
 ### The work
 
-**Top**: the person's task, held by the host: `{ name, goal, sections, directions, done, ended }`.
+**Top**: the person's task, held by the host: `{ name, goal, sections, facts, directions, done, ended }`.
 
 **Task**: a part the host sends to a persistent role.
 
@@ -237,6 +237,7 @@ At top open, staffing becomes the runtime:
 | `role` | role name | the persistent role it is sent to |
 | `parent` | task id or none | the task it is part of |
 | `sections`, `directions` | | what it covers |
+| `facts` | context map | inherited context and any facts added by this task |
 | `state` | `Sent \| Working \| InReview \| Raised \| Done \| Split` | |
 | `tries` | number | attempts so far; a raise follows the last one |
 | `maker` | maker id or none | the current maker |
@@ -285,7 +286,7 @@ marker lines applied and the host's launch acknowledged.
 
 ### The store
 
-One SQLite file, format 9. Each event is **Recorded** `{ seq, at, author, event }`, and only
+One SQLite file, format 10. Each event is **Recorded** `{ seq, at, author, event }`, and only
 its author kind may write it. **Author**: `Person { name, channel: terminal | ui }`,
 `ModelRun { name, at }`, `System`, `Supervisor { name }`, `Refresh`.
 

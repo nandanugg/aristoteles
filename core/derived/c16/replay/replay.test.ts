@@ -10,7 +10,9 @@ const FILES = readdirSync(DIR).filter((f) => f.endsWith('.itf.json.gz')).sort()
 
 describe('the stored traces replay on the TS core', () => {
   test('there are twenty per instance', () => {
-    expect(FILES).toHaveLength(100)
+    for (const instance of ['coreTwo', 'coreTwoExit', 'coreLoops', 'coreAsks', 'coreAskRogue', 'coreWhereContext']) {
+      expect(FILES.filter((file) => file.startsWith(`${instance}-`))).toHaveLength(20)
+    }
   })
   for (const file of FILES) {
     test(file, () => {

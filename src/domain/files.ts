@@ -8,10 +8,8 @@ import { DirectionId, NonBlank, PositiveInt, RoleName } from './ids.ts'
 // The key of a standard or a rule in a file (Standard.id, Rule.id of the page).
 const Key = Schema.String
 
-// The keys that a task's context and a standard's where may name: the page's five, and audience
-// (who reads the output; a direction of test/round8 selects a standard by it). Any other key is
-// refused when a file is read, and a stored one stops the migration.
-export const CONTEXT_KEYS = ['system', 'field', 'language', 'repo', 'section', 'audience'] as const
+// The closed keys a task context or standard scope may name. Output is the type being made.
+export const CONTEXT_KEYS = ['system', 'field', 'language', 'repo', 'section', 'audience', 'output'] as const
 export const ContextKey = Schema.Literals(CONTEXT_KEYS)
 export type ContextKey = typeof ContextKey.Type
 // A context or a where as a file writes it: named keys, each a text, in the file's order (a
@@ -19,6 +17,13 @@ export type ContextKey = typeof ContextKey.Type
 const ContextFileKey = Schema.String.pipe(
   Schema.check(Schema.isPattern(new RegExp(`^(${CONTEXT_KEYS.join('|')})$`))),
 )
+const FactFileKey = ContextFileKey.pipe(Schema.check(
+  Schema.makeFilter((key) => key !== 'section' || 'use sections for the section scope'),
+))
+export const ContextFacts = Schema.Record(FactFileKey, Schema.String)
+export type ContextFacts = typeof ContextFacts.Type
+export const ScopeConditions = Schema.Record(ContextFileKey, Schema.NonEmptyArray(Schema.String))
+export type ScopeConditions = typeof ScopeConditions.Type
 export const ContextFile = Schema.Record(ContextFileKey, Schema.String)
 export type ContextFile = typeof ContextFile.Type
 // A where as a file writes it: each key names one value, or a list of values, any one of which

@@ -47,7 +47,8 @@ const examplesOf = (r: Rec): string[] => (r?.examples ?? []).map((e) => `${e.fit
 // The lines of an item's change: before and after, field by field, then its examples.
 export const changeLines = (c: Change): DiffLine[] => {
   const { before: b, after: a } = c
-  const where = (r: Rec) => (r?.where == null ? null : r.where.join(', '))
+  const where = (r: Rec) => (r?.where == null ? null : Object.entries(r.where)
+    .map(([key, values]) => `${key}=${values.join(' | ')}`).join(', '))
   const old = new Set(examplesOf(b))
   const now = new Set(examplesOf(a))
   return [

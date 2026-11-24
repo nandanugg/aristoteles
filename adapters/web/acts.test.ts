@@ -11,7 +11,7 @@ import { ActResponse, type PageActJson } from './contract.ts'
 const human: Actor = { _tag: 'Human' }
 const host: Actor = { _tag: 'Host' }
 const initial = () => initState(
-  { name: 'top', goal: 'g', sections: ['section'], directions: [] }, new Map(), new Map(), 3,
+  { name: 'top', goal: 'g', sections: ['section'], facts: {}, directions: [] }, new Map(), new Map(), 3,
 )
 const build = 'b1'
 const envelope = (state: WorkState, who: Actor, body: Body): Act => ({

@@ -33,7 +33,7 @@ const NOW = 1_000_000
 
 const start = (): WorkState =>
   initState(
-    { name: 'top', goal: 'g', sections: ['a', 'b'], directions: ['d1'] },
+    { name: 'top', goal: 'g', sections: ['a', 'b'], facts: {}, directions: ['d1'] },
     new Map([
       ['dir:d1', rec('dir', null, 'dir says')],
       ['std:s1', rec('std', 'dir:d1', 'std says')],
@@ -48,7 +48,7 @@ const send = (s: WorkState, owner = 'dev', sections = ['a', 'b']): WorkState =>
   go(s, {
     _tag: 'Open',
     open: { _tag: 'OpenSend',
-      spec: { name: `task ${owner}`, goal: `goal ${owner}`, sections, role: owner } },
+      spec: { name: `task ${owner}`, goal: `goal ${owner}`, sections, facts: {}, role: owner } },
   }, HOST)
 const assigned = (s: WorkState, task: string): WorkState =>
   go(s, { _tag: 'Open', open: { _tag: 'OpenMake', task } }, role('dev'))

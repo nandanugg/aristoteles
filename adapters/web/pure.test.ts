@@ -70,6 +70,15 @@ describe('the lines of a change', () => {
     expect(changeLines(gone).every((l) => l.kind === 'del')).toBe(true)
     expect(changeKind(gone)).toBe('removed')
   })
+  test('a change shows the full scope with each condition named', () => {
+    const before = { ...rec('x'), where: { section: ['introduction'], output: ['tsd'] } } as const
+    const after = { ...before, where: { section: ['introduction'], output: ['hld', 'design'] } } as const
+    expect(changeLines({ key: 'std:s1', version: 1, before, after }).filter(({ text }) => text.startsWith('where:')))
+      .toEqual([
+        { kind: 'del', text: 'where: section=introduction, output=tsd' },
+        { kind: 'add', text: 'where: section=introduction, output=hld | design' },
+      ])
+  })
   test('a role card shows its words and model', () => {
     const lines = cardLines({ role: 'dev', before: null, after: { words: 'w', model: 'm' } })
     expect(lines.map((l) => l.text)).toEqual(['words: w', 'model: m'])

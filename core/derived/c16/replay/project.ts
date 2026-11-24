@@ -33,6 +33,11 @@ const SECTIONS = 2 // OPTIONS.sections: the sections a task of the top owns
 export const sectionsOf = (slot: number, count = SECTIONS): ReadonlyArray<string> =>
   ['a', 'b'].slice(0, count).map((x) => `s${slot}${x}`)
 
+const scopeForSlot = (slot: number, count: number, outputScoped = false): ItemRec['where'] => {
+  const [first, ...rest] = sectionsOf(slot, count)
+  return first === undefined ? null : { section: [first, ...rest], ...(outputScoped && { output: ['hld'] }) }
+}
+
 const rec = (over: Partial<ItemRec>): ItemRec => ({
   kind: 'dir',
   parent: null,
@@ -47,15 +52,15 @@ const rec = (over: Partial<ItemRec>): ItemRec => ({
 })
 
 export const initial = (
-  slots: ReadonlyArray<number>, { sections = SECTIONS, maxTries = 2 } = {},
+  slots: ReadonlyArray<number>, { sections = SECTIONS, maxTries = 2, outputScoped = false } = {},
 ): WorkState =>
   initState(
-    { name: 'top', goal: 'g', sections: slots.flatMap((slot) => sectionsOf(slot, sections)), directions: ['d'] },
+    { name: 'top', goal: 'g', sections: slots.flatMap((slot) => sectionsOf(slot, sections)), facts: {}, directions: ['d'] },
     new Map<ItemKey, ItemRec>([
       ['dir:d', rec({})],
-      ['std:0', rec({ kind: 'std', parent: 'dir:d', where: sectionsOf(0, sections) })],
-      ['std:1', rec({ kind: 'std', parent: 'dir:d' })],
-      ['std:1b', rec({ kind: 'std', parent: 'dir:d', where: sectionsOf(1, sections) })],
+      ['std:0', rec({ kind: 'std', parent: 'dir:d', where: scopeForSlot(0, sections) })],
+      ['std:1', rec({ kind: 'std', parent: 'dir:d', where: outputScoped ? { output: ['hld'] } : null })],
+      ['std:1b', rec({ kind: 'std', parent: 'dir:d', where: scopeForSlot(1, sections, outputScoped) })],
       ['rule:0', rec({ kind: 'rule', parent: 'std:0', form: 'ref', ref: 'f#a:1-2' })],
       ['rule:1', rec({ kind: 'rule', parent: 'std:1b', form: 'ref', ref: 'f#a:1-2' })],
     ]),
@@ -171,6 +176,7 @@ const taskCmp = (s: WorkState, c: Ctx, slot: number): CTask => {
       pending: [],
       taken: false,
       sections: c.sections,
+      outputHld: false,
       floor: 'Split',
     }
   }
@@ -183,6 +189,7 @@ const taskCmp = (s: WorkState, c: Ctx, slot: number): CTask => {
     pending: itemNames(t.pending),
     taken: t.taken,
     sections: t.sections.length,
+    outputHld: t.facts.output === 'hld',
     floor: t.floor,
   }
 }

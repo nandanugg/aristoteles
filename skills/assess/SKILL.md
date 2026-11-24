@@ -257,9 +257,9 @@ outputs it governs, and give it a `where` for them; leave `where` out only when 
 applies to every section. When one standard holds a rule for every section and a rule for some
 sections, split it into two standards. The marked steps of the flow show the same scope: the
 outputs in their `uses` are the ones that the direction governs. A check of the whole result
-goes to the role that reviews the whole (see the loop above), not to each part. Inside a top a
-`where` matches section ids only: when two output types share a section id with different
-requirements, both scopes reach that section, so name the collision in the report.
+goes to the role that reviews the whole (see the loop above), not to each part. A `where` such
+as `{ section: design, output: hld }` governs HLD design sections. Each condition must match the
+task's context, so a TSD can use the same section id with its own scope.
 
 **The principles** (`from`). Each principle asks one question, and `work guide writing` gives
 the question of each. A direction grounds in the one or two whose question it answers. Name a

@@ -1,4 +1,4 @@
-import type { LoopReviewMode } from '../../schema/index.ts'
+import type { ContextFacts, LoopReviewMode } from '../../schema/index.ts'
 // The C16 state the store folds: work.ts WorkState with the model's names (types.qnt Task, Fix,
 // MakerState, Store) and the asks of the contract (1.4). The acts' behaviour is elsewhere.
 import type {
@@ -42,6 +42,7 @@ export interface Task {
   readonly role: string
   readonly parent: string | null
   readonly sections: ReadonlyArray<string>
+  readonly facts: ContextFacts
   readonly directions: ReadonlyArray<string>
   readonly generation: number
   readonly state: TaskState
@@ -168,7 +169,7 @@ export const CLOSED: Fix = {
 
 // The person opened the top; the host holds it in session 0. cards: the persistent roles.
 export const initState = (
-  top: Pick<Top, 'name' | 'goal' | 'sections' | 'directions'>,
+  top: Pick<Top, 'name' | 'goal' | 'sections' | 'directions' | 'facts'>,
   items: ReadonlyMap<ItemKey, ItemRec>,
   cards: ReadonlyMap<string, RoleDraft>,
   maxTries: number,

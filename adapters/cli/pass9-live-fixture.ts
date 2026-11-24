@@ -78,7 +78,7 @@ export const unit2Fixture = async (dir: string, competingWorker = false) => {
   })
   await withStore((store) => store.write(() => Effect.succeed({
     draft: { at, author: person, event: create('Work', {
-      _tag: 'Opened', hostSession: null, top: { name: 'Replay', goal: 'Replay', sections: [], directions: [] },
+      _tag: 'Opened', hostSession: null, top: { name: 'Replay', goal: 'Replay', sections: [], facts: {}, directions: [] },
       items: [], cards: [[ROLE, { role: ROLE, words: 'Replay', model: 'fixture' }]], tokens: [], maxTries: 1,
       placements: [placement(WORKER, [members.Host, members.Role, members.Pipe]),
         ...(competingWorker ? [placement(OTHER, ['role:other'])] : [])],

@@ -348,7 +348,7 @@ describe('readDirection', () => {
 
   // A where is a filter over the closed context keys.
   test.each([
-    ['an unknown key', { stage: 'y' }, 'd.yaml: standard s: where key "stage" is not one of system, field, language, repo, section, audience'],
+    ['an unknown key', { stage: 'y' }, 'd.yaml: standard s: where key "stage" is not one of system, field, language, repo, section, audience, output'],
     ['no key', {}, 'd.yaml: standard s: where names no key; leave it out, and the standard applies everywhere'],
     ['a value that is no text', { section: 3 }, 'd.yaml: standard s: where section is a text, like section: introduction'],
     ['a list', ['section'], 'd.yaml: standard s: where is a map of context keys, like where: { section: introduction }'],

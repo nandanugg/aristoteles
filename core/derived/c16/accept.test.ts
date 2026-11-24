@@ -42,7 +42,7 @@ const rec = (over: Partial<ItemRec>): ItemRec => ({
 const card: RoleDraft = { role: 'writer', words: 'w', model: 'm' }
 const base = (): WorkState =>
   initState(
-    { name: 't', goal: 'g', sections: ['a', 'b', 'c'], directions: ['d1'] },
+    { name: 't', goal: 'g', sections: ['a', 'b', 'c'], facts: {}, directions: ['d1'] },
     new Map([
       ['dir:d1', rec({})],
       ['std:s1', rec({ kind: 'std', parent: 'dir:d1' })],
@@ -59,6 +59,7 @@ const task = (over: Partial<Task> = {}): Task => ({
   role: 'writer',
   parent: null,
   sections: ['a', 'b'],
+  facts: {},
   directions: ['d1'],
   generation: 0,
   state: 'Working',
@@ -124,6 +125,7 @@ const spec = (sections: string[], role = 'writer'): TaskSpec => ({
   name: 'n',
   goal: 'g',
   sections,
+  facts: {},
   role,
 })
 
@@ -487,6 +489,15 @@ describe('legal, act by act', () => {
     expect(ev(at({ floor: 'Direct' }), 'Standard')).toBe('legal')
     const low = { floor: 'Fit' } as const
     expect(ev(at(low), 'Split', [spec(['a']), spec(['b'])])).toBeNull()
+    const scoped = at({ ...low, facts: { output: 'hld' } })
+    expect(ev(scoped, 'Split', [{ ...spec(['a']), facts: { audience: 'reviewer' } }, spec(['b'])])).toBeNull()
+    const conflict: Body = {
+      _tag: 'Evaluate', fix: 't1', level: 'Split', summary: '', roleDraft: null,
+      parts: [{ ...spec(['a']), facts: { output: 'tsd' } }, spec(['b'])],
+    }
+    expect(refused(scoped, act(pipe, conflict, { seen: 3 }))).toMatchObject({
+      refused: 'legal', words: expect.stringContaining('"output"'),
+    })
     expect(ev(at(), 'Split', [spec(['a']), spec(['b'])])).toBe('legal')
     expect(ev(at(low), 'Split', [spec(['a', 'b'])])).toBe('legal')
     expect(ev(at(low), 'Split', [spec(['a']), spec(['a', 'b'])])).toBe('legal')

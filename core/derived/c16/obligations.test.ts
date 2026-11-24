@@ -40,7 +40,7 @@ const taskAbout = (id: string): AskAbout => ({ _tag: 'Task', id })
 const fixAbout = (id: string): AskAbout => ({ _tag: 'Fix', id })
 
 const base = (sections: ReadonlyArray<string> = ['a', 'b']): WorkState => ({
-  ...initState({ name: 't', goal: 'g', sections, directions: [] }, new Map(), new Map(), 3),
+  ...initState({ name: 't', goal: 'g', sections, facts: {}, directions: [] }, new Map(), new Map(), 3),
   seq: 1,
 })
 const task = (id: string, over: Partial<Task> = {}): Task => ({
@@ -50,6 +50,7 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   role: 'dev',
   parent: null,
   sections: [id === 't1' ? 'a' : 'b'],
+  facts: {},
   directions: [],
   generation: 0,
   state: 'Sent',

@@ -44,7 +44,7 @@ const setup = async () => {
   const send = (name: string, section: string) =>
     act('host', {
       _tag: 'Open', open: { _tag: 'OpenSend',
-        spec: { name, goal: 'g', sections: [section], role: 'section-lead' } },
+        spec: { name, goal: 'g', sections: [section], facts: {}, role: 'section-lead' } },
     })
   const secret = (actor: string) => opened.secrets.find((s) => s.actor === actor)?.secret ?? ''
   return { p, act, send, token: `w.role:section-lead.0.${secret('role:section-lead')}`, secret }

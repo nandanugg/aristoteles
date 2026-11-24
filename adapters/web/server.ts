@@ -289,7 +289,7 @@ export function startServer(options: ServerOptions): ServerHandle {
       return {
         ...dashOf({
           dir: basename(dir), build, now: Date.parse(clock()),
-          state: initState({ name: '', goal: '', sections: [], directions: [] }, new Map(), new Map(), 3),
+          state: initState({ name: '', goal: '', sections: [], facts: {}, directions: [] }, new Map(), new Map(), 3),
           host: { model: '', reading: null }, hostSession: null, pipe: null,
           terminals: {}, tails: {}, forwards: [], markers: [], principles: {},
         }),

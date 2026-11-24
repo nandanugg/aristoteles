@@ -31,6 +31,8 @@ import {
   refuse,
   UsageError,
   BodySchema,
+  ContextFacts,
+  ScopeConditions,
   LoopReviewMode,
   ActorSchema,
   AnswerBodySchema,
@@ -49,7 +51,7 @@ import { kindOf } from '../../../core/state/c16/data.ts'
 import { helperBrief } from './recheck.ts'
 import { acquireBootstrapWorker, activationEvents, retireHostDelivery } from '../../live/activation.ts'
 import { bootstrapSession } from '../../live/bootstrap.ts'
-import { briefOf, hostWords, makerWords, recheckBriefOf } from '../../words/work.ts'
+import { briefOf, contextWords, hostWords, makerWords, recheckBriefOf } from '../../words/work.ts'
 import { type Args, textOf } from '../args.ts'
 import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
 import type { CliServices, Command, Commands } from '../command.ts'
@@ -112,6 +114,28 @@ const isObj = (v: unknown): v is Readonly<Record<string, unknown>> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null)
 
+const readFacts = Schema.decodeUnknownResult(ContextFacts, { onExcessProperty: 'error' })
+const readScope = Schema.decodeUnknownResult(ScopeConditions, { onExcessProperty: 'error' })
+
+const contextOfArgs = (args: Args): Run<ContextFacts> =>
+  Effect.gen(function* () {
+    const facts = new Map<string, string>()
+    for (const flag of args.all('context')) {
+      if (typeof flag !== 'string') return yield* usage('--context needs key=value')
+      for (const entry of flag.split(',')) {
+        const at = entry.indexOf('=')
+        const key = entry.slice(0, at).trim()
+        const value = entry.slice(at + 1).trim()
+        if (at < 1 || !key || !value) return yield* usage('--context needs key=value')
+        const checked = readFacts({ [key]: value })
+        if (checked._tag === 'Failure') return yield* usage(`unknown context fact "${key}"; sections use --sections`)
+        if (facts.has(key) && facts.get(key) !== value) return yield* usage(`context key "${key}" has two values`)
+        facts.set(key, value)
+      }
+    }
+    return Object.fromEntries(facts)
+  })
+
 const readFile = (path: string): Run<unknown> =>
   Effect.gen(function* () {
     const { cwd } = yield* Dir
@@ -132,14 +156,15 @@ const specOf = (raw: unknown): Run<TaskSpec> => {
   const goal = text(r.goal)
   const role = text(r.role)
   const sections = Array.isArray(r.sections) ? r.sections.filter((s) => typeof s === 'string') : []
-  return name === null || goal === null || role === null
-    ? refuse('a part needs name, goal, sections and role')
-    : Effect.succeed({ name, goal, role, sections })
+  if (name === null || goal === null || role === null) return refuse('a part needs name, goal, sections and role')
+  const facts = readFacts(r.facts === undefined ? {} : r.facts)
+  if (facts._tag === 'Failure') return refuse(`part ${name} has invalid facts: ${facts.failure}`)
+  return Effect.succeed({ name, goal, role, sections, facts: facts.success })
 }
 const partsOf = (raw: unknown): Run<ReadonlyArray<TaskSpec>> =>
   Array.isArray(raw)
     ? Effect.forEach(raw, specOf)
-    : refuse('the parts file is a list of {name, goal, sections, role}')
+    : refuse('the parts file is a list of {name, goal, sections, role, facts?}')
 const cardOf = (raw: unknown): Run<RoleDraft> => {
   const r = isObj(raw) ? raw : {}
   const [role, words, model] = [text(r.role), text(r.words), text(r.model)]
@@ -160,13 +185,14 @@ const recOf = (key: ItemKey, raw: unknown, parent: ItemKey | null): Run<ItemRec>
   if (!fits) return refuse(`${key}: an example is {fits: follows|breaks, sample: <text>}`)
   const test = text(r.test)
   const ref = text(r.ref)
-  const where = Array.isArray(r.where) ? r.where.filter((s) => typeof s === 'string') : null
+  const scope = readScope(r.where ?? {})
+  if (scope._tag === 'Failure') return refuse(`${key} has invalid where conditions: ${scope.failure}`)
   return Effect.succeed({
     kind: kindOf(key),
     parent: text(r.parent) ?? parent,
     name: text(r.name) ?? key.slice(key.indexOf(':') + 1),
     says,
-    where,
+    where: Object.keys(scope.success).length ? scope.success : null,
     test,
     ref,
     form: formOf(test ?? undefined, ref ?? undefined),
@@ -310,6 +336,7 @@ const SPECS: Readonly<Record<string, Spec>> = {
         name: yield* flag(c, 'name'),
         goal: yield* flag(c, 'goal'),
         sections: listOf(c.args.one('sections')),
+        facts: yield* contextOfArgs(c.args),
         role: yield* flag(c, 'role'),
       }
       return { _tag: 'Open', open: { _tag: 'OpenSend', spec } }
@@ -637,15 +664,17 @@ export const topCommand = (open: typeof openTop): Command => (call) =>
       return yield* usage('work top open needs --name="<...>" --goal="<...>" --sections=a,b')
     }
     const sections = listOf(call.args.one('sections'))
+    const facts = yield* contextOfArgs(call.args)
     const { cwd } = yield* Dir
     const binding = activationOf(yield* activationEvents(cwd))?.binding
     const opened = yield* open({
-      by, name, goal, sections,
+      by, name, goal, sections, facts,
       ...(binding ? { hostSession: bootstrapSession(binding.launch), hostLaunch: binding.launch } : {}),
     })
     return [
       `Top "${name}" opened (event e${opened.seq}): ${goal}`,
       `Sections: ${sections.join(', ')}`,
+      ...contextWords(facts),
       'Each actor runs work wait with its token:',
       ...(opened.hostBound ? ['  host: holds its token from activation'] : []),
       ...opened.secrets.map((t) => `  ${t.actor}: ${workTokenOf(t.actor, 0, t.secret)}`),

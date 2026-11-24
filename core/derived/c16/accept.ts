@@ -2,6 +2,7 @@
 // what is legal in the state, on which basis, from which build; and the asks the act names.
 // Every check of the model is on.
 import type { Refusal as RefusalRecord } from '../../state/c16/types.ts'
+import type { ContextFacts } from '../../schema/index.ts'
 import { type Fix, type Maker, type Task, type WorkState } from '../../state/c16/state.ts'
 import {
   allDone,
@@ -218,6 +219,24 @@ const formOk = (s: WorkState, a: Act): boolean => {
 
 const sameSet = (a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean =>
   a.length === b.length && a.every((x) => b.includes(x))
+
+const changedFact = (parent: ContextFacts, facts: ContextFacts): string | undefined =>
+  Object.keys(facts).find((key) => Object.hasOwn(parent, key) && parent[key] !== facts[key])
+
+const contextConflict = (s: WorkState, body: Body): string | undefined => {
+  if (body._tag === 'Open' && body.open._tag === 'OpenSend') {
+    return changedFact(s.top.facts, body.open.spec.facts)
+  }
+  if (body._tag === 'Evaluate' && body.level === 'Split') {
+    const task = s.tasks.get(body.fix)
+    if (task !== undefined) {
+      for (const part of body.parts) {
+        const key = changedFact(task.facts, part.facts)
+        if (key !== undefined) return key
+      }
+    }
+  }
+}
 
 const sendOk = (s: WorkState, sp: TaskSpec): boolean => {
   const open = uncovered(s)
@@ -455,7 +474,7 @@ export const refusal = (s: WorkState, a: Act, via: Via = 'terminal'): RefusalNam
   if (gone !== null) return gone
   if (pairOf(s, a)) return 'pair'
   if (capOf(s, a)) return 'cap'
-  if (!legal(s, a)) return 'legal'
+  if (!legal(s, a) || contextConflict(s, a.body) !== undefined) return 'legal'
   return basisOk(s, a) ? null : 'basis'
 }
 
@@ -484,6 +503,10 @@ export const refused = (s: WorkState, a: Act, via: Via = 'terminal'): RefusalRec
   if (name === 'heard' && a.body._tag === 'Hear') {
     const listener = s.heardIds.get(a.body.ask)
     if (listener !== undefined) return { refused: name, words: `${WORDS.heard} by ${listener}` }
+  }
+  if (name === 'legal') {
+    const key = contextConflict(s, a.body)
+    if (key !== undefined) return { refused: name, words: `context key "${key}" cannot change its parent's value` }
   }
   return name === 'cap'
     ? { refused: name, words: WORDS[name], next: 'AskRaise' }

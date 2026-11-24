@@ -23,8 +23,10 @@ export const parseArgs = (argv: ReadonlyArray<string>): Args => {
     // The basis of a step is printed as `--on <n>`: the number after it is its value.
     const m = /^--([a-z-]+)(?:=(.*))?$/s.exec(arg)
     if (arg === '--on' && /^\d+$/.test(argv[i + 1] ?? '')) flags.push(['on', argv[i + 1] ?? ''])
-    else if (arg === '--launch' && argv[i + 1] && !argv[i + 1]!.startsWith('-')) flags.push(['launch', argv[i + 1]!])
-    else if (i > 0 && argv[i - 1] === '--launch' && !arg.startsWith('-')) return
+    else if ((arg === '--launch' || arg === '--context') && argv[i + 1] && !argv[i + 1]!.startsWith('-')) {
+      flags.push([arg.slice(2), argv[i + 1]!])
+    }
+    else if ((argv[i - 1] === '--launch' || argv[i - 1] === '--context') && !arg.startsWith('-')) return
     else if (i > 0 && argv[i - 1] === '--on' && /^\d+$/.test(arg)) return
     else if (m) flags.push([m[1] ?? '', m[2] ?? true])
     else if (arg.startsWith('--')) broken.push(arg)
@@ -99,7 +101,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   'recheck-helper': { ack: [] },
   'recheck-report': ['file'],
   'recheck-brief': ['on'],
-  top: { open: ['name', 'goal', 'sections'] },
+  top: { open: ['name', 'goal', 'sections', 'context'] },
   hook: { stopped: [] },
   ask: ['question', 'text', 'file'],
   answer: ['text', 'file'],
@@ -113,7 +115,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   log: ['last'],
   evaluate: ['summary', 'parts', 'role-draft', 'on'],
   run: { continue: [] },
-  send: ['name', 'goal', 'sections', 'role'],
+  send: ['name', 'goal', 'sections', 'role', 'context'],
   wait: ['by', 'seconds', 'launch'],
   worker: { checkpoint: ['credential'], wait: ['seconds', 'abandon'], ack: [], 'child-start': [], 'child-reconcile': ['observation'],
     'child-review': ['on', 'turn'], 'child-ack': [], 'child-review-done': [] },

@@ -97,7 +97,7 @@ describe('a new store', () => {
       { name: dir, folder: dir, made_at: '2026-10-25T09:01:00.000Z' },
     ])
     expect(tableOf(file, 'SELECT * FROM words')).toEqual([row])
-    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 9 }])
+    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 10 }])
     const found = await run(
       withStore(file, dir, false, (store) =>
         store.query('SELECT place, text FROM words WHERE project = ?', dir),
@@ -180,7 +180,7 @@ describe('the files of a store', () => {
     const write = (n: number) => (s: DirStore) => s.write(() => written(draftOf(n, SOURCE)))
     const seq = await run(withStore(file, dir, true, write(1)))
     expect(seq).toBe(1)
-    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 9 }])
+    expect(tableOf(file, 'PRAGMA user_version')).toEqual([{ user_version: 10 }])
   })
 
   test('an empty file is not filled by a command that does not create', async () => {
@@ -262,7 +262,8 @@ describe('the files of a store', () => {
     ['a text file', (f: string) => writeFileSync(f, 'this is not a database\n'.repeat(20))],
     ['a database of the old work (a table act)', sqlite('CREATE TABLE act (seq INTEGER)')],
     ['a database of another program', sqlite('CREATE TABLE notes (text TEXT)')],
-    ['a database of another format', sqlite('PRAGMA user_version = 10')],
+    ['a database of another format', sqlite('PRAGMA user_version = 11')],
+    ['a database of format 9 (before task facts)', sqlite('CREATE TABLE event (x); PRAGMA user_version = 9')],
     ['a database of format 8 (before worker runtime)', sqlite('CREATE TABLE event (x); PRAGMA user_version = 8')],
     ['a database of format 7 (cases on flow steps)', sqlite('CREATE TABLE event (x); PRAGMA user_version = 7')],
     ['a database of format 3', sqlite('CREATE TABLE event (x); PRAGMA user_version = 3')],

@@ -50,6 +50,7 @@ const spec = {
   name: 'Intro',
   goal: 'Write the introduction.',
   sections: ['introduction'],
+  facts: {},
   role: 'section-lead',
 }
 const summary = 'Say it once.\nThe draft repeats a line.'

@@ -42,7 +42,7 @@ const ex = (fits: Example['fits'], sample: string): Example => ({ fits, sample }
 const TODO = "grep -n 'TODO' \"$@\""
 const base = (): WorkState => {
   const s = initState(
-    { name: 'top', goal: 'g', sections: ['a'], directions: ['d1'] },
+    { name: 'top', goal: 'g', sections: ['a'], facts: {}, directions: ['d1'] },
     new Map<string, ItemRec>([
       ['dir:d1', rec('dir', null)],
       ['std:s1', rec('std', 'dir:d1')],
@@ -59,6 +59,7 @@ const base = (): WorkState => {
     role: 'dev',
     parent: null,
     sections: ['a'],
+    facts: {},
     directions: ['d1'],
     generation: 0,
     state: 'Done',

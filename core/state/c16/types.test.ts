@@ -125,7 +125,7 @@ describe('F1.4 the answers table', () => {
   })
 })
 
-const spec = { name: 'n', goal: 'g', sections: ['a'], role: 'dev' }
+const spec = { name: 'n', goal: 'g', sections: ['a'], facts: {}, role: 'dev' }
 const rec = {
   kind: 'rule' as const,
   parent: 'std:s1',

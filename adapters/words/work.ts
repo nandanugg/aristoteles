@@ -1,7 +1,7 @@
 // The words of the work model's told steps: the command of a step (with the basis `--on <seq>`
 // where the act has one), the plain lines above it, and the maker's brief. The steps come from
 // core/derived/c16/obligations.ts (`dos`); this file only writes them.
-import type { Recorded, RecheckBrief } from '../../core/schema/index.ts'
+import type { ContextFacts, Recorded, RecheckBrief } from '../../core/schema/index.ts'
 import { recheckInput } from '../../core/derived/c16/recheck.ts'
 import { take } from '../../core/state/c16/effect.ts'
 import { appliesTo, depth, fixOf, uncovered } from '../../core/state/c16/reads.ts'
@@ -13,6 +13,10 @@ import { launchOpening } from '../live/markers.ts'
 
 type Lines = ReadonlyArray<string>
 
+export const contextWords = (facts: ContextFacts): Lines => {
+  const entries = Object.entries(facts)
+  return entries.length ? [`Context: ${entries.map(([key, value]) => `${key}=${value}`).join(', ')}`] : []
+}
 
 // A token of the work model: w.<actor>.<ep>.<secret>. The actor may hold dots (a role name): the
 // epoch (digits) and the secret (no dots) are the last two parts.
@@ -214,6 +218,7 @@ export const recheckBriefWords = (id: string, on: number, brief: RecheckBrief): 
   `Recheck task ${id}: ${brief.goal}`,
   `Basis: --on ${on}`,
   `Sections: ${brief.sections.join(', ')}`,
+  ...contextWords(brief.facts),
   ...(brief.output ? [`Reported result: ${brief.output}`] : []),
   ...(brief.files.length ? [`Result files: ${brief.files.join(', ')}`] : []),
   'Required items:',
@@ -280,6 +285,7 @@ export const briefOf = (
     `Task ${t.id}: ${t.name}`,
     `Goal: ${t.goal}`,
     `Sections: ${t.sections.join(', ')}`,
+    ...contextWords(t.facts),
     ...(items.length === 0 ? ['No direction, standard or rule applies.'] : ['What applies:']),
     ...items.flatMap((x) => [
       `  ${itemWords(s, x)}`,
@@ -302,6 +308,7 @@ export const briefOf = (
 export const hostWords = (s: WorkState, token: string): Lines => [
   `You are the host of "${s.top.name}": ${s.top.goal}`,
   `Sections of the top: ${s.top.sections.join(', ')}.`,
+  ...contextWords(s.top.facts),
   'You send the tasks that cover the sections of the top, one `work send` for each part; you',
   'reassign a task after the person accepts a change; you return the top when every task is done.',
   `Run work wait ${token} now, and again after every act: it prints your next step.`,

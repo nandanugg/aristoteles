@@ -27,7 +27,7 @@ const rec = (over: object) => ({
 })
 const start = (): WorkState =>
   initState(
-    { name: 't', goal: 'g', sections: ['a'], directions: ['d1'] },
+    { name: 't', goal: 'g', sections: ['a'], facts: {}, directions: ['d1'] },
     new Map([
       ['dir:d1', rec({ name: 'Plain', says: 'write plainly' })],
       ['std:s1', rec({ kind: 'std', parent: 'dir:d1', name: 'Short' })],
@@ -81,7 +81,7 @@ const review = (s: WorkState, points: string[], verdict: 'Fail' | 'RaiseNoRule' 
   verdict,
   points,
 })
-const spec = { name: 'n', goal: 'say it', sections: ['a'], role: 'writer' }
+const spec = { name: 'n', goal: 'say it', sections: ['a'], facts: {}, role: 'writer' }
 
 const toReview = () => {
   const r = run()

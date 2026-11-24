@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+import { ContextFacts } from './files.ts'
 
 const Text = Schema.String
 const Number = Schema.Int
@@ -66,7 +67,7 @@ export const RecheckFinding = Schema.Struct({
 })
 export type RecheckFinding = typeof RecheckFinding.Type
 export const RecheckBrief = Schema.Struct({
-  goal: Text, sections: Schema.Array(Text), output: Nullable, files: Schema.Array(Text),
+  goal: Text, sections: Schema.Array(Text), facts: ContextFacts, output: Nullable, files: Schema.Array(Text),
   rules: Schema.Array(Schema.Struct({
     item: Text, version: Number, says: Text, reference: Nullable, test: Nullable,
     knownBreaks: Schema.Array(Text),

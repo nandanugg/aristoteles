@@ -1,4 +1,5 @@
 // Item records and vocabulary shared by the C16 core and its adapters.
+import type { ContextFacts, ScopeConditions } from '../../schema/index.ts'
 
 // `dir:<id>`, `std:<id>`, `rule:<id>`: each item has its own version.
 export type ItemKey = string
@@ -13,14 +14,14 @@ export interface Example {
   readonly sample: string
 }
 // An item's record. parent: a standard's direction, a rule's standard. where: a standard's
-// sections (null: every section). A rule's evidence: test (a command: no output = holds, each
+// context conditions (null: everywhere). A rule's evidence: test (a command: no output = holds, each
 // printed line a point), ref (`file#anchor:lines`), its form and its examples.
 export interface ItemRec {
   readonly kind: ItemKind
   readonly parent: ItemKey | null
   readonly name: string
   readonly says: string
-  readonly where: ReadonlyArray<string> | null
+  readonly where: ScopeConditions | null
   readonly test: string | null
   readonly ref: string | null
   readonly form: Form
@@ -52,6 +53,7 @@ export interface Top {
   readonly name: string
   readonly goal: string
   readonly sections: ReadonlyArray<string>
+  readonly facts: ContextFacts
   readonly directions: ReadonlyArray<string>
   readonly hostSession: number
   readonly done: boolean
@@ -63,5 +65,6 @@ export interface TaskSpec {
   readonly name: string
   readonly goal: string
   readonly sections: ReadonlyArray<string>
+  readonly facts: ContextFacts
   readonly role: string
 }

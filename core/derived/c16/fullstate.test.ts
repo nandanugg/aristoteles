@@ -30,12 +30,12 @@ const rec = (over: Partial<ItemRec>): ItemRec => ({
 })
 const start = (): WorkState =>
   initState(
-    { name: 'top', goal: 'g', sections: ['a', 'b'], directions: ['d'] },
+    { name: 'top', goal: 'g', sections: ['a', 'b'], facts: {}, directions: ['d'] },
     new Map([['dir:d', rec({})], ['std:s', rec({ kind: 'std', parent: 'dir:d' })]]),
     new Map([['dev', { role: 'dev', words: 'w', model: 'm' }]]),
     2,
   )
-const spec = (sections: ReadonlyArray<string>) => ({ name: 'n', goal: 'g', sections, role: 'dev' })
+const spec = (sections: ReadonlyArray<string>) => ({ name: 'n', goal: 'g', sections, facts: {}, role: 'dev' })
 
 // One accepted act: refused or not is part of the case.
 const go = (s: WorkState, who: Actor, body: Body): WorkState => {

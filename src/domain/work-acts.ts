@@ -1,5 +1,6 @@
 // Shared item and payload schemas for the C16 acts.
 import { Schema, SchemaGetter } from 'effect'
+import { ContextFacts, ScopeConditions } from './files.ts'
 
 const setOf = <V extends Schema.Top>(value: V) =>
   Schema.Array(value).pipe(
@@ -19,7 +20,7 @@ export const ItemRec = Schema.Struct({
   parent: Schema.NullOr(Str),
   name: Str,
   says: Str,
-  where: Schema.NullOr(Strs),
+  where: Schema.NullOr(ScopeConditions),
   test: Schema.NullOr(Str),
   ref: Schema.NullOr(Str),
   form: Form,
@@ -33,7 +34,7 @@ export type ItemRec = typeof ItemRec.Type
 export const Level = Schema.Literals(['Split', 'Fit', 'Principle', 'Direct', 'Standard'])
 export const Verdict = Schema.Literals(['Pass', 'Fail', 'RaiseTries', 'RaiseNoRule', 'RaiseMisses'])
 export const RoleDraft = Schema.Struct({ role: Str, words: Str, model: Str })
-export const TaskSpec = Schema.Struct({ name: Str, goal: Str, sections: Strs, role: Str })
+export const TaskSpec = Schema.Struct({ name: Str, goal: Str, sections: Strs, role: Str, facts: ContextFacts })
 export const Versions = Schema.Array(Schema.Tuple([Str, Int])).pipe(
   Schema.decodeTo(Schema.ReadonlyMap(Str, Int), {
     decode: SchemaGetter.transform((pairs) => new Map(pairs)),

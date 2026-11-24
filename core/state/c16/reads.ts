@@ -1,5 +1,6 @@
 // The shared reads of protocol.qnt (records, epochs, live maker, done, the ladder, the asks) and
 // the allocation of ask occurrence ids (contract D1). Pure: no act's behaviour here.
+import { matchesScope } from '../../schema/index.ts'
 import type { DraftItems, ItemKey, Level, Versions } from './data.ts'
 import { CLOSED, type Fix, type Maker, type Stage, type Task, type WorkState } from './state.ts'
 import {
@@ -14,7 +15,7 @@ import {
   pairKey,
 } from './types.ts'
 
-// Item scope follows the hierarchy and the sections of the task.
+// Item scope follows the hierarchy and the task's sections and facts.
 export const verOf = (v: Versions, x: ItemKey): number => v.get(x) ?? 0
 export const applies = (s: WorkState, x: ItemKey, t: Task): boolean => {
   const r = s.items.get(x)
@@ -22,7 +23,7 @@ export const applies = (s: WorkState, x: ItemKey, t: Task): boolean => {
   if (r.kind === 'dir') return t.directions.includes(x.slice('dir:'.length))
   if (r.parent === null || !applies(s, r.parent, t)) return false
   if (r.kind === 'rule') return true
-  return r.where === null || r.where.some((section) => t.sections.includes(section))
+  return r.where === null || matchesScope(Object.entries(r.where), t.sections, (key) => t.facts[key])
 }
 export const appliesTo = (s: WorkState, t: Task): ReadonlyArray<ItemKey> =>
   [...s.items.keys()].filter((x) => applies(s, x, t))

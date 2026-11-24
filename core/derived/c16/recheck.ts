@@ -17,7 +17,7 @@ export const recheckInput = (state: WorkState, taskId: string, events: ReadonlyA
   const body = previous?._tag === 'Work' && previous.create._tag === 'Acted' &&
     previous.create.act.body._tag === 'Report' ? previous.create.act.body : null
   const brief: RecheckBrief = {
-    goal: task.goal, sections: task.sections, output: body?.output ?? null, files: body?.files ?? [],
+    goal: task.goal, sections: task.sections, facts: task.facts, output: body?.output ?? null, files: body?.files ?? [],
     rules: keys.map((item) => {
       const rule = state.items.get(item)
       return {

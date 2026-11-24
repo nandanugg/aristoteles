@@ -130,11 +130,16 @@ made with.
   `work direction reject <draft> --reason=<why>`, before a top task is open.
 - A change of a direction: `work direction revise [<token>] <direction> --file=<edit.yaml>`.
   The file adds, replaces, or removes standards.
+- A standard's `where` can name `section`, `system`, `field`, `language`, `repo`, `audience`,
+  and `output`. Every key must match. For example, `{ section: design, output: hld }` reaches
+  the design section of an HLD. Set facts with `work top open --context output=hld` or
+  add them to individual tasks with `work send --context output=hld`.
 - A change that the pipeline role makes after a raised task: it writes a draft file, a map from
   item keys (`dir:<id>`, `std:<id>`, `rule:<id>`) to the whole record (`says`, `where`, `test`,
   `ref`, `examples`), or `null` to remove one. It sends it with
   `work ship <token> <fix> <file> --on <n>`. Use `work ask-edit --file=<edit.yaml> --on <n>`
   for the person's edit while a top is open.
+  In these records use a list of values per condition, such as `where: { output: [hld] }`.
   An example is `{ fits: follows|breaks, sample: <text> }`. A test must print lines on each
   `breaks` sample and none on a `follows` sample, of its own rule and of the other rules of
   the direction.

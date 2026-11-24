@@ -34,6 +34,37 @@ const opened = async () => {
 }
 
 describe('the acts of the work model, by the CLI', () => {
+  test('the top stores every scope condition and a TSD brief excludes the HLD-only rule', async () => {
+    const scoped = DIRECTION.replace('where: { section: introduction }',
+      'where: { section: introduction, output: [hld], audience: reviewer }')
+    const { p } = await h.initiated({
+      'aristoteles.yaml': PIPED, 'directions/tsd-writing.yaml': scoped,
+    })
+    const top = h.ok(await p.nanda('top open --name=TSD --goal=Write --sections=introduction ' +
+      '--context output=tsd,audience=reviewer --context=repo=docs'))
+    const { host, 'role:section-lead': lead } = tokens(top.out)
+    const state = () => foldWork(eventsOf(p.dir))!.state
+    expect(state().top.facts).toEqual({ output: 'tsd', audience: 'reviewer', repo: 'docs' })
+    expect([...state().items.values()].find((item) => item.name === 'intro-story')?.where)
+      .toEqual({ section: ['introduction'], output: ['hld'], audience: ['reviewer'] })
+    const send = `send ${host} --name=Intro --goal=Write --sections=introduction --role=section-lead`
+    const before = state().seq
+    const invalid = await p.agent(`${send} --context=output=hld`)
+    expect(invalid.code).toBe(1)
+    expect(invalid.err).toContain('context key "output" cannot change its parent')
+    expect(state().seq).toBe(before)
+    h.ok(await p.agent(`${send} --context=system=reporting,output=tsd`))
+    expect(state().tasks.get('t1')?.facts).toEqual({
+      output: 'tsd', audience: 'reviewer', repo: 'docs', system: 'reporting',
+    })
+    const maker = made(h.ok(await p.agent(`assign ${lead} t1`)).out)
+    const brief = h.ok(await p.agent(`brief ${maker}`)).out
+    expect(brief).toContain('Context: output=tsd')
+    expect(brief).toContain('no-code-proof')
+    expect(brief).not.toContain('intro-story')
+    expect(brief).not.toContain('repeatable')
+  }, 120000)
+
   test('a whole run: send, assign, brief, report (caught, fixed), review, end', async () => {
     const { p, t, seq, top } = await opened()
     expect(top.out).toContain('Top "TSD" opened')

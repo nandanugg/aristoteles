@@ -158,10 +158,11 @@ const RULE_REC = (rec: ItemRec, form: string, says: string): ItemRec => {
 const keys = (names: ReadonlyArray<string>): ReadonlySet<ItemKey> =>
   new Set(names.map((x) => KEY[x]!))
 
-const spec = (slot: number, sections: ReadonlyArray<string>): TaskSpec => ({
+const spec = (slot: number, sections: ReadonlyArray<string>, outputHld = false): TaskSpec => ({
   name: `t${slot}`,
   goal: 'g',
   sections,
+  facts: outputHld ? { output: 'hld' } : {},
   role: ROLE,
 })
 
@@ -205,7 +206,7 @@ export const tsAct = (
           return { _tag: 'Open', open: { _tag: 'OpenQuestion', to, question } }
         }
         if (a.from === 'Host') {
-          const sp = spec(a.about, sectionsOf(a.about, c.sections))
+          const sp = spec(a.about, sectionsOf(a.about, c.sections), post.tasks.get(a.about)?.outputHld)
           return { _tag: 'Open', open: { _tag: 'OpenSend', spec: sp } }
         }
         if (a.from === 'Role') {
@@ -230,7 +231,7 @@ export const tsAct = (
         const slot = a.about
         const bad = post.tasks.get(slot)?.badResult === true
         const catching = ['R0', 'R1'].filter((r) =>
-          applies(r, slot) && pre.ruleForm.get(Number(r.slice(1))) === 'Mech'
+          applies(pre, r, slot) && pre.ruleForm.get(Number(r.slice(1))) === 'Mech'
         )
         return {
           _tag: 'Report',
@@ -273,7 +274,8 @@ export const tsAct = (
         const task = s.tasks.get(slotTask(fix))
         const base = { _tag: 'Evaluate', fix: fixId(fix), summary: 'cause' } as const
         if (finding.tag === 'Splits') {
-          const parts = (task?.sections ?? []).map((x) => spec(fix, [x]))
+          const parts = (task?.sections ?? []).map((x, index) =>
+            spec(fix, [x], index === 0 && finding.value['addsOutput'] === true))
           return { ...base, level: 'Split', parts, roleDraft: null }
         }
         if (finding.tag === 'FitsRole') {

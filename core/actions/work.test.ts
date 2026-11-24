@@ -71,7 +71,7 @@ const call = (
 })
 const send = (id: string): Body => ({
   _tag: 'Open', open: { _tag: 'OpenSend',
-    spec: { name: id, goal: 'g', sections: ['intro'], role: 'section-lead' } },
+    spec: { name: id, goal: 'g', sections: ['intro'], facts: {}, role: 'section-lead' } },
 })
 const make: Body = { _tag: 'Open', open: { _tag: 'OpenMake', task: 't1' } }
 const askId = (dir: string, kind: 'Check' | 'Execute') =>
@@ -304,9 +304,12 @@ test('question, replay, page-only and ended refusals are typed through the dispa
 }, 90000)
 
 test('the recheck brief is read-only and a verdict covers exactly the inspected items on its basis', async () => {
-  const { p } = await h.started({ 'aristoteles.yaml': PIPED, 'directions/tsd-writing.yaml': EVIDENT })
+  const scoped = EVIDENT.replace('where: { section: introduction }', 'where: { section: intro, output: hld }')
+  const { p } = await h.started({ 'aristoteles.yaml': PIPED, 'directions/tsd-writing.yaml': scoped })
   const at = p.now()
-  const top = value(await run(p.dir, at, openTop({ by: NANDA, name: 'TSD', goal: 'g', sections: ['intro'] })))
+  const top = value(await run(p.dir, at, openTop({
+    by: NANDA, name: 'TSD', goal: 'g', sections: ['intro'], facts: { output: 'tsd' },
+  })))
   const pipe = `w.pipe.0.${top.secrets.find(({ actor }) => actor === 'pipe')?.secret}`
   const current = () => foldWork(eventsOf(p.dir))!.state
   const step = async (who: string, body: Body) =>
@@ -318,7 +321,7 @@ test('the recheck brief is read-only and a verdict covers exactly the inspected 
   await step('role:section-lead', { _tag: 'Review', ask: askId(p.dir, 'Check'), verdict: 'Pass', points: [] })
   const edit = async (says: string) => {
     const draft = new Map([...current().items].filter(([, item]) =>
-      item.kind === 'dir' || item.name === 'no-code-proof' || item.name === 'no-ticket-ids')
+      item.kind === 'dir' || ['no-code-proof', 'no-ticket-ids', 'intro-story'].includes(item.name))
       .map(([key, item]) => [key, { ...item, says }]))
     await step('human', { _tag: 'AskEdit', draft })
     await step('pipe', { _tag: 'Advance', fix: EDIT })
@@ -334,13 +337,16 @@ test('the recheck brief is read-only and a verdict covers exactly the inspected 
   const mech = [...current().items].find(([, item]) => item.name === 'no-code-proof')![0]
   const both = [...current().items].find(([, item]) => item.name === 'no-ticket-ids')![0]
   const dir = [...current().items].find(([, item]) => item.kind === 'dir')![0]
+  const hld = [...current().items].find(([, item]) => item.name === 'intro-story')![0]
   const count = () => eventsOf(p.dir).length
   const before = count()
   const brief = h.ok(await p.agent('recheck-brief t1')).out
   expect(brief).toContain(`Basis: --on ${basis}`)
+  expect(brief).toContain('Context: output=tsd')
   expect(brief).toContain(`${both} @1: new evidence`)
   expect(brief).toContain(`${dir} @1: new evidence`)
   expect(brief).not.toContain(mech)
+  expect(brief).not.toContain(hld)
   expect(count()).toBe(before)
   expect((await p.agent(`recheck ${pipe} t1 holds --on ${basis}`)).code).not.toBe(0)
   expect((await p.agent(`recheck ${pipe} t1 holds --items=${both} --on ${basis}`)).code).not.toBe(0)

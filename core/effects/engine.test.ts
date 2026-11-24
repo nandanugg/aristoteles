@@ -188,7 +188,7 @@ describe('engineTick', () => {
     t.p.write('docs/tsd.md', '# TSD\n\nBAD line\n')
     const spec = (name: string, section: string): Body => ({
       _tag: 'Open', open: { _tag: 'OpenSend',
-        spec: { name, goal: 'g', sections: [section], role: 'section-lead' } },
+        spec: { name, goal: 'g', sections: [section], facts: {}, role: 'section-lead' } },
     })
     const make = async (task: string, maker: string) => {
       await t.go(LEAD, { _tag: 'Open', open: { _tag: 'OpenMake', task } })

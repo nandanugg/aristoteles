@@ -40,7 +40,7 @@ import { actorOf, keyOf, type Act, type Actor, type Body, type RefusalName }
   from '../state/c16/types.ts'
 import type { Example, ItemKey, ItemRec, RoleDraft, Versions } from '../state/c16/data.ts'
 import { Refusal as WorkRefusal } from '../schema/errors.ts'
-import { NonBlank } from '../schema/index.ts'
+import { type ContextFacts, NonBlank } from '../schema/index.ts'
 
 const HOST = { _tag: 'Host' } as const
 const HUMAN = { _tag: 'Human' } as const
@@ -556,6 +556,7 @@ export interface OpenCall {
   readonly name: string
   readonly goal: string
   readonly sections: ReadonlyArray<string>
+  readonly facts?: ContextFacts
   // An activated workflow: the managed session of the bound host (the startup side finds it by
   // its launch); required then, ignored otherwise.
   readonly hostSession?: string
@@ -600,14 +601,13 @@ const itemsOf = (w: Work): ReadonlyArray<readonly [ItemKey, ItemRec]> =>
     const parts = v.standards.flatMap((entry) => {
       const std = w.standards.get(entry)
       if (std === undefined) return []
-      const sections = std.where._tag === 'Where' ? std.where.conditions.get('section') : undefined
       const s: ItemRec = {
         ...none,
         kind: 'std',
         parent: `dir:${id}`,
         name: std.id,
         says: std.says,
-        where: sections ?? null,
+        where: std.where._tag === 'Where' ? Object.fromEntries(std.where.conditions) : null,
         // a standard shows the cases of its rules
         examples: examplesOf(std.rules.flatMap((r) => w.rules.get(r)?.evidence?.cases ?? [])),
       }
@@ -756,6 +756,7 @@ export const writeTop = (call: OpenCall, managed: boolean) =>
             name: call.name,
             goal: call.goal,
             sections: call.sections,
+            facts: call.facts ?? {},
             directions: items
               .filter(([, r]) => r.kind === 'dir')
               .map(([x]) => x.slice('dir:'.length)),

@@ -135,7 +135,7 @@ describe('a draft of a direction', () => {
     const yaml = 'add:\n  - { id: w1, says: x, where: { stage: y } }\n'
     expect(refusedWith(d, REVISER(p), revise('r7.yaml', yaml))).toBe(
       'r7.yaml: standard w1: where key "stage" is not one of system, field, language, repo, ' +
-        'section, audience',
+        'section, audience, output',
     )
   })
 

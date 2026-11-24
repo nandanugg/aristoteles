@@ -47,7 +47,7 @@ const send = (name: string, section: string): Body => ({
   _tag: 'Open',
   open: {
     _tag: 'OpenSend',
-    spec: { name, goal: 'g', sections: [section], role: 'section-lead' },
+    spec: { name, goal: 'g', sections: [section], facts: {}, role: 'section-lead' },
   },
 })
 const make = (task: string): Body => ({ _tag: 'Open', open: { _tag: 'OpenMake', task } })
@@ -114,7 +114,7 @@ describe('the wait loop', () => {
     const { act, waited } = await setup()
     await act(call(HUMAN, { _tag: 'Revive', actor: HOST }))
     await act(call(HOST, { _tag: 'Open', open: { _tag: 'OpenSend',
-      spec: { name: 'all', goal: 'g', sections: ['a', 'b'], role: 'section-lead' } } }, 1))
+      spec: { name: 'all', goal: 'g', sections: ['a', 'b'], facts: {}, role: 'section-lead' } } }, 1))
     await act(call(LEAD, make('t1')))
     await act(call(HOST, ask(LEAD, 'which section first?'), 1))
     const owedToLead = await waited({ actor: LEAD })

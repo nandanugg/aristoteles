@@ -86,6 +86,8 @@ the person. Your steps:
 - **Send a task** to a persistent role:
   `work send <token> --name="<...>" --goal="<...>" --sections=a,b --role=<role>`. Cover the
   sections of the top; each part owns a strict part of them; one section is the smallest task.
+  The task inherits the top's facts. Add a missing fact with `--context output=hld`, or give
+  several with repeated flags or `--context=output=hld,audience=reviewer`. Inherited values must match.
   Choose the role whose description names this kind of work.
 - **Reassign** (`work reassign <token>`) after a change that is more than a role change: it
   sends the work that the change touches again.
@@ -155,7 +157,7 @@ You are `pipe`. You run every evaluation, the direction pipeline, and the review
   `work evaluate <token> <task> split|fit|principle|direction|standard --summary="<...>"
   [--parts=<file>] [--role-draft=<file>] --on <n>`.
   - `split`: the task is too big. The parts file is a list of `{ name, goal, sections, role }`;
-    each part owns a strict part of the sections.
+    each part owns a strict part of the sections. Optional `facts` adds context keys the parent lacks.
   - `fit`: the role has the wrong words. The role-draft file has `role`, `words`, `model`.
   - `principle`: the cause is a principle. The person decides.
   - `direction`: the direction is wrong or silent here.
@@ -169,7 +171,7 @@ You are `pipe`. You run every evaluation, the direction pipeline, and the review
   has `id`, `standard`, `says`, `examples` (`{ fits: follows|breaks, sample: <text> }`, at least
   one of each), and the evidence: `test` (a command; no output means the result holds, each
   printed line is a point. It gets the files of the extracted sections as arguments), and/or
-  `ref` (`file#anchor:lines`, which must exist). Optional `where` takes a list of sections.
+  `ref` (`file#anchor:lines`, which must exist). Scope belongs to the standard's `where`.
   For a reference-only rule, name any contradicted rules with `--fights=rule:a,rule:b`.
 - **Test it:** `work rule-test <token> <fix> --on <n>`. The test must print on each `breaks`
   sample and stay silent on each `follows` sample, of its own rule and of the other rules of the

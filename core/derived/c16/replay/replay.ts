@@ -31,7 +31,7 @@ import {
   modelOwed,
   modelTold,
   modelWaits,
-  storeOf,
+  traceStore,
 } from './model.ts'
 import { advance, canonState, initial, owedTexts, project, start, told, waits } from './project.ts'
 
@@ -57,7 +57,7 @@ export interface Replayed {
 // accept of that fix after it, before the fix ships again.
 export const shipResolves = (trace: Trace, at: number, fix: number): boolean => {
   for (let j = at + 1; j < trace.states.length; j++) {
-    const pre = storeOf(trace.states[j - 1]!.store)
+    const pre = traceStore(trace, j - 1)
     const m = modelActOf(trace.states[j]!.action, trace.states[j]!.picks, pre)
     if (m.tag === 'Ship' && m.value['fix'] === fix) return false
     if (m.tag === 'Respond' && m.value['reply'] === 'AcceptIt' &&
@@ -69,13 +69,13 @@ export const shipResolves = (trace: Trace, at: number, fix: number): boolean => 
 }
 
 export const replay = (trace: Trace): Replayed => {
-  const first = storeOf(trace.states[0]!.store)
+  const first = traceStore(trace, 0)
   let ctx = start([...first.tasks.keys()])
-  let s = initial(ctx.slots)
+  let s = initial(ctx.slots, { outputScoped: first.outputScoped })
   const fail = (step: number, what: string, lines: ReadonlyArray<string>): never => {
     throw new Error(`${trace.instance} step ${step}: ${what}\n  ${lines.join('\n  ')}`)
   }
-  const compare = (step: number, model: ReturnType<typeof storeOf>): void => {
+  const compare = (step: number, model: ReturnType<typeof traceStore>): void => {
     const cmp: Cmp = canonical(modelCmp(model))
     const lines = diff(cmp, project(s, ctx))
     if (lines.length > 0) fail(step, 'the state differs from the model (model | ts)', lines)
@@ -90,8 +90,8 @@ export const replay = (trace: Trace): Replayed => {
   }
   compare(0, first)
   for (let i = 1; i < trace.states.length; i++) {
-    const pre = storeOf(trace.states[i - 1]!.store)
-    const post = storeOf(trace.states[i]!.store)
+    const pre = traceStore(trace, i - 1)
+    const post = traceStore(trace, i)
     const { action, picks } = trace.states[i]!
     const m = modelActOf(action, picks, pre)
     const said = toldTextOf(m)

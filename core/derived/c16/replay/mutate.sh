@@ -22,8 +22,12 @@ root, work = sys.argv[1], sys.argv[2]
 EFFECT = 'core/state/c16/effect.ts'
 ACCEPT = 'core/derived/c16/accept.ts'
 OBLIG = 'core/derived/c16/obligations.ts'
+READS = 'core/state/c16/reads.ts'
 # (name, file, old text, new text)
 MUTANTS = [
+  ('scope: a standard drops non-section conditions', READS,
+   'matchesScope(Object.entries(r.where), t.sections',
+   "matchesScope(Object.entries(r.where).filter(([key]) => key === 'section'), t.sections"),
   ('effect: a failed review does not count the try', EFFECT,
    "setT(closed, i, (z) => ({ ...z, state: 'Working', tries: z.tries + 1 }))",
    "setT(closed, i, (z) => ({ ...z, state: 'Working', tries: z.tries }))"),

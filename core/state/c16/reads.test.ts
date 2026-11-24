@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   advance,
   allDone,
+  appliesTo,
   askCountOf,
   asksAbout,
   closeAsk,
@@ -15,6 +16,7 @@ import {
 } from './reads.ts'
 import { ASK_CAP, initState, type Task, type WorkState } from './state.ts'
 import type { Actor } from './types.ts'
+import type { ItemRec } from './data.ts'
 
 const host: Actor = { _tag: 'Host' }
 const role: Actor = { _tag: 'Role', name: 'dev' }
@@ -23,7 +25,7 @@ const human: Actor = { _tag: 'Human' }
 const maker = (id: string): Actor => ({ _tag: 'Maker', id })
 
 const base = (): WorkState =>
-  initState({ name: 't', goal: 'g', sections: ['a', 'b'], directions: [] }, new Map(), new Map(), 3)
+  initState({ name: 't', goal: 'g', sections: ['a', 'b'], facts: {}, directions: [] }, new Map(), new Map(), 3)
 
 const task = (id: string, over: Partial<Task> = {}): Task => ({
   id,
@@ -32,6 +34,7 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   role: 'dev',
   parent: null,
   sections: [],
+  facts: {},
   directions: [],
   generation: 0,
   state: 'Done',
@@ -49,6 +52,26 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
 const withTasks = (s: WorkState, ts: ReadonlyArray<Task>): WorkState => ({
   ...s,
   tasks: new Map(ts.map((t) => [t.id, t])),
+})
+
+test('an HLD-only standard does not reach a TSD task with the same section id', () => {
+  const dir: ItemRec = {
+    kind: 'dir', name: 'writing', says: '', parent: null, where: null,
+    test: null, ref: null, form: 'none', examples: [],
+  }
+  const standard: ItemRec = {
+    ...dir, kind: 'std', parent: 'dir:writing',
+    where: { section: ['intro', 'design'], output: ['hld'], audience: ['reviewer', 'author'] },
+  }
+  const rule: ItemRec = { ...dir, kind: 'rule', parent: 'std:hld' }
+  const state = { ...base(), items: new Map([['dir:writing', dir], ['std:hld', standard], ['rule:hld', rule]]) }
+  const scope = { sections: ['unrelated', 'intro'], directions: ['writing'] }
+  const items = (facts: Task['facts'], sections = scope.sections) =>
+    appliesTo(state, task('t1', { ...scope, sections, facts }))
+  expect(items({ output: 'hld', audience: 'reviewer' })).toEqual(['dir:writing', 'std:hld', 'rule:hld'])
+  expect(items({ output: 'tsd', audience: 'reviewer' })).toEqual(['dir:writing'])
+  expect(items({ output: 'hld' })).toEqual(['dir:writing'])
+  expect(items({ output: 'hld', audience: 'reviewer' }, ['unrelated'])).toEqual(['dir:writing'])
 })
 
 describe('ask ids', () => {

@@ -49,11 +49,26 @@ export const valueAt = (context: Context, key: ConditionKey): string | undefined
 export const sectionOf = (context: Context): string | null =>
   context.section._tag === 'Section' ? context.section.id : null
 
-// A standard applies where each of its conditions matches the task's context: the task's value
-// is one of the values of the condition.
-export const applies = (where: Where, context: Context): boolean =>
-  where._tag === 'Everywhere' ||
-  [...where.conditions].every(([key, values]) => {
-    const value = valueAt(context, key)
-    return value !== undefined && values.includes(value)
-  })
+// Each condition is required. Section scope can match any section the task owns.
+export const matchesScope = (
+  conditions: Iterable<readonly [string, readonly string[]]>,
+  sections: readonly string[],
+  factAt: (key: string) => string | undefined,
+): boolean => {
+  for (const [key, values] of conditions) {
+    if (key === 'section') {
+      if (!sections.some((section) => values.includes(section))) return false
+    } else {
+      const value = factAt(key)
+      if (value === undefined || !values.includes(value)) return false
+    }
+  }
+  return true
+}
+
+export const applies = (where: Where, context: Context): boolean => {
+  if (where._tag === 'Everywhere') return true
+  const section = sectionOf(context)
+  return matchesScope(where.conditions, section === null ? [] : [section],
+    (key) => context.facts.get(key as FactKey))
+}

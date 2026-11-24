@@ -135,6 +135,7 @@ const addTask = (s: WorkState, id: string, spec: TaskSpec, parent: Task | null):
     role: spec.role,
     parent: parent === null ? null : parent.id,
     sections: spec.sections,
+    facts: { ...(parent?.facts ?? s.top.facts), ...spec.facts },
     directions: parent === null ? s.top.directions : parent.directions,
     generation: 0,
     state: 'Sent',
@@ -308,13 +309,17 @@ const itemsInEffect = (s: WorkState, i: string): WorkState => {
   const tasks = new Map(s2.tasks)
   const ruleChange = [...c].some((x) => kindOf(x) === 'rule')
   for (const [j, t] of s2.tasks) {
+    const pending = [...t.pending].filter((x) => !s2.items.has(x) || applies(s2, x, t))
+    if (pending.length !== t.pending.size) {
+      tasks.set(j, { ...t, pending: new Set(pending), at: s.seq })
+    }
     if (j === i) continue
     const fought = ruleChange && ['Done', 'Raised', 'InReview'].includes(t.state)
       ? [...f.fights].filter((x) => !c.has(x) && applies(s2, x, t))
       : []
     const hit = t.state === 'Done' ? [...c].filter((x) => applies(s2, x, t)) : []
     if (fought.length + hit.length > 0) {
-      tasks.set(j, { ...t, pending: new Set([...t.pending, ...fought, ...hit]), at: s.seq })
+      tasks.set(j, { ...t, pending: new Set([...pending, ...fought, ...hit]), at: s.seq })
     }
   }
   // Rebase: a draft built before a direction change, or at the person over the same items.
