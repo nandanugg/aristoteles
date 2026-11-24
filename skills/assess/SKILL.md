@@ -98,9 +98,15 @@ areas you could not search or verify and report them as unknown.
 - the recent history: `git log --oneline -50`, and the words "always", "never", "must" in the
   docs and the agent files.
 
-Group what you found into directions, one idea each. Draft a direction only when the project
-shows it in at least two places, or a document of the project states it. Leave out a topic with
-one weak sign, and name it in your report. Keep competing stated sources with their locations
+Group what you found into directions, one idea each: an idea a reviewer can check on its own,
+not a broad quality. Draft a direction only when the project shows it in at least two places, or
+a document of the project states it. Leave out a topic with one weak sign, and name it in your
+report. When the project has several output types (templates, doctypes, kinds of change),
+compare their instructions and how each is invoked, topic by topic, before drafting: draft what
+they share once, and scope what only one type asks for to that type. Discovery is complete when
+each topic of each type maps to a direction or is named as left out (a small topic by type map
+in the report); a check program covering every rule says nothing about this coverage. Ask the
+owner only where the types differ by a choice the sources do not settle. Keep competing stated sources with their locations
 for a question on the direction. As you discover who makes or checks the work, draft
 provisional role responsibilities for the later roles step. Read `work guide writing` and
 `work guide direction-review` first: write and check every draft with them.
@@ -251,7 +257,9 @@ outputs it governs, and give it a `where` for them; leave `where` out only when 
 applies to every section. When one standard holds a rule for every section and a rule for some
 sections, split it into two standards. The marked steps of the flow show the same scope: the
 outputs in their `uses` are the ones that the direction governs. A check of the whole result
-goes to the role that reviews the whole (see the loop above), not to each part.
+goes to the role that reviews the whole (see the loop above), not to each part. Inside a top a
+`where` matches section ids only: when two output types share a section id with different
+requirements, both scopes reach that section, so name the collision in the report.
 
 **The principles** (`from`). Each principle asks one question, and `work guide writing` gives
 the question of each. A direction grounds in the one or two whose question it answers. Name a
