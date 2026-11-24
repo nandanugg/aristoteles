@@ -232,6 +232,7 @@ standards:
           check: { _tag: Command, result: <what the command returned> }
           cases:
             - { fit: Follows, output: { file: <path>, line: <line>, excerpt: <real output> } }
+            - { fit: Follows, output: { written: <illustrative output>, mark: <key line from the output> } }
           knownBreaks: []
 ```
 
@@ -307,8 +308,8 @@ output answers something: what the maker or checker received (its instruction, s
 X" or "make Y", or the file it worked from). A following and a breaking case form a pair with the
 same input, so the two outputs show what the rule tells apart. A real case gives the exact file, line and
 excerpt. When real cases are sparse, record what you searched and use a labelled illustrative
-output (`{ written: ... }`) where it helps. With no observed break, leave the breaking case
-list empty and name the coverage. Unknown coverage stays unknown. Replacing cases during
+output (`{ written: ..., mark: ... }`) with its key line in `mark`. With no observed break,
+leave the breaking case list empty and name the coverage. Unknown coverage stays unknown. Replacing cases during
 onboarding is an evidence revision and creates no direction version.
 
 A check's evidence is `{ _tag: Command, result: ... }` with the rule's `test`, or

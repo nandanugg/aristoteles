@@ -42,6 +42,7 @@ import { startStateOf } from '../../core/actions/index.ts'
 import { type OnboardingFiles, sha } from '../../core/services/index.ts'
 import { STATUS_MS, STATUS_WORDS } from '../live/status.ts'
 import { startFixWords } from '../words/index.ts'
+import { lineDiff } from './line-diff.ts'
 
 // The views as the wire has them (the Schemas of contract.ts).
 type DirView = typeof DirViewSchema.Type
@@ -55,32 +56,6 @@ export interface ViewContext {
 
 const workOf = (d: Derived): Work => d.moment.work
 
-
-// The lines of two texts as a diff (' ', '-', '+'), by the longest common subsequence.
-export const lineDiff = (before: string, after: string): ReadonlyArray<string> => {
-  const a = before === '' ? [] : before.split('\n')
-  const b = after === '' ? [] : after.split('\n')
-  const same = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0))
-  const at = (i: number, j: number) => same[i]?.[j] ?? 0
-  for (let i = a.length - 1; i >= 0; i--) {
-    for (let j = b.length - 1; j >= 0; j--) {
-      const row = same[i] as number[]
-      row[j] = a[i] === b[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1))
-    }
-  }
-  const lines: string[] = []
-  let i = 0
-  let j = 0
-  while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) {
-      lines.push(` ${a[i++]}`)
-      j++
-    } else if (i < a.length && (j === b.length || at(i + 1, j) >= at(i, j + 1))) {
-      lines.push(`-${a[i++]}`)
-    } else lines.push(`+${b[j++]}`)
-  }
-  return lines
-}
 
 // --- the decisions that reach the person ----------------------------------------------------
 
@@ -175,7 +150,7 @@ const evidenceReader = (dir: string) => {
     return { file: s.file, line: s.line, excerpt: s.excerpt, current: spotCurrent(text, s), around: aroundOf(text, s) }
   }
   const sampleOf = (s: Example['output']): ExampleView['output'] =>
-    isSpot(s) ? spotOf(s) : { written: s.written }
+    isSpot(s) ? spotOf(s) : s
   const exampleOf = (e: Example): ExampleView => ({
     fit: e.fit,
     input: e.input ? sampleOf(e.input) : null,

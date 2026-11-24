@@ -78,8 +78,8 @@ between them, at least one case that follows and one that breaks. A case gives i
 the input it answers when there is one: the instruction or file the maker or checker received
 (the two cases of a pair share it). A sample is
 real (a file, a line, a short excerpt of the file as it is today; stale when the excerpt leaves
-the file) or, when the project has none, written: `{ written: <the output> }` (labelled
-illustrative on the page).
+the file) or, when the project has none, illustrative with its key line in `mark`
+(`{ written: <the output>, mark: <key line> }`).
 
 ```yaml
       - id: one-topic
@@ -90,7 +90,7 @@ illustrative on the page).
           knownBreaks: []
           cases:
             - { fit: Follows, output: { file: docs/tsd/export.md, line: 7, excerpt: "## Design" } }
-            - { fit: Breaks, output: { written: "## Design and rollout" } }
+            - { fit: Breaks, output: { written: "## Design and rollout", mark: "## Design and rollout" } }
 ```
 
 Use `replace` in a revise to update the evidence of an existing rule. When

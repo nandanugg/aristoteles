@@ -249,7 +249,7 @@ export interface ExampleView {
   readonly output: SampleView
 }
 // A real place of the project, or the host's own words when the project has none.
-export type SampleView = SpotView | { readonly written: Text }
+export type SampleView = SpotView | { readonly written: Text; readonly mark?: Text }
 // One real place of an example. current: its excerpt is in its file now. around: the real code, so the
 // person sees the place (Nanda, 2026-11-15): 3 lines above and 3 below the lines of the excerpt
 // (or its line, when the excerpt is gone), the lines of the excerpt marked; none when the file

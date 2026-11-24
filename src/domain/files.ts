@@ -213,7 +213,11 @@ export type Spot = typeof Spot.Type
 const Fit = Schema.Literals(['Follows', 'Breaks'])
 // page: Sample. An input or an output of an example: a real place of the project, or words that
 // the host wrote when the project has none yet (Nanda, 2026-11-15).
-const Written = Schema.Struct({ written: NonBlank })
+const Written = Schema.Struct({ written: NonBlank, mark: Schema.optionalKey(NonBlank) }).pipe(
+  Schema.check(Schema.makeFilter(({ written, mark }) =>
+    mark === undefined || written.includes(mark) || 'mark must appear in the written sample',
+  )),
+)
 export const Sample = Schema.Union([Spot, Written])
 export type Sample = typeof Sample.Type
 export const isSpot = (s: Sample): s is Spot => 'file' in s

@@ -830,16 +830,6 @@ button { font: inherit; color: inherit; }
 .sample-head .where { font: 12.5px var(--mono); overflow-wrap: anywhere; }
 .sample-name { font-weight: 600; }
 .written-tag { font-size: 12px; font-style: italic; color: var(--muted); }
-.written {
-  margin: 0;
-  font: 12px/1.55 var(--mono);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  background: var(--surface-2);
-  border: 1px dashed var(--line-strong);
-  border-radius: 6px;
-  padding: 6px 10px;
-}
 .fit-tag {
   font-size: 11px;
   font-weight: 700;
@@ -864,9 +854,16 @@ button { font: inherit; color: inherit; }
 .sample-code .line { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); white-space: pre; }
 .sample-code .ln { color: var(--faint); text-align: right; padding-right: 10px; user-select: none; }
 .sample-code .t { padding-right: 10px; }
-.sample-code .line.mark { background: var(--amber-tint); }
-.sample-code .line.mark .ln { color: var(--amber); font-weight: 700; }
+.sample-code.written { border: 1px dashed var(--line-strong); }
+.sample-code.written .line { white-space: pre-wrap; overflow-wrap: anywhere; }
+.sample.follows { --sample-mark-bg: var(--accept-tint); --sample-mark-text: var(--accept); }
+.sample.breaks { --sample-mark-bg: var(--reject-tint); --sample-mark-text: var(--reject); }
+.sample-code .line.mark { background: var(--sample-mark-bg, var(--amber-tint)); }
+.sample-code .line.mark .ln { color: var(--sample-mark-text, var(--amber)); font-weight: 700; }
 .sample-code mark { background: var(--amber-line); color: inherit; border-radius: 2px; }
+.sample:is(.follows, .breaks) .sample-code mark {
+  background: color-mix(in srgb, var(--sample-mark-text) 18%, var(--sample-mark-bg));
+}
 .question {
   border: 1px solid var(--amber-line);
   background: var(--amber-tint);

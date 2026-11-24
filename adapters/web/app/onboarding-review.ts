@@ -2,7 +2,7 @@ import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
 import type { DirectionCard, QuestionView } from '../contract.ts'
 import { attempt, postOnboarding } from './api.ts'
-import { ExampleBlock, SampleBlock } from './direction.ts'
+import { casePairs, ExampleBlock, pairedOutputMarks, SampleBlock } from './direction.ts'
 import { FlowDiagram } from './flow.ts'
 import { Inline } from './markdown.ts'
 import { Modal } from './modal.ts'
@@ -107,6 +107,7 @@ function CasePair({ pass, fail }: { pass: Example | undefined; fail: Example | u
   const passInput = pass?.input
   const failInput = fail?.input
   const input = passInput ?? failInput
+  const { passMarks, failMarks } = pairedOutputMarks(pass?.output, fail?.output)
   return html`<div class="review-rule-case-pair">
     ${passInput && failInput && !sameInput(passInput, failInput) ? html`
       <div class="review-case-input">
@@ -118,23 +119,23 @@ function CasePair({ pass, fail }: { pass: Example | undefined; fail: Example | u
       </div>` : input ? html`
       <div class="review-case-input review-case-box"><${SampleBlock} name="Input" sample=${input} /></div>` : ''}
     <div class="review-case-columns review-case-outputs">
-      ${pass ? html`<div class="review-case-box"><${SampleBlock} name="Output that passes" sample=${pass.output} writtenLabel="made up" /></div>` : ''}
-      ${fail ? html`<div class="review-case-box"><${SampleBlock} name="Output that fails" sample=${fail.output} writtenLabel="made up" /></div>` : ''}
+      ${pass ? html`<div class="review-case-box"><${SampleBlock} name="Output that passes" sample=${pass.output}
+        writtenLabel="made up" fit=${pass.fit} diffMarks=${passMarks} /></div>` : ''}
+      ${fail ? html`<div class="review-case-box"><${SampleBlock} name="Output that fails" sample=${fail.output}
+        writtenLabel="made up" fit=${fail.fit} diffMarks=${failMarks} /></div>` : ''}
     </div>
   </div>`
 }
 
 function RuleEvidence({ rule, paired, conflict }: { rule: Rule; paired: boolean; conflict: boolean }) {
   const examples = rule.examples ?? []
-  const valid = examples.filter((example) => example.fit === 'Follows')
-  const invalid = examples.filter((example) => example.fit === 'Breaks')
+  const observedBreak = examples.some((example) => example.fit === 'Breaks' && 'file' in example.output)
   return html`<div class="rule-evidence">
     ${rule.knownBreak ? html`<span class="chip review-state" data-state="Conflict">Known break</span>` : ''}
-    ${!conflict && rule.searched?.length && !invalid.some((item) => 'file' in item.output) && !rule.knownBreak
+    ${!conflict && rule.searched?.length && !observedBreak && !rule.knownBreak
       ? html`<p class="muted">No break observed in ${rule.searched.join(', ')}.</p>` : ''}
     ${paired && examples.length ? html`<div class="review-case-list">
-      ${Array.from({ length: Math.max(valid.length, invalid.length) }, (_, i) =>
-        html`<${CasePair} pass=${valid[i]} fail=${invalid[i]} />`)}
+      ${casePairs(examples).map(({ pass, fail }) => html`<${CasePair} pass=${pass} fail=${fail} />`)}
     </div>` : ''}
   </div>`
 }

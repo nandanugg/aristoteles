@@ -240,19 +240,39 @@ try {
   rule.evidence.check.result = 'The break remains in the existing code'
   const sharedFile = { file: 'docs/grouping-check.md', line: 3, excerpt: 'Check that each heading names its topic.' }
   const sharedInstruction = { written: 'Check how this document separates topics.' }
-  const writtenCase = (fit, output, input) => ({ fit, output: { written: output }, input })
+  const writtenCase = (fit, written, input, mark) => ({ fit, output: { written, ...(mark && { mark }) }, input })
+  const passExcerpt = '## Watering\nWater twice a week.'
+  const failExcerpt = '# Second title'
+  const explicitPass = writtenCase('Follows', `# Plant Watering Memo\n${passExcerpt}\nOwner: Garden team.`,
+    sharedInstruction, passExcerpt)
+  const explicitFail = writtenCase('Breaks', `# Plant Watering Memo\n${failExcerpt}\nWater twice a week.\nOwner: Plant team.`,
+    sharedInstruction, failExcerpt)
+  const memo = [
+    '# Plant Watering Memo', '## Summary', 'Watering moves to Thursday.', '## Details',
+    '### Background', 'Ferns dry out on Fridays.', '### Option 1', 'Water twice a week.',
+    '## Sign-off', '[Sign-off pending]', '<!-- Aristoteles example doctype: memo -->',
+  ].join('\n\n')
+  const memoWithSecondTitle = memo.replace('Watering moves to Thursday.', `${failExcerpt}\n\nWatering moves to Thursday.`)
   rule.evidence.cases = [
     { ...rule.evidence.cases[0], input: sharedFile },
     { ...rule.evidence.cases[2], input: sharedFile },
     { ...rule.evidence.cases[1], input: principle },
     { fit: 'Breaks', input: { file: 'docs/facts.md', line: 5, excerpt: 'The export ran twice' }, output: code },
-    writtenCase('Follows', 'One heading for each topic.', sharedInstruction),
-    writtenCase('Breaks', 'Two topics under one heading.', sharedInstruction),
-    writtenCase('Follows', 'A section with one topic.'),
-    writtenCase('Breaks', 'A section with two topics.'),
+    explicitPass,
+    explicitFail,
+    writtenCase('Follows', memo),
+    writtenCase('Breaks', memoWithSecondTitle),
+    writtenCase('Follows', 'Heading\nOne topic.\nEnd'),
+    writtenCase('Breaks', 'Heading\nTwo topics.\nEnd'),
   ]
   const prompt = `${sharedFile.excerpt}\nFlag any sections that combine topics.`
   p.write(sharedFile.file, `# Grouping\n\n${prompt}\n\nThis line is outside the reference.\n`)
+  explicitFail.output.mark = 'Absent from the memo'
+  p.write('bad-mark.yaml', Bun.YAML.stringify(draft))
+  const refusedMark = await p.agent(`onboard draft one-thing --file=bad-mark.yaml --revision=${revision}`)
+  expect(refusedMark.code).toBe(1)
+  expect(refusedMark.err).toContain('mark must appear in the written sample')
+  explicitFail.output.mark = failExcerpt
   p.write('direction.yaml', Bun.YAML.stringify(draft))
   ok(await p.agent(`onboard draft one-thing --file=direction.yaml --revision=${revision}`))
   await page.reload()
@@ -322,12 +342,39 @@ try {
   expect(await pairs.nth(2).locator('.review-case-input .sample').count()).toBe(1)
   await visible(pairs.nth(2).getByText(sharedInstruction.written, { exact: true }))
   expect(await pairs.nth(3).locator('.review-case-input').count()).toBe(0)
+  const markedLines = (box) => box.locator('.sample-code .line.mark')
+  const markedText = (box) => markedLines(box).locator('.t').allTextContents()
+  const markedNumbers = (box) => markedLines(box).locator('.ln').allTextContents()
+  const explicitPair = pairs.nth(2)
+  const explicitOutputs = outputs(explicitPair)
+  const diffPair = pairs.nth(3)
+  const diffOutputs = outputs(diffPair)
+  const realOutputs = outputs(differentPair)
+  expect(await markedText(explicitOutputs.first())).toEqual(passExcerpt.split('\n'))
+  expect(await markedNumbers(explicitOutputs.first())).toEqual(['2', '3'])
+  expect(await markedText(explicitOutputs.last())).toEqual([failExcerpt])
+  expect(await markedNumbers(explicitOutputs.last())).toEqual(['2'])
+  expect(await markedText(diffOutputs.first())).toEqual([])
+  expect((await markedText(diffOutputs.last())).filter((line) => line.trim())).toEqual([failExcerpt])
+  expect(await markedNumbers(diffOutputs.last())).toContain('5')
+  const changedOutputs = outputs(pairs.nth(4))
+  expect(await markedText(changedOutputs.first())).toEqual(['One topic.'])
+  expect(await markedText(changedOutputs.last())).toEqual(['Two topics.'])
+  expect(await markedText(realOutputs.first())).toEqual(['## Design'])
+  expect(await markedText(realOutputs.last())).toEqual([code.excerpt])
+  const markColor = (box) => markedLines(box).first().evaluate((line) => getComputedStyle(line).backgroundColor)
+  expect(await markColor(realOutputs.first())).toBe('rgb(236, 253, 243)')
+  expect(await markColor(realOutputs.last())).toBe('rgb(254, 243, 242)')
+  expect(await markColor(explicitOutputs.first())).toBe(await markColor(realOutputs.first()))
+  expect(await markColor(explicitOutputs.last())).toBe(await markColor(realOutputs.last()))
+  expect(await markColor(diffOutputs.last())).toBe(await markColor(realOutputs.last()))
   const loneRule = direction.getByRole('region', { name: extra.id })
   await visible(loneRule.getByText('Output that passes', { exact: true }))
   await visible(loneRule.getByText('No break observed in', { exact: false }))
   const lonePair = loneRule.locator('.review-rule-case-pair')
   await visible(lonePair.getByText('Input', { exact: true }))
   expect(await outputs(lonePair).count()).toBe(1)
+  expect(await markedText(outputs(lonePair))).toEqual([])
   expect((await outputs(lonePair).boundingBox()).width).toBe((await lonePair.boundingBox()).width)
   await visible(direction.getByRole('textbox', { name: 'What should change?' }))
   expect(await direction.getByText('What should change?', { exact: true }).count()).toBe(0)
@@ -336,6 +383,10 @@ try {
   await differentPair.scrollIntoViewIfNeeded()
   await shot('05-direction-differing-inputs.png')
   await loneRule.screenshot({ path: join(shots, '06-direction-valid-only.png'), animations: 'disabled' })
+  const caseShot = (name, scope) => scope.screenshot({ path: join(shots, name), animations: 'disabled' })
+  await caseShot('r52-explicit-marks.png', explicitPair.locator('.review-case-outputs'))
+  await caseShot('r52-plant-memo-diff.png', diffPair.locator('.review-case-outputs'))
+  await caseShot('r52-real-spot-pair.png', differentPair.locator('.review-case-outputs'))
   await page.setViewportSize({ width: 420, height: 900 })
   await expectModalWidth()
   await differentPair.scrollIntoViewIfNeeded()
@@ -349,6 +400,8 @@ try {
   await expectStacked(outputs(differentPair))
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
   await shot('07-direction-narrow-dark.png')
+  await expectStacked(explicitOutputs)
+  await caseShot('r52-narrow-dark.png', explicitPair.locator('.review-case-outputs'))
   await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
   await page.setViewportSize({ width: 1440, height: 900 })
   await button('Close', direction).click()

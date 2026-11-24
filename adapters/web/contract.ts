@@ -61,7 +61,7 @@ const SpotView = Schema.Struct({
   current: Schema.Boolean,
   around: Schema.Array(Schema.Struct({ line: Schema.Number, text: Text, mark: Schema.Boolean })),
 })
-const SampleView = Schema.Union([SpotView, Schema.Struct({ written: Text })])
+const SampleView = Schema.Union([SpotView, Schema.Struct({ written: Text, mark: Schema.optionalKey(Text) })])
 export const ExampleView = Schema.Struct({
   fit: Schema.Literals(['Follows', 'Breaks']),
   input: Schema.NullOr(SampleView),
