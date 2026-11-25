@@ -16,7 +16,7 @@ export type WorkerCommand =
 export type AdmissionCommand =
   | { readonly kind: 'startPipe' | 'yieldPipe' | 'handToPerson' | 'finishPipe'; readonly job: number }
   | { readonly kind: 'decide'; readonly job: number; readonly outcome: Extract<JobPhase, 'Owed' | 'Closed'> }
-  | { readonly kind: 'openMake'; readonly task: number }
+  | { readonly kind: 'openMake' | 'reviewFails'; readonly task: number }
   | { readonly kind: 'endMaker'; readonly task: number; readonly outcome: 'Checking' | 'MakerDown' }
   | { readonly kind: 'releaseAttempt'; readonly task: number; readonly outcome: 'Finished' | 'Queued' }
   | { readonly kind: 'startRecheck' | 'finishRecheck' | 'waitPipe' }
@@ -65,6 +65,7 @@ const admissionCommand = (frame: Frame): AdmissionCommand => {
     case 'decide':
       return { kind, job: Number(input(frame, 'j')), outcome: input(frame, 'outcome') as 'Owed' | 'Closed' }
     case 'openMake':
+    case 'reviewFails':
       return { kind, task: Number(input(frame, 't')) }
     case 'endMaker':
       return { kind, task: Number(input(frame, 't')), outcome: input(frame, 'outcome') as 'Checking' | 'MakerDown' }

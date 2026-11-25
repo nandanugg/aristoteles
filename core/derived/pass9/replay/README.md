@@ -8,7 +8,7 @@ frame and action.
 | Model | Finite witnesses |
 | --- | --- |
 | `worker.qnt` | Hear Host, Role and Pipe, yield with work owed, reject a withdrawn turn, reject an old generation after replacement, and hear an obligation carried through park. |
-| `admission.qnt` | Recheck beside a saturated fix lane, two simultaneous fixes, wait with a saturated positive child allowance, serial review at zero allowance, and separate role ownership inside one worker. |
+| `admission.qnt` | Recheck beside a saturated fix lane, two simultaneous fixes, wait with a saturated positive child allowance, serial review at zero allowance, separate attempt ownership inside one worker, and one role waiting on the other role’s child on shared staff. |
 | `permits.qnt` | Denied second start, serial review, background child recheck, park/recheck/resume, and deferred recheck after compatible capacity returns. |
 
 Run `bun test adapters/cli/pass9-conformance.test.ts core/effects/pass9-conformance.test.ts`

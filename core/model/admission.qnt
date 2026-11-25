@@ -8,12 +8,13 @@
 module admission {
   const CASE: str
   const PIPE_CAP: int
-  const CHILD_ALLOW: int      // the child allowance of a role (0: serial turns only)
+  const CHILD_ALLOW: int      // the child allowance of a worker (0: serial turns only)
   const SEPARATE_LANE: bool   // mutant SharedLane: a recheck takes a fix's Pipe permit
   const SERIAL_ON_FULL: bool  // mutant SerialOnFull: serial turns with a positive allowance
   const CHECK_PIPE: bool
   const RELEASE_ON_YIELD: bool
   const WRONG_OWNER: bool
+  const PER_ROLE_CHILDREN: bool // mutant: ignore children of the other role on the worker
 
   type Task = Queued | Child | Serial | MakerDown | Checking | Finished
   type Job = Owed | Held | AwaitPerson | Closed
@@ -27,16 +28,17 @@ module admission {
   }
   var runtime: Runtime
 
-  // Shared worker in both role instances. Logical role 0 has one background
-  // child slot. In saturation both attempts belong to role 0 (cap 2).
+  // Both roles use worker 0. In saturation both attempts belong to role 0 (cap 2).
   pure val taskIds = if (CASE == "pipe") Set() else Set(0, 1)
   pure val jobIds = if (CASE == "pipe") Set(0, 1, 2) else Set()
   pure def owner(task: int): int = if (CASE == "collocated") task else 0
+  pure val workerOfRole = Set(0, 1).mapBy(_ => 0)
   pure def roleCap(role: int): int = if (CASE == "saturation" and role == 0) 2 else 1
   pure def usesRole(p: Task): bool = Set(Child, Serial, MakerDown, Checking).contains(p)
   pure def usesPipe(p: Job): bool = p == Held
   def roleLoad(role: int): int = runtime.role.filter(t => runtime.owners.get(t) == role).size()
-  def childLoad(role: int): int = runtime.children.filter(t => owner(t) == role).size()
+  def childLoad(worker: int): int =
+    runtime.children.filter(t => workerOfRole.get(owner(t)) == worker).size()
   pure val RECHECK = 2
   def workerFree: bool = not(taskIds.exists(t => runtime.tasks.get(t) == Serial))
   def pipeFull: bool = runtime.pipe.size() >= PIPE_CAP
@@ -112,7 +114,9 @@ module admission {
       Set(Queued, MakerDown).contains(runtime.tasks.get(t))).oneOf()
     val r = owner(t)
     val held = runtime.tasks.get(t) == MakerDown
-    val child = childLoad(r) < CHILD_ALLOW
+    val load = if (PER_ROLE_CHILDREN) runtime.children.filter(t => owner(t) == r).size()
+      else childLoad(workerOfRole.get(r))
+    val child = load < CHILD_ALLOW
     val bound = if (WRONG_OWNER) 0 else r
     val attempts = runtime.role.union(Set(t))
     all {
@@ -179,10 +183,11 @@ module admission {
     jobIds.filter(j => usesPipe(runtime.jobs.get(j)) and not(runtime.lane.contains(j)))
   // (a) a recheck never waits behind a fix's Pipe permit.
   val RecheckIndependent = not(runtime.recheckBehindFix)
-  // (b) no serial turn while the role's child allowance is positive.
+  // (b) no serial turn while the worker's child allowance is positive.
   val NoSerialWithAllowance = not(runtime.serialWithAllowance)
   val Ownership = taskIds.forall(t => runtime.owners.get(t) == owner(t))
-  val RoleBound = Set(0, 1).forall(r => roleLoad(r) <= roleCap(r) and childLoad(r) <= CHILD_ALLOW)
+  val RoleBound = Set(0, 1).forall(r => roleLoad(r) <= roleCap(r))
+  val WorkerChildBound = Set(0, 1).map(r => workerOfRole.get(r)).forall(w => childLoad(w) <= CHILD_ALLOW)
   val TaskMatchesPermits =
     runtime.role == taskIds.filter(t => usesRole(runtime.tasks.get(t))) and
     runtime.children == taskIds.filter(t => runtime.tasks.get(t) == Child)
@@ -196,11 +201,18 @@ module admission {
   val NoSerialReview = not(runtime.serialReviewed)
   // Witness: a maker sent back by a failed review waits for a child permit (the allowance full).
   val NoFailWait = not(CHILD_ALLOW > 0 and taskIds.exists(t => runtime.failed.contains(t) and
-    runtime.tasks.get(t) == MakerDown and childLoad(owner(t)) >= CHILD_ALLOW))
+    runtime.tasks.get(t) == MakerDown and childLoad(workerOfRole.get(owner(t))) >= CHILD_ALLOW))
   val NoSaturatedSerial = not(runtime.backgroundSerial and runtime.serialReviewed and
     runtime.releasedRole and runtime.releasedChild)
   val NoCollocatedOwners = not(runtime.collocated and runtime.role.size() == 2 and
     roleLoad(0) == 1 and roleLoad(1) == 1)
+  // A distinct role has an available attempt, and waits on a child held by its staff.
+  val NoCollocatedWait = not(CASE == "collocated" and CHILD_ALLOW > 0 and workerFree and taskIds.exists(t => {
+    val r = owner(t)
+    val w = workerOfRole.get(r)
+    runtime.tasks.get(t) == Queued and roleLoad(r) < roleCap(r) and childLoad(w) >= CHILD_ALLOW and
+      runtime.children.exists(other => owner(other) != r and workerOfRole.get(owner(other)) == w)
+  }))
   val NoSaturatedWait = not(workerFree and childLoad(0) == 1 and roleLoad(0) == 1 and
     taskIds.exists(t => runtime.tasks.get(t) == Queued))
 }
@@ -210,41 +222,46 @@ module admission {
 // SERIAL_ON_FULL false; each mutant turns one off or on.
 module admissionPipeOne {
   import admission(CASE = "pipe", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionPipeTwo {
   import admission(CASE = "pipe", PIPE_CAP = 2, CHILD_ALLOW = 1, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionWait {
   import admission(CASE = "saturation", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionZero {
   import admission(CASE = "saturation", PIPE_CAP = 1, CHILD_ALLOW = 0, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionCollocated {
   import admission(CASE = "collocated", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionNoPipeCap {
   import admission(CASE = "pipe", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = false, CHECK_PIPE = false, RELEASE_ON_YIELD = false, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = false, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionDropsPipe {
   import admission(CASE = "pipe", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = true, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = true, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionWrongOwner {
   import admission(CASE = "collocated", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = true).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = true, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionSharedLane {
   import admission(CASE = "pipe", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = false,
-    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
 }
 module admissionSerialOnFull {
   import admission(CASE = "saturation", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = true,
-    SERIAL_ON_FULL = true, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false).* from "./admission"
+    SERIAL_ON_FULL = true, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = false).* from "./admission"
+}
+
+module admissionPerRoleChildren {
+  import admission(CASE = "collocated", PIPE_CAP = 1, CHILD_ALLOW = 1, SEPARATE_LANE = true,
+    SERIAL_ON_FULL = false, CHECK_PIPE = true, RELEASE_ON_YIELD = false, WRONG_OWNER = false, PER_ROLE_CHILDREN = true).* from "./admission"
 }

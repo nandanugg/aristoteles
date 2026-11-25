@@ -64,7 +64,7 @@ run() {
 WORKER_SAFE=OldestFirst,NoIdentityCrossing,NoBlockedOnlyExecutor
 PERMIT_SAFE=AsksFollowState,NoWaitCycle,PermitsNeverExceeded,NoRecheckInParentContext,ChildMakersCharged
 PERMIT_LIVE=ParkedResumes,DeferredRuns,RechecksProgress,AdmittedProgress,AdmittedSettles
-ADMISSION_SAFE=PipeBound,PipeMatchesJobs,Ownership,RoleBound,TaskMatchesPermits,OneSerialTurn,RecheckIndependent,NoSerialWithAllowance
+ADMISSION_SAFE=PipeBound,PipeMatchesJobs,Ownership,RoleBound,WorkerChildBound,TaskMatchesPermits,OneSerialTurn,RecheckIndependent,NoSerialWithAllowance
 jobs() {
   cat <<EOF
 worker.qnt workerFixed holds $WORKER_SAFE G1All
@@ -99,6 +99,8 @@ admission.qnt admissionZero holds $ADMISSION_SAFE -
 admission.qnt admissionZero breaks NoSerialReview -
 admission.qnt admissionCollocated holds $ADMISSION_SAFE -
 admission.qnt admissionCollocated breaks NoCollocatedOwners -
+admission.qnt admissionCollocated breaks NoCollocatedWait -
+admission.qnt admissionPerRoleChildren breaks WorkerChildBound -
 admission.qnt admissionNoPipeCap breaks PipeBound -
 admission.qnt admissionDropsPipe breaks PipeMatchesJobs -
 admission.qnt admissionWrongOwner breaks Ownership -

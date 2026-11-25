@@ -15,7 +15,7 @@ const admissions: Readonly<Record<string, AdmissionFixture>> = {
   owners: { kind: 'collocated', pipeCap: 1, childAllowance: 1 },
 }
 for (const file of readdirSync(traces).filter((name) => name.endsWith('.itf.json.gz') &&
-  name !== 'admission-wait.itf.json.gz' && (!name.startsWith('worker-') || name === 'worker-park.itf.json.gz')).sort()) {
+  !['admission-wait.itf.json.gz', 'admission-shared-wait.itf.json.gz'].includes(name) && (!name.startsWith('worker-') || name === 'worker-park.itf.json.gz')).sort()) {
   const trace = readWitness(join(traces, file))
   test(`pass 9 finite replay: ${trace.name}`, async () => {
     if (trace.name === 'worker-park') return replayWorker(trace, fixtureWorkerPark())

@@ -42,9 +42,10 @@ witness worker-park worker workerFixed NoHeardAfterPark 100
 witness worker-stale worker workerFixed NoStaleRefusal 100
 witness admission-lane admission admissionPipeOne NoRecheckBesideFix 100
 witness admission-two-fixes admission admissionPipeTwo NoPipeOverlap 100
-witness admission-wait admission admissionWait NoSaturatedWait 100
+witness admission-wait admission admissionWait NoSaturatedWait 2 --step=openMake
 witness admission-serial admission admissionZero NoSerialReview 100
 witness admission-owners admission admissionCollocated NoCollocatedOwners 100
+witness admission-shared-wait admission admissionCollocated NoCollocatedWait 2 --step=openMake
 witness permits-child permits permits NoChild 100 --init=initChild --step=composedStep
 witness permits-serial permits permits NoSerial 100 --init=initSerial --step=composedStep
 witness permits-admission permits permits NoSecondDenied 100 --init=initAdmission --step=composedStep

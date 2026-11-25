@@ -168,17 +168,19 @@ export const fixtureAdmission = (options: AdmissionFixture): RuntimeDriver<Admis
           break
         case 'openMake': {
           const r = owner(command.task)
-          const used = [...children.values()].filter((n) => n === r).length
           if (options.childAllowance === 0) {
             tasks.set(command.task, 'Serial')
           } else {
-            if (used >= options.childAllowance) throw new Error('fixture child allowance exceeded')
+            if (children.size >= options.childAllowance) throw new Error('fixture child allowance exceeded')
             children.set(command.task, r)
             tasks.set(command.task, 'Child')
           }
           attempts.set(command.task, r)
           break
         }
+        case 'reviewFails':
+          tasks.set(command.task, 'MakerDown')
+          break
         case 'endMaker':
           if (tasks.get(command.task) === 'Serial' && command.outcome === 'Checking') serial.add(command.task)
           tasks.set(command.task, command.outcome)

@@ -391,19 +391,22 @@ worker and permits instances. Its checks concern ownership, capacity and release
   The parent keeps its attempt through maker report, review and a fenced maker exit; maker report
   or a confirmed exit releases the child; terminal review or fenced reassignment releases the
   attempt.
-- Two roles on one worker hold one attempt each: the worker turn controls execution, the role
-  controls admission.
+- Collocated roles own their attempts separately and share the worker's child allowance.
+  `WorkerChildBound` checks the shared cap. `NoCollocatedWait` witnesses the second role
+  waiting for the first role's child to release the only slot.
 
 | Module | Checked | Expected | Distinct states |
 |---|---|---|---|
-| admissionPipeOne | safety, NoPipeOverlap; witness NoRecheckBesideFix | holds; breaks | 185; 63 |
+| admissionPipeOne | safety, NoPipeOverlap; witness NoRecheckBesideFix | holds; breaks | 185; 79 |
 | admissionPipeTwo | safety; witness NoPipeOverlap | holds; breaks | 80; 48 |
-| admissionWait (allowance 1, saturated) | safety, NoSaturatedSerial; witness NoSaturatedWait | holds; breaks | 44; 2 |
-| admissionZero (allowance 0: serial) | safety; witness NoSerialReview | holds; breaks | 39; 24 |
-| admissionCollocated | safety; witness NoCollocatedOwners | holds; breaks | 67; 12 |
-| admissionNoPipeCap | PipeBound | breaks | 19 |
-| admissionDropsPipe (a permit lost at a yield) | PipeMatchesJobs | breaks | 19 |
-| admissionWrongOwner | Ownership | breaks | 4 |
+| admissionWait (allowance 1, saturated) | safety, NoSaturatedSerial; witness NoSaturatedWait | holds; breaks | 146; 2 |
+| admissionZero (allowance 0: serial) | safety; witness NoSerialReview | holds; breaks | 180; 38 |
+| admissionCollocated | safety; witnesses NoCollocatedOwners and NoCollocatedWait | holds; breaks; breaks | 210; 16; 2 |
+| admissionWait | witness NoFailWait | breaks | 66 |
+| admissionPerRoleChildren (each role charges its own children) | WorkerChildBound | breaks | 29 |
+| admissionNoPipeCap | PipeBound | breaks | 15 |
+| admissionDropsPipe (a permit lost at a yield) | PipeMatchesJobs | breaks | 17 |
+| admissionWrongOwner | Ownership | breaks | 12 |
 | admissionSharedLane (a recheck takes a fix's Pipe permit) | RecheckIndependent | breaks | 44 |
 | admissionSerialOnFull (serial turns with a positive allowance) | NoSerialWithAllowance | breaks | 5 |
 
