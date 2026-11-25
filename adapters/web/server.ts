@@ -56,7 +56,6 @@ import {
   applyStaffingReview,
   consultStaffing,
   STAFFING_CONSULT,
-  readProjectUsage,
   previewStaffingReview,
   readStaffingReview,
   STAFFING_PROPOSAL,
@@ -681,7 +680,7 @@ export function startServer(options: ServerOptions): ServerHandle {
         const files = yield* readOnboarding(dir)
         if (!files.config?.people.includes(name)) return json({ error: 'Only a person of this project can review its staffing.' }, 403)
         const response = (review: Effect.Success<ReturnType<typeof readStaffingReview>>) =>
-          answer(StaffingState, { ...review, usage: readProjectUsage(dbPath(env)) })
+          answer(StaffingState, review)
         if (input === null) return response(yield* readStaffingReview(dir, name))
         if (files.roles.length === 0 || files.roleRequests?.length ||
           files.directions.some(({ stage }) => stage._tag !== 'Accepted' && stage._tag !== 'Removed') ||

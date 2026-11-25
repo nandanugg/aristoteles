@@ -1,101 +1,62 @@
 import { html } from 'htm/preact'
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
-import { launchExecutable, type StaffArrangement } from '../../../src/domain/staffing-sketch.ts'
+import { cliOfProvider, launchExecutable, type StaffArrangement, type Subscription, type SubscriptionProvider } from '../../../src/domain/staffing-sketch.ts'
 import { MarkerApproval, type OnboardingView, StaffingState } from '../contract.ts'
 import { api, postActivation, postStaffing } from './api.ts'
 import { Modal } from './modal.ts'
 
 type State = typeof StaffingState.Type
 type Staff = StaffArrangement['staff'][number]
-type Plan = State['plans'][number]
-
 const value = (event: Event) => (event.currentTarget as HTMLInputElement).value
 const words = (error: unknown) => error instanceof Error ? error.message : String(error)
-const labelOf = (plan: Plan) => `${plan.provider} ${plan.name}`
+const labelOf = (subscription: Subscription) => `${subscription.provider} ${subscription.plan} · ${subscription.account}`
 
-const accountsOf = (state: State, draft: StaffArrangement) =>
-  [...state.accounts, ...draft.subscriptions.map((s) => ({ ...s, clis: [] }))].map((account) => {
-    const plan = state.plans.find(({ id }) => id === account.plan)
-    return { ...account, clis: plan ? [plan.cli] : account.clis, plan }
-  })
-
-function placement(state: State, accounts: ReturnType<typeof accountsOf>, staff: Staff) {
-  const cli = state.launchClis.find(({ command }) => command === launchExecutable(staff.launch))?.cli
-  const options = cli ? accounts.filter(({ clis }) => clis.includes(cli)) : []
+function placement(subscriptions: StaffArrangement['subscriptions'], staff: Staff) {
+  const cli = launchExecutable(staff.launch)
+  const options = subscriptions.filter(({ provider }) => cliOfProvider(provider) === cli)
   const account = options.length === 1 ? options[0] : options.find((a) => a.account === staff.account)
-  return { cli, options, account }
+  return { options, account }
 }
 
-function projectShare(state: State, models: readonly string[], active: number, plan: Plan): number | null {
-  const usage = state.usage
-  if (!usage || active === 0) return null
-  const factor = (name: string) => state.modelCosts.find(({ model }) => name === model)?.factor
-  const base = factor(usage.model)
-  let relative = 0
-  for (const model of models) {
-    if (!model.trim()) return null
-    const cost = factor(model)
-    if (model === usage.model) relative += 1
-    else if (base && cost) relative += cost / base
-    else return null
-  }
-  return 100 * (usage.tokens / active) * relative / (plan.monthlyTokens / state.estimate.windows)
-}
-
-function Cost({ state, draft, onAdd }: { state: State; draft: StaffArrangement; onAdd: () => void }) {
-  const accounts = accountsOf(state, draft)
-  const active = draft.staff.filter(({ id }) => draft.assignments.some(({ staff }) => staff === id))
-  const allocated = active.map((staff) => ({ model: staff.model, account: placement(state, accounts, staff).account?.account }))
-  const subscribed = accounts.filter(({ plan }) => plan !== undefined)
+function Cost({ draft, onAdd }: { draft: StaffArrangement; onAdd: () => void }) {
   return html`<section class="staffing-cost" aria-label="Cost per one project">
     <div class="staffing-cost-head"><h3>Cost per one project</h3>
       <button class="btn" onClick=${onAdd}>Add subscription</button>
     </div>
-    ${subscribed.length ? subscribed.map(({ account, plan }) => {
-      if (!plan) return ''
-      const models = allocated.filter((staff) => staff.account === account).map(({ model }) => model)
-      const share = projectShare(state, models, active.length, plan)
-      const caption = !state.usage ? 'unknown until the first project is measured'
-        : allocated.some(({ account }) => account === undefined) ? 'unknown until staff have subscriptions'
-        : models.length === 0 ? 'No staff assigned'
-        : share === null ? 'unknown for the models on this subscription'
-        : `${share > 0 && share < 0.1 ? '<0.1' : Number(share.toFixed(1))}%`
-      return html`<div class="staffing-cost-row" key=${account}>
-        <div><strong>${labelOf(plan)}</strong> <span class="muted">$${plan.price} · 5-hour limit</span>
-          ${account === plan.id ? '' : html`<small class="staffing-cost-account">${account}</small>`}</div>
-        <div class="staffing-cost-share">
-          <div class="staffing-meter" aria-hidden="true"><span style=${{ width: `${Math.min(100, share ?? 0)}%` }}></span></div>
-          <small>${caption}</small>
-        </div>
+    ${draft.subscriptions.length ? draft.subscriptions.map((subscription) => {
+      const { account, estimate } = subscription
+      const percent = estimate === undefined ? 0 : estimate.share * 100
+      return html`<div class="staffing-cost-row" key=${account} data-subscription=${account}>
+        <strong>${labelOf(subscription)}</strong>
+        ${estimate === undefined ? html`<small class="muted">No estimate</small>` : html`
+          <div class="staffing-cost-share">
+            <div class="staffing-meter" role="meter" aria-label=${labelOf(subscription)}
+              aria-valuemin="0" aria-valuemax="100" aria-valuenow=${Math.min(100, percent)}
+              aria-valuetext=${`${percent.toLocaleString(undefined, { maximumFractionDigits: 2 })}% of one 5-hour window`}>
+              <span style=${{ width: `${Math.min(100, percent)}%` }}></span>
+            </div>
+            <small><strong>${percent.toLocaleString(undefined, { maximumFractionDigits: 2 })}% of one 5-hour window</strong>
+              · ${estimate.basis}</small>
+          </div>`}
       </div>`
     }) : html`<p class="muted">No subscriptions added.</p>`}
-    ${subscribed.length ? html`<small class="staffing-estimate muted">
-      ${state.estimate.windows} five-hour windows per 30-day month. The estimate splits measured project tokens equally
-      across assigned staff and scales each share by model cost.
-      <span class="staffing-sources"><a href=${state.estimate.source} target="_blank" rel="noreferrer">Plan volumes</a>
-      · <a href="https://artificialanalysis.ai/models" target="_blank" rel="noreferrer">Model costs</a></span>
-    </small>` : ''}
   </section>`
 }
 
-function Subscription({ state, onAdd, onClose }: {
-  state: State; onAdd: (plan: Plan) => void; onClose: () => void
+function SubscriptionForm({ onAdd, onClose }: {
+  onAdd: (provider: SubscriptionProvider, plan: string) => void; onClose: () => void
 }) {
-  const providers = [...new Set(state.plans.map(({ provider }) => provider))]
-  const [provider, setProvider] = useState(providers[0] ?? '')
-  const [choice, setChoice] = useState('')
-  const plans = state.plans.filter((p) => p.provider === provider)
-  const selected = plans.find(({ id }) => id === choice) ?? plans[0]
+  const [provider, setProvider] = useState<SubscriptionProvider>('Claude')
+  const [plan, setPlan] = useState('')
   return html`<${Modal} title="Add subscription" onClose=${onClose}>
-    <form onSubmit=${(event: Event) => { event.preventDefault(); if (selected) onAdd(selected) }}>
-      <label class="field"><span>Provider</span><select value=${provider} onChange=${(event: Event) => setProvider(value(event))}>
-        ${providers.map((name) => html`<option value=${name} key=${name}>${name}</option>`)}
+    <form onSubmit=${(event: Event) => { event.preventDefault(); if (plan.trim()) onAdd(provider, plan.trim()) }}>
+      <label class="field"><span>Provider</span><select value=${provider}
+        onChange=${(event: Event) => setProvider(value(event) === 'Claude' ? 'Claude' : 'ChatGPT')}>
+        <option>Claude</option><option>ChatGPT</option>
       </select></label>
-      <label class="field"><span>Plan</span><select value=${selected?.id ?? ''} onChange=${(event: Event) => setChoice(value(event))}>
-        ${plans.map((plan) => html`<option value=${plan.id} key=${plan.id}>${plan.name} · $${plan.price}/month</option>`)}
-      </select></label>
+      <label class="field"><span>Plan</span><input required value=${plan} onInput=${(event: Event) => setPlan(value(event))} /></label>
       <div class="modal-foot"><button type="button" class="btn" onClick=${onClose}>Cancel</button>
-        <button class="btn primary" disabled=${!selected}>Add subscription</button></div>
+        <button class="btn primary" disabled=${!plan.trim()}>Add subscription</button></div>
     </form>
   <//>`
 }
@@ -107,7 +68,7 @@ function Graph({ state, draft, busy, move, edit, remove }: {
   remove: (id: string) => void
 }) {
   const root = useRef<HTMLDivElement>(null)
-  const [lines, setLines] = useState<readonly { role: string; d: string }[]>([])
+  const [lines, setLines] = useState<readonly { role: string; d: string; x: number; y: number }[]>([])
   useLayoutEffect(() => {
     const graph = root.current
     if (!graph) return
@@ -127,7 +88,7 @@ function Graph({ state, draft, busy, move, edit, remove }: {
         const x2 = end.left - frame.left - 5
         const y2 = Math.min(end.bottom - 16, Math.max(end.top + 16, start.top + start.height / 2)) - frame.top
         const mid = (x1 + x2) / 2
-        return [{ role, d: `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}` }]
+        return [{ role, x: mid, y: (y1 + y2) / 2, d: `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}` }]
       })
       setLines(next)
     }
@@ -137,24 +98,28 @@ function Graph({ state, draft, busy, move, edit, remove }: {
     for (const box of graph.querySelectorAll('[data-staff-role], [data-staff-card]')) observer.observe(box)
     return () => observer.disconnect()
   }, [draft, state.roles])
-  const accounts = accountsOf(state, draft)
+  const routeLabel = new Map(state.roles.map(({ role, program, persistent }) =>
+    [role, program ? 'as program' : persistent ? '' : 'as subagent']))
   return html`<div class="staffing-graph" ref=${root}>
     <svg class="staffing-arrows" aria-hidden="true">
       <defs><marker id="staffing-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
         <path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor" />
       </marker></defs>
-      ${lines.map(({ role, d }) => html`<path key=${role} data-arrow-role=${role} d=${d}
-        fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#staffing-arrow)" />`)}
+      ${lines.map(({ role, d, x, y }) => html`<g key=${role}>
+        <path data-arrow-role=${role} d=${d}
+          fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#staffing-arrow)" />
+        ${routeLabel.get(role) ? html`<text data-arrow-label=${role} x=${x} y=${y - 6} text-anchor="middle">
+          ${routeLabel.get(role)}</text>` : ''}
+      </g>`)}
     </svg>
     ${draft.staff.map((staff) => {
       const roles = draft.assignments.filter((assignment) => assignment.staff === staff.id)
-      const assigns = new Set(roles.flatMap(({ role }) => state.roles.find((r) => r.role === role)?.assigns ?? []))
-      const makers = state.roles.filter((role) => !role.persistent && assigns.has(role.role))
-      const { cli, options, account } = placement(state, accounts, staff)
+      const { options, account } = placement(draft.subscriptions, staff)
       return html`<div class="staffing-pair" key=${staff.id}>
         <div class="staffing-roles">
           ${roles.map(({ role }) => html`<div class="staffing-role-box" key=${role} data-staff-role=${role}>
             <strong>${role}</strong>
+            ${routeLabel.get(role) ? html`<span class="staffing-route-label">${routeLabel.get(role)}</span>` : ''}
             <label><span>Staff</span><select aria-label=${`Staff for ${role}`} value=${staff.id} disabled=${busy}
               onChange=${(event: Event) => move(role, value(event))}>
               ${draft.staff.map(({ id }) => html`<option value=${id} key=${id}>${id}</option>`)}
@@ -175,9 +140,9 @@ function Graph({ state, draft, busy, move, edit, remove }: {
             value=${account?.account ?? ''} disabled=${busy} onChange=${(event: Event) => edit(staff.id, { account: value(event) })}>
             <option value="" disabled>Choose a subscription</option>
             ${options.map((option) => html`<option key=${option.account} value=${option.account}>
-              ${option.plan ? `${labelOf(option.plan)} · ${option.account}` : option.account}</option>`)}
-          </select></label>` : account ? html`<small class="muted">${account.plan ? labelOf(account.plan) : account.account}</small>`
-            : cli ? html`<small class="muted">Add a subscription for ${cli}.</small>` : ''}
+              ${labelOf(option)}</option>`)}
+          </select></label>` : account ? html`<small class="muted">${labelOf(account)}</small>`
+            : staff.launch.trim() ? html`<small class="muted">Add a subscription matching this launch command.</small>` : ''}
           <div class="staffing-allowance">
             <button class="btn" aria-label=${`Decrease allowed subagents for ${staff.id}`} disabled=${busy || staff.allowance === 0}
               onClick=${() => edit(staff.id, { allowance: staff.allowance - 1 })}>−</button>
@@ -186,8 +151,8 @@ function Graph({ state, draft, busy, move, edit, remove }: {
               onClick=${() => edit(staff.id, { allowance: staff.allowance + 1 })}>+</button>
             <span>allowed subagents</span>
           </div>
-          ${makers.length ? html`<ul class="staffing-makers">
-            ${makers.map(({ role }) => html`<li key=${role}>${role} <small class="muted">· Subagent</small></li>`)}
+          ${roles.length ? html`<ul class="staffing-card-roles" aria-label="Assigned roles">
+            ${roles.map(({ role }) => html`<li key=${role}>${role}</li>`)}
           </ul>` : ''}
         </article>
       </div>`
@@ -255,12 +220,12 @@ export function Staffing({ start, version, onApplied }: {
     if (patch.allowance !== undefined) autoAllowance.current.delete(id)
     change((draft) => ({ ...draft, staff: draft.staff.map((card) => card.id === id ? { ...card, ...patch } : card) }))
   }
-  const addSubscription = (plan: Plan) => {
-    change((draft, state) => {
-      const accounts = accountsOf(state, draft)
-      let account = plan.id
-      for (let i = 2; accounts.some((entry) => entry.account === account); i++) account = `${plan.id}-${i}`
-      return { ...draft, subscriptions: [...draft.subscriptions, { account, plan: plan.id }] }
+  const addSubscription = (provider: SubscriptionProvider, plan: string) => {
+    change((draft) => {
+      const base = `${provider}-${plan}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '')
+      let account = base
+      for (let i = 2; draft.subscriptions.some((entry) => entry.account === account); i++) account = `${base}-${i}`
+      return { ...draft, subscriptions: [...draft.subscriptions, { account, provider, plan }] }
     })
     setSubscription(false)
   }
@@ -288,12 +253,12 @@ export function Staffing({ start, version, onApplied }: {
   const alert = () => error ? html`<p class="error" role="alert">${error}</p>` : ''
   const state = review?.state
   const draft = review?.draft
-  const confirmed = Boolean(state?.confirmed && state.arrangement === draft)
+  const confirmed = Boolean(state?.confirmed && state.explicitAssignments && state.arrangement === draft)
   const consultWaiting = state?.consult?.reply === null
   return html`<section class="review-stage staffing-stage" aria-label="Staffing">
     <header class="review-heading"><h2>Staffing</h2></header>
     ${!state || !draft ? error ? '' : html`<p role="status">Reading staffing…</p>` : html`
-      <${Cost} state=${state} draft=${draft} onAdd=${() => setSubscription(true)} />
+      <${Cost} draft=${draft} onAdd=${() => setSubscription(true)} />
       ${state.source === 'proposal' ? html`<p class="staffing-proposal muted">Host’s proposed arrangement</p>` : ''}
       <${Graph} state=${state} draft=${draft} busy=${busy} move=${move} edit=${edit} remove=${setRemoving} />
       <div class="staffing-new"><button class="btn" disabled=${busy} onClick=${addStaff}>New staff</button></div>
@@ -314,7 +279,7 @@ export function Staffing({ start, version, onApplied }: {
       ${confirmed ? html`<p class="staffing-saved muted" role="status">Staffing confirmed
         ${saved ? html` · Saved to <code>.work/staffing.yaml</code>` : ''}</p>` : ''}
     `}
-    ${state && draft && subscription ? html`<${Subscription} state=${state}
+    ${state && draft && subscription ? html`<${SubscriptionForm}
       onAdd=${addSubscription} onClose=${() => setSubscription(false)} />` : ''}
     ${removing ? html`<${Modal} title="Remove empty staff?" onClose=${() => setRemoving(null)}>
       <p>${removing} has no assigned roles.</p>

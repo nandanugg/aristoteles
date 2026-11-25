@@ -568,13 +568,8 @@ export const StaffingState = Schema.Struct({
   models: Schema.Array(Schema.Struct({ model: Text, launch: Schema.NullOr(Text) })),
   confirmed: Schema.Boolean, view: StaffingView,
   arrangement: StaffArrangement,
-  roles: Schema.Array(Schema.Struct({ role: Text, assigns: Schema.Array(Text), persistent: Schema.Boolean, allowance: Schema.Int })),
-  accounts: Schema.Array(Schema.Struct({ account: Text, plan: Schema.NullOr(Text), clis: Schema.Array(Text) })),
-  launchClis: Schema.Array(Schema.Struct({ command: Text, cli: Text })),
-  plans: Schema.Array(Schema.Struct({ id: Text, provider: Text, name: Text, price: Schema.Number, cli: Text, monthlyTokens: Schema.Number })),
-  estimate: Schema.Struct({ windows: Schema.Int, source: Text, checked: Text }),
-  modelCosts: Schema.Array(Schema.Struct({ model: Text, factor: Schema.Number, source: Text, checked: Text })),
-  usage: Schema.NullOr(Schema.Struct({ model: Text, tokens: PositiveInt })),
+  roles: Schema.Array(Schema.Struct({ role: Text, program: Schema.Boolean, persistent: Schema.Boolean, allowance: Schema.Int })),
+  explicitAssignments: Schema.Boolean,
   consult: Schema.NullOr(Schema.Struct({ words: Text, reply: Schema.NullOr(Text), arrangement: Schema.NullOr(StaffArrangement) })),
 })
 export const StaffingPreview = Schema.Struct({

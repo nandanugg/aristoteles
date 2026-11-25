@@ -345,6 +345,18 @@ const bindStaffing = (raw: Raw, staffing: Staffing): Raw => {
   for (const name of Object.keys(staffing.roles)) {
     if (!Object.hasOwn(roles, name)) fail(STAFFING, `roles.${name} names an unknown role`)
   }
+  if (staffing.programStaff !== undefined) {
+    for (const [name, role] of Object.entries<Raw>(roles)) {
+      if (role.kind === 'program' && !Object.hasOwn(staffing.programStaff, name)) {
+        fail(STAFFING, `roles.${name} needs a staff card in programStaff`)
+      }
+    }
+    for (const name of Object.keys(staffing.programStaff)) {
+      if (!Object.hasOwn(roles, name) || (roles[name] as Raw).kind !== 'program') {
+        fail(STAFFING, `programStaff.${name} names an unknown program role`)
+      }
+    }
+  }
   const models = Object.fromEntries(Object.values(staffing.roles)
     .flatMap((binding) => binding.allowedModels.map((model) => [model, {}])))
   return { ...raw, roles, models: { ...models, ...staffing.models } }

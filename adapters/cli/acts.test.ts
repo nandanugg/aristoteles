@@ -151,6 +151,9 @@ describe('the acts of the work model, by the CLI', () => {
     h.ok(await p.nanda(measurement))
     expect(readProjectUsage(store)?.model).toBe('claude-sonnet-4-6')
     expect(Number(readProjectUsage(store)?.tokens)).toBe(6200000)
+    const onboarding = h.project({}, "new-staffing-project")
+    expect(h.ok(await onboarding.run('onboard show staffing', { env: { ARISTOTELES_DB: store } })).out)
+      .toContain('Measured project baseline: 6200000 tokens on claude-sonnet-4-6.')
     expect(eventsOf(p.dir).filter(({ event }) =>
       event._tag === 'Runtime' && event.create._tag === 'ProjectUsageMeasured')).toHaveLength(1)
   }, 120000)

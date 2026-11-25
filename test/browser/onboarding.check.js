@@ -16,6 +16,16 @@ const config = ONBOARD_CONFIG
     questions:
       - says: Who checks the checker?
         choices: [The host, The reviewer]`)
+  .concat(`  document-judge:
+    model: sonnet
+    description: Judges the assembled document.
+    intro: Review the assembled document.
+    responsibilities: [Read the assembled document.]
+    acts: [{ review: [writer] }]
+    persistence: { persistent: true, why: It reviews the whole project. }
+    icon: compass
+    summary: Judges the assembled document.
+`)
 const draft = Bun.YAML.parse(ONBOARD_NEW)
 draft.summary = draft.summary.replace('one topic', '**one topic**')
 const rule = draft.standards[0].rules[0]
@@ -462,70 +472,118 @@ try {
   const arrows = stage.locator('[data-arrow-role]')
   const staffingShot = async (name) => {
     const viewport = page.viewportSize()
-    await page.setViewportSize({ ...viewport, height: 1150 })
+    await page.setViewportSize({ ...viewport, height: 1580 })
     await page.locator('.canvas').evaluate((element) => { element.scrollTop = 0 })
     try { await shot(name) } finally { await page.setViewportSize(viewport) }
   }
   await visible(stage.getByText('No subscriptions added.'))
   expect(await select('architect').inputValue()).toBe('architect')
+  const roleIds = ['architect', 'section-lead', 'writer', 'linter', 'document-judge']
+  const everyRole = async () => {
+    expect((await arrows.evaluateAll((els) => els.map((e) => e.getAttribute('data-arrow-role')))).sort()).toEqual([...roleIds].sort())
+  }
+  await everyRole()
+  expect(ok(await p.agent('onboard show staffing')).out).toContain('No measured project baseline.')
   await button('Accept all', stage).click()
   await visible(stage.getByRole('alert').getByText(/launch command/))
   expect(await stage.getByRole('alert').count()).toBe(1)
   expect(existsSync(staffingPath)).toBe(false)
 
   const launch = 'claude --model {model} --session-id {session}'
-  staffing.accounts = { personal: { plan: 'claude-pro', limits: {} } }
+  const basis = 'Three sections, two review tries, and 144 five-hour windows per month.'
+  staffing.accounts = {
+    personal: { provider: 'Claude', plan: 'Pro', limits: {}, estimate: { share: 0.25, basis } },
+    backup: { provider: 'Claude', plan: 'Max', limits: {} },
+  }
   staffing.clis = { claude: { backgroundChildren: true, canPark: false } }
   for (const role of Object.values(staffing.roles)) Object.assign(role, { cli: 'claude', account: 'personal', launch })
+  staffing.roles.writer.subagentOf = 'section-lead'
+  staffing.roles.linter.subagentOf = 'architect'
   staffing.roles.architect.subagentAllowance = 1
   staffing.roles['section-lead'].subagentAllowance = 3
   p.write('staffing-input.yaml', Bun.YAML.stringify(staffing))
-  const invalid = { ...staffing, roles: {} }
-  p.write('staffing-invalid.yaml', Bun.YAML.stringify(invalid))
-  expect((await p.agent('onboard staffing --file=staffing-invalid.yaml')).err).toContain('needs a staffing binding')
+  const missing = structuredClone(staffing)
+  delete missing.roles.writer
+  p.write('staffing-invalid.yaml', Bun.YAML.stringify(missing))
+  const refused = await p.agent('onboard staffing --file=staffing-invalid.yaml')
+  expect(refused.err).toContain('roles.writer needs a staffing binding')
+  const refusalPage = await browser.newPage({ viewport: { width: 950, height: 280 } })
+  try {
+    await refusalPage.setContent('<pre style="margin: 28px; line-height: 1.65; white-space: pre-wrap"></pre>')
+    await refusalPage.locator('pre').evaluate((element, output) => { element.textContent = output },
+      `$ work onboard staffing --file=staffing-invalid.yaml
+${refused.err}`)
+    await refusalPage.screenshot({ path: join(shots, 'r57-05-refused-proposal.png') })
+  } finally { await refusalPage.close() }
+  const extraStaffing = structuredClone(staffing)
+  extraStaffing.roles.unknown = { ...extraStaffing.roles.writer }
+  p.write('staffing-invalid.yaml', Bun.YAML.stringify(extraStaffing))
+  expect((await p.agent('onboard staffing --file=staffing-invalid.yaml')).err).toContain('names an unknown role')
+  const wrongProvider = structuredClone(staffing)
+  wrongProvider.accounts.personal.provider = 'ChatGPT'
+  p.write('staffing-invalid.yaml', Bun.YAML.stringify(wrongProvider))
+  expect((await p.agent('onboard staffing --file=staffing-invalid.yaml')).err).toContain('CLI must match')
+  const missingArrow = structuredClone(staffing)
+  delete missingArrow.roles.writer.subagentOf
+  p.write('staffing-invalid.yaml', Bun.YAML.stringify(missingArrow))
+  expect((await p.agent('onboard staffing --file=staffing-invalid.yaml')).err).toContain('needs a staff card in subagentOf')
   expect(existsSync(proposalPath)).toBe(false)
+  await everyRole()
   ok(await p.agent('onboard staffing --file=staffing-input.yaml'))
-  expect(existsSync(proposalPath)).toBe(true)
-
   await visible(stage.getByText('Host’s proposed arrangement'))
-  await visible(stage.getByText('unknown until the first project is measured'))
-  expect(await staff('section-lead').getByLabel('Launch command').inputValue()).toBe(launch)
-  expect(await staff('section-lead').getByRole('combobox').count()).toBe(0)
-  expect(await arrows.count()).toBe(2)
-  expect(await select('writer').count()).toBe(0)
-  expect(await staff('section-lead').locator('.staffing-makers').textContent()).toContain('writer')
-  await staffingShot('r55-01-proposal.png')
+  await everyRole()
+  const staffingUrl = new URL('/api/staffing', server.url)
+  const current = await (await fetch(staffingUrl)).json()
+  const incomplete = { ...current.arrangement, assignments: current.arrangement.assignments.slice(1) }
+  const blocked = await fetch(staffingUrl, {
+    method: 'POST', headers: { origin: staffingUrl.origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'accept', revision: current.revision, arrangement: incomplete }),
+  })
+  expect(blocked.ok).toBe(false)
+  expect((await blocked.json()).error).toContain('Assign every configured role')
+  expect(existsSync(staffingPath)).toBe(false)
+  expect(await stage.locator('[data-arrow-label="writer"]').textContent()).toBe('as subagent')
+  expect(await stage.locator('[data-arrow-label="linter"]').textContent()).toBe('as subagent')
+  expect(await select('writer').inputValue()).toBe('section-lead')
+  expect(await staff('section-lead').getByRole('list', { name: 'Assigned roles' }).textContent()).toContain('writer')
+  const costRow = (id) => stage.locator(`[data-subscription="${id}"]`)
+  await visible(costRow('personal').getByText('25% of one 5-hour window'))
+  await visible(costRow('personal').getByText(basis, { exact: false }))
+  await visible(costRow('backup').getByText('No estimate'))
+  expect(await costRow('backup').getByRole('meter').count()).toBe(0)
+  await staffingShot('r57-01-five-roles.png')
+  await costRow('personal').screenshot({ path: join(shots, 'r57-02-estimate.png') })
+  await costRow('backup').screenshot({ path: join(shots, 'r57-03-no-estimate.png') })
 
-  await select('section-lead').selectOption('architect')
-  await visible(staff('architect').locator('.staffing-makers').getByText('linter', { exact: false }))
-  expect(await arrows.count()).toBe(2)
-  expect(await select('section-lead').inputValue()).toBe('architect')
-  await staffingShot('r55-02-shared.png')
+  const subscription = (id) => staff(id).getByRole('combobox', { name: 'Subscription' })
+  const choices = await subscription('architect').locator('option:not([disabled])').evaluateAll((options) => options.map((item) => item.value))
+  const rows = await stage.locator('[data-subscription]').evaluateAll((items) => items.map((item) => item.dataset.subscription))
+  expect(choices).toEqual(rows)
+  // Show the native select’s actual options in the capture, including the cost rows above it.
+  const chooser = staff('architect').locator('select')
+  await chooser.evaluate((select) => { select.size = select.options.length })
+  try { await staffingShot('r57-04-subscription-select.png') }
+  finally { await chooser.evaluate((select) => { select.removeAttribute('size') }) }
+
+  await select('writer').selectOption('document-judge')
+  expect(await staff('document-judge').getByRole('list', { name: 'Assigned roles' }).textContent()).toContain('writer')
+  await everyRole()
   await button('New staff', stage).click()
   await visible(staff('staff-1'))
-  await staffingShot('r55-03-new-staff.png')
   await select('section-lead').selectOption('staff-1')
   expect(await staff('staff-1').getByLabel('Allowed subagents for staff-1', { exact: true }).textContent()).toBe('3')
   await staff('staff-1').getByLabel('Model', { exact: true }).fill('sonnet')
   await staff('staff-1').getByLabel('Launch command').fill(launch)
-  await staffingShot('r55-04-move.png')
   await button('Remove section-lead', stage).click()
   const remove = dialog('Remove empty staff?')
   await visible(remove)
-  await staffingShot('r55-05-confirm-remove.png')
-  await button('Cancel', remove).click()
-  await visible(staff('section-lead'))
-  await button('Remove section-lead', stage).click()
   await button('Remove staff', remove).click()
-  await staff('section-lead').waitFor({ state: 'hidden' })
   expect(existsSync(staffingPath)).toBe(false)
 
   const consult = button('Consult', stage)
   expect(await consult.isDisabled()).toBe(true)
   const consultQuestion = 'Can we share one staff and allow four subagents?'
   await stage.getByRole('textbox', { name: 'Staffing question' }).fill(consultQuestion)
-  expect(await consult.isEnabled()).toBe(true)
-  await staffingShot('r55-06-consult-enabled.png')
   await consult.click()
   await visible(stage.getByText('Waiting for the host to reply.'))
   expect(ok(await p.agent('onboard wait --seconds=1')).out).toContain(consultQuestion)
@@ -535,8 +593,10 @@ try {
   const consultRevision = show.match(/--revision=([\w-]+)/)[1]
   const group = 'project-staff'
   for (const name of ['architect', 'section-lead']) {
-    Object.assign(staffing.roles[name], { workerGroup: group, model: 'sonnet', subagentAllowance: 4 })
+    Object.assign(staffing.roles[name], { workerGroup: group, model: 'sonnet', concurrency: 4, subagentAllowance: 4 })
   }
+  staffing.roles.linter.subagentOf = group
+  staffing.roles.writer.subagentOf = group
   p.write('staffing-input.yaml', Bun.YAML.stringify(staffing))
   expect((await p.agent('onboard staffing --file=staffing-input.yaml --revision=old')).err).toContain('question changed')
   const reply = 'Yes. One session should cover both roles.'
@@ -546,61 +606,42 @@ try {
   expect(await select('section-lead').inputValue()).toBe(group)
   expect(existsSync(staffingPath)).toBe(false)
 
-  // A second subscription for the launch CLI exposes the chooser; it remains local until acceptance.
   await button('Add subscription', stage).click()
   const sub = dialog('Add subscription')
-  await sub.getByLabel('Plan').selectOption('claude-max')
+  await sub.getByLabel('Provider').selectOption('ChatGPT')
+  await sub.getByLabel('Plan').fill('Plus')
   await button('Add subscription', sub).click()
-  await visible(staff(group).getByRole('combobox', { name: 'Subscription' }))
-  await staff(group).getByRole('combobox', { name: 'Subscription' }).selectOption('claude-max')
-  expect(await stage.getByText('unknown until the first project is measured').count()).toBe(2)
-  expect(existsSync(join(p.dir, '.work/staffing-confirmed.json'))).toBe(false)
-
-  const viewport = page.viewportSize()
-  await page.setViewportSize({ width: 560, height: 900 })
-  const roleBox = await stage.locator('[data-staff-role="section-lead"]').boundingBox()
-  const cardBox = await staff(group).boundingBox()
-  expect(roleBox.y + roleBox.height).toBeLessThan(cardBox.y)
-  expect(await stage.locator('.staffing-arrows').isVisible()).toBe(false)
-  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
-  await shot('r55-08-narrow-dark.png')
-  await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
-  await page.setViewportSize(viewport)
+  await visible(costRow('chatgpt-plus').getByText('No estimate'))
+  expect(await subscription(group).locator('option[value="chatgpt-plus"]').count()).toBe(0)
+  await subscription(group).selectOption('backup')
+  await select('writer').selectOption('document-judge')
   await button('Accept all', stage).click()
   await visible(stage.getByText('Saved to .work/staffing.yaml'))
   const arranged = Bun.YAML.parse(readFileSync(staffingPath, 'utf8'))
-  expect(arranged.accounts['claude-max'].plan).toBe('claude-max')
+  expect(Object.keys(arranged.accounts).sort()).toEqual(['backup', 'chatgpt-plus', 'personal'])
+  expect(arranged.accounts.backup.estimate).toBeUndefined()
+  expect(arranged.accounts.personal.estimate).toEqual({ share: 0.25, basis })
+  expect(arranged.roles.writer).toMatchObject({ persistent: false, subagentOf: 'document-judge', account: 'personal' })
+  expect(arranged.roles.linter).toMatchObject({ persistent: false, subagentOf: group, account: 'backup' })
   for (const name of ['architect', 'section-lead']) {
-    expect(arranged.roles[name]).toMatchObject({
-      account: 'claude-max', cli: 'claude', model: 'sonnet', launch,
-      workerGroup: group, concurrency: 4, subagentAllowance: 4,
-    })
+    expect(arranged.roles[name]).toMatchObject({ account: 'backup', cli: 'claude', workerGroup: group,
+      concurrency: 4, subagentAllowance: 4 })
   }
-  expect(arranged.roles.writer.persistent).toBe(false)
-  expect(arranged.roles.writer.workerGroup).toBeUndefined()
-  await staffingShot('r55-07-accepted.png')
-
-  // The role step retains the host’s per-role allowance, and reopening keeps the applied arrangement.
   await page.getByRole('tab', { name: 'Roles' }).click()
   await visible(card('Pipeline role').getByText('Allowed subagents · 4'))
-  const staffingRoute = '**/api/staffing'
-  await page.route(staffingRoute, async (route) => {
-    const response = await route.fetch()
-    const staffingState = await response.json()
-    await route.fulfill({ response, json: { ...staffingState,
-      usage: { model: 'claude-sonnet-4-6', tokens: 1_000_000 },
-    } })
-  })
   await page.getByRole('tab', { name: 'Staffing' }).click()
-  await visible(stage.getByText('unknown for the models on this subscription'))
-  await staff(group).getByLabel('Model', { exact: true }).fill('claude-opus-4-6')
-  await visible(stage.getByText('0.8%', { exact: true }))
-  await page.getByRole('tab', { name: 'Roles' }).click()
-  await page.unroute(staffingRoute)
-  await page.getByRole('tab', { name: 'Staffing' }).click()
+  expect(await select('writer').inputValue()).toBe('document-judge')
+  await everyRole()
   await button('Review activation').click()
   await visible(dialog('Review activation'))
   await button('Cancel', dialog('Review activation')).click()
+  // A new host proposal after an acceptance can replace an estimate with no estimate.
+  delete arranged.accounts.personal.estimate
+  p.write('staffing-input.yaml', Bun.YAML.stringify(arranged))
+  ok(await p.agent('onboard staffing --file=staffing-input.yaml'))
+  await visible(costRow('personal').getByText('No estimate'))
+  await visible(button('Accept all', stage))
+  expect(Bun.YAML.parse(readFileSync(staffingPath, 'utf8')).accounts.personal.estimate).toEqual({ share: 0.25, basis })
   await page.getByRole('tab', { name: 'Roles' }).click()
   await button('Add role').click()
   const addRole = dialog('Add role')

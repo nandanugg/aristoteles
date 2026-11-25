@@ -27,9 +27,9 @@ import { Effect, Schema, type Scope } from 'effect'
 import { type ConfigRead, configOfText, draftConfigOfText } from '../config/config.ts'
 import { CONFIG, DRAFT, parseYaml, type Raw, refusing, sha } from '../config/core.ts'
 import { mergeDraft, readSettingsOf } from '../config/settings.ts'
-import { STAFFING, type Staffing, staffingOf, staffingOfText } from '../config/staffing.ts'
+import { STAFFING, type Staffing, staffingOf, staffingOfText, subscriptionOf } from '../config/staffing.ts'
 import { StaffArrangement } from '../domain/staffing-sketch.ts'
-import { estimateBasis, launchClis, modelCosts, planCatalog, sketchOf, staffAccounts, staffRoles, staffingFromSketch } from '../config/staffing-sketch.ts'
+import { checkAssignments, sketchOf, staffRoles, staffingFromSketch } from '../config/staffing-sketch.ts'
 import { staffingPreview, staffingView } from '../config/staffing-view.ts'
 import type { Principle } from '../domain/closed.ts'
 import { OutsideFailed, Refused, refuse } from '../domain/errors.ts'
@@ -77,7 +77,22 @@ const StaffingConsult = Schema.Struct({
 type StaffingConsult = typeof StaffingConsult.Type
 const staffingConsult = (dir: string): StaffingConsult | null => {
   const raw = readText(join(dir, STAFFING_CONSULT))
-  return raw === null ? null : Schema.decodeUnknownSync(StaffingConsult)(JSON.parse(raw))
+  if (raw === null) return null
+  const input = JSON.parse(raw)
+  const parsed = Schema.decodeUnknownResult(StaffingConsult)(input)
+  if (parsed._tag === 'Success') return parsed.success
+  // Older consultations carried catalog IDs and predated the arrows for disposable roles.
+  const legacy = Schema.decodeUnknownSync(StaffingConsult.mapFields((fields) => ({
+    ...fields, arrangement: StaffArrangement.mapFields((items) => ({
+      ...items, subscriptions: Schema.Array(Schema.Struct({ account: Schema.String, plan: NonBlank })),
+    })),
+  })))(input)
+  return { ...legacy, arrangement: { ...legacy.arrangement,
+    subscriptions: legacy.arrangement.subscriptions.flatMap(({ account, plan }) => {
+      const subscription = subscriptionOf(account, { plan, limits: {} })
+      return subscription ? [subscription] : []
+    }),
+  } }
 }
 const writeStaffingConsult = (dir: string, consult: StaffingConsult) =>
   writeWhole(join(dir, STAFFING_CONSULT), JSON.stringify(consult))
@@ -176,14 +191,22 @@ const writeWhole = (path: string, text: string) =>
 // The confirmation refers to the exact file reviewed by the person.
 const staffingConfirmation = '.work/staffing-confirmed.json'
 const staffingText = (dir: string) => readText(join(dir, STAFFING))
-const confirmationOf = (person: string, revision: string) => JSON.stringify({ person, revision })
+const Confirmation = Schema.Struct({
+  person: Schema.String, revision: Schema.String, proposalHash: Schema.optionalKey(Schema.String),
+})
+const staffingMark = (dir: string) => {
+  const text = readText(join(dir, staffingConfirmation))
+  try { return text === null ? null : Schema.decodeUnknownSync(Confirmation)(JSON.parse(text)) }
+  catch { return null }
+}
 
 export const staffingConfirmed = (dir: string, person: string) => io(() => {
   const text = staffingText(dir)
   const consult = staffingConsult(dir)
-  const proposal = readText(join(dir, STAFFING_PROPOSAL))
-  if (pendingStaffingReply(consult, proposal)) return false
-  return text !== null && readText(join(dir, staffingConfirmation)) === confirmationOf(person, sha(text))
+  const proposal = reviewProposal(dir, consult)
+  const mark = staffingMark(dir)
+  if (pendingStaffingReply(consult, proposal) || (proposal !== null && mark?.proposalHash !== sha(proposal))) return false
+  return text !== null && mark?.person === person && mark.revision === sha(text)
 })
 
 const pendingStaffingReply = (consult: StaffingConsult | null, proposal: string | null) =>
@@ -198,20 +221,27 @@ const staffingBasis = (dir: string) => Effect.gen(function* () {
   const consult = yield* refusing(() => staffingConsult(dir))
   const proposal = reviewProposal(dir, consult)
   const hasNewReply = pendingStaffingReply(consult, proposal)
-  const useProposal = proposal !== null && (saved === null || hasNewReply)
+  const proposalHash = proposal === null ? undefined : sha(proposal)
+  const useProposal = proposal !== null &&
+    (saved === null || hasNewReply || staffingMark(dir)?.proposalHash !== proposalHash)
   const source = useProposal ? 'proposal' as const : saved !== null ? 'saved' as const : 'empty' as const
   const text = useProposal ? proposal : saved
-  const staffing = (yield* refusing(() => staffingOfText(text))) ?? EMPTY_STAFFING
+  const parsed = yield* Effect.result(refusing(() => staffingOfText(text)))
+  const staffing = parsed._tag === 'Success' ? parsed.success ?? EMPTY_STAFFING : EMPTY_STAFFING
   const userAccounts = useProposal && saved !== null
     ? yield* Effect.result(refusing(() => staffingOfText(saved))) : undefined
   const subscriptions = userAccounts?._tag === 'Success'
-    ? Object.entries(userAccounts.success?.accounts ?? {}).filter(([, account]) => account.plan !== undefined) : []
+    ? Object.entries(userAccounts.success?.accounts ?? {}).flatMap(([name, account]) => {
+      if (!subscriptionOf(name, account)) return []
+      const { estimate: _estimate, ...subscription } = account
+      return [[name, subscription] as const]
+    }) : []
   // The config may have gained or lost roles since the host submitted a proposal.
   const current = source !== 'proposal' ? staffing : { ...staffing,
-    accounts: { ...staffing.accounts, ...Object.fromEntries(subscriptions) },
+    accounts: { ...Object.fromEntries(subscriptions), ...staffing.accounts },
     roles: Object.fromEntries(Object.entries(staffing.roles).filter(([name]) => required.includes(name))),
   }
-  return { config, roles: draft.read.config, saved, source, required, staffing: current, consult, hasNewReply,
+  return { config, roles: draft.read.config, saved, source, required, staffing: current, staffingProblem: draft.staffingProblem, consult, hasNewReply, proposalHash,
     revision: sha(JSON.stringify([source, text, saved, config, hasNewReply ? consult?.id : null])) }
 })
 
@@ -234,24 +264,28 @@ export const readStaffingReview = (
   const basis = yield* staffingBasis(dir)
   yield* checkRevision(basis.revision, revision)
   const staffing = yield* refusing(() => staffingAfterEdits(basis.staffing, basis.required, edits))
+  const arrangement = sketchOf(basis.roles, staffing)
+  const requested = basis.consult?.reply === null && basis.consult.revision === basis.revision
+    ? basis.consult.arrangement : undefined
+  const pending = requested && (yield* Effect.result(refusing(() => checkAssignments(basis.roles, requested))))
+
   return {
     source: basis.source,
     revision: basis.revision,
     clis: Object.keys(staffing.clis).sort(),
     models: modelOptions(staffing),
-    confirmed: basis.source === 'saved' && edits.length === 0 && (yield* staffingConfirmed(dir, person)),
+    confirmed: basis.source === 'saved' && basis.staffingProblem === undefined && edits.length === 0 && (yield* staffingConfirmed(dir, person)),
     view: staffingView(staffing, basis.required),
     arrangement: {
-      ...sketchOf(basis.roles, staffing),
-      subscriptions: basis.hasNewReply
+      ...arrangement,
+      subscriptions: [...arrangement.subscriptions, ...(basis.hasNewReply
         ? basis.consult?.arrangement.subscriptions.filter(({ account }) => !Object.hasOwn(staffing.accounts, account)) ?? []
-        : [],
+        : [])],
     },
     roles: staffRoles(basis.roles, staffing),
-    accounts: staffAccounts(staffing), launchClis: launchClis(staffing),
-    plans: planCatalog, estimate: estimateBasis, modelCosts,
+    explicitAssignments: staffing.programStaff !== undefined,
     consult: basis.consult === null ? null : { words: basis.consult.words, reply: basis.consult.reply,
-      arrangement: basis.consult.reply === null && basis.consult.revision === basis.revision ? basis.consult.arrangement : null },
+      arrangement: pending?._tag === 'Success' ? requested ?? null : null },
   }
 })
 
@@ -352,7 +386,9 @@ export const applyStaffingReview = (dir: string, person: string, revision: strin
     const next = basis.source === 'saved' && basis.saved !== null && Bun.deepEquals(basis.staffing, candidate)
       ? basis.saved : yamlOf(candidate)
     if (next !== basis.saved) yield* writeWhole(join(dir, STAFFING), next)
-    yield* writeWhole(join(dir, staffingConfirmation), confirmationOf(person, sha(next)))
+    yield* writeWhole(join(dir, staffingConfirmation), JSON.stringify({
+      person, revision: sha(next), proposalHash: basis.proposalHash,
+    }))
     if (basis.consult !== null && !basis.consult.reviewed && basis.source === 'proposal' && basis.consult.reply !== null) {
       yield* writeStaffingConsult(dir, { ...basis.consult, reviewed: true })
     }
@@ -372,9 +408,17 @@ export const consultStaffing = (dir: string, revision: string, words: string, ar
     const basis = yield* staffingBasis(dir)
     yield* checkRevision(basis.revision, revision)
     if (!words.trim()) return yield* refuse('Enter a staffing question.')
+    yield* refusing(() => checkAssignments(basis.roles, arrangement))
     if (basis.consult?.reply === null) return yield* refuse('The host still has a staffing question to answer.')
-    yield* writeStaffingConsult(dir, { id: randomUUID(), revision, words: NonBlank.make(words.trim()), arrangement,
-      priorProposal: reviewProposal(dir, basis.consult), reply: null, proposalHash: null, reviewed: false })
+    const proposed = new Map(sketchOf(basis.roles, basis.staffing).subscriptions.map((s) => [s.account, s]))
+    const subscriptions = arrangement.subscriptions.map(({ account, provider, plan }) => {
+      const known = proposed.get(account)
+      return known?.provider === provider && known.plan === plan ? known : { account, provider, plan }
+    })
+    yield* writeStaffingConsult(dir, { id: randomUUID(), revision, words: NonBlank.make(words.trim()),
+      arrangement: { ...arrangement, subscriptions }, priorProposal: reviewProposal(dir, basis.consult),
+      reply: null, proposalHash: null, reviewed: false })
+
   }))
 
 const yamlOf = (value: unknown): string => Bun.YAML.stringify(value, null, 2)
@@ -733,7 +777,10 @@ export const hostAct = (
       switch (act._tag) {
         case 'Staffing': {
           const { read } = yield* needDraft(dir)
-          const staffing = yield* refusing(() => staffingOf(act.draft))
+          const staffing = yield* refusing(() => {
+            const proposal = staffingOf(act.draft)
+            return staffingOf({ ...proposal, programStaff: proposal.programStaff ?? {} })
+          })
           yield* checkStaffingConfig(dir, read.texts[CONFIG]!, staffing)
           const consult = yield* refusing(() => staffingConsult(dir))
           if ((consult?.reply === null && act.revision !== consult.id) ||

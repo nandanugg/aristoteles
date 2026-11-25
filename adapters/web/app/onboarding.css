@@ -159,12 +159,10 @@ button.review-card:hover { border-color: var(--focus); background: var(--surface
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: center;
   padding-block: 7px; border-top: 1px solid var(--line);
 }
-.staffing-cost-account, .staffing-cost-share small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+.staffing-cost-share small { display: block; color: var(--muted); overflow-wrap: anywhere; }
 .staffing-cost-share { display: grid; gap: 4px; }
 .staffing-meter { height: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); overflow: hidden; }
 .staffing-meter span { display: block; height: 100%; background: var(--blue); }
-.staffing-estimate a { color: var(--blue); }
-.staffing-sources { margin-inline-start: 0.3em; white-space: nowrap; }
 .staffing-proposal { font-size: 13px; }
 .staffing-graph { display: grid; gap: 10px; position: relative; }
 .staffing-arrows {
@@ -172,7 +170,7 @@ button.review-card:hover { border-color: var(--focus); background: var(--surface
   pointer-events: none; color: var(--blue);
 }
 .staffing-pair {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr); gap: clamp(30px, 5vw, 82px);
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr); gap: clamp(92px, 9vw, 120px);
   align-items: center;
 }
 .staffing-roles { display: grid; gap: 8px; }
@@ -190,8 +188,13 @@ button.review-card:hover { border-color: var(--focus); background: var(--surface
 .staffing-allowance .btn { padding: 3px 9px; }
 .staffing-allowance output { min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 .staffing-allowance span { color: var(--muted); font-size: 13px; }
-.staffing-makers { margin: 0; padding: 7px 0 0; border-top: 1px solid var(--line); list-style: none; }
-.staffing-makers li { padding: 3px 0; overflow-wrap: anywhere; }
+.staffing-card-roles {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 7px 0 0;
+  border-top: 1px solid var(--line); list-style: none; color: var(--muted); font-size: 13px;
+}
+.staffing-card-roles li { overflow-wrap: anywhere; }
+.staffing-arrows text { fill: currentColor; font-size: 12px; }
+.staffing-route-label { display: none; color: var(--muted); font-size: 12px; }
 .staffing-new { display: flex; justify-content: flex-end; }
 .staffing-actions {
   display: flex; gap: 8px; align-items: center; padding-top: 12px; border-top: 1px solid var(--line);
@@ -204,6 +207,7 @@ button.review-card:hover { border-color: var(--focus); background: var(--surface
   .staffing-pair { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .staffing-roles:empty, .staffing-arrows { display: none; }
   .staffing-card { margin-inline-start: 12px; }
+  .staffing-route-label { display: block; }
 }
 @media (max-width: 490px) {
   .staffing-cost-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }

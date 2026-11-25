@@ -30,6 +30,8 @@ import {
 } from '../../../core/schema/index.ts'
 import {
   CONFIG,
+  dbPath,
+  readProjectUsage,
   activationLock,
   directionReview,
   draftConfigOfText,
@@ -557,9 +559,14 @@ const show = (name: string | undefined) =>
   Effect.gen(function* () {
     const { cwd } = yield* Dir
     const files = yield* readOnboarding(cwd)
-    if (name === 'staffing' && files.staffingConsult) {
+    if (name === 'staffing') {
+      const { vars } = yield* Env
+      const usage = yield* refusing(() => readProjectUsage(dbPath(vars)))
+      const baseline = usage ? `Measured project baseline: ${usage.tokens} tokens on ${usage.model}.`
+        : 'No measured project baseline.'
+      if (!files.staffingConsult) return [baseline]
       const { words, arrangement, id, reply } = files.staffingConsult
-      return [`Staffing question: ${words}`, JSON.stringify(arrangement, null, 2),
+      return [baseline, `Staffing question: ${words}`, JSON.stringify(arrangement, null, 2),
         reply ?? `Reply with work onboard staffing --file=<staffing.yaml> --revision=${id} --reply=<answer>`]
     }
     const file = directionIn(files, name ?? '')
@@ -757,7 +764,7 @@ const removed = (_call: Call, id: string | undefined) => Effect.gen(function* ()
 })
 
 const staffing = (call: Call) => Effect.gen(function* () {
-  const file = yield* fileFlag(call, 'write accounts, clis, models and a binding for every agent role')
+  const file = yield* fileFlag(call, 'write subscription accounts, clis, models and staff assignments for every role')
   const draft = yield* yamlIn(file)
   const { cwd } = yield* Dir
   const revision = textOf(call.args.one('revision'))
