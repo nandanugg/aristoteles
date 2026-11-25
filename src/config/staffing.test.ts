@@ -45,11 +45,15 @@ test('a staffing binding needs a known account and an allowed effective model', 
 })
 
 // Pass 9 decision 1: worker groups, the session limit per account, the CLI's park capability.
-test('a worker group joins persistent roles that share account, CLI, model and launch', () => {
+test('a worker group joins persistent roles that share launch settings and capacity', () => {
   const roles = { a: { ...role, workerGroup: 'g' }, b: { ...role, workerGroup: 'g' } }
   expect(staffingOf({ accounts, clis, roles }).roles.a?.workerGroup).toBe('g')
   expect(() => staffingOf({ accounts, clis, roles: { ...roles, b: { ...roles.b, model: 'model-b' } } }))
     .toThrow('workerGroup g: roles.b.model differs from roles.a.model')
+  expect(() => staffingOf({ accounts, clis, roles: { ...roles, b: { ...roles.b, subagentAllowance: 1 } } }))
+    .toThrow('workerGroup g: roles.b.subagentAllowance differs from roles.a.subagentAllowance')
+  expect(() => staffingOf({ accounts, clis, roles: { ...roles, b: { ...roles.b, concurrency: 3 } } }))
+    .toThrow('workerGroup g: roles.b.concurrency differs from roles.a.concurrency')
   expect(() => staffingOf({ accounts, clis, roles: { a: { ...role, persistent: false, workerGroup: 'g' } } }))
     .toThrow('only a persistent role runs on a worker')
 })

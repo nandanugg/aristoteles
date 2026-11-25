@@ -67,7 +67,7 @@ export const staffingOf = (raw: unknown): Staffing => {
       fail(STAFFING, `${path}.workerGroup: only a persistent role runs on a worker`)
     }
   }
-  // OV3-3: the identities on one worker share its session: one account, CLI, model and launch.
+  // Roles sharing a session also share its execution settings and child allowance.
   const groups = new Map<string, Array<[string, Staffing['roles'][string]]>>()
   for (const [name, role] of Object.entries(staffing.roles)) {
     if (role.workerGroup === undefined) continue
@@ -77,10 +77,10 @@ export const staffingOf = (raw: unknown): Staffing => {
     const [first, ...rest] = members
     if (first === undefined) continue
     for (const [name, role] of rest) {
-      for (const key of ['account', 'cli', 'model', 'launch'] as const) {
+      for (const key of ['account', 'cli', 'model', 'launch', 'subagentAllowance', 'concurrency'] as const) {
         if (role[key] !== first[1][key]) {
           fail(STAFFING, `workerGroup ${group}: roles.${name}.${key} differs from roles.${first[0]}.${key}; ` +
-            'the roles of one worker share its account, CLI, model and launch')
+            'roles on one worker share its account, CLI, model, launch, subagent allowance and concurrency')
         }
       }
     }

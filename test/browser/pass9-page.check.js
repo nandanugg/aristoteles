@@ -46,10 +46,11 @@ try {
   const path = '.work/staffing.yaml'
   const staffing = Bun.YAML.parse(readFileSync(join(p.dir, path), 'utf8'))
   const host = staffing.roles.architect
-  host.workerGroup = 'delivery'
+  Object.assign(host, { workerGroup: 'delivery', concurrency: 2, subagentAllowance: 1 })
   Object.assign(staffing.roles['section-lead'], {
     workerGroup: host.workerGroup, account: host.account, cli: host.cli, model: host.model,
-    allowedModels: host.allowedModels, launch: host.launch, concurrency: 2, subagentAllowance: 1,
+    allowedModels: host.allowedModels, launch: host.launch,
+    concurrency: host.concurrency, subagentAllowance: host.subagentAllowance,
   })
   staffing.clis.fixture.backgroundChildren = true
   staffing.accounts.fixture.sessionLimit = 1
@@ -190,11 +191,12 @@ try {
   const capacityReason = 'role:section-lead is waiting for child capacity (allowance 1).'
   await delivery.getByText(capacityReason, { exact: false }).waitFor()
   expect(await delivery.getByText('Waiting for capacity', { exact: true }).count()).toBe(1)
-  expect(await delivery.getByRole('region', { name: 'Fix lane' }).textContent()).toContain('0 / 1')
+  expect(await delivery.getByRole('region', { name: 'Fix lane' }).textContent()).toContain('0 / 2')
   expect(await delivery.getByRole('region', { name: 'Recheck lane' }).textContent()).toContain('0 / 1')
   const scheduler = (await dash()).workers.find(({ id }) => id === group.id)
   expect(scheduler.permits.attempts).toEqual([{ actor: 'role:section-lead', used: 1, limit: 2 }])
   expect(scheduler.permits.children).toContainEqual({ actor: 'role:section-lead', used: 1, limit: 1 })
+  expect(scheduler.permits.children).toContainEqual({ actor: 'pipe', used: 1, limit: 1 })
   expect(scheduler.waits).toContainEqual({
     actor: 'role:section-lead', step: 'Starting work on Details', reason: capacityReason,
   })

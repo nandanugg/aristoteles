@@ -416,6 +416,7 @@ In a dir (a folder of your work):
 6. Open the top: `work top open --name=... --goal=... --sections=a,b`. In your own tmux pane,
    start your AI CLI and have it run `work run continue`: that session is the host. `work start`
    starts the pipeline role and the roles in their terminals.
+7. After `work end`, record a finished single-model project with `work usage --model=<model> --tokens=<measured-total>` to supply the staffing cost estimate’s baseline.
 
 A staffing file:
 
