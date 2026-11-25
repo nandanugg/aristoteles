@@ -52,7 +52,11 @@ import {
   GitUser,
   readActivationRecord,
   activationLock,
+  acceptStaffArrangement,
   applyStaffingReview,
+  consultStaffing,
+  STAFFING_CONSULT,
+  readProjectUsage,
   previewStaffingReview,
   readStaffingReview,
   STAFFING_PROPOSAL,
@@ -676,14 +680,26 @@ export function startServer(options: ServerOptions): ServerHandle {
         }
         const files = yield* readOnboarding(dir)
         if (!files.config?.people.includes(name)) return json({ error: 'Only a person of this project can review its staffing.' }, 403)
-        if (input === null) return answer(StaffingState, yield* readStaffingReview(dir, name))
+        const response = (review: Effect.Success<ReturnType<typeof readStaffingReview>>) =>
+          answer(StaffingState, { ...review, usage: readProjectUsage(dbPath(env)) })
+        if (input === null) return response(yield* readStaffingReview(dir, name))
         if (files.roles.length === 0 || files.roleRequests?.length ||
           files.directions.some(({ stage }) => stage._tag !== 'Accepted' && stage._tag !== 'Removed') ||
           files.roles.some(({ decision, questions }) => decision._tag !== 'Accepted' || questions?.length)) {
           return json({ error: 'Accept the directions and roles before confirming staffing.' }, 400)
         }
+        if (input.action === 'accept' || input.action === 'consult') {
+          if (input.action === 'accept') {
+            yield* acceptStaffArrangement(dir, name, input.revision, input.arrangement)
+            staffingCandidate = undefined
+          } else {
+            yield* consultStaffing(dir, input.revision, input.words, input.arrangement)
+          }
+          send({ type: 'changed' })
+          return response(yield* readStaffingReview(dir, name))
+        }
         if (input.action === 'arrange') {
-          return answer(StaffingState, yield* readStaffingReview(dir, name, input.revision, input.edits))
+          return response(yield* readStaffingReview(dir, name, input.revision, input.edits))
         }
         if (input.action === 'preview') {
           const { preview, after } = yield* previewStaffingReview(dir, input.revision,
@@ -699,7 +715,7 @@ export function startServer(options: ServerOptions): ServerHandle {
         yield* applyStaffingReview(dir, name, candidate.revision, candidate.staffing)
         staffingCandidate = undefined
         send({ type: 'changed' })
-        return answer(StaffingState, yield* readStaffingReview(dir, name))
+        return response(yield* readStaffingReview(dir, name))
       })))
     } catch (error) {
       return failed(error)
@@ -997,7 +1013,7 @@ export function startServer(options: ServerOptions): ServerHandle {
   const onboardingStamp = (): string => {
     try {
       const names = existsSync(assess) ? readdirSync(assess).map((n) => join(assess, n)) : []
-      return [join(dir, DRAFT), join(dir, STAFFING_PROPOSAL), join(dir, '.work/staffing.yaml'),
+      return [join(dir, DRAFT), join(dir, STAFFING_PROPOSAL), join(dir, STAFFING_CONSULT), join(dir, '.work/staffing.yaml'),
         join(dir, '.work/onboarding/activation/record.json'), ...names]
         .filter((path) => existsSync(path))
         .map((path) => `${path} ${statSync(path).mtimeMs} ${statSync(path).size}`)

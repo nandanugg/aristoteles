@@ -50,6 +50,7 @@ function RoleModal({ role, directions, onClose }: {
   return html`<${Modal} title=${roleLabel(role)} kind="onboarding-modal" onClose=${onClose}>
     <div class="review-detail">
       <p class="role-responsibility">${role.description || role.summary}</p>
+      ${role.subagentAllowance === undefined ? '' : html`<p class="muted">Allowed subagents · ${role.subagentAllowance}</p>`}
       <${Tags} role=${role} interactive />
       ${links.length ? html`<section><h3>Directions</h3><div class="review-tags">
         ${links.map((d) => html`<button class="btn" onClick=${() => setDirection(d.id)}>${d.name}</button>`)}
@@ -107,6 +108,7 @@ export function Roles({ view, onRefresh, onStaffing }: {
           <span class="review-card-top"><span class="chip review-state" data-state=${state}>${state}</span>
             ${item.builtIn ? html`<span class="muted">Built in</span>` : ''}</span>
           <strong>${roleLabel(item)}</strong><span class="review-description">${item.summary}</span>
+          ${item.subagentAllowance === undefined ? '' : html`<span class="muted">Allowed subagents · ${item.subagentAllowance}</span>`}
           <${Tags} role=${item} />
           ${item.request !== null ? html`<div class="review-progress" role="progressbar" aria-label="Revising role"></div>` : ''}
         </button>`

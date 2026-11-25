@@ -5,7 +5,7 @@ import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { eventsOf } from '../core/actions/fixture.test.ts'
 import { foldWork } from '../core/state/c16/fold.ts'
-import { foldRuntime } from '../core/state/worker-runtime.ts'
+import { childLoad, foldRuntime } from '../core/state/worker-runtime.ts'
 import { settleWorker } from '../core/actions/worker.ts'
 import { settleGenerationChildren } from '../core/actions/child.ts'
 import { init, ok, project, WORK_YAML } from './harness.js'
@@ -13,7 +13,7 @@ import { workerIn, workerRuntimeIn, workerTurn } from './worker-fixture.js'
 
 const PROJECT = WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
 const LEAD = 'role:section-lead'
-const setup = async ({ allowance = 1, concurrency = 2, background = true, pipeAllowance = 0 } = {}) => {
+const setup = async ({ allowance = 1, concurrency = 2, background = true, pipeAllowance = 0, shared = false } = {}) => {
   const p = project({ 'aristoteles.yaml': PROJECT })
   await init(p)
   const file = '.work/staffing.yaml'
@@ -21,10 +21,16 @@ const setup = async ({ allowance = 1, concurrency = 2, background = true, pipeAl
   staffing.clis.fixture.backgroundChildren = background
   staffing.roles.architect.subagentAllowance = pipeAllowance
   Object.assign(staffing.roles['section-lead'], { subagentAllowance: allowance, concurrency })
+  if (shared) {
+    const workerGroup = 'shared-staff'
+    const { model, launch } = staffing.roles.architect
+    Object.assign(staffing.roles.architect, { workerGroup, subagentAllowance: allowance })
+    Object.assign(staffing.roles['section-lead'], { workerGroup, model, launch })
+  }
   p.write(file, Bun.YAML.stringify(staffing))
   ok(await p.run('top open --name=Test --goal=Test --sections=a,b', { tty: true, workerRuntime: true }))
   const host = await workerIn(p, 'host')
-  const lead = await workerIn(p, LEAD)
+  const lead = shared ? host : await workerIn(p, LEAD)
   for (const section of ['a', 'b']) {
     const step = await workerTurn(p, host.credential, 'send')
     ok(await p.agent(`send ${step.token} --name=${section} --goal=test --sections=${section} --role=section-lead ${step.args}`))
@@ -40,6 +46,19 @@ const setup = async ({ allowance = 1, concurrency = 2, background = true, pipeAl
       a.about.id === task && (kind !== 'Execute' || a.to._tag === 'Maker')).id,
   }
 }
+
+test('one staff counts a maker against the allowance shared by its roles', async () => {
+  const { p, lead, runtime } = await setup({ shared: true })
+  try {
+    expect(runtime().placements).toHaveLength(1)
+    const turn = await workerTurn(p, lead.credential, 'assign')
+    ok(await p.agent(`assign ${turn.token} t1 ${turn.args}`))
+    expect(childLoad(runtime(), LEAD)).toBe(1)
+    expect(childLoad(runtime(), 'pipe')).toBe(1)
+  } finally {
+    rmSync(p.dir, { recursive: true, force: true })
+  }
+})
 
 test('pass 9 live admission replay holds one child and leaves the second attempt queued', async () => {
   const fixture = await setup()

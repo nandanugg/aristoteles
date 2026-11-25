@@ -142,37 +142,71 @@ button.review-card:hover { border-color: var(--focus); background: var(--surface
   .review-heading, .review-input { align-items: stretch; flex-direction: column; }
 }
 
-.staffing-details { display: grid; gap: 18px; }
-.staffing-details > section { min-width: 0; }
-.modal.staffing-preview { width: min(1200px, calc(100vw - 32px)); }
-.staffing-preview > .modal-foot { position: sticky; bottom: 0; background: var(--surface); padding-block: 8px; }
-.staffing-details h3, .staffing-details h4 { margin: 0 0 8px; }
-.staffing-account, .staffing-role {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+.staffing-stage { gap: 16px; max-width: 1080px; }
+.staffing-stage h3, .staffing-stage p { margin-block: 0; }
+.staffing-stage select, .staffing-stage input, .staffing-stage textarea {
+  box-sizing: border-box; max-width: 100%;
 }
-.staffing-account + .staffing-account { margin-top: 6px; }
-.staffing-account > .muted { margin-inline-start: 12px; }
-.staffing-account dl { margin-block: 4px 0; }
-.staffing-account dl > div { display: grid; grid-template-columns: minmax(5rem, .25fr) 1fr; gap: 8px; align-items: center; }
-.staffing-account dd { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.staffing-typed { white-space: pre-wrap; overflow-wrap: anywhere; }
-.staffing-arrangement { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 8px; }
-.staffing-fields { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 4px 10px; margin: 8px 0 0; }
-.staffing-fields dt { color: var(--muted); }
-.staffing-fields dd, .staffing-account dd { margin: 0; overflow-wrap: anywhere; }
-.staffing-table-scroll { overflow-x: auto; }
-.staffing-table { width: 100%; text-align: left; border-collapse: collapse; background: var(--surface); }
-.staffing-table th, .staffing-table td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.staffing-warnings { margin: 0; padding-inline-start: 20px; }
-.staffing-warnings li + li { margin-top: 4px; }
-.staffing-comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 315px), 1fr)); gap: 12px; }
-.staffing-comparison > section { min-width: 0; border: 1px solid var(--line); padding: 12px; border-radius: 8px; }
-.staffing-comparison > section > h3 { margin-top: 0; }
-
-.staffing-catalog, .staffing-catalog > div {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+.staffing-cost, .staffing-card, .staffing-role-box {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
 }
-.staffing-catalog { gap: 8px 18px; }
-.staffing-model-options { display: flex; flex-wrap: wrap; gap: 8px 16px; border: 1px solid var(--line); border-radius: 8px; }
-.staffing-limit-entry { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
-.staffing-limit-entry .field { flex: 1; min-width: 11rem; margin: 0; }
+.staffing-cost { display: grid; gap: 9px; padding: 14px 16px; }
+.staffing-cost-head, .staffing-card-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.staffing-cost-head h3, .staffing-card-head h3 { font-size: 15px; overflow-wrap: anywhere; }
+.staffing-cost-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: center;
+  padding-block: 7px; border-top: 1px solid var(--line);
+}
+.staffing-cost-account, .staffing-cost-share small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+.staffing-cost-share { display: grid; gap: 4px; }
+.staffing-meter { height: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); overflow: hidden; }
+.staffing-meter span { display: block; height: 100%; background: var(--blue); }
+.staffing-estimate a { color: var(--blue); }
+.staffing-sources { margin-inline-start: 0.3em; white-space: nowrap; }
+.staffing-proposal { font-size: 13px; }
+.staffing-graph { display: grid; gap: 10px; position: relative; }
+.staffing-arrows {
+  position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; color: var(--blue);
+}
+.staffing-pair {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr); gap: clamp(30px, 5vw, 82px);
+  align-items: center;
+}
+.staffing-roles { display: grid; gap: 8px; }
+.staffing-role-box { padding: 8px 12px; display: grid; gap: 5px; overflow-wrap: anywhere; }
+.staffing-role-box label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.staffing-role-box select, .staffing-actions textarea {
+  color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 8px; font: inherit;
+}
+.staffing-role-box select { min-width: 0; flex: 1; }
+.staffing-card { min-width: 0; display: grid; gap: 7px; padding: 12px; }
+.staffing-card .field { margin: 0; }
+.staffing-launch { font-family: ui-monospace, monospace; }
+.staffing-allowance { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.staffing-allowance .btn { padding: 3px 9px; }
+.staffing-allowance output { min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
+.staffing-allowance span { color: var(--muted); font-size: 13px; }
+.staffing-makers { margin: 0; padding: 7px 0 0; border-top: 1px solid var(--line); list-style: none; }
+.staffing-makers li { padding: 3px 0; overflow-wrap: anywhere; }
+.staffing-new { display: flex; justify-content: flex-end; }
+.staffing-actions {
+  display: flex; gap: 8px; align-items: center; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.staffing-actions textarea { flex: 1; min-width: 0; resize: vertical; }
+.staffing-consult-status { border-inline-start: 2px solid var(--blue); padding-inline-start: 10px; overflow-wrap: anywhere; }
+.staffing-consult-status p + p { margin-block-start: 4px; }
+.staffing-saved { text-align: end; }
+@media (max-width: 700px) {
+  .staffing-pair { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .staffing-roles:empty, .staffing-arrows { display: none; }
+  .staffing-card { margin-inline-start: 12px; }
+}
+@media (max-width: 490px) {
+  .staffing-cost-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .staffing-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .staffing-actions textarea { flex-basis: 100%; }
+}

@@ -75,12 +75,14 @@ const hostWork = (file: OnboardingDirection): string | undefined => {
 const roleWork = (role: OnboardingRole): string | undefined =>
   role.decision._tag === 'Revising' ? `the person asks: "${short(role.decision.words, 120)}"` : undefined
 
-// Whether something waits for the host: work onboard wait ends then. A store start that the files
-// block is the host's to fix (O1).
-export const waitsForHost = (files: OnboardingFiles): boolean =>
-  files.directions.some((f) => hostWork(f) !== undefined) ||
-  files.roles.some((r) => roleWork(r) !== undefined) ||
-  startStateOf(files)._tag === 'Blocked'
+// Once the host has proposed staffing, the person can work on it while the host waits for a Consult.
+export const waitsForHost = (files: OnboardingFiles): boolean => {
+  if (files.staffingConsult?.reply === null ||
+    files.directions.some((f) => hostWork(f) !== undefined) ||
+    files.roles.some((r) => roleWork(r) !== undefined)) return true
+  const start = startStateOf(files)
+  return start._tag === 'Blocked' && (start.fix._tag !== 'Staffing' || !files.hasStaffingProposal)
+}
 
 // --- the store start ------------------------------------------------------------------------------
 
@@ -95,7 +97,7 @@ export const startFixWords = (fix: StartFix): string => {
     case 'Role':
       return `the host writes ${fix.role} again (work onboard role ${fix.role} --file=<role.yaml>), then the person accepts it`
     case 'Staffing':
-      return 'set the staffing in .work/staffing.yaml'
+      return 'arrange staffing on the Staffing tab'
     case 'Lead':
       return (
         'the host writes a persistent role that splits (work onboard role <role> --file=<role.yaml>), ' +

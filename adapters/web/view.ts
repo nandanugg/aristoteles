@@ -339,6 +339,7 @@ export const onboardingFilesView = (
   const roles = files.roles.map((r) =>
     roleCardOf(settings, r.role, r.file, {
       revision: sha(JSON.stringify(r)),
+      ...(files.staffingAllowances?.[r.role] === undefined ? {} : { subagentAllowance: files.staffingAllowances[r.role] }),
       ...(r.role === lead ? { builtIn: 'host' as const }
         : r.file.kind === 'agent' && r.file.pipeline ? { builtIn: 'pipeline' as const } : {}),
       ...(r.principles ? { principles: r.principles } : {}),

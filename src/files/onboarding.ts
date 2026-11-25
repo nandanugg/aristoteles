@@ -28,6 +28,8 @@ import { type ConfigRead, configOfText, draftConfigOfText } from '../config/conf
 import { CONFIG, DRAFT, parseYaml, type Raw, refusing, sha } from '../config/core.ts'
 import { mergeDraft, readSettingsOf } from '../config/settings.ts'
 import { STAFFING, type Staffing, staffingOf, staffingOfText } from '../config/staffing.ts'
+import { StaffArrangement } from '../domain/staffing-sketch.ts'
+import { estimateBasis, launchClis, modelCosts, planCatalog, sketchOf, staffAccounts, staffRoles, staffingFromSketch } from '../config/staffing-sketch.ts'
 import { staffingPreview, staffingView } from '../config/staffing-view.ts'
 import type { Principle } from '../domain/closed.ts'
 import { OutsideFailed, Refused, refuse } from '../domain/errors.ts'
@@ -66,6 +68,23 @@ export const ASSESS = join('.work', 'assess')
 const DISCOVERY = join(ASSESS, 'discovery.report')
 const ROLES = join(ASSESS, 'roles.yaml')
 export const STAFFING_PROPOSAL = join('.work', 'onboarding', 'staffing-proposal.yaml')
+export const STAFFING_CONSULT = join('.work', 'onboarding', 'staffing-consult.json')
+const StaffingConsult = Schema.Struct({
+  id: Schema.String, revision: Schema.String, words: NonBlank, arrangement: StaffArrangement,
+  priorProposal: Schema.NullOr(Schema.String),
+  reply: Schema.NullOr(Schema.String), proposalHash: Schema.NullOr(Schema.String), reviewed: Schema.Boolean,
+})
+type StaffingConsult = typeof StaffingConsult.Type
+const staffingConsult = (dir: string): StaffingConsult | null => {
+  const raw = readText(join(dir, STAFFING_CONSULT))
+  return raw === null ? null : Schema.decodeUnknownSync(StaffingConsult)(JSON.parse(raw))
+}
+const writeStaffingConsult = (dir: string, consult: StaffingConsult) =>
+  writeWhole(join(dir, STAFFING_CONSULT), JSON.stringify(consult))
+// Publish a reply and its proposal together from the reader's perspective. The host first
+// replaces the normal proposal file, while readers keep the prior version until the reply lands.
+const reviewProposal = (dir: string, consult: StaffingConsult | null) =>
+  consult?.reply === null ? consult.priorProposal : readText(join(dir, STAFFING_PROPOSAL))
 export const ONBOARDING_LOCK = join('.work', 'onboarding.lock')
 // A writer tries again every 50 ms for up to 5 s; a lock older than 30 s is a dead writer's.
 const RETRY_MS = 50
@@ -161,8 +180,14 @@ const confirmationOf = (person: string, revision: string) => JSON.stringify({ pe
 
 export const staffingConfirmed = (dir: string, person: string) => io(() => {
   const text = staffingText(dir)
+  const consult = staffingConsult(dir)
+  const proposal = readText(join(dir, STAFFING_PROPOSAL))
+  if (pendingStaffingReply(consult, proposal)) return false
   return text !== null && readText(join(dir, staffingConfirmation)) === confirmationOf(person, sha(text))
 })
+
+const pendingStaffingReply = (consult: StaffingConsult | null, proposal: string | null) =>
+  consult !== null && !consult.reviewed && proposal !== null && consult.proposalHash === sha(proposal)
 const EMPTY_STAFFING: Staffing = { accounts: {}, clis: {}, roles: {} }
 
 const staffingBasis = (dir: string) => Effect.gen(function* () {
@@ -170,15 +195,24 @@ const staffingBasis = (dir: string) => Effect.gen(function* () {
   const config = draft.read.texts[CONFIG]!
   const required = Object.entries(draft.read.config.roles).filter(([, role]) => role.kind === 'agent').map(([name]) => name)
   const saved = staffingText(dir)
-  const proposal = saved === null ? readText(join(dir, STAFFING_PROPOSAL)) : null
-  const source = saved !== null ? 'saved' as const : proposal !== null ? 'proposal' as const : 'empty' as const
-  const staffing = (yield* refusing(() => staffingOfText(saved ?? proposal))) ?? EMPTY_STAFFING
+  const consult = yield* refusing(() => staffingConsult(dir))
+  const proposal = reviewProposal(dir, consult)
+  const hasNewReply = pendingStaffingReply(consult, proposal)
+  const useProposal = proposal !== null && (saved === null || hasNewReply)
+  const source = useProposal ? 'proposal' as const : saved !== null ? 'saved' as const : 'empty' as const
+  const text = useProposal ? proposal : saved
+  const staffing = (yield* refusing(() => staffingOfText(text))) ?? EMPTY_STAFFING
+  const userAccounts = useProposal && saved !== null
+    ? yield* Effect.result(refusing(() => staffingOfText(saved))) : undefined
+  const subscriptions = userAccounts?._tag === 'Success'
+    ? Object.entries(userAccounts.success?.accounts ?? {}).filter(([, account]) => account.plan !== undefined) : []
   // The config may have gained or lost roles since the host submitted a proposal.
-  const current = source !== 'proposal' ? staffing : { ...staffing, roles: Object.fromEntries(
-    Object.entries(staffing.roles).filter(([name]) => required.includes(name)),
-  ) }
-  return { config, saved, source, required, staffing: current,
-    revision: sha(JSON.stringify([source, saved ?? proposal, config])) }
+  const current = source !== 'proposal' ? staffing : { ...staffing,
+    accounts: { ...staffing.accounts, ...Object.fromEntries(subscriptions) },
+    roles: Object.fromEntries(Object.entries(staffing.roles).filter(([name]) => required.includes(name))),
+  }
+  return { config, roles: draft.read.config, saved, source, required, staffing: current, consult, hasNewReply,
+    revision: sha(JSON.stringify([source, text, saved, config, hasNewReply ? consult?.id : null])) }
 })
 
 const checkRevision = (current: string, expected: string | undefined) =>
@@ -205,8 +239,19 @@ export const readStaffingReview = (
     revision: basis.revision,
     clis: Object.keys(staffing.clis).sort(),
     models: modelOptions(staffing),
-    confirmed: edits.length === 0 && (yield* staffingConfirmed(dir, person)),
+    confirmed: basis.source === 'saved' && edits.length === 0 && (yield* staffingConfirmed(dir, person)),
     view: staffingView(staffing, basis.required),
+    arrangement: {
+      ...sketchOf(basis.roles, staffing),
+      subscriptions: basis.hasNewReply
+        ? basis.consult?.arrangement.subscriptions.filter(({ account }) => !Object.hasOwn(staffing.accounts, account)) ?? []
+        : [],
+    },
+    roles: staffRoles(basis.roles, staffing),
+    accounts: staffAccounts(staffing), launchClis: launchClis(staffing),
+    plans: planCatalog, estimate: estimateBasis, modelCosts,
+    consult: basis.consult === null ? null : { words: basis.consult.words, reply: basis.consult.reply,
+      arrangement: basis.consult.reply === null && basis.consult.revision === basis.revision ? basis.consult.arrangement : null },
   }
 })
 
@@ -299,14 +344,38 @@ export const previewStaffingReview = (dir: string, revision: string, edits: read
   })
 
 export const applyStaffingReview = (dir: string, person: string, revision: string, candidate: Staffing) =>
-  Effect.gen(function* () {
+  Effect.scoped(Effect.gen(function* () {
+    yield* locked(dir)
     const basis = yield* staffingBasis(dir)
     yield* checkRevision(basis.revision, revision)
     yield* checkStaffingConfig(dir, basis.config, candidate)
-    const next = basis.saved !== null && Bun.deepEquals(basis.staffing, candidate) ? basis.saved : yamlOf(candidate)
+    const next = basis.source === 'saved' && basis.saved !== null && Bun.deepEquals(basis.staffing, candidate)
+      ? basis.saved : yamlOf(candidate)
     if (next !== basis.saved) yield* writeWhole(join(dir, STAFFING), next)
     yield* writeWhole(join(dir, staffingConfirmation), confirmationOf(person, sha(next)))
+    if (basis.consult !== null && !basis.consult.reviewed && basis.source === 'proposal' && basis.consult.reply !== null) {
+      yield* writeStaffingConsult(dir, { ...basis.consult, reviewed: true })
+    }
+  }))
+
+export const acceptStaffArrangement = (dir: string, person: string, revision: string, arrangement: StaffArrangement) =>
+  Effect.gen(function* () {
+    const basis = yield* staffingBasis(dir)
+    yield* checkRevision(basis.revision, revision)
+    const candidate = yield* refusing(() => staffingFromSketch(basis.roles, basis.staffing, arrangement))
+    yield* applyStaffingReview(dir, person, revision, candidate)
   })
+
+export const consultStaffing = (dir: string, revision: string, words: string, arrangement: StaffArrangement) =>
+  Effect.scoped(Effect.gen(function* () {
+    yield* locked(dir)
+    const basis = yield* staffingBasis(dir)
+    yield* checkRevision(basis.revision, revision)
+    if (!words.trim()) return yield* refuse('Enter a staffing question.')
+    if (basis.consult?.reply === null) return yield* refuse('The host still has a staffing question to answer.')
+    yield* writeStaffingConsult(dir, { id: randomUUID(), revision, words: NonBlank.make(words.trim()), arrangement,
+      priorProposal: reviewProposal(dir, basis.consult), reply: null, proposalHash: null, reviewed: false })
+  }))
 
 const yamlOf = (value: unknown): string => Bun.YAML.stringify(value, null, 2)
 
@@ -436,6 +505,9 @@ export interface OnboardingFiles {
   readonly config: ConfigFile | null
   readonly responsibilityOnly?: true
   readonly staffingProblem?: string
+  readonly staffingConsult?: StaffingConsult
+  readonly hasStaffingProposal?: true
+  readonly staffingAllowances?: Readonly<Record<string, number>>
   readonly directions: ReadonlyArray<OnboardingDirection>
   readonly discovery?: Discovery
   // The roles of the config draft in its order, each joined with its entry of roles.yaml.
@@ -468,7 +540,16 @@ export const readOnboarding = (dir: string): Effect.Effect<OnboardingFiles, Refu
     const configured = draft?.read.config.roles ?? {}
     const roleRequests = Object.entries(states).flatMap(([role, { decision }]) =>
       role.startsWith('requested-role-') && !(role in configured) && decision._tag === 'Revising' ? [{ role, words: decision.words }] : [])
+    const consult = yield* refusing(() => staffingConsult(dir))
+    const proposal = reviewProposal(dir, consult)
+    const parsedStaffing = yield* Effect.result(refusing(() => staffingOfText(proposal ?? staffingText(dir))))
+    const staffing = parsedStaffing._tag === 'Success' ? parsedStaffing.success : null
     return { config: draft?.read.config ?? null, directions, roles, roleRequests,
+      ...(consult === null ? {} : { staffingConsult: consult }),
+      ...(proposal === null ? {} : { hasStaffingProposal: true }),
+      ...(staffing === null ? {} : { staffingAllowances: Object.fromEntries(
+        Object.entries(staffing.roles).map(([role, binding]) => [role, binding.subagentAllowance]),
+      ) }),
       ...(discovery === undefined ? {} : { discovery }),
       ...(draft !== undefined ? { responsibilityOnly: true } : {}),
       ...(draft?.staffingProblem === undefined ? {} : { staffingProblem: draft.staffingProblem }) }
@@ -532,7 +613,7 @@ export const directionReview = (files: ReadonlyArray<OnboardingDirection>, disco
 // and the person decides it again.
 export type HostAct =
   | { readonly _tag: 'Discovery'; readonly discovery: Discovery }
-  | { readonly _tag: 'Staffing'; readonly draft: unknown }
+  | { readonly _tag: 'Staffing'; readonly draft: unknown; readonly revision?: string; readonly reply?: string }
   | { readonly _tag: 'RemoveRevised'; readonly direction: DirectionId }
   | {
       readonly _tag: 'Config'
@@ -654,7 +735,17 @@ export const hostAct = (
           const { read } = yield* needDraft(dir)
           const staffing = yield* refusing(() => staffingOf(act.draft))
           yield* checkStaffingConfig(dir, read.texts[CONFIG]!, staffing)
-          yield* writeWhole(join(dir, STAFFING_PROPOSAL), yamlOf(staffing))
+          const consult = yield* refusing(() => staffingConsult(dir))
+          if ((consult?.reply === null && act.revision !== consult.id) ||
+            (act.revision !== undefined && (consult?.id !== act.revision || consult.reply !== null))) {
+            return yield* refuse('The staffing question changed. Read work onboard show staffing before replying.')
+          }
+          const text = yamlOf(staffing)
+          yield* writeWhole(join(dir, STAFFING_PROPOSAL), text)
+          if (consult?.reply === null) {
+            yield* writeStaffingConsult(dir, { ...consult, reply: act.reply ?? 'The host sent a revised arrangement.',
+              proposalHash: sha(text), reviewed: false })
+          }
           return []
         }
         case 'Discovery':

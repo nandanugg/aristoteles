@@ -30,8 +30,10 @@ again. The store starts at the end, with only the accepted result.
    holds), then run `work onboard config --file=.work/drafts/config.yaml`. The command runs the
    checks of `work config check` on it, and prints `next: start the page (work start --detach)`,
    then `found` and `draft` for each topic. Use stable provisional role ids so each checker
-   can be named before role review. Revise a role with `work onboard role <role>`. Draft staffing
-   for the CLI you run in and submit it with `work onboard staffing --file=.work/drafts/staffing.yaml`.
+   can be named before role review. Revise a role with `work onboard role <role>`. Propose persistent staff
+   by launch command. Give roles that share a session the same worker group, set each role’s
+   subagent allowance, and bind each disposable maker under the staff whose role assigns it.
+   Submit with `work onboard staffing --file=.work/drafts/staffing.yaml`.
 3. **Open the page** now, after the config: `work start --detach`. It keeps running when this AI
    CLI ends. Tell the person to read it: each role waits there as a card, and each direction
    appears as you name it, so the person sees it as it comes.
@@ -64,6 +66,8 @@ again. The store starts at the end, with only the accepted result.
    - a company direction that the person asked for: the part "A company direction";
    - a role to write again after a Revise: write its file (the part "One role"), then
      `work onboard role <role> --file=.work/drafts/<role>.yaml`.
+   - a Staffing Consult: read `work onboard show staffing` and submit an updated proposal with
+     the shown revision and your reply.
    `work onboard show <id>|<role>` prints one direction or role as the person sees it. When
    nothing waits, wait again; do not ask the person.
 8. **The end is the person's.** The roles step opens when every direction is accepted or removed.

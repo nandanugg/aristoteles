@@ -96,9 +96,11 @@ export const slotAvailable = (runtime: Runtime, placement: WorkerPlacement): boo
 export const childFor = (runtime: Runtime, actor: string): ChildAllocation | undefined =>
   [...runtime.children.values()].findLast((entry) => entry.reservation.actor === actor)
 
-export const childLoad = (runtime: Runtime, actor: string): number =>
-  [...runtime.children.values()].filter(({ reservation, released }) =>
-    reservation.parentActor === actor && released === null).length
+export const childLoad = (runtime: Runtime, actor: string): number => {
+  const worker = runtime.placements.find(({ members }) => members.includes(actor))?.worker
+  return [...runtime.children.values()].filter(({ reservation, released }) =>
+    released === null && (worker === undefined ? reservation.parentActor === actor : reservation.worker === worker)).length
+}
 
 export const privateWorker = (placement: WorkerPlacement): boolean =>
   placement.worker.startsWith('role:') && placement.members.length === 1

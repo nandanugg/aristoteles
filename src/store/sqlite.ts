@@ -140,6 +140,32 @@ const decodeRow = (row: EventRow): Recorded => {
   return recorded
 }
 
+// Use the latest measured single-model project on this machine. Onboarding can read the
+// estimate in a new directory without creating or migrating the shared store.
+export const readProjectUsage = (path: string) => {
+  if (!existsSync(path)) return null
+  const db = new Database(path, { readonly: true })
+  try {
+    if (formatOf(db) !== 'current') return null
+    const row = db.query<EventRow, []>(`
+      SELECT seq, at, author, record, member, event FROM event AS usage
+      WHERE record = 'Runtime' AND member = 'ProjectUsageMeasured'
+        AND EXISTS (
+          SELECT 1 FROM event AS ended WHERE ended.project = usage.project AND ended.seq < usage.seq
+            AND ended.record = 'Work' AND ended.member = 'Acted'
+            AND json_extract(ended.event, '$.create.act.body._tag') = 'EndProject'
+        )
+      ORDER BY at DESC, project, seq DESC LIMIT 1
+    `).get()
+    const event = row === null ? undefined : decodeRow(row).event
+    if (event?._tag !== 'Runtime' || event.create._tag !== 'ProjectUsageMeasured') return null
+    const { model, tokens } = event.create
+    return { model, tokens }
+  } finally {
+    db.close()
+  }
+}
+
 export const INSERT_EVENT =
   'INSERT INTO event (project, seq, at, author, record, member, event, act) ' +
   'VALUES (?, ?, ?, ?, ?, ?, ?, ?)'

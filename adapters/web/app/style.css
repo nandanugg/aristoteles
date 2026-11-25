@@ -1196,17 +1196,6 @@ button.card { text-align: left; width: 100%; padding: 0; cursor: pointer; }
   padding: 12px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--surface-2); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all;
 }
-.staffing-placement-comparison {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 315px), 1fr)); gap: 12px;
-  margin-bottom: 16px;
-}
-.staffing-placement h3 { margin: 0 0 8px; }
-.staffing-placement ul { display: grid; gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; }
-.staffing-placement li {
-  display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line);
-  border-radius: 6px; background: var(--surface-2); overflow-wrap: anywhere;
-}
-.staffing-placement li span { color: var(--muted); font-size: 13px; }
 .worker-lane {
   padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
   font-size: 13px; background: var(--surface-2);

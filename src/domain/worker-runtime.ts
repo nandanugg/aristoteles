@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import { ContextFacts } from './files.ts'
+import { NonBlank, PositiveInt } from './ids.ts'
 
 const Text = Schema.String
 const Number = Schema.Int
@@ -79,6 +80,7 @@ export type RecheckUse = typeof RecheckUse.Type
 const Park = { ...Launch, job: Text, checkpoint: Text }
 
 export const RuntimeEvent = Schema.Union([
+  Schema.TaggedStruct('ProjectUsageMeasured', { model: NonBlank, tokens: PositiveInt }),
   Schema.TaggedStruct('WorkerReserved', {
     ...Launch, expectedGeneration: Number, purpose: Schema.Literals(['work', 'recheck', 'resume']),
     placement: WorkerPlacement, members: Schema.Array(Text), slot: Text,

@@ -16,6 +16,7 @@ export type { Spawned } from '../../src/services/outside.ts'
 export { Store } from '../../src/services/store.ts'
 export type { DirStore, ReaderRow, Written } from '../../src/services/store.ts'
 export { StoreLive } from '../../src/store/sqlite.ts'
+export { readProjectUsage } from '../../src/store/sqlite.ts'
 export { dbPath } from '../../src/store/path.ts'
 export { rowsOf } from '../../src/store/rows.ts'
 export {
@@ -63,7 +64,8 @@ export { Readings } from './readings.ts'
 export { refusing } from '../../src/config/core.ts'
 export { readStaffing } from '../../src/config/staffing.ts'
 export type { Staffing } from '../../src/config/staffing.ts'
-export { applyStaffingReview, previewStaffingReview, readStaffingReview, staffingConfirmed, STAFFING_PROPOSAL }
+export { acceptStaffArrangement, applyStaffingReview, consultStaffing, previewStaffingReview, readStaffingReview,
+  staffingConfirmed, STAFFING_CONSULT, STAFFING_PROPOSAL }
   from '../../src/files/onboarding.ts'
 export { staffingPreview, staffingView } from '../../src/config/staffing-view.ts'
 export type {

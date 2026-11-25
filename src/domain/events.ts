@@ -361,6 +361,7 @@ export const WRITTEN_BY = {
     'Workflow.Activated',
     'Workflow.HostRebound',
     'Role.Fitted',
+    'Runtime.ProjectUsageMeasured',
     'Send.Sent',
     'Review.Accept',
     'Review.Reject',

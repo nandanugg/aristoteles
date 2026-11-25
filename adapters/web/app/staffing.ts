@@ -1,269 +1,281 @@
 import { html } from 'htm/preact'
-import { useEffect, useState } from 'preact/hooks'
-import {
-  MarkerApproval, type OnboardingView, type StaffingPost, StaffingPreview, StaffingState,
-  type StaffingView,
-} from '../contract.ts'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
+import { launchExecutable, type StaffArrangement } from '../../../src/domain/staffing-sketch.ts'
+import { MarkerApproval, type OnboardingView, StaffingState } from '../contract.ts'
 import { api, postActivation, postStaffing } from './api.ts'
 import { Modal } from './modal.ts'
 
-type View = typeof StaffingView.Type
-type State = NonNullable<typeof StaffingState.Type>
-type Edit = Extract<typeof StaffingPost.Encoded, { action: 'arrange' }>['edits'][number]
-type Role = View['arrangement'][number]
+type State = typeof StaffingState.Type
+type Staff = StaffArrangement['staff'][number]
+type Plan = State['plans'][number]
 
+const value = (event: Event) => (event.currentTarget as HTMLInputElement).value
 const words = (error: unknown) => error instanceof Error ? error.message : String(error)
-const joined = (items: ReadonlyArray<string>) => items.join(', ') || 'None'
-const editRole = (item: Role): Extract<Edit, { kind: 'role' }> => ({
-  kind: 'role', role: item.role, account: item.account, cli: item.cli, model: item.model,
-  persistent: item.persistent, concurrency: item.concurrency, subagentAllowance: item.subagentAllowance,
-  workerGroup: item.workerGroup, launch: item.launch,
-  allowedModels: item.model ? [item.model, ...item.alternatives] : [],
-})
+const labelOf = (plan: Plan) => `${plan.provider} ${plan.name}`
 
-function StaffingDetails({ view, onEdit }: { view: View; onEdit?: ((edit: Edit) => void) | undefined }) {
-  return html`<div class="staffing-details">
-    <section><h3>Accounts</h3>
-      ${view.accounts.length ? view.accounts.map(({ account, limits, roles, sessionLimit }) => html`
-        <div class="staffing-account"><strong>${account}</strong><span class="muted">${joined(roles)}</span>
-          <p>Session cap: ${sessionLimit === null ? html`<span class="muted">no limit given</span>` : `${sessionLimit} at once (this project only)`}
-            ${onEdit ? html`<button class="btn" aria-label=${`Edit ${account} session cap`}
-              onClick=${() => onEdit({ kind: 'sessions', account, sessionLimit })}>Edit</button>` : ''}</p>
-          ${limits.length ? html`<dl>${limits.map(({ limit, typed }) => html`
-            <div><dt>${limit}</dt><dd><span class="staffing-typed">${typed}</span>
-              ${onEdit ? html`<button class="btn" aria-label=${`Edit ${account} ${limit}`}
-                onClick=${() => onEdit({ kind: 'limit', account, limit, typed })}>Edit</button>` : ''}</dd></div>`)}</dl>`
-            : html`<p class="muted">No limits entered.</p>`}</div>`)
-        : html`<p class="muted">No accounts configured.</p>`}
-    </section>
-    <section><h3>Arrangement</h3><div class="staffing-arrangement">
-      ${view.arrangement.map((item) => html`<article class="staffing-role">
-        <div class="review-card-top"><h4>${item.role}</h4>
-          ${onEdit ? html`<button class="btn" aria-label=${`Edit ${item.role}`} onClick=${() => onEdit(editRole(item))}>Edit</button>` : ''}</div>
-        ${item.account ? html`<dl class="staffing-fields">
-          <dt>Account</dt><dd>${item.account}</dd><dt>CLI</dt><dd>${item.cli}</dd>
-          <dt>Effective model</dt><dd>${item.model}</dd><dt>Alternatives</dt><dd>${joined(item.alternatives)}</dd>
-          <dt>Session</dt><dd>${item.persistent ? 'Persistent' : 'Disposable'}</dd>
-          <dt>Worker</dt><dd>${item.worker === null ? html`<span class="muted">a subagent of its role</span>`
-            : (() => { const w = view.workers.find((x) => x.worker === item.worker)
-              const others = (w?.roles ?? []).filter((r) => r !== item.role)
-              return item.workerGroup === null ? 'its own'
-                : others.length ? `group ${item.workerGroup} (with ${others.join(', ')})` : `group ${item.workerGroup}` })()}</dd>
-          <dt>Concurrency</dt><dd>${item.concurrency}</dd>
-          <dt>Subagent allowance</dt><dd>${item.subagentAllowance}</dd>
-          <dt>Launch command</dt><dd><code>${item.launch}</code></dd>
-          <dt>Review mode</dt><dd>${item.review}</dd><dt>Context fit</dt><dd>Unknown. ${item.fit.why}.</dd>
-        </dl>` : html`<p class="muted">Unassigned</p>`}</article>`)}
-    </div></section>
-    <section><h3>Consequences per limit</h3>
-      ${view.consequences.length ? html`<div class="staffing-table-scroll"><table class="staffing-table">
-        <thead><tr><th>Account</th><th>Limit</th><th>As entered</th><th>Roles counted</th><th title="one per worker: the engine runs no more">Sessions</th><th>Workload</th></tr></thead>
-        <tbody>${view.consequences.map((row) => html`<tr>
-          <td>${row.account}</td><th scope="row">${row.limit}</th><td class="staffing-typed">${row.typed}</td>
-          <td>${joined(row.roles)}</td><td>${row.peakSessions}</td><td>Unknown. ${row.workload.why}.</td>
-        </tr>`)}</tbody></table></div>` : html`<p class="muted">No limits to compare.</p>`}
-    </section>
-    ${view.warnings.length ? html`<section><h3>Warnings</h3><ul class="staffing-warnings">
-      ${view.warnings.map((warning) => html`<li><strong>${warning.role}</strong> · ${warning.says}</li>`)}</ul></section>` : ''}
-  </div>`
+const accountsOf = (state: State, draft: StaffArrangement) =>
+  [...state.accounts, ...draft.subscriptions.map((s) => ({ ...s, clis: [] }))].map((account) => {
+    const plan = state.plans.find(({ id }) => id === account.plan)
+    return { ...account, clis: plan ? [plan.cli] : account.clis, plan }
+  })
+
+function placement(state: State, accounts: ReturnType<typeof accountsOf>, staff: Staff) {
+  const cli = state.launchClis.find(({ command }) => command === launchExecutable(staff.launch))?.cli
+  const options = cli ? accounts.filter(({ clis }) => clis.includes(cli)) : []
+  const account = options.length === 1 ? options[0] : options.find((a) => a.account === staff.account)
+  return { cli, options, account }
 }
 
-function WorkerPlacement({ title, workers }: { title: string; workers: View['workers'] }) {
-  return html`<section class="staffing-placement" aria-label=${title}>
-    <h3>${title}</h3>
-    ${workers.length ? html`<ul>${workers.map(({ worker, roles, account, shared }) => html`
-      <li key=${worker}>
-        <strong>${worker.replace(/^(?:group|role):/, '')}</strong>
-        <span>${shared ? 'Group' : 'Private'} · ${account}</span>
-        <span>${joined(roles)}</span>
-      </li>`
-    )}</ul>` : html`<p class="muted">No persistent workers.</p>`}
+function projectShare(state: State, models: readonly string[], active: number, plan: Plan): number | null {
+  const usage = state.usage
+  if (!usage || active === 0) return null
+  const factor = (name: string) => state.modelCosts.find(({ model }) => name === model)?.factor
+  const base = factor(usage.model)
+  let relative = 0
+  for (const model of models) {
+    if (!model.trim()) return null
+    const cost = factor(model)
+    if (model === usage.model) relative += 1
+    else if (base && cost) relative += cost / base
+    else return null
+  }
+  return 100 * (usage.tokens / active) * relative / (plan.monthlyTokens / state.estimate.windows)
+}
+
+function Cost({ state, draft, onAdd }: { state: State; draft: StaffArrangement; onAdd: () => void }) {
+  const accounts = accountsOf(state, draft)
+  const active = draft.staff.filter(({ id }) => draft.assignments.some(({ staff }) => staff === id))
+  const allocated = active.map((staff) => ({ model: staff.model, account: placement(state, accounts, staff).account?.account }))
+  const subscribed = accounts.filter(({ plan }) => plan !== undefined)
+  return html`<section class="staffing-cost" aria-label="Cost per one project">
+    <div class="staffing-cost-head"><h3>Cost per one project</h3>
+      <button class="btn" onClick=${onAdd}>Add subscription</button>
+    </div>
+    ${subscribed.length ? subscribed.map(({ account, plan }) => {
+      if (!plan) return ''
+      const models = allocated.filter((staff) => staff.account === account).map(({ model }) => model)
+      const share = projectShare(state, models, active.length, plan)
+      const caption = !state.usage ? 'unknown until the first project is measured'
+        : allocated.some(({ account }) => account === undefined) ? 'unknown until staff have subscriptions'
+        : models.length === 0 ? 'No staff assigned'
+        : share === null ? 'unknown for the models on this subscription'
+        : `${share > 0 && share < 0.1 ? '<0.1' : Number(share.toFixed(1))}%`
+      return html`<div class="staffing-cost-row" key=${account}>
+        <div><strong>${labelOf(plan)}</strong> <span class="muted">$${plan.price} · 5-hour limit</span>
+          ${account === plan.id ? '' : html`<small class="staffing-cost-account">${account}</small>`}</div>
+        <div class="staffing-cost-share">
+          <div class="staffing-meter" aria-hidden="true"><span style=${{ width: `${Math.min(100, share ?? 0)}%` }}></span></div>
+          <small>${caption}</small>
+        </div>
+      </div>`
+    }) : html`<p class="muted">No subscriptions added.</p>`}
+    ${subscribed.length ? html`<small class="staffing-estimate muted">
+      ${state.estimate.windows} five-hour windows per 30-day month. The estimate splits measured project tokens equally
+      across assigned staff and scales each share by model cost.
+      <span class="staffing-sources"><a href=${state.estimate.source} target="_blank" rel="noreferrer">Plan volumes</a>
+      · <a href="https://artificialanalysis.ai/models" target="_blank" rel="noreferrer">Model costs</a></span>
+    </small>` : ''}
   </section>`
 }
 
-const editTitle = (edit: Edit) => {
-  switch (edit.kind) {
-    case 'add-account': return 'Add account'
-    case 'add-cli': return 'Add CLI'
-    case 'add-model': return 'Add model'
-    case 'role': return `Edit ${edit.role}`
-    case 'sessions': return `Edit ${edit.account} · session cap`
-    case 'limit': return `Edit ${edit.account} · ${edit.limit}`
-  }
-}
-
-const value = (event: Event) => (event.currentTarget as HTMLInputElement).value
-const checked = (event: Event) => (event.currentTarget as HTMLInputElement).checked
-const capOf = (event: Event) => value(event) === '' ? null : Number(value(event))
-
-function StaffingEditor({ edit, state, busy, onChange, onSubmit }: {
-  edit: Edit; state: State; busy: boolean; onChange: (next: Edit) => void; onSubmit: () => void
+function Subscription({ state, onAdd, onClose }: {
+  state: State; onAdd: (plan: Plan) => void; onClose: () => void
 }) {
-  const sessionCap = (cap: number | null, change: (cap: number | null) => void) => html`
-    <label class="field"><span>Session cap (empty means no limit)</span>
-      <input type="number" min="1" value=${cap ?? ''} onInput=${(event: Event) => change(capOf(event))} /></label>`
-  const body = () => {
-    switch (edit.kind) {
-      case 'limit':
-        return html`<label class="field"><span>Limit as entered</span>
-          <textarea required rows="2" value=${edit.typed} onInput=${(event: Event) => onChange({ ...edit, typed: value(event) })} /></label>`
-      case 'sessions':
-        return sessionCap(edit.sessionLimit, (sessionLimit) => onChange({ ...edit, sessionLimit }))
-      case 'add-account':
-        return html`<label class="field"><span>Account name</span><input required value=${edit.account}
-          onInput=${(event: Event) => onChange({ ...edit, account: value(event) })} /></label>
-          ${sessionCap(edit.sessionLimit, (sessionLimit) => onChange({ ...edit, sessionLimit }))}
-          ${edit.limits.map((row, index) => {
-            const update = (part: Partial<typeof row>) => onChange({ ...edit,
-              limits: edit.limits.map((item, i) => i === index ? { ...item, ...part } : item) })
-            return html`<div class="staffing-limit-entry">
-              <label class="field"><span>Limit name</span><input required value=${row.limit}
-                onInput=${(event: Event) => update({ limit: value(event) })} /></label>
-              <label class="field"><span>Limit as entered</span><input required value=${row.typed}
-                onInput=${(event: Event) => update({ typed: value(event) })} /></label>
-              <button type="button" class="btn" onClick=${() => onChange({ ...edit,
-                limits: edit.limits.filter((_, i) => i !== index) })}>Remove limit</button>
-            </div>`
-          })}
-          <div><button type="button" class="btn" onClick=${() => onChange({ ...edit,
-            limits: [...edit.limits, { limit: '', typed: '' }] })}>Add limit</button></div>`
-      case 'add-cli':
-        return html`<label class="field"><span>CLI name</span><input required value=${edit.cli}
-          onInput=${(event: Event) => onChange({ ...edit, cli: value(event) })} /></label>
-          <label><input type="checkbox" checked=${edit.backgroundChildren}
-            onChange=${(event: Event) => onChange({ ...edit, backgroundChildren: checked(event) })} /> Background children</label>
-          <label><input type="checkbox" checked=${edit.canPark}
-            onChange=${(event: Event) => onChange({ ...edit, canPark: checked(event) })} /> Can park and resume sessions</label>`
-      case 'add-model':
-        return html`<label class="field"><span>Model name</span><input required value=${edit.model}
-          onInput=${(event: Event) => onChange({ ...edit, model: value(event) })} /></label>
-          <label class="field"><span>Launch command</span><input required value=${edit.launch}
-            onInput=${(event: Event) => onChange({ ...edit, launch: value(event) })} /></label>
-          <label class="field"><span>Resume command (optional)</span><input value=${edit.resume ?? ''}
-            onInput=${(event: Event) => onChange({ ...edit, resume: value(event) || null })} /></label>`
-      case 'role': {
-        const allowed = edit.allowedModels ?? []
-        const setModel = (model: string) => {
-          const defaultLaunch = (name: string) => state.models.find((item) => item.model === name)?.launch
-          const launch = !edit.launch || edit.launch === defaultLaunch(edit.model) ? defaultLaunch(model) ?? '' : edit.launch
-          onChange({ ...edit, model, launch, allowedModels: allowed.length ? allowed : [model] })
-        }
-        return html`
-          <label class="field"><span>Account</span><select aria-label="Account" required value=${edit.account}
-            onChange=${(event: Event) => onChange({ ...edit, account: value(event) })}>
-            <option value="">Choose an account</option>
-            ${state.view.accounts.map(({ account }) => html`<option value=${account}>${account}</option>`)}</select></label>
-          <label class="field"><span>CLI</span><select aria-label="CLI" required value=${edit.cli}
-            onChange=${(event: Event) => onChange({ ...edit, cli: value(event) })}>
-            <option value="">Choose a CLI</option>
-            ${state.clis.map((cli) => html`<option value=${cli}>${cli}</option>`)}</select></label>
-          <fieldset class="staffing-model-options"><legend>Allowed models</legend>
-            ${state.models.map(({ model }) => html`<label><input type="checkbox" checked=${allowed.includes(model)}
-              onChange=${(event: Event) => {
-                const next = checked(event) ? [...allowed, model] : allowed.filter((name) => name !== model)
-                onChange({ ...edit, allowedModels: next, model: next.includes(edit.model) ? edit.model : '' })
-              }} /> ${model}</label>`)}
-          </fieldset>
-          <label class="field"><span>Effective model</span><select required value=${edit.model}
-            onChange=${(event: Event) => setModel(value(event))}>
-            <option value="">Choose a model</option>
-            ${(allowed.length ? allowed : state.models.map(({ model }) => model)).map((model) => html`<option value=${model}>${model}</option>`)}
-          </select></label>
-          <label class="field"><span>Launch command</span><input required value=${edit.launch ?? ''}
-            onInput=${(event: Event) => onChange({ ...edit, launch: value(event) })} /></label>
-          <label><input type="checkbox" checked=${edit.persistent}
-            onChange=${(event: Event) => {
-              const persistent = checked(event)
-              onChange({ ...edit, persistent, ...(persistent ? {} : { workerGroup: null }) })
-            }} /> Persistent session</label>
-          <label class="field"><span>Concurrency</span><input type="number" min="1" required value=${edit.concurrency}
-            onInput=${(event: Event) => onChange({ ...edit, concurrency: Number(value(event)) })} /></label>
-          <label class="field"><span>Subagent allowance</span><input type="number" min="0" required value=${edit.subagentAllowance}
-            onInput=${(event: Event) => onChange({ ...edit, subagentAllowance: Number(value(event)) })} /></label>
-          ${edit.persistent ? html`<div><label class="field"><span>Worker group</span>
-            <input value=${edit.workerGroup ?? ''}
-              onInput=${(event: Event) => onChange({ ...edit, workerGroup: value(event).trim() || null })} />
-            </label><small>Roles in a group share an account, CLI, model and launch command.</small></div>` : ''}`
-      }
-    }
-  }
-  return html`<form class="review-detail staffing-editor" onSubmit=${(event: Event) => { event.preventDefault(); onSubmit() }}>
-    ${body()}
-    <div class="modal-foot"><button class="btn primary" disabled=${busy}>
-      ${state.source === 'saved' ? 'Preview changes' : 'Keep in draft'}</button></div>
-  </form>`
+  const providers = [...new Set(state.plans.map(({ provider }) => provider))]
+  const [provider, setProvider] = useState(providers[0] ?? '')
+  const [choice, setChoice] = useState('')
+  const plans = state.plans.filter((p) => p.provider === provider)
+  const selected = plans.find(({ id }) => id === choice) ?? plans[0]
+  return html`<${Modal} title="Add subscription" onClose=${onClose}>
+    <form onSubmit=${(event: Event) => { event.preventDefault(); if (selected) onAdd(selected) }}>
+      <label class="field"><span>Provider</span><select value=${provider} onChange=${(event: Event) => setProvider(value(event))}>
+        ${providers.map((name) => html`<option value=${name} key=${name}>${name}</option>`)}
+      </select></label>
+      <label class="field"><span>Plan</span><select value=${selected?.id ?? ''} onChange=${(event: Event) => setChoice(value(event))}>
+        ${plans.map((plan) => html`<option value=${plan.id} key=${plan.id}>${plan.name} · $${plan.price}/month</option>`)}
+      </select></label>
+      <div class="modal-foot"><button type="button" class="btn" onClick=${onClose}>Cancel</button>
+        <button class="btn primary" disabled=${!selected}>Add subscription</button></div>
+    </form>
+  <//>`
 }
 
-function StaffingCatalog({ state, onEdit }: { state: State; onEdit: (edit: Edit) => void }) {
-  return html`<div class="staffing-catalog">
-    <div><button class="btn" onClick=${() => onEdit({ kind: 'add-account', account: '', limits: [], sessionLimit: null })}>Add account</button></div>
-    <div><button class="btn" onClick=${() => onEdit({ kind: 'add-cli', cli: '', backgroundChildren: false, canPark: false })}>Add CLI</button>
-      <span class="muted">${state.clis.length ? state.clis.join(', ') : ''}</span></div>
-    <div><button class="btn" onClick=${() => onEdit({ kind: 'add-model', model: '', launch: '', resume: null })}>Add model</button>
-      <span class="muted">${state.models.map(({ model }) => model).join(', ')}</span></div>
+function Graph({ state, draft, busy, move, edit, remove }: {
+  state: State; draft: StaffArrangement; busy: boolean
+  move: (role: string, to: string) => void
+  edit: (id: string, patch: Partial<Staff>) => void
+  remove: (id: string) => void
+}) {
+  const root = useRef<HTMLDivElement>(null)
+  const [lines, setLines] = useState<readonly { role: string; d: string }[]>([])
+  useLayoutEffect(() => {
+    const graph = root.current
+    if (!graph) return
+    const measure = () => {
+      const frame = graph.getBoundingClientRect()
+      if (!frame.width) return
+      const boxes = new Map([...graph.querySelectorAll<HTMLElement>('[data-staff-role]')]
+        .map((box) => [box.dataset.staffRole, box.getBoundingClientRect()]))
+      const cards = new Map([...graph.querySelectorAll<HTMLElement>('[data-staff-card]')]
+        .map((card) => [card.dataset.staffCard, card.getBoundingClientRect()]))
+      const next = draft.assignments.flatMap(({ role, staff }) => {
+        const start = boxes.get(role)
+        const end = cards.get(staff)
+        if (!start || !end || start.right >= end.left) return []
+        const x1 = start.right - frame.left
+        const y1 = start.top + start.height / 2 - frame.top
+        const x2 = end.left - frame.left - 5
+        const y2 = Math.min(end.bottom - 16, Math.max(end.top + 16, start.top + start.height / 2)) - frame.top
+        const mid = (x1 + x2) / 2
+        return [{ role, d: `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}` }]
+      })
+      setLines(next)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(graph)
+    for (const box of graph.querySelectorAll('[data-staff-role], [data-staff-card]')) observer.observe(box)
+    return () => observer.disconnect()
+  }, [draft, state.roles])
+  const accounts = accountsOf(state, draft)
+  return html`<div class="staffing-graph" ref=${root}>
+    <svg class="staffing-arrows" aria-hidden="true">
+      <defs><marker id="staffing-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+        <path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor" />
+      </marker></defs>
+      ${lines.map(({ role, d }) => html`<path key=${role} data-arrow-role=${role} d=${d}
+        fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#staffing-arrow)" />`)}
+    </svg>
+    ${draft.staff.map((staff) => {
+      const roles = draft.assignments.filter((assignment) => assignment.staff === staff.id)
+      const assigns = new Set(roles.flatMap(({ role }) => state.roles.find((r) => r.role === role)?.assigns ?? []))
+      const makers = state.roles.filter((role) => !role.persistent && assigns.has(role.role))
+      const { cli, options, account } = placement(state, accounts, staff)
+      return html`<div class="staffing-pair" key=${staff.id}>
+        <div class="staffing-roles">
+          ${roles.map(({ role }) => html`<div class="staffing-role-box" key=${role} data-staff-role=${role}>
+            <strong>${role}</strong>
+            <label><span>Staff</span><select aria-label=${`Staff for ${role}`} value=${staff.id} disabled=${busy}
+              onChange=${(event: Event) => move(role, value(event))}>
+              ${draft.staff.map(({ id }) => html`<option value=${id} key=${id}>${id}</option>`)}
+            </select></label>
+          </div>`)}
+        </div>
+        <article class="staffing-card" data-staff-card=${staff.id} aria-label=${`Staff ${staff.id}`}>
+          <div class="staffing-card-head"><h3>${staff.id}</h3>
+            ${roles.length ? '' : html`<button class="btn" disabled=${busy} aria-label=${`Remove ${staff.id}`}
+              onClick=${() => remove(staff.id)}>Remove</button>`}
+          </div>
+          <label class="field"><span>Model</span><input value=${staff.model} placeholder="Model name" disabled=${busy}
+            onInput=${(event: Event) => edit(staff.id, { model: value(event) })} /></label>
+          <label class="field"><span>Launch command</span><input class="staffing-launch" value=${staff.launch}
+            placeholder="Command with {session}" disabled=${busy}
+            onInput=${(event: Event) => edit(staff.id, { launch: value(event) })} /></label>
+          ${options.length > 1 ? html`<label class="field"><span>Subscription</span><select
+            value=${account?.account ?? ''} disabled=${busy} onChange=${(event: Event) => edit(staff.id, { account: value(event) })}>
+            <option value="" disabled>Choose a subscription</option>
+            ${options.map((option) => html`<option key=${option.account} value=${option.account}>
+              ${option.plan ? `${labelOf(option.plan)} · ${option.account}` : option.account}</option>`)}
+          </select></label>` : account ? html`<small class="muted">${account.plan ? labelOf(account.plan) : account.account}</small>`
+            : cli ? html`<small class="muted">Add a subscription for ${cli}.</small>` : ''}
+          <div class="staffing-allowance">
+            <button class="btn" aria-label=${`Decrease allowed subagents for ${staff.id}`} disabled=${busy || staff.allowance === 0}
+              onClick=${() => edit(staff.id, { allowance: staff.allowance - 1 })}>−</button>
+            <output aria-label=${`Allowed subagents for ${staff.id}`}>${staff.allowance}</output>
+            <button class="btn" aria-label=${`Increase allowed subagents for ${staff.id}`} disabled=${busy}
+              onClick=${() => edit(staff.id, { allowance: staff.allowance + 1 })}>+</button>
+            <span>allowed subagents</span>
+          </div>
+          ${makers.length ? html`<ul class="staffing-makers">
+            ${makers.map(({ role }) => html`<li key=${role}>${role} <small class="muted">· Subagent</small></li>`)}
+          </ul>` : ''}
+        </article>
+      </div>`
+    })}
   </div>`
 }
 
 export function Staffing({ start, version, onApplied }: {
   start: (typeof OnboardingView.Type)['start']; version: number; onApplied: () => void
 }) {
-  const [{ state, edits, replaced }, setReview] = useState<{
-    state: State | null | undefined; edits: readonly Edit[]; replaced: boolean
-  }>({ state: undefined, edits: [], replaced: false })
-  const [saved, setSaved] = useState(false)
-  const [edit, setEdit] = useState<Edit | null>(null)
-  const [preview, setPreview] = useState<typeof StaffingPreview.Type | null>(null)
-  const [manifest, setManifest] = useState<typeof MarkerApproval.Type | null>(null)
+  const [review, setReview] = useState<{ state: State; draft: StaffArrangement }>()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [question, setQuestion] = useState('')
+  const [subscription, setSubscription] = useState(false)
+  const [removing, setRemoving] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [manifest, setManifest] = useState<typeof MarkerApproval.Type | null>(null)
+  const autoAllowance = useRef(new Set<string>())
+  const read = (state: State) => setReview((latest) => {
+    if (latest?.state.revision === state.revision) {
+      return { state, draft: latest.draft === latest.state.arrangement ? state.arrangement : latest.draft }
+    }
+    autoAllowance.current.clear()
+    return { state, draft: state.consult?.arrangement ?? state.arrangement }
+  })
   useEffect(() => {
     let current = true
-    api('/api/staffing', StaffingState).then((value) => {
-      if (!current) return
-      setReview((latest) => {
-        if (latest.state?.revision === value.revision) {
-          return latest.edits.length ? latest : { ...latest, state: value }
-        }
-        return { state: value, edits: [], replaced: latest.edits.length > 0 }
-      })
+    api('/api/staffing', StaffingState).then((state) => {
+      if (current) {
+        read(state)
+        setError('')
+      }
     }, (err: unknown) => {
-      if (!current) return
-      setReview((latest) => latest.state === undefined ? { ...latest, state: null } : latest)
-      setError(words(err))
+      if (current) setError(words(err))
     })
     return () => { current = false }
   }, [version])
+
   const run = async (work: () => Promise<void>) => {
     if (busy) return
     setBusy(true)
     setError('')
     try { await work() } catch (err) { setError(words(err)) } finally { setBusy(false) }
   }
-  const showPreview = (edit?: Edit) => run(async () => {
-    if (!state) return
-    setPreview(await postStaffing({
-      action: 'preview', revision: state.revision, edits: edit ? [edit] : edits,
-    }, StaffingPreview))
-    setEdit(null)
-  })
-  const editStaffing = (next: Edit) => {
+  const change = (transform: (draft: StaffArrangement, state: State) => StaffArrangement) => {
     setError('')
-    setReview((latest) => ({ ...latest, replaced: false }))
-    setEdit(next)
+    setReview((latest) => latest && { ...latest, draft: transform(latest.draft, latest.state) })
   }
-  const stageEdit = (next: Edit) => run(async () => {
-    if (!state) return
-    const staged = [...edits, next]
-    const candidate = await postStaffing({ action: 'arrange', revision: state.revision, edits: staged }, StaffingState)
-    setReview((latest) => latest.state?.revision === candidate.revision
-      ? { state: candidate, edits: staged, replaced: false } : latest)
-    setEdit(null)
+  const addStaff = () => change((draft) => {
+    let next = 1
+    while (draft.staff.some(({ id }) => id === `staff-${next}`)) next++
+    const id = `staff-${next}`
+    autoAllowance.current.add(id)
+    return { ...draft, staff: [...draft.staff, { id, model: '', launch: '', allowance: 0, account: null }] }
   })
-  const apply = () => run(async () => {
-    if (!preview) return
-    const applied = await postStaffing({ action: 'apply', ticket: preview.ticket }, StaffingState)
-    setReview({ state: applied, edits: [], replaced: false })
-    setPreview(null)
+  const move = (role: string, target: string) => change((draft, state) => {
+    const assignments = draft.assignments.map((row) => row.role === role ? { role, staff: target } : row)
+    const staff = draft.staff.map((card) => autoAllowance.current.has(card.id)
+      ? { ...card, allowance: Math.max(0, ...assignments.filter((row) => row.staff === card.id)
+        .map((row) => state.roles.find((entry) => entry.role === row.role)?.allowance ?? 0)) } : card)
+    return { ...draft, assignments, staff }
+  })
+  const edit = (id: string, patch: Partial<Staff>) => {
+    if (patch.allowance !== undefined) autoAllowance.current.delete(id)
+    change((draft) => ({ ...draft, staff: draft.staff.map((card) => card.id === id ? { ...card, ...patch } : card) }))
+  }
+  const addSubscription = (plan: Plan) => {
+    change((draft, state) => {
+      const accounts = accountsOf(state, draft)
+      let account = plan.id
+      for (let i = 2; accounts.some((entry) => entry.account === account); i++) account = `${plan.id}-${i}`
+      return { ...draft, subscriptions: [...draft.subscriptions, { account, plan: plan.id }] }
+    })
+    setSubscription(false)
+  }
+  const consult = () => run(async () => {
+    if (!review || !question.trim()) return
+    const { state, draft } = review
+    read(await postStaffing({ action: 'consult', revision: state.revision, arrangement: draft, words: question }, StaffingState))
+    setQuestion('')
+  })
+  const accept = () => run(async () => {
+    if (!review) return
+    const { state, draft } = review
+    const applied = await postStaffing({ action: 'accept', revision: state.revision, arrangement: draft }, StaffingState)
+    autoAllowance.current.clear()
+    setReview({ state: applied, draft: applied.arrangement })
     setSaved(true)
     onApplied()
   })
@@ -274,43 +286,47 @@ export function Staffing({ start, version, onApplied }: {
     setManifest(null)
   })
   const alert = () => error ? html`<p class="error" role="alert">${error}</p>` : ''
-  return html`<section class="review-stage" aria-label="Staffing">
+  const state = review?.state
+  const draft = review?.draft
+  const confirmed = Boolean(state?.confirmed && state.arrangement === draft)
+  const consultWaiting = state?.consult?.reply === null
+  return html`<section class="review-stage staffing-stage" aria-label="Staffing">
     <header class="review-heading"><h2>Staffing</h2></header>
-    ${state === undefined ? html`<p role="status">Reading staffing…</p>` : state ? html`
-      ${state.source === 'proposal' ? html`<p role="status">Review the host’s proposed arrangement.</p>`
-        : state.source === 'empty' ? html`<p role="status">Add an account, CLI and model, then arrange each agent role.</p>`
-          : start.state === 'blocked' ? html`<p role="status">${start.says}</p>` : ''}
-      <${StaffingCatalog} state=${state} onEdit=${editStaffing} />
-      <${StaffingDetails} view=${state.view} onEdit=${editStaffing} />` : ''}
-    ${replaced ? html`<p role="alert">Staffing changed. Review the latest arrangement before continuing.</p>` : ''}
-    ${!edit && !preview && !manifest ? alert() : ''}
-    ${state ? html`<footer class="review-footer">
-      ${state.confirmed ? html`<span class="muted" role="status">Staffing confirmed</span>
-        ${saved ? html`<small>Saved to <code>.work/staffing.yaml</code></small>` : ''}
-        <button class="btn primary" disabled=${busy || start.state !== 'open'} onClick=${begin}>Review activation</button>`
-        : html`<button class="btn primary" disabled=${busy || state.view.arrangement.some((row) => !row.account)}
-          onClick=${() => showPreview()}>${state.source === 'saved' ? 'Preview current staffing' : 'Preview staffing'}</button>`}
-    </footer>` : ''}
-    ${state && edit ? html`<${Modal} title=${editTitle(edit)} onClose=${() => { if (!busy) setEdit(null) }}>
-      ${alert()}<${StaffingEditor} edit=${edit} state=${state} busy=${busy} onChange=${setEdit}
-        onSubmit=${() => state.source === 'saved' ? showPreview(edit) : stageEdit(edit)} />
-    <//>` : ''}
-    ${preview ? html`<${Modal} title="Staffing preview" kind="wide staffing-preview"
-      onClose=${() => { if (!busy) setPreview(null) }}>
-      ${alert()}
-      ${preview.blocked ? html`<p class="error" role="status">${preview.blocked}</p>` : ''}
-      ${preview.changed.length ? html`<ul>${preview.changed.map((line) => html`<li class="staffing-typed">${line}</li>`)}</ul>`
-        : html`<p>No changes to the arrangement or limits.</p>`}
-      <div class="staffing-placement-comparison">
-        <${WorkerPlacement} title="Current worker placement" workers=${preview.before.workers} />
-        <${WorkerPlacement} title="Proposed worker placement" workers=${preview.after.workers} />
+    ${!state || !draft ? error ? '' : html`<p role="status">Reading staffing…</p>` : html`
+      <${Cost} state=${state} draft=${draft} onAdd=${() => setSubscription(true)} />
+      ${state.source === 'proposal' ? html`<p class="staffing-proposal muted">Host’s proposed arrangement</p>` : ''}
+      <${Graph} state=${state} draft=${draft} busy=${busy} move=${move} edit=${edit} remove=${setRemoving} />
+      <div class="staffing-new"><button class="btn" disabled=${busy} onClick=${addStaff}>New staff</button></div>
+      ${state.consult ? html`<div class="staffing-consult-status" role="status">
+        <p><strong>Consult</strong> ${state.consult.words}</p>
+        <p>${state.consult.reply ?? 'Waiting for the host to reply.'}</p>
+      </div>` : ''}
+      ${!manifest ? error ? alert() : state.source === 'saved' && start.state === 'blocked'
+        ? html`<p class="error" role="status">${start.says}</p>` : '' : ''}
+      <div class="staffing-actions">
+        <textarea rows="2" aria-label="Staffing question" placeholder="Ask the host about staffing" value=${question}
+          disabled=${busy || consultWaiting} onInput=${(event: Event) => setQuestion(value(event))}></textarea>
+        <button class="btn" disabled=${busy || consultWaiting || !question.trim()} onClick=${consult}>Consult</button>
+        ${confirmed ? html`<button class="btn primary" disabled=${busy || start.state !== 'open'}
+           onClick=${begin}>Review activation</button>` : html`
+          <button class="btn primary" disabled=${busy} onClick=${accept}>Accept all</button>`}
       </div>
-      <div class="staffing-comparison">
-        <section aria-label="Before"><h3>Before</h3><${StaffingDetails} view=${preview.before} /></section>
-        <section aria-label="After"><h3>After</h3><${StaffingDetails} view=${preview.after} /></section>
+      ${confirmed ? html`<p class="staffing-saved muted" role="status">Staffing confirmed
+        ${saved ? html` · Saved to <code>.work/staffing.yaml</code>` : ''}</p>` : ''}
+    `}
+    ${state && draft && subscription ? html`<${Subscription} state=${state}
+      onAdd=${addSubscription} onClose=${() => setSubscription(false)} />` : ''}
+    ${removing ? html`<${Modal} title="Remove empty staff?" onClose=${() => setRemoving(null)}>
+      <p>${removing} has no assigned roles.</p>
+      <div class="modal-foot">
+        <button class="btn" onClick=${() => setRemoving(null)}>Cancel</button>
+        <button class="btn primary" onClick=${() => {
+          change((current) => current.assignments.some(({ staff }) => staff === removing) ? current
+            : { ...current, staff: current.staff.filter(({ id }) => id !== removing) })
+          autoAllowance.current.delete(removing)
+          setRemoving(null)
+        }}>Remove staff</button>
       </div>
-      <div class="modal-foot"><button class="btn" disabled=${busy} onClick=${() => setPreview(null)}>Cancel</button>
-        <button class="btn primary" disabled=${busy || Boolean(preview.blocked)} onClick=${apply}>${preview.changed.length ? 'Apply and confirm' : 'Confirm staffing'}</button></div>
     <//>` : ''}
     ${manifest ? html`<${Modal} title="Review activation" onClose=${() => { if (!busy) setManifest(null) }}>
       ${alert()}<p>Instruction files to mark</p>
@@ -320,5 +336,6 @@ export function Staffing({ start, version, onApplied }: {
       <div class="modal-foot"><button class="btn" disabled=${busy} onClick=${() => setManifest(null)}>Cancel</button>
         <button class="btn primary" disabled=${busy} onClick=${activate}>Start activation</button></div>
     <//>` : ''}
+    ${error && !state ? alert() : ''}
   </section>`
 }

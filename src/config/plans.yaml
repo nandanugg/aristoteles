@@ -1,0 +1,28 @@
+# Monthly volumes from the supplied 2026-11-23/24 snapshot. These are estimates.
+planSource: https://theaggregate.ai/subscriptions?view=value&hourly=0
+planChecked: '2026-11-24'
+windowsPerMonth: 144
+plans:
+  claude-pro: { provider: Claude, name: Pro, price: 20, cli: claude, monthlyTokens: 6200000000 }
+  claude-max: { provider: Claude, name: Max, price: 100, cli: claude, monthlyTokens: 30000000000 }
+  chatgpt-plus: { provider: ChatGPT, name: Plus, price: 20, cli: codex, monthlyTokens: 1000000000 }
+  chatgpt-pro: { provider: ChatGPT, name: Pro, price: 100, cli: codex, monthlyTokens: 11000000000 }
+# Artificial Analysis blended USD per million tokens (7:2:1 cache/input/output).
+# Ratios of these factors scale relative to the measured model's factor.
+models:
+  claude-sonnet-4-6:
+    factor: 2.31
+    source: https://artificialanalysis.ai/models/claude-sonnet-4-6
+    checked: '2026-11-25'
+  claude-opus-4-6:
+    factor: 3.85
+    source: https://artificialanalysis.ai/models/comparisons/claude-opus-4-6-vs-claude-4-5-haiku
+    checked: '2026-11-25'
+  claude-haiku-4-5:
+    factor: 0.77
+    source: https://artificialanalysis.ai/models/comparisons/claude-opus-4-6-vs-claude-4-5-haiku
+    checked: '2026-11-25'
+  gpt-5.3-codex:
+    factor: 1.8725
+    source: https://artificialanalysis.ai/models/gpt-5-3-codex
+    checked: '2026-11-25'

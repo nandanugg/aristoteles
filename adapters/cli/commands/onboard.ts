@@ -541,7 +541,9 @@ const company = (call: Call, id: string | undefined) =>
 // --- what the host and the person read -----------------------------------------------------------
 
 const statusOf = (files: OnboardingFiles) => Effect.gen(function* () {
+  const consult = files.staffingConsult
   return [...onboardStatus(files, yield* textsOf(files)),
+    ...(consult?.reply === null ? [`Staffing question: ${consult.words} — read with work onboard show staffing`] : []),
     ...(files.roleRequests ?? []).map(({ role, words }) =>
       `${role}: ${words} — draft with work onboard role ${role} --file=<role.yaml>`)]
 })
@@ -555,6 +557,11 @@ const show = (name: string | undefined) =>
   Effect.gen(function* () {
     const { cwd } = yield* Dir
     const files = yield* readOnboarding(cwd)
+    if (name === 'staffing' && files.staffingConsult) {
+      const { words, arrangement, id, reply } = files.staffingConsult
+      return [`Staffing question: ${words}`, JSON.stringify(arrangement, null, 2),
+        reply ?? `Reply with work onboard staffing --file=<staffing.yaml> --revision=${id} --reply=<answer>`]
+    }
     const file = directionIn(files, name ?? '')
     if (file !== undefined) return onboardShowDirection(file, yield* textsOf(files))
     const role = files.roles.find((r) => r.role === name)
@@ -753,7 +760,10 @@ const staffing = (call: Call) => Effect.gen(function* () {
   const file = yield* fileFlag(call, 'write accounts, clis, models and a binding for every agent role')
   const draft = yield* yamlIn(file)
   const { cwd } = yield* Dir
-  yield* hostAct(cwd, { _tag: 'Staffing', draft })
+  const revision = textOf(call.args.one('revision'))
+  const reply = textOf(call.args.one('reply'))
+  if (reply && !revision) return yield* refuse('Read work onboard show staffing to find the question revision before replying.')
+  yield* hostAct(cwd, { _tag: 'Staffing', draft, ...(revision ? { revision } : {}), ...(reply ? { reply } : {}) })
   return ['Staffing proposed for review on the page.']
 })
 

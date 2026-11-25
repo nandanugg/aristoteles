@@ -75,6 +75,7 @@ const OLD_TYPE: Total<string> = {
   'Work.Acted': 'work.act',
   'Work.HostPane': 'work.host-pane',
   'Work.Forwarded': 'work.forwarded',
+  'Runtime.ProjectUsageMeasured': 'measured project usage',
   'Runtime.RecheckQueued': 'queued a recheck',
   'Runtime.CheckpointSaved': 'saved a checkpoint',
   'Runtime.WorkerParkRequested': 'requested worker park',

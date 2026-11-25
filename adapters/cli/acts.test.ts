@@ -7,7 +7,7 @@ import { Effect, Layer } from 'effect'
 import { dispatchAct } from '../../core/actions/work.ts'
 import { eventsOf, h, NANDA } from '../../core/actions/fixture.test.ts'
 import type { Time } from '../../core/schema/index.ts'
-import { Dir, Env, Now, StoreLive, Tokens } from '../../core/services/index.ts'
+import { Dir, Env, Now, readProjectUsage, StoreLive, Tokens } from '../../core/services/index.ts'
 import { foldWork } from '../../core/state/c16/fold.ts'
 
 const PIPED = h.WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
@@ -139,10 +139,20 @@ describe('the acts of the work model, by the CLI', () => {
 
     // The host returns the top, the person ends the project.
     expect((await p.nanda('end')).err).toContain('the act is not allowed')
+    const store = join(p.dir, '.work', 'aristoteles.db')
+    const measurement = 'usage --model=claude-sonnet-4-6 --tokens=6200000'
+    expect((await p.nanda(measurement)).err).toContain('Finish this project')
+    expect(readProjectUsage(store)).toBeNull()
     h.ok(await p.agent(`top-done ${t.host}`))
     const end = h.ok(await p.nanda('end'))
     expect(end.out).toContain('EndProject taken')
     expect(state()?.top.ended).toBe(true)
+    h.ok(await p.nanda(measurement))
+    h.ok(await p.nanda(measurement))
+    expect(readProjectUsage(store)?.model).toBe('claude-sonnet-4-6')
+    expect(Number(readProjectUsage(store)?.tokens)).toBe(6200000)
+    expect(eventsOf(p.dir).filter(({ event }) =>
+      event._tag === 'Runtime' && event.create._tag === 'ProjectUsageMeasured')).toHaveLength(1)
   }, 120000)
 
   test('an old epoch token is refused, and a new token comes with resume', async () => {

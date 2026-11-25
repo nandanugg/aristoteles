@@ -133,7 +133,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
   // Onboarding, before the store (BUILD.md 1e): the host's acts, then the person's.
   onboard: {
     config: ['file'],
-    staffing: ['file'],
+    staffing: ['file', 'revision', 'reply'],
     role: ['file'],
     found: [],
     draft: ['file', 'revision'],
@@ -157,6 +157,7 @@ export const FLAGS: Readonly<Record<string, FlagTable>> = {
     'approve-roles': [],
   },
   skill: { install: [] },
+  usage: ['model', 'tokens'],
 }
 
 // The flags that stand alone, with no value.
@@ -197,8 +198,10 @@ export const USAGE: ReadonlyArray<string> = [
   'commands with no token at a terminal.',
   '',
   'setup:   work skill install (links the /aristoteles skill in this dir, out of git; no aristoteles.yaml needed)',
+  'usage:   work usage --model=<model> --tokens=<measured-total> (record a finished single-model project)',
   'host:    work onboard config --file=<draft.yaml> | role <role> --file=<role.yaml> (the config draft, and one role)',
-  '         work onboard staffing --file=<staffing.yaml> (propose staffing for review)',
+  '         work onboard staffing --file=<staffing.yaml> [--revision=<id> --reply=<answer>] (propose staffing)',
+  '         work onboard show staffing (read the current staffing question)',
   '         work onboard found <id> | draft <id> --file=<direction.yaml> [--revision=<id>] | ask <id> --file=<questions.yaml>',
   '         work onboard discovery --file=<scope.yaml> | removed <id>',
   '         work onboard company <id> --repo=<repo> --path=<folder> | status | show <id>|<role> | wait [--seconds=<n>]',
@@ -293,6 +296,7 @@ export const COMMAND_NAMES = [
   'wait',
   'onboard',
   'skill',
+  'usage',
 ] as const
 export type CommandName = (typeof COMMAND_NAMES)[number]
 export const isCommandName = (word: string): word is CommandName =>

@@ -24,9 +24,11 @@ works for aristoteles; any other session of the dir still uses the old files of 
    the person can start a session of this dir with `/aristoteles`.
 3. **A new dir.** Run `work onboard status`. When the dir has no `aristoteles.yaml`, or onboarding
    files wait, do the onboarding of the `assess` skill (its part "Onboarding a new dir"). The
-   person checks each direction and each role on the page, and the store starts only when the
-   person approves all roles (`work onboard approve-roles` is the same act at a terminal). One
-   role of the config is `pipeline: true`. Come back to step 4 when the store exists.
+   person checks the directions and roles. Ask them to arrange staffing on the Staffing tab and
+   accept it before starting activation. When `work onboard wait` reports a Consult, read
+   `work onboard show staffing`. Answer with a revised proposal using
+   `work onboard staffing --file=<staffing.yaml> --revision=<id> --reply="<answer>"`.
+   One role of the config is `pipeline: true`. Come back to step 4 when the store exists.
 4. **Record the fit of each agent role** (the `role-fitness` skill), as the last line of
    `work onboard approve-roles` says. A role fits when its words pass the static checks and each
    of seven questions (`guides/fitness.yaml`) gets a yes with a real example; the answers are its

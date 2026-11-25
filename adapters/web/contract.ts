@@ -13,6 +13,7 @@ import {
   RefusalSchema,
   SessionId,
   Settings,
+  StaffArrangement,
   ScopeConditions,
   type DirectionCard as UiDirectionCard,
   type DirView as UiDirView,
@@ -152,6 +153,7 @@ export const DirectionCard = Schema.Union([
   Schema.Struct({ ...CardHead, state: Schema.Literals(['ready', 'accepted', 'current']), draft }),
 ])
 const RoleCardBase = {
+  subagentAllowance: Schema.optionalKey(Schema.Int),
   revision: Schema.optionalKey(Text),
   builtIn: Schema.optionalKey(Schema.Literals(['host', 'pipeline'])),
   principles: Schema.optionalKey(Schema.Array(Text)),
@@ -565,6 +567,15 @@ export const StaffingState = Schema.Struct({
   source: Schema.Literals(['saved', 'proposal', 'empty']), revision: Text, clis: Schema.Array(Text),
   models: Schema.Array(Schema.Struct({ model: Text, launch: Schema.NullOr(Text) })),
   confirmed: Schema.Boolean, view: StaffingView,
+  arrangement: StaffArrangement,
+  roles: Schema.Array(Schema.Struct({ role: Text, assigns: Schema.Array(Text), persistent: Schema.Boolean, allowance: Schema.Int })),
+  accounts: Schema.Array(Schema.Struct({ account: Text, plan: Schema.NullOr(Text), clis: Schema.Array(Text) })),
+  launchClis: Schema.Array(Schema.Struct({ command: Text, cli: Text })),
+  plans: Schema.Array(Schema.Struct({ id: Text, provider: Text, name: Text, price: Schema.Number, cli: Text, monthlyTokens: Schema.Number })),
+  estimate: Schema.Struct({ windows: Schema.Int, source: Text, checked: Text }),
+  modelCosts: Schema.Array(Schema.Struct({ model: Text, factor: Schema.Number, source: Text, checked: Text })),
+  usage: Schema.NullOr(Schema.Struct({ model: Text, tokens: PositiveInt })),
+  consult: Schema.NullOr(Schema.Struct({ words: Text, reply: Schema.NullOr(Text), arrangement: Schema.NullOr(StaffArrangement) })),
 })
 export const StaffingPreview = Schema.Struct({
   ticket: Text, before: StaffingView, after: StaffingView, changed: Schema.Array(Text),
@@ -586,6 +597,8 @@ const StaffingEdit = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('add-model'), model: Text, launch: Text, resume: Schema.NullOr(Text) }),
 ])
 export const StaffingPost = Schema.Union([
+  Schema.Struct({ action: Schema.Literal('accept'), revision: Text, arrangement: StaffArrangement }),
+  Schema.Struct({ action: Schema.Literal('consult'), revision: Text, words: Text, arrangement: StaffArrangement }),
   Schema.Struct({ action: Schema.Literal('preview'), revision: Text,
     edit: Schema.optionalKey(StaffingEdit), edits: Schema.optionalKey(Schema.Array(StaffingEdit)) }),
   Schema.Struct({ action: Schema.Literal('arrange'), revision: Text, edits: Schema.Array(StaffingEdit) }),

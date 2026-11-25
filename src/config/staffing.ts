@@ -35,6 +35,7 @@ const Staffing = Schema.Struct({
   // dir may run at once on the account (pass 9 enforces it for THIS dir only); none: no limit given.
   accounts: Schema.Record(Schema.String, Schema.Struct({
     limits: Schema.Record(Schema.String, NonBlank),
+    plan: Schema.optionalKey(NonBlank),
     sessionLimit: Schema.optionalKey(PositiveInt),
   })),
   roles: Schema.Record(Schema.String, RoleStaffing),

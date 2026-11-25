@@ -194,3 +194,5 @@ export * from '../../src/domain/lookup.ts'
 export * as Moves from '../../src/domain/moves.ts'
 
 export { type AdmissionPolicy, type ChildRelease, type ChildReservation, type RecheckBrief, RecheckFinding, type RecheckUse, RuntimeEvent, type SerialAssignment, Turn, WorkerDelivery, WorkerPlacement } from '../../src/domain/worker-runtime.ts'
+
+export { StaffArrangement, launchExecutable } from '../../src/domain/staffing-sketch.ts'

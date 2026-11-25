@@ -284,6 +284,7 @@ export interface AnsweredView extends QuestionView {
 // One card of the agents page (ruling 11); its window shows the rest. An agent role runs on its
 // model and has its persistence; a program runs in the CLI and has neither.
 interface RoleCardBase {
+  readonly subagentAllowance?: number
   readonly revision?: Text
   readonly builtIn?: 'host' | 'pipeline'
   readonly principles?: ReadonlyArray<Text>

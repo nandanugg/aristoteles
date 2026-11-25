@@ -4,6 +4,9 @@ import { Effect, Schema } from 'effect'
 import { staticFit } from '../../../core/actions/config.ts'
 import {
   type Author,
+  create,
+  NonBlank,
+  PositiveInt,
   OutsideFailed,
   Refused,
   refuse,
@@ -23,6 +26,7 @@ import {
   readConfig,
   refusing,
   roleHash,
+  Store,
 } from '../../../core/services/index.ts'
 import { configProblems } from '../../live/config-problems.ts'
 import { installSkill, SKILL_FILE } from '../../live/skill-install.ts'
@@ -214,4 +218,28 @@ const skill: Command = (call) =>
     ]
   })
 
-export const commands: Commands = { init, config, role, skill }
+const usage: Command = (call) => Effect.gen(function* () {
+  const model = textOf(call.args.one('model'))?.trim()
+  const tokens = Number(textOf(call.args.one('tokens')))
+  if (!model || !Number.isSafeInteger(tokens) || tokens < 1) {
+    return yield* refuse('Use work usage --model=<model> --tokens=<measured-total> for a finished single-model project.')
+  }
+  const { dir, work } = yield* peekWork
+  const author = yield* personAuthor(work)
+  const store = yield* (yield* Store).open(dir, { create: false })
+  const at = yield* (yield* Now).read
+  yield* store.write((events) => {
+    const finished = events.some(({ event }) => event._tag === 'Work' && event.create._tag === 'Acted' &&
+      event.create.act.body._tag === 'EndProject')
+    if (!finished) return Effect.fail(refuse('Finish this project before recording its measured usage.'))
+    const prior = events.findLast(({ event }) => event._tag === 'Runtime' && event.create._tag === 'ProjectUsageMeasured')?.event
+    if (prior?._tag === 'Runtime' && prior.create._tag === 'ProjectUsageMeasured' &&
+      prior.create.model === model && prior.create.tokens === tokens) return Effect.succeed(null)
+    return Effect.succeed({ draft: { author, at, event: create('Runtime', {
+      _tag: 'ProjectUsageMeasured', model: NonBlank.make(model), tokens: PositiveInt.make(tokens),
+    }) }, rows: [] })
+  })
+  return [`Measured usage for the finished project: ${tokens} tokens on ${model}.`]
+})
+
+export const commands: Commands = { init, config, role, skill, usage }

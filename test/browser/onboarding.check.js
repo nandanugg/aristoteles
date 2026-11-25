@@ -457,161 +457,147 @@ try {
   await button('Accept all').click()
   await visible(page.getByRole('heading', { name: 'Staffing' }))
   const stage = page.getByRole('region', { name: 'Staffing', exact: true })
+  const staff = (id) => stage.getByRole('article', { name: `Staff ${id}`, exact: true })
+  const select = (role) => stage.getByRole('combobox', { name: `Staff for ${role}` })
+  const arrows = stage.locator('[data-arrow-role]')
   const staffingShot = async (name) => {
     const viewport = page.viewportSize()
-    await page.setViewportSize({ ...viewport, height: 1280 })
+    await page.setViewportSize({ ...viewport, height: 1150 })
     await page.locator('.canvas').evaluate((element) => { element.scrollTop = 0 })
     try { await shot(name) } finally { await page.setViewportSize(viewport) }
   }
-  await visible(stage.getByText('Add an account, CLI and model, then arrange each agent role.'))
-  expect(await stage.getByText('Unassigned', { exact: true }).count()).toBe(Object.keys(staffing.roles).length)
-  expect(await stage.getByRole('status').count()).toBe(1)
-  expect(await button('Preview staffing').isDisabled()).toBe(true)
-  await shot('r54-no-file-empty.png')
-
-  const fillNew = async (name, fill, screenshot) => {
-    await button(name).click()
-    const modal = dialog(name)
-    await fill(modal)
-    await shot(screenshot)
-    await button('Keep in draft', modal).click()
-    await modal.waitFor({ state: 'hidden' })
-    expect(existsSync(staffingPath)).toBe(false)
-    expect(existsSync(proposalPath)).toBe(false)
-  }
-  await fillNew('Add account', async (modal) => {
-    await modal.getByLabel('Account name').fill('personal')
-    await modal.getByLabel('Session cap (empty means no limit)').fill('3')
-    await button('Add limit', modal).click()
-    await modal.getByLabel('Limit name').fill('weekly')
-    await modal.getByLabel('Limit as entered').fill('  40 credits / week  ')
-  }, 'r54-add-account.png')
-  await fillNew('Add CLI', async (modal) => {
-    await modal.getByLabel('CLI name').fill('terminal-agent')
-    await modal.getByLabel('Background children').check()
-    await modal.getByLabel('Can park and resume sessions').check()
-  }, 'r54-add-cli.png')
-  const launch = 'agent-tool --model {model} --session-id {session}'
-  const resume = 'agent-tool --resume {session}'
-  await fillNew('Add model', async (modal) => {
-    await modal.getByLabel('Model name').fill('atlas')
-    await modal.getByLabel('Launch command').fill(launch)
-    await modal.getByLabel('Resume command (optional)').fill(resume)
-  }, 'r54-add-model.png')
-  for (const [name, binding] of Object.entries(staffing.roles)) {
-    await button(`Edit ${name}`).click()
-    const editor = dialog(`Edit ${name}`)
-    await editor.getByLabel('Account', { exact: true }).selectOption('personal')
-    await editor.getByLabel('CLI', { exact: true }).selectOption('terminal-agent')
-    await editor.getByLabel('Effective model').selectOption('atlas')
-    expect(await editor.getByLabel('Launch command', { exact: true }).inputValue()).toBe(launch)
-    await editor.getByLabel('Persistent session').setChecked(binding.persistent)
-    await editor.getByLabel('Concurrency').fill('2')
-    await editor.getByLabel('Subagent allowance').fill('1')
-    if (name === 'section-lead') {
-      await editor.getByLabel('Worker group').fill('review')
-      await editor.getByLabel('Launch command', { exact: true }).fill('agent-tool --interactive --session-id {session}')
-    }
-    await button('Keep in draft', editor).click()
-    await editor.waitFor({ state: 'hidden' })
-  }
-  const previewStaffing = dialog('Staffing preview')
-  await button('Preview staffing').click()
-  await visible(previewStaffing.getByText('account personal: added'))
-  await visible(previewStaffing.getByText('CLI terminal-agent: added'))
-  await visible(previewStaffing.getByText('model atlas: added'))
+  await visible(stage.getByText('No subscriptions added.'))
+  expect(await select('architect').inputValue()).toBe('architect')
+  await button('Accept all', stage).click()
+  await visible(stage.getByRole('alert').getByText(/launch command/))
+  expect(await stage.getByRole('alert').count()).toBe(1)
   expect(existsSync(staffingPath)).toBe(false)
-  expect(existsSync(join(p.dir, '.work/staffing-confirmed.json'))).toBe(false)
-  await shot('r54-preview.png')
-  await button('Apply and confirm', previewStaffing).click()
-  await visible(stage.getByText('Saved to .work/staffing.yaml'))
-  const arranged = Bun.YAML.parse(readFileSync(staffingPath, 'utf8'))
-  expect(arranged.accounts.personal).toEqual({ limits: { weekly: '  40 credits / week  ' }, sessionLimit: 3 })
-  expect(arranged.clis['terminal-agent']).toEqual({ backgroundChildren: true, canPark: true })
-  expect(arranged.models.atlas).toEqual({ launch, resume })
-  expect(arranged.roles['section-lead']).toMatchObject({
-    model: 'atlas', allowedModels: ['atlas'], concurrency: 2, subagentAllowance: 1, workerGroup: 'review',
-    launch: 'agent-tool --interactive --session-id {session}',
-  })
-  await staffingShot('r54-applied.png')
 
-  // Check the other starting point with a distinct proposal and no saved file.
-  rmSync(staffingPath)
-  rmSync(join(p.dir, '.work/staffing-confirmed.json'))
-  staffing.accounts.fixture.limits = { weekly: '  40 credits / week  ', sessions: '2 sessions' }
-  p.write('staffing-input.yaml', Bun.YAML.stringify(staffing, null, 2))
-  const missing = { ...staffing, roles: {} }
-  p.write('staffing-invalid.yaml', Bun.YAML.stringify(missing))
+  const launch = 'claude --model {model} --session-id {session}'
+  staffing.accounts = { personal: { plan: 'claude-pro', limits: {} } }
+  staffing.clis = { claude: { backgroundChildren: true, canPark: false } }
+  for (const role of Object.values(staffing.roles)) Object.assign(role, { cli: 'claude', account: 'personal', launch })
+  staffing.roles.architect.subagentAllowance = 1
+  staffing.roles['section-lead'].subagentAllowance = 3
+  p.write('staffing-input.yaml', Bun.YAML.stringify(staffing))
+  const invalid = { ...staffing, roles: {} }
+  p.write('staffing-invalid.yaml', Bun.YAML.stringify(invalid))
   expect((await p.agent('onboard staffing --file=staffing-invalid.yaml')).err).toContain('needs a staffing binding')
-  const invalidLaunch = structuredClone(staffing)
-  invalidLaunch.roles.writer.launch = 'agent-tool'
-  p.write('staffing-invalid.yaml', Bun.YAML.stringify(invalidLaunch))
-  expect((await p.agent('onboard staffing --file=staffing-invalid.yaml')).err).toContain('launch needs {session}')
   expect(existsSync(proposalPath)).toBe(false)
   ok(await p.agent('onboard staffing --file=staffing-input.yaml'))
   expect(existsSync(proposalPath)).toBe(true)
+
+  await visible(stage.getByText('Host’s proposed arrangement'))
+  await visible(stage.getByText('unknown until the first project is measured'))
+  expect(await staff('section-lead').getByLabel('Launch command').inputValue()).toBe(launch)
+  expect(await staff('section-lead').getByRole('combobox').count()).toBe(0)
+  expect(await arrows.count()).toBe(2)
+  expect(await select('writer').count()).toBe(0)
+  expect(await staff('section-lead').locator('.staffing-makers').textContent()).toContain('writer')
+  await staffingShot('r55-01-proposal.png')
+
+  await select('section-lead').selectOption('architect')
+  await visible(staff('architect').locator('.staffing-makers').getByText('linter', { exact: false }))
+  expect(await arrows.count()).toBe(2)
+  expect(await select('section-lead').inputValue()).toBe('architect')
+  await staffingShot('r55-02-shared.png')
+  await button('New staff', stage).click()
+  await visible(staff('staff-1'))
+  await staffingShot('r55-03-new-staff.png')
+  await select('section-lead').selectOption('staff-1')
+  expect(await staff('staff-1').getByLabel('Allowed subagents for staff-1', { exact: true }).textContent()).toBe('3')
+  await staff('staff-1').getByLabel('Model', { exact: true }).fill('sonnet')
+  await staff('staff-1').getByLabel('Launch command').fill(launch)
+  await staffingShot('r55-04-move.png')
+  await button('Remove section-lead', stage).click()
+  const remove = dialog('Remove empty staff?')
+  await visible(remove)
+  await staffingShot('r55-05-confirm-remove.png')
+  await button('Cancel', remove).click()
+  await visible(staff('section-lead'))
+  await button('Remove section-lead', stage).click()
+  await button('Remove staff', remove).click()
+  await staff('section-lead').waitFor({ state: 'hidden' })
   expect(existsSync(staffingPath)).toBe(false)
-  // The running page receives the host's proposal through the onboarding file watcher.
-  await visible(stage.getByText('Review the host’s proposed arrangement.'))
-  await visible(button('Edit fixture weekly'))
-  expect(await stage.getByRole('status').count()).toBe(1)
-  await staffingShot('r54-no-file-proposal.png')
-  await button('Preview staffing').click()
-  await visible(previewStaffing.getByText('account fixture: added'))
+
+  const consult = button('Consult', stage)
+  expect(await consult.isDisabled()).toBe(true)
+  const consultQuestion = 'Can we share one staff and allow four subagents?'
+  await stage.getByRole('textbox', { name: 'Staffing question' }).fill(consultQuestion)
+  expect(await consult.isEnabled()).toBe(true)
+  await staffingShot('r55-06-consult-enabled.png')
+  await consult.click()
+  await visible(stage.getByText('Waiting for the host to reply.'))
+  expect(ok(await p.agent('onboard wait --seconds=1')).out).toContain(consultQuestion)
+  const show = ok(await p.agent('onboard show staffing')).out
+  expect(show).toContain(consultQuestion)
+  expect(show).toContain('"staff-1"')
+  const consultRevision = show.match(/--revision=([\w-]+)/)[1]
+  const group = 'project-staff'
+  for (const name of ['architect', 'section-lead']) {
+    Object.assign(staffing.roles[name], { workerGroup: group, model: 'sonnet', subagentAllowance: 4 })
+  }
+  p.write('staffing-input.yaml', Bun.YAML.stringify(staffing))
+  expect((await p.agent('onboard staffing --file=staffing-input.yaml --revision=old')).err).toContain('question changed')
+  const reply = 'Yes. One session should cover both roles.'
+  ok(await p.agent(`onboard staffing --file=staffing-input.yaml --revision=${consultRevision} --reply="${reply}"`))
+  await visible(stage.getByText(reply))
+  await visible(staff(group))
+  expect(await select('section-lead').inputValue()).toBe(group)
   expect(existsSync(staffingPath)).toBe(false)
-  await button('Apply and confirm', previewStaffing).click()
-  await visible(stage.getByText('Staffing confirmed', { exact: true }))
-  expect(Bun.YAML.parse(readFileSync(staffingPath, 'utf8'))).toEqual(staffing)
-  // Reopening the tab reads the confirmed file and keeps the existing edit path.
+
+  // A second subscription for the launch CLI exposes the chooser; it remains local until acceptance.
+  await button('Add subscription', stage).click()
+  const sub = dialog('Add subscription')
+  await sub.getByLabel('Plan').selectOption('claude-max')
+  await button('Add subscription', sub).click()
+  await visible(staff(group).getByRole('combobox', { name: 'Subscription' }))
+  await staff(group).getByRole('combobox', { name: 'Subscription' }).selectOption('claude-max')
+  expect(await stage.getByText('unknown until the first project is measured').count()).toBe(2)
+  expect(existsSync(join(p.dir, '.work/staffing-confirmed.json'))).toBe(false)
+
+  const viewport = page.viewportSize()
+  await page.setViewportSize({ width: 560, height: 900 })
+  const roleBox = await stage.locator('[data-staff-role="section-lead"]').boundingBox()
+  const cardBox = await staff(group).boundingBox()
+  expect(roleBox.y + roleBox.height).toBeLessThan(cardBox.y)
+  expect(await stage.locator('.staffing-arrows').isVisible()).toBe(false)
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
+  await shot('r55-08-narrow-dark.png')
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
+  await page.setViewportSize(viewport)
+  await button('Accept all', stage).click()
+  await visible(stage.getByText('Saved to .work/staffing.yaml'))
+  const arranged = Bun.YAML.parse(readFileSync(staffingPath, 'utf8'))
+  expect(arranged.accounts['claude-max'].plan).toBe('claude-max')
+  for (const name of ['architect', 'section-lead']) {
+    expect(arranged.roles[name]).toMatchObject({
+      account: 'claude-max', cli: 'claude', model: 'sonnet', launch,
+      workerGroup: group, concurrency: 4, subagentAllowance: 4,
+    })
+  }
+  expect(arranged.roles.writer.persistent).toBe(false)
+  expect(arranged.roles.writer.workerGroup).toBeUndefined()
+  await staffingShot('r55-07-accepted.png')
+
+  // The role step retains the host’s per-role allowance, and reopening keeps the applied arrangement.
   await page.getByRole('tab', { name: 'Roles' }).click()
+  await visible(card('Pipeline role').getByText('Allowed subagents · 4'))
+  const staffingRoute = '**/api/staffing'
+  await page.route(staffingRoute, async (route) => {
+    const response = await route.fetch()
+    const staffingState = await response.json()
+    await route.fulfill({ response, json: { ...staffingState,
+      usage: { model: 'claude-sonnet-4-6', tokens: 1_000_000 },
+    } })
+  })
   await page.getByRole('tab', { name: 'Staffing' }).click()
-  await visible(button('Edit fixture weekly'))
-  expect(await page.locator('.staffing-table tbody tr').count()).toBe(2)
-  expect(await page.locator('.staffing-table tbody tr').filter({ hasText: 'weekly' }).textContent()).toContain('  40 credits / week  ')
-  expect(await page.locator('.staffing-table').textContent()).toContain('Unknown. No usage evidence yet: it is measured from the first tasks.')
-  expect(await page.locator('.staffing-role').filter({ hasText: 'writer' }).textContent()).toContain('self-review turns')
-  await visible(button('Review activation'))
-  await shot('04-staffing.png')
-
-  const baseline = readFileSync(staffingPath, 'utf8')
-  await button('Edit writer').click()
-  await dialog('Edit writer').getByLabel('Effective model').selectOption('sonnet')
-  await button('Preview changes', dialog('Edit writer')).click()
-  await visible(previewStaffing.getByText('writer.model: haiku -> sonnet', { exact: true }))
-  expect(await previewStaffing.getByRole('region', { name: 'Before' }).count()).toBe(1)
-  expect(await previewStaffing.getByRole('region', { name: 'Current worker placement' }).textContent())
-    .toContain('section-lead')
-  expect(await previewStaffing.getByRole('region', { name: 'Proposed worker placement' }).textContent())
-    .toContain('section-lead')
-  expect(await previewStaffing.getByRole('region', { name: 'After' }).count()).toBe(1)
-  expect(readFileSync(staffingPath, 'utf8')).toBe(baseline)
-  const comparison = previewStaffing.locator('.staffing-comparison')
-  expect(await comparison.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
-  await shot('05-staffing-preview.png')
-  await button('Cancel', previewStaffing).click()
-
-  await button('Edit section-lead').click()
-  const placementEdit = dialog('Edit section-lead')
-  await placementEdit.getByLabel('Worker group').fill('delivery')
-  await button('Preview changes', placementEdit).click()
-  const currentPlacement = previewStaffing.getByRole('region', { name: 'Current worker placement' })
-  const proposedPlacement = previewStaffing.getByRole('region', { name: 'Proposed worker placement' })
-  await visible(proposedPlacement.getByText('delivery', { exact: true }))
-  expect(await currentPlacement.getByText('delivery', { exact: true }).count()).toBe(0)
-  expect(readFileSync(staffingPath, 'utf8')).toBe(baseline)
-  await shot('08-proposed-worker-placement.png')
-  await button('Cancel', previewStaffing).click()
-
-  await button('Edit fixture weekly').click()
-  const editLimit = dialog('Edit fixture · weekly')
-  await editLimit.getByRole('textbox').fill('  50 credits / week  ')
-  await button('Preview changes', editLimit).click()
-  await visible(previewStaffing.getByRole('region', { name: 'After' }))
-  expect(await previewStaffing.getByRole('region', { name: 'After' }).textContent()).toContain('  50 credits / week  ')
-  expect(readFileSync(staffingPath, 'utf8')).toBe(baseline)
-  await button('Apply and confirm', previewStaffing).click()
-  await visible(page.getByText('Staffing confirmed', { exact: true }))
-  expect(Bun.YAML.parse(readFileSync(staffingPath, 'utf8')).accounts.fixture.limits.weekly).toBe('  50 credits / week  ')
+  await visible(stage.getByText('unknown for the models on this subscription'))
+  await staff(group).getByLabel('Model', { exact: true }).fill('claude-opus-4-6')
+  await visible(stage.getByText('0.8%', { exact: true }))
+  await page.getByRole('tab', { name: 'Roles' }).click()
+  await page.unroute(staffingRoute)
+  await page.getByRole('tab', { name: 'Staffing' }).click()
   await button('Review activation').click()
   await visible(dialog('Review activation'))
   await button('Cancel', dialog('Review activation')).click()
