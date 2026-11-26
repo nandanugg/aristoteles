@@ -70,7 +70,7 @@ Paths under **Add** are new. **Change** identifies existing files that keep a ro
 - **Change** `core/state/project.ts`, `core/derived/project/next-step.ts`, `core/actions/staff-session.ts`, `adapters/cli/commands/acts.ts`, and `adapters/words/work.ts`. Only Active work is admitted. Send a task using a nonempty stage slice of a pinned direction and responsibility version. A work report records that an attempt began or gives its result and whole touched files. `ReadyToReview` runs the applicable rule commands with the task’s basis and records the outputs, including failure or an empty set. Only then enter Reviewing. The pure fold records results without calling commands again. A provider observation that the work session crashed derives `restart`. A confirmed checkpoint resumes the same attempt.
 - **Delete** the slice’s `OpenMake`/Maker and Execute ask states, the separate ReadBrief acknowledgement, the C16 Report-to-Check routing and any default command success manufactured by the page. Preserve the old dispatcher files for deferred callers through U8. The new task can read its own pinned brief without committing an acknowledgement.
 - **Tests** Exercise concurrent begins and reports, a competing writer, duplicate report after a lost response, retry basis after returning a result, interruption before journal append, wrong attempt/session, stale reads, whole files with quotes and changed lines, and success/failure/absence of commands. Test interruption while executing commands. Reconcile exact captured results before recording them. If an effect has unknown completion, surface a recoverable blocked step instead of inferring success or issuing a second attempt automatically. Check the ReadyToReview panel and CLI status against the committed phase.
-- **Model conformance** Complete `taskReportRace`. Feed command and result observations for `reviewEvidence` and the attempt restart/resume actions for `staffReplacement` so U7 can replay both through the final phase.
+- **Model conformance** Complete `taskReportRace`. Feed command and result observations for `reviewEvidence` and the attempt restart/resume actions for `staffReplacement` so U7 can replay both through the final phase. Capture each command under the committed result event and pinned rule. The receipt survives a journal failure, and an issued command with unconfirmed completion waits for recovered output.
 
 ### U7. Task review, feedback, and Raised
 
@@ -174,6 +174,12 @@ These are the proposed spellings for the first delivery. Types and printed paths
 | U5 | `NotStarted` | The owner has yet to start work under the current binding. |
 | U5 | `Started { at }` | Work has started under the committed binding. |
 | U5 | `Used { at, usedAt }` | The bound host has authenticated its first use. |
+| U6 | `WorkResult` | A work report’s attempt, summary and whole touched files. |
+| U6 | `CommandOutcome` | The holding or breaking evidence for a pinned command rule. |
+| U6 | `CommandExit`, `CommandTextOutput` | Checked exit status and captured text from a rule command. |
+| U6 | `CommandReceipt`, `CommandCapture` | The private address and capture state of a command for a committed result. |
+| U6 | `Unstarted`, `Unconfirmed`, `Captured` | Whether the private receipt has been issued and its exact output recovered. |
+| U6 | `TaskBriefText`, `TaskPanel` | The CLI’s pinned brief and the page view of the task. |
 
 Round 81 calls the move that clears a replacement `cancel`. The owner's
 Start work choice takes the `start` move on Activation. The latest

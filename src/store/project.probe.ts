@@ -3,12 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { startSession } from '../../core/actions/staff-session.ts'
-import { Authority, recordObserved, submit } from '../../core/actions/project.ts'
+import { Authority, submit } from '../../core/actions/project.ts'
 import {
-  Human, LiveSession, ProjectId, ReadPosition, Role, Staff, Submission, TaskDraft, TaskId,
+  Human, LiveSession, ProjectId, Role, Staff,
   type Of, type Projection, type StoredActor,
 } from '../../core/schema/project.ts'
-import { readPosition } from '../../core/state/project.ts'
 import { Env } from '../services/io.ts'
 import type { Journal } from '../services/project.ts'
 import { openProjectJournal } from './project.ts'
@@ -38,12 +37,6 @@ export const session = Schema.decodeUnknownSync(LiveSession)({
 })
 export const worker: StoredActor = { _tag: 'Staff', id: staff.id }
 export const projectId = ProjectId.make('project:first')
-export const taskId = TaskId.make('task:sample')
-export const taskLine = { _tag: 'Task', id: taskId } as const
-export const draft = (id = taskId, assigned = host) => Schema.decodeUnknownSync(TaskDraft)({
-  id, name: 'First work', goal: 'Supply a result', role: assigned, reviewer: pipeline,
-})
-
 export const ownerInput = (journal: Journal, input: unknown) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Human', actor: human } as const),
@@ -56,38 +49,12 @@ export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [],
   _tag: 'HumanChoice', read: 0,
   choice: { _tag: 'NewProject', project: { _tag: 'Project', id: journal.id }, owner, host, pipeline, staff: initialStaff, roles },
 })
-export const send = (journal: Journal, read: Of<typeof ReadPosition>, id = taskId, assigned = host) =>
-  recordObserved(journal, human, read, {
-    line: { _tag: 'Project', id: journal.id }, from: 'Open', move: 'next',
-    input: { _tag: 'TaskSent', draft: draft(id, assigned) },
-  })
-export const begin = (journal: Journal, read: Of<typeof ReadPosition>) => staffInput(journal, {
-  _tag: 'StaffReport', read,
-  report: { _tag: 'Work', line: taskLine, report: null },
-})
-export const resultInput = (read: Of<typeof ReadPosition>, artifact = 7): Submission =>
-  Schema.decodeUnknownSync(Submission)({
-    _tag: 'StaffReport', read, report: {
-      _tag: 'Work', line: taskLine,
-      report: { attempt: 1, summary: 'Result', files: [{ path: 'artifact', contents: String(artifact) }] },
-    },
-  })
-export const commandOutcomes = (journal: Journal, read: Of<typeof ReadPosition>) =>
-  recordObserved(journal, worker, read, { line: taskLine, from: 'ReadyToReview', move: 'next', input: { outcomes: [] } })
-
 export const startFixtureSession = (journal: Journal, state: Projection) => {
   if (state?.status._tag !== 'Open') throw new Error('Open the test project first')
   return startSession(journal, state, {
     id: session.id, staff: staff.id, pane: session.pane, staffing: state.staffingAt,
   })
 }
-
-export const toWorking = (journal: Journal) => Effect.gen(function* () {
-  const open = yield* create(journal)
-  const live = yield* startFixtureSession(journal, open.state)
-  const sent = yield* send(journal, readPosition(live.state))
-  return yield* begin(journal, readPosition(sent.state))
-})
 
 export const withJournal = async <A>(run: (path: string) => Promise<A>): Promise<A> => {
   const directory = mkdtempSync(join(tmpdir(), 'project-journal-'))

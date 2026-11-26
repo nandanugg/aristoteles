@@ -1,9 +1,10 @@
+import { TaskPanel } from './task.ts'
 import { html } from 'htm/preact'
 import { useEffect, useState } from 'preact/hooks'
 import { Result, Schema } from 'effect'
 import { ownerProposals } from '../../../core/derived/project/review.ts'
 import { questionsFor } from '../../../core/derived/project/next-step.ts'
-import { ApprovedFiles, Rationale, approvedProposals, type Of, type Project, type Refusal, type Submission } from '../../../core/schema/project.ts'
+import { ApprovedFiles, Rationale, approvedProposals, type Of, type Project, type Refusal, type Submission, type TaskId } from '../../../core/schema/project.ts'
 import { type DirView, OnboardingView } from '../contract.ts'
 import { AiToast } from './ai.ts'
 import { api, attempt, postOnboarding, type ProposalReply } from './api.ts'
@@ -164,10 +165,11 @@ export function Onboarding({ dir, version }: { dir: Dir; version: number }) {
   </div>`
 }
 
-function renderOnboarding({ project, submit, markerFiles }: {
+function renderOnboarding({ project, submit, markerFiles, commandBlock }: {
   readonly project: Project
   readonly submit: (submission: Submission) => Promise<ProposalReply>
   readonly markerFiles: () => Promise<unknown>
+  readonly commandBlock?: (id: Of<typeof TaskId>) => Promise<Refusal['why'] | null>
 }): ReturnType<typeof html> {
   return html`<section aria-label="Onboarding">
     ${ownerProposals(project).map((proposal) => html`<${ProposalCard} key=${proposal.id} proposal=${proposal}
@@ -181,6 +183,7 @@ function renderOnboarding({ project, submit, markerFiles }: {
         return Result.isFailure(result) ? result.failure : null
       }} />`)}
     <${ActivationPanel} project=${project} submit=${submit} markerFiles=${markerFiles} />
+    ${[...project.tasks.values()].map((task) => html`<${TaskPanel} key=${task.id} task=${task} commandBlock=${commandBlock} />`)}
   </section>`
 }
 

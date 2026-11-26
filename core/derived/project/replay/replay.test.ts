@@ -1,21 +1,24 @@
+import { startWork } from '../../../../src/store/project-activation.probe.ts'
 import { expect, test } from 'bun:test'
 import { readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { Effect, Result } from 'effect'
 import { staffSessionOperations, type Sessions } from '../../../../adapters/live/staff-session.ts'
+import { liveTaskCommands } from '../../../../adapters/live/task-commands.ts'
+import { runTaskCommands } from '../../../effects/project-commands.ts'
+import { recordObserved } from '../../../actions/project.ts'
 import { staffCards } from '../../../../adapters/web/app/staff-session.ts'
 import { acceptStaffing } from '../../../../src/store/proposal.probe.ts'
 import { observeSession, readOpenProject, startChild, startSession } from '../../../actions/staff-session.ts'
 import { initialStaffing, launchStaff, maker, sharedStaffing } from '../../../../src/store/staff-session.probe.ts'
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
-import {
-  begin, commandOutcomes, create, open, resultInput, send, session, staff, staffInput, startFixtureSession, taskId, toWorking, withJournal,
-} from '../../../../src/store/project.probe.ts'
+import { create, open, session, staff, staffInput, startFixtureSession, withJournal, worker } from '../../../../src/store/project.probe.ts'
+import { activateTasks, begin, commandOutcomes, resultInput, send, taskId, taskLine, toWorking } from '../../../../src/store/task.probe.ts'
 import {
   answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm,
 } from '../../../../src/store/question.probe.ts'
-import { AnswerText, EventNumber, ReadPosition, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { AnswerText, EventNumber, ReadPosition, Rationale, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -40,7 +43,8 @@ for (const kind of kinds) test('task report race append seam — ' + kind, () =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
     const opened = yield* create(journal)
-    const live = yield* startFixtureSession(journal, opened.state)
+    const { state: active } = yield* startWork(journal, yield* activateTasks(journal, opened.state))
+    const live = yield* startFixtureSession(journal, active)
     const sent = yield* send(journal, readPosition(live.state))
     let current: Projection = sent.state
     const snapshot = yield* projectSnapshot(journal)
@@ -63,7 +67,7 @@ for (const kind of kinds) test('task report race append seam — ' + kind, () =>
         return 'Committed'
       },
       commands: async () => {
-        current = (await Effect.runPromise(commandOutcomes(journal, readPosition(current)))).state
+        current = (await Effect.runPromise(runTaskCommands(journal, taskLine, liveTaskCommands(dirname(path))))).state
       },
       observe: async () => {
         const response = await Effect.runPromise(projectEvents(journal, readPosition(page.current())))
@@ -75,10 +79,11 @@ for (const kind of kinds) test('task report race append seam — ' + kind, () =>
         const task = state.tasks.get(taskId)
         if (!task) throw new Error('The replay has no sent task')
         const phase = task.phase
+        if (phase._tag === 'Done' || phase._tag === 'Raised') throw new Error('Unexpected terminal phase')
         const attempt = phase._tag === 'Working' ? phase.attempt
           : phase._tag === 'Sent' ? undefined : phase.result.attempt
         const writes = committed.flatMap((event) => {
-          return event.from === 'Working' ? event.input.files.map((file) => Number(file.contents)) : []
+          return event.from === 'Working' && event.move === 'next' ? event.input.files.map((file) => Number(file.image._tag === 'Present' ? file.image.contents : file.image.previousContents)) : []
         })
         return {
           phase: phase._tag,
@@ -100,7 +105,8 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
     const linked = yield* sharedStaffing(journal)
-    const opened = yield* launchStaff(journal, linked, 0, 1)
+    const { state: activeWork } = yield* startWork(journal, yield* activateTasks(journal, linked))
+    const opened = yield* launchStaff(journal, activeWork, 0, 1)
     const roles = [linked.host, linked.pipeline, maker]
     const ids = initialStaffing().staff.map(({ id }) => id)
     // The model reuses a child tuple after release. A production begin addresses a fresh sent task.
@@ -191,8 +197,12 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
     const working = yield* toWorking(journal)
-    const current = working.state
-    if (current.status._tag !== 'Open') throw new Error('Expected a test project')
+    const reported = yield* staffInput(journal, resultInput(working.state.read))
+    const commands = yield* commandOutcomes(journal, reported.state.read)
+    const assigned = yield* startChild(journal, commands.state, taskLine, session, 'Review')
+    const { state: current } = yield* recordObserved(journal, worker, assigned.state.read, {
+      line: taskLine, from: 'Reviewing', move: 'back', input: { why: Rationale.make('Update the first result.') },
+    })
     const address = { _tag: 'Session', id: session.id } as const
     const replacement = SessionId.make('session:2')
     let expectedPrior: Of<typeof SessionId> | null = null
@@ -209,7 +219,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
     }
     const operations = staffSessionOperations(dirname(path), journal, provider)
     const trace = readTrace(join(traces, 'staffReplacement-' + kind + '.itf.json.gz'), 'staffReplacement', kind)
-    yield* Effect.promise(() => replayStaffReplacementObservations(trace, {
+    yield* Effect.promise(() => replayStaffReplacementObservations(trace, kind, {
       retire: async (checkpoint) => {
         observation = checkpoint ? 'Paused' : 'Ended'
         await Effect.runPromise(operations.observe(address))
@@ -218,6 +228,38 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
         expectedPrior = checkpoint ? session.id : null
         await Effect.runPromise(operations.launch(staff.id, replacement, current.staffingAt, checkpoint ? address : null))
         id = replacement
+      },
+      begin: async () => {
+        const project = await Effect.runPromise(readOpenProject(journal))
+        await Effect.runPromise(staffInput(journal, { _tag: 'StaffReport', read: project.read,
+          report: { _tag: 'Work', line: taskLine, report: { _tag: 'Start' } } }, { ...session, id }))
+      },
+      report: async (source) => {
+        const project = await Effect.runPromise(readOpenProject(journal))
+        const phase = project.tasks.get(taskId)?.phase
+        if (phase?._tag !== 'Working') throw new Error('The model reported after the attempt closed')
+        const result = await Effect.runPromise(Effect.result(staffInput(journal,
+          resultInput(project.read, 11, phase.attempt.number), { ...session, id: source === 1 ? session.id : replacement })))
+        if (Result.isSuccess(result)) return true
+        expect(result.failure.code).toBe('RetiredSession')
+        expect((await Effect.runPromise(readOpenProject(journal))).read).toBe(project.read)
+        return false
+      },
+      work: async () => {
+        const project = await Effect.runPromise(readOpenProject(journal))
+        const task = project.tasks.get(taskId)
+        const phase = task?.phase
+        if (phase?._tag === 'Sent') return {
+          phase: 'Sent', attempt: task?.attempts._tag === 'PreviouslyWorked' ? task.attempts.last : 0,
+          lifetime: 0, retries: phase.retryCount, artifact: null,
+        }
+        if (phase?._tag !== 'Working' && phase?._tag !== 'ReadyToReview') throw new Error('Unexpected production work phase')
+        const attempt = phase._tag === 'Working' ? phase.attempt : phase.result.attempt
+        const image = phase._tag === 'ReadyToReview' ? phase.result.files[0]?.image : null
+        return {
+          phase: phase._tag, attempt: attempt.number, lifetime: attempt.session.id === replacement ? 2 : 1,
+          retries: attempt.retryCount, artifact: image?._tag === 'Present' ? Number(image.contents) : null,
+        }
       },
       observe: async () => {
         const project = await Effect.runPromise(readOpenProject(journal))

@@ -3,7 +3,7 @@ import {
   observeSession, readOpenProject, resumeSession, staffAuthority, startChild, startSession,
 } from '../../core/actions/staff-session.ts'
 import {
-  Rationale, refuse, sessionMayStart, staffOf, subagentCapacity,
+  Rationale, refuse, sessionMayStart, staffOf, subagentCapacity, activeWork,
   type EventNumber, type LiveSession, type Of, type Pane, type Project, type Refusal,
   type SessionAddress, type SessionId, type Staff, type StaffId, type TaskAddress,
 } from '../../core/schema/project.ts'
@@ -68,6 +68,7 @@ export const staffSessionOperations = (
       return yield* observeSession(journal, project, address, fact)
     })),
     child: (id, line, work, staffing) => locked((project) => Effect.gen(function* () {
+      if (!activeWork(project)) return yield* wrongMove()
       if (staffing !== project.staffingAt) return yield* stale()
       const session = yield* staffAuthority(project, id)
       const task = project.tasks.get(line.id)

@@ -1,7 +1,7 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
   ReadPosition, Rationale, StoredEvent, Submission, liveSession, refuse, reviewOutcome,
-  type EventNumber, type LiveSession, type Of, type Projection, type Refusal, type StoredActor,
+  type EventNumber, type LiveSession, type Of, type Projection, type Refusal, type SessionId, type Staff, type StoredActor,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
 import { applyEvent, fold, readPosition } from '../state/project.ts'
@@ -9,6 +9,7 @@ import { applyEvent, fold, readPosition } from '../state/project.ts'
 export type AuthenticatedActor =
   | { readonly _tag: 'Human'; readonly actor: Extract<StoredActor, { _tag: 'Human' }> }
   | { readonly _tag: 'Staff'; readonly session: LiveSession }
+  | { readonly _tag: 'Host'; readonly id: Of<typeof SessionId>; readonly staff: Staff }
   | { readonly _tag: 'Review'; readonly session: LiveSession; readonly review: Of<typeof EventNumber> }
 export class Authority extends Context.Service<Authority, {
   readonly actor: Effect.Effect<AuthenticatedActor, Refusal>
@@ -70,6 +71,13 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
       refuse('InvalidInput', Rationale.make('The submission does not match the checked input.')))
     const authority = yield* Authority
     const authenticated = yield* authority.actor
+    if (request._tag === 'SendTask') {
+      if (authenticated._tag !== 'Host' || request.project.id !== journal.id) return yield* Effect.fail(wrongActor())
+      return yield* commit(journal, authenticated.staff, request.read, () => Result.succeed({
+        line: request.project, from: 'Open', move: 'next',
+        input: { _tag: 'TaskSent', draft: request.draft, host: authenticated.id },
+      }))
+    }
     if (request._tag === 'HumanChoice') {
       if (authenticated._tag !== 'Human') return yield* Effect.fail(wrongActor())
       const { choice } = request
@@ -118,12 +126,14 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
         return Result.succeed(proposalMove(report))
       if (report._tag !== 'Work') return Result.succeed(questionMove(report))
       const { line, report: result } = report
-      if (result === null) return Result.succeed({
+      if (result._tag === 'Start') return Result.succeed({
         line, from: 'Sent', move: 'next', input: { session: current, staffing: project.staffingAt, place: 'Main' },
       })
       const task = project.tasks.get(line.id)
       if (task?.phase._tag === 'Working' && task.phase.attempt.session.id !== session.id) return Result.fail(retired())
-      return Result.succeed({ line, from: 'Working', move: 'next', input: result })
+      return Result.succeed({ line, from: 'Working', move: 'next', input: {
+        session: current.id, attempt: result.attempt, summary: result.summary, files: result.files,
+      } })
     })
   })
 

@@ -275,3 +275,11 @@ export const resumeProjectActivation = (
     yield* operations.spawn
   }
 })
+
+export const boundHostAuthority = (
+  operations: ActivationOperations, launch: Of<typeof SessionId>, credential: Of<typeof HostCredential>,
+): Effect.Effect<Extract<AuthenticatedActor, { _tag: 'Host' }>, Refusal> =>
+  Effect.flatMap(operations.authenticate(launch, credential), (project) =>
+    project.activation._tag === 'Active'
+      ? Effect.succeed({ _tag: 'Host', id: launch, staff: project.activation.staff } as const)
+      : Effect.fail(retired()))

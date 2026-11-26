@@ -5,10 +5,10 @@ import {
   Name, QuestionText, QuoteText, RepositoryAddress, RuleId, StageId, StandardId, Summary, type Of,
 } from './values.ts'
 
-const Lines = Schema.Struct({ first: LineNumber, last: LineNumber })
+export const Lines = Schema.Struct({ first: LineNumber, last: LineNumber })
   .check(Schema.makeFilter(({ first, last }) => first <= last))
 const Quote = Schema.TaggedStruct('Quote', { file: FilePath, lines: Lines, text: QuoteText })
-const Stage = Schema.Struct({
+export const Stage = Schema.Struct({
   id: StageId, name: Name, role: Role, work: Goal,
   where: Schema.Union([
     Schema.TaggedStruct('Project', {}),
@@ -16,6 +16,10 @@ const Stage = Schema.Struct({
     Schema.TaggedStruct('Passage', { file: FilePath, lines: Lines }),
   ]),
 })
+export const Fact = Schema.Struct({
+  name: Schema.Literals(['system', 'field', 'language', 'repo', 'audience', 'output']), value: ContextValue,
+})
+export const Command = Schema.TaggedStruct('Command', { text: CommandText })
 const Scope = Schema.Union([
   Schema.TaggedStruct('Everywhere', {}),
   Schema.TaggedStruct('Where', {
@@ -23,15 +27,13 @@ const Scope = Schema.Union([
       Schema.TaggedStruct('AllStages', {}),
       Schema.TaggedStruct('NamedStages', { stages: Schema.NonEmptyArray(Stage) }),
     ]),
-    facts: Schema.Array(Schema.Struct({
-      name: Schema.Literals(['system', 'field', 'language', 'repo', 'audience', 'output']), value: ContextValue,
-    })),
+    facts: Schema.Array(Fact),
   }),
 ])
-const Rule = Schema.TaggedStruct('Rule', {
+export const Rule = Schema.TaggedStruct('Rule', {
   id: RuleId, name: Name, text: GuidanceText,
   verification: Schema.Union([
-    Schema.TaggedStruct('Command', { text: CommandText }),
+    Command,
     Schema.TaggedStruct('Prompt', { question: QuestionText, source: Quote }),
   ]),
   examples: Schema.Array(Schema.Struct({

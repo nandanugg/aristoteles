@@ -1,10 +1,12 @@
+import { startWork } from '../../src/store/project-activation.probe.ts'
 import { expect, test } from 'bun:test'
 import { dirname } from 'node:path'
 import { Effect } from 'effect'
 import { acceptStaffing } from '../../src/store/proposal.probe.ts'
 import { readOpenProject, startSession } from '../../core/actions/staff-session.ts'
 import { PaneAddress, Rationale, SessionId, TaskId, refuse, type Of } from '../../core/schema/project.ts'
-import { open, send, staff, withJournal } from '../../src/store/project.probe.ts'
+import { open, staff, withJournal } from '../../src/store/project.probe.ts'
+import { activateTasks, send } from '../../src/store/task.probe.ts'
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
 import { staffSessionOperations, type Sessions } from './staff-session.ts'
 
@@ -89,7 +91,8 @@ test('a losing launch is reconciled before another provider slot can be exposed'
 test('the live adapter serializes child starts across roles assigned to one staff', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
-    const project = yield* sharedStaffing(journal)
+    const staffed = yield* sharedStaffing(journal)
+    const { state: project } = yield* startWork(journal, yield* activateTasks(journal, staffed))
     let started = 0
     const provider: Sessions = {
       reconcile: () => Effect.void,
@@ -116,7 +119,8 @@ test('the live adapter serializes child starts across roles assigned to one staf
 test('a child launched against a replaced plan is reconciled and can try again on the new basis', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
-    const project = yield* sharedStaffing(journal)
+    const staffed = yield* sharedStaffing(journal)
+    const { state: project } = yield* startWork(journal, yield* activateTasks(journal, staffed))
     let pending = false
     let replace = true
     let stopped = 0

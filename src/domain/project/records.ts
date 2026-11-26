@@ -1,37 +1,14 @@
 import { Schema, SchemaGetter } from 'effect'
 import { Activation } from './activation.ts'
 import { Proposal, StaffingAccepted } from './proposal.ts'
-import { Human, LiveSession, Role, Staff, StaffSession, Subscription } from './staff.ts'
+import { Human, Role, Staff, StaffSession, Subscription } from './staff.ts'
 import {
-  AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  ProjectId, ProposalId, QuestionId, ReadPosition, QuestionText, ResultSummary, RetryCount, RoleId, SessionId, StaffId,
+  EventNumber,
+  ProjectId, ProposalId, QuestionId, ReadPosition, QuestionText, RoleId, SessionId, StaffId,
   SubscriptionId, TaskId, type Of,
 } from './values.ts'
+import { Task } from './task.ts'
 import { Answer, QuestionForm, questionAbout } from './question.ts'
-
-export const TaskDraft = Schema.Struct({ id: TaskId, name: Name, goal: Goal, role: Role, reviewer: Role })
-const Attempt = Schema.Struct({
-  number: AttemptNumber, retryCount: RetryCount, session: LiveSession, place: Schema.Literals(['Main', 'Child']),
-})
-const WholeFile = Schema.Struct({ path: FilePath, contents: FileContents })
-const Result = Schema.Struct({ summary: ResultSummary, files: Schema.Array(WholeFile), attempt: Attempt })
-const Sent = Schema.TaggedStruct('Sent', { retryCount: RetryCount })
-const Working = Schema.TaggedStruct('Working', { attempt: Attempt })
-const ReadyToReview = Schema.TaggedStruct('ReadyToReview', { result: Result })
-const Reviewing = Schema.TaggedStruct('Reviewing', {
-  result: Result,
-  by: Schema.NullOr(Staff), review: Schema.NullOr(EventNumber),
-})
-export const TaskPhase = Schema.Union([Sent, Working, ReadyToReview, Reviewing])
-export type TaskPhase = Of<typeof TaskPhase>
-const AttemptHistory = Schema.Union([
-  Schema.TaggedStruct('First', {}),
-  Schema.TaggedStruct('PreviouslyWorked', { last: AttemptNumber }),
-])
-export const Task = Schema.Struct({
-  ...TaskDraft.fields, phase: TaskPhase, attempts: AttemptHistory, lastChange: EventNumber,
-})
-export type Task = Of<typeof Task>
 
 const Actor = Schema.Union([Human, Staff])
 const QuestionState = Schema.Union([

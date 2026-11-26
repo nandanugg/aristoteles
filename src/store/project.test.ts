@@ -4,7 +4,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { Effect } from 'effect'
 import { ProjectId, ReadPosition } from '../../core/schema/project.ts'
 import { readPosition } from '../../core/state/project.ts'
-import { create, open, projectId, resultInput, staffInput, toWorking, withJournal } from './project.probe.ts'
+import { create, open, projectId, staffInput, withJournal } from './project.probe.ts'
+import { resultInput, toWorking } from './task.probe.ts'
 import { PROJECT_FORMAT } from './schema.ts'
 
 const start = ReadPosition.make(0)
@@ -48,8 +49,8 @@ test('write allocation is per project even with interleaved commits in one file'
     const working = yield* toWorking(first)
     const second = yield* create(other)
     const report = yield* staffInput(first, resultInput(readPosition(working.state)))
-    expect([working, second, report].map(({ event }) => Number(event.number))).toEqual([4, 1, 5])
-    expect((yield* first.eventsAfter(start)).map((event) => Number(event.number))).toEqual([1, 2, 3, 4, 5])
+    expect([Number(second.event.number), Number(report.event.number)]).toEqual([1, working.event.number + 1])
+    expect((yield* first.eventsAfter(start)).map((event) => Number(event.number))).toEqual(Array.from({ length: report.event.number }, (_, index) => index + 1))
     expect(yield* other.eventsAfter(start)).toEqual([second.event])
   }))),
 ))
@@ -68,7 +69,7 @@ test('a SQLite append failure rolls back and leaves the report retryable', () =>
     expect(yield* journal.eventsAfter(readPosition(working.state))).toEqual([])
     query(path, (db) => db.exec('DROP TRIGGER interrupted'))
     const retried = yield* staffInput(journal, input)
-    expect(Number(retried.event.number)).toBe(5)
+    expect(Number(retried.event.number)).toBe(working.event.number + 1)
   }))),
 ))
 

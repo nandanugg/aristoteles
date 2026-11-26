@@ -87,7 +87,7 @@ export const sharedWireViolations = (graph: ProjectPrograms, root: string): stri
 }
 
 const phases = new Set(['phase', 'state', 'status', 'activation'])
-const phaseOwners = new Set(['core/state/project.ts', 'core/state/project-activation.ts', 'core/state/proposal.ts', 'src/domain/project/lines.ts'])
+const phaseOwners = new Set(['core/state/project.ts', 'core/state/project-activation.ts', 'core/state/task.ts', 'core/state/proposal.ts', 'src/domain/project/lines.ts'])
 const projectIn = new WeakMap<ts.Program, boolean>()
 
 export const phaseWriteViolations = (program: ts.Program, root: string, file: ts.SourceFile): string[] => {

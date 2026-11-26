@@ -55,6 +55,7 @@ export const ProviderName = Words.pipe(Schema.brand('ProviderName'))
 export const AccountName = Words.pipe(Schema.brand('AccountName'))
 export const PlanName = Words.pipe(Schema.brand('PlanName'))
 export const LaunchText = Words.pipe(Schema.brand('LaunchText'))
+export const TaskBriefText = Words.pipe(Schema.brand('TaskBriefText'))
 export const ResultSummary = Words.pipe(Schema.brand('ResultSummary'))
 export const PaneAddress = Words.pipe(Schema.brand('PaneAddress'))
 
@@ -92,3 +93,6 @@ export const LaunchNonce = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/
 export const LaunchVerifier = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)).pipe(Schema.brand('LaunchVerifier'))
 export const HostCredential = Schema.String.check(Schema.isPattern(/^host\.[a-f0-9]{64}$/u))
   .pipe(Schema.brand('HostCredential'))
+
+export const CommandExit = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 255 })).pipe(Schema.brand('CommandExit'))
+export const CommandTextOutput = Schema.String.check(Schema.isMaxLength(1_000_000)).pipe(Schema.brand('CommandTextOutput'))

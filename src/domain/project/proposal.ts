@@ -12,7 +12,7 @@ export const ProposalValue = Schema.Union([
 ])
 export type ProposalValue = Of<typeof ProposalValue>
 
-const versionOf = <S extends Schema.Top>(value: S) =>
+export const versionOf = <S extends Schema.Top>(value: S) =>
   Schema.Struct({ number: VersionNumber, value, acceptedAt: EventNumber })
 
 const proposalOf = <S extends Schema.Top>(value: S) => Schema.Struct({

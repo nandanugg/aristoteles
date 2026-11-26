@@ -1,5 +1,5 @@
 import {
-  currentQuestion, liveSession, proposalLine, questionLine, staffOf, taskLine,
+  currentQuestion, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
   type Human, type LiveSession, type Project, type Proposal, type Question, type ReadPosition, type Of, type Task,
 } from '../../schema/project.ts'
 
@@ -34,7 +34,7 @@ export const nextStep = (project: Project, authority: LiveSession | Of<typeof Hu
   const [question] = questionsFor(project, authority)
   const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
   const owes = (task: Task): boolean => {
-    if (!current) return false
+    if (!current || !activeWork(project)) return false
     const { phase } = task
     switch (taskLine[phase._tag].owes) {
       case 'Assignee':

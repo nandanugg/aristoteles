@@ -1,9 +1,10 @@
+import { applyTaskMove, restartTask } from './task.ts'
 import { applyActivationMove } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
-  AttemptNumber, ReadPosition, Rationale, RetryCount, ActivationEvent, ProjectEvent, ProposalEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, liveSession, projectLine, questionLine, refuse, sessionLine, sessionMayStart, staffOf, subagentCapacity, taskLine,
-  type LiveSession, type Project, type Projection, type Question, type StoredActor, type Refusal, type StaffSession, type Task, type TaskPhase,
+  ReadPosition, Rationale, RetryCount, activeWork, ActivationEvent, ProjectEvent, ProposalEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, staffOf, subagentCapacity,
+  type LiveSession, type Project, type Projection, type Question, type StoredActor, type Refusal, type StaffSession,
 } from '../schema/project.ts'
 
 export const readPosition = (state: Projection): typeof ReadPosition.Type =>
@@ -17,8 +18,8 @@ const stale = () => Result.fail(refuse('Stale', Rationale.make('The addressed re
 
 const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Result<Project, Refusal> => {
   const { line, actor, number, read } = event
-  if (actor._tag !== 'Human') return wrongActor()
   if (event.from === null) {
+    if (actor._tag !== 'Human') return wrongActor()
     if (project) return wrongMove()
     if (read !== 0) return stale()
     const { input } = event
@@ -41,94 +42,42 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     })
   }
   if (project?.status._tag !== event.from || project.id !== line.id) return wrongMove()
-  if (actor.id !== project.owner.id) return wrongActor()
   if (event.move === 'end') {
+    if (actor._tag !== 'Human' || actor.id !== project.owner.id) return wrongActor()
     if (project.lastChange > read) return stale()
     if (edge(projectLine, event.from, event.move, 'Ended') !== 'Allowed' ||
         [...project.sessions.values()].some((session) => session._tag === 'Live')) return wrongMove()
     return Result.succeed({ ...project, status: { _tag: 'Ended', at: number }, lastChange: number })
   }
   if (edge(projectLine, event.from, event.move, 'Open') !== 'Allowed') return wrongMove()
-  if (project.lastChange > read) return stale()
-  const { draft } = event.input
+  const { draft, host } = event.input
+  const activation = activeWork(project)
+  if (!activation) return wrongMove()
+  if (activation.work.at > read) return stale()
+  if (actor._tag !== 'Staff' || actor.id !== activation.staff.id || activation.binding.id !== host) return retired()
   if (project.tasks.has(draft.id)) return stale()
-  const role = project.roles.get(draft.role.id)
-  const reviewer = project.roles.get(draft.reviewer.id)
+  const role = project.roles.get(draft.role)
+  const reviewer = project.roles.get(draft.reviewer)
   if (!role || !reviewer) return wrongActor()
+  if (role.responsibility.acceptedAt > read || reviewer.responsibility.acceptedAt > read) return stale()
+  const direction = [...project.proposals.values()].flatMap(({ phase }) =>
+    phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' && phase.version.value.id === draft.direction.id
+      ? [{ ...phase.version, value: phase.version.value }] : [],
+  ).sort((first, second) => second.acceptedAt - first.acceptedAt)[0]
+  if (!direction || direction.acceptedAt > read || direction.acceptedAt !== draft.direction.acceptedAt) return stale()
+  const selected = new Set(draft.stages)
+  const stages = direction.value.stages.filter(({ id }) => selected.has(id))
+  const [first, ...rest] = stages
+  const offset = first ? direction.value.stages.indexOf(first) : -1
+  if (!first || stages.length !== draft.stages.length || stages.some((stage, index) =>
+    stage.id !== draft.stages[index] || stage !== direction.value.stages[offset + index] || stage.role.id !== role.id))
+    return Result.fail(refuse('InvalidInput', Rationale.make('Use a contiguous stage slice assigned to the role.')))
   const tasks = new Map(project.tasks)
   tasks.set(draft.id, {
-    ...draft, role, reviewer, phase: { _tag: 'Sent', retryCount: RetryCount.make(0) },
-    attempts: { _tag: 'First' }, lastChange: number,
+    id: draft.id, name: draft.name, goal: draft.goal, role, reviewer, direction, stages: [first, ...rest], facts: draft.facts,
+    phase: { _tag: 'Sent', retryCount: RetryCount.make(0) }, attempts: { _tag: 'First' }, lastChange: number,
   })
   return Result.succeed({ ...project, tasks })
-}
-
-const moveTask = (project: Project, task: Task, event: TaskEvent): Result.Result<Task, Refusal> => {
-  const { actor, move, number, read } = event
-  if (task.lastChange > read) return stale()
-  const before = task.phase
-  const entered = (phase: TaskPhase, attempts = task.attempts): Result.Result<Task, Refusal> =>
-    edge(taskLine, before._tag, move, phase._tag) === 'Allowed'
-      ? Result.succeed({ ...task, phase, attempts, lastChange: number })
-      : wrongMove()
-  switch (event.from) {
-    case 'Sent': {
-      if (before._tag !== event.from) return wrongMove()
-      const { session: claimed, place, staffing } = event.input
-      if (staffing !== project.staffingAt || read < staffing) return stale()
-      const session = liveSession(project, claimed.id)
-      const staff = staffOf(project, task.role)
-      if (!session) return retired()
-      if (!staff || actor._tag !== 'Staff' || actor.id !== session.staff.id || actor.id !== staff.id) return wrongActor()
-      if (place === 'Child' && subagentCapacity(project, staff).freeSubagents === 0) return noChild()
-      const next = task.attempts._tag === 'First' ? 1 : task.attempts.last + 1
-      if (!Schema.is(AttemptNumber)(next)) return wrongMove()
-      return entered({
-        _tag: 'Working', attempt: { number: next, session, place, retryCount: before.retryCount },
-      }, { _tag: 'PreviouslyWorked', last: next })
-    }
-    case 'Working': {
-      if (before._tag !== event.from) return wrongMove()
-      const { attempt } = before
-      if (actor._tag !== 'Staff' || actor.id !== attempt.session.staff.id) return wrongActor()
-      if (!liveSession(project, attempt.session.id)) return retired()
-      if (event.input.attempt !== attempt.number) return stale()
-      return entered({
-        _tag: 'ReadyToReview', result: { summary: event.input.summary, files: event.input.files, attempt },
-      })
-    }
-    case 'ReadyToReview':
-      if (before._tag !== event.from) return wrongMove()
-      if (actor._tag !== 'Staff' || actor.id !== before.result.attempt.session.staff.id) return wrongActor()
-      return entered({ _tag: 'Reviewing', result: before.result, by: null, review: null })
-    case 'Reviewing': {
-      if (before._tag !== event.from) return wrongMove()
-      const reviewer = staffOf(project, task.reviewer)
-      if (event.move === 'next') {
-        const { staffing } = event.input
-        if (staffing !== project.staffingAt || read < staffing) return stale()
-        if (before.by !== null) return wrongMove()
-        const session = liveSession(project, event.input.session.id)
-        if (!session) return retired()
-        if (!reviewer || actor._tag !== 'Staff' || actor.id !== reviewer.id || actor.id !== session.staff.id) return wrongActor()
-        if (subagentCapacity(project, reviewer).freeSubagents === 0) return noChild()
-        return entered({ ...before, by: session.staff, review: number })
-      }
-      if (!before.by) return wrongMove()
-      if (actor._tag !== 'Staff' || actor.id !== reviewer?.id || actor.id !== before.by.id) return wrongActor()
-      if (![...project.sessions.values()].some((session) => session._tag === 'Live' && session.staff.id === before.by?.id)) return retired()
-      const attempt = before.result.attempt
-      const working = liveSession(project, attempt.session.id)
-      if (!working) return retired()
-      if (attempt.place === 'Child' && working.staff.id !== reviewer.id) {
-        const assigned = project.staff.get(working.staff.id)
-        if (!assigned || subagentCapacity(project, assigned).freeSubagents === 0) return noChild()
-      }
-      const retryCount = attempt.retryCount + 1
-      if (!Schema.is(RetryCount)(retryCount)) return wrongMove()
-      return entered({ _tag: 'Working', attempt: { ...attempt, retryCount } })
-    }
-  }
 }
 
 // A session retirement changes each affected task in the same journal event.
@@ -156,8 +105,9 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
       if (phase._tag === 'Working' && phase.attempt.session.id === previous.id) {
         if (continued) {
           tasks.set(id, { ...task, phase: { ...phase, attempt: { ...phase.attempt, session: continued } }, lastChange: number })
-        } else if (session._tag === 'Ended' && edge(taskLine, phase._tag, 'restart', 'Sent') === 'Allowed') {
-          tasks.set(id, { ...task, phase: { _tag: 'Sent', retryCount: phase.attempt.retryCount }, lastChange: number })
+        } else if (session._tag === 'Ended') {
+          const restarted = restartTask(task, phase, number)
+          if (Result.isSuccess(restarted)) tasks.set(id, restarted.success)
         }
       }
       if (phase._tag === 'Reviewing' && phase.by?.id === previous.staff.id) {
@@ -264,7 +214,7 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
     if (!Schema.is(TaskEvent)(event)) return wrongMove()
     const task = state.tasks.get(event.line.id)
     if (!task) return wrongMove()
-    return Result.map(moveTask(state, task, event), (changed) => {
+    return Result.map(applyTaskMove(state, task, event), (changed) => {
       const tasks = new Map(state.tasks)
       tasks.set(changed.id, changed)
       return { ...state, tasks }

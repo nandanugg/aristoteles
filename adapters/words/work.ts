@@ -1,3 +1,4 @@
+import { taskRules, TaskBriefText, type Refusal, type Task } from '../../core/schema/project.ts'
 // The words of the work model's told steps: the command of a step (with the basis `--on <seq>`
 // where the act has one), the plain lines above it, and the maker's brief. The steps come from
 // core/derived/c16/obligations.ts (`dos`); this file only writes them.
@@ -327,4 +328,22 @@ export const projectQuestionWords = (step: Selection): Readonly<{
     ? `work answer <token> ${id} --file=<answer.yaml>` as const
     : `work answer ${id} --file=<answer.yaml>` as const
   return { text, command }
+}
+
+export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = null): Of<typeof TaskBriefText> => {
+  const { phase } = task
+  return TaskBriefText.make([
+    `Task ${task.id}: ${task.name}`,
+    `Goal: ${task.goal}`,
+    `Direction: ${task.direction.value.name} (version ${task.direction.number})`,
+    `Role: ${task.role.name} (responsibility version ${task.role.responsibility.id.number})`,
+    ...task.role.responsibility.value.duties,
+    ...task.stages.map((stage) => `${stage.name}: ${stage.work}`),
+    ...taskRules(task).map((rule) => `${rule.name}: ${rule.text}`),
+    `Phase: ${phase._tag}`,
+    ...(phase._tag === 'Working' ? [`Attempt ${phase.attempt.number}`] : []),
+    ...(phase._tag === 'ReadyToReview' ? [blocked ?? 'Waiting for the committed command outcomes.'] : []),
+    ...(phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.outcomes.map((outcome) =>
+      `${outcome.rule.name}: ${outcome._tag} (exit ${outcome.evidence.exit})`) : []),
+  ].join('\n'))
 }

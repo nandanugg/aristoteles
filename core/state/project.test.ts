@@ -2,9 +2,8 @@ import { expect, test } from 'bun:test'
 import { Effect, Result, Schema, Stream } from 'effect'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
 import { projectEvents, projectEventStream, projectSnapshot } from '../../adapters/web/project.ts'
-import {
-  commandOutcomes, create, open, projectId, resultInput, send, session, staffInput, taskId, taskLine, toWorking, withJournal, worker,
-} from '../../src/store/project.probe.ts'
+import { create, open, projectId, session, staffInput, withJournal, worker } from '../../src/store/project.probe.ts'
+import { commandOutcomes, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { startChild } from '../actions/staff-session.ts'
 import { recordObserved } from '../actions/project.ts'
 import { EventNumber, Projection, Rationale, ReadPosition, SessionId, StoredEvent, Submission, TaskId } from '../schema/project.ts'
@@ -82,7 +81,7 @@ test('an unrelated record changing after the basis does not invalidate the addre
     const read = readPosition(working.state)
     yield* send(journal, read, TaskId.make('task:unrelated'))
     const result = yield* staffInput(journal, resultInput(read))
-    expect(Number(result.event.number)).toBe(6)
+    expect(Number(result.event.number)).toBe(read + 2)
   }))),
 ))
 
@@ -104,7 +103,7 @@ test('the page deduplicates notifications and catches up via the canonical snaps
     page.receive([result.event, review.event])
     expect(changes).toEqual([review.state])
     const streamed = yield* Stream.runCollect(Stream.take(projectEventStream(reopened, after), 2))
-    expect([...streamed]).toEqual([result.event, review.event])
+    expect([...streamed].map((event) => encode(event))).toEqual([result.event, review.event].map((event) => encode(event)))
     const all = yield* reopened.eventsAfter(initial)
     expect(Result.getOrThrow(fold(all))).toEqual(page.current())
     const saved = Schema.encodeSync(Projection)(page.current())

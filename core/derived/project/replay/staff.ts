@@ -91,16 +91,50 @@ export const replayStaffCapacity = async (trace: Trace, kind: Kind, port: StaffC
   if (kind === 'mutant') throw new Error('Missing duplicate child launch in mutant')
 }
 
+type WorkObservation = {
+  readonly phase: 'Sent' | 'Working' | 'ReadyToReview'
+  readonly attempt: number
+  readonly lifetime: number
+  readonly retries: number
+  readonly artifact: number | null
+}
 export interface StaffReplacementPort {
   readonly retire: (checkpoint: boolean) => Promise<void>
   readonly replace: (checkpoint: boolean) => Promise<void>
+  readonly begin: () => Promise<void>
+  readonly report: (lifetime: number) => Promise<boolean>
   readonly observe: () => Promise<readonly [phase: 'Live' | 'Paused' | 'Ended', lifetime: number]>
+  readonly work: () => Promise<WorkObservation>
 }
 
-export const replayStaffReplacementObservations = async (trace: Trace, port: StaffReplacementPort): Promise<void> => {
+const replacementWork = (value: Plain): WorkObservation => {
+  const { tag, value: raw } = record(value)
+  const data = record(raw!)
+  if (tag === 'Sent') return {
+    phase: tag, attempt: integer(data.last), retries: integer(data.retries), lifetime: 0, artifact: null,
+  }
+  if (tag !== 'Working' && tag !== 'ReadyToReview') throw new Error('Unexpected work phase')
+  const attempt = tag === 'ReadyToReview' ? record(data.attempt!) : data
+  return {
+    phase: tag, attempt: integer(attempt.number), lifetime: integer(attempt.session),
+    retries: integer(attempt.retries), artifact: tag === 'ReadyToReview' ? integer(data.artifact) : null,
+  }
+}
+
+export const replayStaffReplacementObservations = async (
+  trace: Trace, kind: Kind, port: StaffReplacementPort,
+): Promise<void> => {
+  const compareWork = async (expected: WorkObservation) => {
+    const actual = await port.work()
+    if (actual.phase !== expected.phase || actual.attempt !== expected.attempt || actual.lifetime !== expected.lifetime ||
+        actual.retries !== expected.retries || actual.artifact !== expected.artifact)
+      throw new Error('Replacement work differs: ' + JSON.stringify({ expected, actual }))
+  }
+  let previous = replacementWork(trace.states[0]!.state.work!)
+  await compareWork(previous)
   for (const step of trace.states.slice(1)) {
     switch (step.action) {
-      case '': continue
+      case '': break
       case 'retire': {
         const checkpoint = picked(step.picks.withCheckpoint)
         if (typeof checkpoint !== 'boolean') throw new Error('Expected a checkpoint observation')
@@ -109,14 +143,26 @@ export const replayStaffReplacementObservations = async (trace: Trace, port: Sta
       }
       case 'replace': await port.replace(false); break
       case 'resumeCheckpoint': await port.replace(true); break
-      // The full work, review, proposal and question comparison lands in U7.
-      case 'startAgain':
-      case 'finishWork': return
+      case 'startAgain': await port.begin(); break
+      case 'finishWork': {
+        const source = integer(picked(step.picks.lifetime))
+        const committed = await port.report(source)
+        if (committed !== (source === previous.lifetime)) throw new Error('A stale replacement report changed the work')
+        if (kind === 'mutant' && step.state.staleApplied === true) {
+          await compareWork(previous)
+          return
+        }
+        break
+      }
       default: throw new Error('Unknown replacement action: ' + step.action)
     }
     const session = record(step.state.session!)
     const lifetime = session.tag === 'Ended' ? integer(session.value) : integer(record(session.value!).lifetime)
     const [actualPhase, actualLifetime] = await port.observe()
     if (actualPhase !== session.tag || actualLifetime !== lifetime) throw new Error('Session observation differs')
+    const expected = replacementWork(step.state.work!)
+    await compareWork(expected)
+    previous = expected
   }
+  if (kind === 'mutant') throw new Error('The mutant never offered a stale report')
 }
