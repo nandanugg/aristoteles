@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test'
 import { Effect, Result, Schema } from 'effect'
+import { cliProposal, evidence, proposeStaffing } from '../../src/store/proposal.probe.ts'
+import { assignProposalReview } from './proposal.ts'
 import { projectQuestionWords } from '../../adapters/words/work.ts'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
 import { answerFromForm, questionAnswerSubmission } from '../../adapters/web/app/questions.ts'
@@ -7,7 +9,7 @@ import { projectSnapshot } from '../../adapters/web/project.ts'
 import { create, open, owner, session, staff, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm } from '../../src/store/question.probe.ts'
 import { nextStep, questionsFor } from '../derived/project/next-step.ts'
-import { Answer, QuestionForm, QuestionId, ReadPosition, SessionId, Submission, type Of, type Project } from '../schema/project.ts'
+import { Answer, QuestionForm, ProposalId, QuestionId, ReadPosition, ReviewId, SessionId, StaffingId, Submission, type Of, type Project } from '../schema/project.ts'
 import { observeSession, readOpenProject, startSession } from './staff-session.ts'
 import { readPosition } from '../state/project.ts'
 
@@ -102,14 +104,29 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const journal = yield* open(path)
     const created = yield* create(journal)
     const live = yield* startFixtureSession(journal, created.state)
-    const consult = (id: Of<typeof QuestionId>, project: Project, basis = project.read) =>
+    const plan = { id: StaffingId.make('staffing:consult'), staff: [staff], subscriptions: [staff.subscription] } as const
+    const id = ProposalId.make('proposal:staffing')
+    const draft = yield* proposeStaffing(journal, live.state, plan, id)
+    const line = { _tag: 'Proposal', id } as const
+    const consult = (id: Of<typeof QuestionId>, project: Project) =>
       cliQuestion(journal, staffAuthorityOf(), 'question', owner.id, project.read, Bun.YAML.stringify({
         id, text: 'Which allowance should the host propose?', form: textForm,
-        about: { _tag: 'Staffing', proposal: { id: 'proposal:staffing', basis } },
+        about: { _tag: 'Staffing', proposal: { id: line.id, basis: project.proposals.get(line.id)?.lastChange } },
       }))
-    const first = yield* consult(questionId, live.state)
+    const first = yield* consult(questionId, draft.state)
+    const firstAnswer = yield* cliQuestion(journal, ownerAuthority, 'answer', questionId, first.state.read, answerYaml('Keep two slots.'))
+    const send = { _tag: 'SubmitProposal', line, value: { ...plan, _tag: 'Staffing' } }
+    expect(yield* Effect.result(cliProposal(journal, firstAnswer.state, { ...send, question: null })))
+      .toMatchObject(failure('Stale'))
+    const sent = yield* cliProposal(journal, firstAnswer.state, { ...send, question: { _tag: 'Question', id: questionId } })
+    const proposal = sent.state.proposals.get(line.id)
+    if (!proposal) throw new Error('No staffing proposal')
+    const run = { id: ReviewId.make('review:consult'), session }
+    const reviewed = yield* assignProposalReview(journal, proposal, run, sent.state.read)
+    const returned = yield* cliProposal(journal, reviewed.state, { _tag: 'Review', line, facts: evidence('Breaks') },
+      { _tag: 'Review', run, basis: reviewed.event.number })
     const laterId = QuestionId.make('question:revised')
-    const latest = yield* consult(laterId, first.state)
+    const latest = yield* consult(laterId, returned.state)
     expect(questionsFor(latest.state, owner).map(({ id }) => id)).toEqual([laterId])
     expect(yield* Effect.result(cliQuestion(journal, ownerAuthority, 'answer', questionId, latest.state.read,
       answerYaml('old draft')))).toMatchObject(failure('Stale'))
@@ -119,10 +136,10 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     expect(reply.status).toBe(200)
     const answered = yield* readOpenProject(journal)
     expect(needed(answered, laterId)).toMatchObject({
-      about: { _tag: 'Staffing', proposal: { id: 'proposal:staffing', basis: first.state.read } },
+      about: { _tag: 'Staffing', proposal: { id: 'proposal:staffing', basis: returned.event.number } },
       state: { _tag: 'Answered', by: { id: owner.id }, answer: { text: 'Keep one slot.' } },
     })
-    expect(needed(answered).state._tag).toBe('Open')
+    expect(needed(answered).state._tag).toBe('Answered')
     expect(yield* Effect.result(cliQuestion(journal, ownerAuthority, 'answer', laterId, ReadPosition.make(0),
       answerYaml('old view')))).toMatchObject(failure('Stale'))
   }))),

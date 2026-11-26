@@ -1,7 +1,7 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
-  ReadPosition, Rationale, StoredEvent, Submission, liveSession, refuse,
-  type LiveSession, type Of, type Projection, type Refusal, type StoredActor,
+  ReadPosition, Rationale, StoredEvent, Submission, liveSession, refuse, reviewOutcome,
+  type EventNumber, type LiveSession, type Of, type Projection, type Refusal, type ReviewRun, type StoredActor,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
 import { applyEvent, fold, readPosition } from '../state/project.ts'
@@ -9,6 +9,7 @@ import { applyEvent, fold, readPosition } from '../state/project.ts'
 export type AuthenticatedActor =
   | { readonly _tag: 'Human'; readonly actor: Extract<StoredActor, { _tag: 'Human' }> }
   | { readonly _tag: 'Staff'; readonly session: LiveSession }
+  | { readonly _tag: 'Review'; readonly run: ReviewRun; readonly basis: Of<typeof EventNumber> }
 export class Authority extends Context.Service<Authority, {
   readonly actor: Effect.Effect<AuthenticatedActor, Refusal>
 }>()('project/Authority') {}
@@ -49,6 +50,20 @@ const questionMove = (input: QuestionSubmission): QuestionMove => {
   const { id, ...fields } = input.question
   return { line: { _tag: 'Question', id }, from: null, move: 'next', input: fields }
 }
+type ProposalMove = Extract<MoveInput, { line: { _tag: 'Proposal' } }>
+type ProposalSubmission = Extract<Extract<Submission, { _tag: 'HumanChoice' }>['choice'],
+  { _tag: 'Proposal' | 'SubmitProposal' | 'ChooseProposal' }>
+const proposalMove = (input: ProposalSubmission): ProposalMove => {
+  switch (input._tag) {
+    case 'Proposal': return { line: { _tag: 'Proposal', id: input.id }, from: null, move: 'next', input: { value: input.value } }
+    case 'SubmitProposal': return { line: input.line, from: 'Drafting', move: 'submit', input: { value: input.value, question: input.question } }
+    case 'ChooseProposal': {
+      const { choice, line } = input
+      if (choice._tag === 'sendBack') return { line, from: 'WaitingForOwner', move: 'sendBack', input: { why: choice.why } }
+      return { line, from: 'WaitingForOwner', move: choice._tag, input: {} }
+    }
+  }
+}
 export const submit = (journal: Journal, input: unknown): Effect.Effect<Committed, Refusal, Authority> =>
   Effect.gen(function* () {
     const request = yield* Effect.mapError(readSubmission(input), () =>
@@ -60,6 +75,8 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
       const { choice } = request
       if (choice._tag === 'Question' || choice._tag === 'Answer')
         return yield* commit(journal, authenticated.actor, request.read, () => Result.succeed(questionMove(choice)))
+      if (choice._tag === 'Proposal' || choice._tag === 'SubmitProposal' || choice._tag === 'ChooseProposal')
+        return yield* commit(journal, authenticated.actor, request.read, () => Result.succeed(proposalMove(choice)))
       const address = choice._tag === 'NewProject' ? choice.project : choice.line
       if (address.id !== journal.id) {
         return yield* Effect.fail(refuse('InvalidInput', Rationale.make('The choice addresses a different project.')))
@@ -71,14 +88,31 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
         return Result.succeed({ line: project, from: null, move: 'next', input: { owner, host, pipeline, staff, roles } })
       })
     }
-    if (authenticated._tag !== 'Staff') return yield* Effect.fail(wrongActor())
     const report = request.report
+    if (report._tag === 'Review') {
+      if (authenticated._tag !== 'Review') return yield* Effect.fail(wrongActor())
+      const { run, basis } = authenticated
+      const actor = { _tag: 'Staff', id: run.session.staff.id } as const
+      const { line, facts } = report
+      return yield* commit(journal, actor, request.read, (project) => {
+        const proposal = project?.proposals.get(line.id)
+        if (proposal?.phase._tag !== 'Reviewing' || proposal.phase.review._tag !== 'By' ||
+            proposal.phase.review.run.id !== run.id || proposal.phase.review.run.session.id !== run.session.id ||
+            proposal.lastChange !== basis) return Result.fail(retired())
+        return Result.succeed(reviewOutcome(facts) === 'Holds'
+          ? { line, from: 'Reviewing', move: 'next', input: { run, facts } }
+          : { line, from: 'Reviewing', move: 'sendBack', input: { run, facts } })
+      })
+    }
+    if (authenticated._tag !== 'Staff') return yield* Effect.fail(wrongActor())
     const { session } = authenticated
     const actor: StoredActor = { _tag: 'Staff', id: session.staff.id }
     return yield* commit(journal, actor, request.read, (project) => {
       if (project?.status._tag !== 'Open') return Result.fail(retired())
       const current = liveSession(project, session.id)
       if (!current || current.staff.id !== session.staff.id) return Result.fail(retired())
+      if (report._tag === 'Proposal' || report._tag === 'SubmitProposal')
+        return Result.succeed(proposalMove(report))
       if (report._tag !== 'Work') return Result.succeed(questionMove(report))
       const { line, report: result } = report
       if (result === null) return Result.succeed({

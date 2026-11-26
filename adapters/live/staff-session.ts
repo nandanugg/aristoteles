@@ -31,7 +31,7 @@ export interface StaffSessionOperations {
 }
 
 export const staffSessionOperations = (
-  directory: string, journal: Journal, provider: Sessions,
+  directory: string, journal: Journal, provider: Sessions, review?: Effect.Effect<unknown, Refusal>,
 ): StaffSessionOperations => {
   const locked = <A>(run: (project: Project) => Effect.Effect<A, Refusal>) =>
     Effect.scoped(Effect.gen(function* () {
@@ -60,7 +60,7 @@ export const staffSessionOperations = (
           ? resumeSession(journal, project, previous, { id, pane, staffing })
           : startSession(journal, project, { id, staff, pane, staffing })
       }))
-    })),
+    })).pipe(Effect.tap(() => review ? Effect.asVoid(Effect.result(review)) : Effect.void)),
     observe: (address) => locked((project) => Effect.gen(function* () {
       const live = yield* staffAuthority(project, address.id)
       const fact = yield* provider.observe(live)

@@ -9,7 +9,8 @@ import {
   SessionCount, SessionId, SubagentCount, TaskId, capacity, type Staff, type StaffingPlan,
 } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
-import { acceptStaffing, observeSession, readOpenProject, resumeSession, startChild, startSession } from './staff-session.ts'
+import { acceptStaffing } from '../../src/store/proposal.probe.ts'
+import { observeSession, readOpenProject, resumeSession, startChild, startSession } from './staff-session.ts'
 
 const address = { _tag: 'Session', id: session.id } as const
 const rejected = (code: string) => ({ _tag: 'Failure', failure: { code } })

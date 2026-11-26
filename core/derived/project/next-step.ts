@@ -1,6 +1,6 @@
 import {
-  currentQuestion, liveSession, questionLine, staffOf, taskLine,
-  type Human, type LiveSession, type Project, type Question, type ReadPosition, type Of, type Task,
+  currentQuestion, liveSession, proposalLine, questionLine, staffOf, taskLine,
+  type Human, type LiveSession, type Project, type Proposal, type Question, type ReadPosition, type Of, type Task,
 } from '../../schema/project.ts'
 
 export type Selection =
@@ -8,7 +8,8 @@ export type Selection =
   | {
       readonly _tag: 'Available'
       readonly subject: { readonly _tag: 'Task'; readonly task: Task } | { readonly _tag: 'Question'; readonly question: Question }
-      readonly for: 'Report' | 'Answer'
+        | { readonly _tag: 'Proposal'; readonly proposal: Proposal }
+      readonly for: 'Report' | 'Answer' | 'Choose'
       readonly read: Of<typeof ReadPosition>
     }
 
@@ -45,10 +46,20 @@ export const nextStep = (project: Project, authority: LiveSession | Of<typeof Hu
         return false
     }
   }
-  const task = [...project.tasks.values()].filter(owes).sort((left, right) => left.lastChange - right.lastChange)[0]
-  if (question && (!task || question.lastChange < task.lastChange))
-    return { _tag: 'Available', subject: { _tag: 'Question', question }, for: 'Answer', read: project.read }
-  return task
-    ? { _tag: 'Available', subject: { _tag: 'Task', task }, for: 'Report', read: project.read }
-    : { _tag: 'Awaiting' }
+  const due: Extract<Selection, { _tag: 'Available' }>[] = []
+  if (question) due.push({ _tag: 'Available', subject: { _tag: 'Question', question }, for: 'Answer', read: project.read })
+  for (const task of project.tasks.values()) {
+    if (owes(task)) due.push({ _tag: 'Available', subject: { _tag: 'Task', task }, for: 'Report', read: project.read })
+  }
+  const actor = authority._tag === 'Human' ? authority : current?.staff
+  for (const proposal of project.proposals.values()) {
+    const duty = proposalLine[proposal.phase._tag].owes
+    const owner = duty === 'Owner' && actor?._tag === 'Human' && proposal.owner.id === actor.id
+    const proposer = duty === 'Proposer' && proposal.proposer._tag === actor?._tag && proposal.proposer.id === actor.id
+    if (owner || proposer) due.push({ _tag: 'Available', subject: { _tag: 'Proposal', proposal },
+      for: actor?._tag === 'Human' ? 'Choose' : 'Report', read: project.read })
+  }
+  const since = ({ subject }: typeof due[number]) =>
+    (subject._tag === 'Task' ? subject.task : subject._tag === 'Question' ? subject.question : subject.proposal).lastChange
+  return due.sort((left, right) => since(left) - since(right))[0] ?? { _tag: 'Awaiting' }
 }

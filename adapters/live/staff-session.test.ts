@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 import { dirname } from 'node:path'
 import { Effect } from 'effect'
-import { acceptStaffing, readOpenProject, startSession } from '../../core/actions/staff-session.ts'
+import { acceptStaffing } from '../../src/store/proposal.probe.ts'
+import { readOpenProject, startSession } from '../../core/actions/staff-session.ts'
 import { PaneAddress, Rationale, SessionId, TaskId, refuse, type Of } from '../../core/schema/project.ts'
 import { open, send, staff, withJournal } from '../../src/store/project.probe.ts'
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
@@ -81,7 +82,7 @@ test('a losing launch is reconciled before another provider slot can be exposed'
     yield* operations.launch(other.id, otherId, project.staffingAt, null)
     expect(pending.has(lost)).toBe(false)
     const current = yield* readOpenProject(journal)
-    expect([...current.sessions.keys()]).toEqual([existing, otherId])
+    expect([...current.sessions.values()].filter((item) => item._tag === 'Live').map(({ id }) => id)).toEqual([existing, otherId])
   }))),
 ))
 

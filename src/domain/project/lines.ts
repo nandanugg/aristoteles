@@ -1,6 +1,6 @@
 import type { Schema } from 'effect'
 
-type Duty = 'Assignee' | 'Reviewer' | 'Owner' | 'Recipient' | 'Engine' | 'None'
+type Duty = 'Assignee' | 'Reviewer' | 'Owner' | 'Recipient' | 'Proposer' | 'Engine' | 'None'
 
 type Edges<Table> = {
   readonly [Phase in keyof Table]: {

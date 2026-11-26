@@ -486,3 +486,5 @@ export const dirView = (
   picks: dir.picks,
   toast: toastOf(dir.status, dir.now),
 })
+
+export { ownerProposals } from '../../core/derived/project/review.ts'

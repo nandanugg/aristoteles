@@ -52,9 +52,9 @@ export const staffInput = (journal: Journal, input: unknown, live = session) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Staff', session: live } as const),
   }))
-export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = []) => ownerInput(journal, {
+export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [], initialStaff = staff) => ownerInput(journal, {
   _tag: 'HumanChoice', read: 0,
-  choice: { _tag: 'NewProject', project: { _tag: 'Project', id: journal.id }, owner, host, pipeline, staff, roles },
+  choice: { _tag: 'NewProject', project: { _tag: 'Project', id: journal.id }, owner, host, pipeline, staff: initialStaff, roles },
 })
 export const send = (journal: Journal, read: Of<typeof ReadPosition>, id = taskId, assigned = host) =>
   recordObserved(journal, human, read, {

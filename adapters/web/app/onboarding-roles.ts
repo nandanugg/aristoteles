@@ -132,3 +132,54 @@ export function Roles({ view, onRefresh, onStaffing }: {
     <//>` : ''}
   </section>`
 }
+
+import { Result, Schema } from 'effect'
+import { ProposalId, ProposalValue, Rationale, refuse, type Project, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
+import type { ProposalReply } from './api.ts'
+
+const decodeProposal = Schema.decodeUnknownResult(ProposalValue, { onExcessProperty: 'error' })
+
+export function ProjectResponsibilities({ project, submit }: {
+  readonly project: Project
+  readonly submit: (submission: Submission) => Promise<ProposalReply>
+}): ReturnType<typeof html> {
+  const [failure, setFailure] = useState<ProjectRefusal | null>(null)
+  const [busy, setBusy] = useState(false)
+  return html`<section aria-label="Responsibilities">
+    ${[...project.roles.values()].map((role) => {
+      const value = role.responsibility.value
+      return html`<details key=${role.id}><summary>${role.name}</summary>
+        <form onSubmit=${async (event: SubmitEvent) => {
+          event.preventDefault()
+          const form = event.currentTarget
+          if (!(form instanceof HTMLFormElement) || busy) return
+          const fields = new FormData(form)
+          const proposal = decodeProposal({
+            _tag: 'Responsibility', id: value.id, role, summary: fields.get('summary'),
+            introduction: fields.get('introduction'), duties: String(fields.get('duties') ?? '').split('\n').map((duty) => duty.trim()).filter(Boolean),
+          })
+          if (Result.isFailure(proposal)) {
+            setFailure(refuse('InvalidInput', Rationale.make('Supply a summary, introduction and at least one duty.')))
+            return
+          }
+          const id = ProposalId.make('proposal:' + crypto.randomUUID())
+          setBusy(true)
+          try {
+            const opened = await submit({ _tag: 'HumanChoice', read: project.read,
+              choice: { _tag: 'Proposal', id, value: proposal.success } })
+            if (Result.isFailure(opened)) { setFailure(opened.failure); return }
+            const sent = await submit({ _tag: 'HumanChoice', read: opened.success.read,
+              choice: { _tag: 'SubmitProposal', line: { _tag: 'Proposal', id }, value: proposal.success, question: null } })
+            setFailure(Result.isFailure(sent) ? sent.failure : null)
+          } finally { setBusy(false) }
+        }}>
+          <label class="field">Summary<input name="summary" value=${value.summary} required /></label>
+          <label class="field">Introduction<textarea name="introduction" required>${value.introduction}</textarea></label>
+          <label class="field">Duties<textarea name="duties" required>${value.duties.join('\n')}</textarea></label>
+          <button class="btn primary" disabled=${busy}>Send for review</button>
+        </form>
+      </details>`
+    })}
+    ${failure ? html`<p role="alert">${failure.why}</p>` : null}
+  </section>`
+}

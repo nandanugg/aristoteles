@@ -1,6 +1,7 @@
+import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
-  AttemptNumber, ReadPosition, Rationale, RetryCount, ProjectEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, liveSession, projectLine, questionLine, refuse, sessionLine, sessionMayStart, staffOf, subagentCapacity, taskLine, validateStaffing,
+  AttemptNumber, ReadPosition, Rationale, RetryCount, ProjectEvent, ProposalEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, liveSession, projectLine, questionLine, refuse, sessionLine, sessionMayStart, staffOf, subagentCapacity, taskLine,
   type LiveSession, type Project, type Projection, type Question, type StoredActor, type Refusal, type StaffSession, type Task, type TaskPhase,
 } from '../schema/project.ts'
 
@@ -33,7 +34,7 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     return Result.succeed({
       id: line.id, owner, host, pipeline, roles, staff: new Map([[staff.id, canonicalStaff]]),
       subscriptions: new Map([[staff.subscription.id, staff.subscription]]), staffingAt: number,
-      sessions: new Map(), tasks: new Map(), questions: new Map(),
+      staffing: null, proposals: new Map(), sessions: new Map(), tasks: new Map(), questions: new Map(),
       status: { _tag: 'Open' }, activation: { _tag: 'Onboarding' }, lastChange: number,
       read: ReadPosition.make(number),
     })
@@ -47,13 +48,6 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     return Result.succeed({ ...project, status: { _tag: 'Ended', at: number }, lastChange: number })
   }
   if (edge(projectLine, event.from, event.move, 'Open') !== 'Allowed') return wrongMove()
-  if (event.input._tag === 'StaffingAccepted') {
-    if (project.staffingAt > read) return stale()
-    return Result.map(validateStaffing(project, event.input.plan), (plan) => ({
-      ...project, staff: new Map(plan.staff.map((staff) => [staff.id, staff])),
-      subscriptions: new Map(plan.subscriptions.map((item) => [item.id, item])), staffingAt: number,
-    }))
-  }
   if (project.lastChange > read) return stale()
   const { draft } = event.input
   if (project.tasks.has(draft.id)) return stale()
@@ -169,7 +163,15 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
         tasks.set(id, { ...task, phase: { ...phase, review: { _tag: 'Waiting' } }, lastChange: number })
       }
     }
-    return { ...project, sessions, tasks }
+    const proposals = new Map(project.proposals)
+    if (!continued) {
+      for (const [id, proposal] of proposals) {
+        const phase = proposal.phase
+        if (phase._tag === 'Reviewing' && phase.review._tag === 'By' && phase.review.run.session.id === previous.id)
+          proposals.set(id, { ...proposal, phase: { _tag: 'Reviewing', review: { _tag: 'Waiting' } }, lastChange: number })
+      }
+    }
+    return { ...project, sessions, tasks, proposals }
   }
   if (event.from === 'Paused') {
     const { id, staffing, pane } = event.input
@@ -255,6 +257,7 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   const updated = Schema.is(ProjectEvent)(event) ? applyProjectMove(state, event) : (() => {
     if (!state) return wrongMove()
     if (Schema.is(SessionEvent)(event)) return applySessionMove(state, event)
+    if (Schema.is(ProposalEvent)(event)) return applyProposalMove(state, event)
     if (Schema.is(QuestionEvent)(event)) return applyQuestionMove(state, event)
     if (!Schema.is(TaskEvent)(event)) return wrongMove()
     const task = state.tasks.get(event.line.id)

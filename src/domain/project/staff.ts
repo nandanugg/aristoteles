@@ -84,7 +84,12 @@ export const subagentCapacity = (project: Project, staff: Staff) => {
     return phase._tag === 'Reviewing' && phase.review._tag === 'By' &&
       liveSession(project, phase.review.session.id)?.staff.id === staff.id
   }).length
-  return { usedSubagents: SubagentCount.make(used), freeSubagents: SubagentCount.make(Math.max(0, staff.subagents - used)) }
+  const proposals = [...project.proposals.values()].filter(({ phase }) =>
+    phase._tag === 'Reviewing' && phase.review._tag === 'By' &&
+      liveSession(project, phase.review.run.session.id)?.staff.id === staff.id,
+  ).length
+  const occupied = used + proposals
+  return { usedSubagents: SubagentCount.make(occupied), freeSubagents: SubagentCount.make(Math.max(0, staff.subagents - occupied)) }
 }
 
 export const capacity = (project: Project, staff: Staff) => ({

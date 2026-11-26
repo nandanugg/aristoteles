@@ -1,7 +1,7 @@
 import { Effect, Result } from 'effect'
 import {
   Rationale, ReadPosition, refuse, liveSession, type LiveSession, type Of, type Pane, type Project, type Refusal,
-  type SessionAddress, type SessionId, type StaffId, type EventNumber, type SessionEvent, type StaffingPlan, type TaskAddress,
+  type SessionAddress, type SessionId, type StaffId, type EventNumber, type SessionEvent, type TaskAddress,
 } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { fold } from '../state/project.ts'
@@ -24,12 +24,6 @@ export const staffAuthority = (
   return session ? Effect.succeed(session)
     : Effect.fail(refuse('RetiredSession', Rationale.make('This staff session is retired.')))
 }
-
-export const acceptStaffing = (
-  journal: Journal, project: Project, plan: StaffingPlan,
-): Effect.Effect<Committed, Refusal> => recordObserved(journal, project.owner, project.read, {
-  line: { _tag: 'Project', id: project.id }, from: 'Open', move: 'next', input: { _tag: 'StaffingAccepted', plan },
-})
 
 export const startSession = (
   journal: Journal, project: Project, session: {

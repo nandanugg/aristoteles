@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 import {
-  Projection, Refusal, StoredEvents, Rationale, refuse, type StoredEvent,
+  Projection, Refusal, StoredEvents, Rationale, refuse, type Project, type StoredEvent,
 } from '../../../core/schema/project.ts'
 import { fold, readPosition } from '../../../core/state/project.ts'
 
@@ -10,6 +10,7 @@ const invalidPayload = () => refuse('InvalidInput', Rationale.make('The page rec
 
 export interface PageProject {
   readonly current: () => Projection
+  readonly replace: (state: Projection) => Result.Result<Project, Refusal>
   readonly receive: (events: readonly StoredEvent[]) => Result.Result<Projection, Refusal>
 }
 
@@ -30,10 +31,25 @@ export const openPageProject = (
     }
     return next
   }
-  return Result.succeed({ current: () => state, receive })
+  return Result.succeed({
+    current: () => state, receive,
+    replace: (fresh) => {
+      if (!fresh || (state && state.id !== fresh.id)) return Result.fail(invalidPayload())
+      if (!state || fresh.read > state.read) {
+        state = fresh
+        changed(state)
+      }
+      return Result.succeed(state)
+    },
+  })
 }
 
 export const receiveProjectPayload = (page: PageProject, payload: unknown): Result.Result<Projection, Refusal> => {
   const events = decodeEvents(payload)
   return Result.isFailure(events) ? Result.fail(invalidPayload()) : page.receive(events.success)
+}
+
+export const replaceProjectSnapshot = (page: PageProject, payload: unknown): Result.Result<Project, Refusal> => {
+  const state = decodeSnapshot(payload)
+  return Result.isFailure(state) ? Result.fail(invalidPayload()) : page.replace(state.success)
 }

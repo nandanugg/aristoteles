@@ -1,5 +1,6 @@
 import { Effect, Schema } from 'effect'
-import { acceptStaffing, readOpenProject, startSession } from '../../core/actions/staff-session.ts'
+import { acceptStaffing } from './proposal.probe.ts'
+import { readOpenProject, startSession } from '../../core/actions/staff-session.ts'
 import { SessionCount, SessionId, Staff, StaffingId, SubagentCount, type Project, type StaffingPlan } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { create, role, session, staff } from './project.probe.ts'

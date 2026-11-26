@@ -1,8 +1,9 @@
 import { Schema, SchemaGetter } from 'effect'
+import { Proposal, StaffingAccepted } from './proposal.ts'
 import { Human, LiveSession, Role, Staff, StaffSession, Subscription } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  ProjectId, QuestionId, ReadPosition, QuestionText, ResultSummary, RetryCount, RoleId, SessionId, StaffId,
+  ProjectId, ProposalId, QuestionId, ReadPosition, QuestionText, ResultSummary, RetryCount, RoleId, SessionId, StaffId,
   SubscriptionId, TaskId, type Of,
 } from './values.ts'
 import { Answer, QuestionForm, questionAbout } from './question.ts'
@@ -63,6 +64,7 @@ export const Project = Schema.Struct({
   id: ProjectId, owner: Human, host: Role, pipeline: Role,
   roles: recordsById(Role, RoleId), staff: recordsById(Staff, StaffId),
   subscriptions: recordsById(Subscription, SubscriptionId), staffingAt: EventNumber,
+  staffing: Schema.NullOr(StaffingAccepted), proposals: recordsById(Proposal, ProposalId),
   sessions: recordsById(StaffSession, SessionId), tasks: recordsById(Task, TaskId), questions: recordsById(Question, QuestionId), status: ProjectStatus, activation: Schema.TaggedStruct('Onboarding', {}),
   lastChange: EventNumber, read: ReadPosition,
 })

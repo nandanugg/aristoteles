@@ -1,4 +1,7 @@
 import { Effect, Option, Result, Schema, Stream } from 'effect'
+import { ownerProposals } from './view.ts'
+import { ReviewedProposals } from './contract.ts'
+import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'
 import { Projection, ReadPosition, Refusal, Rationale, StoredEvents, refuse, type Of } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
@@ -27,16 +30,32 @@ export const projectEventStream = (journal: Journal, after: Of<typeof ReadPositi
   }))
 
 // The server supplies the journal and authenticates the actor before responding to the page.
-export const projectSubmission = (journal: Journal, request: Request): Effect.Effect<Response, never, Authority> => {
+export const projectSubmission = (
+  journal: Journal, request: Request, review?: Effect.Effect<unknown, Refusal>,
+): Effect.Effect<Response, never, Authority> => {
   const input = Effect.tryPromise({
     try: async (): Promise<unknown> => request.json(),
     catch: () => refuse('InvalidInput', Rationale.make('Send a checked project submission.')),
   })
-  return Effect.match(Effect.flatMap(input, (body) => submit(journal, body)), {
-    onSuccess: ({ event }) => Response.json(encodeEvents([event])),
-    onFailure: (failure) => Response.json(Schema.encodeSync(Refusal)(failure), {
+  return Effect.matchEffect(Effect.flatMap(input, (body) => submit(journal, body)), {
+    onSuccess: ({ event }) => Effect.gen(function* () {
+      if (review && event.line._tag === 'Proposal' && event.from !== null)
+        yield* Effect.forkDetach(Effect.result(review))
+      return Response.json(encodeEvents([event]))
+    }),
+    onFailure: (failure) => Effect.succeed(Response.json(Schema.encodeSync(Refusal)(failure), {
       status: failure.code === 'WrongActor' || failure.code === 'RetiredSession' ? 403
         : failure.code === 'Stale' || failure.code === 'WrongMove' ? 409 : 400,
-    }),
+    })),
   })
 }
+
+const encodeProposals = Schema.encodeSync(ReviewedProposals)
+export const projectOnboarding = (journal: Journal): Effect.Effect<Response, Refusal, Authority> =>
+  Effect.gen(function* () {
+    const actor = yield* (yield* Authority).actor
+    const project = yield* readOpenProject(journal)
+    if (actor._tag !== 'Human' || actor.actor.id !== project.owner.id)
+      return yield* Effect.fail(refuse('WrongActor', Rationale.make('Read proposals from the owner’s page.')))
+    return Response.json(encodeProposals(ownerProposals(project)))
+  })

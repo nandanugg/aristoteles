@@ -49,7 +49,7 @@ export const questionAbout = [
 export const currentQuestion = (project: Project, question: Question): Question | null => {
   if (question.about._tag !== 'Staffing') return question
   const { proposal } = question.about
-  return project.staffingAt > proposal.basis || [...project.questions.values()].some((other) =>
-    other.about._tag === 'Staffing' && other.about.proposal.id === proposal.id && other.about.proposal.basis > proposal.basis,
-  ) ? null : question
+  const current = project.proposals.get(proposal.id)
+  return current?.phase._tag === 'Drafting' && current.value._tag === 'Staffing' && current.lastChange === proposal.basis
+    ? question : null
 }
