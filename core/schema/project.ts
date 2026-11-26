@@ -1,0 +1,5 @@
+// The engine and page use these declarations through the same schema door.
+export * from '../../src/domain/project/values.ts'
+export * from '../../src/domain/project/records.ts'
+export * from '../../src/domain/project/lines.ts'
+export * from '../../src/domain/project/events.ts'

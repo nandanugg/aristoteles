@@ -119,7 +119,11 @@ export const phaseWriteViolations = (program: ts.Program, root: string, file: ts
   const checkLiteral = (node: ts.ObjectLiteralExpression) => {
     const fields = node.properties.flatMap((prop) => {
       const name = prop.name && nameOf(prop.name)
-      return name && phases.has(name) ? [{ prop, name }] : []
+      if (!name || !phases.has(name)) return []
+      if (ts.isPropertyAssignment(prop) && checker.getTypeAtLocation(prop.initializer)
+          .getProperty('Encoded')?.declarations?.some((d) => /\/effect\/(dist|src)\/Schema\./.test(d.getSourceFile().fileName)))
+        return []
+      return [{ prop, name }]
     })
     if (fields.length === 0) return
     const types = [checker.getContextualType(node), ...node.properties.flatMap((prop) =>

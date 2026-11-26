@@ -53,3 +53,16 @@ CREATE TRIGGER IF NOT EXISTS words_indexed AFTER INSERT ON words BEGIN
   INSERT INTO words_search (project, place, kind, text) VALUES (new.project, new.place, new.kind, new.text);
 END;
 `
+
+// The new Project entry points use their own format until the CLI and page cut over together.
+export const PROJECT_FORMAT = 16
+export const PROJECT_APPLICATION_ID = 0x41524953
+
+export const PROJECT_EVENTS = `
+CREATE TABLE project_event (
+  project TEXT NOT NULL,
+  number INTEGER NOT NULL CHECK (number BETWEEN 1 AND 9007199254740991),
+  event TEXT NOT NULL,
+  PRIMARY KEY (project, number)
+) STRICT, WITHOUT ROWID;
+`
