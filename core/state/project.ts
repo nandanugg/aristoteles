@@ -1,7 +1,7 @@
 import { Result, Schema } from 'effect'
 import {
-  AttemptNumber, ReadPosition, Rationale, RetryCount, ProjectEvent, SessionEvent, StoredEvent, TaskEvent, edge, liveSession, projectLine, refuse, sessionLine, sessionMayStart, staffOf, subagentCapacity, taskLine, validateStaffing,
-  type LiveSession, type Project, type Projection, type Refusal, type StaffSession, type Task, type TaskPhase,
+  AttemptNumber, ReadPosition, Rationale, RetryCount, ProjectEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, liveSession, projectLine, questionLine, refuse, sessionLine, sessionMayStart, staffOf, subagentCapacity, taskLine, validateStaffing,
+  type LiveSession, type Project, type Projection, type Question, type StoredActor, type Refusal, type StaffSession, type Task, type TaskPhase,
 } from '../schema/project.ts'
 
 export const readPosition = (state: Projection): typeof ReadPosition.Type =>
@@ -33,7 +33,7 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     return Result.succeed({
       id: line.id, owner, host, pipeline, roles, staff: new Map([[staff.id, canonicalStaff]]),
       subscriptions: new Map([[staff.subscription.id, staff.subscription]]), staffingAt: number,
-      sessions: new Map(), tasks: new Map(),
+      sessions: new Map(), tasks: new Map(), questions: new Map(),
       status: { _tag: 'Open' }, activation: { _tag: 'Onboarding' }, lastChange: number,
       read: ReadPosition.make(number),
     })
@@ -190,6 +190,61 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
   return Result.succeed(move({ _tag: observed, id, staff, startedAt }, null))
 }
 
+const actorFor = (project: Project, actor: StoredActor): Question['from'] | undefined =>
+  actor._tag === 'Human' ? (project.owner.id === actor.id ? project.owner : undefined) : project.staff.get(actor.id)
+
+const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Result<Project, Refusal> => {
+  const { line, number, read } = event
+  const actor = actorFor(project, event.actor)
+  if (!actor) return wrongActor()
+  if (actor._tag === 'Staff') {
+    const live = [...project.sessions.values()].find((session) => session._tag === 'Live' && session.staff.id === actor.id)
+    if (!live) return retired()
+    if (read < live.startedAt) return stale()
+  }
+  const questions = new Map(project.questions)
+  if (event.from === null) {
+    if (questions.has(line.id)) return stale()
+    const { to: recipient, text, form, about } = event.input
+    const to = actorFor(project, recipient)
+    if (!to) return wrongActor()
+    let subject: Question['about']
+    switch (about._tag) {
+      case 'Project': subject = about; break
+      case 'Task': {
+        const task = project.tasks.get(about.task)
+        if (!task) return wrongMove()
+        if (task.lastChange > read) return stale()
+        subject = { _tag: 'Task', task }
+        break
+      }
+      case 'Staffing': {
+        if (actor._tag !== 'Staff' || actor.id !== staffOf(project, project.host)?.id || to._tag !== 'Human')
+          return wrongActor()
+        const { proposal } = about
+        if (proposal.basis > read || [...questions.values()].some((question) => question.about._tag === 'Staffing' &&
+            question.about.proposal.id === proposal.id && question.about.proposal.basis >= proposal.basis)) return stale()
+        subject = about
+        break
+      }
+    }
+    const question: Question = { id: line.id, from: actor, to, text, form, about: subject, state: { _tag: 'Open' }, lastChange: number }
+    if (!currentQuestion(project, question)) return stale()
+    questions.set(line.id, question)
+    return Result.succeed({ ...project, questions })
+  }
+  const question = questions.get(line.id)
+  if (!question) return wrongMove()
+  if (question.to._tag !== actor._tag || question.to.id !== actor.id) return wrongActor()
+  if (question.lastChange > read || !currentQuestion(project, question)) return stale()
+  if (edge(questionLine, question.state._tag, event.move, 'Answered') !== 'Allowed') return wrongMove()
+  const { answer } = event.input
+  if (!answerFor(question.form, answer))
+    return Result.fail(refuse('InvalidInput', Rationale.make('The answer does not match this question’s form.')))
+  questions.set(line.id, { ...question, state: { _tag: 'Answered', by: actor, answer }, lastChange: number })
+  return Result.succeed({ ...project, questions })
+}
+
 export const applyEvent = (state: Projection, event: StoredEvent): Result.Result<Project, Refusal> => {
   if (!Schema.is(StoredEvent)(event) || event.number !== readPosition(state) + 1) {
     return Result.fail(refuse('InvalidInput', Rationale.make('Apply stored events once and in journal order.')))
@@ -200,6 +255,7 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   const updated = Schema.is(ProjectEvent)(event) ? applyProjectMove(state, event) : (() => {
     if (!state) return wrongMove()
     if (Schema.is(SessionEvent)(event)) return applySessionMove(state, event)
+    if (Schema.is(QuestionEvent)(event)) return applyQuestionMove(state, event)
     if (!Schema.is(TaskEvent)(event)) return wrongMove()
     const task = state.tasks.get(event.line.id)
     if (!task) return wrongMove()

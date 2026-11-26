@@ -4,17 +4,21 @@ import { dirname, join, resolve } from 'node:path'
 import { Effect, Result } from 'effect'
 import { staffSessionOperations, type Sessions } from '../../../../adapters/live/staff-session.ts'
 import { staffCards } from '../../../../adapters/web/app/staff-session.ts'
-import { acceptStaffing, readOpenProject, startChild, startSession } from '../../../actions/staff-session.ts'
+import { acceptStaffing, observeSession, readOpenProject, startChild, startSession } from '../../../actions/staff-session.ts'
 import { initialStaffing, launchStaff, maker, sharedStaffing } from '../../../../src/store/staff-session.probe.ts'
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
 import {
   begin, commandOutcomes, create, open, resultInput, send, session, staff, staffInput, startFixtureSession, taskId, toWorking, withJournal,
 } from '../../../../src/store/project.probe.ts'
-import { EventNumber, ReadPosition, SessionId, TaskId, type Of, type Projection } from '../../../schema/project.ts'
+import {
+  answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm,
+} from '../../../../src/store/question.probe.ts'
+import { AnswerText, EventNumber, ReadPosition, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
+import { replayQuestionAnswer } from './question.ts'
 import { replayStaffCapacity, replayStaffReplacementObservations } from './staff.ts'
 
 const root = resolve(import.meta.dir, '../../../..')
@@ -224,3 +228,74 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
     }))
   }))),
 ))
+
+for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
+  test('question answer via ' + surface + ' — ' + kind, () => withJournal((path) =>
+    Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      const journal = yield* open(path)
+      const created = yield* create(journal)
+      const live = yield* startFixtureSession(journal, created.state)
+      const opened = yield* cliQuestion(journal, ownerAuthority, 'question', staff.id, live.state.read, Bun.YAML.stringify({
+        id: questionId, text: 'Confirm the output.', form: textForm, about: { _tag: 'Project' },
+      }))
+      const response = yield* projectSnapshot(journal)
+      const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => response.json()), () => {}))
+      const trace = readTrace(join(traces, 'questionAnswer-' + kind + '.itf.json.gz'), 'questionAnswer', kind)
+      let holder = session
+      const replacement = { ...session, id: SessionId.make('session:2') }
+      const address = { _tag: 'Question', id: questionId } as const
+      const project = () => Effect.runPromise(readOpenProject(journal))
+      yield* Effect.promise(() => replayQuestionAnswer(trace, kind, {
+        replace: async () => {
+          const current = await project()
+          await Effect.runPromise(observeSession(journal, current, { _tag: 'Session', id: holder.id }, 'Ended'))
+          const after = await project()
+          await Effect.runPromise(startSession(journal, after, {
+            id: replacement.id, staff: staff.id, pane: replacement.pane, staffing: after.staffingAt,
+          }))
+          holder = replacement
+        },
+        answer: async (actor, message) => {
+          const current = await project()
+          const authority = actor === 1 ? ownerAuthority : staffAuthorityOf(holder)
+          const text = String(message)
+          if (surface === 'CLI') {
+            const outcome = await Effect.runPromise(Effect.result(cliQuestion(journal, authority, 'answer', questionId, current.read, answerYaml(text))))
+            if (Result.isSuccess(outcome)) return 'Committed'
+            if (outcome.failure.code === 'WrongActor' || outcome.failure.code === 'WrongMove') return outcome.failure.code
+            throw new Error(outcome.failure.why)
+          }
+          const reply = { _tag: 'Answer', line: address, answer: { _tag: 'Single', text: AnswerText.make(text) } } as const
+          const submission: Submission = authority._tag === 'Human'
+            ? { _tag: 'HumanChoice', read: current.read, choice: reply }
+            : { _tag: 'StaffReport', read: current.read, report: reply }
+          const response = await Effect.runPromise(pageQuestion(journal, authority, submission))
+          if (response.ok) return 'Committed'
+          const refusal = readRefusal(await response.json())
+          if (refusal.code === 'WrongActor' || refusal.code === 'WrongMove') return refusal.code
+          throw new Error(refusal.why)
+        },
+        observe: async () => {
+          const current = await project()
+          const response = await Effect.runPromise(projectEvents(journal, readPosition(page.current())))
+          expect(Result.getOrThrow(receiveProjectPayload(page, await response.json()))).toEqual(current)
+          const question = current.questions.get(questionId)
+          if (!question) throw new Error('Question is absent')
+          const actual = question.state
+          const events = await Effect.runPromise(journal.eventsAfter(opened.state.read))
+          const accepted = events.filter((event) => event.line._tag === 'Question' && event.move === 'answer').length
+          const recipient = (actual._tag === 'Open' ? question.to.id : actual.by.id) === staff.id ? 2 : 1
+          if (actual._tag === 'Answered' && actual.answer._tag !== 'Single') throw new Error('Expected a textual answer')
+          const currentSession = current.sessions.get(holder.id)
+          if (currentSession?._tag !== 'Live') throw new Error('Wrong live session')
+          return {
+            phase: actual._tag, recipient, accepted, lifetime: holder.id === replacement.id ? 2 : 1,
+            answer: actual._tag === 'Answered' && actual.answer._tag === 'Single' ? Number(actual.answer.text) : null,
+          }
+        },
+      }))
+      const reopened = yield* open(path, 'Read')
+      expect(page.current()).toEqual(yield* readOpenProject(reopened))
+    }))),
+  ))
+}

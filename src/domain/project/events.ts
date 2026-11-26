@@ -1,20 +1,17 @@
 import { Schema } from 'effect'
 import { line } from './lines.ts'
-import { Human, TaskDraft, type TaskPhase } from './records.ts'
-import { LiveSession, Pane, Role, Staff, StaffingPlan } from './staff.ts'
+import { TaskDraft, type TaskPhase } from './records.ts'
+import { Answer, QuestionForm, StaffingSubject } from './question.ts'
+import { Human, LiveSession, Pane, Role, Staff, StaffingPlan } from './staff.ts'
 import {
-  AttemptNumber, EventNumber, FileContents, FilePath, HumanId, ProjectId, Rationale, ReadPosition,
-  ResultSummary, SessionId, StaffId, TaskId, Timestamp, type Of,
+  AttemptNumber, EventNumber, FileContents, FilePath, ProjectId, QuestionId, QuestionText, Rationale, ReadPosition,
+  ResultSummary, SessionId, StaffId, StoredActor, TaskId, Timestamp, type Of,
 } from './values.ts'
 
 export const ProjectAddress = Schema.TaggedStruct('Project', { id: ProjectId })
 export const TaskAddress = Schema.TaggedStruct('Task', { id: TaskId })
 export const SessionAddress = Schema.TaggedStruct('Session', { id: SessionId })
-const StoredActor = Schema.Union([
-  Schema.TaggedStruct('Human', { id: HumanId }),
-  Schema.TaggedStruct('Staff', { id: StaffId }),
-])
-export type StoredActor = Of<typeof StoredActor>
+export const QuestionAddress = Schema.TaggedStruct('Question', { id: QuestionId })
 
 const configuration = { owner: Human, host: Role, pipeline: Role, staff: Staff, roles: Schema.Array(Role) }
 const result = Schema.Struct({
@@ -60,8 +57,28 @@ export const sessionLine = line({
   Ended: { owes: 'None', moves: {} },
 })
 
+export const QuestionDraft = Schema.Struct({
+  id: QuestionId, to: StoredActor, text: QuestionText, form: QuestionForm,
+  about: Schema.Union([
+    Schema.TaggedStruct('Project', {}),
+    Schema.TaggedStruct('Task', { task: TaskId }),
+    StaffingSubject,
+  ]),
+})
+export type QuestionDraft = Of<typeof QuestionDraft>
+
+const questionOpen = { to: 'Open', input: Schema.Struct({
+  to: QuestionDraft.fields.to, about: QuestionDraft.fields.about,
+  text: QuestionDraft.fields.text, form: QuestionDraft.fields.form,
+}) } as const
+
+export const questionLine = line({
+  Open: { owes: 'Recipient', moves: { answer: { to: ['Answered'], input: Schema.Struct({ answer: Answer }) } } },
+  Answered: { owes: 'None', moves: {} },
+})
+
 const entry = { number: EventNumber, actor: StoredActor, read: ReadPosition, at: Timestamp }
-const on = <A extends Schema.Top, F extends Schema.Top, M extends 'next' | 'end' | 'back', I extends Schema.Top>(
+const on = <A extends Schema.Top, F extends Schema.Top, M extends 'next' | 'end' | 'back' | 'answer', I extends Schema.Top>(
   address: A, from: F, move: M, definition: { readonly input: I },
 ) => Schema.Struct({ ...entry, line: address, from, move: Schema.Literal(move), input: definition.input })
 
@@ -86,21 +103,34 @@ export const SessionEvent = Schema.Union([
 ])
 export type SessionEvent = Of<typeof SessionEvent>
 
-export const StoredEvent = Schema.Union([ProjectEvent, TaskEvent, SessionEvent])
+export const QuestionEvent = Schema.Union([
+  on(QuestionAddress, Schema.Null, 'next', questionOpen),
+  on(QuestionAddress, Schema.Literal('Open'), 'answer', questionLine.Open.moves.answer),
+])
+export type QuestionEvent = Of<typeof QuestionEvent>
+
+export const StoredEvent = Schema.Union([ProjectEvent, TaskEvent, SessionEvent, QuestionEvent])
   .check(Schema.makeFilter((event) => event.read < event.number))
 export type StoredEvent = Of<typeof StoredEvent>
 export const StoredEvents = Schema.Array(StoredEvent)
 
+const openQuestion = Schema.TaggedStruct('Question', { question: QuestionDraft })
+const answerQuestion = Schema.TaggedStruct('Answer', { line: QuestionAddress, answer: Answer })
+
 export const Submission = Schema.Union([
   Schema.TaggedStruct('StaffReport', {
     read: ReadPosition,
-    report: Schema.TaggedStruct('Work', { line: TaskAddress, report: Schema.NullOr(result) }),
+    report: Schema.Union([
+      Schema.TaggedStruct('Work', { line: TaskAddress, report: Schema.NullOr(result) }),
+      openQuestion, answerQuestion,
+    ]),
   }),
   Schema.TaggedStruct('HumanChoice', {
     read: ReadPosition,
     choice: Schema.Union([
       Schema.TaggedStruct('NewProject', { project: ProjectAddress, ...configuration }),
       Schema.TaggedStruct('EndProject', { line: ProjectAddress }),
+      openQuestion, answerQuestion,
     ]),
   }),
 ])

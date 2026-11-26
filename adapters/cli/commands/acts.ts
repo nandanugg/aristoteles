@@ -5,6 +5,13 @@
 // the step was derived from. An agent's next step is not printed: it runs `work wait` again.
 import { isAbsolute, join } from 'node:path'
 import { Effect, Schema } from 'effect'
+import { Authority as ProjectAuthority } from '../../../core/actions/project.ts'
+import { decodeQuestionInput, submitQuestion } from '../../../core/actions/question.ts'
+import {
+  Answer as ProjectAnswer, QuestionDraft, QuestionId, Rationale, StoredActor, refuse as projectRefuse,
+  type Of, type ReadPosition, type Refusal as ProjectRefusal,
+} from '../../../core/schema/project.ts'
+import type { Committed, Journal } from '../../../core/services/project.ts'
 import { activationOf, gate } from '../../../core/actions/activation.ts'
 import { settleWorker } from '../../../core/actions/worker.ts'
 import {
@@ -790,3 +797,24 @@ const run: Command = (call) =>
     : usage('work run continue (the host, in its own tmux pane)')
 
 export const commands: Commands = { ...fresh(ACTS), 'recheck-brief': recheckBrief, run, top: topCommand(openTop), hook, forward }
+
+// Format 16 question and answer commands bind the addressed recipient or question before intake.
+export const projectQuestionCommand = (
+  journal: Journal, command: 'question' | 'answer', target: string, read: Of<typeof ReadPosition>, yaml: string,
+): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
+  const raw = yield* Effect.try({
+    try: () => parseYaml(yaml),
+    catch: () => projectRefuse('InvalidInput', Rationale.make('Load a valid YAML question or answer.')),
+  })
+  if (command === 'answer') {
+    const id = yield* decodeQuestionInput(QuestionId, target)
+    const answer = yield* decodeQuestionInput(ProjectAnswer, raw)
+    return yield* submitQuestion(journal, read, { _tag: 'Answer', line: { _tag: 'Question', id }, answer })
+  }
+  const to = yield* decodeQuestionInput(StoredActor, { _tag: target.startsWith('human:') ? 'Human' : 'Staff', id: target })
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || 'to' in raw) {
+    return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Address the recipient in the command.')))
+  }
+  const question = yield* decodeQuestionInput(QuestionDraft, { ...raw, to })
+  return yield* submitQuestion(journal, read, { _tag: 'Question', question })
+})

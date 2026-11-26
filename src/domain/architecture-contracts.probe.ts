@@ -69,12 +69,12 @@ export const sharedWireViolations = (graph: ProjectPrograms, root: string): stri
     for (const exposed of exportsOf(checker, file)) {
       const symbol = canonical(checker, exposed)
       if (!symbol || domainSymbols.has(symbol)) continue
+      const decoded = wireTypeOf(checker, symbol)
+      if (!decoded) continue
       const original = domain.get(exposed.name)
       if (original) {
         found.add(`${path}: ${exposed.name} must reuse the domain declaration`)
       } else {
-        const decoded = wireTypeOf(checker, symbol)
-        if (!decoded) continue
         for (const candidate of wireShapes) {
           if (checker.isTypeAssignableTo(candidate.decoded, decoded) &&
               checker.isTypeAssignableTo(decoded, candidate.decoded))

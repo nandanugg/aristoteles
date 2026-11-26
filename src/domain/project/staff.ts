@@ -1,11 +1,12 @@
 import { Result, Schema } from 'effect'
 import type { Project } from './records.ts'
 import {
-  AccountName, DutyText, Introduction, ResponsibilityId, Summary, VersionNumber, EventNumber, LaunchText, ModelName, Name, PaneAddress, PlanName, ProviderName, Rationale,
+  AccountName, DutyText, HumanId, Introduction, ResponsibilityId, Summary, VersionNumber, EventNumber, LaunchText, ModelName, Name, PaneAddress, PlanName, ProviderName, Rationale,
   SessionCount, SessionId, StaffId, StaffingId, SubagentCount, SubscriptionId, WindowMinutes, WindowShare,
   refuse, type Of, type Refusal, RoleId,
 } from './values.ts'
 
+export const Human = Schema.TaggedStruct('Human', { id: HumanId, name: Name })
 export const Responsibility = Schema.Struct({
   id: ResponsibilityId, summary: Summary, introduction: Introduction, duties: Schema.NonEmptyArray(DutyText),
 })

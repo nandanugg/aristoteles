@@ -1,6 +1,8 @@
 // The words of the work model's told steps: the command of a step (with the basis `--on <seq>`
 // where the act has one), the plain lines above it, and the maker's brief. The steps come from
 // core/derived/c16/obligations.ts (`dos`); this file only writes them.
+import type { Selection } from '../../core/derived/project/next-step.ts'
+import type { Of, QuestionId, QuestionText } from '../../core/schema/project.ts'
 import type { ContextFacts, Recorded, RecheckBrief } from '../../core/schema/index.ts'
 import { recheckInput } from '../../core/derived/c16/recheck.ts'
 import { take } from '../../core/state/c16/effect.ts'
@@ -313,3 +315,16 @@ export const hostWords = (s: WorkState, token: string): Lines => [
   'reassign a task after the person accepts a change; you return the top when every task is done.',
   `Run work wait ${token} now, and again after every act: it prints your next step.`,
 ]
+
+export const projectQuestionWords = (step: Selection): Readonly<{
+  text: Of<typeof QuestionText>
+  command: `work answer ${Of<typeof QuestionId>} --file=<answer.yaml>`
+    | `work answer <token> ${Of<typeof QuestionId>} --file=<answer.yaml>`
+}> | null => {
+  if (step._tag !== 'Available' || step.subject._tag !== 'Question') return null
+  const { id, text, to } = step.subject.question
+  const command = to._tag === 'Staff'
+    ? `work answer <token> ${id} --file=<answer.yaml>` as const
+    : `work answer ${id} --file=<answer.yaml>` as const
+  return { text, command }
+}

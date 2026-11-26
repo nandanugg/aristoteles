@@ -41,6 +41,14 @@ const wrongActor = () => refuse('WrongActor', Rationale.make('Use the input for 
 const retired = () => refuse('RetiredSession', Rationale.make('Report from the attempt’s live session.'))
 const readSubmission = Schema.decodeUnknownEffect(Submission, { onExcessProperty: 'error' })
 
+type QuestionMove = Extract<MoveInput, { line: { _tag: 'Question' } }>
+type QuestionSubmission =
+  Extract<Extract<Submission, { _tag: 'HumanChoice' }>['choice'], { _tag: 'Question' | 'Answer' }>
+const questionMove = (input: QuestionSubmission): QuestionMove => {
+  if (input._tag === 'Answer') return { line: input.line, from: 'Open', move: 'answer', input: { answer: input.answer } }
+  const { id, ...fields } = input.question
+  return { line: { _tag: 'Question', id }, from: null, move: 'next', input: fields }
+}
 export const submit = (journal: Journal, input: unknown): Effect.Effect<Committed, Refusal, Authority> =>
   Effect.gen(function* () {
     const request = yield* Effect.mapError(readSubmission(input), () =>
@@ -50,6 +58,8 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
     if (request._tag === 'HumanChoice') {
       if (authenticated._tag !== 'Human') return yield* Effect.fail(wrongActor())
       const { choice } = request
+      if (choice._tag === 'Question' || choice._tag === 'Answer')
+        return yield* commit(journal, authenticated.actor, request.read, () => Result.succeed(questionMove(choice)))
       const address = choice._tag === 'NewProject' ? choice.project : choice.line
       if (address.id !== journal.id) {
         return yield* Effect.fail(refuse('InvalidInput', Rationale.make('The choice addresses a different project.')))
@@ -62,19 +72,21 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
       })
     }
     if (authenticated._tag !== 'Staff') return yield* Effect.fail(wrongActor())
-    const { report, line } = request.report
+    const report = request.report
     const { session } = authenticated
     const actor: StoredActor = { _tag: 'Staff', id: session.staff.id }
     return yield* commit(journal, actor, request.read, (project) => {
       if (project?.status._tag !== 'Open') return Result.fail(retired())
       const current = liveSession(project, session.id)
       if (!current || current.staff.id !== session.staff.id) return Result.fail(retired())
-      if (report === null) return Result.succeed({
+      if (report._tag !== 'Work') return Result.succeed(questionMove(report))
+      const { line, report: result } = report
+      if (result === null) return Result.succeed({
         line, from: 'Sent', move: 'next', input: { session: current, staffing: project.staffingAt, place: 'Main' },
       })
       const task = project.tasks.get(line.id)
       if (task?.phase._tag === 'Working' && task.phase.attempt.session.id !== session.id) return Result.fail(retired())
-      return Result.succeed({ line, from: 'Working', move: 'next', input: report })
+      return Result.succeed({ line, from: 'Working', move: 'next', input: result })
     })
   })
 

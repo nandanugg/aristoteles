@@ -163,6 +163,9 @@ These are the proposed spellings for the first delivery. Types and printed paths
 | --- | --- | --- |
 | U2 | `staffingAt` | The event number of the staffing decision relied on by a launch. |
 | U2 | `Waiting`, `By` | A review awaits an assignment or has an assigned live session. |
+| U3 | `QuestionDraft` | The recipient, form, and subject used to open a Question. |
+| U3 | `StaffingSubject` | The Question subject that pins a staffing proposal and its read basis. |
+| U3 | `ProjectQuestionForm` | The page view for answering an open Question. |
 
 Nanda's ruling on 2026-11-26 names the journal port `Journal` and its
 transaction callback `Write`. She kept `StaffingAccepted`, `Running`,

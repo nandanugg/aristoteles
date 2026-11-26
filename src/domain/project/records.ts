@@ -1,12 +1,12 @@
 import { Schema, SchemaGetter } from 'effect'
-import { LiveSession, Role, Staff, StaffSession, Subscription } from './staff.ts'
+import { Human, LiveSession, Role, Staff, StaffSession, Subscription } from './staff.ts'
 import {
-  AttemptNumber, EventNumber, FileContents, FilePath, Goal, HumanId, Name,
-  ProjectId, ReadPosition, ResultSummary, RetryCount, RoleId, SessionId, StaffId,
+  AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
+  ProjectId, QuestionId, ReadPosition, QuestionText, ResultSummary, RetryCount, RoleId, SessionId, StaffId,
   SubscriptionId, TaskId, type Of,
 } from './values.ts'
+import { Answer, QuestionForm, StaffingSubject } from './question.ts'
 
-export const Human = Schema.TaggedStruct('Human', { id: HumanId, name: Name })
 export const TaskDraft = Schema.Struct({ id: TaskId, name: Name, goal: Goal, role: Role, reviewer: Role })
 const Attempt = Schema.Struct({
   number: AttemptNumber, retryCount: RetryCount, session: LiveSession, place: Schema.Literals(['Main', 'Child']),
@@ -31,6 +31,22 @@ export const Task = Schema.Struct({
 })
 export type Task = Of<typeof Task>
 
+const Actor = Schema.Union([Human, Staff])
+const QuestionState = Schema.Union([
+  Schema.TaggedStruct('Open', {}),
+  Schema.TaggedStruct('Answered', { by: Actor, answer: Answer }),
+])
+export const Question = Schema.Struct({
+  id: QuestionId, from: Actor, to: Actor, text: QuestionText, form: QuestionForm, state: QuestionState,
+  about: Schema.Union([
+    Schema.TaggedStruct('Project', {}),
+    Schema.TaggedStruct('Task', { task: Task }),
+    StaffingSubject,
+  ]),
+  lastChange: EventNumber,
+})
+export type Question = Of<typeof Question>
+
 const recordsById = <S extends Schema.Top, K extends Schema.Top>(
   value: S & { readonly Type: { readonly id: K['Type'] }; readonly DecodingServices: never; readonly EncodingServices: never },
   key: K,
@@ -48,7 +64,7 @@ export const Project = Schema.Struct({
   id: ProjectId, owner: Human, host: Role, pipeline: Role,
   roles: recordsById(Role, RoleId), staff: recordsById(Staff, StaffId),
   subscriptions: recordsById(Subscription, SubscriptionId), staffingAt: EventNumber,
-  sessions: recordsById(StaffSession, SessionId), tasks: recordsById(Task, TaskId), status: ProjectStatus, activation: Schema.TaggedStruct('Onboarding', {}),
+  sessions: recordsById(StaffSession, SessionId), tasks: recordsById(Task, TaskId), questions: recordsById(Question, QuestionId), status: ProjectStatus, activation: Schema.TaggedStruct('Onboarding', {}),
   lastChange: EventNumber, read: ReadPosition,
 })
 export type Project = Of<typeof Project>

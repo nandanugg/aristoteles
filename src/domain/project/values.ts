@@ -5,13 +5,15 @@ export type Of<S> = S extends { readonly Type: infer Value } ? Value : never
 const Identity = Schema.String.check(
   Schema.isPattern(/^[a-z][a-z0-9]*:[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u),
 ).pipe(Schema.brand('Identity'))
-type Prefix = 'project' | 'human' | 'staff' | 'task' | 'session' | 'role' | 'responsibility' | 'subscription' | 'staffing'
+type Prefix = 'project' | 'human' | 'staff' | 'task' | 'session' | 'role' | 'responsibility' | 'subscription' | 'staffing' | 'question' | 'proposal'
 const idWithPrefix = (prefix: Prefix) =>
   Identity.check(Schema.makeFilter((id) => id.startsWith(prefix + ':')))
 
 export const ProjectId = idWithPrefix('project').pipe(Schema.brand('ProjectId'))
 export const HumanId = idWithPrefix('human').pipe(Schema.brand('HumanId'))
 export const StaffId = idWithPrefix('staff').pipe(Schema.brand('StaffId'))
+export const QuestionId = idWithPrefix('question').pipe(Schema.brand('QuestionId'))
+export const ProposalId = idWithPrefix('proposal').pipe(Schema.brand('ProposalId'))
 export const TaskId = idWithPrefix('task').pipe(Schema.brand('TaskId'))
 export const SessionId = idWithPrefix('session').pipe(Schema.brand('SessionId'))
 export const RoleId = idWithPrefix('role').pipe(Schema.brand('RoleId'))
@@ -19,8 +21,18 @@ export const ResponsibilityId = idWithPrefix('responsibility').pipe(Schema.brand
 export const StaffingId = idWithPrefix('staffing').pipe(Schema.brand('StaffingId'))
 export const SubscriptionId = idWithPrefix('subscription').pipe(Schema.brand('SubscriptionId'))
 
+export const StoredActor = Schema.Union([
+  Schema.TaggedStruct('Human', { id: HumanId }),
+  Schema.TaggedStruct('Staff', { id: StaffId }),
+])
+export type StoredActor = Of<typeof StoredActor>
+
 const Words = Schema.String.check(Schema.isPattern(/[^\s\0]/u), Schema.makeFilter((value) => !value.includes('\0')))
   .pipe(Schema.brand('Words'))
+export const QuestionText = Words.pipe(Schema.brand('QuestionText'))
+export const AnswerText = Words.pipe(Schema.brand('AnswerText'))
+export const OptionText = Words.pipe(Schema.brand('OptionText'))
+export const Placeholder = Words.pipe(Schema.brand('Placeholder'))
 export const Name = Words.pipe(Schema.brand('Name'))
 export const Goal = Words.pipe(Schema.brand('Goal'))
 export const Summary = Words.pipe(Schema.brand('Summary'))
@@ -41,6 +53,7 @@ export const EventNumber = countFrom(1).pipe(Schema.brand('EventNumber'))
 export const ReadPosition = countFrom(0).pipe(Schema.brand('ReadPosition'))
 export const AttemptNumber = countFrom(1).pipe(Schema.brand('AttemptNumber'))
 export const VersionNumber = countFrom(1).pipe(Schema.brand('VersionNumber'))
+export const OptionIndex = countFrom(0).pipe(Schema.brand('OptionIndex'))
 export const RetryCount = countFrom(0).pipe(Schema.brand('RetryCount'))
 export const SubagentCount = countFrom(0).pipe(Schema.brand('SubagentCount'))
 export const SessionCount = countFrom(1).pipe(Schema.brand('SessionCount'))

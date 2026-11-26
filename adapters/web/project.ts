@@ -1,5 +1,6 @@
 import { Effect, Option, Result, Schema, Stream } from 'effect'
-import { Projection, ReadPosition, StoredEvents, type Of, type Refusal } from '../../core/schema/project.ts'
+import { Authority, submit } from '../../core/actions/project.ts'
+import { Projection, ReadPosition, Refusal, Rationale, StoredEvents, refuse, type Of } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { fold } from '../../core/state/project.ts'
 
@@ -24,3 +25,18 @@ export const projectEventStream = (journal: Journal, after: Of<typeof ReadPositi
     if (last) return Effect.succeed([events, Option.some(ReadPosition.make(last.number))] as const)
     return Effect.as(Effect.sleep('100 millis'), [events, Option.some(position)] as const)
   }))
+
+// The server supplies the journal and authenticates the actor before responding to the page.
+export const projectSubmission = (journal: Journal, request: Request): Effect.Effect<Response, never, Authority> => {
+  const input = Effect.tryPromise({
+    try: async (): Promise<unknown> => request.json(),
+    catch: () => refuse('InvalidInput', Rationale.make('Send a checked project submission.')),
+  })
+  return Effect.match(Effect.flatMap(input, (body) => submit(journal, body)), {
+    onSuccess: ({ event }) => Response.json(encodeEvents([event])),
+    onFailure: (failure) => Response.json(Schema.encodeSync(Refusal)(failure), {
+      status: failure.code === 'WrongActor' || failure.code === 'RetiredSession' ? 403
+        : failure.code === 'Stale' || failure.code === 'WrongMove' ? 409 : 400,
+    }),
+  })
+}
