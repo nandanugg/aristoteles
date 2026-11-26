@@ -48,8 +48,8 @@ test('write allocation is per project even with interleaved commits in one file'
     const working = yield* toWorking(first)
     const second = yield* create(other)
     const report = yield* staffInput(first, resultInput(readPosition(working.state)))
-    expect([working, second, report].map(({ event }) => Number(event.number))).toEqual([3, 1, 4])
-    expect((yield* first.eventsAfter(start)).map((event) => Number(event.number))).toEqual([1, 2, 3, 4])
+    expect([working, second, report].map(({ event }) => Number(event.number))).toEqual([4, 1, 5])
+    expect((yield* first.eventsAfter(start)).map((event) => Number(event.number))).toEqual([1, 2, 3, 4, 5])
     expect(yield* other.eventsAfter(start)).toEqual([second.event])
   }))),
 ))
@@ -68,14 +68,14 @@ test('a SQLite append failure rolls back and leaves the report retryable', () =>
     expect(yield* journal.eventsAfter(readPosition(working.state))).toEqual([])
     query(path, (db) => db.exec('DROP TRIGGER interrupted'))
     const retried = yield* staffInput(journal, input)
-    expect(Number(retried.event.number)).toBe(4)
+    expect(Number(retried.event.number)).toBe(5)
   }))),
 ))
 
 test.each([
   ['invalid JSON', "UPDATE project_event SET event = 'bad json' WHERE number = 2"],
   ['missing number', 'DELETE FROM project_event WHERE number = 2'],
-  ['row and envelope disagree', 'UPDATE project_event SET number = 4 WHERE number = 3'],
+  ['row and envelope disagree', "UPDATE project_event SET event = json_set(event, '$.number', 4) WHERE number = 3"],
   ['row belongs to another project', "UPDATE project_event SET event = replace(event, 'project:first', 'project:other') WHERE number = 1"],
 ])('refuses corruption on read and before a later write: %s', (_name, sql) => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {

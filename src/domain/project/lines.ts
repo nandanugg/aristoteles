@@ -19,10 +19,16 @@ export const projectLine = line({
 })
 export const taskLine = line({
   Sent: { owes: 'Assignee', moves: { next: ['Working'] } },
-  Working: { owes: 'Assignee', moves: { next: ['ReadyToReview'] } },
+  Working: { owes: 'Assignee', moves: { next: ['ReadyToReview'], restart: ['Sent'] } },
   ReadyToReview: { owes: 'Engine', moves: { next: ['Reviewing'] } },
-  Reviewing: { owes: 'Reviewer', moves: { back: ['Working'] } },
+  Reviewing: { owes: 'Reviewer', moves: { next: ['Reviewing'], back: ['Working'] } },
 }) satisfies Readonly<Record<TaskPhase['_tag'], object>>
+
+export const sessionLine = line({
+  Live: { owes: 'Engine', moves: { next: ['Paused', 'Ended'] } },
+  Paused: { owes: 'Engine', moves: { next: ['Live'] } },
+  Ended: { owes: 'None', moves: {} },
+})
 
 export type MoveOf<Table extends Edges<Table>> = {
   [Phase in keyof Table]: keyof Table[Phase]['moves']

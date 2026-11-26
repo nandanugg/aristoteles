@@ -5,7 +5,7 @@ export type Of<S> = S extends { readonly Type: infer Value } ? Value : never
 const Identity = Schema.String.check(
   Schema.isPattern(/^[a-z][a-z0-9]*:[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u),
 ).pipe(Schema.brand('Identity'))
-type Prefix = 'project' | 'human' | 'staff' | 'task' | 'session' | 'role' | 'responsibility' | 'subscription'
+type Prefix = 'project' | 'human' | 'staff' | 'task' | 'session' | 'role' | 'responsibility' | 'subscription' | 'staffing'
 const idWithPrefix = (prefix: Prefix) =>
   Identity.check(Schema.makeFilter((id) => id.startsWith(prefix + ':')))
 
@@ -16,6 +16,7 @@ export const TaskId = idWithPrefix('task').pipe(Schema.brand('TaskId'))
 export const SessionId = idWithPrefix('session').pipe(Schema.brand('SessionId'))
 export const RoleId = idWithPrefix('role').pipe(Schema.brand('RoleId'))
 export const ResponsibilityId = idWithPrefix('responsibility').pipe(Schema.brand('ResponsibilityId'))
+export const StaffingId = idWithPrefix('staffing').pipe(Schema.brand('StaffingId'))
 export const SubscriptionId = idWithPrefix('subscription').pipe(Schema.brand('SubscriptionId'))
 
 const Words = Schema.String.check(Schema.isPattern(/[^\s\0]/u), Schema.makeFilter((value) => !value.includes('\0')))
@@ -56,7 +57,7 @@ export const FileContents = Schema.String.check(Schema.makeFilter((value) => !va
 
 export const RefusalCode = Schema.Literals([
   'WrongMove', 'WrongActor', 'Stale', 'InvalidInput', 'RetiredSession',
-  'InvalidEvidence', 'Unavailable', 'ProjectEnded',
+  'NoCapacity', 'StaffingMinimum', 'InvalidEvidence', 'Unavailable', 'ProjectEnded',
 ])
 export const Refusal = Schema.TaggedStruct('Refusal', { code: RefusalCode, why: Rationale })
 export type Refusal = Of<typeof Refusal>

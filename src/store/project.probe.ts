@@ -2,17 +2,18 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
+import { startSession } from '../../core/actions/staff-session.ts'
 import { Authority, recordObserved, submit } from '../../core/actions/project.ts'
 import {
   Human, LiveSession, ProjectId, ReadPosition, Role, Staff, Submission, TaskDraft, TaskId,
-  type Of, type StoredActor,
+  type Of, type Projection, type StoredActor,
 } from '../../core/schema/project.ts'
 import { readPosition } from '../../core/state/project.ts'
 import { Env } from '../services/io.ts'
 import type { ProjectJournal } from '../services/project.ts'
 import { openProjectJournal } from './project.ts'
 
-export const role = (name: 'host' | 'pipeline') => Schema.decodeUnknownSync(Role)({
+export const role = (name: 'host' | 'pipeline' | 'maker') => Schema.decodeUnknownSync(Role)({
   id: 'role:' + name,
   name,
   responsibility: {
@@ -39,8 +40,8 @@ export const worker: StoredActor = { _tag: 'Staff', id: staff.id }
 export const projectId = ProjectId.make('project:first')
 export const taskId = TaskId.make('task:sample')
 export const taskLine = { _tag: 'Task', id: taskId } as const
-export const draft = (id = taskId) => Schema.decodeUnknownSync(TaskDraft)({
-  id, name: 'First work', goal: 'Supply a result', role: host, reviewer: pipeline,
+export const draft = (id = taskId, assigned = host) => Schema.decodeUnknownSync(TaskDraft)({
+  id, name: 'First work', goal: 'Supply a result', role: assigned, reviewer: pipeline,
 })
 
 export const ownerInput = (journal: ProjectJournal, input: unknown) =>
@@ -51,12 +52,12 @@ export const staffInput = (journal: ProjectJournal, input: unknown, live = sessi
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Staff', session: live } as const),
   }))
-export const create = (journal: ProjectJournal) => ownerInput(journal, {
+export const create = (journal: ProjectJournal, roles: readonly Of<typeof Role>[] = []) => ownerInput(journal, {
   _tag: 'HumanChoice', read: 0,
-  choice: { _tag: 'NewProject', project: { _tag: 'Project', id: journal.id }, owner, host, pipeline, staff },
+  choice: { _tag: 'NewProject', project: { _tag: 'Project', id: journal.id }, owner, host, pipeline, staff, roles },
 })
-export const send = (journal: ProjectJournal, read: Of<typeof ReadPosition>, id = taskId) =>
-  recordObserved(journal, human, read, { _tag: 'TaskSent', draft: draft(id) })
+export const send = (journal: ProjectJournal, read: Of<typeof ReadPosition>, id = taskId, assigned = host) =>
+  recordObserved(journal, human, read, { _tag: 'TaskSent', draft: draft(id, assigned) })
 export const begin = (journal: ProjectJournal, read: Of<typeof ReadPosition>) => staffInput(journal, {
   _tag: 'StaffReport', read,
   report: { _tag: 'Work', line: taskLine, report: { _tag: 'Began', session, place: 'Main' } },
@@ -71,9 +72,17 @@ export const resultInput = (read: Of<typeof ReadPosition>, artifact = 7): Submis
 export const commandOutcomes = (journal: ProjectJournal, read: Of<typeof ReadPosition>) =>
   recordObserved(journal, worker, read, { _tag: 'CommandOutcomes', line: taskLine, outcomes: [] })
 
+export const startFixtureSession = (journal: ProjectJournal, state: Projection) => {
+  if (state._tag !== 'Open') throw new Error('Open the test project first')
+  return startSession(journal, state.value, {
+    id: session.id, staff: staff.id, pane: session.pane, staffing: state.value.staffingAt,
+  })
+}
+
 export const toWorking = (journal: ProjectJournal) => Effect.gen(function* () {
   const open = yield* create(journal)
-  const sent = yield* send(journal, readPosition(open.state))
+  const live = yield* startFixtureSession(journal, open.state)
+  const sent = yield* send(journal, readPosition(live.state))
   return yield* begin(journal, readPosition(sent.state))
 })
 

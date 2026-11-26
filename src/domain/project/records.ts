@@ -1,41 +1,12 @@
 import { Schema, SchemaGetter } from 'effect'
+import { LiveSession, Role, Staff, StaffSession, Subscription } from './staff.ts'
 import {
-  AccountName, AttemptNumber, DutyText, EventNumber, FileContents, FilePath, Goal, HumanId, Introduction,
-  LaunchText, ModelName, Name, PaneAddress, PlanName, ProjectId, ProviderName, Rationale,
-  ReadPosition, ResponsibilityId, ResultSummary, RetryCount, RoleId, SessionCount, SessionId, StaffId,
-  SubagentCount, SubscriptionId, Summary, TaskId, VersionNumber, WindowMinutes, WindowShare, type Of,
+  AttemptNumber, EventNumber, FileContents, FilePath, Goal, HumanId, Name,
+  ProjectId, ReadPosition, ResultSummary, RetryCount, RoleId, SessionId, StaffId,
+  SubscriptionId, TaskId, type Of,
 } from './values.ts'
 
 export const Human = Schema.TaggedStruct('Human', { id: HumanId, name: Name })
-export const Responsibility = Schema.Struct({
-  id: ResponsibilityId, summary: Summary, introduction: Introduction, duties: Schema.NonEmptyArray(DutyText),
-})
-const ResponsibilityVersion = Schema.Struct({
-  id: Schema.Struct({ subject: ResponsibilityId, number: VersionNumber }),
-  value: Responsibility,
-  acceptedAt: EventNumber,
-}).check(Schema.makeFilter((version) => version.id.subject === version.value.id))
-export const Role = Schema.Struct({ id: RoleId, name: Name, responsibility: ResponsibilityVersion })
-export const Subscription = Schema.Struct({
-  id: SubscriptionId,
-  provider: ProviderName,
-  account: AccountName,
-  plan: PlanName,
-  usageWindow: WindowMinutes,
-  sessions: Schema.Union([Schema.TaggedStruct('Unlimited', {}), Schema.TaggedStruct('Limited', { max: SessionCount })]),
-  estimate: Schema.Union([
-    Schema.TaggedStruct('NoEstimate', {}),
-    Schema.TaggedStruct('Estimated', { share: WindowShare, why: Rationale }),
-  ]),
-})
-export const Staff = Schema.TaggedStruct('Staff', {
-  id: StaffId, name: Name, model: ModelName, launch: LaunchText, subagents: SubagentCount,
-  roles: Schema.NonEmptyArray(Role), subscription: Subscription, why: Rationale,
-})
-export const LiveSession = Schema.TaggedStruct('Live', {
-  id: SessionId, staff: Staff, startedAt: EventNumber, pane: Schema.Struct({ address: PaneAddress }),
-})
-
 export const TaskDraft = Schema.Struct({ id: TaskId, name: Name, goal: Goal, role: Role, reviewer: Role })
 const Attempt = Schema.Struct({
   number: AttemptNumber, retryCount: RetryCount, session: LiveSession, place: Schema.Literals(['Main', 'Child']),
@@ -45,7 +16,10 @@ const Result = Schema.Struct({ summary: ResultSummary, files: Schema.Array(Whole
 const Sent = Schema.TaggedStruct('Sent', { retryCount: RetryCount })
 const Working = Schema.TaggedStruct('Working', { attempt: Attempt })
 const ReadyToReview = Schema.TaggedStruct('ReadyToReview', { result: Result })
-const Reviewing = Schema.TaggedStruct('Reviewing', { result: Result })
+const Reviewing = Schema.TaggedStruct('Reviewing', {
+  result: Result, enteredAt: EventNumber,
+  review: Schema.Union([Schema.TaggedStruct('Waiting', {}), Schema.TaggedStruct('By', { session: LiveSession })]),
+})
 export const TaskPhase = Schema.Union([Sent, Working, ReadyToReview, Reviewing])
 export type TaskPhase = Of<typeof TaskPhase>
 const AttemptHistory = Schema.Union([
@@ -57,10 +31,13 @@ export const Task = Schema.Struct({
 })
 export type Task = Of<typeof Task>
 
-const taskMap = () => Schema.Array(Task)
-  .check(Schema.makeFilter((entries) => new Set(entries.map((task) => task.id)).size === entries.length))
-  .pipe(Schema.decodeTo(Schema.ReadonlyMap(Schema.toType(TaskId), Schema.toType(Task)), {
-    decode: SchemaGetter.transform((entries) => new Map(entries.map((task) => [task.id, task]))),
+const recordsById = <S extends Schema.Top, K extends Schema.Top>(
+  value: S & { readonly Type: { readonly id: K['Type'] }; readonly DecodingServices: never; readonly EncodingServices: never },
+  key: K,
+) => Schema.Array(value)
+  .check(Schema.makeFilter((entries) => new Set(entries.map((item) => item.id)).size === entries.length))
+  .pipe(Schema.decodeTo(Schema.ReadonlyMap(Schema.toType(key), Schema.toType(value)), {
+    decode: SchemaGetter.transform((entries) => new Map(entries.map((item) => [item.id, item]))),
     encode: SchemaGetter.transform((map) => [...map.values()]),
   }))
 const ProjectStatus = Schema.Union([
@@ -68,8 +45,10 @@ const ProjectStatus = Schema.Union([
   Schema.TaggedStruct('Ended', { at: EventNumber }),
 ])
 export const Project = Schema.Struct({
-  id: ProjectId, owner: Human, host: Role, pipeline: Role, staff: Staff,
-  tasks: taskMap(), status: ProjectStatus, activation: Schema.TaggedStruct('Onboarding', {}),
+  id: ProjectId, owner: Human, host: Role, pipeline: Role,
+  roles: recordsById(Role, RoleId), staff: recordsById(Staff, StaffId),
+  subscriptions: recordsById(Subscription, SubscriptionId), staffingAt: EventNumber,
+  sessions: recordsById(StaffSession, SessionId), tasks: recordsById(Task, TaskId), status: ProjectStatus, activation: Schema.TaggedStruct('Onboarding', {}),
   lastChange: EventNumber, read: ReadPosition,
 })
 export type Project = Of<typeof Project>

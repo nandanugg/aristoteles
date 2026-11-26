@@ -21,8 +21,11 @@ witness() {
   instance=$2
   invariant=$3
   status=0
+  seed=0x2a
+  # The capacity fault includes an actual plan replacement before the stale start.
+  if [ "$check:$kind" = 'staffCapacity:fault' ]; then seed=31; fi
   "$root/node_modules/.bin/quint" run "$file" --main="$instance" \
-    --backend=typescript --seed=0x2a --max-samples=5000 --max-steps=45 --n-threads=1 \
+    --backend=typescript --seed="$seed" --max-samples=5000 --max-steps=45 --n-threads=1 \
     --mbt --verbosity=1 --invariant="$invariant" --out-itf="$tmp/$kind-{seq}.itf.json" \
     >"$tmp/$kind.log" 2>&1 || status=$?
   if [ "$status" -ne 1 ] || ! grep -q 'Invariant violated' "$tmp/$kind.log" ||

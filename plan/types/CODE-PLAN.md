@@ -156,3 +156,27 @@ These are the proposed spellings for the first delivery. Types and printed paths
 3. Settle a staffing or scope Question in the page if needed. Preflight the marker files, confirm the current bootstrap host and activate. Open active work after the committed binding is visible. Check the page and `work wait` agree about current authority.
 4. Send one representative TSD or HLD leaf task that fits one attempt and needs no parallel work or contract. Pin its direction/stage and role responsibility. Wire a rule command for a deterministic check where appropriate and a prompt rule for judgment. The Metis host gives the Aristoteles task to the assigned role and lets the harness run the selected commands and fresh review. Check the existing durian-metis validator workflow so it hands off those checks once. Keep provider-specific judge packet handling and publishing outside this trial. Reconcile any needed handoff in its skills before running the live task. [Current durian-metis workflow](../../../durianpay/durian-metis/skills/durian-metis/SKILL.md)
 5. Observe the task move through ReadyToReview and Reviewing to Done on the page and in the CLI. Include the artifact, command outputs, review findings or evidence, pinned versions, and final event numbers in the acceptance record. Exercise back, restart and Raised in the scratch rehearsal. Nanda decides whether the first live slice is ready before scheduling the later paths.
+
+## Names to rule
+
+These names await Nanda's ruling. The table tracks names that cross a domain, journal,
+adapter, or page boundary and the first unit that uses them.
+
+| Unit | Name | Meaning in the current code |
+| --- | --- | --- |
+| U1 | `BeforeProject` | The projection before the first journal event. |
+| U1 | `ProjectJournal`, `ProjectEdit`, `Committed` | The journal port, the pure transaction input, and the event plus projection returned after append. |
+| U1 | `PageProject`, `openPageProject`, `receiveProjectPayload` | The browser projection and its snapshot and event entry points. |
+| U1/U2 | `AuthenticatedActor`, `staffAuthority`, `waitOnProject` | The verified actor, the current-lifetime check, and the format 16 wait entry point. |
+| U2 | `StaffingAccepted`, `staffingAt` | The journal fact that installs a reviewed plan and the event number a launch relies on. |
+| U2 | `SessionBegan`, `SessionStarted`, `SessionAddress`, `SessionObservation`, `SessionObserved` | The initial provider observation, its project fact, a session's journal address, the lifetime facts, and their intake. |
+| U2 | `WorkBegan` | The stored form of `Began` with the staffing basis used by the move. |
+| U2 | `Waiting`, `By`, `enteredAt` | The two review assignment cases and the original event that entered Reviewing. |
+| U2 | `Running`, `Unknown` | Provider observations that leave the journal alone. |
+| U2 | `Sessions`, `StaffSessionOperations`, `staffSessionOperations` | The private provider port and the adapter that holds the lock through launch, append, or reconciliation. |
+| U2 | `readOpenProject`, `acceptStaffing`, `startSession`, `observeSession`, `startChild` | The engine entry points used by intake and the adapter. |
+| U2 | `staffOf`, `liveSession`, `latestSession`, `sessionMayStart` | Find the staff serving a role, resolve a live or latest lifetime, and check session admission. |
+| U2 | `providerCapacity`, `subagentCapacity`, `staffCards` | The two shared capacity queries and the browser projection that reads them. |
+
+A Paused lifetime is the address for retrieving a checkpoint from the provider's
+private storage. The journal and page carry that lifetime's identity and state.

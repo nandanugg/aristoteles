@@ -24,7 +24,7 @@ const readTraceJson = Schema.decodeUnknownSync(Schema.Struct({
   states: Schema.NonEmptyArray(Schema.Record(Schema.String, Schema.Unknown)),
 }))
 
-const record = (value: Plain): Readonly<Record<string, Plain>> => {
+export const record = (value: Plain): Readonly<Record<string, Plain>> => {
   if (typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Map))
     return value as Readonly<Record<string, Plain>>
   throw new Error('Expected a record in the ITF state')
@@ -52,7 +52,7 @@ type TaskObservation = {
   readonly writes: readonly number[]
 }
 
-const integer = (value: Plain | null | undefined): number => {
+export const integer = (value: Plain | null | undefined): number => {
   if (typeof value === 'number' && Number.isSafeInteger(value)) return value
   throw new Error('Expected an ITF integer')
 }

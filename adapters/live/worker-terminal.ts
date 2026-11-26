@@ -13,3 +13,6 @@ export const bootstrapAttach = (dir: string, session: string): string =>
 
 export const workerAttach = (socket: string, project: string, session: string): string =>
   attach(socket, `${project}:=${session}`)
+
+// Format 16 workers enter through the observed session boundary.
+export { staffSessionOperations } from './staff-session.ts'

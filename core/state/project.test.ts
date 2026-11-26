@@ -5,6 +5,7 @@ import { projectEvents, projectEventStream, projectSnapshot } from '../../adapte
 import {
   commandOutcomes, create, open, projectId, resultInput, send, session, staffInput, taskId, taskLine, toWorking, withJournal, worker,
 } from '../../src/store/project.probe.ts'
+import { startChild } from '../actions/staff-session.ts'
 import { recordObserved } from '../actions/project.ts'
 import { Projection, Rationale, ReadPosition, SessionId, StoredEvent, Submission, TaskId } from '../schema/project.ts'
 import { applyEvent, beforeProject, fold, readPosition } from './project.ts'
@@ -60,7 +61,9 @@ test('a report refuses wrong authority, an invalid phase and a stale basis after
     expect(yield* journal.eventsAfter(read)).toEqual([])
     const result = yield* staffInput(journal, request)
     const review = yield* commandOutcomes(journal, readPosition(result.state))
-    const back = yield* recordObserved(journal, worker, readPosition(review.state), {
+    if (review.state._tag !== 'Open') throw new Error('expected open project')
+    const assigned = yield* startChild(journal, review.state.value, taskLine, session, 'Review')
+    const back = yield* recordObserved(journal, worker, readPosition(assigned.state), {
       _tag: 'ReviewFacts', line: taskLine, why: Rationale.make('Check the output once more'),
     })
     if (back.state._tag !== 'Open') throw new Error('expected open project')
@@ -78,7 +81,7 @@ test('an unrelated record changing after the basis does not invalidate the addre
     const read = readPosition(working.state)
     yield* send(journal, read, TaskId.make('task:unrelated'))
     const result = yield* staffInput(journal, resultInput(read))
-    expect(Number(result.event.number)).toBe(5)
+    expect(Number(result.event.number)).toBe(6)
   }))),
 ))
 
