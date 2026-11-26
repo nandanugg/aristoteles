@@ -1,7 +1,10 @@
-// The Metis slice. Each line supplies its own edges destination the shared transition check.
+// Each phase names its duty and the destinations of its moves.
 module lines {
-  pure def allows(edges: Set[(s, m, s)], from: s, move: m, destination: s): bool =
-    edges.contains((from, move, destination))
+  type Duty = Assignee | Reviewer | Proposer | Owner | Engine | Recipient | NoDuty
+  type Line[s, m] = s -> { owes: Duty, moves: Set[(m, s)] }
+  pure def allows(line: Line[s, m], from: s, move: m, destination: s): bool =
+    line.get(from).moves.contains((move, destination))
+  pure def owed(line: Line[s, m], phase: s): Duty = line.get(phase).owes
 
   type Verdict = Pass | Return | Raise(RaiseReason)
   type RaiseReason = Tries | Misses | NoRule | TooBig | ContractWrong | RejectedByHuman
@@ -18,12 +21,14 @@ module lines {
     | Done({ result: Result, outcomes: List[Outcome] })
     | Raised(RaiseReason)
 
-  pure val taskEdges = Set(
-    ("Sent", "next", "Working"), ("Working", "next", "ReadyToReview"),
-    ("ReadyToReview", "next", "Reviewing"), ("Reviewing", "next", "Reviewing"),
-    ("Reviewing", "next", "Done"), ("Reviewing", "back", "Working"),
-    ("Working", "next", "Sent"),
-    ("Working", "raise", "Raised"), ("Reviewing", "raise", "Raised")
+  pure val taskLine = Map(
+    "Sent" -> { owes: Assignee, moves: Set(("next", "Working")) },
+    "Working" -> { owes: Assignee, moves: Set(("next", "ReadyToReview"), ("next", "Sent"), ("raise", "Raised")) },
+    "ReadyToReview" -> { owes: Engine, moves: Set(("next", "Reviewing")) },
+    "Reviewing" -> { owes: Reviewer, moves: Set(("next", "Reviewing"), ("next", "Done"),
+      ("back", "Working"), ("raise", "Raised")) },
+    "Done" -> { owes: NoDuty, moves: Set() },
+    "Raised" -> { owes: NoDuty, moves: Set() }
   )
   pure def taskPhase(task: Task): str = match task {
     | Sent(_) => "Sent"
@@ -34,7 +39,7 @@ module lines {
     | Raised(_) => "Raised"
   }
   pure def taskMove(task: Task, move: str, destination: Task): Task =
-    if (allows(taskEdges, taskPhase(task), move, taskPhase(destination))) destination else task
+    if (allows(taskLine, taskPhase(task), move, taskPhase(destination))) destination else task
 
   pure val newTask: Task = Sent({ last: 0, retries: 0, pointedOut: Set() })
   pure def beginWork(task: Task, session: int): Task = match task {
@@ -116,11 +121,14 @@ module lines {
 
   type Proposal = Drafting(int) | ProposalReview({ draft: int, review: Review }) |
     WaitingForOwner(int) | Accepted(int) | Removed
-  pure val proposalEdges = Set(
-    ("Drafting", "submit", "Reviewing"), ("Reviewing", "next", "Reviewing"),
-    ("Reviewing", "next", "WaitingForOwner"), ("Reviewing", "sendBack", "Drafting"),
-    ("WaitingForOwner", "sendBack", "Drafting"), ("WaitingForOwner", "accept", "Accepted"),
-    ("WaitingForOwner", "remove", "Removed")
+  pure val proposalLine = Map(
+    "Drafting" -> { owes: Proposer, moves: Set(("submit", "Reviewing")) },
+    "Reviewing" -> { owes: Reviewer, moves: Set(("next", "Reviewing"), ("next", "WaitingForOwner"),
+      ("sendBack", "Drafting")) },
+    "WaitingForOwner" -> { owes: Owner, moves: Set(("sendBack", "Drafting"), ("accept", "Accepted"),
+      ("remove", "Removed")) },
+    "Accepted" -> { owes: NoDuty, moves: Set() },
+    "Removed" -> { owes: NoDuty, moves: Set() }
   )
   pure def proposalPhase(proposal: Proposal): str = match proposal {
     | Drafting(_) => "Drafting"
@@ -130,7 +138,7 @@ module lines {
     | Removed => "Removed"
   }
   pure def proposalMove(proposal: Proposal, move: str, destination: Proposal): Proposal =
-    if (allows(proposalEdges, proposalPhase(proposal), move, proposalPhase(destination))) destination else proposal
+    if (allows(proposalLine, proposalPhase(proposal), move, proposalPhase(destination))) destination else proposal
 
   pure def submit(proposal: Proposal): Proposal = match proposal {
     | Drafting(draft) => proposalMove(proposal, "submit", ProposalReview({ draft: draft, review: Waiting }))

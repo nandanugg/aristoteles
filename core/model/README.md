@@ -14,22 +14,33 @@
 
 [The registry](checks/registry.tsv) controls both runners. Add `checks/<name>.qnt` with modules `<name>` and `<name>Mutant`, then add one row with the approved fault classes, the 120-second target, and the 600-second cutoff. Each file defines `init`, `step`, `Safety`, `Success`, and `Fault` in a shared case module. Use `Success` for the normal path and `Fault` for the interleaving or refusal that the safety check protects. The variant removes one guard. A syntax error, failed checker invocation, missed witness, or timeout fails the run. Logs are written to `OUT` or to a new temporary directory.
 
+### Size budget
+
+The shared model stays under about 500 lines. Each check stays under about 80. Each phase row names the duty and its legal destinations. A part that cannot fit needs a review of what forces its size before it grows.
+
+| Shared file | Lines |
+| --- | ---: |
+| [lines.qnt](lines.qnt) | 170 |
+| [people.qnt](people.qnt) | 81 |
+| [activation.qnt](activation.qnt) | 106 |
+| **Total** | **357** |
+
 ### TLC results
 
 Wall time includes Quint translation and checker startup. Mutant counts show the states reached before the violation.
 
-| Check | Safety states | Wall time | Mutant states | Mutant wall time |
-| --- | ---: | ---: | ---: | ---: |
-| `taskReportRace` | 27 | 6 s | 23 | 5 s |
-| `reviewEvidence` | 68 | 5 s | 8 | 8 s |
-| `reviewSlot` | 288 | 6 s | 6 | 7 s |
-| `staffCapacity` | 81 | 6 s | 21 | 6 s |
-| `onboardingReview` | 30 | 6 s | 14 | 5 s |
-| `activationCommit` | 43 | 6 s | 44 | 6 s |
-| `activationRollback` | 30 | 6 s | 26 | 6 s |
-| `activationHostBinding` | 122 | 6 s | 22 | 5 s |
-| `staffReplacement` | 12 | 7 s | 8 | 6 s |
-| `questionAnswer` | 20 | 6 s | 4 | 5 s |
+| Check file | Lines | Safety states | Wall time | Mutant states | Mutant wall time |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| [taskReportRace.qnt](checks/taskReportRace.qnt) | 49 | 27 | 5 s | 23 | 6 s |
+| [reviewEvidence.qnt](checks/reviewEvidence.qnt) | 64 | 68 | 6 s | 8 | 5 s |
+| [reviewSlot.qnt](checks/reviewSlot.qnt) | 69 | 288 | 6 s | 6 | 6 s |
+| [staffCapacity.qnt](checks/staffCapacity.qnt) | 58 | 81 | 6 s | 21 | 5 s |
+| [onboardingReview.qnt](checks/onboardingReview.qnt) | 68 | 30 | 6 s | 14 | 6 s |
+| [activationCommit.qnt](checks/activationCommit.qnt) | 72 | 43 | 6 s | 44 | 6 s |
+| [activationRollback.qnt](checks/activationRollback.qnt) | 62 | 30 | 5 s | 24 | 6 s |
+| [activationHostBinding.qnt](checks/activationHostBinding.qnt) | 71 | 122 | 6 s | 22 | 6 s |
+| [staffReplacement.qnt](checks/staffReplacement.qnt) | 79 | 12 | 7 s | 8 | 6 s |
+| [questionAnswer.qnt](checks/questionAnswer.qnt) | 33 | 20 | 6 s | 4 | 5 s |
 
 All ten safety invariants held, and each mutant violated the same invariant. The simulator also reached both named witnesses in each case.
 

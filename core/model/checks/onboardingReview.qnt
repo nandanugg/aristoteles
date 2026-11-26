@@ -56,7 +56,7 @@ module onboardingReviewCase {
   }
   action step = any { submitDraft, openFreshChild, exit, recover, report, acceptDraft, state' = state }
   val Safety = not(state.acceptedEarly) and
-    (Set("WaitingForOwner", "Accepted").contains(proposalPhase(state.proposal)) implies state.reviewLive)
+    ((owed(proposalLine, proposalPhase(state.proposal)) == Owner or proposalPhase(state.proposal) == "Accepted") implies state.reviewLive)
   val Success = state.proposal == Accepted(1) and state.returnedOnce
   val Fault = state.staleTried and current(state.session, 1, 2) and state.proposal == Accepted(1)
 }

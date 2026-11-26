@@ -2,8 +2,11 @@ module people {
   import lines.* from "./lines"
   type Session = Live({ staff: int, subscription: int, lifetime: int }) |
     Paused({ staff: int, subscription: int, lifetime: int, checkpoint: int }) | Ended(int)
-  pure val sessionEdges = Set(("Live", "next", "Ended"), ("Live", "next", "Paused"),
-    ("Paused", "next", "Live"))
+  pure val sessionLine = Map(
+    "Live" -> { owes: Engine, moves: Set(("next", "Ended"), ("next", "Paused")) },
+    "Paused" -> { owes: Engine, moves: Set(("next", "Live")) },
+    "Ended" -> { owes: NoDuty, moves: Set() }
+  )
   pure def live(staff: int, subscription: int, lifetime: int): Session =
     Live({ staff: staff, subscription: subscription, lifetime: lifetime })
   pure def sessionStaff(session: Session, staff: int): bool = match session {
@@ -19,17 +22,17 @@ module people {
     | _ => false
   }
   pure def end(session: Session): Session = match session {
-    | Live(state) => if (allows(sessionEdges, "Live", "next", "Ended")) Ended(state.lifetime) else session
+    | Live(state) => if (allows(sessionLine, "Live", "next", "Ended")) Ended(state.lifetime) else session
     | _ => session
   }
   pure def pause(session: Session, checkpoint: int): Session = match session {
-    | Live(state) => if (allows(sessionEdges, "Live", "next", "Paused"))
+    | Live(state) => if (allows(sessionLine, "Live", "next", "Paused"))
         Paused({ staff: state.staff, subscription: state.subscription, lifetime: state.lifetime, checkpoint: checkpoint })
       else session
     | _ => session
   }
   pure def resume(session: Session, lifetime: int): Session = match session {
-    | Paused(state) => if (allows(sessionEdges, "Paused", "next", "Live") and lifetime > state.lifetime)
+    | Paused(state) => if (allows(sessionLine, "Paused", "next", "Live") and lifetime > state.lifetime)
         live(state.staff, state.subscription, lifetime)
       else session
     | _ => session
@@ -64,9 +67,12 @@ module people {
   }
 
   type Question = Open(int) | Answered({ recipient: int, text: int })
-  pure val questionEdges = Set(("Open", "answer", "Answered"))
+  pure val questionLine = Map(
+    "Open" -> { owes: Recipient, moves: Set(("answer", "Answered")) },
+    "Answered" -> { owes: NoDuty, moves: Set() }
+  )
   pure def answer(question: Question, by: int, text: int, authorize: bool): Question = match question {
-    | Open(recipient) => if (allows(questionEdges, "Open", "answer", "Answered") and
+    | Open(recipient) => if (allows(questionLine, "Open", "answer", "Answered") and
                            (not(authorize) or by == recipient))
         Answered({ recipient: by, text: text })
       else question

@@ -1,5 +1,5 @@
 module activation {
-  import lines.allows from "./lines"
+  import lines.* from "./lines"
   type Activation = Onboarding | Activating | Active | RollingBack
   type Mark = Approved | Marked | Newer
   type Record = {
@@ -18,9 +18,12 @@ module activation {
     phase: Onboarding, file: Approved, reserved: 0, alive: Set(), acked: Set(),
     binding: 0, pending: 0, top: 0, delivered: Set(), used: false
   }
-  pure val activationEdges = Set(("Onboarding", "next", "Activating"),
-    ("Activating", "next", "Active"), ("Activating", "back", "RollingBack"),
-    ("RollingBack", "back", "Onboarding"))
+  pure val activationLine = Map(
+    "Onboarding" -> { owes: Owner, moves: Set(("next", "Activating")) },
+    "Activating" -> { owes: Engine, moves: Set(("next", "Active"), ("back", "RollingBack")) },
+    "RollingBack" -> { owes: Engine, moves: Set(("back", "Onboarding")) },
+    "Active" -> { owes: NoDuty, moves: Set() }
+  )
   pure def activationPhase(phase: Activation): str = match phase {
     | Onboarding => "Onboarding"
     | Activating => "Activating"
@@ -28,7 +31,7 @@ module activation {
     | RollingBack => "RollingBack"
   }
   pure def move(record: Record, label: str, nextPhase: Activation): Record =
-    if (allows(activationEdges, activationPhase(record.phase), label, activationPhase(nextPhase)))
+    if (allows(activationLine, activationPhase(record.phase), label, activationPhase(nextPhase)))
       { ...record, phase: nextPhase }
     else record
   pure def authorize(record: Record, approved: bool): Record =
