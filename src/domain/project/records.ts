@@ -5,7 +5,7 @@ import {
   ProjectId, QuestionId, ReadPosition, QuestionText, ResultSummary, RetryCount, RoleId, SessionId, StaffId,
   SubscriptionId, TaskId, type Of,
 } from './values.ts'
-import { Answer, QuestionForm, StaffingSubject } from './question.ts'
+import { Answer, QuestionForm, questionAbout } from './question.ts'
 
 export const TaskDraft = Schema.Struct({ id: TaskId, name: Name, goal: Goal, role: Role, reviewer: Role })
 const Attempt = Schema.Struct({
@@ -39,9 +39,8 @@ const QuestionState = Schema.Union([
 export const Question = Schema.Struct({
   id: QuestionId, from: Actor, to: Actor, text: QuestionText, form: QuestionForm, state: QuestionState,
   about: Schema.Union([
-    Schema.TaggedStruct('Project', {}),
+    ...questionAbout,
     Schema.TaggedStruct('Task', { task: Task }),
-    StaffingSubject,
   ]),
   lastChange: EventNumber,
 })

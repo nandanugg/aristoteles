@@ -163,16 +163,15 @@ These are the proposed spellings for the first delivery. Types and printed paths
 | --- | --- | --- |
 | U2 | `staffingAt` | The event number of the staffing decision relied on by a launch. |
 | U2 | `Waiting`, `By` | A review awaits an assignment or has an assigned live session. |
-| U3 | `QuestionDraft` | The recipient, form, and subject used to open a Question. |
-| U3 | `StaffingSubject` | The Question subject that pins a staffing proposal and its read basis. |
-| U3 | `ProjectQuestionForm` | The page view for answering an open Question. |
 
 Nanda's ruling on 2026-11-26 names the journal port `Journal` and its
 transaction callback `Write`. She kept `StaffingAccepted`, `Running`,
 `Unknown`, `Committed`, `PageProject`, `AuthenticatedActor` and `staffCards`.
 An unopened project is null. A stored move carries the line, source phase and
 move from the table, with the data its edge accepts. Review entry order comes
-from the journal event that moved the task to Reviewing.
+from the journal event that moved the task to Reviewing. The page uses
+`QuestionCard`. Opening a question takes the line's input, and its `about`
+field can refer directly to a staffing proposal and its read basis.
 
 A Paused lifetime is the address for retrieving a checkpoint from the provider's
 private storage. The journal and page carry that lifetime's identity and state.

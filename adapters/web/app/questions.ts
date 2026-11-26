@@ -121,7 +121,7 @@ export const questionAnswerSubmission = (
     : { _tag: 'StaffReport', read, report: choice }
 }
 
-export function ProjectQuestionForm({
+export function QuestionCard({
   question, read, submit,
 }: {
   readonly question: ProjectQuestion

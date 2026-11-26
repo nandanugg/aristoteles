@@ -8,7 +8,7 @@ import { Effect, Schema } from 'effect'
 import { Authority as ProjectAuthority } from '../../../core/actions/project.ts'
 import { decodeQuestionInput, submitQuestion } from '../../../core/actions/question.ts'
 import {
-  Answer as ProjectAnswer, QuestionDraft, QuestionId, Rationale, StoredActor, refuse as projectRefuse,
+  Answer as ProjectAnswer, QuestionId, Rationale, StoredActor, refuse as projectRefuse,
   type Of, type ReadPosition, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
@@ -815,6 +815,5 @@ export const projectQuestionCommand = (
   if (!raw || typeof raw !== 'object' || Array.isArray(raw) || 'to' in raw) {
     return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Address the recipient in the command.')))
   }
-  const question = yield* decodeQuestionInput(QuestionDraft, { ...raw, to })
-  return yield* submitQuestion(journal, read, { _tag: 'Question', question })
+  return yield* submitQuestion(journal, read, { _tag: 'Question', question: { ...raw, to } })
 })

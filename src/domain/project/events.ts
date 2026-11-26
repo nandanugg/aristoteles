@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { line } from './lines.ts'
 import { TaskDraft, type TaskPhase } from './records.ts'
-import { Answer, QuestionForm, StaffingSubject } from './question.ts'
+import { Answer, QuestionForm, questionAbout } from './question.ts'
 import { Human, LiveSession, Pane, Role, Staff, StaffingPlan } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, ProjectId, QuestionId, QuestionText, Rationale, ReadPosition,
@@ -57,19 +57,9 @@ export const sessionLine = line({
   Ended: { owes: 'None', moves: {} },
 })
 
-export const QuestionDraft = Schema.Struct({
-  id: QuestionId, to: StoredActor, text: QuestionText, form: QuestionForm,
-  about: Schema.Union([
-    Schema.TaggedStruct('Project', {}),
-    Schema.TaggedStruct('Task', { task: TaskId }),
-    StaffingSubject,
-  ]),
-})
-export type QuestionDraft = Of<typeof QuestionDraft>
-
 const questionOpen = { to: 'Open', input: Schema.Struct({
-  to: QuestionDraft.fields.to, about: QuestionDraft.fields.about,
-  text: QuestionDraft.fields.text, form: QuestionDraft.fields.form,
+  to: StoredActor, text: QuestionText, form: QuestionForm,
+  about: Schema.Union([...questionAbout, Schema.TaggedStruct('Task', { task: TaskId })]),
 }) } as const
 
 export const questionLine = line({
@@ -114,7 +104,7 @@ export const StoredEvent = Schema.Union([ProjectEvent, TaskEvent, SessionEvent, 
 export type StoredEvent = Of<typeof StoredEvent>
 export const StoredEvents = Schema.Array(StoredEvent)
 
-const openQuestion = Schema.TaggedStruct('Question', { question: QuestionDraft })
+const openQuestion = Schema.TaggedStruct('Question', { question: Schema.Struct({ id: QuestionId, ...questionOpen.input.fields }) })
 const answerQuestion = Schema.TaggedStruct('Answer', { line: QuestionAddress, answer: Answer })
 
 export const Submission = Schema.Union([

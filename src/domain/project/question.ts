@@ -40,10 +40,11 @@ export const answerFor = (form: QuestionForm, value: unknown): Answer | null => 
   return fits ? value : null
 }
 
-// Staffing proposals acquire their full record in U4. A question already pins the proposal and its basis.
-export const StaffingSubject = Schema.TaggedStruct('Staffing', {
-  proposal: Schema.Struct({ id: ProposalId, basis: EventNumber }),
-})
+export const questionAbout = [
+  Schema.TaggedStruct('Project', {}),
+  Schema.TaggedStruct('Staffing', { proposal: Schema.Struct({ id: ProposalId, basis: EventNumber }) }),
+] as const
+
 // An older staffing question stays in history when another draft asks for input.
 export const currentQuestion = (project: Project, question: Question): Question | null => {
   if (question.about._tag !== 'Staffing') return question
