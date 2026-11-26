@@ -1,16 +1,15 @@
-import { randomUUID } from 'node:crypto'
 import { Effect } from 'effect'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { nextProposalReview } from '../../core/derived/project/review.ts'
-import { Rationale, ReadPosition, ReviewId, refuse, type Project, type Proposal, type Refusal, type ReviewRun } from '../../core/schema/project.ts'
+import { Rationale, ReadPosition, refuse, type Project, type Proposal, type Refusal, type LiveSession, type EventNumber, type Of } from '../../core/schema/project.ts'
 import { activationLock } from '../../core/services/index.ts'
 import type { Committed, Journal } from '../../core/services/project.ts'
 
 export interface Reviews {
   readonly reconcile: (project: Project) => Effect.Effect<void, Refusal>
   // The provider privately binds the child's credential to this run and the assignment event.
-  readonly open: (proposal: Proposal, run: ReviewRun) => Effect.Effect<void, Refusal>
+  readonly open: (proposal: Proposal, session: LiveSession, review: Of<typeof EventNumber>) => Effect.Effect<void, Refusal>
 }
 
 export const launchNextReview = (
@@ -23,8 +22,8 @@ export const launchNextReview = (
   const events = yield* journal.eventsAfter(ReadPosition.make(0))
   const next = nextProposalReview(project, events)
   if (!next) return null
-  const run = { id: ReviewId.make('review:' + randomUUID()), session: next.session }
-  const start = Effect.andThen(provider.open(next.proposal, run), assignProposalReview(journal, next.proposal, run, project.read))
+  const start = Effect.andThen(provider.open(next.proposal, next.session, next.proposal.lastChange),
+    assignProposalReview(journal, next.proposal, next.session, project.read))
   return yield* Effect.uninterruptible(Effect.catch(start, (failure) =>
     Effect.andThen(Effect.flatMap(readOpenProject(journal), provider.reconcile), Effect.fail(failure)),
   ))

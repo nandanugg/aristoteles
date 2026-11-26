@@ -599,5 +599,3 @@ export const StaffingPost = Schema.Union([
   Schema.Struct({ action: Schema.Literal('arrange'), revision: Text, edits: Schema.Array(StaffingEdit) }),
   Schema.Struct({ action: Schema.Literal('apply'), ticket: Text }),
 ])
-
-export { ReviewedProposals } from '../../core/schema/project.ts'

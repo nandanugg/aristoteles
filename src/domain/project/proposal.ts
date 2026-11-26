@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { Direction } from './direction.ts'
-import { ReviewRun, ReviewFacts } from './review.ts'
+import { ReviewFacts } from './review.ts'
 import { Human, Responsibility, Role, Staff, StaffingPlan } from './staff.ts'
 import { EventNumber, ProposalId, Rationale, RetryCount, VersionNumber, type Of } from './values.ts'
 
@@ -20,10 +20,8 @@ const proposalOf = <S extends Schema.Top>(value: S) => Schema.Struct({
   proposer: Schema.Union([Human, Staff]), owner: Human, reviewer: Role, retryCount: RetryCount,
   phase: Schema.Union([
     Schema.TaggedStruct('Drafting', { feedback: Schema.NullOr(Schema.Union([ReviewFacts, Rationale])) }),
-    Schema.TaggedStruct('Reviewing', { review: Schema.Union(
-      [Schema.TaggedStruct('Waiting', {}), Schema.TaggedStruct('By', { run: ReviewRun })],
-    ) }),
-    Schema.TaggedStruct('WaitingForOwner', { review: ReviewRun, facts: ReviewFacts }),
+    Schema.TaggedStruct('Reviewing', { by: Schema.NullOr(Staff), review: Schema.NullOr(EventNumber) }),
+    Schema.TaggedStruct('WaitingForOwner', { by: Staff, review: EventNumber, facts: ReviewFacts }),
     Schema.TaggedStruct('Accepted', { version: versionOf(value) }),
     Schema.TaggedStruct('Removed', {}),
   ]),
@@ -31,7 +29,6 @@ const proposalOf = <S extends Schema.Top>(value: S) => Schema.Struct({
 })
 
 export const Proposal = proposalOf(ProposalValue)
-export const ReviewedProposals = Schema.Array(Proposal)
 export type Proposal<T extends ProposalValue = ProposalValue> = Of<ReturnType<typeof proposalOf<Schema.Schema<T>>>>
 
 export const StaffingAccepted = Schema.TaggedStruct('StaffingAccepted', {

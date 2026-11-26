@@ -239,7 +239,7 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
 
 import { Result } from 'effect'
 import { Rationale, type Of, type Proposal as ProjectProposal, type ReadPosition, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
-import { ProposedStaffing } from './staffing.ts'
+import { StaffingView } from './staffing.ts'
 import type { ProposalReply } from './api.ts'
 
 export function ProposalCard({ proposal, read, submit }: {
@@ -261,7 +261,7 @@ export function ProposalCard({ proposal, read, submit }: {
   }
   return html`<article class="review-stage">
     <h3>${value._tag === 'Staffing' ? 'Staffing' : value._tag === 'Direction' ? value.name : value.role.name}</h3>
-    ${value._tag === 'Staffing' ? html`<${ProposedStaffing} plan=${value} />` :
+    ${value._tag === 'Staffing' ? html`<${StaffingView} plan=${value} />` :
       value._tag === 'Direction' ? html`<p>${value.summary}</p><p>${value.text}</p>
         ${value.source._tag === 'Company' ? html`<p>${value.source.repository} · ${value.source.commit}</p>` : null}
         <ol>${value.stages.map((stage) => html`<li key=${stage.id}>${stage.name} · ${stage.role.name} · ${stage.work}</li>`)}</ol>

@@ -89,7 +89,7 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     const previous = before.tasks.get(taskId)?.phase
     const released = after.tasks.get(taskId)?.phase
     if (previous?._tag !== 'Reviewing') throw new Error('The review must already be assigned')
-    expect(released).toEqual({ ...previous, review: { _tag: 'Waiting' } })
+    expect(released).toEqual({ ...previous, by: null, review: null })
     expect(Number(capacity(after, staff).usedSubagents)).toBe(0)
     const continued = { ...session, id: SessionId.make('session:2') }
     yield* startSession(journal, after, { id: continued.id, staff: continued.staff.id, pane: continued.pane, staffing: after.staffingAt })

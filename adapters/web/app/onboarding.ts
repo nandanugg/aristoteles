@@ -166,16 +166,18 @@ import type { Project, Submission } from '../../../core/schema/project.ts'
 import type { ProposalReply } from './api.ts'
 import { QuestionCard } from './questions.ts'
 import { ProposalCard } from './onboarding-review.ts'
-import { ProjectResponsibilities } from './onboarding-roles.ts'
+import { RoleCard } from './onboarding-roles.ts'
 
-export function ProjectOnboarding({ project, submit }: {
+function renderOnboarding({ project, submit }: {
   readonly project: Project
   readonly submit: (submission: Submission) => Promise<ProposalReply>
 }): ReturnType<typeof html> {
   return html`<section aria-label="Onboarding">
     ${ownerProposals(project).map((proposal) => html`<${ProposalCard} key=${proposal.id} proposal=${proposal}
       read=${project.read} submit=${submit} />`)}
-    <${ProjectResponsibilities} project=${project} submit=${submit} />
+    ${[...project.proposals.values()].filter(({ phase }) => phase._tag === 'Accepted').map((proposal) =>
+      html`<${ProposalCard} key=${proposal.id} proposal=${proposal} read=${project.read} submit=${submit} />`)}
+    <${RoleCard} project=${project} submit=${submit} />
     ${questionsFor(project, project.owner).map((question) => html`<${QuestionCard} key=${question.id}
       question=${question} read=${project.read} submit=${async (submission: Submission) => {
         const result = await submit(submission)
@@ -183,3 +185,5 @@ export function ProjectOnboarding({ project, submit }: {
       }} />`)}
   </section>`
 }
+
+export { renderOnboarding as OnboardingView }

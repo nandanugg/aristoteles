@@ -4,7 +4,7 @@ import { Authority, type AuthenticatedActor } from '../../core/actions/project.t
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject, startSession } from '../../core/actions/staff-session.ts'
 import {
-  Direction, ProposalId, Rationale, ReviewId, SessionId, type Of, type Project, type Refusal, type ReviewFacts, type StaffingPlan,
+  Direction, ProposalId, Rationale, SessionId, type Of, type Project, type Refusal, type ReviewFacts, type StaffingPlan,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { host, owner, session, staff } from './project.probe.ts'
@@ -53,10 +53,9 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   })
   const proposal = staged.state.proposals.get(id)
   if (!proposal) throw new Error('Missing staffing proposal')
-  const run = { id: ReviewId.make('review:staffing-' + project.read), session: live }
-  const assigned = yield* assignProposalReview(journal, proposal, run, staged.state.read)
+  const assigned = yield* assignProposalReview(journal, proposal, live, staged.state.read)
   const reviewed = yield* cliProposal(journal, assigned.state, { _tag: 'Review', line, facts: evidence('Holds') }, {
-    _tag: 'Review', run, basis: assigned.event.number,
+    _tag: 'Review', session: live, review: proposal.lastChange,
   })
   const accepted = yield* cliProposal(journal, reviewed.state, { _tag: 'ChooseProposal', line, choice: { _tag: 'accept' } })
   if (!existing) yield* observeSession(journal, accepted.state, { _tag: 'Session', id: live.id }, 'Ended')

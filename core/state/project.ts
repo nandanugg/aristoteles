@@ -99,23 +99,23 @@ const moveTask = (project: Project, task: Task, event: TaskEvent): Result.Result
     case 'ReadyToReview':
       if (before._tag !== event.from) return wrongMove()
       if (actor._tag !== 'Staff' || actor.id !== before.result.attempt.session.staff.id) return wrongActor()
-      return entered({ _tag: 'Reviewing', result: before.result, review: { _tag: 'Waiting' } })
+      return entered({ _tag: 'Reviewing', result: before.result, by: null, review: null })
     case 'Reviewing': {
       if (before._tag !== event.from) return wrongMove()
       const reviewer = staffOf(project, task.reviewer)
       if (event.move === 'next') {
         const { staffing } = event.input
         if (staffing !== project.staffingAt || read < staffing) return stale()
-        if (before.review._tag !== 'Waiting') return wrongMove()
+        if (before.by !== null) return wrongMove()
         const session = liveSession(project, event.input.session.id)
         if (!session) return retired()
         if (!reviewer || actor._tag !== 'Staff' || actor.id !== reviewer.id || actor.id !== session.staff.id) return wrongActor()
         if (subagentCapacity(project, reviewer).freeSubagents === 0) return noChild()
-        return entered({ ...before, review: { _tag: 'By', session } })
+        return entered({ ...before, by: session.staff, review: number })
       }
-      if (before.review._tag !== 'By') return wrongMove()
-      if (actor._tag !== 'Staff' || actor.id !== reviewer?.id || actor.id !== before.review.session.staff.id) return wrongActor()
-      if (!liveSession(project, before.review.session.id)) return retired()
+      if (!before.by) return wrongMove()
+      if (actor._tag !== 'Staff' || actor.id !== reviewer?.id || actor.id !== before.by.id) return wrongActor()
+      if (![...project.sessions.values()].some((session) => session._tag === 'Live' && session.staff.id === before.by?.id)) return retired()
       const attempt = before.result.attempt
       const working = liveSession(project, attempt.session.id)
       if (!working) return retired()
@@ -159,16 +159,16 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
           tasks.set(id, { ...task, phase: { _tag: 'Sent', retryCount: phase.attempt.retryCount }, lastChange: number })
         }
       }
-      if (phase._tag === 'Reviewing' && phase.review._tag === 'By' && phase.review.session.id === previous.id) {
-        tasks.set(id, { ...task, phase: { ...phase, review: { _tag: 'Waiting' } }, lastChange: number })
+      if (phase._tag === 'Reviewing' && phase.by?.id === previous.staff.id) {
+        tasks.set(id, { ...task, phase: { ...phase, by: null, review: null }, lastChange: number })
       }
     }
     const proposals = new Map(project.proposals)
     if (!continued) {
       for (const [id, proposal] of proposals) {
         const phase = proposal.phase
-        if (phase._tag === 'Reviewing' && phase.review._tag === 'By' && phase.review.run.session.id === previous.id)
-          proposals.set(id, { ...proposal, phase: { _tag: 'Reviewing', review: { _tag: 'Waiting' } }, lastChange: number })
+        if (phase._tag === 'Reviewing' && phase.by?.id === previous.staff.id)
+          proposals.set(id, { ...proposal, phase: { _tag: 'Reviewing', by: null, review: null }, lastChange: number })
       }
     }
     return { ...project, sessions, tasks, proposals }

@@ -9,7 +9,7 @@ import { projectSnapshot } from '../../adapters/web/project.ts'
 import { create, open, owner, session, staff, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm } from '../../src/store/question.probe.ts'
 import { nextStep, questionsFor } from '../derived/project/next-step.ts'
-import { Answer, QuestionForm, ProposalId, QuestionId, ReadPosition, ReviewId, SessionId, StaffingId, Submission, type Of, type Project } from '../schema/project.ts'
+import { Answer, QuestionForm, ProposalId, QuestionId, ReadPosition, SessionId, StaffingId, Submission, type Of, type Project } from '../schema/project.ts'
 import { observeSession, readOpenProject, startSession } from './staff-session.ts'
 import { readPosition } from '../state/project.ts'
 
@@ -121,10 +121,9 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const sent = yield* cliProposal(journal, firstAnswer.state, { ...send, question: { _tag: 'Question', id: questionId } })
     const proposal = sent.state.proposals.get(line.id)
     if (!proposal) throw new Error('No staffing proposal')
-    const run = { id: ReviewId.make('review:consult'), session }
-    const reviewed = yield* assignProposalReview(journal, proposal, run, sent.state.read)
-    const returned = yield* cliProposal(journal, reviewed.state, { _tag: 'Review', line, facts: evidence('Breaks') },
-      { _tag: 'Review', run, basis: reviewed.event.number })
+    yield* assignProposalReview(journal, proposal, session, sent.state.read)
+    const returned = yield* cliProposal(journal, yield* readOpenProject(journal), { _tag: 'Review', line, facts: evidence('Breaks') },
+      { _tag: 'Review', session, review: proposal.lastChange })
     const laterId = QuestionId.make('question:revised')
     const latest = yield* consult(laterId, returned.state)
     expect(questionsFor(latest.state, owner).map(({ id }) => id)).toEqual([laterId])

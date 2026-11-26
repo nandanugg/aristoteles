@@ -307,7 +307,7 @@ export function Staffing({ start, version, onApplied }: {
 
 import type { StaffingPlan as ProjectStaffing } from '../../../core/schema/project.ts'
 
-export function ProposedStaffing({ plan }: { readonly plan: ProjectStaffing }): ReturnType<typeof html> {
+function renderStaffing({ plan }: { readonly plan: ProjectStaffing }): ReturnType<typeof html> {
   return html`<section aria-label="Staffing arrangement">
     <ul>${plan.staff.map((staff) => html`<li key=${staff.id}>
       <strong>${staff.name}</strong> · ${staff.model} · ${staff.subagents} subagents
@@ -320,3 +320,5 @@ export function ProposedStaffing({ plan }: { readonly plan: ProjectStaffing }): 
     </li>`)}</ul>
   </section>`
 }
+
+export { renderStaffing as StaffingView }

@@ -72,7 +72,7 @@ export const staffSessionOperations = (
       const session = yield* staffAuthority(project, id)
       const task = project.tasks.get(line.id)
       if (!task || (work === 'Work' ? task.phase._tag !== 'Sent' :
-          task.phase._tag !== 'Reviewing' || task.phase.review._tag !== 'Waiting')) return yield* wrongMove()
+          task.phase._tag !== 'Reviewing' || task.phase.by !== null)) return yield* wrongMove()
       const staff = staffOf(project, work === 'Work' ? task.role : task.reviewer)
       if (!staff || staff.id !== session.staff.id)
         return yield* Effect.fail(refuse('WrongActor', Rationale.make('This staff does not serve the assigned role.')))

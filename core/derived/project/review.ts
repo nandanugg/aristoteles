@@ -7,7 +7,7 @@ export const hostQueue = (project: Project, events: readonly StoredEvent[]): rea
       entries.set(event.line.id, event.number)
   }
   return [...project.proposals.values()].filter(({ phase, reviewer }) => phase._tag === 'Reviewing' &&
-    phase.review._tag === 'Waiting' && reviewer.id === project.host.id && project.status._tag === 'Open')
+    phase.by === null && reviewer.id === project.host.id && project.status._tag === 'Open')
     .sort((a, b) => (entries.get(a.id) ?? a.lastChange) - (entries.get(b.id) ?? b.lastChange))
 }
 
@@ -24,4 +24,4 @@ export const nextProposalReview = (
 
 export const ownerProposals = (project: Project): readonly Proposal[] =>
   [...project.proposals.values()].filter(({ phase }) =>
-    phase._tag === 'WaitingForOwner' || phase._tag === 'Accepted')
+    phase._tag === 'WaitingForOwner')

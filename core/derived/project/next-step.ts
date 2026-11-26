@@ -41,7 +41,7 @@ export const nextStep = (project: Project, authority: LiveSession | Of<typeof Hu
         if (phase._tag === 'Working') return phase.attempt.session.id === current.id
         return staffOf(project, task.role)?.id === current.staff.id
       case 'Reviewer':
-        return phase._tag === 'Reviewing' && phase.review._tag === 'By' && phase.review.session.id === current.id
+        return phase._tag === 'Reviewing' && phase.by?.id === current.staff.id
       default:
         return false
     }

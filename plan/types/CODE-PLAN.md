@@ -163,9 +163,6 @@ These are the proposed spellings for the first delivery. Types and printed paths
 | --- | --- | --- |
 | U2 | `staffingAt` | The event number of the staffing decision relied on by a launch. |
 | U2 | `Waiting`, `By` | A review awaits an assignment or has an assigned live session. |
-| U4 | `ReviewId`, `ReviewRun` | The public identity and live session of an assigned fresh child. |
-| U4 | `ProposalCard`, `ReviewedProposals` | The owner-facing card and the checked list of proposals that reached the owner. |
-| U4 | `ProjectOnboarding`, `ProjectResponsibilities`, `ProposedStaffing` | The journal-backed onboarding panel, owner editor, and staffing arrangement view. |
 
 Nanda's ruling on 2026-11-26 names the journal port `Journal` and its
 transaction callback `Write`. She kept `StaffingAccepted`, `Running`,
@@ -178,3 +175,8 @@ field can refer directly to a staffing proposal and its read basis.
 
 A Paused lifetime is the address for retrieving a checkpoint from the provider's
 private storage. The journal and page carry that lifetime's identity and state.
+
+The U4 ruling keeps `ProposalCard` and names the views `OnboardingView`,
+`RoleCard` and `StaffingView`. The owner query selects WaitingForOwner.
+An assigned review is identified by its task or proposal and its review
+number. Reviewing holds the assigned staff and number.

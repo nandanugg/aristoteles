@@ -68,25 +68,25 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       item.about.proposal.id === stage.id && item.about.proposal.basis === stage.lastChange)
     if (consult ? question?.id !== consult.id || consult.state._tag !== 'Answered' : question !== null) return stale()
     return Result.flatMap(validateValue(project, value), (checked) =>
-      move({ _tag: 'Reviewing', review: { _tag: 'Waiting' } }, { value: checked }))
+      move({ _tag: 'Reviewing', by: null, review: null }, { value: checked }))
   }
   if (event.from === 'Reviewing' && phase._tag === 'Reviewing') {
-    const { run, facts } = event.input
-    const session = liveSession(project, run.session.id)
+    const { session: claimed, review, facts } = event.input
+    const session = liveSession(project, claimed.id)
     const reviewer = staffOf(project, stage.reviewer)
     if (!session || !reviewer || actor._tag !== 'Staff' || actor.id !== reviewer.id || actor.id !== session.staff.id)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the assigned host’s live session.')))
     if (facts === null) {
-      if (event.move !== 'next' || phase.review._tag !== 'Waiting') return wrongMove()
+      if (event.move !== 'next' || phase.by !== null || review !== stage.lastChange) return wrongMove()
       if (!subagentCapacity(project, reviewer).freeSubagents)
         return Result.fail(refuse('NoCapacity', Rationale.make('The onboarding host has no free subagent slot.')))
-      return move({ _tag: 'Reviewing', review: { _tag: 'By', run: { id: run.id, session } } })
+      return move({ _tag: 'Reviewing', by: session.staff, review })
     }
-    if (phase.review._tag !== 'By' || phase.review.run.id !== run.id || phase.review.run.session.id !== session.id)
+    if (phase.by?.id !== session.staff.id || phase.review !== review)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the proposal’s fresh child.')))
     if (reviewOutcome(facts) === 'Holds') {
       if (event.move !== 'next') return wrongMove()
-      return move({ _tag: 'WaitingForOwner', review: phase.review.run, facts })
+      return move({ _tag: 'WaitingForOwner', by: phase.by, review, facts })
     }
     if (event.move !== 'sendBack') return wrongMove()
     const retries = stage.retryCount + 1

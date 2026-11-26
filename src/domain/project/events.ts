@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { ProposalValue } from './proposal.ts'
-import { ReviewRun, ReviewFacts } from './review.ts'
+import { ReviewFacts } from './review.ts'
 import { line } from './lines.ts'
 import { TaskDraft, type TaskPhase } from './records.ts'
 import { Answer, QuestionForm, questionAbout } from './question.ts'
@@ -73,8 +73,8 @@ export const proposalLine = line({
     submit: { to: ['Reviewing'], input: Schema.Struct({ value: ProposalValue, question: Schema.NullOr(QuestionAddress) }) },
   } },
   Reviewing: { owes: 'Reviewer', moves: {
-    next: { to: ['Reviewing', 'WaitingForOwner'], input: Schema.Struct({ run: ReviewRun, facts: Schema.NullOr(ReviewFacts) }) },
-    sendBack: { to: ['Drafting'], input: Schema.Struct({ run: ReviewRun, facts: ReviewFacts }) },
+    next: { to: ['Reviewing', 'WaitingForOwner'], input: Schema.Struct({ session: LiveSession, review: EventNumber, facts: Schema.NullOr(ReviewFacts) }) },
+    sendBack: { to: ['Drafting'], input: Schema.Struct({ session: LiveSession, review: EventNumber, facts: ReviewFacts }) },
   } },
   WaitingForOwner: { owes: 'Owner', moves: {
     sendBack: { to: ['Drafting'], input: Schema.Struct({ why: Rationale }) },

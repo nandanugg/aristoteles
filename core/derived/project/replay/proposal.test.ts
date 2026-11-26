@@ -9,7 +9,7 @@ import { cliProposal, direction, evidence } from '../../../../src/store/proposal
 import { ownerAuthority, staffAuthorityOf } from '../../../../src/store/question.probe.ts'
 import { observeSession, readOpenProject, startSession } from '../../../actions/staff-session.ts'
 import { ownerProposals } from '../review.ts'
-import { EventNumber, ProposalId, ReviewId, SessionId, type Of, type ReviewRun } from '../../../schema/project.ts'
+import { EventNumber, ProposalId, SessionId, type Of, type LiveSession } from '../../../schema/project.ts'
 import { readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks } from './driver.ts'
 import { replayOnboardingReview } from './proposal.ts'
@@ -35,8 +35,8 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const trace = readTrace(join(fixtures, check + '-' + kind + '.itf.json.gz'), check, kind)
-    const runs = new Map<number, { run: ReviewRun; basis: Of<typeof EventNumber> }>()
-    const observed = new Map<ReviewRun['id'], number>()
+    const runs = new Map<number, { session: LiveSession; review: Of<typeof EventNumber> }>()
+    const observed = new Map<Of<typeof EventNumber>, number>()
     let lifetime = 1
     const project = () => Effect.runPromise(readOpenProject(journal))
     const provider: Reviews = { reconcile: () => Effect.void, open: () => Effect.void }
@@ -50,11 +50,11 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
       launch: async (expected) => {
         const assigned = await Effect.runPromise(launch)
         const phase = assigned?.state.proposals.get(id)?.phase
-        if (!assigned || phase?._tag !== 'Reviewing' || phase.review._tag !== 'By') throw new Error('Missing fresh review')
-        const { run } = phase.review
-        expect(run.session.id).toBe(expected === 1 ? session.id : second.id)
-        runs.set(expected + 1, { run, basis: assigned.event.number })
-        observed.set(run.id, expected + 1)
+        if (!assigned || phase?._tag !== 'Reviewing' || phase.review === null) throw new Error('Missing fresh review')
+        const current = assigned.state.sessions.get(expected === 1 ? session.id : second.id)
+        if (current?._tag !== 'Live') throw new Error('Missing live review session')
+        runs.set(expected + 1, { session: current, review: phase.review })
+        observed.set(phase.review, expected + 1)
       },
       exit: async () => {
         await Effect.runPromise(observeSession(journal, await project(), { _tag: 'Session', id: session.id }, 'Ended'))
@@ -66,7 +66,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
       },
       report: async (source, child, holds) => {
         const view = await project()
-        const entry = runs.get(child) ?? { run: { id: ReviewId.make('review:unknown'), session: source === 1 ? session : second }, basis: EventNumber.make(1) }
+        const entry = runs.get(child) ?? { session: source === 1 ? session : second, review: EventNumber.make(1) }
         const outcome = await Effect.runPromise(Effect.result(cliProposal(journal, view, {
           _tag: 'Review', line, facts: evidence(holds ? 'Holds' : 'Breaks'),
         }, { _tag: 'Review', ...entry })))
@@ -95,8 +95,8 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
         if (sessionPhase !== 'Live' && sessionPhase !== 'Ended') throw new Error('Missing replay lifetime')
         return {
           phase: phase._tag, lifetime, session: sessionPhase,
-          child: phase._tag === 'Reviewing' && phase.review._tag === 'By' ? observed.get(phase.review.run.id)! : 0,
-          visible: ownerProposals(view).some((proposal) => proposal.id === id),
+          child: phase._tag === 'Reviewing' && phase.review !== null ? observed.get(phase.review)! : 0,
+          visible: phase._tag === 'Accepted' || ownerProposals(view).some((proposal) => proposal.id === id),
         }
       },
     }))

@@ -1,9 +1,8 @@
 import { Effect, Option, Result, Schema, Stream } from 'effect'
 import { ownerProposals } from './view.ts'
-import { ReviewedProposals } from './contract.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'
-import { Projection, ReadPosition, Refusal, Rationale, StoredEvents, refuse, type Of } from '../../core/schema/project.ts'
+import { Projection, Proposal, ReadPosition, Refusal, Rationale, StoredEvents, refuse, type Of } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { fold } from '../../core/state/project.ts'
 
@@ -50,7 +49,7 @@ export const projectSubmission = (
   })
 }
 
-const encodeProposals = Schema.encodeSync(ReviewedProposals)
+const encodeProposals = Schema.encodeSync(Schema.Array(Proposal))
 export const projectOnboarding = (journal: Journal): Effect.Effect<Response, Refusal, Authority> =>
   Effect.gen(function* () {
     const actor = yield* (yield* Authority).actor

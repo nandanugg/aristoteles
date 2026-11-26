@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import type { Of, Proposal, ReadPosition, Refusal, ReviewRun } from '../schema/project.ts'
+import type { LiveSession, Of, Proposal, ReadPosition, Refusal } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { Authority, recordObserved, submit } from './project.ts'
 
@@ -14,7 +14,7 @@ export const submitProposal = (
 })
 
 export const assignProposalReview = (
-  journal: Journal, proposal: Proposal, run: ReviewRun, read: Of<typeof ReadPosition>,
-): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Staff', id: run.session.staff.id }, read, {
-  line: { _tag: 'Proposal', id: proposal.id }, from: 'Reviewing', move: 'next', input: { run, facts: null },
+  journal: Journal, proposal: Proposal, session: LiveSession, read: Of<typeof ReadPosition>,
+): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Staff', id: session.staff.id }, read, {
+  line: { _tag: 'Proposal', id: proposal.id }, from: 'Reviewing', move: 'next', input: { session, review: proposal.lastChange, facts: null },
 })

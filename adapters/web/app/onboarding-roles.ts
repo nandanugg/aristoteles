@@ -139,7 +139,7 @@ import type { ProposalReply } from './api.ts'
 
 const decodeProposal = Schema.decodeUnknownResult(ProposalValue, { onExcessProperty: 'error' })
 
-export function ProjectResponsibilities({ project, submit }: {
+export function RoleCard({ project, submit }: {
   readonly project: Project
   readonly submit: (submission: Submission) => Promise<ProposalReply>
 }): ReturnType<typeof html> {

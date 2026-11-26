@@ -19,7 +19,7 @@ const Working = Schema.TaggedStruct('Working', { attempt: Attempt })
 const ReadyToReview = Schema.TaggedStruct('ReadyToReview', { result: Result })
 const Reviewing = Schema.TaggedStruct('Reviewing', {
   result: Result,
-  review: Schema.Union([Schema.TaggedStruct('Waiting', {}), Schema.TaggedStruct('By', { session: LiveSession })]),
+  by: Schema.NullOr(Staff), review: Schema.NullOr(EventNumber),
 })
 export const TaskPhase = Schema.Union([Sent, Working, ReadyToReview, Reviewing])
 export type TaskPhase = Of<typeof TaskPhase>

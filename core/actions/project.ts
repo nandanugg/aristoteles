@@ -1,7 +1,7 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
   ReadPosition, Rationale, StoredEvent, Submission, liveSession, refuse, reviewOutcome,
-  type EventNumber, type LiveSession, type Of, type Projection, type Refusal, type ReviewRun, type StoredActor,
+  type EventNumber, type LiveSession, type Of, type Projection, type Refusal, type StoredActor,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
 import { applyEvent, fold, readPosition } from '../state/project.ts'
@@ -9,7 +9,7 @@ import { applyEvent, fold, readPosition } from '../state/project.ts'
 export type AuthenticatedActor =
   | { readonly _tag: 'Human'; readonly actor: Extract<StoredActor, { _tag: 'Human' }> }
   | { readonly _tag: 'Staff'; readonly session: LiveSession }
-  | { readonly _tag: 'Review'; readonly run: ReviewRun; readonly basis: Of<typeof EventNumber> }
+  | { readonly _tag: 'Review'; readonly session: LiveSession; readonly review: Of<typeof EventNumber> }
 export class Authority extends Context.Service<Authority, {
   readonly actor: Effect.Effect<AuthenticatedActor, Refusal>
 }>()('project/Authority') {}
@@ -91,17 +91,16 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
     const report = request.report
     if (report._tag === 'Review') {
       if (authenticated._tag !== 'Review') return yield* Effect.fail(wrongActor())
-      const { run, basis } = authenticated
-      const actor = { _tag: 'Staff', id: run.session.staff.id } as const
+      const { session, review } = authenticated
+      const actor = { _tag: 'Staff', id: session.staff.id } as const
       const { line, facts } = report
       return yield* commit(journal, actor, request.read, (project) => {
         const proposal = project?.proposals.get(line.id)
-        if (proposal?.phase._tag !== 'Reviewing' || proposal.phase.review._tag !== 'By' ||
-            proposal.phase.review.run.id !== run.id || proposal.phase.review.run.session.id !== run.session.id ||
-            proposal.lastChange !== basis) return Result.fail(retired())
+        if (proposal?.phase._tag !== 'Reviewing' || proposal.phase.by?.id !== session.staff.id ||
+            proposal.phase.review !== review || !project || !liveSession(project, session.id)) return Result.fail(retired())
         return Result.succeed(reviewOutcome(facts) === 'Holds'
-          ? { line, from: 'Reviewing', move: 'next', input: { run, facts } }
-          : { line, from: 'Reviewing', move: 'sendBack', input: { run, facts } })
+          ? { line, from: 'Reviewing', move: 'next', input: { session, review, facts } }
+          : { line, from: 'Reviewing', move: 'sendBack', input: { session, review, facts } })
       })
     }
     if (authenticated._tag !== 'Staff') return yield* Effect.fail(wrongActor())

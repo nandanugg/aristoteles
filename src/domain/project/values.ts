@@ -5,14 +5,13 @@ export type Of<S> = S extends { readonly Type: infer Value } ? Value : never
 const Identity = Schema.String.check(
   Schema.isPattern(/^[a-z][a-z0-9]*:[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u),
 ).pipe(Schema.brand('Identity'))
-type Prefix = 'project' | 'human' | 'staff' | 'task' | 'session' | 'role' | 'responsibility' | 'subscription' | 'staffing' | 'question' | 'proposal' | 'review' | 'direction' | 'standard' | 'rule' | 'stage'
+type Prefix = 'project' | 'human' | 'staff' | 'task' | 'session' | 'role' | 'responsibility' | 'subscription' | 'staffing' | 'question' | 'proposal' | 'direction' | 'standard' | 'rule' | 'stage'
 const idWithPrefix = (prefix: Prefix) =>
   Identity.check(Schema.makeFilter((id) => id.startsWith(prefix + ':')))
 
 export const ProjectId = idWithPrefix('project').pipe(Schema.brand('ProjectId'))
 export const HumanId = idWithPrefix('human').pipe(Schema.brand('HumanId'))
 export const StaffId = idWithPrefix('staff').pipe(Schema.brand('StaffId'))
-export const ReviewId = idWithPrefix('review').pipe(Schema.brand('ReviewId'))
 export const DirectionId = idWithPrefix('direction').pipe(Schema.brand('DirectionId'))
 export const StageId = idWithPrefix('stage').pipe(Schema.brand('StageId'))
 export const StandardId = idWithPrefix('standard').pipe(Schema.brand('StandardId'))
