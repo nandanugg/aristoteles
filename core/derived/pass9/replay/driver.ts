@@ -4,10 +4,10 @@
 import { diff } from '../../c16/replay/replay.ts'
 import type { ModelAct } from '../../c16/replay/acts.ts'
 import {
-  type Identity, type JobPhase, type Witness, admissionOf, input, permitsOf, protocolAct, workerOf,
+  type Identity, type JobPhase, type Witness, admissionOf, input, permitsOf, protocolAct,
 } from './model.ts'
 import {
-  type AdmissionRead, type PermitsRead, type WorkerObservation, admissionProjector, permitsProject, workerProjector,
+  type AdmissionRead, type PermitsRead, admissionProjector, permitsProject,
 } from './project.ts'
 
 export type WorkerCommand =
@@ -16,9 +16,6 @@ export type WorkerCommand =
 export type AdmissionCommand =
   | { readonly kind: 'startPipe' | 'yieldPipe' | 'handToPerson' | 'finishPipe'; readonly job: number }
   | { readonly kind: 'decide'; readonly job: number; readonly outcome: Extract<JobPhase, 'Owed' | 'Closed'> }
-  | { readonly kind: 'openMake' | 'reviewFails'; readonly task: number }
-  | { readonly kind: 'endMaker'; readonly task: number; readonly outcome: 'Checking' | 'MakerDown' }
-  | { readonly kind: 'releaseAttempt'; readonly task: number; readonly outcome: 'Finished' | 'Queued' }
   | { readonly kind: 'startRecheck' | 'finishRecheck' | 'waitPipe' }
 export type PermitsCommand =
   | { readonly kind: 'act'; readonly act: ModelAct }
@@ -34,22 +31,6 @@ type Frame = Witness['frames'][number]
 const unrecognized = (family: string, action: string): never => {
   throw new Error(`${family}: unknown Quint action ${action}`)
 }
-const workerCommand = (frame: Frame): WorkerCommand => {
-  const kind = frame.action
-  switch (kind) {
-    case 'offer':
-    case 'withdraw':
-      return { kind, identity: input(frame, 'identity') as Identity }
-    case 'printOldest':
-    case 'submit':
-    case 'park':
-    case 'exit':
-    case 'relaunch':
-      return { kind }
-    default:
-      return unrecognized('worker', kind)
-  }
-}
 const admissionCommand = (frame: Frame): AdmissionCommand => {
   const kind = frame.action
   switch (kind) {
@@ -64,13 +45,6 @@ const admissionCommand = (frame: Frame): AdmissionCommand => {
       return { kind }
     case 'decide':
       return { kind, job: Number(input(frame, 'j')), outcome: input(frame, 'outcome') as 'Owed' | 'Closed' }
-    case 'openMake':
-    case 'reviewFails':
-      return { kind, task: Number(input(frame, 't')) }
-    case 'endMaker':
-      return { kind, task: Number(input(frame, 't')), outcome: input(frame, 'outcome') as 'Checking' | 'MakerDown' }
-    case 'releaseAttempt':
-      return { kind, task: Number(input(frame, 't')), outcome: input(frame, 'terminal') as 'Finished' | 'Queued' }
     default:
       return unrecognized('admission', kind)
   }
@@ -117,19 +91,6 @@ const replay = async <Command, Observation, View>(
     }
   }
 }
-
-export const replayWorker = (trace: Witness, runtime: RuntimeDriver<WorkerCommand, WorkerObservation>) =>
-  replay(trace, {
-    read: runtime.read,
-    step: async (command) => {
-      const observation = await runtime.step(command)
-      if (command.kind === 'submit' && (!observation.intake || observation.intake.outcome === 'retry')) {
-        throw new Error('model submission requires a fresh intake outcome')
-      }
-      if (command.kind !== 'submit' && observation.intake) throw new Error('unexpected intake observation')
-      return observation
-    },
-  }, workerCommand, workerOf, workerProjector())
 
 export const replayAdmission = (trace: Witness, runtime: RuntimeDriver<AdmissionCommand, AdmissionRead>, cap: number) =>
   replay(trace, runtime, admissionCommand, admissionOf, admissionProjector(cap))

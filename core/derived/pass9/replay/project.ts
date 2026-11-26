@@ -3,7 +3,7 @@
 // their runtime values. A printed receipt is tracked even when the supervisor fenced its offer.
 import { type Cmp } from '../../c16/replay/model.ts'
 import type {
-  AdmissionView, Identity, JobPhase, PermitsView, Phase, Route, Session, TaskPhase, WorkerView,
+  AdmissionView, Identity, JobPhase, PermitsView, Phase, Route, Session,
 } from './model.ts'
 
 export interface Turn {
@@ -82,102 +82,33 @@ export const checkIntake = (before: WorkerRead, after: WorkerRead, intake: Intak
     'accepted step left the selected obligation owed')
 }
 
-// The finite U1 model has at most one ready obligation per identity. Ineligible real work
-// stays visible in Owed, but is outside this instance's ready queue.
-export const workerProjector = () => {
-  const heard = new Set<Identity>()
-  let carried = new Set<string>()
-  let previous: WorkerRead | undefined
-  let yielded = false
-  let refused = false
-  let afterPark = false
-  return ({ read, intake }: WorkerObservation): WorkerView => {
-    const ready = read.owed.filter((item) => item.ready).sort((a, b) =>
-      a.age - b.age || a.actor.localeCompare(b.actor))
-    const queue = ready.map(({ actor }) => actor)
-    require(new Set(queue).size === queue.length, 'U1 instance has several obligations for one actor')
-    const online = read.session === 'Online'
-    const printed = read.printed
-    if (read.activeTurn) {
-      require(online && read.activeTurn.generation === read.generation &&
-        read.activeTurn.worker === read.worker, 'active turn on a fenced worker')
-      if (!sameTurn(previous?.activeTurn ?? null, read.activeTurn)) {
-        require(ready[0]?.obligation === read.activeTurn.obligation, 'wait skipped the oldest ready obligation')
-        if (previous) require(Bun.deepEquals(previous.owed, read.owed), 'offering a turn consumed or changed an obligation')
-      }
-    }
-    if (previous) {
-      if (previous.session !== 'Online' && online) {
-        require(read.generation > previous.generation, 'resume reused the previous generation')
-      }
-      if (previous.session !== 'Parked' && read.session === 'Parked') {
-        carried = new Set(read.owed.filter((item) => item.actor !== 'Role').map((item) => item.obligation))
-      }
-      if (intake) {
-        checkIntake(previous, read, intake)
-        if (intake.outcome === 'taken' && intake.requested) {
-          heard.add(intake.requested.actor)
-          yielded ||= queue.length > 0
-          afterPark ||= carried.has(intake.requested.obligation)
-        }
-        refused ||= intake.outcome === 'refused'
-      }
-    }
-    if (printed) require(printed.tokenActor === printed.scope.actor && printed.tokenEpoch === printed.scope.epoch,
-      'wait printed a credential for a different identity or epoch')
-    previous = read
-    return {
-      queue, session: read.session, heard: sorted(heard), yielded, refused, afterPark,
-      delivery: printed ? {
-        actor: printed.scope.actor, tokenActor: printed.tokenActor,
-        current: sameTurn(printed.scope, read.activeTurn) &&
-          online && read.owed.some(({ obligation }) => obligation === printed.scope.obligation),
-      } : null,
-    }
-  }
-}
-
 export interface AdmissionRead {
-  readonly tasks: ReadonlyArray<{ readonly id: number; readonly phase: TaskPhase; readonly owner: number }>
   readonly jobs: ReadonlyArray<{ readonly id: number; readonly phase: JobPhase }>
-  readonly attempts: ReadonlyArray<{ readonly subject: number; readonly owner: number }>
-  readonly children: ReadonlyArray<{ readonly subject: number; readonly owner: number }>
   readonly fixes: ReadonlyArray<number>
   readonly rechecks: ReadonlyArray<number>
-  readonly event?: { readonly kind: 'pipeDenied' | 'serialReviewed' }
+  readonly event?: { readonly kind: 'pipeDenied' }
 }
 export const admissionProjector = (pipeCap: number) => {
   let deniedPipe = false
-  let serialReviewed = false
   let recheckBesideFix = false
+  let recheckActive = false
   return (read: AdmissionRead): AdmissionView => {
-    for (const [name, values] of [
-      ['attempt', read.attempts.map(({ subject }) => subject)],
-      ['child', read.children.map(({ subject }) => subject)],
-      ['fix', read.fixes], ['recheck', read.rechecks],
-    ] as const) require(new Set(values).size === values.length, `duplicate ${name} allocation`)
+    for (const [name, values] of [['fix', read.fixes], ['recheck', read.rechecks]] as const) {
+      require(new Set(values).size === values.length, `duplicate ${name} allocation`)
+    }
     require(read.fixes.length <= pipeCap, 'Pipe fix cap exceeded')
     require(read.rechecks.every((job) => !read.fixes.includes(job)), 'recheck charged as a fix')
-    for (const allocation of [...read.attempts, ...read.children]) {
-      require(read.tasks.find((task) => task.id === allocation.subject)?.owner === allocation.owner,
-        'allocation charged to a different role')
-    }
     deniedPipe ||= read.event?.kind === 'pipeDenied'
-    serialReviewed ||= read.event?.kind === 'serialReviewed'
-    recheckBesideFix ||= read.rechecks.length > 0 && read.fixes.length === pipeCap
+    const active = read.rechecks.length > 0
+    recheckBesideFix ||= active && !recheckActive && read.fixes.length === pipeCap
+    recheckActive = active
     return {
-      tasks: Object.fromEntries(read.tasks.map(({ id, phase }) => [id, phase])),
-      owners: Object.fromEntries(read.tasks.map(({ id, owner }) => [id, owner])),
       jobs: Object.fromEntries(read.jobs.map(({ id, phase }) => [id, phase])),
-      children: sorted(read.children.map(({ subject }) => subject)),
-      role: sorted(read.attempts.map(({ subject }) => subject)),
-      pipe: sorted(read.fixes), lane: sorted(read.rechecks), deniedPipe, recheckBesideFix, serialReviewed,
+      pipe: sorted(read.fixes), lane: sorted(read.rechecks), deniedPipe, recheckBesideFix,
     }
   }
 }
 
-// The replay port exposes observable resources and durable job facts rather than asking the
-// runtime to assign itself a Quint phase. The caller supplies a C16 projection from the same read.
 export interface PermitsRead {
   readonly protocol: Cmp
   readonly attempts: ReadonlyArray<number>

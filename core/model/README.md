@@ -1,38 +1,41 @@
-# core/model: the work design as Quint specs
+# Quint models
 
-These files describe how aristoteles *should* behave, in Quint, and check it. The source is
-plan/model/DESIGN.md (the design Nanda locked on 2026-11-16). They are test-only; no code imports
-them. Only this new design is modelled: the code moves to it (v1, no compatibility), so the
-specs of the old flow were removed.
+## Metis-first checks
 
-The goal (Nanda, 2026-11-16): the system is **stall-free by design**. Every run ends, or it
-waits only on the person, and the person is told what to do. No supervisor that restarts idle
-agents, no reminder, is the fix.
+[CORE.md](../../plan/types/CORE.md) specifies the shared lines, current scope, and fault classes. The first slice covers onboarding proposals and activation, staff sessions, questions, and a task through review. It derives back or raise from reported facts. A raised task is the endpoint of this slice.
 
-## How to run
+`lines.qnt` supplies the shared edge check, task and proposal moves, and review evidence and decision rules. `people.qnt` supplies session authority, capacity, review slot selection, and questions. `activation.qnt` holds the lifecycle, durable commit and binding observations, and rollback checks. The finite cases use small identities and abstract external observations, including a fixed marker file, process acknowledgements, exact evidence, and an interrupted operation followed by recovery. Runtime conformance to the new lines starts with their implementation.
 
-- `bun run spec`: typechecks every `.qnt` file, then simulates the small models (configs.qnt's
-  holds modules, terminals.qnt, store.qnt, browser.qnt): 400 runs each, a fixed seed and one
-  thread (so the answer is the same every time). No violation is expected.
-- `bun run spec:check`: the same, and each mutant must break its property with its recorded
-  seed (the script turns quint's failure into a pass).
-- spec.sh runs its jobs in parallel (`JOBS`, default the number of cores).
-- `bun run spec:tlc` (tlc.sh): TLC on the small models (section "The small models").
-- None is part of `bun test`.
-- What each tool covers: the simulator (`quint run`) only its random runs (samples x steps);
-  TLC every reachable state within the model's bounds, any run length.
-- The large simulator model (workenv.qnt, with tmux.qnt, its stress.sh, keys.sh and tlc/
-  harness) is retired: the small models carry the proofs.
-- Heavy runs go to the check machine (below).
+| Command | Result |
+| --- | --- |
+| `bun run spec` or `bun run spec:check` | In each registered case, sample `Safety`, witness `Success` and `Fault`, and require the guard-removed variant to violate `Safety`. |
+| `bun run spec:tlc` | Exhaust the reachable state space under `Safety`. Require the variant to violate the same invariant. |
+| `ONLY=reviewSlot bun run spec:tlc` | Run the selected registry rows. `ONLY` accepts an extended regular expression. |
 
-## Files and status
+[The registry](checks/registry.tsv) controls both runners. Add `checks/<name>.qnt` with modules `<name>` and `<name>Mutant`, then add one row with the approved fault classes, the 120-second target, and the 600-second cutoff. Each file defines `init`, `step`, `Safety`, `Success`, and `Fault` in a shared case module. Use `Success` for the normal path and `Fault` for the interleaving or refusal that the safety check protects. The variant removes one guard. A syntax error, failed checker invocation, missed witness, or timeout fails the run. Logs are written to `OUT` or to a new temporary directory.
 
-types.qnt (the words), protocol.qnt (store, protocol), check.qnt (the composed model: the
-actors around the protocol, fairness, G2's assumption), properties.qnt (every property with
-its meaning), configs.qnt (the limits, the instances and mutants), canon.qnt (the state-space
-reduction), contract.qnt (G1, G3, G4, each written once), terminals.qnt (G1), store.qnt (G3),
-browser.qnt (G4), tlc.sh (`bun run spec:tlc`), spec.sh. The small models are proven by TLC
-(section "The small models").
+### TLC results
+
+Wall time includes Quint translation and checker startup. Mutant counts show the states reached before the violation.
+
+| Check | Safety states | Wall time | Mutant states | Mutant wall time |
+| --- | ---: | ---: | ---: | ---: |
+| `taskReportRace` | 27 | 6 s | 23 | 5 s |
+| `reviewEvidence` | 68 | 5 s | 8 | 8 s |
+| `reviewSlot` | 288 | 6 s | 6 | 7 s |
+| `staffCapacity` | 81 | 6 s | 21 | 6 s |
+| `onboardingReview` | 30 | 6 s | 14 | 5 s |
+| `activationCommit` | 43 | 6 s | 44 | 6 s |
+| `activationRollback` | 30 | 6 s | 26 | 6 s |
+| `activationHostBinding` | 122 | 6 s | 22 | 5 s |
+| `staffReplacement` | 12 | 7 s | 8 | 6 s |
+| `questionAnswer` | 20 | 6 s | 4 | 5 s |
+
+All ten safety invariants held, and each mutant violated the same invariant. The simulator also reached both named witnesses in each case.
+
+## Retained models
+
+The core subsets below still support the post-raise resolution, changed guidance, and scoped work that follow the Metis slice. The recheck helper and pipeline lane remain available until those paths change. Terminal and page adapters retain their separate checks. Run retained jobs explicitly with `sh core/model/spec.sh --remaining [--check]` or `sh core/model/tlc.sh --remaining`. Use `ONLY` to select an instance. These suites are separate from the Metis registry and its acceptance results.
 
 ## Words
 
@@ -93,8 +96,7 @@ browser.qnt (G4), tlc.sh (`bun run spec:tlc`), spec.sh. The small models are pro
   each: quint's TLA+ export overflows on two).
 - `canon.qnt`, module `canon`: `canon`, the state-space reduction (pure on the store).
 - `configsBase.qnt`: `FIXED_OPTIONS`, `BASE_LIMITS`, the named causes. `configs.qnt` has the
-  instances and mutants (`coreTwo`, `coreTwoDir`, `coreTwoExit`, `coreLoops`, `coreAsks`,
-  `coreAskRogue`, `coreAskReverse`, `coreCrossOnly`, `coreAll`, the `coreNo*` mutants).
+  retained cases (`coreTwo`, `coreTwoDir`, `coreLoops`, `coreCrossOnly`, and `coreWhereContext`).
 
 Sizes: two tasks (`CFG.slots`); one host, one persistent role, one pipeline role; maker ids
 from 3; 2 tries; 2 sections per task; no cap on review-loop revisions or rule rewrites (the
@@ -274,141 +276,9 @@ only its own fields:
   checked by the store (NoUnseenReject, NoUnseenAccept, NoAcceptNotWaiting).
 - No text, no timing, no store, page or CLI as code.
 
-## The small models (assume-guarantee, DESIGN.md 14)
+### Retained scheduler and admission
 
-The question
-"does every run end, or wait only on the person, who is shown the wait?" is split, and each
-part is a model small enough for TLC to visit every reachable state, liveness included:
-
-    owed --G1--> alive and hears --A--> acts --G2--> the run goes on and ends
-    every act takes effect fresh and once: G3        the person is shown what it owes: G4
-
-| Model | Proves | Assumes |
-|---|---|---|
-| terminals.qnt | G1: an agent that owes work in the end hears its step | fairness of the engine parts only |
-| worker.qnt | Identity-bound, oldest-first delivery for one worker serving Host, Role and Pipe; G1 across park/relaunch | weak fairness of print, submit and relaunch |
-| permits.qnt | Resource-admitted core progress and settlement; separate permits; fresh child/session rechecks, park/resume and visible deferral | delivery of admitted steps, fair scheduler, compatible capacity returns for deferred progress |
-| store.qnt | G3: an act takes effect only if it is fresh | nothing (an adversary sends any act) |
-| browser.qnt | G4: what the person owes is in the end shown on the page | fairness of the engine parts only |
-| activation.qnt | onboarding's activation: no work before it, only under a current launch, resumable, roll back safe | fairness of the activator and the host's acknowledgement |
-| check.qnt | G2: every run reaches Final; agent changes stop | G1 (with A), G3, G4, engine fairness |
-
-A (an agent that hears its step takes it) is not provable: it is assumed and bounded (tries,
-the ladder, the person).
-
-### The contract (contract.qnt)
-
-Each guarantee is written once and imported by the model that proves it and the model that
-assumes it:
-
-- `G1(owes, hears, personOwes) = always(eventually(not(owes) or hears or personOwes))`, the
-  same as `always(owes implies eventually(hears or not(owes) or personOwes))`. terminals.qnt
-  checks it with owes always true (no action there reads owes, so this is the strongest
-  case); check.qnt assumes it for each agent with `hears` = the agent's own step (that is G1
-  followed by A).
-- `G3(f: Fresh)`: the act's basis is current, a recheck's judged versions did not move, its
-  id is new, its token's epoch is current, it is from the current page build, and an accept
-  is of a draft that waits for the person. store.qnt proves that every act the store takes
-  has G3; check.qnt takes an act only when G3 holds of it (computed from protocol.qnt's checks),
-  which is what lets check.qnt apply each act at once to the current state.
-- `G4(owes, shown) = always(eventually(not(owes) or shown))`: browser.qnt proves it for each
-  act the person owes; check.qnt's Final ("waits only on the person") relies on it.
-
-The arguments each side uses (R6-13):
-
-| Guarantee | Proven as | Assumed in check.qnt as |
-|---|---|---|
-| G1 host | `G1(true, heardBy(HOST), personOwes(HOST))` | `G1(owes(Host), agentStep(Host), store.down.contains(Host))` |
-| G1 role, pipeline role | `G1(true, heardBy(agent), false)` | `G1(owes(agent), agentStep(agent), false)` |
-| G1 maker | `G1(true, heardBy(MAKER), false)`: the maker hears, or its exit is recorded and the role hears (its resume) | `G1(owes(maker), agentStep(maker), false)`: a maker whose exit is recorded is told nothing; its resume is a role's step |
-| G3 | `G3Holds` in store.qnt: every act taken was fresh | each act check.qnt takes is built on the current store and satisfies `G3(fresh(act))` (true by construction: it names the assumption) |
-| G4 | `G4(owed x, page shows x)` in browser.qnt for any set the protocol sets | the person's obligations of Final (protocol.qnt `isPersonOb`, `toldSteps(Human)`) are browser's `owed` |
-
-Composition, in words. Take a run of the whole system. terminals gives each agent G1; with A
-each agent then takes its step in the end, or the host waits for the person to start it
-again. check.qnt assumes exactly that for each agent (the same third argument for the host: its
-exit is recorded, protocol.qnt `ReviveOb(Host)` is a person obligation). store gives G3, so the
-acts that take effect are the fresh ones check.qnt takes. check.qnt then proves the run reaches Final,
-and browser shows the person every act it owes, so a Final that waits on the person is a
-wait the person can see, not a stall. One fairness is not from the contract: the engine runs
-a due rule test and revives a role (check.qnt `EngineFair`; the watcher's revive is proven in
-terminals).
-
-### Collapsed worker and permits
-
-`worker.qnt` abstracts one owed step per logical identity while allowing the protocol to
-offer and withdraw freely. One worker and slot serves Host, Role and Pipe. The wait
-prints the oldest ready step with its owner's token and consumes nothing. A single act
-ends the turn, including a refusal. Park or exit affects the whole worker, and an old
-printed view cannot consume an obligation after withdrawal or relaunch. The parked
-delivery witness carries an already-owed Host or Pipe step across the park. A sticky
-worker breaks the G1 liveness check; a wrong-token delivery breaks identity isolation.
-
-`permits.qnt` composes the resource scheduler with two tasks in the live core.
-A person edit after both finish creates actual non-test rechecks. Normal core
-acts preserve their existing authority and return to the shared wait after each act.
-A foreground maker holds the worker's turn. A background child does not. The role
-derives its top-level permit occupancy from Working and InReview tasks, so there is
-no independent counter to release at a yield. The admission case has spare child
-capacity and shows a second real sent task blocked while the first waits on its
-maker. Its mutant loses the first task's permit while suspended and admits the
-second through the same gate.
-
-With zero Role child allowance, the Role worker serves the logical Maker in
-foreground turns without a child permit. Opening the Maker, reading the brief,
-reporting and reviewing all go through the normal protocol's accept/take path.
-The witness records an accepted pass review of a Maker served this way.
-A background recheck child uses only a child
-permit. Otherwise a confirmed park releases the whole worker's slot for a fresh
-session. Each helper records its context at launch and reports for the dispatched
-task. Pipe records the verdict after the helper reports and, when parked, after
-resuming. The retained-context mutant records a real verdict after a helper used
-neither a child permit nor a fresh session. The invariant checks the recorded
-verdict's source. A failed or unavailable park gives a visible deferral.
-`CapacityReturns` in `contract.qnt` states the external capacity assumption for
-deferred progress. Deferral can also be reached with no slot available.
-
-The simulator witnesses all three identities heard, yield, stale delivery refusal,
-delivery after park, zero-child serial review, second-attempt denial, park/resume,
-child recheck and deferral. TLC additionally checks the serial and admission
-witnesses. The composed fixture keeps the inspected versions fixed while a helper
-runs. The existing store freshness guarantee still applies to a verdict racing a
-live edit.
-
-### admission.qnt (pass 9 decision 3, the coordinator's ruling)
-
-`admission.qnt` is a bounded projection of accepted C16 actions and worker lifecycle events. It
-adds several Pipe jobs and two logical roles without changing the protocol's actor type or the
-worker and permits instances. Its checks concern ownership, capacity and release; the composed
-`permits.qnt` remains the check of actual accept/take, asks and progress.
-
-- (a) Fixes alone share the Pipe cap, queued by age: first accepted work on a fix holds one Pipe
-  permit; routing it to the person or finishing releases it; a send-back is new admission. A
-  fresh recheck runs in its own lane (Pipe's child, or a fresh session in a parked slot, as
-  `permits.qnt` has it) and never takes a fix's permit: `RecheckIndependent`.
-- (b) A positive but saturated child allowance waits (queued, visible): `NoSerialWithAllowance`;
-  the serial fallback is only for an allowance of 0 (or a foreground-only CLI, in `permits.qnt`).
-  The parent keeps its attempt through maker report, review and a fenced maker exit; maker report
-  or a confirmed exit releases the child; terminal review or fenced reassignment releases the
-  attempt.
-- Collocated roles own their attempts separately and share the worker's child allowance.
-  `WorkerChildBound` checks the shared cap. `NoCollocatedWait` witnesses the second role
-  waiting for the first role's child to release the only slot.
-
-| Module | Checked | Expected | Distinct states |
-|---|---|---|---|
-| admissionPipeOne | safety, NoPipeOverlap; witness NoRecheckBesideFix | holds; breaks | 185; 79 |
-| admissionPipeTwo | safety; witness NoPipeOverlap | holds; breaks | 80; 48 |
-| admissionWait (allowance 1, saturated) | safety, NoSaturatedSerial; witness NoSaturatedWait | holds; breaks | 146; 2 |
-| admissionZero (allowance 0: serial) | safety; witness NoSerialReview | holds; breaks | 180; 38 |
-| admissionCollocated | safety; witnesses NoCollocatedOwners and NoCollocatedWait | holds; breaks; breaks | 210; 16; 2 |
-| admissionWait | witness NoFailWait | breaks | 66 |
-| admissionPerRoleChildren (each role charges its own children) | WorkerChildBound | breaks | 29 |
-| admissionNoPipeCap | PipeBound | breaks | 15 |
-| admissionDropsPipe (a permit lost at a yield) | PipeMatchesJobs | breaks | 17 |
-| admissionWrongOwner | Ownership | breaks | 12 |
-| admissionSharedLane (a recheck takes a fix's Pipe permit) | RecheckIndependent | breaks | 44 |
-| admissionSerialOnFull (serial turns with a positive allowance) | NoSerialWithAllowance | breaks | 5 |
+`permits.qnt` composes the current task protocol with the recheck helper. Its retained cases cover a child recheck, park and resume, deferral when capacity cannot be released, the retained-context mutant, and the missing-recheck mutant. `admission.qnt` models the two pipeline fix admissions and the separate recheck lane. The retained replay inputs and their generator are in [Pass 9 conformance](../derived/pass9/replay/README.md).
 
 ### terminals.qnt (G1)
 
@@ -547,54 +417,6 @@ TLC results:
 One owed act: every copy the page gets is the whole state, so each act behaves alone (two
 acts and a three-state escalation passed 3 million states).
 
-### activation.qnt (the end of onboarding: ONBOARDING-V2 sections 10-12, contract 6c v4)
-
-Contains: two instruction files (approved, marked, or changed by the person), the store (none,
-inactive, active), the activation record (none, activating, rolling back, activated, rolled back)
-with its per-file notes, launch identities 0..3, host processes (alive, spawned, acknowledgements),
-and after activation the committed binding (the activated launch, then each rebind), a pending
-rebind, the first top's bound launch and the launches that collected the credential. Every step is
-atomic and reads the record and the world before it acts; no step keeps memory, so a crash is any
-point where the steps stop and a resume is the same steps again. Once the store is active, resume
-only notes it: a host lost before the top is the person's REBIND (a new launch reserved, spawned,
-acknowledged, committed only while no top exists; cancelled if the person opens the top first).
-The adversary: one host death, one person edit at any time, late steps. The person's roll back,
-rebind and top open are choices (never fair); the activator, the roll back once begun, a pending
-rebind's steps, the delivery and the host's acknowledgement are weakly fair.
-
-Properties (`ActivationSafe`): `NoWorkBeforeActive`, `OnlyActivatedHostWorks` (only the bound
-host: the committed binding, or the top's), `ActivationNeedsCurrentAck`, `ActiveMeansMarked`,
-`NoLostEdit`, `NoOrphanHost` (every live host is the recorded launch or the committed binding),
-`ActiveNeverRolledBack`, `RolledBackClean`, `NoCredentialToPending` (the credential reaches only the
-committed binding; after the top, the launch it bound), `NoRebindAfterTop`, `CommittedNeverCancelled` (a recovery reconciles a pending record with the
-committed event first: it never stops the launch a committed rebind bound). A host's C16 work
-needs a top; its first authenticated use retires the credential's delivery (opening the top does
-not). Liveness: `ActivationEnds` (activated, rolled back, or stopped by a person's edit),
-`RebindEnds` (a pending rebind commits or is cancelled) and `BoundHostServed` (the bound host,
-alive and acknowledged, is served its credential, even after the top opened first);
-`ActivatesOrRollsBack` breaks (not vacuous). Witnesses: activated, rolled back, activated under a
-replaced launch, stopped by an edit, C16 work by a rebound host after the top bound it, a rebind
-cancelled by the top, a credential collected after the top opened first, a committed rebind noted
-only after the top opened (the crash window between the append and the note). TLC found, in this model, that a resume after the commit and before its note relaunched a
-host: fixed (launches only before the commit).
-
-| Module | Checked | Expected | Distinct states |
-|---|---|---|---|
-| activationFixed | ActivationSafe; ActivationEnds, RebindEnds, BoundHostServed | holds | 2,451 |
-| activationTrustRecord (files done by the record's notes, not the files) | ActiveMeansMarked, NoLostEdit | breaks | 1,221, 80 |
-| activationStaleAck (any acknowledgement counts) | ActivationNeedsCurrentAck | breaks | 620 |
-| activationReuseId (a dead launch respawned under its old identity) | ActivationNeedsCurrentAck | breaks | 1,033 |
-| activationSpawnFirst (spawn, then record the identity) | NoOrphanHost | breaks | 15 |
-| activationNoGuard (roll back without checking the store) | ActiveNeverRolledBack | breaks | 675 |
-| activationOpenStore (the inactive store takes work) | NoWorkBeforeActive | breaks | 133 |
-| activationRebindAfterTop (a rebind commits without checking the top) | NoRebindAfterTop | breaks | 1,847 |
-| activationDeliverPending (a pending launch may collect the credential) | NoCredentialToPending | breaks | 1,687 |
-| activationRetireAtOpen (opening the top retires the delivery) | BoundHostServed | breaks | 1,923 |
-| activationNoReconcile (a pending record cancelled without checking the committed event) | CommittedNeverCancelled | breaks | 2,035 |
-
-Not modelled (the F6 fixtures cover them): hashing, the files on disk, the epoch after the top.
-The simulator rarely reaches activation: spec.sh checks the safety only, TLC the rest (~8 s each).
-
 ### pipe.qnt (the live terminal)
 
 Contains: tmux (up or down), the pump (attached, detached, crashed), the websocket (open or
@@ -641,131 +463,8 @@ again.
 
 TLC on the durable-mark model: pipeFixed completed with 111,536 distinct states.
 
-### check.qnt, properties.qnt, configs.qnt, canon.qnt (G2)
+### Remaining fix, recheck, and scope instances
 
-Contains: protocol.qnt's protocol, imported, not restated; the actors around it: each agent takes
-a step it is told with honest content (check.qnt `honestOf`); a bounded number of mistakes
-(the pipeline role evaluates shallower than the real cause, `maxMistakes`); the environment's
-truths (a maker's slip, a test command's behaviour, a rule that contradicts the other rule,
-what a change breaks, the cause of a split part); the person (reply to a Decide: accept, send
-back, take as is, again; reject, end, start the host again; at most `maxPersonActs` acts; never
-assumed to act); a bounded number of process ends (`maxExits`: protocol.qnt's Exit, then Revive
-by the harness, Resume by the role, the host's revival by the person); a bounded number of
-questions (`maxAsks`, 0 except where named: any agent asks any actor, the person a target
-too, both ways; AnswerQuestion and Hear are the told steps of the answerer and the asker, the
-person's AnswerQuestion one of its `maxPersonActs` acts); a rogue maker (`rogueMaker`: it asks its role again
-and again, and past `ASK_CAP` raises its task with `AskRaise`; unbounded, the ladder and the
-person must bound the raises); a mutant of the wait order (`reverse`: a maker asks its role
-to execute, injected past the store's check).
+`check.qnt` and `canon.qnt` provide the core environment for `configs.qnt`. The runnable cases cover a standard change that affects a second task, a direction change and reassignment, repeated review send-backs along the current fix path, checking interacting rules, and the output scope of a split part. `properties.qnt` shares the safety predicates between those instances. Broad project convergence and actor fairness composition are outside the Metis-first proof scope.
 
-Invariants `NoWaitCycle` (the closure of `waitsFor`, the open asks that are not questions and
-not from the person, has no cycle: it tests the real sequences of asks), `AskCap`, and
-`AsksFollowState` (in `Sane`: the open protocol asks are those the tasks and fixes imply);
-temporal `AnswererFinishes` (the role is again and again owed no step of its own, or Final:
-alternation). Modules: `coreAsks` (one task with no cause, so the waits host -> role -> maker
-and maker -> role's check arise; two questions crossing between any actors in both directions:
-no wait cycle, no deadlock; the person's answers and `NoFinalWithAsk` live here; a pipeline
-cause made it too big for TLC: 6.18M states unfinished; measured knob by knob, 2026-11-21),
-`coreAsksPipe` (the pipeline on its shortest path that opens evaluate and decide: a direction
-cause, reference rules only, no failing tests, mistakes, slips or rejects, one person act, one
-question: questions while the evaluate and decide waits are open, `NoLongWaitChain` host ->
-role -> pipeline role -> person), `coreAskRogue` (one
-task, a rogue maker: the cap, `AskRaise`, the role's own work still finishes),
-`coreAskReverse` (the mutant: `NoWaitCycle` must break). Witnesses the simulator breaks:
-`NoFinalWithAsk`, `NoCrossing`, `NoWaitChain` (host -> role -> maker), `NoCapReached`,
-`NoAskRaise`. Revive of the role (coreTwoExit): its live makers end; a working task goes back to
-Sent and gets a fresh maker (`NoRestartAssigned`); a task in review keeps its
-Check, which the role then judges (`NoKeptCheckJudged`); both witnesses break in the simulator
-(spec.sh --check). Replaced and
-deleted: `coreAskCross` (by `coreAsks`; with the asks as acts a task already has wait edges
-with no cause). An act takes effect in one step on the current state (G3).
-
-Abstracted: tmux, terminals, processes (G1), the network and old views (G3), the page (G4),
-time, the person's direction edit (EditDirection) and run continue (MoveHost).
-
-One store per state (`canon`): with no act in flight and no old view, the counters that only
-tell an old act from a current one (a fix's step and revision, a result's id, a maker's
-revisions, the epochs, the maker ids, a task's generation) carry nothing and are set to one
-value; item versions and the card are shifted so that their smallest copy is 0; ended makers
-are dropped; history flags this model does not check are cleared; agentChanges stops at
-changeBound + 1. A maker of task i has the id 3 + i. A draft of task i's raise changes items
-that apply to task i (a choice of this model, to cut states).
-
-Reused from protocol.qnt (imported): every type, the store, `accept`, `take`/`effect`, `toldSteps`,
-`obligationsOf`, `toldAny`, `finalOf`, `changeBound`/`pastBound`, `initStore`,
-`basisOk`, `epochOk`, `recheckCurrent`. Restated (and why): the `LIMITS` record type (quint needs
-the const's type in the module), the FIXED values (`configsBase`; the causes are named, a set
-of `Cause` values per instance), the property one-liners (Sane's parts, DoneIsCurrent, the
-flags), EveryObligationToldOnce without the hearing part (every actor
-hears here: G1), ToldIsAllowed on check's own content choices (`choices`).
-
-Properties: invariants Sane, EveryObligationToldOnce, ToldIsAllowed, SomethingOwed,
-DoneIsCurrent, NoDoneBrokenAtEnd, NoLostUpdate, NoTakenUndone, NoPassOfBadResult,
-NoRefixAtSameLevel, NoEscalationWithoutPerson, NoAgentChangeAtTop, Converges (the
-convergence flag); temporal CoreProgress = Assumed implies always(eventually(Final)), and
-CoreChangesStop = Assumed implies "agent changes stop" (a bit that flips at each agent
-change is in the end constant), and CoreSettles = Assumed implies eventually(always(Final))
-(the run is Final for good: it ended, or it waits on a person with no acts left; this is the
-one that sees a person who keeps a draft going round). CoreProgressNoPipe drops the pipeline role's part of the
-assumption and must break: the assumption is not vacuous.
-
-TLC results (arch-temp, 12 workers; the invariants are the 13 above; LIVE = CoreProgress, CoreSettles and
-CoreChangesStop):
-
-| Module | Checked | Expected | Distinct states | Time |
-|---|---|---|---|---|
-| coreTwo (two tasks, task 0 a standard cause, rules may contradict, person 1, one send-back) | 13 invariants, LIVE | holds | 992,236 | 2,702 s (a) |
-| coreTwo | CoreProgressNoPipe (assumption not vacuous) | breaks | 3,928 | 55 s (a) |
-| coreTwoExit (coreTwo, one process end, person 1, no send-back) | 13 invariants, LIVE | holds | 2,609,213 | 5,597 s |
-| coreTwoExit | CoreProgressNoEngine (the revive is needed) | breaks | 87,979 | 109 s |
-| coreTwoDir (task 0 a direction cause) | 13 invariants, CoreProgress, CoreChangesStop | holds | 287,004 | 484 s (a) |
-| coreCrossOnly (raiseLevel off, every rule a test command) | CoreChangesStop | holds | 658,413 | 720 s (a) |
-| coreNoRaise (raiseLevel off) | CoreChangesStop | breaks | 1,649,416 | 1,007 s |
-| coreNoCross (crossTest and raiseLevel off, every rule a test command) | CoreChangesStop | breaks | 45,300 | 109 s (a) |
-| coreNoSplit (strictScope and raiseLevel off) | CoreChangesStop | breaks | 46 | 52 s (a) |
-| coreLoops (one task, a direction or standard cause, rules that fail their examples, the ladder of 13.2, the person's send-backs up to 3) | 13 invariants, LIVE | holds | 82,034 | 161 s (a) |
-| coreNoRuleLadder (a rule failing again is written again, for ever) | CoreProgress | breaks | 5,003 | 54 s (a) |
-| coreNoLoopLadder (the review loop may send back for ever) | CoreProgress | breaks | 6,481 | 54 s (a) |
-| corePersonUnbounded (the person's acts and send-backs unbounded) | CoreSettles | breaks: the run depends on the person, as expected | 4,921 | 54 s (a) |
-
-(a): arch-3, 5 workers, 3 GB; the others arch-temp, 12 workers. All core rows are on the model
-with DESIGN.md 13.2 (no caps on agents) unless marked otherwise.
-
-Bounds: tasks 1 or 2, 2 sections, 2 tries, no cap on agents (13.2), the person 0 to 2
-acts (other than send-backs; send-backs per draft: up to P = 3 in coreLoops, 1 in the
-other instances, a subset of the runs P allows, to keep them small), 0 or 1 mistake, 0 or 1 process end. Not proven by TLC (the simulator
-only, `bun run spec`): two tasks with every cause and the person's acts (coreAll); more than
-one process end; the person's direction edit and run continue.
-
-One TLC finding, fixed in protocol.qnt (5934497): a contradiction that landed while the other
-task was in review broke it, but the raise cleared what it had to be rechecked against; the
-person took it as is and the project ended with that task broken (NoDoneBrokenAtEnd, in
-coreTwoExit). fightsBack now keeps the broken rule pending for a task in review, and a raise
-keeps what is pending for the person's take as is.
-
-The "before" mutants of DESIGN.md 13 and 13.1 loop in TLC (CoreChangesStop breaks): no level
-raise (a reference-only rule, which the cross test cannot see, ping-pongs between the two
-tasks' rules); no cross test and no level raise with every rule a test command; no split
-limit (a split part splits again). With every rule a test command, the cross test alone ends
-the ping-pong (coreCrossOnly holds).
-
-DESIGN.md 13.2 (Nanda's ruling on R6-6): the model's caps on review-loop revisions and rule
-rewrites are gone. A second failure at the same step climbs the ladder; four levels bound
-every agent loop. One assumption about the person is added, P in contract.qnt
-(`PERSON_SEND_BACKS` = 3): the person sends one draft back at most 3 times. Past it the run
-still waits only on the person (G4 shows it), not a stall of the system: corePersonUnbounded
-shows that without P the run depends on the person.
-
-### How to run
-
-`bun run spec:tlc` (core/model/tlc.sh): every TLC job, one JVM at a time, each on a copy of
-the model with only the instance it checks (quint's TLA+ export of a file with many
-instances overflows). HEAP, WORKERS, OUT, ONLY (a grep pattern on the job lines), TIMEOUT.
-`sh tlc.sh one FILE MODULE holds|breaks INVARIANTS|- TEMPORAL|-` runs one job. `bun run
-spec` also simulates the small models (a smoke, no JVM).
-
-## The check machine (arch-temp)
-
-Heavy runs (TLC on full models, long simulations, Apalache) go to `ssh arch-temp`: 14 cores,
-28 GB, Java 21, Node, Bun, Quint 0.33.1 (`~/aristoteles`, synced by rsync without .git, plan/,
-node_modules). Use up to `_JAVA_OPTIONS=-Xmx24g` there; arch-3 keeps the quick checks and the live runs.
+Run a retained case directly with `sh core/model/tlc.sh one FILE INSTANCE holds|breaks INVARIANTS|- TEMPORAL|-`. Invariant or temporal lists are comma-separated. `remaining-tlc.sh` lists the retained instances and their selected properties.

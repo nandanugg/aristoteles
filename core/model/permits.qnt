@@ -16,9 +16,8 @@ module permits {
   type RecheckPhase = NoHelper | Checkpointed | ParkRequested | Parked | Deferred |
                       RecheckChild | FreshSession | ResumeParent | ReportReady
   type Context = NoContext | ParentContext | ChildContext | FreshContext
-  type Case = ParkCase | DeferCase | ChildCase | SerialCase | AdmissionCase |
-              DropParent | RecheckRetained | RecheckIgnored
-  type Scheduler = { scenario: Case, phase: RecheckPhase, editOffered: bool, serialReview: bool,
+  type Case = ParkCase | DeferCase | ChildCase | RecheckRetained | RecheckIgnored
+  type Scheduler = { scenario: Case, phase: RecheckPhase, editOffered: bool,
                      source: Context, target: int, badVerdict: bool,
                      parked: bool, resumed: bool, deferred: bool, childRan: bool,
                      freshRan: bool, charged: Set[int] }
@@ -29,7 +28,7 @@ module permits {
   pure def initial(scenario: Case): Scheduler =
     { scenario: scenario, phase: NoHelper, source: NoContext, target: -1,
       badVerdict: false,
-      editOffered: false, serialReview: false, parked: false, resumed: false,
+      editOffered: false, parked: false, resumed: false,
       deferred: false, childRan: false, freshRan: false, charged: Set() }
   val initialStore = initStore(Map(0 -> NoCause, 1 -> NoCause))
   // Separate init actions keep Quint's TLC init conversion from treating
@@ -37,16 +36,12 @@ module permits {
   action initPark = all { store' = initialStore, scheduling' = initial(ParkCase) }
   action initDefer = all { store' = initialStore, scheduling' = initial(DeferCase) }
   action initChild = all { store' = initialStore, scheduling' = initial(ChildCase) }
-  action initSerial = all { store' = initialStore, scheduling' = initial(SerialCase) }
-  action initAdmission = all { store' = initialStore, scheduling' = initial(AdmissionCase) }
-  action initDropParent = all { store' = initialStore, scheduling' = initial(DropParent) }
   action initRetained = all { store' = initialStore, scheduling' = initial(RecheckRetained) }
   action initIgnore = all { store' = initialStore, scheduling' = initial(RecheckIgnored) }
 
-  def background = Set(ChildCase, AdmissionCase, DropParent).contains(scheduling.scenario)
+  def background = scheduling.scenario == ChildCase
   def childAllowance = if (background) 1 else 0
   def canPark = scheduling.scenario != DeferCase
-  def dropPermit = scheduling.scenario == DropParent
   def ignoreRecheck = scheduling.scenario == RecheckIgnored
 
   def roleAttempts = SLOTS.filter(slot =>
@@ -57,12 +52,9 @@ module permits {
     taskOf(store, slot).state == Working and liveMaker(store, slot) != NoOne)
     .map(slot => liveMaker(store, slot))
   // A foreground-only CLI has no child route: its allowance is effectively 0 (serial turns).
-  def roleChildAllowance = if (scheduling.scenario == SerialCase or not(background)) 0
-    else if (Set(AdmissionCase, DropParent).contains(scheduling.scenario)) 2 else 1
+  def roleChildAllowance = if (background) 1 else 0
   def roleConcurrency = 1
   def onRoleWorker(maker: Actor): bool = isMakerActor(maker) and roleChildAllowance == 0
-  def usesRoleChildPermit(maker: Actor): bool =
-    isMakerActor(maker) and not(onRoleWorker(maker))
   // Child permits are held by Working tasks' makers that acquired one (released at Report).
   def roleChildren = if (roleChildAllowance == 0) 0 else scheduling.charged.size()
   def chargedMakers = scheduling.charged.map(slot => liveMaker(store, slot))
@@ -77,8 +69,7 @@ module permits {
   def workerFree = workerOnline and not(foregroundOccupied)
   def providerSlots = if (workerOnline or scheduling.phase == FreshSession) 1 else 0
   def pipeAttempt = ownToldSteps(store, Pipe).size() > 0 or scheduling.phase != NoHelper
-  def rolePermits = roleAttempts.filter(slot =>
-    not(dropPermit and workingMakers.contains(liveMaker(store, slot)))).size()
+  def rolePermits = roleAttempts.size()
   // Permits are derived from the task state, never independently released.
   // Admission below is what prevents a second task entering that state.
   def pipePermits = if (pipeAttempt) 1 else 0
@@ -103,9 +94,6 @@ module permits {
   def canStartAttempt = rolePermits < roleConcurrency
   def freeChild = roleChildren < roleChildAllowance
   def canStartRole = canStartAttempt and (freeChild or roleChildAllowance == 0)
-  def secondStartDenied = roleAttempts.size() == 1 and workingMakers != Set()
-    and SLOTS.exists(slot => taskOf(store, slot).state == Sent) and freeChild and not(canStartRole)
-    and roleConcurrency == 1
   def roleAdmitted(body: Body): bool = match body {
     | Open(ask) => ask.to != NewMaker or canStartRole
     | _ => true
@@ -151,9 +139,6 @@ module permits {
         | RecheckDone(_) => { ...scheduling, phase: NoHelper, source: NoContext, target: -1,
             badVerdict: scheduling.badVerdict
               or not(Set(ChildContext, FreshContext).contains(scheduling.source)) }
-        | Review(judgement) => { ...scheduling, serialReview: scheduling.serialReview
-            or (judgement.verdict == Pass and onRoleWorker(judgement.ask.from)
-                and not(usesRoleChildPermit(judgement.ask.from))) }
         | AskEdit(_) => { ...scheduling, editOffered: true }
         | _ => scheduling
       }), charged: charged },
@@ -225,15 +210,12 @@ module permits {
   // Check the recorded verdict's source, derived from the allocation at
   // helper time. A fake helper in the resident parent's context breaks it.
   val NoRecheckInParentContext = not(scheduling.badVerdict)
-  val NoSecondDenied = not(secondStartDenied)
   val ParkReached = scheduling.parked
   val DeferReached = scheduling.deferred
-  val ChildDeniedSerial = scheduling.serialReview
   val ParkResumed = scheduling.resumed and scheduling.freshRan
   val ChildRecheckRan = scheduling.childRan and not(recheckPending)
   val NoPark = not(ParkReached)
   val NoDefer = not(DeferReached)
-  val NoSerial = not(ChildDeniedSerial)
   val NoParkResume = not(ParkResumed)
   val NoChild = not(ChildRecheckRan)
   val NoIgnoredRecheck = not(ignoreRecheck and recheckPending)

@@ -1,31 +1,26 @@
 import { expect, test } from 'bun:test'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { replayAdmission, replayPermits, replayWorker } from '../derived/pass9/replay/driver.ts'
+import { replayAdmission, replayPermits } from '../derived/pass9/replay/driver.ts'
 import { type RuntimeRow, readJournal } from '../derived/pass9/replay/journal.ts'
 import { readWitness } from '../derived/pass9/replay/model.ts'
 import { type Intake, type Turn, type WorkerRead, checkIntake } from '../derived/pass9/replay/project.ts'
-import { type AdmissionFixture, fixtureAdmission, fixtureWorkerPark, inProject, withPermitsFixture } from './pass9-conformance-fixtures.ts'
+import { type AdmissionFixture, fixtureAdmission, inProject, withPermitsFixture } from './pass9-conformance-fixtures.ts'
 
 const traces = join(import.meta.dir, '../derived/pass9/replay/traces')
 const admissions: Readonly<Record<string, AdmissionFixture>> = {
-  lane: { kind: 'pipe', pipeCap: 1, childAllowance: 1 },
-  'two-fixes': { kind: 'pipe', pipeCap: 2, childAllowance: 1 },
-  serial: { kind: 'saturation', pipeCap: 1, childAllowance: 0 },
-  owners: { kind: 'collocated', pipeCap: 1, childAllowance: 1 },
+  lane: { pipeCap: 1 },
+  'two-fixes': { pipeCap: 2 },
 }
-for (const file of readdirSync(traces).filter((name) => name.endsWith('.itf.json.gz') &&
-  !['admission-wait.itf.json.gz', 'admission-shared-wait.itf.json.gz'].includes(name) && (!name.startsWith('worker-') || name === 'worker-park.itf.json.gz')).sort()) {
+for (const file of readdirSync(traces).filter((name) => name.endsWith('.itf.json.gz')).sort()) {
   const trace = readWitness(join(traces, file))
   test(`pass 9 finite replay: ${trace.name}`, async () => {
-    if (trace.name === 'worker-park') return replayWorker(trace, fixtureWorkerPark())
     if (trace.name.startsWith('admission-')) {
       const options = admissions[trace.name.slice('admission-'.length)]!
       return replayAdmission(trace, fixtureAdmission(options), options.pipeCap)
     }
     const scenario = trace.name.slice('permits-'.length)
-    if (scenario !== 'child' && scenario !== 'serial' && scenario !== 'admission' &&
-      scenario !== 'park' && scenario !== 'defer') throw new Error(`unknown instance ${trace.name}`)
+    if (scenario !== 'child' && scenario !== 'park' && scenario !== 'defer') throw new Error(`unknown instance ${trace.name}`)
     return inProject((dir) => withPermitsFixture(dir, scenario, (runtime) => replayPermits(trace, runtime)))
   })
 }

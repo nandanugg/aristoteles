@@ -3,25 +3,22 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { Effect, Layer } from 'effect'
-import { bindWorker, memberSecretOf, offerWorker, reserveWorker, workerSecretOf, workerSession } from '../actions/worker.ts'
 import { dispatchAct } from '../actions/work.ts'
 import { tsAct } from '../derived/c16/replay/acts.ts'
 import { type MStore } from '../derived/c16/replay/model.ts'
 import { KEY, advance, canonState, initial, project, start } from '../derived/c16/replay/project.ts'
-import { type AdmissionCommand, type PermitsCommand, type RuntimeDriver, type WorkerCommand } from '../derived/pass9/replay/driver.ts'
+import { type AdmissionCommand, type PermitsCommand, type RuntimeDriver } from '../derived/pass9/replay/driver.ts'
 import { type JournalRow, type RuntimeRow, readJournal } from '../derived/pass9/replay/journal.ts'
-import { permitsRead, workerDriver } from '../derived/pass9/replay/runtime-port.ts'
-import type { Identity, JobPhase, TaskPhase } from '../derived/pass9/replay/model.ts'
-import type { AdmissionRead, Owed, PermitsRead, Turn, WorkerObservation } from '../derived/pass9/replay/project.ts'
+import { permitsRead } from '../derived/pass9/replay/runtime-port.ts'
+import type { JobPhase } from '../derived/pass9/replay/model.ts'
+import type { AdmissionRead, PermitsRead } from '../derived/pass9/replay/project.ts'
 import { create, type Author, type Time } from '../schema/index.ts'
-import { Dir, Env, Now, Store, StoreLive, Tokens, stageWorkerLaunch } from '../services/index.ts'
+import { Dir, Env, Now, Store, StoreLive, Tokens } from '../services/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { epochOf, testRule } from '../state/c16/reads.ts'
-import { foldRuntime } from '../state/worker-runtime.ts'
 import type { WorkState } from '../state/c16/state.ts'
-import { type Actor, type Body, keyOf } from '../state/c16/types.ts'
+import { type Actor, type Body } from '../state/c16/types.ts'
 
 export const inProject = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
   const dir = mkdtempSync(join(tmpdir(), 'pass9-replay-'))
@@ -42,99 +39,16 @@ const recording = () => {
   }
 }
 
-export const fixtureWorkerPark = (): RuntimeDriver<WorkerCommand, WorkerObservation> => {
-  const journal = recording()
-  const owed = new Map<Identity, Owed>()
-  let generation = 0
-  let age = 0
-  let printed: WorkerObservation['read']['printed'] = null
-  const launch = () => ({ worker: 'fixture', generation, launch: `launch-${generation}` })
-  const start = () => {
-    generation++
-    journal.append({ kind: 'WorkerReserved', ...launch(), slot: 'one' })
-    journal.append({ kind: 'WorkerBound', ...launch() })
-  }
-  start()
-  const snapshot = () => journal.read().worker('fixture', { owed: [...owed.values()], printed })
-  return workerDriver({
-    read: async () => ({ worker: 'fixture', rows: [...journal.rows], owed: [...owed.values()], printed }),
-    perform: async (command) => {
-      const before = snapshot()
-      switch (command.kind) {
-        case 'offer':
-          owed.set(command.identity, { actor: command.identity, obligation: `ob-${++age}`, age, ready: true })
-          break
-        case 'withdraw':
-          if (before.activeTurn?.actor === command.identity) journal.append({
-            kind: 'TurnClosed', worker: before.worker, generation, turn: before.activeTurn.turn,
-          })
-          owed.delete(command.identity)
-          break
-        case 'printOldest': {
-          const oldest = owed.values().next().value
-          if (!oldest || before.activeTurn || before.session !== 'Online') throw new Error('fixture cannot issue a wait')
-          const scope: Turn = {
-            worker: 'fixture', actor: oldest.actor, obligation: oldest.obligation, generation,
-            epoch: 0, turn: `turn-${++age}`, on: age, step: 'fixture',
-          }
-          journal.append({ kind: 'TurnOffered', scope })
-          printed = { scope, tokenActor: scope.actor, tokenEpoch: scope.epoch }
-          break
-        }
-        case 'submit': {
-          const requested = printed?.scope ?? null
-          if (!requested) throw new Error('fixture has no printed receipt')
-          const accepted = before.activeTurn?.turn === requested.turn && before.session === 'Online'
-          if (accepted) {
-            owed.delete(requested.actor)
-            journal.append({ kind: 'Work.Acted', delivery: requested })
-          }
-          printed = null
-          return {
-            requested, outcome: accepted ? 'taken' : 'refused',
-            credential: { actor: requested.actor, epoch: requested.epoch, generation: requested.generation },
-            ...(accepted ? {} : { refused: requested.generation === generation ? 'stale' : 'epoch' }),
-          }
-        }
-        case 'exit':
-          journal.append({ kind: 'WorkerFenced', ...launch() })
-          journal.append({ kind: 'WorkerEnded', ...launch() })
-          break
-        case 'park':
-          journal.append({ kind: 'RecheckQueued', job: 'park', target: 0, on: 0, items: [] })
-          journal.append({ kind: 'CheckpointSaved', job: 'park' })
-          journal.append({ kind: 'WorkerParkRequested', ...launch(), job: 'park' })
-          journal.append({ kind: 'WorkerParkConfirmed', ...launch(), job: 'park' })
-          break
-        case 'relaunch':
-          start()
-          break
-      }
-      return undefined
-    },
-  })
-}
-
 export interface AdmissionFixture {
-  readonly kind: 'pipe' | 'saturation' | 'collocated'
   readonly pipeCap: number
-  readonly childAllowance: number
 }
 
 export const fixtureAdmission = (options: AdmissionFixture): RuntimeDriver<AdmissionCommand, AdmissionRead> => {
-  const tasks = new Map<number, TaskPhase>(options.kind === 'pipe' ? [] : [[0, 'Queued'], [1, 'Queued']])
-  const jobs = new Map<number, JobPhase>(options.kind === 'pipe' ? [[0, 'Owed'], [1, 'Owed'], [2, 'Owed']] : [])
-  const owner = (task: number) => options.kind === 'collocated' ? task : 0
-  const attempts = new Map<number, number>()
-  const children = new Map<number, number>()
-  const serial = new Set<number>()
+  const jobs = new Map<number, JobPhase>([[0, 'Owed'], [1, 'Owed'], [2, 'Owed']])
   const fixes = new Set<number>()
   const rechecks = new Set<number>()
   const snap = (event?: AdmissionRead['event']): AdmissionRead => ({
-    tasks: [...tasks].map(([id, phase]) => ({ id, phase, owner: owner(id) })),
     jobs: [...jobs].map(([id, phase]) => ({ id, phase })),
-    attempts: [...attempts].map(([subject, owner]) => ({ subject, owner })),
-    children: [...children].map(([subject, owner]) => ({ subject, owner })),
     fixes: [...fixes], rechecks: [...rechecks], ...(event ? { event } : {}),
   })
   return {
@@ -166,34 +80,6 @@ export const fixtureAdmission = (options: AdmissionFixture): RuntimeDriver<Admis
           rechecks.delete(2)
           jobs.set(2, 'Closed')
           break
-        case 'openMake': {
-          const r = owner(command.task)
-          if (options.childAllowance === 0) {
-            tasks.set(command.task, 'Serial')
-          } else {
-            if (children.size >= options.childAllowance) throw new Error('fixture child allowance exceeded')
-            children.set(command.task, r)
-            tasks.set(command.task, 'Child')
-          }
-          attempts.set(command.task, r)
-          break
-        }
-        case 'reviewFails':
-          tasks.set(command.task, 'MakerDown')
-          break
-        case 'endMaker':
-          if (tasks.get(command.task) === 'Serial' && command.outcome === 'Checking') serial.add(command.task)
-          tasks.set(command.task, command.outcome)
-          children.delete(command.task)
-          break
-        case 'releaseAttempt': {
-          const serialReviewed = serial.delete(command.task) && command.outcome === 'Finished'
-          tasks.set(command.task, command.outcome)
-          attempts.delete(command.task)
-          children.delete(command.task)
-          if (serialReviewed) return snap({ kind: 'serialReviewed' })
-          break
-        }
       }
       return snap()
     },
@@ -206,7 +92,7 @@ const by = (actor: Actor): Author => actor._tag === 'Human'
 
 export const withPermitsFixture = async (
   dir: string,
-  scenario: 'child' | 'serial' | 'admission' | 'park' | 'defer',
+  scenario: 'child' | 'park' | 'defer',
   run: (port: RuntimeDriver<PermitsCommand, PermitsRead>) => Promise<void>,
 ) => {
   const env = { ARISTOTELES_DB: `${dir}/aristoteles.db` }
@@ -223,41 +109,18 @@ export const withPermitsFixture = async (
     const store = yield* (yield* Store).open(dir, { create: true })
     const human: Actor = { _tag: 'Human' }
     const harness: Actor = { _tag: 'Harness' }
-    const serial = scenario === 'serial'
-    const liveAdmission = serial || scenario === 'admission'
-    const actor = `role:${seed.cards.keys().next().value}`
-    const placement = { worker: actor, members: [actor], account: 'fixture', model: 'fixture',
-      cli: 'fixture', launch: 'fixture {session}', sessionLimit: 1 }
-    const root = randomUUID().replaceAll('-', '')
-    const workerLaunch = randomUUID().replaceAll('-', '')
     yield* store.write(() => Effect.succeed({
       draft: { at, author: by(human), event: create('Work', {
         _tag: 'Opened', hostSession: null, top: seed.top, items: [...seed.items], cards: [...seed.cards],
         tokens: [], maxTries: seed.maxTries,
-        ...(liveAdmission ? {
-          placements: [placement], admission: [{ actor, concurrency: 1,
-            subagentAllowance: serial ? 0 : 1, backgroundChildren: true }],
-        } : {}),
       }) }, rows: [],
     }))
     const readState = Effect.map(store.events, (events) => foldWork(events)!.state)
     let state = yield* readState
     const execute = (who: Actor, body: Body) => Effect.gen(function* () {
-      const whoKey = keyOf(who)
-      const epoch = epochOf(state, who)
-      let scope: { credential: string; turn: string } | undefined
-      if (liveAdmission && (whoKey === actor || who._tag === 'Maker')) {
-        yield* offerWorker(actor, 1, root)
-        const turn = foldRuntime(yield* store.events).workers.get(actor)?.offer
-        if (!turn || turn.actor !== whoKey) throw new Error('live permits replay selected another actor')
-        scope = {
-          credential: `w.${whoKey}.${epoch}.${memberSecretOf(root, whoKey, epoch)}`,
-          turn: workerSecretOf(root, turn.turn),
-        }
-      }
       const result = yield* Effect.scoped(dispatchAct({
         by: by(who), act: { id: `p${++id}`, who, ep: epochOf(state, who), body },
-        on: state.seq, build: null, current: 'pass9-fixture', ...scope,
+        on: state.seq, build: null, current: 'pass9-fixture',
       }))
       if (result.again) throw new Error('fixture act already dispatched')
       const next = yield* readState
@@ -267,14 +130,7 @@ export const withPermitsFixture = async (
     })
     yield* execute(human, { _tag: 'Revive', actor: { _tag: 'Host' } })
     yield* execute(harness, { _tag: 'Revive', actor: { _tag: 'Pipe' } })
-    if (liveAdmission) {
-      yield* reserveWorker(actor, workerLaunch)
-      yield* Effect.sync(() => stageWorkerLaunch(dir, workerLaunch, 'secret', root))
-      yield* bindWorker(actor, 1, workerLaunch, workerSession(workerLaunch), root)
-      state = yield* readState
-    } else {
-      for (const role of seed.cards.keys()) yield* execute(harness, { _tag: 'Revive', actor: { _tag: 'Role', name: role } })
-    }
+    for (const role of seed.cards.keys()) yield* execute(harness, { _tag: 'Revive', actor: { _tag: 'Role', name: role } })
 
     // Only runtime rows are substituted. The C16 protocol above uses the actual store.
     const journal = recording()
@@ -286,8 +142,8 @@ export const withPermitsFixture = async (
       journal.append({ kind: 'WorkerReserved', ...key, slot: `slot-${key.launch}`, ...(job ? { job } : {}) })
       journal.append({ kind: 'WorkerBound', ...key })
     }
-    if (!liveAdmission) launch(worker('parent', ++parentGeneration))
-    const background = scenario === 'child' || scenario === 'admission'
+    launch(worker('parent', ++parentGeneration))
+    const background = scenario === 'child'
     const inspect = (s: WorkState): PermitsRead => {
       const tasks = [...ctx.slotTask].flatMap(([slot, task]) => {
         const found = s.tasks.get(task)
@@ -300,9 +156,9 @@ export const withPermitsFixture = async (
       return permitsRead(journal.rows, 'parent', activeJob?.id ?? null, {
         protocol: project(canonState(s, ctx), ctx),
         attempts: tasks.filter(({ task }) => task.state === 'Working' || task.state === 'InReview').map(({ slot }) => slot),
-        makerChildren: serial ? [] : makers.map(({ slot }) => slot),
+        makerChildren: makers.map(({ slot }) => slot),
         parkSupported: scenario !== 'defer',
-        foreground: (serial || !background) && makers.some(({ task }) => task.state === 'Working'),
+        foreground: !background && makers.some(({ task }) => task.state === 'Working'),
       })
     }
     const runAct = (act: Extract<PermitsCommand, { kind: 'act' }>['act']) => {
@@ -316,50 +172,6 @@ export const withPermitsFixture = async (
       const actual = { ruleForm, tasks: new Map(), fixes: state.fixes } as unknown as MStore
       const call = tsAct(act, actual, actual, state, ctx, id, false)
       return execute(call.who, call.body)
-    }
-    if (liveAdmission) {
-      const read = async (): Promise<PermitsRead> => {
-        const records = await Effect.runPromise(store.events)
-        const { state, permits } = foldWork(records)!
-        const runtime = foldRuntime(records)
-        const slot = (task: string) => [...ctx.slotTask].find(([, id]) => task === id)?.[0] ?? -1
-        const serialWorking = [...runtime.serial.values()].some(({ attempt }) =>
-          state.tasks.get(attempt)?.state === 'Working')
-        return {
-          protocol: project(canonState(state, ctx), ctx),
-          attempts: [...permits.roles.keys()].map(slot),
-          makerChildren: [...runtime.children.values()].filter(({ released, reservation }) =>
-            released === null && reservation.purpose === 'maker')
-            .map(({ reservation }) => slot(reservation.attempt)),
-          worker: { online: runtime.workers.get(actor)?.binding != null, foreground: serialWorking },
-          slots: [...runtime.workers.values()].filter(({ ended }) => !ended).map(({ reservation }) => reservation.slot),
-          parkSupported: false,
-          job: null,
-        }
-      }
-      yield* Effect.promise(() => run({
-        read,
-        step: async (command) => {
-          if (command.kind !== 'act') throw new Error('unexpected scheduler action in the live permits trace')
-          await Effect.runPromise(runAct(command.act).pipe(Effect.provide(layer)))
-          if (scenario === 'admission' && command.act.who === 'Role' && command.act.tag === 'Open') {
-            const next = [...state.tasks.values()].find(({ state }) => state === 'Sent')
-            if (!next) throw new Error('finite admission witness has no second task to try')
-            const who: Actor = { _tag: 'Role', name: next.role }
-            const ep = epochOf(state, who)
-            const result = await Effect.runPromise(Effect.scoped(dispatchAct({
-              by: by(who), act: { id: `p${++id}`, who, ep, body: { _tag: 'Open', open: { _tag: 'OpenMake', task: next.id } } },
-              on: state.seq, credential: `w.${actor}.${ep}.${memberSecretOf(root, actor, ep)}`,
-              build: null, current: 'pass9-fixture',
-            })).pipe(Effect.result, Effect.provide(layer)))
-            if (result._tag !== 'Failure' || !('refused' in result.failure) || result.failure.refused !== 'cap') {
-              throw new Error('live permits replay did not refuse the second attempt at the cap')
-            }
-          }
-          return read()
-        },
-      }))
-      return
     }
     yield* Effect.promise(() => run({
       read: async () => inspect(await Effect.runPromise(readState)),

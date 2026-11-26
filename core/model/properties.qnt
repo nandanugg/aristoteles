@@ -5,7 +5,6 @@ module properties {
   import types.* from "./types"
   import contract.* from "./contract"
   import check.* from "./check"
-  // An instance imports this module alone: the model it checks comes with the properties.
   export check.*
 
   // ---- safety: invariants of every reachable state
@@ -65,59 +64,14 @@ module properties {
   temporal AgentChangesStop = eventually(always(agentChangeFlag))
                               or eventually(always(not(agentChangeFlag)))
   // The run settles: in the end it is Final for good (ended, or waiting only on a person who
-  // has no acts left). It holds with the person's acts bounded (maxPersonActs, P); without P
-  // the person can keep a draft going round for ever: corePersonUnbounded breaks it (expected:
-  // the run then depends on the person, not on the system).
+  // has no acts left). This was the composed model's bounded-person assumption.
   temporal Settles = eventually(always(finalOf(store)))
   temporal CoreProgress = Assumed implies Progress
   temporal CoreChangesStop = Assumed implies AgentChangesStop
   temporal CoreSettles = Assumed implies Settles
-  // The answerer's own work is not starved (an answer alternates with a step of its own): the
-  // role is, again and again, owed no step of its own (assign, review, resume, hear), or the
-  // run is Final.
-  temporal AnswererFinishes =
-    Assumed implies always(eventually(ownToldSteps(store, Role) == Set() or finalOf(store)))
 
-  // ---- the assumption cut (TLC must break these: the assumption is not vacuous)
-  // Without the pipeline role's part of the assumption a run can stop short of Final.
-  temporal AssumedNoPipe = all {
-    G1(owes(Host), mustChange(agentStep(Host), vars), store.down.contains(Host)),
-    G1(owes(Role), mustChange(agentStep(Role), vars), false),
-    G1(owes(Maker(0)), mustChange(agentStep(Maker(0)), vars), false),
-    G1(owes(Maker(1)), mustChange(agentStep(Maker(1)), vars), false),
-    EngineFair,
-  }
-  temporal CoreProgressNoPipe = AssumedNoPipe implies Progress
-  // Without engine fairness (the watcher's revive) a role's exit can stall the run: TLC must
-  // break this on coreTwoExit.
-  temporal CoreProgressNoEngine = AgentsG1 implies Progress
 
-  // ---- witnesses (the simulator or TLC must break them: the case is reached)
-  // A run is Final with a question still open.
-  val NoFinalWithAsk: bool = not(store.asks.exists(ask => ask.kind == Question)
-                                 and finalOf(store) and not(store.top.ended))
-  // Questions cross: an ask each way at once.
-  val NoCrossing: bool = not(store.asks.exists(ask => ask.kind == Question and
-    store.asks.exists(back => back.kind == Question and back.from == ask.to
-                              and back.to == ask.from)))
-  // A wait chain of length 2 or more (host -> role -> maker).
-  val NoWaitChain: bool = not(waitClosure(store).exists(edge =>
-    edge._1 == Host and isMakerActor(edge._2)))
-  // The full chain host -> role -> pipeline role -> person.
-  val NoLongWaitChain: bool = not(waitClosure(store).exists(edge =>
-    edge._1 == Host and edge._2 == Human))
-  // An asker reaches the cap.
-  val NoCapReached: bool = store.askCount.keys().forall(pair =>
-    store.askCount.get(pair) < ASK_CAP)
-  // A role revived while its task was working: the task went back to Sent and got a fresh maker.
-  val NoRestartAssigned: bool = not(store.ghost.restartedAssigned)
-  // A role revived while its task was in review: its Check survived and was judged.
-  val NoKeptCheckJudged: bool = not(store.ghost.keptCheckJudged)
-  // A kept Check was failed (the task went to Sent: the old maker is gone) and a fresh maker took
-  // the task.
-  val NoKeptFailAssigned: bool = not(store.ghost.keptFailAssigned)
-  // After that, an open Execute never names an ended maker (the Resume is told and allowed only
-  // for a live maker: resumeAllowed, resumeTold).
+  // An open Execute never names an ended maker.
   val NoExecuteToEndedMaker: bool = store.asks.forall(ask =>
     not(ask.kind == Execute and isMakerActor(ask.to)) or isLive(store, ask.to))
   val OutputScopeSound: bool = SLOTS.forall(slot =>
@@ -127,11 +81,4 @@ module properties {
   // A slot represents one part after a split. Task 0 starts without the output fact.
   val NoAddedOutputScope: bool = not(taskOf(store, 0).sections < OPTIONS.sections
     and itemsFor(store, 0).contains(ItemStandard(1)))
-  // A repeat past the cap raised its task.
-  val NoAskRaise: bool = not(store.ghost.askRaised)
-  // Witness: after a maker's AskRaise, the person takes the earlier result as is and a recheck
-  // is owed (canon must keep the result's checked versions for this to be reachable).
-  val NoRecheckAfterAskRaise: bool = not(store.ghost.askRaised and SLOTS.exists(slot =>
-    taskOf(store, slot).taken and taskOf(store, slot).state == Done
-      and taskOf(store, slot).pending != Set()))
 }
