@@ -41,7 +41,7 @@ module onboardingReviewCase {
     val fresh = source._2 == state.child and source._1 == state.reviewLifetime and current(state.session, 1, source._1)
     val nextProposal = if (fresh or not(liveGuard)) proposalFacts(state.proposal, 1, holds) else state.proposal
     all {
-      proposalPhase(state.proposal) == "Reviewing", state.child > 0,
+      proposalPhase(state.proposal) == ProposalReview(NoPayload), state.child > 0,
       state' = { ...state, proposal: nextProposal, child: if (nextProposal == state.proposal) state.child else 0,
         staleTried: state.staleTried or (state.reviewLifetime == 2 and source == (1, 2)),
         reviewLive: if (nextProposal == state.proposal) state.reviewLive else fresh,
@@ -50,13 +50,13 @@ module onboardingReviewCase {
   }
   action acceptDraft = {
     nondet actor = Set(1, 9).oneOf()
-    val nextProposal = ownerChoice(state.proposal, actor, 9, 1, "accept")
+    val nextProposal = ownerChoice(state.proposal, actor, 9, 1, Accept)
     state' = { ...state, proposal: nextProposal,
       acceptedEarly: state.acceptedEarly or (nextProposal != state.proposal and not(state.reviewLive)) }
   }
   action step = any { submitDraft, openFreshChild, exit, recover, report, acceptDraft, state' = state }
   val Safety = not(state.acceptedEarly) and
-    ((owed(proposalLine, proposalPhase(state.proposal)) == Owner or proposalPhase(state.proposal) == "Accepted") implies state.reviewLive)
+    ((owed(proposalLine, proposalPhase(state.proposal)) == Owner or proposalPhase(state.proposal) == Accepted(NoPayload)) implies state.reviewLive)
   val Success = state.proposal == Accepted(1) and state.returnedOnce
   val Fault = state.staleTried and current(state.session, 1, 2) and state.proposal == Accepted(1)
 }

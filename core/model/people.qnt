@@ -1,11 +1,14 @@
 module people {
   import lines.* from "./lines"
-  type Session = Live({ staff: int, subscription: int, lifetime: int }) |
-    Paused({ staff: int, subscription: int, lifetime: int, checkpoint: int }) | Ended(int)
-  pure val sessionLine = Map(
-    "Live" -> { owes: Engine, moves: Set(("next", "Ended"), ("next", "Paused")) },
-    "Paused" -> { owes: Engine, moves: Set(("next", "Live")) },
-    "Ended" -> { owes: NoDuty, moves: Set() }
+  type SessionPhase[live, paused, ended] = Live(live) | Paused(paused) | Ended(ended)
+  type Session = SessionPhase[{ staff: int, subscription: int, lifetime: int },
+    { staff: int, subscription: int, lifetime: int, checkpoint: int }, int]
+  type SessionKey = SessionPhase[PhaseKey, PhaseKey, PhaseKey]
+  type SessionMove = | SessionNext
+  pure val sessionLine: Line[SessionKey, SessionMove] = Map(
+    Live(NoPayload) -> { owes: Engine, moves: Set((SessionNext, Ended(NoPayload)), (SessionNext, Paused(NoPayload))) },
+    Paused(NoPayload) -> { owes: Engine, moves: Set((SessionNext, Live(NoPayload))) },
+    Ended(NoPayload) -> { owes: NoDuty, moves: Set() }
   )
   pure def live(staff: int, subscription: int, lifetime: int): Session =
     Live({ staff: staff, subscription: subscription, lifetime: lifetime })
@@ -22,17 +25,17 @@ module people {
     | _ => false
   }
   pure def end(session: Session): Session = match session {
-    | Live(state) => if (allows(sessionLine, "Live", "next", "Ended")) Ended(state.lifetime) else session
+    | Live(state) => if (allows(sessionLine, Live(NoPayload), SessionNext, Ended(NoPayload))) Ended(state.lifetime) else session
     | _ => session
   }
   pure def pause(session: Session, checkpoint: int): Session = match session {
-    | Live(state) => if (allows(sessionLine, "Live", "next", "Paused"))
+    | Live(state) => if (allows(sessionLine, Live(NoPayload), SessionNext, Paused(NoPayload)))
         Paused({ staff: state.staff, subscription: state.subscription, lifetime: state.lifetime, checkpoint: checkpoint })
       else session
     | _ => session
   }
   pure def resume(session: Session, lifetime: int): Session = match session {
-    | Paused(state) => if (allows(sessionLine, "Paused", "next", "Live") and lifetime > state.lifetime)
+    | Paused(state) => if (allows(sessionLine, Paused(NoPayload), SessionNext, Live(NoPayload)) and lifetime > state.lifetime)
         live(state.staff, state.subscription, lifetime)
       else session
     | _ => session
@@ -66,13 +69,16 @@ module people {
     if (subject.review != Waiting or busy.contains(by) or (fifo and not(hasAllowance) and hasEarlierEntry)) -1 else by
   }
 
-  type Question = Open(int) | Answered({ recipient: int, text: int })
-  pure val questionLine = Map(
-    "Open" -> { owes: Recipient, moves: Set(("answer", "Answered")) },
-    "Answered" -> { owes: NoDuty, moves: Set() }
+  type QuestionPhase[open, answered] = Open(open) | Answered(answered)
+  type Question = QuestionPhase[int, { recipient: int, text: int }]
+  type QuestionKey = QuestionPhase[PhaseKey, PhaseKey]
+  type QuestionMove = | GiveAnswer
+  pure val questionLine: Line[QuestionKey, QuestionMove] = Map(
+    Open(NoPayload) -> { owes: Recipient, moves: Set((GiveAnswer, Answered(NoPayload))) },
+    Answered(NoPayload) -> { owes: NoDuty, moves: Set() }
   )
   pure def answer(question: Question, by: int, text: int, authorize: bool): Question = match question {
-    | Open(recipient) => if (allows(questionLine, "Open", "answer", "Answered") and
+    | Open(recipient) => if (allows(questionLine, Open(NoPayload), GiveAnswer, Answered(NoPayload)) and
                            (not(authorize) or by == recipient))
         Answered({ recipient: by, text: text })
       else question

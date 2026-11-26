@@ -15,13 +15,13 @@ module reviewEvidenceCase {
     sawRetry: false, commandFailed: false
   }
   action result = all {
-    taskPhase(state.task) == "Working",
+    taskPhase(state.task) == Working(NoPayload),
     state' = { ...state, task: reportResult(state.task, 1, 1, 7) }
   }
   action commands = {
     nondet outcome = Set(holdingCommand, failingCommand).oneOf()
     all {
-      taskPhase(state.task) == "ReadyToReview",
+      taskPhase(state.task) == ReadyToReview(NoPayload),
       state' = { ...state, task: enterReview(state.task, [outcome]), commandFailed: outcome.breaks }
     }
   }
@@ -42,14 +42,14 @@ module reviewEvidenceCase {
             state' = { ...state, task: task,
               triedBadInput: state.triedBadInput or not(valid),
               lastReportValid: task == state.task or valid,
-              sawRetry: state.sawRetry or taskPhase(task) == "Working" }
+              sawRetry: state.sawRetry or taskPhase(task) == Working(NoPayload) }
           }
         }
       | _ => all { false, state' = state }
     }
   }
   action step = any { result, commands, assignReview, report, state' = state }
-  val Safety = state.lastReportValid and (taskPhase(state.task) != "Done" or not(state.commandFailed))
+  val Safety = state.lastReportValid and (taskPhase(state.task) != Done(NoPayload) or not(state.commandFailed))
   val Success = match state.task {
     | Done(done) => done.outcomes == [holdingCommand, holdingPrompt]
     | _ => false

@@ -2,7 +2,7 @@
 
 ## Metis-first checks
 
-[CORE.md](../../plan/types/CORE.md) specifies the shared lines, current scope, and fault classes. The first slice covers onboarding proposals and activation, staff sessions, questions, and a task through review. It derives back or raise from reported facts. A raised task is the endpoint of this slice.
+[CORE.md](../../plan/types/CORE.md) specifies the shared lines, current scope, and fault classes. The first slice covers onboarding proposals and activation, staff sessions, questions, and a task through review. Review facts derive the task move directly. An uncheckpointed crash takes `restart` from Working to Sent with the same retry count, and the next start allocates a fresh attempt. A raised task is the endpoint of this slice.
 
 `lines.qnt` supplies the shared edge check, task and proposal moves, and review evidence and decision rules. `people.qnt` supplies session authority, capacity, review slot selection, and questions. `activation.qnt` holds the lifecycle, durable commit and binding observations, and rollback checks. The finite cases use small identities and abstract external observations, including a fixed marker file, process acknowledgements, exact evidence, and an interrupted operation followed by recovery. Runtime conformance to the new lines starts with their implementation.
 
@@ -16,14 +16,14 @@
 
 ### Size budget
 
-The shared model stays under about 500 lines. Each check stays under about 80. Each phase row names the duty and its legal destinations. A part that cannot fit needs a review of what forces its size before it grows.
+The shared model stays under about 500 lines. Each check stays under about 80. Each phase row names the duty and its legal destinations. Records and table keys use the same phase constructors. A key keeps the constructor with an empty payload. Each line uses its own move sum. A part that cannot fit needs a review of what forces its size before it grows.
 
 | Shared file | Lines |
 | --- | ---: |
-| [lines.qnt](lines.qnt) | 170 |
-| [people.qnt](people.qnt) | 81 |
-| [activation.qnt](activation.qnt) | 106 |
-| **Total** | **357** |
+| [lines.qnt](lines.qnt) | 180 |
+| [people.qnt](people.qnt) | 87 |
+| [activation.qnt](activation.qnt) | 100 |
+| **Total** | **367** |
 
 ### TLC results
 
@@ -31,15 +31,15 @@ Wall time includes Quint translation and checker startup. Mutant counts show the
 
 | Check file | Lines | Safety states | Wall time | Mutant states | Mutant wall time |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| [taskReportRace.qnt](checks/taskReportRace.qnt) | 49 | 27 | 5 s | 23 | 6 s |
-| [reviewEvidence.qnt](checks/reviewEvidence.qnt) | 64 | 68 | 6 s | 8 | 5 s |
+| [taskReportRace.qnt](checks/taskReportRace.qnt) | 49 | 27 | 6 s | 19 | 6 s |
+| [reviewEvidence.qnt](checks/reviewEvidence.qnt) | 64 | 68 | 6 s | 8 | 8 s |
 | [reviewSlot.qnt](checks/reviewSlot.qnt) | 69 | 288 | 6 s | 6 | 6 s |
-| [staffCapacity.qnt](checks/staffCapacity.qnt) | 58 | 81 | 6 s | 21 | 5 s |
-| [onboardingReview.qnt](checks/onboardingReview.qnt) | 68 | 30 | 6 s | 14 | 6 s |
-| [activationCommit.qnt](checks/activationCommit.qnt) | 72 | 43 | 6 s | 44 | 6 s |
-| [activationRollback.qnt](checks/activationRollback.qnt) | 62 | 30 | 5 s | 24 | 6 s |
-| [activationHostBinding.qnt](checks/activationHostBinding.qnt) | 71 | 122 | 6 s | 22 | 6 s |
-| [staffReplacement.qnt](checks/staffReplacement.qnt) | 79 | 12 | 7 s | 8 | 6 s |
+| [staffCapacity.qnt](checks/staffCapacity.qnt) | 58 | 81 | 7 s | 21 | 6 s |
+| [onboardingReview.qnt](checks/onboardingReview.qnt) | 68 | 30 | 7 s | 15 | 6 s |
+| [activationCommit.qnt](checks/activationCommit.qnt) | 72 | 43 | 7 s | 44 | 6 s |
+| [activationRollback.qnt](checks/activationRollback.qnt) | 62 | 30 | 6 s | 24 | 6 s |
+| [activationHostBinding.qnt](checks/activationHostBinding.qnt) | 71 | 122 | 6 s | 22 | 7 s |
+| [staffReplacement.qnt](checks/staffReplacement.qnt) | 79 | 12 | 7 s | 8 | 7 s |
 | [questionAnswer.qnt](checks/questionAnswer.qnt) | 33 | 20 | 6 s | 4 | 5 s |
 
 All ten safety invariants held, and each mutant violated the same invariant. The simulator also reached both named witnesses in each case.

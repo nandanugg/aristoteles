@@ -18,24 +18,18 @@ module activation {
     phase: Onboarding, file: Approved, reserved: 0, alive: Set(), acked: Set(),
     binding: 0, pending: 0, top: 0, delivered: Set(), used: false
   }
-  pure val activationLine = Map(
-    "Onboarding" -> { owes: Owner, moves: Set(("next", "Activating")) },
-    "Activating" -> { owes: Engine, moves: Set(("next", "Active"), ("back", "RollingBack")) },
-    "RollingBack" -> { owes: Engine, moves: Set(("back", "Onboarding")) },
-    "Active" -> { owes: NoDuty, moves: Set() }
+  type ActivationMove = ActivationNext | ActivationBack
+  pure val activationLine: Line[Activation, ActivationMove] = Map(
+    Onboarding -> { owes: Owner, moves: Set((ActivationNext, Activating)) },
+    Activating -> { owes: Engine, moves: Set((ActivationNext, Active), (ActivationBack, RollingBack)) },
+    RollingBack -> { owes: Engine, moves: Set((ActivationBack, Onboarding)) },
+    Active -> { owes: NoDuty, moves: Set() }
   )
-  pure def activationPhase(phase: Activation): str = match phase {
-    | Onboarding => "Onboarding"
-    | Activating => "Activating"
-    | Active => "Active"
-    | RollingBack => "RollingBack"
-  }
-  pure def move(record: Record, label: str, nextPhase: Activation): Record =
-    if (allows(activationLine, activationPhase(record.phase), label, activationPhase(nextPhase)))
-      { ...record, phase: nextPhase }
+  pure def move(record: Record, label: ActivationMove, nextPhase: Activation): Record =
+    if (allows(activationLine, record.phase, label, nextPhase)) { ...record, phase: nextPhase }
     else record
   pure def authorize(record: Record, approved: bool): Record =
-    if (approved and record.file == Approved) move(record, "next", Activating) else record
+    if (approved and record.file == Approved) move(record, ActivationNext, Activating) else record
   pure def mark(record: Record): Record =
     if (record.phase == Activating and record.file == Approved) { ...record, file: Marked } else record
   pure def reserve(record: Record, launch: int): Record =
@@ -59,9 +53,9 @@ module activation {
     else record
   }
   pure def observeActive(record: Record): Record =
-    if (record.binding != 0) move(record, "next", Active) else record
+    if (record.binding != 0) move(record, ActivationNext, Active) else record
   pure def rollback(record: Record): Record =
-    if (record.binding == 0) move(record, "back", RollingBack) else record
+    if (record.binding == 0) move(record, ActivationBack, RollingBack) else record
   pure def restore(record: Record, checkFile: bool): Record =
     if (record.phase == RollingBack and (record.file == Marked or not(checkFile)))
       { ...record, file: Approved }
@@ -69,7 +63,7 @@ module activation {
   pure def clean(record: Record): Record =
     if (record.phase == RollingBack and record.file != Marked) {
       val stopped = { ...record, reserved: 0, alive: Set(), acked: Set() }
-      move(stopped, "back", Onboarding)
+      move(stopped, ActivationBack, Onboarding)
     } else record
   pure def rebind(record: Record, launch: int): Record =
     if (record.phase == Active and record.top == 0 and record.pending == 0 and

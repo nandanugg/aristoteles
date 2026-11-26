@@ -231,6 +231,7 @@ Nanda accepted the Round 70 names and moves with the removals recorded below. Th
 | takeReview | removed as a move | ReadyToReview advances to Reviewing with its one reviewing role. |
 | claimPerspective | removed as a move | The engine opens the fresh view and records it on the review. |
 | review | removed as a move | Review facts lead to next, back, or raise on the task line. |
+| restart | keep | A confirmed crash without a checkpoint returns Working to Sent with the same retry count. |
 | reopenReview | removed as a move | Changed guidance sends the task back to ReadyToReview. |
 | collectSubtasks | removed as a move | Completed subtasks give their parent the result for its next phase. |
 | rejectResult | removed as a move | A human rejection is the fact from which the engine raises the task. |
@@ -841,7 +842,7 @@ Within Raised, the pipeline assesses the problem using the involved rules’ bre
 
 A Fix’s first draft and submission are one journal move from Evaluating to the proposal’s Reviewing. The preceding assessment can be durable within Evaluating so a crash during drafting restarts there. An owner’s sendBack enters the ordinary proposal’s Drafting, and resubmission supplies changed material. Acceptance publishes the change and returns the task to Sent. The owner may take an actual retained result as is or return the fix to Evaluating. Submitting a quoted human act uses the same proposal move and goes to WaitingForOwner. Confirming it runs the contained human choice in the same project transaction.
 
-The task and proposal states have separate payloads. Raised contains the Fix, which can contain a proposal. A paused session remains a historical Paused record. A confirmed checkpoint resumes the same attempt under a new Live session. A crash without a checkpoint returns Working to Sent in the same fold, retaining its retry count and last attempt number. The next start allocates a fresh attempt. Reviews assigned to the ended staff return to waiting at their original entry, including proposal reviews. Committed results, command outcomes, and answered questions are preserved.
+The task and proposal states have separate payloads. Raised contains the Fix, which can contain a proposal. A paused session remains a historical Paused record. A confirmed checkpoint resumes the same attempt under a new Live session. When a session ends without a checkpoint, the session event folds the task’s `restart` from Working to Sent, retaining its retry count and last attempt number. The next start allocates a fresh attempt. The session event carries the exit observation for all affected tasks and reviews. Reviews assigned to the ended staff return to waiting at their original entry, including proposal reviews. Committed results, command outcomes, and answered questions are preserved.
 
 ```typescript
 type Duty = 'Assignee' | 'Reviewer' | 'Pipeline' | 'Proposer' | 'Owner' | 'Recipient' | 'Engine' | 'None'
@@ -862,7 +863,7 @@ type MoveOf<L extends AnyLine> = { [S in StateOf<L>]: MoveAt<L, S> }[StateOf<L>]
 
 const taskLine = line({
   Sent:          { owes: 'Assignee', moves: { next: ['Working'], split: ['Split'] } },
-  Working:       { owes: 'Assignee', moves: { next: ['ReadyToReview'], raise: ['Raised'], drop: ['Working'] } },
+  Working:       { owes: 'Assignee', moves: { next: ['ReadyToReview'], raise: ['Raised'], restart: ['Sent'], drop: ['Working'] } },
   ReadyToReview: { owes: 'Engine', moves: { next: ['Reviewing'], raise: ['Raised'] } },
   Reviewing:     { owes: 'Reviewer', moves: {
     next: ['Reviewing', 'Done'], back: ['Working', 'Split'], raise: ['Raised'],
@@ -1065,6 +1066,7 @@ const taskInput = {
   next: Schema.TaggedStruct('next', { fact: Schema.Union([Began, WorkResult, CommandOutcomes, Reviewing, Reviewed, SubtasksDone]) }),
   back: Schema.TaggedStruct('back', { fact: Schema.Union([Reviewed, GuidanceChanged, Integrated]) }),
   raise: Schema.TaggedStruct('raise', { fact: Schema.Union([TooBig, Reviewed, HumanRejection]) }),
+  restart: Schema.TaggedStruct('restart', { session: SessionId }),
   split: Schema.TaggedStruct('split', { plan: SplitInput }),
   merge: Schema.TaggedStruct('merge', { plan: SplitInput }),
   redistribute: Schema.TaggedStruct('redistribute', { plan: SplitInput }),
@@ -1555,6 +1557,7 @@ type Needs = {
     next: Files | Commands | Sessions | Limits
     back: Files | Limits
     raise: Files | Limits
+    restart: Sessions
     split: Limits
     merge: Limits
     redistribute: Limits
@@ -2264,7 +2267,7 @@ Each new path starts at the named entry condition and counts committed moves. An
 
 #### Staff session crash and resume
 
-- **Shortest path.** From Live, observe an exit and retire that session in one move. The same move sends its Working tasks back to Sent with the same RetryCount and releases its assigned reviews back to waiting in entry order. A confirmed replacement creates a new Live record for the same staff through project next. That is two session changes. For a planned pause, Live → Paused saves the checkpoint, and Paused → new Live creates the next lifetime. Starting a Sent task after the crash allocates a fresh attempt. Resuming a checkpoint under a replacement lifetime keeps the attempt. Committed results, answered questions and completed command evidence survive. An interrupted review returns to waiting on its original entry. A new fresh child gets authority. A report from the old child or session is refused even when the staff identity is unchanged.
+- **Shortest path.** From Live, observe an exit and retire that session in one move. The session event folds `restart` for its Working tasks, returning them to Sent with the same RetryCount. It also releases its assigned reviews back to waiting in entry order. A confirmed replacement creates a new Live record for the same staff through project next. That is two session changes. For a planned pause, Live → Paused saves the checkpoint, and Paused → new Live creates the next lifetime. Starting a Sent task after the crash allocates a fresh attempt. Resuming a checkpoint under a replacement lifetime keeps the attempt. Committed results, answered questions and completed command evidence survive. An interrupted review returns to waiting on its original entry. A new fresh child gets authority. A report from the old child or session is refused even when the staff identity is unchanged.
 - **Merge and loops.** An observation and its journal append can share a move. Keep end or pause evidence separate from the confirmed replacement because they can fail independently. Duplicate exit observations, reconnects to the same live process, and repeated submissions with the old authority add nothing. The confirmed exit is the input for these changes. The same fold resets affected task and proposal assignments and preserves earlier command outcomes and answers.
 - **Today.** The Round 71 worker trace `worker-replacement`, states 4–7, takes exit, relaunch, then an old submit that is refused. The core model advances the actor epoch on Revive. A role’s revive ends its makers and sends Working back to Sent, while keeping an existing Check on a reported result. The terminal model checks reattach, revive and lost delivery separately. The new path uses one staff lifetime across the staff’s roles, with all eligible duties derived again from the project. [Current core recovery](../../core/model/protocol.qnt#L1063) · [Current terminal recovery](../../core/model/terminals.qnt)
 
@@ -2479,7 +2482,7 @@ Use one small state space per row and one fault at a time, except where the inte
 | `activationCommit` | crash, partial execution, out of order | One accepted proposal set, one marker file, two launch identities and one crash between durable steps. Require current file evidence and acknowledgement. No orphan host, premature work or second activation. Reconcile commit-before-note without losing the binding. |
 | `activationRollback` | human intervention, config changes, data loss, crash | One approved file, one human edit, approval or cancellation, and one interruption during restoration. Retain the human edit, restore only the project’s own changes, and keep a committed activation intact. |
 | `activationHostBinding` | human intervention, crash, out of order, partial execution | One committed host, one pending replacement and an opening top. Authorize only the committed binding, retire delivery only on authenticated use, and reconcile a committed rebind before cancellation. |
-| `staffReplacement` | crash, timing, out of order, data loss | One staff, one working task, one running review and one replacement lifetime. Keep committed results and answers, send Working back to Sent with its retry count, and return assigned reviews to waiting. Only one live session holds authority. A checkpoint resumes the same attempt. Exercise pause and crash as separate scenarios with the same checked shape. |
+| `staffReplacement` | crash, timing, out of order, data loss | One staff, one working task, one running review and one replacement lifetime. Keep committed results and answers, use `restart` from Working to Sent with the same retry count, and return assigned reviews to waiting. Only one live session holds authority. A checkpoint resumes the same attempt. Exercise pause and crash as separate scenarios with the same checked shape. |
 | `questionAnswer` | human intervention, duplicate, dependency failure | One open question with two potential responders. Only its recipient can answer once. Preserve the question across session replacement. A design that lets questions block transitions also needs a separate two-subject cycle refusal check. |
 | `pageCatchUp` | network, out of order, data loss | One authoritative phase change, one disconnected browser and a delayed update. Catch up from the authoritative journal and show its owed actor and phase. A request from the pre-change view fails when it relied on the changed record. |
 

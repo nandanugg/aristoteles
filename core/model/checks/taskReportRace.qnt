@@ -32,13 +32,13 @@ module taskReportRaceCase {
     }
   }
   action testCommands = all {
-    taskPhase(state.task) == "ReadyToReview",
+    taskPhase(state.task) == ReadyToReview(NoPayload),
     state' = { ...state, task: enterReview(state.task, []) }
   }
   action step = any { begin, prepare, interrupt, commitResult, testCommands, state' = state }
   val Safety = state.writes.length() <= 1 and
-    (state.writes.length() == 1) == Set("ReadyToReview", "Reviewing").contains(taskPhase(state.task))
-  val Success = taskPhase(state.task) == "Reviewing" and state.writes.length() == 1
+    (state.writes.length() == 1) == Set(ReadyToReview(NoPayload), Reviewing(NoPayload)).contains(taskPhase(state.task))
+  val Success = taskPhase(state.task) == Reviewing(NoPayload) and state.writes.length() == 1
   val Fault = state.interrupted and state.copies == Set() and state.writes.length() == 1
 }
 module taskReportRace {

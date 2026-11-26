@@ -38,7 +38,7 @@ module staffReplacementCase {
     | _ => all { false, state' = state }
   }
   action startAgain = all {
-    current(state.session, 1, 2), taskPhase(state.work) == "Sent",
+    current(state.session, 1, 2), taskPhase(state.work) == Sent(NoPayload),
     state' = { ...state, work: beginWork(state.work, 2) }
   }
   action finishWork = {
@@ -64,12 +64,12 @@ module staffReplacementCase {
     | ReadyToReview(saved) => saved.attempt == continued
     | _ => false
   }
-  val Safety = not(state.staleApplied) and WorkPreserved and
-    state.question == Answered({ recipient: 1, text: 9 }) and
+  val Safety = WorkPreserved and not(allows(taskLine, Working(NoPayload), Next, Sent(NoPayload))) and
+    not(state.staleApplied) and state.question == Answered({ recipient: 1, text: 9 }) and
     (not(current(state.session, 1, 1)) implies state.review == waiting and state.proposal == pending) and
     state.past.forall(old => not(sessionStaff(old, 1)))
-  val Success = not(state.crashed) and taskPhase(state.work) == "ReadyToReview"
-  val Fault = state.crashed and state.staleTried and taskPhase(state.work) == "ReadyToReview"
+  val Success = not(state.crashed) and taskPhase(state.work) == ReadyToReview(NoPayload)
+  val Fault = state.crashed and state.staleTried and taskPhase(state.work) == ReadyToReview(NoPayload)
 }
 module staffReplacement {
   import staffReplacementCase(currentRun = true).* from "./staffReplacement"
