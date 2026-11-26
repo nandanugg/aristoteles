@@ -24,6 +24,8 @@ witness() {
   seed=0x2a
   # The capacity fault includes an actual plan replacement before the stale start.
   if [ "$check:$kind" = 'staffCapacity:fault' ]; then seed=31; fi
+  # A launch identity denotes a single process lifetime in the live adapter.
+  if [ "$check:$kind" = 'activationCommit:success' ]; then seed=38; fi
   "$root/node_modules/.bin/quint" run "$file" --main="$instance" \
     --backend=typescript --seed="$seed" --max-samples=5000 --max-steps=45 --n-threads=1 \
     --mbt --verbosity=1 --invariant="$invariant" --out-itf="$tmp/$kind-{seq}.itf.json" \

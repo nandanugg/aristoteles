@@ -1,9 +1,12 @@
 import { expect, test } from 'bun:test'
 import { chromium } from 'playwright'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { writeFileSync } from 'node:fs'
+import { projectActivationOperations } from '../../adapters/live/project-activation.ts'
+import { approvedText, fakeBootstrap, hostId } from '../../src/store/project-activation.probe.ts'
 import { Effect, Result, Schema, Stream } from 'effect'
 import { launchNextReview, type Reviews } from '../../adapters/live/proposal.ts'
-import { projectEvents, projectEventStream, projectOnboarding, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
+import { projectActivationApproval, projectEvents, projectEventStream, projectOnboarding, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
 import { proposalsForOwner } from '../../adapters/words/project.ts'
 import { create, open, session, staff, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
@@ -195,11 +198,23 @@ test('U4 measures submission to page visibility and review dispatch separately f
   }))),
 ))
 
-test('the browser shows the reviewed proposal and accepts its pinned company direction', () => withJournal((path) =>
+test('the browser moves from the reviewed direction to work under its bound host', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
-    const opened = yield* create(journal)
-    const live = yield* startFixtureSession(journal, opened.state)
+    const directory = dirname(path)
+    writeFileSync(join(directory, 'AGENTS.md'), approvedText)
+    const staffed = yield* sharedStaffing(journal)
+    const live = yield* startFixtureSession(journal, staffed)
+    const bootstrap = fakeBootstrap()
+    const activate = projectActivationOperations(directory, journal, bootstrap.provider)
+    const host = hostId(1)
+    const runActivation = Effect.gen(function* () {
+      yield* activate.mark
+      yield* activate.reserve(host)
+      yield* activate.spawn
+      yield* activate.acknowledge(host, bootstrap.nonces.get(host)!)
+      yield* activate.commit
+    })
     const drafted = yield* cliProposal(journal, live.state, ask(), staffAuthorityOf())
     yield* cliProposal(journal, drafted.state, send(), staffAuthorityOf())
     const provider: Reviews = { reconcile: () => Effect.void, open: () => Effect.void }
@@ -222,7 +237,8 @@ test('the browser shows the reviewed proposal and accepts its pinned company dir
           case '/app.js': return new Response(script, { headers: { 'content-type': 'text/javascript' } })
           case '/snapshot': return Effect.runPromise(projectSnapshot(journal))
           case '/events': return Effect.runPromise(projectEvents(journal, ReadPosition.make(Number(url.searchParams.get('after')))))
-          case '/submissions': return Effect.runPromise(projectSubmission(journal, request, launch).pipe(auth(ownerAuthority)))
+          case '/submissions': return Effect.runPromise(projectSubmission(journal, request, launch, runActivation).pipe(auth(ownerAuthority)))
+          case '/activation-files': return Effect.runPromise(projectActivationApproval(journal, directory).pipe(auth(ownerAuthority)))
           default: return new Response(null, { status: 404 })
         }
       },
@@ -241,11 +257,19 @@ test('the browser shows the reviewed proposal and accepts its pinned company dir
     expect(yield* Effect.promise(() => page.getByText('All tests pass.', { exact: false }).count())).toBe(1)
     const acceptStart = performance.now()
     yield* Effect.promise(() => page.getByRole('button', { name: 'Accept', exact: true }).click())
-    yield* Effect.promise(() => page.getByText('Accepted · version 1').waitFor())
+    const directionCard = page.getByRole('article').filter({ has: title })
+    yield* Effect.promise(() => directionCard.getByText('Accepted · version 1').waitFor())
     const timeToAccept = performance.now() - acceptStart
     expect(timeToReveal).toBeLessThan(1000)
     expect(timeToAccept).toBeLessThan(1000)
     console.log(`U4 browser: review-to-card ${timeToReveal.toFixed(1)} ms, click-to-accepted ${timeToAccept.toFixed(1)} ms`)
+    yield* Effect.promise(() => page.getByRole('button', { name: 'Review activation files' }).click())
+    yield* Effect.promise(() => page.getByText('AGENTS.md', { exact: true }).waitFor())
+    yield* Effect.promise(() => page.getByRole('button', { name: 'Approve and activate' }).click())
+    yield* Effect.promise(() => page.getByRole('button', { name: 'Start work' }).click())
+    yield* Effect.promise(() => page.getByText('Work is open.').waitFor())
+    const phaseAfterWork = (yield* readOpenProject(journal)).activation
+    expect(phaseAfterWork).toMatchObject({ _tag: 'Active', binding: { id: host }, work: expect.any(Number) })
   }))),
 ), 30_000)
 

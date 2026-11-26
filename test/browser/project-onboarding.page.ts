@@ -9,7 +9,7 @@ import { readPosition } from '../../core/state/project.ts'
 const url = (path: string) => new URL(path, location.origin)
 const root = document.querySelector('main')!
 const send = (input: Submission) => postProjectSubmission(url('/submissions'), url('/snapshot'), page, input)
-const draw = (project: Projection) => render(project ? h(OnboardingView, { project, submit: send }) : null, root)
+const draw = (project: Projection) => render(project ? h(OnboardingView, { project, submit: send, markerFiles: async () => (await fetch(url('/activation-files'))).json() }) : null, root)
 const snapshot = await fetch(url('/snapshot'))
 const page = Result.getOrThrow(openPageProject(await snapshot.json(), draw))
 draw(page.current())

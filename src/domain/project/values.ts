@@ -87,3 +87,8 @@ export const RefusalCode = Schema.Literals([
 export const Refusal = Schema.TaggedStruct('Refusal', { code: RefusalCode, why: Rationale })
 export type Refusal = Of<typeof Refusal>
 export const refuse = (code: Of<typeof RefusalCode>, why: Of<typeof Rationale>): Refusal => Refusal.make({ code, why })
+
+export const LaunchNonce = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)).pipe(Schema.brand('LaunchNonce'))
+export const LaunchVerifier = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)).pipe(Schema.brand('LaunchVerifier'))
+export const HostCredential = Schema.String.check(Schema.isPattern(/^host\.[a-f0-9]{64}$/u))
+  .pipe(Schema.brand('HostCredential'))

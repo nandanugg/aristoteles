@@ -1,8 +1,9 @@
 import { Effect, Option, Result, Schema, Stream } from 'effect'
+import { projectActivationFiles } from '../live/project-activation.ts'
 import { ownerProposals } from './view.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'
-import { Projection, Proposal, ReadPosition, Refusal, Rationale, StoredEvents, refuse, type Of } from '../../core/schema/project.ts'
+import { ApprovedFiles, approvedProposals, Projection, Proposal, ReadPosition, Refusal, Rationale, StoredEvents, refuse, type Of } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { fold } from '../../core/state/project.ts'
 
@@ -30,7 +31,7 @@ export const projectEventStream = (journal: Journal, after: Of<typeof ReadPositi
 
 // The server supplies the journal and authenticates the actor before responding to the page.
 export const projectSubmission = (
-  journal: Journal, request: Request, review?: Effect.Effect<unknown, Refusal>,
+  journal: Journal, request: Request, review?: Effect.Effect<unknown, Refusal>, activate?: Effect.Effect<unknown, Refusal>,
 ): Effect.Effect<Response, never, Authority> => {
   const input = Effect.tryPromise({
     try: async (): Promise<unknown> => request.json(),
@@ -40,6 +41,8 @@ export const projectSubmission = (
     onSuccess: ({ event }) => Effect.gen(function* () {
       if (review && event.line._tag === 'Proposal' && event.from !== null)
         yield* Effect.forkDetach(Effect.result(review))
+      if (activate && event.line._tag === 'Activation' && event.from === 'Onboarding')
+        yield* Effect.forkDetach(Effect.result(activate))
       return Response.json(encodeEvents([event]))
     }),
     onFailure: (failure) => Effect.succeed(Response.json(Schema.encodeSync(Refusal)(failure), {
@@ -57,4 +60,17 @@ export const projectOnboarding = (journal: Journal): Effect.Effect<Response, Ref
     if (actor._tag !== 'Human' || actor.actor.id !== project.owner.id)
       return yield* Effect.fail(refuse('WrongActor', Rationale.make('Read proposals from the owner’s page.')))
     return Response.json(encodeProposals(ownerProposals(project)))
+  })
+
+
+export const projectActivationApproval = (journal: Journal, directory: string): Effect.Effect<Response, Refusal, Authority> =>
+  Effect.gen(function* () {
+    const actor = yield* (yield* Authority).actor
+    const project = yield* readOpenProject(journal)
+    if (actor._tag !== 'Human' || actor.actor.id !== project.owner.id)
+      return yield* Effect.fail(refuse('WrongActor', Rationale.make('Only the owner approves the activation files.')))
+    if (project.activation._tag !== 'Onboarding' || !approvedProposals(project))
+      return yield* Effect.fail(refuse('WrongMove', Rationale.make('Accept the onboarding proposals before activation.')))
+    const files = yield* projectActivationFiles(directory)
+    return Response.json(Schema.encodeSync(ApprovedFiles)(files))
   })

@@ -62,7 +62,7 @@ Paths under **Add** are new. **Change** identifies existing files that keep a ro
 - **Change** `adapters/live/activation.ts`, `src/files/activation.ts`, `adapters/live/bootstrap.ts`, `adapters/cli/commands/activation.ts`, `adapters/web/project.ts`, and the activation panel under `adapters/web/app/onboarding.ts`. Reuse marker staging, the directory lock, bootstrap pane observation and private credential files. Pin the accepted proposal versions and approved file images. Record launch before spawn, mark real files, require a current acknowledgement, then commit Active in the journal. Recover a commit before its IO note by rereading the journal. Start work under the committed host binding. Pending replacements cannot collect credentials, and delivery retires on the first authenticated use. Hold the bind and start-work exclusions in the same transaction so either ordering is safe.
 - **Delete** the slice’s `Workflow.Defined`/Activated/HostRebound event family, its old `isInactive` guard and `deleteInactive` rollback from `core/actions/activation.ts`. Replace `prepareStart`/file confirmation and “approve roles starts the store” with journal-based activation eligibility. Drop old `/api/activation` bodies if the route is retained as a forwarding adapter to the shared input. U8 removes the old route and any remaining sole-caller file.
 - **Tests** Retarget `core/actions/activation.test.ts`, `test/activation.test.js` and `test/activation-fixture.js`. Cover unapproved or changed files, current versus stale acknowledgement, pre-commit cleanup preserving newer edits and the proposal journal, commit-before-note, cancellation versus committed rebind, late credential collection, retirement, and old/inactive work refusal. The real integration test opens a marker-bearing fixture in tmux or the existing controllable process adapter. Assert credentials absent from page, events and logs.
-- **Model conformance** Complete `activationCommit`, `activationRollback` and `activationHostBinding`. Map the model file flag to one real approved file, launch identities to observed handles, and `openTop` to the Project’s first-work binding. Exercise credential collection on both sides of that last boundary.
+- **Model conformance** Complete `activationCommit`, `activationRollback` and `activationHostBinding`. Map the model file flag to one real approved file, launch identities to observed handles, and `openTop` to the Project’s first-work binding. Exercise credential collection on both sides of that last boundary. The projection exposes Active as soon as the binding commits. The model's later note is an IO reconciliation. Each launch identity covers a single process lifetime, so a replacement always reserves a new identity.
 
 ### U6. Task, attempt, and command outcomes
 
@@ -162,7 +162,14 @@ These are the proposed spellings for the first delivery. Types and printed paths
 | Unit | Name | Meaning |
 | --- | --- | --- |
 | U2 | `staffingAt` | The event number of the staffing decision relied on by a launch. |
-| U2 | `Waiting`, `By` | A review awaits an assignment or has an assigned live session. |
+| U5 | `ApprovedFile` | A marker file and the image approved by the owner. |
+| U5 | `ApprovedFiles` | The checked manifest of distinct instruction files. |
+| U5 | `FileHash` | Digest of the image approved for a marker file. |
+| U5 | `HostLaunch` | A reserved host identity and its acknowledged pane, when available. |
+| U5 | `LaunchNonce` | Private proof that the caller belongs to the launch. |
+| U5 | `HostCredential` | Private credential used by the committed host. |
+| U5 | `LaunchVerifier` | Private digest used to check the host credential after delivery retires. |
+| U5 | `ActivationPanel` | Owner controls for file approval and starting work. |
 
 Nanda's ruling on 2026-11-26 names the journal port `Journal` and its
 transaction callback `Write`. She kept `StaffingAccepted`, `Running`,

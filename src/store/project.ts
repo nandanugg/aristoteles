@@ -35,13 +35,13 @@ const sql = <A>(operation: () => A): Effect.Effect<A, Refusal> => Effect.try({
   },
 })
 
-const prepare = (db: Database, mode: 'Read' | 'Create'): void => {
+const prepare = (db: Database, mode: 'Read' | 'Write' | 'Create'): void => {
   const { user_version } = db.query<{ user_version: number }, []>('PRAGMA user_version').get()!
   const { application_id } = db.query<{ application_id: number }, []>('PRAGMA application_id').get()!
   const tables = db.query<{ name: string }, []>('SELECT name FROM sqlite_master').all()
   if (user_version === PROJECT_FORMAT && application_id === PROJECT_APPLICATION_ID &&
       tables.some(({ name }) => name === 'project_event')) return
-  if (mode === 'Read' || user_version !== 0 || application_id !== 0 || tables.length !== 0) throw foreign()
+  if (mode !== 'Create' || user_version !== 0 || application_id !== 0 || tables.length !== 0) throw foreign()
   db.exec(PROJECT_EVENTS)
   db.exec(`PRAGMA application_id = ${PROJECT_APPLICATION_ID}`)
   db.exec(`PRAGMA user_version = ${PROJECT_FORMAT}`)
@@ -90,11 +90,11 @@ const journal = (db: Database, id: Of<typeof ProjectId>): Journal => {
 }
 
 export const openProjectJournal = (
-  id: Of<typeof ProjectId>, mode: 'Read' | 'Create',
+  id: Of<typeof ProjectId>, mode: 'Read' | 'Write' | 'Create',
 ): Effect.Effect<Journal, Refusal, Env | Scope.Scope> => Effect.gen(function* () {
   const path = dbPath((yield* Env).vars)
   const db = yield* Effect.acquireRelease(sql(() => {
-    if (mode === 'Read' && !existsSync(path)) throw foreign()
+    if (mode !== 'Create' && !existsSync(path)) throw foreign()
     if (mode === 'Create') mkdirSync(dirname(path), { recursive: true })
     return new Database(path, { create: mode === 'Create', readonly: mode === 'Read' })
   }), (connection) => Effect.sync(() => connection.close()))

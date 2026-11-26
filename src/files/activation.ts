@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { OnboardedDirection } from '../domain/events.ts'
 import { Refused } from '../domain/errors.ts'
+import { FilePath, HostCredential, LaunchNonce, LaunchVerifier, type EventNumber, type Of, type ProjectId } from '../domain/project/values.ts'
 
 const AREA = '.work/onboarding/activation'
 const id = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{32}$/)))
@@ -184,3 +185,40 @@ export const applyStartupFiles = (dir: string, record: ActivationRecord, restore
     else writePrivate(dir, file.name, next, mode)
   }
 }
+
+// Format 16 keeps bootstrap credentials apart from the deferred startup files.
+const projectLaunchArea = (
+  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string, create: boolean,
+) => activationDir(dir, ['project', project, ...launchParts(generation, launch)], create)
+
+const privateLaunchFiles = { nonce: LaunchNonce, secret: HostCredential, verifier: LaunchVerifier }
+export const writeProjectLaunchFile = (
+  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string,
+  name: 'nonce' | 'secret' | 'verifier', value: Of<typeof LaunchNonce> | Of<typeof HostCredential> | Of<typeof LaunchVerifier>,
+): void => writePrivate(projectLaunchArea(dir, project, generation, launch, true)!, name, value)
+
+export const readProjectLaunchFile = (
+  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string,
+  name: 'nonce' | 'secret' | 'verifier',
+) => {
+  const area = projectLaunchArea(dir, project, generation, launch, false)
+  const value = area === null ? null : readPrivate(join(area, name))
+  return value === null ? null : Schema.decodeUnknownSync(privateLaunchFiles[name])(value)
+}
+
+export const retireProjectLaunchSecret = (
+  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string,
+): void => {
+  const area = projectLaunchArea(dir, project, generation, launch, false)
+  if (area !== null) rmSync(join(area, 'secret'), { force: true })
+}
+
+export const removeProjectLaunch = (
+  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string,
+): void => {
+  const area = projectLaunchArea(dir, project, generation, launch, false)
+  if (area !== null) rmSync(area, { recursive: true, force: true })
+}
+
+export const projectOriginals = (project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>) =>
+  FilePath.make(`${AREA}/project/${project}/${generation}/originals`)

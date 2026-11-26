@@ -286,3 +286,5 @@ export const retireHostDelivery = (dir: string, token: string) =>
       yield* activationIO(() => retireSecret(dir, current.generation, state.binding!.launch))
     }))
   })
+
+export { liveProjectBootstrap, newProjectLaunch, projectActivationFiles, projectActivationOperations } from './project-activation.ts'

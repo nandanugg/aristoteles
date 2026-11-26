@@ -1,4 +1,5 @@
 import { Schema, SchemaGetter } from 'effect'
+import { Activation } from './activation.ts'
 import { Proposal, StaffingAccepted } from './proposal.ts'
 import { Human, LiveSession, Role, Staff, StaffSession, Subscription } from './staff.ts'
 import {
@@ -65,7 +66,7 @@ export const Project = Schema.Struct({
   roles: recordsById(Role, RoleId), staff: recordsById(Staff, StaffId),
   subscriptions: recordsById(Subscription, SubscriptionId), staffingAt: EventNumber,
   staffing: Schema.NullOr(StaffingAccepted), proposals: recordsById(Proposal, ProposalId),
-  sessions: recordsById(StaffSession, SessionId), tasks: recordsById(Task, TaskId), questions: recordsById(Question, QuestionId), status: ProjectStatus, activation: Schema.TaggedStruct('Onboarding', {}),
+  sessions: recordsById(StaffSession, SessionId), tasks: recordsById(Task, TaskId), questions: recordsById(Question, QuestionId), status: ProjectStatus, activation: Activation,
   lastChange: EventNumber, read: ReadPosition,
 })
 export type Project = Of<typeof Project>

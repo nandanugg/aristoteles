@@ -1,7 +1,8 @@
+import { applyActivationMove } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
-  AttemptNumber, ReadPosition, Rationale, RetryCount, ProjectEvent, ProposalEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, liveSession, projectLine, questionLine, refuse, sessionLine, sessionMayStart, staffOf, subagentCapacity, taskLine,
+  AttemptNumber, ReadPosition, Rationale, RetryCount, ActivationEvent, ProjectEvent, ProposalEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, liveSession, projectLine, questionLine, refuse, sessionLine, sessionMayStart, staffOf, subagentCapacity, taskLine,
   type LiveSession, type Project, type Projection, type Question, type StoredActor, type Refusal, type StaffSession, type Task, type TaskPhase,
 } from '../schema/project.ts'
 
@@ -49,6 +50,10 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
   }
   if (edge(projectLine, event.from, event.move, 'Open') !== 'Allowed') return wrongMove()
   if (project.lastChange > read) return stale()
+  if (event.input._tag === 'StartWork') {
+    if (project.activation._tag !== 'Active' || project.activation.work !== null) return wrongMove()
+    return Result.succeed({ ...project, activation: { ...project.activation, work: number }, lastChange: number })
+  }
   const { draft } = event.input
   if (project.tasks.has(draft.id)) return stale()
   const role = project.roles.get(draft.role.id)
@@ -256,6 +261,7 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   }
   const updated = Schema.is(ProjectEvent)(event) ? applyProjectMove(state, event) : (() => {
     if (!state) return wrongMove()
+    if (Schema.is(ActivationEvent)(event)) return applyActivationMove(state, event)
     if (Schema.is(SessionEvent)(event)) return applySessionMove(state, event)
     if (Schema.is(ProposalEvent)(event)) return applyProposalMove(state, event)
     if (Schema.is(QuestionEvent)(event)) return applyQuestionMove(state, event)

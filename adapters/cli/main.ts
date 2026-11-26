@@ -4,9 +4,10 @@
 // then render the words of the act from the new Work). No streams, no effects. Exit codes: 1 a
 // refusal, 2 a usage mistake, 3 an outside failure or a damaged store, 70 a defect.
 import { Cause, Effect, Exit } from 'effect'
-import { UsageError } from '../../core/schema/index.ts'
-import { Dir, Terminal, type WorkIo } from '../../core/services/index.ts'
+import { refuse, UsageError } from '../../core/schema/index.ts'
+import { Dir, Env, Terminal, type WorkIo } from '../../core/services/index.ts'
 import { loadWork } from '../../core/state/index.ts'
+import { PROJECT_ENV } from '../live/bootstrap.ts'
 import { refusalLines } from '../words/index.ts'
 import {
   ACT_OF,
@@ -20,8 +21,8 @@ import {
   USAGE,
 } from './args.ts'
 import { isPerson } from './caller.ts'
-import type { Call, Command, Commands } from './command.ts'
-import { commands as activation } from './commands/activation.ts'
+import type { Call, Commands } from './command.ts'
+import { commands as activation, projectBootstrapCommand } from './commands/activation.ts'
 import { commands as acts } from './commands/acts.ts'
 import { commands as directions } from './commands/directions.ts'
 import { commands as onboard } from './commands/onboard.ts'
@@ -101,10 +102,13 @@ const attempt = (argv: ReadonlyArray<string>, commands: Commands) =>
     const args = { ...parsed, positional: rest }
     const call: Call = { argv, args, name, act: ACT_OF[name]?.(rest) ?? null, token }
     yield* checkLine(call)
-    yield* refresh(name)
-    const command: Command | undefined = commands[name]
+    const projectBootstrap = name === 'activation' && (yield* Env).vars[PROJECT_ENV] !== undefined
+    if (!projectBootstrap) yield* refresh(name)
+    const command = commands[name]
     if (!command) return yield* Effect.die(`cli command ${name} is not built`)
-    const lines = yield* command(call)
+    const lines = yield* (projectBootstrap
+      ? projectBootstrapCommand(call).pipe(Effect.catch((failure) => refuse(failure.why, 'retry from the project bootstrap pane')))
+      : command(call))
     yield* terminal.out(lines.join('\n'))
     return 0
   })
