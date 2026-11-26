@@ -1,4 +1,4 @@
-import { aLiveHost, finishActivation, killBootstrap } from './activation-fixture.js'
+import { initializeLegacy } from './legacy-onboarding-fixture.js'
 // One file for a dir (Nanda, 2026-11-11): aristoteles.yaml holds the mechanism (people, roles,
 // deciders, the limits of each model) and the settings of the UI (the commands of each model, the signs of a failed
 // session, the sound, the theme). It has a schema, so an editor completes its keys. The name of
@@ -11,26 +11,6 @@ import { startServer } from './code.js'
 import { CODE_YAML, ONBOARD_CONFIG, WORK_YAML, ok, initiated, onboardingProject, project, withModels } from './harness.js'
 import { act, api, dbOf, gitPerson, settingsOf } from './outside.js'
 import { staffedFixture } from './staffing-fixture.js'
-
-// An act of the onboarding pages (POST /api/onboarding), with the key and the page's own origin.
-const onboardingAct = async (p, body, path = '/api/onboarding') => {
-  const s = startServer({ dir: p.dir, env: { ARISTOTELES_DB: dbOf(p) } })
-  try {
-    const origin = `http://127.0.0.1:${s.port}`
-    const headers = { origin, 'content-type': 'application/json' }
-    if (body.action === 'start') {
-      const staffing = await (await fetch(`${origin}/api/staffing`)).json()
-      const update = (body) => fetch(`${origin}/api/staffing`, { method: 'POST', headers, body: JSON.stringify(body) })
-      const preview = await (await update({ action: 'preview', revision: staffing.revision })).json()
-      expect((await update({ action: 'apply', ticket: preview.ticket })).ok).toBe(true)
-      const approval = await (await fetch(`${origin}/api/activation/approval`)).json()
-      body = { ...body, entries: approval.entries }
-    }
-    return await (await fetch(`${origin}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })).json()
-  } finally {
-    s.stop()
-  }
-}
 
 const schema = JSON.parse(readFileSync(join(import.meta.dir, '..', 'schema', 'aristoteles.schema.json'), 'utf8'))
 const validate = new Ajv({ allErrors: true, strict: false }).compile(schema)
@@ -237,14 +217,7 @@ describe('the first start of a dir', () => {
     p.write('draft.yaml', hostDraft(ONBOARD_CONFIG))
     ok(await p.agent('onboard config --file=draft.yaml'))
     for (const role of ['architect', 'section-lead', 'writer', 'linter']) ok(await p.nanda(`onboard accept-role ${role}`))
-    aLiveHost(p)
-    try {
-      const start = await onboardingAct(p, { action: 'start' }, '/api/activation')
-      expect(start.out).toContain('Bootstrap host started')
-      await finishActivation(p)
-    } finally {
-      killBootstrap(p)
-    }
+    expect((await initializeLegacy(p)).code).toBe(0)
     const text = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')
     expect(Bun.YAML.parse(text).models).toBeUndefined()
     expect((await settingsOf(p)).models.opus).toMatchObject({ launch: 'host-cli --session-id {session} {prompt}', skills: '.host/skills' })
@@ -258,7 +231,7 @@ describe('the first start of a dir', () => {
     const checked = ok(await p.agent('config check')).out.split('\n')
     // Ruling 1, onboarding 2026-11-14: files first, the store starts at the end (was: as Accept the
     // roles does).
-    expect(checked[0]).toBe('aristoteles.draft.yaml reads, merged into aristoteles.yaml as the store start (work onboard approve-roles) merges it; nothing was written.')
+    expect(checked[0]).toBe('aristoteles.draft.yaml reads, merged into aristoteles.yaml for the config check; nothing was written.')
     expect(checked[1]).toStartWith('the static fit checks pass for architect, section-lead, writer')
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe(before)
     expect(existsSync(join(p.dir, '.work', 'aristoteles.db'))).toBe(false)

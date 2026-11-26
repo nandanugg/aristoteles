@@ -31,12 +31,6 @@ export interface DirStore {
   readonly write: <E>(
     build: (events: ReadonlyArray<Recorded>) => Effect.Effect<Written | null, E>,
   ) => Effect.Effect<number | null, E | StoreDamaged | OutsideFailed>
-  // Removes every row of this dir (its events, its reader rows, its project row) in one
-  // transaction, only if `allowed` says so on the events read inside it; false: nothing changed.
-  // Onboarding's roll back of an inactive store (contract 6c): the shared file stays.
-  readonly forget: <E>(
-    allowed: (events: ReadonlyArray<Recorded>) => Effect.Effect<boolean, E>,
-  ) => Effect.Effect<boolean, E | StoreDamaged | OutsideFailed>
   // A read-only query of the reader tables (work search).
   readonly query: (
     sql: string,

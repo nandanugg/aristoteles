@@ -222,7 +222,7 @@ const nextOf = (files: OnboardingFiles, start: StartState): string => {
       return `next: ${countOf(open.length, 'direction')} not accepted yet; the host runs work onboard wait between its drafts`
     }
     case 'Open':
-      return 'next: everything is accepted; the person starts the store: work onboard approve-roles'
+      return 'next: accept the journal onboarding proposals to activate the project'
   }
 }
 

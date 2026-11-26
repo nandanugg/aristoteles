@@ -5,9 +5,8 @@
 // refusal, 2 a usage mistake, 3 an outside failure or a damaged store, 70 a defect.
 import { Cause, Effect, Exit } from 'effect'
 import { refuse, UsageError } from '../../core/schema/index.ts'
-import { Dir, Env, Terminal, type WorkIo } from '../../core/services/index.ts'
+import { Dir, Terminal, type WorkIo } from '../../core/services/index.ts'
 import { loadWork } from '../../core/state/index.ts'
-import { PROJECT_ENV } from '../live/bootstrap.ts'
 import { refusalLines } from '../words/index.ts'
 import {
   ACT_OF,
@@ -22,7 +21,7 @@ import {
 } from './args.ts'
 import { isPerson } from './caller.ts'
 import type { Call, Commands } from './command.ts'
-import { commands as activation, projectBootstrapCommand } from './commands/activation.ts'
+import { activationCommand } from './commands/activation.ts'
 import { commands as acts } from './commands/acts.ts'
 import { commands as directions } from './commands/directions.ts'
 import { commands as onboard } from './commands/onboard.ts'
@@ -36,7 +35,6 @@ import { layerOf } from './runtime.ts'
 export type { WorkIo } from '../../core/services/index.ts'
 
 const COMMANDS: Commands = {
-  ...activation,
   ...setup,
   ...reads,
   ...directions,
@@ -102,13 +100,17 @@ const attempt = (argv: ReadonlyArray<string>, commands: Commands) =>
     const args = { ...parsed, positional: rest }
     const call: Call = { argv, args, name, act: ACT_OF[name]?.(rest) ?? null, token }
     yield* checkLine(call)
-    const projectBootstrap = name === 'activation' && (yield* Env).vars[PROJECT_ENV] !== undefined
-    if (!projectBootstrap) yield* refresh(name)
+    if (name === 'activation') {
+      const lines = yield* activationCommand(call).pipe(
+        Effect.catch((failure) => refuse(failure.why, 'read the current project activation')),
+      )
+      yield* terminal.out(lines.join('\n'))
+      return 0
+    }
+    yield* refresh(name)
     const command = commands[name]
     if (!command) return yield* Effect.die(`cli command ${name} is not built`)
-    const lines = yield* (projectBootstrap
-      ? projectBootstrapCommand(call).pipe(Effect.catch((failure) => refuse(failure.why, 'retry from the project bootstrap pane')))
-      : command(call))
+    const lines = yield* command(call)
     yield* terminal.out(lines.join('\n'))
     return 0
   })

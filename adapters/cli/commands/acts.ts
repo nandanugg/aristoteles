@@ -12,7 +12,6 @@ import {
   type Of, type ReadPosition, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
-import { activationOf, gate } from '../../../core/actions/activation.ts'
 import { settleWorker } from '../../../core/actions/worker.ts'
 import {
   WORK,
@@ -45,7 +44,7 @@ import {
   AnswerBodySchema,
   QuestionBodySchema,
 } from '../../../core/schema/index.ts'
-import { activationLock, Dir, Env, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
+import { Dir, Env, Files, parseYaml, sha, Store } from '../../../core/services/index.ts'
 import { loadWork } from '../../../core/state/index.ts'
 import { childFor, foldRuntime, privateWorker } from '../../../core/state/worker-runtime.ts'
 import { foldWork } from '../../../core/state/c16/fold.ts'
@@ -56,8 +55,6 @@ import type { ItemKey, ItemRec, Level, RoleDraft, TaskSpec, Verdict }
   from '../../../core/state/c16/data.ts'
 import { kindOf } from '../../../core/state/c16/data.ts'
 import { helperBrief } from './recheck.ts'
-import { acquireBootstrapWorker, activationEvents, retireHostDelivery } from '../../live/activation.ts'
-import { bootstrapSession } from '../../live/bootstrap.ts'
 import { briefOf, contextWords, hostWords, makerWords, recheckBriefOf } from '../../words/work.ts'
 import { type Args, textOf } from '../args.ts'
 import { personAuthor, verifyWork, workTokenOf } from '../caller.ts'
@@ -505,7 +502,6 @@ const readFolded = Effect.gen(function* () {
   const { cwd } = yield* Dir
   const store = yield* (yield* Store).open(cwd, { create: false })
   const events = yield* store.events
-  yield* gate(events)
   const folded = foldWork(events)
   return folded === null ? yield* WORK.noTop() : { events, folded }
 })
@@ -569,9 +565,6 @@ const runAct = (cmd: string, spec: Spec): Command => (call) =>
         ? { evidence: folded.state.ver }
         : {}),
     })
-    if (actor?.who === 'host' && call.token !== null) {
-      yield* retireHostDelivery((yield* Dir).cwd, call.token)
-    }
     const line = outcome(body, acted.seq, acted.again)
     const token = acted.token
     const route = acted.makerRoute
@@ -672,18 +665,12 @@ export const topCommand = (open: typeof openTop): Command => (call) =>
     }
     const sections = listOf(call.args.one('sections'))
     const facts = yield* contextOfArgs(call.args)
-    const { cwd } = yield* Dir
-    const binding = activationOf(yield* activationEvents(cwd))?.binding
-    const opened = yield* open({
-      by, name, goal, sections, facts,
-      ...(binding ? { hostSession: bootstrapSession(binding.launch), hostLaunch: binding.launch } : {}),
-    })
+    const opened = yield* open({ by, name, goal, sections, facts })
     return [
       `Top "${name}" opened (event e${opened.seq}): ${goal}`,
       `Sections: ${sections.join(', ')}`,
       ...contextWords(facts),
       'Each actor runs work wait with its token:',
-      ...(opened.hostBound ? ['  host: holds its token from activation'] : []),
       ...opened.secrets.map((t) => `  ${t.actor}: ${workTokenOf(t.actor, 0, t.secret)}`),
     ]
   })
@@ -714,12 +701,7 @@ const runContinue: Command = () =>
       if (!privateWorker(placement)) {
         return yield* refuse('The Host shares a worker. Its identity cannot move on its own.')
       }
-      const { cwd } = yield* Dir
-      if (folded.hostSession !== null) {
-        yield* acquireBootstrapWorker(cwd, placement.worker, folded.hostSession)
-      }
-      yield* activationLock(cwd)
-      const current = foldRuntime(yield* activationEvents(cwd)).workers.get(placement.worker)
+      const current = runtime.workers.get(placement.worker)
       if (current && !current.ended) {
         const { worker, generation, launch } = current.reservation
         const fenced = yield* settleWorker(worker, generation, launch)

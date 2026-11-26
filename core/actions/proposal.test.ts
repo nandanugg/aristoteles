@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { chromium } from 'playwright'
 import { dirname, join, resolve } from 'node:path'
 import { writeFileSync } from 'node:fs'
-import { projectActivationOperations } from '../../adapters/live/project-activation.ts'
+import { projectActivationOperations } from '../../adapters/live/activation.ts'
 import { approvedText, fakeBootstrap, hostId } from '../../src/store/project-activation.probe.ts'
 import { Effect, Result, Schema, Stream } from 'effect'
 import { launchNextReview, type Reviews } from '../../adapters/live/proposal.ts'
@@ -269,7 +269,7 @@ test('the browser moves from the reviewed direction to work under its bound host
     yield* Effect.promise(() => page.getByRole('button', { name: 'Start work' }).click())
     yield* Effect.promise(() => page.getByText('Work is open.').waitFor())
     const phaseAfterWork = (yield* readOpenProject(journal)).activation
-    expect(phaseAfterWork).toMatchObject({ _tag: 'Active', binding: { id: host }, work: expect.any(Number) })
+    expect(phaseAfterWork).toMatchObject({ _tag: 'Active', binding: { id: host }, work: { _tag: 'Started', at: expect.any(Number) } })
   }))),
 ), 30_000)
 

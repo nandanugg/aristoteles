@@ -1,7 +1,6 @@
 // A bootstrap host has its own managed tmux session, located by the reserved launch ID.
-import { readStaffing, sha } from '../../core/services/index.ts'
+import { sha } from '../../core/services/index.ts'
 import { refuse } from '../../core/schema/index.ts'
-import { Effect } from 'effect'
 import { basename } from 'node:path'
 import { fill } from '../../core/effects/lines.ts'
 import { launchOpening } from './markers.ts'
@@ -46,33 +45,6 @@ export const stopBootstrap = (dir: string, launch: string): void => {
     throw refuse('the pending bootstrap pane could not be stopped')
   }
 }
-export const bootstrapTemplate = (dir: string, host: string) =>
-  Effect.gen(function* () {
-    const staffing = yield* readStaffing(dir)
-    const binding = staffing?.roles[host]
-    if (!binding?.persistent) return yield* refuse('the bootstrap host needs a persistent staffing binding')
-    return binding
-  })
-export const spawnBootstrap = (
-  dir: string, launch: string, nonce: string, db: string | undefined,
-  binding: { readonly launch: string; readonly model: string },
-): void => {
-  const prompt = [
-    launchOpening('host'),
-    'You are starting in bootstrap mode.',
-    `Run work activation ack ${launch}, then work wait --launch ${launch}.`,
-    'Work starts after the person opens the top. Use the token that wait gives you.',
-  ].join(' ')
-  const args = [
-    'new-session', '-d', '-s', `boot-${launch}`, '-c', dir,
-    '-e', `${NONCE_ENV}=${nonce}`,
-    ...(db === undefined ? [] : ['-e', `ARISTOTELES_DB=${db}`]),
-    '--', 'sh', '-c', fill(binding.launch, { session: launch, model: binding.model, prompt }),
-  ]
-  const result = tmux(dir, args)
-  if (result.exitCode !== 0) throw refuse('the bootstrap host could not be launched')
-}
-
 // The format 16 bootstrap uses the journal's launch identity and the approved staff template.
 export const spawnProjectBootstrap = (
   dir: string, launch: string, nonce: string, db: string | undefined, staff: ProjectStaff, project: Of<typeof ProjectId>,

@@ -3,7 +3,7 @@ import { expect } from 'bun:test'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { chromium } from 'playwright'
-import { aLiveHost, bootstrapTmux, finishActivation, killBootstrap, launchEnv } from '../activation-fixture.js'
+import { initializeLegacy } from '../legacy-onboarding-fixture.js'
 import { createPump, createWatcher, startServer } from '../code.js'
 import { ONBOARD_CONFIG, ok, onboardingProject } from '../harness.js'
 import { dbOf, gitPerson } from '../outside.js'
@@ -42,11 +42,12 @@ try {
   p.write('CLAUDE.md', 'Approved project instructions.\n')
   ok(await p.agent('onboard config --file=draft.yaml'))
   for (const role of Object.keys(config.roles)) ok(await p.nanda(`onboard accept-role ${role}`))
-  aLiveHost(p, 'while [ ! -f .fixture-host-screen ]; do sleep 0.05; done; cat .fixture-host-screen; exec cat # {session}')
   const path = '.work/staffing.yaml'
   const staffing = Bun.YAML.parse(readFileSync(join(p.dir, path), 'utf8'))
   const host = staffing.roles.architect
-  Object.assign(host, { workerGroup: 'delivery', concurrency: 2, subagentAllowance: 1 })
+  Object.assign(host, { workerGroup: 'delivery', concurrency: 2, subagentAllowance: 1,
+    launch: 'printf "local host screen: %s\\n" "$ARISTOTELES_WORKER_CREDENTIAL"; exec cat # {session}',
+  })
   Object.assign(staffing.roles['section-lead'], {
     workerGroup: host.workerGroup, account: host.account, cli: host.cli, model: host.model,
     allowedModels: host.allowedModels, launch: host.launch,
@@ -58,14 +59,8 @@ try {
   staffing.roles.writer.account = 'review'
   staffing.roles.writer.launch = 'printf "local worker screen: %s\\n" "$ARISTOTELES_WORKER_CREDENTIAL"; exec cat # {session}'
   p.write(path, Bun.YAML.stringify(staffing))
-  ok(await p.nanda('onboard approve-roles', 'approve'))
-  const activation = await finishActivation(p)
+  ok(await initializeLegacy(p))
   ok(await p.nanda('top open --name="Release notes" --goal="Document the release" --sections=Overview,Details'))
-  const bootstrap = ok(await p.run(`wait --launch ${activation.pending.launch} --seconds=1`, {
-    env: launchEnv(p, activation),
-  })).out.match(/w\.host\.0\.[0-9a-f]+/)[0]
-  const credential = ok(await p.agent(`wait ${bootstrap} --seconds=1`)).out.match(/g\.[a-f0-9.]+/)[0]
-  p.write('.fixture-host-screen', `local host screen: ${bootstrap}\n`)
 
   const env = { ARISTOTELES_DB: dbOf(p) }
   pump = createPump({ dir: p.dir, socket: `ar-p9-page-${crypto.randomUUID()}` })
@@ -91,8 +86,9 @@ try {
       children: [{ actor: 'role:linter', used: 0, limit: 0 }], fixes: null, rechecks: null },
   })
   // Confirm the fixture really has credential-bearing local screens before checking the wire.
-  const pane = bootstrapTmux(p, 'list-panes', '-t', `=${group.session.id}`, '-F', '#{pane_id}').stdout.toString().trim()
-  await until(() => bootstrapTmux(p, 'capture-pane', '-p', '-J', '-t', pane).stdout.toString().includes(bootstrap))
+  const hostTarget = `${pump.name}:=${group.session.id}`
+  const credential = await until(() =>
+    tailOf(pump.socket, hostTarget).match(/local host screen: (g\.[a-f0-9.]+)/)?.[1])
   const writerTarget = `${pump.name}:=${writer.session.id}`
   const privateWorker = await until(() =>
     tailOf(pump.socket, writerTarget).match(/local worker screen: (g\.[a-f0-9.]+)/)?.[1])
@@ -130,9 +126,10 @@ try {
   await page.getByRole('region', { name: 'section-lead' }).getByRole('button', { name: 'Worker delivery' }).click()
   const hostDialog = page.getByRole('dialog', { name: 'Terminal of delivery' })
   await hostDialog.waitFor()
-  expect(await hostDialog.locator('code').textContent()).toContain(`attach-session -t '=${group.session.id}'`)
+  expect(await hostDialog.locator('code').textContent()).toBe(
+    `tmux -L '${pump.socket}' attach-session -t '${hostTarget}'`)
   expect(await page.locator('.xterm').count()).toBe(0)
-  await shot(page, '03-local-bootstrap-terminal.png')
+  await shot(page, '03-local-host-terminal.png')
   await hostDialog.getByRole('button', { name: 'Close' }).click()
   await workers.getByRole('article', { name: 'Worker writer' }).getByRole('button', { name: 'Open in local tmux' }).click()
   const writerDialog = page.getByRole('dialog', { name: 'Terminal of writer' })
@@ -177,7 +174,7 @@ try {
   expect(terminalMessages.every(({ error }) => error.includes('local tmux'))).toBe(true)
   expect(tailOf(pump.socket, writerTarget)).not.toContain('remote-key-fixture')
   const publicText = JSON.stringify({ read, latest: await dash(), frames, refused, logs })
-  for (const secret of [bootstrap, credential, privateWorker, 'local worker screen:']) {
+  for (const secret of [credential, privateWorker, 'local host screen:', 'local worker screen:']) {
     if (publicText.includes(secret)) throw new Error('local terminal material escaped into a public observation')
   }
 
@@ -208,7 +205,6 @@ try {
   server?.stop()
   watcher?.stop()
   pump?.killServer()
-  killBootstrap(p)
   rmSync(dirname(p.dir), { recursive: true, force: true })
 }
 console.log('the pass 9 page check passed')

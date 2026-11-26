@@ -70,35 +70,21 @@ export type OnboardedDirection = typeof OnboardedDirection.Type
 
 // work init (old config), or the store start of onboarding with the accepted directions; later
 // changes of the words of roles (old config.text). A dir has one workflow: its move names no id.
-// Onboarding's activation (contract 6c, core/model/activation.qnt): the store is made INACTIVE
-// under a generation; Activated makes it active, bound to a launch and its host credential's hash
-// (the verifier); HostRebound moves that binding to a relaunched host before the first top.
-const Generation = Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)))
-export const Activation = Schema.Struct({ generation: Generation })
 export const WorkflowMove = Schema.Union([
   Schema.TaggedStruct('RoleWordsChanged', {
     roles: Schema.Record(Text, RoleWords),
     hashes: Schema.Record(Text, Text),
     texts: Schema.Record(Text, Text),
   }),
-  Schema.TaggedStruct('Activated', { generation: Generation, launch: NonBlank, hostVerifier: NonBlank }),
-  Schema.TaggedStruct('HostRebound', {
-    generation: Generation,
-    launch: NonBlank,
-    expected: NonBlank,
-    hostVerifier: NonBlank,
-  }),
 ])
 const Workflow = Schema.Union([
   created(
     'Workflow',
-    Schema.TaggedStruct('Defined', {
+    Schema.TaggedStruct('Initialized', {
       config: ConfigFile,
       hashes: Schema.Record(Text, Text),
       texts: Schema.Record(Text, Text),
       directions: Schema.Array(OnboardedDirection),
-      // null: work init (active at once); a generation: onboarding's inactive start.
-      activation: Schema.NullOr(Activation),
     }),
   ),
   Schema.TaggedStruct('Workflow', { move: WorkflowMove }),
@@ -356,10 +342,8 @@ export const move = <G extends EventGroup>(
 export const WRITTEN_BY = {
   // The person at a terminal or on the page.
   Person: [
-    'Workflow.Defined',
+    'Workflow.Initialized',
     'Workflow.RoleWordsChanged',
-    'Workflow.Activated',
-    'Workflow.HostRebound',
     'Role.Fitted',
     'Runtime.ProjectUsageMeasured',
     'Send.Sent',

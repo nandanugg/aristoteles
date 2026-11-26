@@ -1,8 +1,8 @@
 import { html } from 'htm/preact'
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { cliOfProvider, launchExecutable, type StaffArrangement, type Subscription, type SubscriptionProvider } from '../../../src/domain/staffing-sketch.ts'
-import { MarkerApproval, type OnboardingView, StaffingState } from '../contract.ts'
-import { api, postActivation, postStaffing } from './api.ts'
+import { type OnboardingView, StaffingState } from '../contract.ts'
+import { api, postStaffing } from './api.ts'
 import { Modal } from './modal.ts'
 
 type State = typeof StaffingState.Type
@@ -170,7 +170,6 @@ export function Staffing({ start, version, onApplied }: {
   const [subscription, setSubscription] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  const [manifest, setManifest] = useState<typeof MarkerApproval.Type | null>(null)
   const autoAllowance = useRef(new Set<string>())
   const read = (state: State) => setReview((latest) => {
     if (latest?.state.revision === state.revision) {
@@ -244,12 +243,6 @@ export function Staffing({ start, version, onApplied }: {
     setSaved(true)
     onApplied()
   })
-  const begin = () => run(async () => setManifest(await api('/api/activation/approval', MarkerApproval)))
-  const activate = () => run(async () => {
-    if (!manifest) return
-    await postActivation({ action: 'start', entries: manifest.entries })
-    setManifest(null)
-  })
   const alert = () => error ? html`<p class="error" role="alert">${error}</p>` : ''
   const state = review?.state
   const draft = review?.draft
@@ -266,15 +259,13 @@ export function Staffing({ start, version, onApplied }: {
         <p><strong>Consult</strong> ${state.consult.words}</p>
         <p>${state.consult.reply ?? 'Waiting for the host to reply.'}</p>
       </div>` : ''}
-      ${!manifest ? error ? alert() : state.source === 'saved' && start.state === 'blocked'
-        ? html`<p class="error" role="status">${start.says}</p>` : '' : ''}
+      ${error ? alert() : state.source === 'saved' && start.state === 'blocked'
+        ? html`<p class="error" role="status">${start.says}</p>` : ''}
       <div class="staffing-actions">
         <textarea rows="2" aria-label="Staffing question" placeholder="Ask the host about staffing" value=${question}
           disabled=${busy || consultWaiting} onInput=${(event: Event) => setQuestion(value(event))}></textarea>
         <button class="btn" disabled=${busy || consultWaiting || !question.trim()} onClick=${consult}>Consult</button>
-        ${confirmed ? html`<button class="btn primary" disabled=${busy || start.state !== 'open'}
-           onClick=${begin}>Review activation</button>` : html`
-          <button class="btn primary" disabled=${busy} onClick=${accept}>Accept all</button>`}
+        ${!confirmed ? html`<button class="btn primary" disabled=${busy} onClick=${accept}>Accept all</button>` : ''}
       </div>
       ${confirmed ? html`<p class="staffing-saved muted" role="status">Staffing confirmed
         ${saved ? html` · Saved to <code>.work/staffing.yaml</code>` : ''}</p>` : ''}
@@ -292,14 +283,6 @@ export function Staffing({ start, version, onApplied }: {
           setRemoving(null)
         }}>Remove staff</button>
       </div>
-    <//>` : ''}
-    ${manifest ? html`<${Modal} title="Review activation" onClose=${() => { if (!busy) setManifest(null) }}>
-      ${alert()}<p>Instruction files to mark</p>
-      ${manifest.entries.length ? html`<ul>${manifest.entries.map(({ path }) => html`<li><code>${path}</code></li>`)}</ul>`
-        : html`<p class="muted">No instruction files found.</p>`}
-      ${manifest.reported.length ? html`<p>Other instruction sources: ${manifest.reported.join(', ')}.</p>` : ''}
-      <div class="modal-foot"><button class="btn" disabled=${busy} onClick=${() => setManifest(null)}>Cancel</button>
-        <button class="btn primary" disabled=${busy} onClick=${activate}>Start activation</button></div>
     <//>` : ''}
     ${error && !state ? alert() : ''}
   </section>`

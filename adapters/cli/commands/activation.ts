@@ -1,10 +1,8 @@
 import { Effect, Schema } from 'effect'
-import { refuse } from '../../../core/schema/index.ts'
 import { Dir, Env } from '../../../core/services/index.ts'
-import { bootstrapRequest, runActivation } from '../../live/activation.ts'
 import { bootstrapPane, NONCE_ENV, PROJECT_ENV } from '../../live/bootstrap.ts'
 import { personAuthor } from '../caller.ts'
-import type { Call, Commands } from '../command.ts'
+import type { Call } from '../command.ts'
 
 import { Authority } from '../../../core/actions/project.ts'
 import { readOpenProject } from '../../../core/actions/staff-session.ts'
@@ -13,28 +11,28 @@ import {
   type Of, type Project, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import { openProjectJournal, type Journal } from '../../../core/services/project.ts'
-import { liveProjectBootstrap, resumeProjectActivation, projectActivationOperations, type ActivationOperations } from '../../live/project-activation.ts'
+import { activationJournal, activationOwner, liveProjectBootstrap, resumeProjectActivation, projectActivationOperations, type ActivationOperations } from '../../live/activation.ts'
 
-export const commands: Commands = {
-  activation: (call) => Effect.gen(function* () {
-    const { cwd } = yield* Dir
-    const [action, launch] = call.args.positional
-    if (action === 'ack' && launch) {
-      const { vars } = yield* Env
-      const result = yield* bootstrapRequest(cwd, launch, vars[NONCE_ENV], 'ack')
-      return [result.line]
-    }
-    if (action !== 'resume' && action !== 'rollback' && action !== 'relaunch') {
-      return yield* refuse('use work activation ack <id>|resume|rollback|relaunch')
-    }
-    if (call.token !== null) return yield* refuse('the person runs activation recovery')
-    const by = yield* personAuthor(undefined)
-    if (by._tag !== 'Person') return yield* refuse('the person runs activation recovery')
-    return [yield* runActivation(cwd, by, action)]
-  }),
-}
+export const activationCommand = (call: Call) => Effect.gen(function* () {
+  const { cwd } = yield* Dir
+  const { vars } = yield* Env
+  if (vars[PROJECT_ENV] !== undefined) return yield* projectBootstrapCommand(call)
+  const [action] = call.args.positional
+  if ((action !== 'resume' && action !== 'relaunch' && action !== 'rollback') ||
+      call.token !== null || call.args.positional.length !== 1 || call.args.flags.length !== 0)
+    return yield* Effect.fail(rejected())
+  const person = yield* personAuthor(undefined).pipe(Effect.mapError(() => rejected()))
+  if (person._tag !== 'Person') return yield* Effect.fail(rejected())
+  const journal = yield* activationJournal(cwd, 'Write')
+  const provider = liveProjectBootstrap(cwd, vars.ARISTOTELES_DB, journal.id)
+  const operations = projectActivationOperations(cwd, journal, provider)
+  yield* projectActivationCommand(journal, operations, action).pipe(Effect.provideService(Authority, {
+    actor: activationOwner(journal, person.name),
+  }))
+  return ['Activation updated.'] as const
+})
 
-export const projectBootstrapCommand = (call: Call) => Effect.gen(function* () {
+const projectBootstrapCommand = (call: Call) => Effect.gen(function* () {
   const { cwd } = yield* Dir
   const { vars } = yield* Env
   const project = vars[PROJECT_ENV]

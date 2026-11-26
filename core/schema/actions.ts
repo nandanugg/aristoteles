@@ -57,8 +57,6 @@ export type ActionInput =
   // reads aristoteles.yaml of the dir
   | In<'DefineWorkflow', None, {
     readonly directions: ReadonlyArray<OnboardedDirection>
-    // null: work init (active at once); a generation: onboarding's inactive start (contract 6c)
-    readonly activation: { readonly generation: number } | null
   }>
   | In<'ApplyConfig', None, None> // work config apply
   | In<'RestoreConfig', None, None> // work config restore: files only, no event

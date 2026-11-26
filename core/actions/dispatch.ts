@@ -17,7 +17,6 @@ import {
 } from '../schema/index.ts'
 import { Dir, Files, Now, Readings, rowsOf, Spawn, Store, Tokens } from '../services/index.ts'
 import { fold, foldStep, momentOf } from '../state/index.ts'
-import { gate } from './activation.ts'
 import { defineWorkflow } from './config.ts'
 import { no } from './support.ts'
 import {
@@ -82,8 +81,8 @@ export const dispatchWith =
             if (given.input._tag !== 'DefineWorkflow') {
               return yield* Effect.fail(STORE.noStore(`no work store in ${cwd}`, cwd))
             }
-            const { directions, activation } = given.input.content
-            const [event] = yield* defineWorkflow(given.by, cwd, directions, activation)
+            const { directions } = given.input.content
+            const [event] = yield* defineWorkflow(given.by, cwd, directions)
             if (event === undefined) return yield* Effect.die('work init made no event')
             const draft: Draft = { at: yield* clock.read, author: given.by, event }
             const work = fold([{ ...draft, seq: 1 } as Recorded])
@@ -91,8 +90,6 @@ export const dispatchWith =
             done = { seq: 1, work, created }
             return { draft, rows: rowsOf(work, opened.dir) }
           }
-          // The authoritative activation gate (contract 6c D): before any read or side effect.
-          yield* gate(events)
           const work = yield* folding(() => fold(events))
           const call = personByName(work, given)
           const at = yield* clock.read

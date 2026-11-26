@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 // The engine supervises one process per recorded worker generation. The C16 harness also
 // runs test-command evidence that is owed in the folded record.
-import { isInactive } from '../actions/activation.ts'
 import { Effect, Ref } from 'effect'
 import { settleGenerationChildren } from '../actions/child.ts'
 import { bindWorker, reserveWorker, settleWorker, workerSession } from '../actions/worker.ts'
@@ -190,7 +189,7 @@ export const engineTick = (say: Words, memory: Ref.Ref<Memory>) =>
       return { events, folded: yield* folding(() => foldWork(events)) }
     }).pipe(Effect.scoped)
     const first = yield* read
-    if (isInactive(first.events) || first.folded === null) return lines
+    if (first.folded === null) return lines
     yield* supervise(say, first.events, first.folded.hostSession, first.folded.state.top.ended, memory, lines)
     const current = yield* read
     if (current.folded === null || current.folded.state.top.ended) return lines

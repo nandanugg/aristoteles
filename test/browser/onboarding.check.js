@@ -632,9 +632,6 @@ ${refused.err}`)
   await page.getByRole('tab', { name: 'Staffing' }).click()
   expect(await select('writer').inputValue()).toBe('document-judge')
   await everyRole()
-  await button('Review activation').click()
-  await visible(dialog('Review activation'))
-  await button('Cancel', dialog('Review activation')).click()
   // A new host proposal after an acceptance can replace an estimate with no estimate.
   delete arranged.accounts.personal.estimate
   p.write('staffing-input.yaml', Bun.YAML.stringify(arranged))

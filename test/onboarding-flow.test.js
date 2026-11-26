@@ -8,18 +8,12 @@ import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { eventsOf } from '../core/actions/fixture.test.ts'
 import { foldWork } from '../core/state/c16/fold.ts'
-import { acknowledge, aLiveHost, killBootstrap, launchEnv, recordOf } from './activation-fixture.js'
+import { initializeLegacy } from './legacy-onboarding-fixture.js'
 import { startServer } from './code.js'
 import { ONBOARD_CONFIG, ONBOARD_DIRECTION, ONBOARD_NEW, ok, onboardingProject } from './harness.js'
 import { dbOf, gitPerson } from './outside.js'
 
 const ruleList = (draft) => draft.standards.flatMap(({ rules }) => rules)
-const token = (output, who) => {
-  const found = output.split(/\s+/).find((part) => part.startsWith(`w.${who}.0.`))
-  expect(found).toBeDefined()
-  return found
-}
-
 test.each(['child', 'park', 'defer', 'missing checkpoint', 'changed checkpoint'])('onboarding hands reviewed guidance through a %s recheck', async (route) => {
   const parks = route !== 'child' && route !== 'defer'
   const p = onboardingProject()
@@ -186,7 +180,6 @@ test.each(['child', 'park', 'defer', 'missing checkpoint', 'changed checkpoint']
     await person({ act: 'review-all-roles', reviewed: beforeRoles.roles.map(({ role, revision }) => ({ id: role, revision })) })
     expect((await onboarding()).roles.every((item) => item.state === 'accepted')).toBe(true)
 
-    aLiveHost(p)
     const staffingFile = '.work/staffing.yaml'
     const arrangement = Bun.YAML.parse(read(staffingFile))
     arrangement.roles[pending.role] = { ...arrangement.roles.linter }
@@ -240,38 +233,24 @@ test.each(['child', 'park', 'defer', 'missing checkpoint', 'changed checkpoint']
       edit: { kind: 'sessions', account: 'fixture', sessionLimit: route === 'child' ? null : 2 } })
     expect(await api('staffing', { action: 'apply', ticket: finalPreview.ticket })).toMatchObject({ confirmed: true })
 
-    const approval = await api('activation/approval')
-    expect(approval.entries.map(({ path }) => path)).toEqual(expect.arrayContaining(['CLAUDE.md', 'AGENTS.md']))
-    await api('activation', { action: 'start', entries: approval.entries })
-    expect((await dash()).activation.phase).toBe('activating')
-    expect(read('CLAUDE.md')).toContain('aristoteles-marker')
-    expect(read('AGENTS.md')).toContain('aristoteles-marker')
-    const boot = await acknowledge(p, recordOf(p))
-    expect((await dash()).activation.phase).toBe('activating')
-    ok(await p.nanda('activation resume'))
-    expect((await dash()).activation.phase).toBe('active')
-    expect(eventsOf(p.dir).some(({ event }) => event.move?._tag === 'Activated')).toBe(true)
+    ok(await initializeLegacy(p))
     const active = await onboarding()
     expect(active.stage).toBe('store')
     expect(active.directions.map(({ id }) => id).sort()).toEqual(['one-thing', 'tsd-writing'])
     expect(ruleList(active.directions.find(({ id }) => id === conflicts.id).draft)).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: principleRule.id, knownBreak: true })]))
-    const host = token(ok(await p.run(`wait --launch ${boot.pending.launch} --seconds=0.01`, {
-      env: launchEnv(p, boot),
-    })).out, 'host')
-    expect(JSON.stringify(await dash())).not.toContain(host)
-
     ok(await p.nanda('top open --name="Export design" --goal="Explain the export" --sections=introduction'))
-    const handoff = await agent(`wait ${host} --seconds=1`)
+    const projectStaff = await workerIn(p, 'host')
+    const host = projectStaff.token('host')
     const leader = await workerIn(p, 'role:section-lead')
     const lead = leader.token('role:section-lead')
-    let projectWorker = handoff.match(/g\.[a-f0-9.]+/)[0]
+    let projectWorker = projectStaff.credential
+    const firstLaunch = projectWorker.split('.')[1]
     const projectTurn = (command) => workerTurn(p, projectWorker, command)
     const projectAct = async (command, fields = '') => {
       const step = await projectTurn(command)
       return agent(`${command} ${step.token} ${fields} ${step.args}`)
     }
-    expect(recordOf(p).retired).toBe(true)
     expect((await dash()).directions.map(({ name }) => name)).toContain('TSD writing')
     await projectAct('send', '--name="Introduction" --goal="Explain the export" --sections=introduction --role=section-lead')
     expect((await dash()).columns).toEqual(expect.arrayContaining([expect.objectContaining({ task: expect.objectContaining({ id: 't1', state: 'QUEUED' }) })]))
@@ -334,7 +313,7 @@ test.each(['child', 'park', 'defer', 'missing checkpoint', 'changed checkpoint']
       expect(first.route).toBeNull()
       if (route === 'defer') phase('Deferred', true)
       if (parks) {
-        const handle = cliSession(boot.pending.launch)
+        const handle = cliSession(`worker-${firstLaunch}`)
         await agent(`worker checkpoint ${job} ${handle} --credential=${projectWorker}`)
         fake.restart()
         fake.stopMode('failed')
@@ -350,7 +329,7 @@ test.each(['child', 'park', 'defer', 'missing checkpoint', 'changed checkpoint']
         expect(runtime().workers.get(first.queued.worker).ended).toBe(false)
         await agent(`worker checkpoint ${job} ${handle} --credential=${projectWorker}`)
         fake.restart()
-        fake.running.set(`boot-${boot.pending.launch}`, 'ended')
+        fake.running.set(`worker-${firstLaunch}`, 'ended')
         await fake.tick()
         expect(jobs().get(job).park._tag).toBe('WorkerParkConfirmed')
         phase('Parked', false)
@@ -464,7 +443,7 @@ test.each(['child', 'park', 'defer', 'missing checkpoint', 'changed checkpoint']
         status: 'resuming', session: null, permits: { provider: { charged: true } },
       })
       await showWorker(first.queued.worker, 'Resuming')
-      expect(resumed.command).toContain(cliSession(boot.pending.launch))
+      expect(resumed.command).toContain(cliSession(`worker-${firstLaunch}`))
       projectWorker = resumed.env.ARISTOTELES_WORKER_CREDENTIAL
       const [, launch, , root] = projectWorker.split('.')
       const { stageWorkerLaunch, sha } = await import('../core/services/index.ts')
@@ -490,7 +469,6 @@ test.each(['child', 'park', 'defer', 'missing checkpoint', 'changed checkpoint']
   } finally {
     await browser?.close()
     server.stop()
-    killBootstrap(p)
     rmSync(p.dir, { recursive: true, force: true })
   }
 }, 90000)

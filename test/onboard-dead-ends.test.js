@@ -1,3 +1,4 @@
+import { initializeLegacy } from './legacy-onboarding-fixture.js'
 // Onboarding states that had no way out (plan/research/illegal-states 3-dead-ends.md Part 3 and
 // 2-type-shapes.md section 2): an accepted file with no draft, a start that is refused while every
 // card shows Accepted, a config draft that froze, refusals whose next line needs a store, a
@@ -45,7 +46,7 @@ describe('T2: an onboarding file is one stage, so an accept always has its draft
     const status = ok(await p.agent('onboard status')).out
     expect(status).toContain('  old-one · Loading · found in the project')
     expect(status).toContain('old-one is not in the current shape: the host drafts it again')
-    const start = await p.nanda('onboard approve-roles', 'approve')
+    const start = await initializeLegacy(p)
     expect(start.code).toBe(1)
     expect(start.err).toBe(
       'refused: old-one is not accepted yet\n' +
@@ -101,7 +102,7 @@ describe('O1: one reader says whether the store can start', () => {
     const wait = ok(await p.agent('onboard wait --seconds=1')).out
     expect(wait).not.toContain('nothing waits for the host yet')
     expect(wait).toContain(blocked)
-    const start = await p.nanda('onboard approve-roles', 'approve')
+    const start = await initializeLegacy(p)
     expect(start.code).toBe(1)
     expect(start.err).toStartWith(`refused: ${blocked}`)
     expect(start.err).toContain(`next: ${fix}`)
@@ -113,9 +114,9 @@ describe('O1: one reader says whether the store can start', () => {
     )
     ok(await p.nanda('onboard approve-directions', 'approve'))
     expect(ok(await p.agent('onboard status')).out).toContain(
-      'next: everything is accepted; the person starts the store: work onboard approve-roles',
+      'next: accept the journal onboarding proposals to activate the project',
     )
-    ok(await p.nanda('onboard approve-roles', 'approve'))
+    ok(await initializeLegacy(p))
   })
 
   test('the only persistent role that splits cannot go, as it has no toggle', async () => {

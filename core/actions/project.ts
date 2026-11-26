@@ -85,7 +85,7 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
         if (choice._tag === 'Activate')
           return Result.succeed({ line: choice.line, from: 'Onboarding', move: 'next', input: { files: choice.files } })
         if (choice._tag === 'StartWork')
-          return Result.succeed({ line: choice.line, from: 'Open', move: 'next', input: { _tag: 'StartWork' } })
+          return Result.succeed({ line: choice.line, from: 'Active', move: 'start', input: {} })
         if (choice._tag === 'EndProject')
           return Result.succeed({ line: choice.line, from: 'Open', move: 'end', input: {} })
         const { project, owner, host, pipeline, staff, roles } = choice

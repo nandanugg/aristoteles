@@ -71,11 +71,6 @@ export { staffingPreview, staffingView } from '../../src/config/staffing-view.ts
 export type {
   ArrangedRole, LimitConsequence, ReviewMode, StaffingPreview, StaffingView, StaffingWarning,
 } from '../../src/config/staffing-view.ts'
-export {
-  activationId, activationIO, activationLock, applyStartupFiles, keptOriginals, readActivationRecord,
-  readLaunchFile, removeActivationGeneration, removeActivationRecord, removeLaunch, retireSecret, writeActivationRecord,
-  writeLaunchFile,
-} from '../../src/files/activation.ts'
-export type { ActivationRecord, PendingLaunch } from '../../src/files/activation.ts'
+export { activationId, activationLock } from '../../src/files/activation.ts'
 
 export { cliSession, readWorkerLaunch, stageWorkerLaunch } from '../../src/files/worker-runtime.ts'

@@ -1,5 +1,5 @@
 import { Effect, Option, Result, Schema, Stream } from 'effect'
-import { projectActivationFiles } from '../live/project-activation.ts'
+import { projectActivationFiles } from '../live/activation.ts'
 import { ownerProposals } from './view.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'

@@ -1,4 +1,4 @@
-import { aLiveHost, finishActivation, killBootstrap } from './activation-fixture.js'
+import { initializeLegacy } from './legacy-onboarding-fixture.js'
 import { staffedFixture } from './staffing-fixture.js'
 // The server of the UI, read only (plan/ui/BUILD.md part 2): every request needs the key of
 // `work start`; the API reads the store with the replay and the reads of the engine; a websocket
@@ -365,18 +365,10 @@ describe('the onboarding pages', () => {
     expect(has(p, '.work/aristoteles.db')).toBe(false)
   })
 
-  test('approve all roles starts the store and deletes the files; a refusal writes aristoteles.yaml back', async () => {
+  test('file review leaves the settings intact and the retained view reads seeded guidance', async () => {
     const p = await onboarding()
     p.write('aristoteles.yaml', 'theme: dark\n')
     const { get, onboard, act, s } = serve(p)
-    const approve = async () => {
-      const origin = `http://127.0.0.1:${s.port}`
-      const approval = await get('/api/activation/approval')
-      return (await fetch(`${origin}/api/activation`, {
-        method: 'POST', headers: { origin, 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'start', entries: approval.entries }),
-      })).json()
-    }
     ok(await p.nanda('onboard approve-directions', 'approve'))
     for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
     // The host drops the linter from the config draft, which checks two rules of tsd-writing: the
@@ -390,7 +382,8 @@ describe('the onboarding pages', () => {
     expect(reopened.directions[0]).toMatchObject({
       state: 'loading', why: 'revise', words: 'Reverify checker responsibility for no-code-proof, no-ticket-ids, repeatable.',
     })
-    expect((await approve()).error).toBe('tsd-writing is not accepted yet')
+    const result = await initializeLegacy(p)
+    expect(result.err).toContain('tsd-writing is not accepted yet')
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe('theme: dark\n')
     for (const path of ['.work/assess/tsd-writing.yaml', 'aristoteles.draft.yaml']) expect(has(p, path)).toBe(true)
     expect(has(p, '.work/onboarding.lock')).toBe(false)
@@ -404,32 +397,25 @@ describe('the onboarding pages', () => {
     p.write('tsd.yaml', ONBOARD_DIRECTION)
     ok(await p.agent('onboard draft tsd-writing --file=tsd.yaml'))
     ok(await p.nanda('onboard approve-directions', 'approve'))
-    p.write('.work/staffing.yaml', staffedFixture(ONBOARD_CONFIG).staffing)
-    aLiveHost(p)
-    try {
-      expect((await approve()).error).toContain('Confirm the current staffing')
-      const origin = `http://127.0.0.1:${s.port}`
-      const staffingPost = (body) => fetch(`${origin}/api/staffing`, {
-        method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify(body),
-      })
-      const current = await get('/api/staffing')
-      expect((await staffingPost({ action: 'apply', ticket: 'never-previewed' })).ok).toBe(false)
-      const preview = await (await staffingPost({ action: 'preview', revision: current.revision })).json()
-      const file = join(p.dir, '.work/staffing.yaml')
-      const old = readFileSync(file, 'utf8')
-      p.write('.work/staffing.yaml', old + '\n# edited while previewing\n')
-      expect((await staffingPost({ action: 'apply', ticket: preview.ticket })).ok).toBe(false)
-      expect(readFileSync(file, 'utf8')).toContain('# edited while previewing')
-      const renewed = await get('/api/staffing')
-      const reviewed = await (await staffingPost({ action: 'preview', revision: renewed.revision })).json()
-      expect((await (await staffingPost({ action: 'apply', ticket: reviewed.ticket })).json()).confirmed).toBe(true)
-      expect((await approve()).out).toContain('Bootstrap host started')
-      expect((await get('/api/dash')).activation.phase).toBe('activating')
-      await finishActivation(p)
-      expect((await get('/api/dash')).activation.phase).toBe('active')
-    } finally {
-      killBootstrap(p)
-    }
+    const staffed = Bun.YAML.parse(staffedFixture(ONBOARD_CONFIG).staffing)
+    staffed.roles.architect.launch = 'sleep 60 # {session}'
+    p.write('.work/staffing.yaml', Bun.YAML.stringify(staffed))
+    const origin = `http://127.0.0.1:${s.port}`
+    const staffingPost = (body) => fetch(`${origin}/api/staffing`, {
+      method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify(body),
+    })
+    const current = await get('/api/staffing')
+    expect((await staffingPost({ action: 'apply', ticket: 'never-previewed' })).ok).toBe(false)
+    const preview = await (await staffingPost({ action: 'preview', revision: current.revision })).json()
+    const file = join(p.dir, '.work/staffing.yaml')
+    const old = readFileSync(file, 'utf8')
+    p.write('.work/staffing.yaml', old + '\n# edited while previewing\n')
+    expect((await staffingPost({ action: 'apply', ticket: preview.ticket })).ok).toBe(false)
+    expect(readFileSync(file, 'utf8')).toContain('# edited while previewing')
+    const renewed = await get('/api/staffing')
+    const reviewed = await (await staffingPost({ action: 'preview', revision: renewed.revision })).json()
+    expect((await (await staffingPost({ action: 'apply', ticket: reviewed.ticket })).json()).confirmed).toBe(true)
+    expect((await initializeLegacy(p)).code).toBe(0)
     for (const path of ['.work/assess', 'aristoteles.draft.yaml', '.work/onboarding.lock']) expect(has(p, path)).toBe(false)
     // The models table of the draft is a settings block: it comes first, then the file's own.
     const written = readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')

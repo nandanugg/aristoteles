@@ -50,10 +50,6 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
   }
   if (edge(projectLine, event.from, event.move, 'Open') !== 'Allowed') return wrongMove()
   if (project.lastChange > read) return stale()
-  if (event.input._tag === 'StartWork') {
-    if (project.activation._tag !== 'Active' || project.activation.work !== null) return wrongMove()
-    return Result.succeed({ ...project, activation: { ...project.activation, work: number }, lastChange: number })
-  }
   const { draft } = event.input
   if (project.tasks.has(draft.id)) return stale()
   const role = project.roles.get(draft.role.id)

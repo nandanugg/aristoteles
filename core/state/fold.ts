@@ -22,11 +22,8 @@ import { defined, roleFitted, roleWordsChanged } from './steps/workflow.ts'
 type Step<K extends Kind> = (work: Work, event: EventOf<K>, recorded: RecordedOf<K>) => Stepped
 
 const STEPS: { readonly [K in Kind]: Step<K> } = {
-  'Workflow.Defined': (_w, _e, r) => damaged(r, 'the workflow of a dir is defined once'),
+  'Workflow.Initialized': (_w, _e, r) => damaged(r, 'the workflow of a dir is defined once'),
   'Workflow.RoleWordsChanged': (w, e) => roleWordsChanged(w, e),
-  // Activation is read from the events (core/actions/activation.ts); the Work stays as it is.
-  'Workflow.Activated': (w) => unchanged(w),
-  'Workflow.HostRebound': (w) => unchanged(w),
   'Role.Fitted': roleFitted,
   'Send.Sent': sent,
   'Send.Delivered': delivered,
@@ -89,7 +86,7 @@ export const foldStep: FoldStep = (work, recorded) => {
   return { work: { ...stepped.work, events }, created: stepped.created }
 }
 
-// Every event of a dir, in seq order; the first one is the Workflow.Defined of work init. A
+// Every event of a dir, in seq order; the first one is the Workflow.Initialized of work init. A
 // store that cannot apply throws StoreDamaged at its seq; loadWork makes it a typed failure.
 export type Fold = (events: ReadonlyArray<Recorded>) => Work
 export const fold: Fold = (events) => {

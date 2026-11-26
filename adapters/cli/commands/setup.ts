@@ -45,12 +45,12 @@ const init: Command = () =>
     const { cwd } = yield* Dir
     if (yield* onboardingExists(cwd)) {
       return yield* refuse(
-        `onboarding files are in this dir (${ASSESS}/ or ${DRAFT}); the store starts from them`,
-        'approve all on the agents page, or run work onboard approve-roles',
+        `onboarding files are in this dir (${ASSESS}/ or ${DRAFT})`,
+        'accept the journal onboarding proposals before activating',
       )
     }
     const by = yield* personAuthor(undefined)
-    const done = yield* act(by, { _tag: 'DefineWorkflow', target: {}, content: { directions: [], activation: null } })
+    const done = yield* act(by, { _tag: 'DefineWorkflow', target: {}, content: { directions: [] } })
     const { config } = done.work
     const roles = Object.keys(config.roles)
     const withModel = roles.filter((r) => config.roles[r]?.kind !== 'program')
@@ -89,7 +89,7 @@ const checkConfig = Effect.gen(function* () {
   const merged =
     draft === null
       ? ''
-      : `, merged into ${CONFIG} as the store start (work onboard approve-roles) merges it`
+      : `, merged into ${CONFIG} for the config check`
   return [
     `${name} reads${merged}; nothing was written.`,
     `the static fit checks pass for ${agents.map(([role]) => role).join(', ')}.`,

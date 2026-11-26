@@ -1,9 +1,10 @@
-import { startStateOf } from '../../core/actions/index.ts'
-import { startRefusal } from '../words/index.ts'
-import { activationEvents, markerApproval, prepareActivation, runActivation } from '../live/activation.ts'
-import { bootstrapAlive, bootstrapPane, isBootstrapSession, isBootstrapSocket } from '../live/bootstrap.ts'
+import { activationJournal, activationOwner, liveProjectBootstrap, projectActivationOperations, resumeProjectActivation } from '../live/activation.ts'
+import { bootstrapAlive, isBootstrapSession, isBootstrapSocket } from '../live/bootstrap.ts'
 import { initState } from '../../core/state/c16/state.ts'
-import { ACTIVATION, activationOf, gate, isInactive } from '../../core/actions/activation.ts'
+import { Authority } from '../../core/actions/project.ts'
+import { readOpenProject } from '../../core/actions/staff-session.ts'
+import { Rationale, Submission, refuse as refuseProject } from '../../core/schema/project.ts'
+import { projectActivationApproval, projectSubmission } from './project.ts'
 // startServer (frozen; package P9): the page of a dir. A terminal in the browser can run any
 // command. The server listens on every interface of the machine, with no key (Nanda, 2026-11-15:
 // a personal project), so anyone on its network can open the page and type into the terminals.
@@ -35,6 +36,7 @@ import {
   type Author,
   OnboardingAct,
   RefusalSchema,
+  refuse,
   StoreDamaged,
   type Time,
   type Work,
@@ -49,8 +51,6 @@ import {
   FilesLive,
   Now,
   onboardingExists,
-  GitUser,
-  readActivationRecord,
   activationLock,
   acceptStaffArrangement,
   applyStaffingReview,
@@ -95,7 +95,6 @@ import {
   DashMessage,
   ActivationPost,
   StaffingPost, StaffingPreview, StaffingState,
-  MarkerApproval,
   DirView,
   OnboardingView,
   PageAct,
@@ -154,7 +153,7 @@ const messageOf = (error: unknown): string =>
     ? `the store is damaged at e${error.seq}: ${error.issue}`
     : error instanceof Error
       ? error.message
-      : String(error)
+      : isRecord(error) && error._tag === 'Refusal' && typeof error.why === 'string' ? error.why : String(error)
 
 // The words that the person pastes into the AI CLI that they use, in the dir. That session is
 // the host (Nanda, 2026-11-13): it sets up a new dir, starts the page, and starts or continues
@@ -207,7 +206,14 @@ export function startServer(options: ServerOptions): ServerHandle {
 
   // --- the store and the cache -----------------------------------------------------------------
 
-  const store = StoreLive.pipe(Layer.provide(Layer.succeed(Env, { vars: env })))
+  const environment = Layer.succeed(Env, { vars: env })
+  const store = Layer.effect(Store, Effect.gen(function* () {
+    const old = yield* Store
+    const journal = yield* Effect.scoped(Effect.result(activationJournal(dir, 'Read')))
+    return journal._tag === 'Success' ? {
+      ...old, open: (directory) => refuse(`no work store in ${directory}`),
+    } : old
+  })).pipe(Layer.provide(Layer.mergeAll(environment, StoreLive.pipe(Layer.provide(environment)))))
   const dirLayer = Layer.succeed(Dir, { cwd: dir })
   const services = Layer.mergeAll(
     store,
@@ -275,21 +281,23 @@ export function startServer(options: ServerOptions): ServerHandle {
   const localSessions = new Set<string>()
   const localOnly = (session: string): boolean =>
     isLocalTerminalSession(session) || localSessions.has(session) || pump?.localOnly?.(session) === true
+  const journalProject = Effect.scoped(activationJournal(dir, 'Read').pipe(Effect.flatMap(readOpenProject)))
+  const currentProject = () => runSync(Effect.result(journalProject))
   const dashNow = (): typeof Dash.Type | undefined => {
-    const events = storeEvents()
-    const folded = foldWork(events)
-    if (folded === null) {
-      const record = readActivationRecord(dir)
-      if (!record) return undefined
-      const state = activationOf(events)
-      const binding = state?.binding
-      const relaunching = record.pending?.kind === 'rebind' && record.pending.launch !== binding?.launch
-      const hostLost = state?.active === true && binding !== null && binding !== undefined &&
-        !bootstrapAlive(dir, binding.launch)
-      const phase = record.phase === 'rolling back' ? 'rolling back'
-        : relaunching ? 'relaunching'
-        : hostLost ? 'host lost'
-        : state?.active ? 'active' : 'activating'
+    const project = currentProject()
+    if (project._tag === 'Success') {
+      const { activation, read } = project.success
+      if (activation._tag === 'Onboarding') return undefined
+      const provider = liveProjectBootstrap(dir, env.ARISTOTELES_DB, project.success.id)
+      const launch = activation._tag === 'Activating'
+        ? activation.launches.at(-1) : activation._tag === 'Active' ? activation.replacement : null
+      const host = activation._tag === 'Active' ? runSync(Effect.result(provider.observe(activation.binding.id))) : null
+      const hostLost = activation._tag === 'Active' && activation.work._tag === 'NotStarted' &&
+        host?._tag === 'Success' && host.success === 'Ended'
+      const phase = activation._tag === 'RollingBack' ? 'rolling back'
+        : activation._tag === 'Activating' ? 'activating'
+        : launch && launch.id !== activation.binding.id ? 'relaunching'
+        : hostLost ? 'host lost' : 'active'
       return {
         ...dashOf({
           dir: basename(dir), build, now: Date.parse(clock()),
@@ -297,18 +305,22 @@ export function startServer(options: ServerOptions): ServerHandle {
           host: { model: '', reading: null }, hostSession: null, pipe: null,
           terminals: {}, tails: {}, forwards: [], markers: [], principles: {},
         }),
-        header: { dir: basename(dir), project: '', seq: events.at(-1)?.seq ?? 0, build },
+        header: { dir: basename(dir), project: '', seq: read, build },
         activation: {
           phase,
-          step: phase === 'active' ? 'Open the top to begin work.'
-            : record.pending?.acknowledged ? 'The host acknowledged its launch.'
-            : record.pending ? 'Waiting for the host to acknowledge.'
+          step: activation._tag === 'Active' && activation.work._tag !== 'NotStarted' ? 'Work is open.'
+            : phase === 'active' ? 'Start work under the bound host.'
+            : launch?.pane ? 'The host acknowledged its launch.'
+            : launch ? 'Waiting for the host to acknowledge.'
             : 'Preparing the project.',
           next: phase === 'active' ? null : phase === 'host lost' ? 'relaunch'
             : phase === 'rolling back' ? 'roll back' : 'resume',
         },
       }
     }
+    const events = storeEvents()
+    const folded = foldWork(events)
+    if (folded === null) return undefined
     const { state, forwards, hostSession } = folded
     const runtimeWorkers = foldRuntime(events)
     const managedActors = new Set(runtimeWorkers.placements.flatMap(({ members }) => members))
@@ -317,10 +329,7 @@ export function startServer(options: ServerOptions): ServerHandle {
       if (event.create._tag === 'WorkerBound') localSessions.add(event.create.session)
       if (event.create._tag === 'WorkerReserved') localSessions.add(workerSession(event.create.launch))
     }
-    const binding = activationOf(events)?.binding
-    const managed = !managedActors.has('host') && binding && (state.ep.get('host') ?? 0) === 0 && hostSession !== null
-      ? bootstrapPane(dir, binding.launch) : null
-    const hostPane = managedActors.has('host') ? null : folded.hostPane ?? managed
+    const hostPane = managedActors.has('host') ? null : folded.hostPane
     const now = Date.parse(clock())
     const terminals = pump?.status() ?? {}
     const persistent = [
@@ -592,9 +601,6 @@ export function startServer(options: ServerOptions): ServerHandle {
       send({ type: 'changed' })
       return by
     }
-    if (isInactive(storeEvents())) return json({
-      refused: 'inactive', words: ACTIVATION.inactive().message, next: ACTIVATION.inactive().next,
-    }, 400)
     const forward = 'confirm' in post
       ? foldWork(storeEvents())?.forwards.find((entry) => entry.id === post.confirm)
       : undefined
@@ -642,7 +648,7 @@ export function startServer(options: ServerOptions): ServerHandle {
   const onboardingAct = async (act: OnboardingAct): Promise<Response> => {
     const name = await gitName(dir)
     if (name === '') return json({ error: NO_PERSON }, 400)
-    if (isInactive(storeEvents())) return failed(ACTIVATION.inactive())
+    if (currentProject()._tag === 'Success') return json({ error: 'Use the project journal for onboarding.' }, 400)
     if (readState()) {
       const over =
         'the store of this dir has started, so onboarding is over; a change now is an adjustment'
@@ -656,7 +662,6 @@ export function startServer(options: ServerOptions): ServerHandle {
     }
     const exit = await runtime.runPromiseExit(Effect.scoped(Effect.gen(function* () {
       yield* activationLock(dir)
-      yield* gate(yield* activationEvents(dir))
       const made = yield* personAct(dir, name, act)
       return onboardingWords(act, made, yield* readOnboarding(dir))
     })))
@@ -674,7 +679,7 @@ export function startServer(options: ServerOptions): ServerHandle {
       const input = write ? Schema.decodeUnknownSync(StaffingPost)(await req.json()) : null
       return await runtime.runPromise(Effect.scoped(Effect.gen(function* () {
         if (input !== null) yield* activationLock(dir)
-        if (readActivationRecord(dir) !== null || (yield* activationEvents(dir)).length !== 0) {
+        if ((yield* Effect.result(journalProject))._tag === 'Success' || readState()) {
           return json({ error: 'Staffing review ends when activation begins.' }, 400)
         }
         const files = yield* readOnboarding(dir)
@@ -782,7 +787,14 @@ export function startServer(options: ServerOptions): ServerHandle {
       return answer(PersonView, personView(work.config.people, await gitName(dir)))
     }
     if (path === '/api/activation/approval') {
-      return answer(MarkerApproval, await runtime.runPromise(markerApproval(dir)))
+      const name = await gitName(dir)
+      const response = await runtime.runPromiseExit(Effect.scoped(Effect.gen(function* () {
+        const journal = yield* activationJournal(dir, 'Read')
+        return yield* projectActivationApproval(journal, dir).pipe(Effect.provideService(Authority, {
+          actor: activationOwner(journal, name),
+        }))
+      })))
+      return Exit.isSuccess(response) ? response.value : failed(Cause.squash(response.cause))
     }
     if (path === '/api/dash') {
       const dash = dashNow()
@@ -880,19 +892,34 @@ export function startServer(options: ServerOptions): ServerHandle {
       if (url.pathname === '/api/activation' && req.method === 'POST') {
         if (!sameOrigin(req, srv)) return json({ error: 'an act comes only from this page' }, 403)
         try {
-          const input = Schema.decodeUnknownSync(ActivationPost)(await req.json())
+          const input: unknown = await req.json()
           const name = await gitName(dir)
           if (name === '') return json({ error: NO_PERSON }, 400)
-          const by = { _tag: 'Person' as const, name, channel: 'ui' as const }
-          const task = Effect.gen(function* () {
-            if (input.action === 'start') {
-              yield* prepareActivation(dir, by, input.entries, (files) => startRefusal(startStateOf(files)), true)
+          const task = Effect.scoped(Effect.gen(function* () {
+            const journal = yield* activationJournal(dir, 'Write')
+            const actor = activationOwner(journal, name)
+            const provider = liveProjectBootstrap(dir, env.ARISTOTELES_DB, journal.id)
+            const operations = projectActivationOperations(dir, journal, provider)
+            const recovery = Schema.decodeUnknownOption(ActivationPost, { onExcessProperty: 'error' })(input)
+            if (recovery._tag === 'Some') {
+              yield* actor
+              yield* resumeProjectActivation(journal, operations, recovery.value.action)
+              return json({ out: 'Activation updated.' })
             }
-            return yield* runActivation(dir, by, input.action === 'start' ? 'resume' : input.action)
-          })
-          const out = await runtime.runPromise(task.pipe(Effect.provideService(GitUser, { name: Effect.succeed(name) })))
+            const checked = Schema.decodeUnknownOption(Submission, { onExcessProperty: 'error' })(input)
+            if (checked._tag === 'None' || checked.value._tag !== 'HumanChoice' ||
+                (checked.value.choice._tag !== 'Activate' && checked.value.choice._tag !== 'StartWork'))
+              return yield* Effect.fail(refuseProject('InvalidInput', Rationale.make('Send a checked activation choice.')))
+            const launch = Effect.scoped(Effect.flatMap(activationJournal(dir, 'Write'), (current) =>
+              resumeProjectActivation(current, projectActivationOperations(dir, current, provider), 'resume'))).pipe(
+              Effect.provideService(Env, { vars: env }),
+            )
+            return yield* projectSubmission(journal, new Request(req.url, { method: 'POST', body: JSON.stringify(input) }),
+              undefined, launch).pipe(Effect.provideService(Authority, { actor }))
+          }))
+          const result = await runtime.runPromiseExit(task)
           send({ type: 'changed' })
-          return json({ out })
+          return Exit.isSuccess(result) ? result.value : failed(Cause.squash(result.cause))
         } catch (error) {
           return failed(error)
         }
@@ -965,7 +992,8 @@ export function startServer(options: ServerOptions): ServerHandle {
     timer = setTimeout(() => {
       timer = undefined
       try {
-        runSync(refresh)
+        if (currentProject()._tag === 'Success') send({ type: 'changed' })
+        else runSync(refresh)
       } catch {
         // A damaged store shows on the next read of the page, with its words.
       }
@@ -1013,7 +1041,7 @@ export function startServer(options: ServerOptions): ServerHandle {
     try {
       const names = existsSync(assess) ? readdirSync(assess).map((n) => join(assess, n)) : []
       return [join(dir, DRAFT), join(dir, STAFFING_PROPOSAL), join(dir, STAFFING_CONSULT), join(dir, '.work/staffing.yaml'),
-        join(dir, '.work/onboarding/activation/record.json'), ...names]
+        ...names]
         .filter((path) => existsSync(path))
         .map((path) => `${path} ${statSync(path).mtimeMs} ${statSync(path).size}`)
         .join('\n')

@@ -220,8 +220,8 @@ export function ActivationPanel({ project, submit, markerFiles }: {
       : activation._tag === 'Onboarding' ? html`<p>Accept the onboarding proposals before activation.</p>`
       : activation._tag === 'Activating' ? html`<p>Waiting for the bound host to acknowledge activation.</p>`
       : activation._tag === 'RollingBack' ? html`<p>Restoring approved files.</p>`
-      : activation.work === null ? html`<button class="btn primary" disabled=${busy} onClick=${() =>
-        void send({ _tag: 'StartWork', line: { _tag: 'Project', id } })}>Start work</button>`
+      : activation.work._tag === 'NotStarted' ? html`<button class="btn primary" disabled=${busy} onClick=${() =>
+        void send({ _tag: 'StartWork', line: { _tag: 'Activation', id } })}>Start work</button>`
       : html`<p>Work is open.</p>`}
     ${failure ? html`<p role="alert">${failure}</p>` : null}
   </section>`

@@ -1,8 +1,7 @@
-import { aLiveHost, finishActivation, killBootstrap } from './activation-fixture.js'
+import { initializeLegacy } from './legacy-onboarding-fixture.js'
 // Onboarding at a terminal (BUILD.md 1e; rulings 1 to 5, 7, 15, onboarding 2026-11-14): the host
 // drafts into the files with work onboard, the person decides as on the two pages, and nothing is
-// stored until approve-roles starts the store with the accepted result only. Each refusal of the
-// start leaves aristoteles.yaml and the onboarding files as they were.
+// stored by the file endpoints. Retained config tests seed their store explicitly.
 import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
@@ -74,25 +73,19 @@ test('a live revise can carry accepted onboarding evidence with no observed brea
   p.write('sparse.yaml', Bun.YAML.stringify(sparse))
   ok(await p.agent('onboard draft tsd-writing --file=sparse.yaml'))
   await acceptAll(p)
-  aLiveHost(p)
-  try {
-    ok(await p.nanda('onboard approve-roles', 'approve'))
-    await finishActivation(p)
-    p.write('unchanged-evidence.yaml', 'says: The reader can make a decision from the page.\n')
-    expect(ok(await p.agent('direction revise tsd-writing --file=unchanged-evidence.yaml --by=host')).out).toContain('d2 drafted')
-    ok(await p.nanda('direction accept d2', 'accept'))
-    // The exception survives the unrelated revision, including when the same flow is supplied.
-    p.write('same-flow.yaml', Bun.YAML.stringify({ flow: sparse.flow, says: 'Make the decision explicit.' }))
-    expect(ok(await p.agent('direction revise tsd-writing --file=same-flow.yaml --by=host')).out).toContain('d3 drafted')
-    const next = structuredClone(sparse.flow.at(-1))
-    next.says = 'A newly governed step'
-    p.write('new-flow.yaml', Bun.YAML.stringify({ flow: [next] }))
-    expect((await p.agent('direction revise tsd-writing --file=new-flow.yaml --by=host')).err).toContain(
-      'flow step 1: the rules it uses have no case that breaks',
-    )
-  } finally {
-    killBootstrap(p)
-  }
+  ok(await initializeLegacy(p))
+  p.write('unchanged-evidence.yaml', 'says: The reader can make a decision from the page.\n')
+  expect(ok(await p.agent('direction revise tsd-writing --file=unchanged-evidence.yaml --by=host')).out).toContain('d2 drafted')
+  ok(await p.nanda('direction accept d2', 'accept'))
+  // The exception survives the unrelated revision, including when the same flow is supplied.
+  p.write('same-flow.yaml', Bun.YAML.stringify({ flow: sparse.flow, says: 'Make the decision explicit.' }))
+  expect(ok(await p.agent('direction revise tsd-writing --file=same-flow.yaml --by=host')).out).toContain('d3 drafted')
+  const next = structuredClone(sparse.flow.at(-1))
+  next.says = 'A newly governed step'
+  p.write('new-flow.yaml', Bun.YAML.stringify({ flow: [next] }))
+  expect((await p.agent('direction revise tsd-writing --file=new-flow.yaml --by=host')).err).toContain(
+    'flow step 1: the rules it uses have no case that breaks',
+  )
 })
 
 describe('the whole onboarding at a terminal', () => {
@@ -156,19 +149,13 @@ describe('the whole onboarding at a terminal', () => {
     expect((await p.nanda('onboard persistence writer --persistent=true')).err).toContain('.work/staffing.yaml')
     for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
     expect(ok(await p.agent('onboard status')).out).toContain(
-      'next: everything is accepted; the person starts the store: work onboard approve-roles',
+      'next: accept the journal onboarding proposals to activate the project',
     )
-    aLiveHost(p)
-    try {
-      const started = ok(await p.nanda('onboard approve-roles', 'approve')).out
-      expect(started).toContain('Bootstrap host started')
-      await finishActivation(p)
-    } finally {
-      killBootstrap(p)
-    }
-    // Question 20, option A: one Workflow.Defined holds the config and the accepted directions.
+    const refused = await p.nanda('onboard approve-roles', 'approve')
+    expect(refused.err).toContain('Accept the journal onboarding proposals')
+    ok(await initializeLegacy(p))
     const events = eventsOf(p)
-    expect(events.map((e) => `${e.record}.${e.member}`)).toEqual(['Workflow.Defined', 'Workflow.Activated'])
+    expect(events.map((e) => `${e.record}.${e.member}`)).toEqual(['Workflow.Initialized'])
     const { directions } = JSON.parse(events[0].event).create
     expect(directions.map((x) => [x.direction.id, x.direction.owner, x.direction.standards.flatMap((s) => s.rules.flatMap((r) => r.evidence?.cases ?? [])).length, x.source._tag])).toEqual([
       ['one-thing', 'Nanda', 3, 'Local'],
@@ -232,7 +219,7 @@ const withCompany = async () => {
 describe('a company direction in onboarding (ruling 6)', () => {
   test('its words come from the folder; the start keeps it a company direction, in aristoteles.lock', async () => {
     const { p, company } = await withCompany()
-    ok(await p.nanda('onboard approve-roles', 'approve'))
+    ok(await initializeLegacy(p))
     const { directions } = JSON.parse(eventsOf(p)[0].event).create
     expect(directions[0].direction.standards[0].rules[0]).toMatchObject({
       id: 'upper-snake', says: 'The flag is FF_<FEATURE>.', checkedBy: 'linter', supersedes: [],
@@ -261,7 +248,7 @@ describe('a company direction in onboarding (ruling 6)', () => {
     const { p, company } = await withCompany()
     await Bun.write(join(company.dir, company.folder, 'naming/upper-snake.md'), 'The flag is FF_<TEAM>_<FEATURE>.\n')
     git(company.dir, 'commit', '-q', '-am', 'the team')
-    const r = await p.nanda('onboard approve-roles', 'approve')
+    const r = await initializeLegacy(p)
     expect(r.err).toContain('refused: the company folder of feature-flags changed since its draft')
     expect(exists(p, 'aristoteles.yaml')).toBe(false)
     expect(exists(p, 'aristoteles.lock')).toBe(false)
@@ -273,7 +260,7 @@ describe('what onboarding refuses', () => {
   test('the start refuses a direction that is not accepted, and leaves the files as they were', async () => {
     const p = await drafted()
     for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
-    const r = await p.nanda('onboard approve-roles', 'approve')
+    const r = await initializeLegacy(p)
     expect(r.err).toContain('refused: tsd-writing is not accepted yet')
     expect(r.err).toContain('next: resolve tsd-writing, then approve the reviewed directions together (work onboard approve-directions)')
     expect(exists(p, 'aristoteles.yaml')).toBe(false)
@@ -289,7 +276,7 @@ describe('what onboarding refuses', () => {
     // The host drops the linter, which checks two rules of tsd-writing (the person cannot: O1).
     p.write('draft2.yaml', ONBOARD_CONFIG.replace(/  linter:\n[\s\S]*$/, '').replaceAll(', linter]', ']'))
     ok(await p.agent('onboard config --file=draft2.yaml'))
-    const r = await p.nanda('onboard approve-roles', 'approve')
+    const r = await initializeLegacy(p)
     expect(r.err).toContain('refused: tsd-writing is not accepted yet')
     expect(ok(await p.agent('onboard status')).out).toContain('Reverify checker responsibility for no-code-proof, no-ticket-ids, repeatable.')
     expect(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8')).toBe(settings)
@@ -397,7 +384,7 @@ describe('what onboarding refuses', () => {
     p.write('aristoteles.yaml', ONBOARD_CONFIG)
     const r = await p.nanda('init')
     expect(r.err).toContain('refused: onboarding files are in this dir (.work/assess/ or aristoteles.draft.yaml)')
-    expect(r.err).toContain('next: approve all on the agents page, or run work onboard approve-roles')
+    expect(r.err).toContain('next: accept the journal onboarding proposals before activating')
     expect(exists(p, '.work/aristoteles.db')).toBe(false)
   })
 
@@ -410,7 +397,7 @@ describe('what onboarding refuses', () => {
     ok(r)
     expect(exists(p, 'aristoteles.draft.yaml')).toBe(true)
     for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
-    const start = await p.nanda('onboard approve-roles', 'approve')
+    const start = await initializeLegacy(p)
     expect(start.err).toContain('roles.architect.launch needs {session}')
   })
 
@@ -443,7 +430,7 @@ test('accepted responsibilities are joined with staffing from the project direct
   p.write('draft.yaml', Bun.YAML.stringify(draft))
   ok(await p.agent('onboard config --file=draft.yaml'))
   for (const role of ROLES) ok(await p.nanda(`onboard accept-role ${role}`))
-  const missing = await p.nanda('onboard approve-roles', 'approve')
+  const missing = await initializeLegacy(p)
   expect(missing.code).toBe(1)
   expect(missing.err).toContain('.work/staffing.yaml')
   expect(exists(p, '.work/aristoteles.db')).toBe(false)
@@ -453,7 +440,7 @@ test('accepted responsibilities are joined with staffing from the project direct
     accounts: { primary: { limits: { sessions: '1 session' } } },
     roles,
   }))
-  ok(await p.nanda('onboard approve-roles', 'approve'))
+  ok(await initializeLegacy(p))
   const file = Bun.YAML.parse(readFileSync(join(p.dir, 'aristoteles.yaml'), 'utf8'))
   expect(file.models).toBeUndefined()
   expect(file.roles.writer.model).toBeUndefined()
@@ -520,7 +507,7 @@ test('a code-wins answer is reverified on its revision and starts with rule-loca
   expect((await p.agent('onboard draft one-thing --file=direction.yaml')).err).toContain('answer revision changed')
   ok(await p.agent(`onboard draft one-thing --file=direction.yaml --revision=${revision}`))
   await acceptAll(p)
-  ok(await p.nanda('onboard approve-roles', 'approve'))
+  ok(await initializeLegacy(p))
   const saved = JSON.parse(eventsOf(p)[0].event).create.directions[0].direction
   expect(saved.standards[0].rules[0]).toMatchObject({ says: 'Two topics are allowed.', evidence: rule.evidence })
   expect(saved.flow.every((step) => !('examples' in step))).toBe(true)

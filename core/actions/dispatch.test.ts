@@ -50,7 +50,7 @@ describe('dispatch', () => {
   test('work init makes the store; a second init is refused with a Pick', async () => {
     const p = h.project()
     // Question 20, option A (onboarding 2026-11-14): work init starts a store with no direction.
-    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [], activation: null } } as const
+    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [] } } as const
     const made = dispatchIn(p.dir, NANDA, input as never, later(p))
     if (!Exit.isSuccess(made)) throw new Error(String(made.cause))
     expect(eventsOf(p.dir).map((r) => r.event._tag)).toEqual(['Workflow'])
@@ -89,7 +89,7 @@ describe('the store start of onboarding (Question 20, option A)', () => {
         commit: 'c'.repeat(40),
       },
     }
-    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [local, flags], activation: null } }
+    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [local, flags] } }
     const made = dispatchIn(p.dir, NANDA, input as never, later(p))
     if (!Exit.isSuccess(made)) throw new Error(String(made.cause))
     expect(eventsOf(p.dir).map((r) => r.event._tag)).toEqual(['Workflow'])
@@ -106,7 +106,7 @@ describe('the store start of onboarding (Question 20, option A)', () => {
     const p = h.project()
     const tsd = Bun.YAML.parse(h.DIRECTION) as Record<string, unknown>
     const stranger = { direction: { ...tsd, owner: 'Dewi' }, source: { _tag: 'Local' } }
-    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [stranger], activation: null } }
+    const input = { _tag: 'DefineWorkflow', target: {}, content: { directions: [stranger] } }
     const error = failure(dispatchIn(p.dir, NANDA, input as never, later(p)))
     expect(error?.message).toBe('the owner Dewi of tsd-writing is not in the people of aristoteles.yaml')
     // No event: the dir has no store to open.

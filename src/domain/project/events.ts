@@ -28,7 +28,7 @@ const sessionOpen = { to: 'Live', input: Schema.Struct({ staff: StaffId, pane: P
 
 export const projectLine = line({
   Open: { owes: 'Owner', moves: {
-    next: { to: ['Open'], input: Schema.Union([Schema.TaggedStruct('TaskSent', { draft: TaskDraft }), Schema.TaggedStruct('StartWork', {})]) },
+    next: { to: ['Open'], input: Schema.TaggedStruct('TaskSent', { draft: TaskDraft }) },
     end: { to: ['Ended'], input: Schema.Struct({}) },
   } },
   Ended: { owes: 'None', moves: {} },
@@ -102,13 +102,14 @@ export const activationLine = line({
     reserve: { to: ['Active'], input: launchId },
     acknowledge: { to: ['Active'], input: launchPane },
     bind: { to: ['Active'], input: launchPane },
-    settle: { to: ['Active'], input: launchId },
+    cancel: { to: ['Active'], input: launchId },
+    start: { to: ['Active'], input: Schema.Struct({}) },
     use: { to: ['Active'], input: launchId },
   } },
 })
 
 const entry = { number: EventNumber, actor: StoredActor, read: ReadPosition, at: Timestamp }
-const on = <A extends Schema.Top, F extends Schema.Top, M extends 'next' | 'end' | 'back' | 'answer' | 'submit' | 'sendBack' | 'accept' | 'remove' | 'reserve' | 'acknowledge' | 'bind' | 'settle' | 'use', I extends Schema.Top>(
+const on = <A extends Schema.Top, F extends Schema.Top, M extends 'next' | 'end' | 'back' | 'answer' | 'submit' | 'sendBack' | 'accept' | 'remove' | 'reserve' | 'acknowledge' | 'bind' | 'cancel' | 'start' | 'use', I extends Schema.Top>(
   address: A, from: F, move: M, definition: { readonly input: I },
 ) => Schema.Struct({ ...entry, line: address, from, move: Schema.Literal(move), input: definition.input })
 
@@ -160,7 +161,8 @@ export const ActivationEvent = Schema.Union([
   on(ActivationAddress, Schema.Literal('Active'), 'reserve', activationLine.Active.moves.reserve),
   on(ActivationAddress, Schema.Literal('Active'), 'acknowledge', activationLine.Active.moves.acknowledge),
   on(ActivationAddress, Schema.Literal('Active'), 'bind', activationLine.Active.moves.bind),
-  on(ActivationAddress, Schema.Literal('Active'), 'settle', activationLine.Active.moves.settle),
+  on(ActivationAddress, Schema.Literal('Active'), 'cancel', activationLine.Active.moves.cancel),
+  on(ActivationAddress, Schema.Literal('Active'), 'start', activationLine.Active.moves.start),
   on(ActivationAddress, Schema.Literal('Active'), 'use', activationLine.Active.moves.use),
 ])
 export type ActivationEvent = Of<typeof ActivationEvent>
@@ -193,7 +195,7 @@ export const Submission = Schema.Union([
       Schema.TaggedStruct('NewProject', { project: ProjectAddress, ...configuration }),
       Schema.TaggedStruct('EndProject', { line: ProjectAddress }),
       Schema.TaggedStruct('Activate', { line: ActivationAddress, ...activationLine.Onboarding.moves.next.input.fields }),
-      Schema.TaggedStruct('StartWork', { line: ProjectAddress }),
+      Schema.TaggedStruct('StartWork', { line: ActivationAddress }),
       openQuestion, answerQuestion, openProposal, submitProposal,
       Schema.TaggedStruct('ChooseProposal', {
         line: ProposalAddress,

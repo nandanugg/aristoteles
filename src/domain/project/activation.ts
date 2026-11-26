@@ -14,17 +14,21 @@ export const ApprovedFiles = Schema.NonEmptyArray(ApprovedFile).check(
 export const HostLaunch = Schema.Struct({ id: SessionId, pane: Schema.NullOr(Pane) })
 export type HostLaunch = Of<typeof HostLaunch>
 const pinned = Schema.Struct({ id: ProposalId, acceptedAt: EventNumber })
+const work = Schema.Union([
+  Schema.TaggedStruct('NotStarted', {}),
+  Schema.TaggedStruct('Started', { at: EventNumber }),
+  Schema.TaggedStruct('Used', { at: EventNumber, usedAt: EventNumber }),
+])
 const approved = {
-  launches: Schema.Array(Schema.Struct({ id: SessionId })),
+  launches: Schema.Array(HostLaunch),
   at: EventNumber, files: ApprovedFiles, proposals: Schema.NonEmptyArray(pinned), staff: Staff,
 }
 export const Activation = Schema.Union([
   Schema.TaggedStruct('Onboarding', {}),
-  Schema.TaggedStruct('Activating', { ...approved, launch: Schema.NullOr(HostLaunch) }),
-  Schema.TaggedStruct('RollingBack', { ...approved, launch: Schema.NullOr(HostLaunch), why: Rationale }),
+  Schema.TaggedStruct('Activating', approved),
+  Schema.TaggedStruct('RollingBack', { ...approved, why: Rationale }),
   Schema.TaggedStruct('Active', {
-    ...approved, binding: Schema.Struct({ id: SessionId, pane: Pane }), pending: Schema.NullOr(HostLaunch),
-    work: Schema.NullOr(EventNumber), used: Schema.NullOr(EventNumber),
+    ...approved, binding: Schema.Struct({ id: SessionId, pane: Pane }), replacement: Schema.NullOr(HostLaunch), work,
   }),
 ])
 export type Activation = Of<typeof Activation>

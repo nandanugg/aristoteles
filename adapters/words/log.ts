@@ -55,10 +55,8 @@ export const logLine = (work: Work, logged: Logged): string => {
 // The old type word of each kind of event: a table with one row per kind, so a new kind fails
 // the compile here until it has its word.
 const OLD_TYPE: Total<string> = {
-  'Workflow.Defined': 'config',
+  'Workflow.Initialized': 'config',
   'Workflow.RoleWordsChanged': 'config.text',
-  'Workflow.Activated': 'activated',
-  'Workflow.HostRebound': 'host.rebound',
   'Role.Fitted': 'role.fit',
   'Send.Sent': 'send',
   'Send.Delivered': 'send.delivered',

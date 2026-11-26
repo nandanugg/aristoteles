@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { Effect } from 'effect'
-import { projectActivationFiles, projectActivationOperations, type ProjectBootstrap } from '../../adapters/live/project-activation.ts'
+import { projectActivationFiles, projectActivationOperations, type ProjectBootstrap } from '../../adapters/live/activation.ts'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession } from '../../core/actions/staff-session.ts'
 import {
@@ -22,14 +22,14 @@ export const agree = (journal: Journal, project: Project, files: Extract<
 })
 
 export const startWork = (journal: Journal, project: Project) => ownerInput(journal, {
-  _tag: 'HumanChoice', read: project.read, choice: { _tag: 'StartWork', line: { _tag: 'Project', id: project.id } },
+  _tag: 'HumanChoice', read: project.read, choice: { _tag: 'StartWork', line: { _tag: 'Activation', id: project.id } },
 })
 
-export const readyProject = (path: string, host = staff) => Effect.gen(function* () {
+export const readyProject = (path: string, host = staff, projectId?: Journal['id']) => Effect.gen(function* () {
   const directory = dirname(path)
   const file = join(directory, 'AGENTS.md')
   writeFileSync(file, approvedText)
-  const journal = yield* open(path)
+  const journal = yield* open(path, 'Create', projectId)
   const project = (yield* create(journal, [], host)).state
   const staffed = yield* acceptStaffing(journal, project, {
     id: StaffingId.make('staffing:activation'), staff: [host], subscriptions: [host.subscription],

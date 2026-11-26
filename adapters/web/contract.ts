@@ -406,14 +406,7 @@ export const ActivationView = Schema.Struct({
   step: Text,
   next: Schema.NullOr(Schema.Literals(['resume', 'roll back', 'relaunch'])),
 })
-export const MarkerApproval = Schema.Struct({
-  entries: Schema.Array(Schema.Struct({ path: Text, hash: Text, premarked: Schema.Boolean })),
-  reported: Schema.Array(Text),
-})
-export const ActivationPost = Schema.Union([
-  Schema.Struct({ action: Schema.Literal('start'), entries: MarkerApproval.fields.entries }),
-  Schema.Struct({ action: Schema.Literals(['resume', 'rollback', 'relaunch']) }),
-])
+export const ActivationPost = Schema.Struct({ action: Schema.Literals(['resume', 'rollback', 'relaunch']) })
 
 // The whole dashboard: the page draws from a whole copy of it, never from a diff (browser.qnt).
 export const Dash = Schema.Struct({

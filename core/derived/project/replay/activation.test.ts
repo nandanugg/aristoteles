@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Effect, Result, Schema } from 'effect'
-import { projectActivationOperations } from '../../../../adapters/live/project-activation.ts'
+import { projectActivationOperations } from '../../../../adapters/live/activation.ts'
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
 import { agree, approvedText, hostId, newerText, readyActivation, startWork } from '../../../../src/store/project-activation.probe.ts'
@@ -72,7 +72,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
       expect(project.proposals).toEqual(f.project.proposals)
       const phase = project.activation
       const contents = readFileSync(f.file, 'utf8')
-      const reserved = phase._tag === 'Activating' || phase._tag === 'RollingBack' ? numberOf(phase.launch?.id) : 0
+      const reserved = phase._tag === 'Activating' || phase._tag === 'RollingBack' ? numberOf(phase.launches.at(-1)?.id) : 0
       const binding = phase._tag === 'Active' ? numberOf(phase.binding.id) : 0
       const events = yield* journal.eventsAfter(ReadPosition.make(0))
       const acked = new Set<number>()
@@ -87,10 +87,10 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
         alive: sorted([...f.running].map(numberOf)),
         acked: sorted(acked),
         binding,
-        pending: phase._tag === 'Active' ? numberOf(phase.pending?.id) : 0,
-        top: phase._tag === 'Active' && phase.work !== null ? binding : 0,
+        pending: phase._tag === 'Active' ? numberOf(phase.replacement?.id) : 0,
+        top: phase._tag === 'Active' && phase.work._tag !== 'NotStarted' ? binding : 0,
         delivered: sorted(delivered.keys()),
-        used: phase._tag === 'Active' && phase.used !== null,
+        used: phase._tag === 'Active' && phase.work._tag === 'Used',
       }
     }))
     const projection = (step: (typeof trace.states)[number]) => {
@@ -136,7 +136,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
           const reserved = integer(prior.reserved)
           const candidate = hostId(reserved)
           const phase = (yield* readOpenProject(journal)).activation
-          const mayCommit = phase._tag === 'Activating' && phase.launch?.pane != null &&
+          const mayCommit = phase._tag === 'Activating' && phase.launches.at(-1)?.pane != null &&
             f.running.has(candidate) && prior.file === 'Marked'
           if (mayCommit) yield* operations.commit
           else {

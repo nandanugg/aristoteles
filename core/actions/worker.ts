@@ -1,6 +1,5 @@
 // Runtime offers and lifecycle records share the journal's serialized write boundary.
 import { Effect } from 'effect'
-import { gate } from './activation.ts'
 import { Refusal } from '../schema/errors.ts'
 import { admissionFor, stepDemand } from '../derived/c16/admission.ts'
 import { readyRecheck } from '../derived/c16/recheck.ts'
@@ -28,7 +27,6 @@ export const writeRuntime = (
   const clock = yield* Now
   const store = yield* (yield* Store).open(cwd, { create: false })
   return yield* store.write((events) => Effect.gen(function* () {
-    yield* gate(events)
     const folded = foldWork(events)
     if (folded === null) return yield* workerRefusal('legal', 'No top is open.')
     const entry = yield* select(events, folded)

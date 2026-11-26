@@ -60,7 +60,7 @@ Paths under **Add** are new. **Change** identifies existing files that keep a ro
 
 - **Add** `src/domain/project/activation.ts` for the phase and public observations and `core/actions/project-activation.ts` for the journal guards.
 - **Change** `adapters/live/activation.ts`, `src/files/activation.ts`, `adapters/live/bootstrap.ts`, `adapters/cli/commands/activation.ts`, `adapters/web/project.ts`, and the activation panel under `adapters/web/app/onboarding.ts`. Reuse marker staging, the directory lock, bootstrap pane observation and private credential files. Pin the accepted proposal versions and approved file images. Record launch before spawn, mark real files, require a current acknowledgement, then commit Active in the journal. Recover a commit before its IO note by rereading the journal. Start work under the committed host binding. Pending replacements cannot collect credentials, and delivery retires on the first authenticated use. Hold the bind and start-work exclusions in the same transaction so either ordering is safe.
-- **Delete** the slice’s `Workflow.Defined`/Activated/HostRebound event family, its old `isInactive` guard and `deleteInactive` rollback from `core/actions/activation.ts`. Replace `prepareStart`/file confirmation and “approve roles starts the store” with journal-based activation eligibility. Drop old `/api/activation` bodies if the route is retained as a forwarding adapter to the shared input. U8 removes the old route and any remaining sole-caller file.
+- **Delete** the old activation state in the legacy events and startup record. The retained config store initializes with `Workflow.Initialized`, which carries config and accepted test-fixture directions. Activation eligibility and moves use the project journal. The retained `/api/activation` routes forward the checked choice and recovery to the same journal. U8 removes the old routes.
 - **Tests** Retarget `core/actions/activation.test.ts`, `test/activation.test.js` and `test/activation-fixture.js`. Cover unapproved or changed files, current versus stale acknowledgement, pre-commit cleanup preserving newer edits and the proposal journal, commit-before-note, cancellation versus committed rebind, late credential collection, retirement, and old/inactive work refusal. The real integration test opens a marker-bearing fixture in tmux or the existing controllable process adapter. Assert credentials absent from page, events and logs.
 - **Model conformance** Complete `activationCommit`, `activationRollback` and `activationHostBinding`. Map the model file flag to one real approved file, launch identities to observed handles, and `openTop` to the Project’s first-work binding. Exercise credential collection on both sides of that last boundary. The projection exposes Active as soon as the binding commits. The model's later note is an IO reconciliation. Each launch identity covers a single process lifetime, so a replacement always reserves a new identity.
 
@@ -170,6 +170,14 @@ These are the proposed spellings for the first delivery. Types and printed paths
 | U5 | `HostCredential` | Private credential used by the committed host. |
 | U5 | `LaunchVerifier` | Private digest used to check the host credential after delivery retires. |
 | U5 | `ActivationPanel` | Owner controls for file approval and starting work. |
+| U5 | `replacement` | The optional launch considered for the active host binding. |
+| U5 | `NotStarted` | The owner has yet to start work under the current binding. |
+| U5 | `Started { at }` | Work has started under the committed binding. |
+| U5 | `Used { at, usedAt }` | The bound host has authenticated its first use. |
+
+Round 81 calls the move that clears a replacement `cancel`. The owner's
+Start work choice takes the `start` move on Activation. The latest
+launch in Activating is the last entry of `launches`.
 
 Nanda's ruling on 2026-11-26 names the journal port `Journal` and its
 transaction callback `Write`. She kept `StaffingAccepted`, `Running`,

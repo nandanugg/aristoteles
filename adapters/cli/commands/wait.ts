@@ -16,15 +16,13 @@ import { childFor, foldRuntime, privateWorker } from '../../../core/state/worker
 import { folding } from '../../../core/actions/dispatch.ts'
 import { type WaitEnd, waitFor } from '../../../core/effects/wait.ts'
 import { refuse } from '../../../core/schema/index.ts'
-import { cliSession, Dir, Env, readWorkerLaunch, sha, stageWorkerLaunch, Store, Terminal } from '../../../core/services/index.ts'
+import { cliSession, Dir, Env, readWorkerLaunch, sha, stageWorkerLaunch, Store } from '../../../core/services/index.ts'
 import { foldWork } from '../../../core/state/c16/fold.ts'
 import { type Answered, actorOf } from '../../../core/state/c16/types.ts'
 import { BEAT_MS, markReturned, markWaiting, type WaitPlace } from '../../live/waiting.ts'
 import { buildOf } from '../../live/build.ts'
 import { makerWords, stepLine, stepWords, workTokenOf } from '../../words/work.ts'
 import type { Command, Commands } from '../command.ts'
-import { acquireBootstrapWorker, bootstrapRequest, retireHostDelivery } from '../../live/activation.ts'
-import { NONCE_ENV } from '../../live/bootstrap.ts'
 import { textOf } from '../args.ts'
 import { verifyWork } from '../caller.ts'
 
@@ -60,33 +58,6 @@ const answerWords = (a: Answered): string => {
 // The token of the call: w.<actor>.<epoch>.<secret>, the first word.
 const tokenOf = (call: Parameters<Command>[0]): string | null =>
   call.token ?? call.args.positional.find((w) => /^(w|a\d+)\./.test(w)) ?? null
-
-const bootstrapWait: Command = (call) =>
-  Effect.gen(function* () {
-    const { cwd } = yield* Dir
-    const { vars } = yield* Env
-    const launch = textOf(call.args.one('launch'))!
-    const terminal = yield* Terminal
-    const seconds = Number(textOf(call.args.one('seconds')) ?? WAIT_SECONDS)
-    if (!Number.isFinite(seconds) || seconds <= 0) return yield* refuse('wait needs a positive number of seconds')
-    const until = Date.now() + seconds * 1000
-    let delivered = false
-    let previous = ''
-    for (;;) {
-      const step = yield* bootstrapRequest(cwd, launch, vars[NONCE_ENV], 'wait')
-      if (step.token !== null && !delivered) {
-        yield* terminal.out(step.token)
-        delivered = true
-      }
-      if (step.line !== '' && step.line !== previous) {
-        yield* terminal.out(step.line)
-        previous = step.line
-      }
-      if (step.top) return []
-      if (Date.now() >= until) return ['Run the bootstrap wait again.']
-      yield* Effect.sleep(POLL_MS)
-    }
-  })
 
 const waitWorker = (
   store: Effect.Success<ReturnType<Effect.Success<typeof Store>['open']>>,
@@ -297,10 +268,8 @@ const worker: Command = (call) => Effect.gen(function* () {
 
 const wait: Command = (call) =>
   Effect.gen(function* () {
-    if (textOf(call.args.one('launch')) !== undefined) {
-      if (call.token !== null) return yield* refuse('bootstrap wait takes a launch ID only')
-      return yield* bootstrapWait(call)
-    }
+    if (textOf(call.args.one('launch')) !== undefined)
+      return yield* refuse('The project bootstrap collects its credential with work activation collect.')
     const token = tokenOf(call)
     if (token === null) {
       return yield* refuse(
@@ -331,9 +300,6 @@ const wait: Command = (call) =>
       if (ep !== (folded.state.ep.get(who) ?? 0)) {
         return [`this terminal's token is old: ${who} is at a newer epoch. STOP: do nothing more in this terminal.`]
       }
-      if (who === 'host' && ep === 0 && folded.hostSession?.startsWith('boot-')) {
-        yield* acquireBootstrapWorker(cwd, placement.worker, folded.hostSession)
-      }
       const current = foldRuntime(yield* store.events).workers.get(placement.worker)
       if (current?.fenced) return ["this terminal's token is old. STOP: do nothing more in this terminal."]
       if (!current?.binding) return ['The worker is starting. Run the wait again.']
@@ -345,16 +311,13 @@ const wait: Command = (call) =>
       if (!secret) return yield* refuse('The worker launch credential is unavailable.')
       if (!privateWorker(placement)) {
         yield* Effect.sync(() => stageWorkerLaunch(cwd, current.reservation.launch, 'host', token))
-        yield* retireHostDelivery(cwd, token)
         return [`Run work worker wait g.${current.reservation.launch}.${current.reservation.generation}.${secret}`]
       }
       const seconds = Number(textOf(call.args.one('seconds')) ?? WAIT_SECONDS)
       if (!Number.isFinite(seconds) || seconds <= 0) return yield* refuse('wait needs a positive number of seconds')
-      if (who === 'host') yield* retireHostDelivery(cwd, token)
       return yield* waitWorker(store, placement.worker, current.reservation.generation, secret, seconds,
         false, who === 'host' ? token : undefined, privateWorker(placement) ? who : undefined)
     }
-    if (who === 'host') yield* retireHostDelivery(cwd, token)
     const actor = actorOf(who)
     if (actor._tag === 'Harness' || actor._tag === 'Human') {
       return yield* refuse(`${who} does not wait`, 'work wait is for the agents and the host')

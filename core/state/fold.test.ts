@@ -95,7 +95,7 @@ const startStore = (dir: string, directions: ReadonlyArray<OnboardedDirection>, 
       Effect.gen(function* () {
         const read = yield* readConfig(dir)
         const opened = yield* (yield* Store).open(dir, { create: true })
-        const event: Event = { _tag: 'Workflow', create: { _tag: 'Defined', ...read, directions, activation: null } }
+        const event: Event = { _tag: 'Workflow', create: { _tag: 'Initialized', ...read, directions } }
         const author: Author = { _tag: 'Person', name: 'Nanda', channel: 'ui' }
         return yield* opened.write(() => Effect.succeed({ draft: { at, author, event }, rows: [] }))
       }),

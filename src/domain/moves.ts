@@ -90,7 +90,4 @@ export const MOVES = {
   'Send.Dropped': dropSend,
   // The source keeps its revision; when it was seen is the time of the move in the log.
   'Source.Checked': null,
-  // Activation changes no record: it is read from the events (core/actions/activation.ts).
-  'Workflow.Activated': null,
-  'Workflow.HostRebound': null,
 } as const satisfies { readonly [K in MoveKind]: ((...args: never) => unknown) | null }

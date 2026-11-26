@@ -1,8 +1,9 @@
-import { gate } from '../../../core/actions/activation.ts'
+import { activationJournal } from '../../live/activation.ts'
+import { readOpenProject } from '../../../core/actions/staff-session.ts'
 // work onboard (BUILD.md 1e): onboarding at a terminal, before any store (ruling 1). The host (the
 // AI CLI in the person's pane: no token, no store yet) drafts into the files; the person decides,
 // as on the two pages of onboarding. Each act writes through src/files/onboarding.ts and stores
-// nothing, until approve-roles starts the store with the accepted result only (BUILD.md 1c).
+// nothing in the project journal. Activation uses the reviewed journal proposals.
 // This file reads and checks the files that the host names; the module checks the acts.
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
@@ -61,14 +62,12 @@ import {
   onboardShowDirection,
   onboardShowRole,
   onboardStatus,
-  startRefusal,
   waitsForHost,
 } from '../../words/index.ts'
 import { short } from '../../words/common.ts'
 import { textOf } from '../args.ts'
-import { type Confirm, personChannel, personOf } from '../caller.ts'
+import { type Confirm, personOf } from '../caller.ts'
 import type { Call, Command, Commands } from '../command.ts'
-import { activationEvents, markerApproval, prepareActivation, runActivation } from '../../live/activation.ts'
 import { configProblems } from '../../live/config-problems.ts'
 import { WAIT_SECONDS } from './wait.ts'
 
@@ -729,19 +728,7 @@ const roleAct = (call: Call, name: string | undefined) =>
     }
   })
 
-// The store start (BUILD.md 1c): after the typed approve, the lock is taken, aristoteles.yaml is
-// written from the draft, and the person stores the start; a refusal writes the files back.
-const approveRoles = Effect.gen(function* () {
-  const { cwd } = yield* Dir
-  const approval = yield* markerApproval(cwd)
-  const show = 'Start an inactive workflow and mark these approved instruction files:' +
-    `\n${approval.entries.map((entry) => entry.path).join('\n') || '(none)'}` +
-    (approval.reported.length ? `\nOther loaded instructions: ${approval.reported.join(', ')}` : '')
-  const name = yield* personOf(undefined, { word: 'approve', show })
-  const by = { _tag: 'Person' as const, name, channel: yield* personChannel }
-  yield* prepareActivation(cwd, by, approval.entries, (f) => startRefusal(startStateOf(f)))
-  return [yield* runActivation(cwd, by, 'resume')]
-})
+const approveRoles = refuse('Accept the journal onboarding proposals and approve the activation files on the page.')
 
 const discovery = (call: Call) => Effect.gen(function* () {
   const file = yield* fileFlag(call, 'write scope: { searched: [...], unknown: [...] } and sources: [{ file, line, excerpt }]')
@@ -812,7 +799,8 @@ const onboard: Command = (call) =>
     }
     const { cwd } = yield* Dir
     if (call.act !== 'approve-roles') yield* activationLock(cwd)
-    yield* gate(yield* activationEvents(cwd))
+    const project = yield* Effect.option(Effect.flatMap(activationJournal(cwd, 'Read'), readOpenProject))
+    if (project._tag === 'Some') return yield* refuse('Use the project journal for onboarding.')
     yield* noStoreYet
     return yield* run(call, word)
   })

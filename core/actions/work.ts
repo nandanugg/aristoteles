@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 // event, checked against the folded state by `refusal` (core/derived/c16/accept.ts) inside the
 // store write. An act id is stored once: a second copy gets the first outcome (G3 firstTime).
 import { memberSecretOf } from './worker.ts'
-import { ACTIVATION, activationOf, gate } from './activation.ts'
 import { Effect, Schema } from 'effect'
 import { currentOf, officialAt } from '../derived/reads.ts'
 import { readyRecheck } from '../derived/c16/recheck.ts'
@@ -30,7 +29,7 @@ import {
   type WorkerDelivery,
   type WorkerPlacement,
 } from '../schema/index.ts'
-import { activationLock, Dir, Files, Now, readSettings, readStaffing, readWorkerLaunch, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
+import { Dir, Files, Now, readSettings, readStaffing, readWorkerLaunch, sha, Store, Tokens, type ReaderRow } from '../services/index.ts'
 import { fold } from '../state/index.ts'
 import { foldWork } from '../state/c16/fold.ts'
 import { take } from '../state/c16/effect.ts'
@@ -298,7 +297,6 @@ export const dispatchAct = (call: ActCall) =>
     const seq = yield* opened.write((events) =>
       Effect.gen(function* () {
         // The activation gate first (contract 6c D: before noTop and any side effect).
-        yield* gate(events)
         const folded = yield* folding(() => foldWork(events))
         if (folded === null) return yield* Effect.fail(WORK.noTop())
         const now = folded.state
@@ -472,7 +470,6 @@ export const recordForward = (
     let id = ''
     yield* opened.write((events) =>
       Effect.gen(function* () {
-        yield* gate(events)
         const folded = yield* folding(() => foldWork(events))
         if (folded === null) return yield* Effect.fail(WORK.noTop())
         const s = folded.state
@@ -500,7 +497,6 @@ export const dropForward = (by: Author, id: string) =>
     const opened = yield* storeOpened
     yield* opened.write((events) =>
       Effect.gen(function* () {
-        yield* gate(events)
         const folded = yield* folding(() => foldWork(events))
         if (folded === null) return yield* Effect.fail(WORK.noTop())
         if (!folded.forwards.some((f) => f.id === id)) {
@@ -521,7 +517,6 @@ export const confirmForward = (by: Author, id: string, build: string | null, cur
   Effect.gen(function* () {
     const events = yield* (yield* storeOpened).events
     // Before the forward is resolved; the act itself is gated again inside dispatchAct's write.
-    yield* gate(events)
     const folded = yield* folding(() => foldWork(events))
     if (folded === null) return yield* Effect.fail(WORK.noTop())
     const first = folded.ids.get(`confirm:${id}`)
@@ -557,10 +552,6 @@ export interface OpenCall {
   readonly goal: string
   readonly sections: ReadonlyArray<string>
   readonly facts?: ContextFacts
-  // An activated workflow: the managed session of the bound host (the startup side finds it by
-  // its launch); required then, ignored otherwise.
-  readonly hostSession?: string
-  readonly hostLaunch?: string
 }
 // The secrets of the epoch 0 tokens: the host, the pipe and each persistent role.
 export interface Opened {
@@ -698,15 +689,12 @@ export const writeTop = (call: OpenCall, managed: boolean) =>
     const opened = yield* store
       .open(cwd, { create: false })
       .pipe(Effect.catchTag('Refused', (e) => Effect.fail(STORE.noStore(e.message, cwd))))
-    if (activationOf(yield* opened.events) !== null) yield* activationLock(cwd)
     let secrets: Opened['secrets'] = []
-    let hostBound = false
     const seq = yield* opened.write((events) =>
       Effect.gen(function* () {
         if (events.length === 0) {
           return yield* Effect.fail(STORE.noStore(`no work store in ${cwd}`, cwd))
         }
-        yield* gate(events)
         if ((yield* folding(() => foldWork(events))) !== null) {
           return yield* Effect.fail(WORK.open())
         }
@@ -718,36 +706,22 @@ export const writeTop = (call: OpenCall, managed: boolean) =>
         const items = itemsOf(work)
         const cards = cardsOf(work)
         const actors = [HOST, PIPE, ...cards.map(([role]) => roleActor(role))]
-        // An activated workflow: the host already holds its credential from activation (contract
-        // 6c B3); the top binds its verifier and makes no new host secret.
-        const bound = activationOf(events)?.binding ?? null
-        hostBound = bound !== null
-        if (bound !== null && call.hostLaunch !== undefined && bound.launch !== call.hostLaunch) {
-          return yield* Effect.fail(ACTIVATION.legal('the host binding moved; open the top again'))
-        }
-        if (bound !== null && (call.hostSession === undefined || call.hostSession === '')) {
-          return yield* Effect.fail(
-            ACTIVATION.legal('no managed session was supplied for the bound host'),
-          )
-        }
         const files = yield* Effect.serviceOption(Files)
         const staffing = managed && files._tag === 'Some'
           ? yield* readStaffing(cwd).pipe(Effect.provideService(Files, files.value))
           : null
-        if (managed && staffing === null) return yield* ACTIVATION.legal('Top open needs staffing for this directory.')
+        if (managed && staffing === null) return yield* named('legal', 'Top open needs staffing for this directory.')
         const settings = staffing !== null && files._tag === 'Some'
           ? yield* readSettings(cwd).pipe(Effect.provideService(Files, files.value)) : null
         const arrangement = staffing === null || settings === null ? undefined : placementsOf(work, staffing, settings.models)
         if (arrangement === null) {
-          return yield* ACTIVATION.legal('Persistent role staffing does not define compatible workers.')
+          return yield* named('legal', 'Persistent role staffing does not define compatible workers.')
         }
-        const made = arrangement !== undefined ? [] : bound === null ? actors :
-          actors.filter((a) => keyOf(a) !== keyOf(HOST))
+        const made = arrangement === undefined ? actors : []
         secrets = yield* Effect.forEach(made, (actor) =>
           Effect.map(tokens.random, (secret) => ({ actor: keyOf(actor), secret })),
         )
         const hashes: ReadonlyArray<readonly [string, string]> = [
-          ...(bound === null ? [] : [[keyOf(HOST), bound.verifier] as const]),
           ...secrets.map((t) => [t.actor, sha(t.secret)] as const),
         ]
         const event = create('Work', {
@@ -768,7 +742,7 @@ export const writeTop = (call: OpenCall, managed: boolean) =>
           ...(arrangement === undefined ? {} : {
             ...arrangement, placementRevision: sha(JSON.stringify(arrangement)),
           }),
-          hostSession: bound === null ? null : (call.hostSession ?? null),
+          hostSession: null,
         })
         if (!writtenBy(call.by, event)) {
           return yield* Effect.die(`${call.by._tag} does not write Work.Opened`)
@@ -780,7 +754,7 @@ export const writeTop = (call: OpenCall, managed: boolean) =>
       }),
     )
     if (seq === null) return yield* Effect.die('openTop: the store built no top')
-    return { seq, secrets, hostBound }
+    return { seq, secrets }
   }).pipe(Effect.scoped)
 
 export const openTop = (call: OpenCall) => writeTop(call, true)
@@ -798,7 +772,6 @@ export const recordHostPane = (
       .pipe(Effect.catchTag('Refused', (e) => Effect.fail(STORE.noStore(e.message, cwd))))
     return yield* opened.write((events) =>
       Effect.gen(function* () {
-        yield* gate(events)
         if ((yield* folding(() => foldWork(events))) === null) return yield* WORK.noTop()
         const event = create('Work', { _tag: 'HostPane', ...pane })
         if (!writtenBy(by, event)) {
