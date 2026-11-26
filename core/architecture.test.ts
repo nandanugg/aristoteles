@@ -2,27 +2,18 @@
 // state fields that only core/derived and core/state may read, the lists that only waitingFor may
 // make, and a probe for each rule (a fixture that breaks it must be flagged).
 import { beforeAll, describe, expect, test } from 'bun:test'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, posix } from 'node:path'
 import ts from 'typescript'
+import { browserFile, production, programs, projectPath, type ProjectPrograms } from '../src/domain/architecture-projects.probe.ts'
+import { phaseWriteViolations, sharedWireViolations } from '../src/domain/architecture-contracts.probe.ts'
+import { sourceKey } from '../src/domain/architecture-scan.probe.ts'
 
 const ROOT = join(import.meta.dir, '..')
 
-// --- the files of the new tree -------------------------------------------------------------------
-
-// Tests and probes are not part of the tree, and the page app has its own tsconfig.
-const isTree = (name: string): boolean =>
-  name.endsWith('.ts') && !name.endsWith('.test.ts') && !name.endsWith('.probe.ts')
-
-const treeFiles = (dir: string): ReadonlyArray<string> =>
-  readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((e) => {
-    const path = posix.join(dir, e.name)
-    if (e.isDirectory()) return e.name === 'app' || e.name === 'node_modules' ? [] : treeFiles(path)
-    return isTree(e.name) ? [path] : []
-  })
-
-// Repo-relative, with `/`.
-const FILES = [...treeFiles('core'), ...treeFiles('adapters')]
+// Both production graphs, with independent TypeScript options.
+let graphs: ProjectPrograms
+let files: readonly string[]
 
 const parse = (rel: string, text: string): ts.SourceFile =>
   ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true)
@@ -58,12 +49,12 @@ const layerOf = (rel: string): Layer | null => {
   return null
 }
 
-// Each module specifier of a file: import, export from, import(), require().
-const specifiersOf = (file: ts.SourceFile): ReadonlyArray<{ spec: string; line: number }> => {
-  const found: Array<{ spec: string; line: number }> = []
+// Each module specifier of a file, including inline import types and dynamic loads.
+const specifiersOf = (file: ts.SourceFile): ReadonlyArray<{ spec: string; line: number; source: string }> => {
+  const found: Array<{ spec: string; line: number; source: string }> = []
   const add = (node: ts.Node, text: string): void => {
     const line = file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1
-    found.push({ spec: text, line })
+    found.push({ spec: text, line, source: sourceKey(node, file) })
   }
   const visit = (node: ts.Node): void => {
     if (
@@ -78,6 +69,8 @@ const specifiersOf = (file: ts.SourceFile): ReadonlyArray<{ spec: string; line: 
       ts.isStringLiteral(node.moduleReference.expression)
     )
       add(node, node.moduleReference.expression.text)
+    if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) &&
+        ts.isStringLiteralLike(node.argument.literal)) add(node, node.argument.literal.text)
     if (ts.isCallExpression(node)) {
       const [arg] = node.arguments
       const isLoad =
@@ -91,13 +84,36 @@ const specifiersOf = (file: ts.SourceFile): ReadonlyArray<{ spec: string; line: 
   return found
 }
 
+// These pre-existing imports through the src door are identified by the full import site.
+const retainedDoorImports = new Set<string>([
+  'adapters/web/app/api.ts c57c8b97a9e14c6f3d61f4c555a4e7755c13292699645253895bd747ede5be17',
+  'adapters/web/app/change.ts c447f1349f2df128630bc5dd7b4a9427256b9330494bf6f836961976de497720',
+  'adapters/web/app/main.ts ceeea94c06e3c74c8e8ead43acdcfe75ead317c3b74b871a5ef6f7eee2c2bdcc',
+  'adapters/web/app/staffing.ts 9b68d686427864bbdaf5cb47677d649bbd89a8ac8ca9b599c4e34138eb249b75',
+  'adapters/web/app/terminal.ts 888789d1ea83406af575119c8fdb906ef21a7cf543ed287cc2cfea87a0867e3c',
+  'adapters/web/view.ts 1bea4c0b9927f4e770e4b9c2773d4e773688f135454e64d47d2e742aa05e70b4',
+])
+
+const doorImportKey = (file: string, source: string): string => `${file} ${source}`
+const browserImportViolations = (file: ts.SourceFile, rel: string): string[] =>
+  specifiersOf(file).flatMap(({ spec, line }) => {
+    const target = posix.normalize(posix.join(posix.dirname(rel), spec)).replace(/\.[jt]sx?$/, '')
+    const serverModule =
+      /^core\/(actions|effects)\//.test(target) ||
+      /^adapters\/web\/(server|start|watcher|pump|pipe-keys)$/.test(target)
+    if (spec.startsWith('node:') || spec.startsWith('bun:') || serverModule)
+      return [`${rel}:${line}: browser imports runtime ${spec}`]
+    return []
+  })
+
 // One line per import that breaks the layer rule or a door: `file:line: why`.
 const importViolations = (rel: string, text: string): ReadonlyArray<string> => {
   const owner = layerOf(rel)
   if (owner === null) return [`${rel}: is in no layer of the new tree`]
-  return specifiersOf(parse(rel, text)).flatMap(({ spec, line }) => {
+  return specifiersOf(parse(rel, text)).flatMap(({ spec, line, source }) => {
+    if (retainedDoorImports.has(doorImportKey(rel, source))) return []
     if (!spec.startsWith('.')) return []
-    const target = posix.normalize(posix.join(posix.dirname(rel), spec)).replace(/\.(ts|js)$/, '')
+    const target = posix.normalize(posix.join(posix.dirname(rel), spec)).replace(/\.[jt]sx?$/, '')
     const at = `${rel}:${line}: imports ${spec}`
     if (target === 'src' || target.startsWith('src/')) {
       if (!SRC_DOORS.includes(`${owner.tree}/${owner.name}`))
@@ -250,47 +266,34 @@ const LISTS = 'adapters/cli/probe-lists.ts'
 
 const abs = (rel: string): string => join(ROOT, rel)
 
-const buildProgram = (): ts.Program => {
-  const config = ts.readConfigFile(abs('tsconfig.json'), ts.sys.readFile)
-  const options = ts.parseJsonConfigFileContent(config.config, ts.sys, ROOT).options
-  const virtual = new Map(Object.entries(PROBES).map(([rel, text]) => [abs(rel), text]))
-  const host = ts.createCompilerHost(options)
-  const { getSourceFile, fileExists, readFile } = host
-  host.getSourceFile = (name, ...rest) => {
-    const text = virtual.get(name)
-    return text === undefined ? getSourceFile.call(host, name, ...rest) : parse(name, text)
-  }
-  host.fileExists = (name) => virtual.has(name) || fileExists.call(host, name)
-  host.readFile = (name) => virtual.get(name) ?? readFile.call(host, name)
-  const roots = [...FILES.map(abs), ...virtual.keys()]
-  return ts.createProgram({ rootNames: roots, options, host })
-}
-
-let program: ts.Program
-let checker: ts.TypeChecker
 beforeAll(() => {
-  program = buildProgram()
-  checker = program.getTypeChecker()
+  graphs = programs(ROOT, PROBES)
+  files = [...new Set([graphs.engine, graphs.browser].flatMap((program) =>
+    program.getSourceFiles().map((file) => projectPath(ROOT, file.fileName))))]
+    .filter((file) => production(file) && /^(core|adapters)\//.test(file) && !Object.hasOwn(PROBES, file))
 }, 120_000)
 
 const sourceOf = (rel: string): ts.SourceFile => {
-  const file = program.getSourceFile(abs(rel))
-  if (file === undefined) throw new Error(`the program has no ${rel}`)
+  const file = (browserFile(rel) ? graphs.browser : graphs.engine).getSourceFile(abs(rel))
+  if (!file) throw new Error(`the program has no ${rel}`)
   return file
 }
+
+const checkerOf = (rel: string): ts.TypeChecker =>
+  (browserFile(rel) ? graphs.browser : graphs.engine).getTypeChecker()
 
 // --- the tests -----------------------------------------------------------------------------------
 
 describe('the tree', () => {
   test('it has files, and every file is in a layer', () => {
-    expect(FILES.length).toBeGreaterThan(20)
-    expect(FILES.filter((f) => layerOf(f) === null)).toEqual([])
+    expect(files.length).toBeGreaterThan(20)
+    expect(files.filter((f) => layerOf(f) === null)).toEqual([])
   })
 })
 
 describe('(a) the layer rule', () => {
   test('each layer imports only the layers to its left', () => {
-    const found = FILES.flatMap((f) =>
+    const found = files.flatMap((f) =>
       importViolations(f, readFileSync(abs(f), 'utf8')).filter((v) => !v.includes('src/')),
     )
     expect(found).toEqual([])
@@ -315,7 +318,7 @@ describe('(a) the layer rule', () => {
 
 describe('(b) the two doors to src/', () => {
   test('only core/schema and core/services import src/', () => {
-    const found = FILES.flatMap((f) =>
+    const found = files.flatMap((f) =>
       importViolations(f, readFileSync(abs(f), 'utf8')).filter((v) => v.includes('src/')),
     )
     expect(found).toEqual([])
@@ -325,12 +328,14 @@ describe('(b) the two doors to src/', () => {
     const at = (rel: string, text: string) => importViolations(rel, text)
     expect(at('core/derived/p.ts', `import { x } from '../../src/domain/ids.ts'`)).toHaveLength(1)
     expect(at('adapters/web/p.ts', `import { x } from '../../src/domain/ids.ts'`)).toHaveLength(1)
+    expect(at('adapters/web/p.ts', `type T = import('../../src/domain/ids.ts').Id`)).toHaveLength(1)
     expect(at('core/schema/p.ts', `import { x } from '../../src/domain/ids.ts'`)).toEqual([])
     expect(at('core/services/p.ts', `import { x } from '../../src/store/sqlite.ts'`)).toEqual([])
   })
 
   test('the door of core/schema does not export what the new tree replaces', () => {
     const door = sourceOf('core/schema/index.ts')
+    const checker = checkerOf('core/schema/index.ts')
     const symbol = checker.getSymbolAtLocation(door)
     if (symbol === undefined) throw new Error('core/schema/index.ts is not a module')
     const names = checker.getExportsOfModule(symbol).map((s) => s.name)
@@ -343,15 +348,14 @@ describe('(b) the two doors to src/', () => {
 
 describe('(c) no read of a state field outside core/derived and core/state', () => {
   const owners = ['core/derived/', 'core/state/']
-  const outside = FILES.filter((f) => !owners.some((o) => f.startsWith(o)))
-
   test('no file reads the state of a record', () => {
-    const found = outside.flatMap((f) => stateReadViolations(checker, sourceOf(f), f))
+    const found = files.filter((f) => !owners.some((o) => f.startsWith(o)))
+      .flatMap((f) => stateReadViolations(checkerOf(f), sourceOf(f), f))
     expect(found).toEqual([])
   })
 
   test('the fixture reads of each state field are flagged', () => {
-    const found = stateReadViolations(checker, sourceOf(READS), READS)
+    const found = stateReadViolations(checkerOf(READS), sourceOf(READS), READS)
     for (const field of STATE_FIELDS)
       expect(found.some((v) => v.includes(`reads .${field} of a record`))).toBe(true)
     expect(found.some((v) => v.includes("['state']"))).toBe(true)
@@ -359,29 +363,63 @@ describe('(c) no read of a state field outside core/derived and core/state', () 
   })
 
   test('a field of a view or of a derived value is not flagged', () => {
-    expect(stateReadViolations(checker, sourceOf(ALLOWED), ALLOWED)).toEqual([])
+    expect(stateReadViolations(checkerOf(ALLOWED), sourceOf(ALLOWED), ALLOWED)).toEqual([])
   })
 
 })
 
 describe('(d) no adapter lists the Work for the person', () => {
-  const adapters = FILES.filter((f) => f.startsWith('adapters/'))
-
   test('no adapter iterates the drafts', () => {
-    const found = adapters.flatMap((f) => personListViolations(checker, sourceOf(f), f))
+    const found = files.filter((f) => f.startsWith('adapters/'))
+      .flatMap((f) => personListViolations(checkerOf(f), sourceOf(f), f))
     expect(found).toEqual([])
   })
 
   test('a fixture that iterates, spreads or reads a size is flagged; a lookup is not', () => {
-    const found = personListViolations(checker, sourceOf(LISTS), LISTS)
+    const found = personListViolations(checkerOf(LISTS), sourceOf(LISTS), LISTS)
     expect(found.map((v) => v.split(': ').slice(1).join(': '))).toEqual(['lists work.drafts'])
   })
 })
 
 describe('(e) the probe is real', () => {
   test('the fixtures are outside the real tree', () => {
-    for (const rel of Object.keys(PROBES)) expect(FILES).not.toContain(rel)
+    for (const rel of Object.keys(PROBES)) expect(files).not.toContain(rel)
     for (const rel of Object.keys(PROBES)) expect(existsSync(abs(rel))).toBe(false)
   })
 
+})
+
+describe('the shared project boundary', () => {
+  test('the browser is checked without the server runtime', () => {
+    expect(graphs.browser.getCompilerOptions().types).toEqual([])
+    const browser = graphs.browser.getSourceFiles().filter((file) => production(projectPath(ROOT, file.fileName)))
+    expect(browser.some((file) => browserFile(projectPath(ROOT, file.fileName)))).toBe(true)
+    expect(browser.flatMap((file) => browserImportViolations(file, projectPath(ROOT, file.fileName)))).toEqual([])
+  })
+
+  test('an added browser import cannot use old exceptions or cross into the runtime', () => {
+    const page = 'adapters/web/app/probe.ts'
+    expect(importViolations(page, "import { x } from '../../../src/domain/ids.ts'")).toHaveLength(1)
+    for (const spec of ['bun:sqlite', 'node:fs', '../../../core/actions/project.ts', '../server.ts'])
+      expect(browserImportViolations(parse(page, `import { x } from '${spec}'`), page)).toHaveLength(1)
+  })
+
+  test('old import allowances match only existing sites', () => {
+    const actual = files.filter((path) => path.startsWith('adapters/web/')).flatMap((path) => specifiersOf(sourceOf(path))
+      .filter(({ spec }) => posix.normalize(posix.join(posix.dirname(path), spec)).startsWith('src/'))
+      .map(({ source }) => doorImportKey(path, source)))
+    expect([...retainedDoorImports].filter((key) => !actual.includes(key))).toEqual([])
+  })
+
+  test('engine and page use the shared wire declarations', () => {
+    expect(sharedWireViolations(graphs, ROOT)).toEqual([])
+  })
+
+  test('only the transitions construct or change project phases', () => {
+    const found = [graphs.engine, graphs.browser].flatMap((graph) => graph.getSourceFiles()
+      .filter((file) => production(projectPath(ROOT, file.fileName)) &&
+        !Object.hasOwn(PROBES, projectPath(ROOT, file.fileName)))
+      .flatMap((file) => phaseWriteViolations(graph, ROOT, file)))
+    expect([...new Set(found)]).toEqual([])
+  })
 })

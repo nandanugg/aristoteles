@@ -1,6 +1,6 @@
 # Quint models
 
-## Metis-first checks
+## First-slice checks
 
 [CORE.md](../../plan/types/CORE.md) specifies the shared lines, current scope, and fault classes. The first slice covers onboarding proposals and activation, staff sessions, questions, and a task through review. Review facts derive the task move directly. An uncheckpointed crash takes `restart` from Working to Sent with the same retry count, and the next start allocates a fresh attempt. A raised task is the endpoint of this slice.
 
@@ -46,7 +46,7 @@ All ten safety invariants held, and each mutant violated the same invariant. The
 
 ## Retained models
 
-The core subsets below still support the post-raise resolution, changed guidance, and scoped work that follow the Metis slice. The recheck helper and pipeline lane remain available until those paths change. Terminal and page adapters retain their separate checks. Run retained jobs explicitly with `sh core/model/spec.sh --remaining [--check]` or `sh core/model/tlc.sh --remaining`. Use `ONLY` to select an instance. These suites are separate from the Metis registry and its acceptance results.
+The core subsets below still support the post-raise resolution, changed guidance, and scoped work that follow the first slice. The recheck helper and pipeline lane remain available until those paths change. Terminal and page adapters retain their separate checks. Run retained jobs explicitly with `sh core/model/spec.sh --remaining [--check]` or `sh core/model/tlc.sh --remaining`. Use `ONLY` to select an instance. These suites are separate from the first-slice registry and its acceptance results.
 
 ## Words
 
@@ -476,6 +476,6 @@ TLC on the durable-mark model: pipeFixed completed with 111,536 distinct states.
 
 ### Remaining fix, recheck, and scope instances
 
-`check.qnt` and `canon.qnt` provide the core environment for `configs.qnt`. The runnable cases cover a standard change that affects a second task, a direction change and reassignment, repeated review send-backs along the current fix path, checking interacting rules, and the output scope of a split part. `properties.qnt` shares the safety predicates between those instances. Broad project convergence and actor fairness composition are outside the Metis-first proof scope.
+`check.qnt` and `canon.qnt` provide the core environment for `configs.qnt`. The runnable cases cover a standard change that affects a second task, a direction change and reassignment, repeated review send-backs along the current fix path, checking interacting rules, and the output scope of a split part. `properties.qnt` shares the safety predicates between those instances. Broad project convergence and actor fairness composition are outside the first-slice proof scope.
 
 Run a retained case directly with `sh core/model/tlc.sh one FILE INSTANCE holds|breaks INVARIANTS|- TEMPORAL|-`. Invariant or temporal lists are comma-separated. `remaining-tlc.sh` lists the retained instances and their selected properties.
