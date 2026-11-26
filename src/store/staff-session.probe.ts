@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 import { acceptStaffing, readOpenProject, startSession } from '../../core/actions/staff-session.ts'
 import { SessionCount, SessionId, Staff, StaffingId, SubagentCount, type Project, type StaffingPlan } from '../../core/schema/project.ts'
-import type { ProjectJournal } from '../../core/services/project.ts'
+import type { Journal } from '../../core/services/project.ts'
 import { create, role, session, staff } from './project.probe.ts'
 
 export const maker = role('maker')
@@ -16,13 +16,13 @@ export const initialStaffing = (limit: 1 | 2 = 2): StaffingPlan => {
     subscriptions: [subscription],
   }
 }
-export const sharedStaffing = (journal: ProjectJournal) => Effect.gen(function* () {
+export const sharedStaffing = (journal: Journal) => Effect.gen(function* () {
   yield* create(journal, [maker])
   const project = yield* readOpenProject(journal)
   yield* acceptStaffing(journal, project, initialStaffing())
   return yield* readOpenProject(journal)
 })
-export const launchStaff = (journal: ProjectJournal, project: Project, index: 0 | 1, lifetime: 1 | 2) =>
+export const launchStaff = (journal: Journal, project: Project, index: 0 | 1, lifetime: 1 | 2) =>
   startSession(journal, project, {
     id: SessionId.make('session:' + lifetime), staff: initialStaffing().staff[index]!.id,
     staffing: project.staffingAt, pane: session.pane,

@@ -1,29 +1,30 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
   ReadPosition, Rationale, StoredEvent, Submission, liveSession, refuse,
-  type EventNumber, type LiveSession, type Of, type Projection, type Refusal, type StoredActor, type TaskAddress,
-  type TaskDraft, type SessionAddress, type SessionObservation, type SessionStarted, type StaffingAccepted,
+  type LiveSession, type Of, type Projection, type Refusal, type StoredActor,
 } from '../schema/project.ts'
-import type { Committed, ProjectEdit, ProjectJournal } from '../services/project.ts'
+import type { Committed, Journal, Write } from '../services/project.ts'
 import { applyEvent, fold, readPosition } from '../state/project.ts'
 
 export type AuthenticatedActor =
   | { readonly _tag: 'Human'; readonly actor: Extract<StoredActor, { _tag: 'Human' }> }
-  | { readonly _tag: 'Staff'; readonly session: Of<typeof LiveSession> }
+  | { readonly _tag: 'Staff'; readonly session: LiveSession }
 export class Authority extends Context.Service<Authority, {
   readonly actor: Effect.Effect<AuthenticatedActor, Refusal>
 }>()('project/Authority') {}
 
-type EventInput = Pick<StoredEvent, 'line' | 'move' | 'input'>
-type BuildMove = (state: Projection) => Result.Result<EventInput, Refusal>
-const fromResult = <A>(result: Result.Result<A, Refusal>): Effect.Effect<A, Refusal> =>
-  Result.isFailure(result) ? Effect.fail(result.failure) : Effect.succeed(result.success)
+type Moves = {
+  [Event in StoredEvent as `${Event['line']['_tag']}:${Event['from']}:${Event['move']}`]:
+    Pick<Event, 'line' | 'from' | 'move' | 'input'>
+}
+type MoveInput = Moves[keyof Moves]
+type BuildMove = (state: Projection) => Result.Result<MoveInput, Refusal>
 
 const commit = (
-  journal: ProjectJournal, actor: StoredActor, read: Of<typeof ReadPosition>, build: BuildMove,
+  journal: Journal, actor: StoredActor, read: Of<typeof ReadPosition>, build: BuildMove,
 ): Effect.Effect<Committed, Refusal> => Effect.gen(function* () {
   const at = yield* DateTime.now
-  const edit: ProjectEdit = (events, number) => Result.flatMap(fold(events), (state) => {
+  const edit: Write = (events, number) => Result.flatMap(fold(events), (state) => {
     if (read > readPosition(state)) return Result.fail(refuse('Stale', Rationale.make('That read is ahead of the journal.')))
     return Result.flatMap(build(state), (move) => {
       const entry = { number, actor, read, at, ...move }
@@ -36,96 +37,48 @@ const commit = (
   return yield* journal.transact(edit)
 })
 
-const wrongActor = () => Result.fail(refuse('WrongActor', Rationale.make('Use the input for your authenticated actor.')))
-const retired = () => Result.fail(refuse('RetiredSession', Rationale.make('Report from the attempt’s live session.')))
+const wrongActor = () => refuse('WrongActor', Rationale.make('Use the input for your authenticated actor.'))
+const retired = () => refuse('RetiredSession', Rationale.make('Report from the attempt’s live session.'))
 const readSubmission = Schema.decodeUnknownEffect(Submission, { onExcessProperty: 'error' })
 
-export const submit = (journal: ProjectJournal, input: unknown): Effect.Effect<Committed, Refusal, Authority> =>
+export const submit = (journal: Journal, input: unknown): Effect.Effect<Committed, Refusal, Authority> =>
   Effect.gen(function* () {
     const request = yield* Effect.mapError(readSubmission(input), () =>
       refuse('InvalidInput', Rationale.make('The submission does not match the checked input.')))
     const authority = yield* Authority
     const authenticated = yield* authority.actor
     if (request._tag === 'HumanChoice') {
-      if (authenticated._tag !== 'Human') return yield* fromResult(wrongActor())
+      if (authenticated._tag !== 'Human') return yield* Effect.fail(wrongActor())
       const { choice } = request
-      const project = choice._tag === 'NewProject' ? choice.project : choice.line
-      if (project.id !== journal.id) {
+      const address = choice._tag === 'NewProject' ? choice.project : choice.line
+      if (address.id !== journal.id) {
         return yield* Effect.fail(refuse('InvalidInput', Rationale.make('The choice addresses a different project.')))
       }
       return yield* commit(journal, authenticated.actor, request.read, () => {
-        if (choice._tag === 'EndProject') return Result.succeed({
-          line: choice.line, move: 'next', input: { _tag: 'next', fact: { _tag: 'ProjectEnded' } },
-        })
+        if (choice._tag === 'EndProject')
+          return Result.succeed({ line: choice.line, from: 'Open', move: 'end', input: {} })
         const { project, owner, host, pipeline, staff, roles } = choice
-        return Result.succeed({
-          line: project, move: 'next', input: { _tag: 'next', fact: { _tag: 'ProjectOpened', owner, host, pipeline, staff, roles } },
-        })
+        return Result.succeed({ line: project, from: null, move: 'next', input: { owner, host, pipeline, staff, roles } })
       })
     }
-    if (authenticated._tag !== 'Staff') return yield* fromResult(wrongActor())
+    if (authenticated._tag !== 'Staff') return yield* Effect.fail(wrongActor())
     const { report, line } = request.report
-    const session = authenticated.session
+    const { session } = authenticated
     const actor: StoredActor = { _tag: 'Staff', id: session.staff.id }
-    return yield* commit(journal, actor, request.read, (state) => {
-      if (state._tag !== 'Open') return retired()
-      const current = liveSession(state.value, session.id)
-      if (!current || current.staff.id !== session.staff.id) return retired()
-      if (report._tag === 'Result') {
-        const task = state._tag === 'Open' ? state.value.tasks.get(line.id) : undefined
-        if (task?.phase._tag === 'Working' && task.phase.attempt.session.id !== session.id) return retired()
-      } else if (report.session.id !== session.id || report.session.staff.id !== session.staff.id) {
-        return retired()
-      }
-      if (report._tag === 'Began' && report.place === 'Child')
-        return Result.fail(refuse('InvalidEvidence', Rationale.make('A child starts through a confirmed launch.')))
-      const fact = report._tag === 'Began' ? { ...report, session: current, staffing: state.value.staffingAt } : report
-      return Result.succeed({ line, move: 'next', input: { _tag: 'next', fact } })
+    return yield* commit(journal, actor, request.read, (project) => {
+      if (project?.status._tag !== 'Open') return Result.fail(retired())
+      const current = liveSession(project, session.id)
+      if (!current || current.staff.id !== session.staff.id) return Result.fail(retired())
+      if (report === null) return Result.succeed({
+        line, from: 'Sent', move: 'next', input: { session: current, staffing: project.staffingAt, place: 'Main' },
+      })
+      const task = project.tasks.get(line.id)
+      if (task?.phase._tag === 'Working' && task.phase.attempt.session.id !== session.id) return Result.fail(retired())
+      return Result.succeed({ line, from: 'Working', move: 'next', input: report })
     })
   })
 
-// These facts enter through engine ports. The submission codec only accepts reports and owner choices.
-type Observed =
-  | Of<typeof SessionStarted>
-  | Of<typeof StaffingAccepted>
-  | { readonly _tag: 'SessionObserved'; readonly line: Of<typeof SessionAddress>; readonly fact: SessionObservation }
-  | { [Fact in 'Began' | 'Reviewing']: {
-      readonly _tag: Fact; readonly line: Of<typeof TaskAddress>
-      readonly session: LiveSession; readonly staffing: Of<typeof EventNumber>
-    } }['Began' | 'Reviewing']
-  | { readonly _tag: 'TaskSent'; readonly draft: Of<typeof TaskDraft> }
-  | { readonly _tag: 'CommandOutcomes'; readonly line: Of<typeof TaskAddress>; readonly outcomes: readonly [] }
-  | { readonly _tag: 'ReviewFacts'; readonly line: Of<typeof TaskAddress>; readonly why: Of<typeof Rationale> }
-
+// The provider and other engine ports record the input of a specific line move.
 export const recordObserved = (
-  journal: ProjectJournal, actor: StoredActor, read: Of<typeof ReadPosition>, observation: Observed,
-): Effect.Effect<Committed, Refusal> => commit(journal, actor, read, () => {
-  switch (observation._tag) {
-    case 'SessionObserved':
-      return Result.succeed({ line: observation.line, move: 'next', input: { _tag: 'next', fact: observation.fact } })
-    case 'Began':
-    case 'Reviewing': {
-      const { line, session, staffing } = observation
-      const fact = observation._tag === 'Began'
-        ? { _tag: 'Began', session, staffing, place: 'Child' } as const
-        : { _tag: 'Reviewing', session, staffing } as const
-      return Result.succeed({ line, move: 'next', input: { _tag: 'next', fact } })
-    }
-    case 'StaffingAccepted':
-    case 'SessionStarted':
-    case 'TaskSent':
-      return Result.succeed({
-        line: { _tag: 'Project', id: journal.id }, move: 'next', input: { _tag: 'next', fact: observation },
-      })
-    case 'CommandOutcomes':
-      return Result.succeed({
-        line: observation.line, move: 'next',
-        input: { _tag: 'next', fact: { _tag: 'CommandOutcomes', outcomes: observation.outcomes } },
-      })
-    case 'ReviewFacts':
-      return Result.succeed({
-        line: observation.line, move: 'back',
-        input: { _tag: 'back', fact: { _tag: 'ReviewFacts', why: observation.why } },
-      })
-  }
-})
+  journal: Journal, actor: StoredActor, read: Of<typeof ReadPosition>, move: MoveInput,
+): Effect.Effect<Committed, Refusal> => commit(journal, actor, read, () => Result.succeed(move))

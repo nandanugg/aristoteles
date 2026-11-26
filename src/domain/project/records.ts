@@ -17,7 +17,7 @@ const Sent = Schema.TaggedStruct('Sent', { retryCount: RetryCount })
 const Working = Schema.TaggedStruct('Working', { attempt: Attempt })
 const ReadyToReview = Schema.TaggedStruct('ReadyToReview', { result: Result })
 const Reviewing = Schema.TaggedStruct('Reviewing', {
-  result: Result, enteredAt: EventNumber,
+  result: Result,
   review: Schema.Union([Schema.TaggedStruct('Waiting', {}), Schema.TaggedStruct('By', { session: LiveSession })]),
 })
 export const TaskPhase = Schema.Union([Sent, Working, ReadyToReview, Reviewing])
@@ -52,9 +52,5 @@ export const Project = Schema.Struct({
   lastChange: EventNumber, read: ReadPosition,
 })
 export type Project = Of<typeof Project>
-export const Projection = Schema.Union([
-  Schema.TaggedStruct('BeforeProject', {}),
-  Schema.TaggedStruct('Open', { value: Project }),
-  Schema.TaggedStruct('Ended', { value: Project }),
-]).check(Schema.makeFilter((state) => state._tag === 'BeforeProject' || state._tag === state.value.status._tag))
+export const Projection = Schema.NullOr(Project)
 export type Projection = Of<typeof Projection>

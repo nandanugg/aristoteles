@@ -5,7 +5,7 @@ import { Effect, Result, Schema, type Scope } from 'effect'
 import { StoredEvent } from '../domain/project/events.ts'
 import { EventNumber, Rationale, ReadPosition, refuse, type Of, type ProjectId, type Refusal } from '../domain/project/values.ts'
 import { Env } from '../services/io.ts'
-import type { ProjectJournal } from '../services/project.ts'
+import type { Journal } from '../services/project.ts'
 import { dbPath } from './path.ts'
 import { PROJECT_APPLICATION_ID, PROJECT_EVENTS, PROJECT_FORMAT } from './schema.ts'
 
@@ -47,7 +47,7 @@ const prepare = (db: Database, mode: 'Read' | 'Create'): void => {
   db.exec(`PRAGMA user_version = ${PROJECT_FORMAT}`)
 }
 
-const journal = (db: Database, id: Of<typeof ProjectId>): ProjectJournal => {
+const journal = (db: Database, id: Of<typeof ProjectId>): Journal => {
   const select = db.query<{ number: number; event: string }, [string, number]>(
     'SELECT number, event FROM project_event WHERE project = ? AND number > ? ORDER BY number',
   )
@@ -91,7 +91,7 @@ const journal = (db: Database, id: Of<typeof ProjectId>): ProjectJournal => {
 
 export const openProjectJournal = (
   id: Of<typeof ProjectId>, mode: 'Read' | 'Create',
-): Effect.Effect<ProjectJournal, Refusal, Env | Scope.Scope> => Effect.gen(function* () {
+): Effect.Effect<Journal, Refusal, Env | Scope.Scope> => Effect.gen(function* () {
   const path = dbPath((yield* Env).vars)
   const db = yield* Effect.acquireRelease(sql(() => {
     if (mode === 'Read' && !existsSync(path)) throw foreign()

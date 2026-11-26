@@ -9,7 +9,7 @@ import {
   SessionCount, SessionId, SubagentCount, TaskId, capacity, type Staff, type StaffingPlan,
 } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
-import { acceptStaffing, observeSession, readOpenProject, startChild, startSession } from './staff-session.ts'
+import { acceptStaffing, observeSession, readOpenProject, resumeSession, startChild, startSession } from './staff-session.ts'
 
 const address = { _tag: 'Session', id: session.id } as const
 const rejected = (code: string) => ({ _tag: 'Failure', failure: { code } })
@@ -48,14 +48,14 @@ test('pause retires authority, releases charges, and resumes the same attempt wi
     const working = yield* toWorking(journal)
     const project = yield* readOpenProject(journal)
     expect(yield* waitOnProject(journal, Effect.succeed(session.id))).toMatchObject({ _tag: 'Available' })
-    yield* observeSession(journal, project, address, { _tag: 'Paused' })
+    yield* observeSession(journal, project, address, 'Paused')
     const paused = yield* readOpenProject(journal)
     expect(paused.sessions.get(session.id)?._tag).toBe('Paused')
     expect(Number(capacity(paused, staff).liveSessions)).toBe(0)
     expect(yield* Effect.result(waitOnProject(journal, Effect.succeed(session.id)))).toMatchObject(rejected('RetiredSession'))
     const continued = { ...session, id: SessionId.make('session:2') }
-    yield* observeSession(journal, paused, address, {
-      _tag: 'Resumed', id: continued.id, pane: continued.pane, staffing: paused.staffingAt,
+    yield* resumeSession(journal, paused, address, {
+      id: continued.id, pane: continued.pane, staffing: paused.staffingAt,
     })
     const resumed = yield* readOpenProject(journal)
     expect(resumed.sessions.get(session.id)?._tag).toBe('Paused')
@@ -79,7 +79,7 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     yield* startChild(journal, yield* readOpenProject(journal), { _tag: 'Task', id: ongoing }, session, 'Work')
     const before = yield* readOpenProject(journal)
     expect(Number(capacity(before, staff).usedSubagents)).toBe(2)
-    yield* observeSession(journal, before, address, { _tag: 'Ended' })
+    yield* observeSession(journal, before, address, 'Ended')
     const after = yield* readOpenProject(journal)
     expect(after.read).not.toBe(readPosition(sent.state))
     expect(after.sessions.get(session.id)?._tag).toBe('Ended')

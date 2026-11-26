@@ -10,7 +10,7 @@ import {
 } from '../../core/schema/project.ts'
 import { readPosition } from '../../core/state/project.ts'
 import { Env } from '../services/io.ts'
-import type { ProjectJournal } from '../services/project.ts'
+import type { Journal } from '../services/project.ts'
 import { openProjectJournal } from './project.ts'
 
 export const role = (name: 'host' | 'pipeline' | 'maker') => Schema.decodeUnknownSync(Role)({
@@ -44,42 +44,45 @@ export const draft = (id = taskId, assigned = host) => Schema.decodeUnknownSync(
   id, name: 'First work', goal: 'Supply a result', role: assigned, reviewer: pipeline,
 })
 
-export const ownerInput = (journal: ProjectJournal, input: unknown) =>
+export const ownerInput = (journal: Journal, input: unknown) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Human', actor: human } as const),
   }))
-export const staffInput = (journal: ProjectJournal, input: unknown, live = session) =>
+export const staffInput = (journal: Journal, input: unknown, live = session) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Staff', session: live } as const),
   }))
-export const create = (journal: ProjectJournal, roles: readonly Of<typeof Role>[] = []) => ownerInput(journal, {
+export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = []) => ownerInput(journal, {
   _tag: 'HumanChoice', read: 0,
   choice: { _tag: 'NewProject', project: { _tag: 'Project', id: journal.id }, owner, host, pipeline, staff, roles },
 })
-export const send = (journal: ProjectJournal, read: Of<typeof ReadPosition>, id = taskId, assigned = host) =>
-  recordObserved(journal, human, read, { _tag: 'TaskSent', draft: draft(id, assigned) })
-export const begin = (journal: ProjectJournal, read: Of<typeof ReadPosition>) => staffInput(journal, {
+export const send = (journal: Journal, read: Of<typeof ReadPosition>, id = taskId, assigned = host) =>
+  recordObserved(journal, human, read, {
+    line: { _tag: 'Project', id: journal.id }, from: 'Open', move: 'next',
+    input: { _tag: 'TaskSent', draft: draft(id, assigned) },
+  })
+export const begin = (journal: Journal, read: Of<typeof ReadPosition>) => staffInput(journal, {
   _tag: 'StaffReport', read,
-  report: { _tag: 'Work', line: taskLine, report: { _tag: 'Began', session, place: 'Main' } },
+  report: { _tag: 'Work', line: taskLine, report: null },
 })
 export const resultInput = (read: Of<typeof ReadPosition>, artifact = 7): Submission =>
   Schema.decodeUnknownSync(Submission)({
     _tag: 'StaffReport', read, report: {
       _tag: 'Work', line: taskLine,
-      report: { _tag: 'Result', attempt: 1, summary: 'Result', files: [{ path: 'artifact', contents: String(artifact) }] },
+      report: { attempt: 1, summary: 'Result', files: [{ path: 'artifact', contents: String(artifact) }] },
     },
   })
-export const commandOutcomes = (journal: ProjectJournal, read: Of<typeof ReadPosition>) =>
-  recordObserved(journal, worker, read, { _tag: 'CommandOutcomes', line: taskLine, outcomes: [] })
+export const commandOutcomes = (journal: Journal, read: Of<typeof ReadPosition>) =>
+  recordObserved(journal, worker, read, { line: taskLine, from: 'ReadyToReview', move: 'next', input: { outcomes: [] } })
 
-export const startFixtureSession = (journal: ProjectJournal, state: Projection) => {
-  if (state._tag !== 'Open') throw new Error('Open the test project first')
-  return startSession(journal, state.value, {
-    id: session.id, staff: staff.id, pane: session.pane, staffing: state.value.staffingAt,
+export const startFixtureSession = (journal: Journal, state: Projection) => {
+  if (state?.status._tag !== 'Open') throw new Error('Open the test project first')
+  return startSession(journal, state, {
+    id: session.id, staff: staff.id, pane: session.pane, staffing: state.staffingAt,
   })
 }
 
-export const toWorking = (journal: ProjectJournal) => Effect.gen(function* () {
+export const toWorking = (journal: Journal) => Effect.gen(function* () {
   const open = yield* create(journal)
   const live = yield* startFixtureSession(journal, open.state)
   const sent = yield* send(journal, readPosition(live.state))

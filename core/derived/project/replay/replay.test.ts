@@ -66,15 +66,14 @@ for (const kind of kinds) test('task report race append seam — ' + kind, () =>
         const committed = await Effect.runPromise(journal.eventsAfter(origin))
         const state = Result.getOrThrow(fold(committed))
         expect(state).toEqual(current)
-        if (state._tag !== 'Open') throw new Error('The replay has no opened project')
-        const task = state.value.tasks.get(taskId)
+        if (state?.status._tag !== 'Open') throw new Error('The replay has no opened project')
+        const task = state.tasks.get(taskId)
         if (!task) throw new Error('The replay has no sent task')
         const phase = task.phase
         const attempt = phase._tag === 'Working' ? phase.attempt
           : phase._tag === 'Sent' ? undefined : phase.result.attempt
         const writes = committed.flatMap((event) => {
-          const fact = event.input.fact
-          return fact._tag === 'Result' ? fact.files.map((file) => Number(file.contents)) : []
+          return event.from === 'Working' ? event.input.files.map((file) => Number(file.contents)) : []
         })
         return {
           phase: phase._tag,
@@ -160,7 +159,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
       observe: async () => {
         const current = await project()
         const response = await Effect.runPromise(projectEvents(journal, readPosition(page.current())))
-        expect(Result.getOrThrow(receiveProjectPayload(page, await response.json()))).toEqual({ _tag: 'Open', value: current })
+        expect(Result.getOrThrow(receiveProjectPayload(page, await response.json()))).toEqual(current)
         const cards = staffCards(page.current())
         const first = cards[0]
         if (!first) throw new Error('Expected the shared staff card')
@@ -188,7 +187,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
     const journal = yield* open(path)
     const working = yield* toWorking(journal)
     const current = working.state
-    if (current._tag !== 'Open') throw new Error('Expected a test project')
+    if (current.status._tag !== 'Open') throw new Error('Expected a test project')
     const address = { _tag: 'Session', id: session.id } as const
     const replacement = SessionId.make('session:2')
     let expectedPrior: Of<typeof SessionId> | null = null
@@ -212,7 +211,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
       },
       replace: async (checkpoint) => {
         expectedPrior = checkpoint ? session.id : null
-        await Effect.runPromise(operations.launch(staff.id, replacement, current.value.staffingAt, checkpoint ? address : null))
+        await Effect.runPromise(operations.launch(staff.id, replacement, current.staffingAt, checkpoint ? address : null))
         id = replacement
       },
       observe: async () => {

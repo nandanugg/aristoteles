@@ -1,6 +1,6 @@
 import { Effect, Result } from 'effect'
 import {
-  observeSession, readOpenProject, staffAuthority, startChild, startSession,
+  observeSession, readOpenProject, resumeSession, staffAuthority, startChild, startSession,
 } from '../../core/actions/staff-session.ts'
 import {
   Rationale, refuse, sessionMayStart, staffOf, subagentCapacity,
@@ -8,7 +8,7 @@ import {
   type SessionAddress, type SessionId, type Staff, type StaffId, type TaskAddress,
 } from '../../core/schema/project.ts'
 import { activationLock } from '../../core/services/index.ts'
-import type { Committed, ProjectJournal } from '../../core/services/project.ts'
+import type { Committed, Journal } from '../../core/services/project.ts'
 
 export interface Sessions {
   // The provider keeps its launch intent, credentials and the checkpoint by lifetime in private storage.
@@ -31,7 +31,7 @@ export interface StaffSessionOperations {
 }
 
 export const staffSessionOperations = (
-  directory: string, journal: ProjectJournal, provider: Sessions,
+  directory: string, journal: Journal, provider: Sessions,
 ): StaffSessionOperations => {
   const locked = <A>(run: (project: Project) => Effect.Effect<A, Refusal>) =>
     Effect.scoped(Effect.gen(function* () {
@@ -57,7 +57,7 @@ export const staffSessionOperations = (
       return yield* changed(Effect.flatMap(provider.launch(eligible.success, id, previous?.id ?? null), ({ address }) => {
         const pane = { address }
         return previous
-          ? observeSession(journal, project, previous, { _tag: 'Resumed', id, pane, staffing })
+          ? resumeSession(journal, project, previous, { id, pane, staffing })
           : startSession(journal, project, { id, staff, pane, staffing })
       }))
     })),
@@ -65,7 +65,7 @@ export const staffSessionOperations = (
       const live = yield* staffAuthority(project, address.id)
       const fact = yield* provider.observe(live)
       if (fact === 'Unknown' || fact === 'Running') return null
-      return yield* observeSession(journal, project, address, { _tag: fact })
+      return yield* observeSession(journal, project, address, fact)
     })),
     child: (id, line, work, staffing) => locked((project) => Effect.gen(function* () {
       if (staffing !== project.staffingAt) return yield* stale()

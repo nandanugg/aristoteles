@@ -7,8 +7,8 @@ import {
 } from '../../src/store/project.probe.ts'
 import { startChild } from '../actions/staff-session.ts'
 import { recordObserved } from '../actions/project.ts'
-import { Projection, Rationale, ReadPosition, SessionId, StoredEvent, Submission, TaskId } from '../schema/project.ts'
-import { applyEvent, beforeProject, fold, readPosition } from './project.ts'
+import { EventNumber, Projection, Rationale, ReadPosition, SessionId, StoredEvent, Submission, TaskId } from '../schema/project.ts'
+import { applyEvent, fold, readPosition } from './project.ts'
 
 const initial = ReadPosition.make(0)
 const encode = Schema.encodeSync(StoredEvent)
@@ -19,14 +19,17 @@ const expectCode = (result: Result.Result<unknown, unknown>, code: string) =>
 test('stored rows round-trip and the codec enforces line, move and read position', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
+    const empty = yield* projectSnapshot(journal)
+    expect(yield* Effect.promise(() => empty.json())).toBeNull()
     const { event } = yield* create(journal)
     const row = encode(event)
     expect(decode(JSON.parse(JSON.stringify(row)))).toEqual(event)
     expect(() => decode({ ...row, line: taskLine })).toThrow()
     expect(() => decode({ ...row, move: 'back' })).toThrow()
+    expect(() => decode({ ...row, from: 'Sent' })).toThrow()
     expect(() => decode({ ...row, read: 1 })).toThrow()
     expect(() => decode({ ...row, destination: 'Open' })).toThrow()
-    expectCode(applyEvent(beforeProject, { ...event, number: Schema.decodeUnknownSync(StoredEvent.fields.number)(2) }), 'InvalidInput')
+    expectCode(applyEvent(null, { ...event, number: EventNumber.make(2) }), 'InvalidInput')
   }))),
 ))
 
@@ -61,16 +64,14 @@ test('a report refuses wrong authority, an invalid phase and a stale basis after
     expect(yield* journal.eventsAfter(read)).toEqual([])
     const result = yield* staffInput(journal, request)
     const review = yield* commandOutcomes(journal, readPosition(result.state))
-    if (review.state._tag !== 'Open') throw new Error('expected open project')
-    const assigned = yield* startChild(journal, review.state.value, taskLine, session, 'Review')
+    const assigned = yield* startChild(journal, review.state, taskLine, session, 'Review')
     const back = yield* recordObserved(journal, worker, readPosition(assigned.state), {
-      _tag: 'ReviewFacts', line: taskLine, why: Rationale.make('Check the output once more'),
+      line: taskLine, from: 'Reviewing', move: 'back', input: { why: Rationale.make('Check the output once more') },
     })
-    if (back.state._tag !== 'Open') throw new Error('expected open project')
-    expect(back.state.value.tasks.get(taskId)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, retryCount: 1 } })
+    expect(back.state.tasks.get(taskId)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, retryCount: 1 } })
     expectCode(yield* Effect.result(staffInput(journal, request)), 'Stale')
     expect(yield* journal.eventsAfter(readPosition(back.state))).toEqual([])
-    expect((yield* staffInput(journal, resultInput(readPosition(back.state)))).state._tag).toBe('Open')
+    expect((yield* staffInput(journal, resultInput(readPosition(back.state)))).state.status._tag).toBe('Open')
   }))),
 ))
 

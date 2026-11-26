@@ -159,24 +159,17 @@ These are the proposed spellings for the first delivery. Types and printed paths
 
 ## Names to rule
 
-These names await Nanda's ruling. The table tracks names that cross a domain, journal,
-adapter, or page boundary and the first unit that uses them.
-
-| Unit | Name | Meaning in the current code |
+| Unit | Name | Meaning |
 | --- | --- | --- |
-| U1 | `BeforeProject` | The projection before the first journal event. |
-| U1 | `ProjectJournal`, `ProjectEdit`, `Committed` | The journal port, the pure transaction input, and the event plus projection returned after append. |
-| U1 | `PageProject`, `openPageProject`, `receiveProjectPayload` | The browser projection and its snapshot and event entry points. |
-| U1/U2 | `AuthenticatedActor`, `staffAuthority`, `waitOnProject` | The verified actor, the current-lifetime check, and the format 16 wait entry point. |
-| U2 | `StaffingAccepted`, `staffingAt` | The journal fact that installs a reviewed plan and the event number a launch relies on. |
-| U2 | `SessionBegan`, `SessionStarted`, `SessionAddress`, `SessionObservation`, `SessionObserved` | The initial provider observation, its project fact, a session's journal address, the lifetime facts, and their intake. |
-| U2 | `WorkBegan` | The stored form of `Began` with the staffing basis used by the move. |
-| U2 | `Waiting`, `By`, `enteredAt` | The two review assignment cases and the original event that entered Reviewing. |
-| U2 | `Running`, `Unknown` | Provider observations that leave the journal alone. |
-| U2 | `Sessions`, `StaffSessionOperations`, `staffSessionOperations` | The private provider port and the adapter that holds the lock through launch, append, or reconciliation. |
-| U2 | `readOpenProject`, `acceptStaffing`, `startSession`, `observeSession`, `startChild` | The engine entry points used by intake and the adapter. |
-| U2 | `staffOf`, `liveSession`, `latestSession`, `sessionMayStart` | Find the staff serving a role, resolve a live or latest lifetime, and check session admission. |
-| U2 | `providerCapacity`, `subagentCapacity`, `staffCards` | The two shared capacity queries and the browser projection that reads them. |
+| U2 | `staffingAt` | The event number of the staffing decision relied on by a launch. |
+| U2 | `Waiting`, `By` | A review awaits an assignment or has an assigned live session. |
+
+Nanda's ruling on 2026-11-26 names the journal port `Journal` and its
+transaction callback `Write`. She kept `StaffingAccepted`, `Running`,
+`Unknown`, `Committed`, `PageProject`, `AuthenticatedActor` and `staffCards`.
+An unopened project is null. A stored move carries the line, source phase and
+move from the table, with the data its edge accepts. Review entry order comes
+from the journal event that moved the task to Reviewing.
 
 A Paused lifetime is the address for retrieving a checkpoint from the provider's
 private storage. The journal and page carry that lifetime's identity and state.

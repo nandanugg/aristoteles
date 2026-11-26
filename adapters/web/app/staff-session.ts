@@ -3,8 +3,8 @@ import { capacity, latestSession } from '../../../core/derived/project/staff.ts'
 import type { Projection } from '../../../core/schema/project.ts'
 
 export const staffCards = (state: Projection) => {
-  if (state._tag === 'BeforeProject') return []
-  const project = state.value
+  if (!state) return []
+  const project = state
   return [...project.staff.values()].map((staff) => ({
     staff,
     capacity: capacity(project, staff),

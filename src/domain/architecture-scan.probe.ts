@@ -223,12 +223,29 @@ export function scan(program: ts.Program, root: string, included = contracts,
         active.add(type)
         try {
           if (type.isUnion()) {
-            if (type.types.filter((part) => part.flags & ts.TypeFlags.Object && !checker.isArrayType(part)
-                && !checker.isTupleType(part)).length > 1) {
-              for (const part of type.types.filter((part) => part.flags & ts.TypeFlags.Object && !checker.isArrayType(part) && !checker.isTupleType(part))) {
-                const tag = part.getProperty('_tag')
-                if (!tag || !(memberType(tag, node).flags & ts.TypeFlags.StringLiteral)) finding(path, 'untagged-union')
+            const records = type.types.filter((part) => part.flags & ts.TypeFlags.Object &&
+              !checker.isArrayType(part) && !checker.isTupleType(part))
+            if (records.length > 1) {
+              const literalAt = (part: ts.Type, key: string) => {
+                const field = part.getProperty(key)
+                const value = field && memberType(field, node)
+                if (value?.isStringLiteral()) return value.value
+                if (value && value.flags & ts.TypeFlags.Null) return null
               }
+              // A journal move is distinguished by its line, source phase and move.
+              const addresses = records.map((part) => {
+                if (!part.getProperty('input')) return
+                const line = part.getProperty('line')
+                if (!line) return
+                const tag = literalAt(memberType(line, node), '_tag')
+                const from = literalAt(part, 'from')
+                const move = literalAt(part, 'move')
+                if (typeof tag === 'string' && from !== undefined && typeof move === 'string')
+                  return JSON.stringify([tag, from, move])
+              })
+              const journal = addresses.every((address) => address !== undefined) && new Set(addresses).size === records.length
+              if (!journal && records.some((part) => typeof literalAt(part, '_tag') !== 'string'))
+                finding(path, 'untagged-union')
             }
             for (const part of type.types) {
               const tag = part.getProperty('_tag')

@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
-import { projectLine, sessionLine, taskLine, type MoveOf } from './lines.ts'
-import { Human, TaskDraft } from './records.ts'
+import { line } from './lines.ts'
+import { Human, TaskDraft, type TaskPhase } from './records.ts'
 import { LiveSession, Pane, Role, Staff, StaffingPlan } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, HumanId, ProjectId, Rationale, ReadPosition,
@@ -17,73 +17,84 @@ const StoredActor = Schema.Union([
 export type StoredActor = Of<typeof StoredActor>
 
 const configuration = { owner: Human, host: Role, pipeline: Role, staff: Staff, roles: Schema.Array(Role) }
-const ProjectOpened = Schema.TaggedStruct('ProjectOpened', configuration)
-const TaskSent = Schema.TaggedStruct('TaskSent', { draft: TaskDraft })
-const ProjectEnded = Schema.TaggedStruct('ProjectEnded', {})
-export const StaffingAccepted = Schema.TaggedStruct('StaffingAccepted', { plan: StaffingPlan })
-export const SessionBegan = Schema.Struct({ id: SessionId, staff: StaffId, pane: Pane, staffing: EventNumber })
-export const SessionStarted = Schema.TaggedStruct('SessionStarted', { session: SessionBegan })
-export const SessionObservation = Schema.Union([
-  Schema.TaggedStruct('Paused', {}),
-  Schema.TaggedStruct('Ended', {}),
-  Schema.TaggedStruct('Resumed', { id: SessionId, pane: Pane, staffing: EventNumber }),
-])
-export type SessionObservation = Of<typeof SessionObservation>
-const Reviewing = Schema.TaggedStruct('Reviewing', { session: LiveSession, staffing: EventNumber })
-const Began = Schema.TaggedStruct('Began', { session: LiveSession, place: Schema.Literals(['Main', 'Child']) })
-const WorkBegan = Schema.TaggedStruct('Began', { ...Began.fields, staffing: EventNumber })
-const WorkResult = Schema.TaggedStruct('Result', {
+const result = Schema.Struct({
   attempt: AttemptNumber, summary: ResultSummary,
   files: Schema.Array(Schema.Struct({ path: FilePath, contents: FileContents })),
 })
-const WorkReport = Schema.Union([Began, WorkResult])
-const CommandOutcomes = Schema.TaggedStruct('CommandOutcomes', { outcomes: Schema.Tuple([]) })
-const ReviewFacts = Schema.TaggedStruct('ReviewFacts', { why: Rationale })
+const projectOpen = { to: 'Open', input: Schema.Struct(configuration) } as const
+const sessionOpen = { to: 'Live', input: Schema.Struct({ staff: StaffId, pane: Pane, staffing: EventNumber }) } as const
 
-type Payloads<Move extends 'next' | 'back' | 'restart'> = {
-  readonly [M in Move]: Schema.Top & { readonly Type: { readonly _tag: M } }
-}
-const projectInput = {
-  next: Schema.TaggedStruct('next', { fact: Schema.Union([ProjectOpened, TaskSent, ProjectEnded, StaffingAccepted, SessionStarted]) }),
-} satisfies Payloads<MoveOf<typeof projectLine>>
-const taskInput = {
-  next: Schema.TaggedStruct('next', { fact: Schema.Union([WorkBegan, WorkResult, CommandOutcomes, Reviewing]) }),
-  back: Schema.TaggedStruct('back', { fact: ReviewFacts }),
-} satisfies Payloads<Exclude<MoveOf<typeof taskLine>, 'restart'>>
-const sessionInput = {
-  next: Schema.TaggedStruct('next', { fact: SessionObservation }),
-} satisfies Payloads<MoveOf<typeof sessionLine>>
+export const projectLine = line({
+  Open: { owes: 'Owner', moves: {
+    next: { to: ['Open'], input: Schema.Union([
+      Schema.TaggedStruct('TaskSent', { draft: TaskDraft }),
+      Schema.TaggedStruct('StaffingAccepted', { plan: StaffingPlan }),
+    ]) },
+    end: { to: ['Ended'], input: Schema.Struct({}) },
+  } },
+  Ended: { owes: 'None', moves: {} },
+})
+export const taskLine = line({
+  Sent: { owes: 'Assignee', moves: { next: {
+    to: ['Working'], input: Schema.Struct({ session: LiveSession, staffing: EventNumber, place: Schema.Literals(['Main', 'Child']) }),
+  } } },
+  Working: { owes: 'Assignee', moves: {
+    next: { to: ['ReadyToReview'], input: result },
+    restart: { to: ['Sent'], input: Schema.Struct({ session: SessionId }) },
+  } },
+  ReadyToReview: { owes: 'Engine', moves: {
+    next: { to: ['Reviewing'], input: Schema.Struct({ outcomes: Schema.Tuple([]) }) },
+  } },
+  Reviewing: { owes: 'Reviewer', moves: {
+    next: { to: ['Reviewing'], input: Schema.Struct({ session: LiveSession, staffing: EventNumber }) },
+    back: { to: ['Working'], input: Schema.Struct({ why: Rationale }) },
+  } },
+}) satisfies Readonly<Record<TaskPhase['_tag'], object>>
+export const sessionLine = line({
+  Live: { owes: 'Engine', moves: {
+    next: { to: ['Paused', 'Ended'], input: Schema.Struct({ observed: Schema.Literals(['Paused', 'Ended']) }) },
+  } },
+  Paused: { owes: 'Engine', moves: {
+    next: { to: ['Live'], input: Schema.Struct({ id: SessionId, pane: Pane, staffing: EventNumber }) },
+  } },
+  Ended: { owes: 'None', moves: {} },
+})
 
-const projectInputs = Schema.Union(Object.values(projectInput))
-const taskInputs = Schema.Union(Object.values(taskInput))
-const sessionInputs = Schema.Union(Object.values(sessionInput))
-const matchesSession = Schema.is(sessionInputs)
-const matchesProject = Schema.is(projectInputs)
-const matchesTask = Schema.is(taskInputs)
-type Move = MoveOf<typeof projectLine> | MoveOf<typeof sessionLine> | Exclude<MoveOf<typeof taskLine>, 'restart'>
-const Move = Schema.declare((value): value is Move =>
-  typeof value === 'string' && value !== 'restart' && [projectLine, taskLine, sessionLine].some((line) =>
-    Object.values(line).some((phase) => Object.hasOwn(phase.moves, value)),
-  ),
-)
 const entry = { number: EventNumber, actor: StoredActor, read: ReadPosition, at: Timestamp }
-export const StoredEvent = Schema.Struct({
-  ...entry,
-  line: Schema.Union([ProjectAddress, TaskAddress, SessionAddress]),
-  move: Move,
-  input: Schema.Union([projectInputs, taskInputs, sessionInputs]),
-}).check(Schema.makeFilter((event) =>
-  event.read < event.number && event.move === event.input._tag &&
-  (event.line._tag === 'Project' ? matchesProject(event.input) :
-    event.line._tag === 'Task' ? matchesTask(event.input) : matchesSession(event.input)),
-))
+const on = <A extends Schema.Top, F extends Schema.Top, M extends 'next' | 'end' | 'back', I extends Schema.Top>(
+  address: A, from: F, move: M, definition: { readonly input: I },
+) => Schema.Struct({ ...entry, line: address, from, move: Schema.Literal(move), input: definition.input })
+
+export const ProjectEvent = Schema.Union([
+  on(ProjectAddress, Schema.Null, 'next', projectOpen),
+  on(ProjectAddress, Schema.Literal('Open'), 'next', projectLine.Open.moves.next),
+  on(ProjectAddress, Schema.Literal('Open'), 'end', projectLine.Open.moves.end),
+])
+export type ProjectEvent = Of<typeof ProjectEvent>
+export const TaskEvent = Schema.Union([
+  on(TaskAddress, Schema.Literal('Sent'), 'next', taskLine.Sent.moves.next),
+  on(TaskAddress, Schema.Literal('Working'), 'next', taskLine.Working.moves.next),
+  on(TaskAddress, Schema.Literal('ReadyToReview'), 'next', taskLine.ReadyToReview.moves.next),
+  on(TaskAddress, Schema.Literal('Reviewing'), 'next', taskLine.Reviewing.moves.next),
+  on(TaskAddress, Schema.Literal('Reviewing'), 'back', taskLine.Reviewing.moves.back),
+])
+export type TaskEvent = Of<typeof TaskEvent>
+export const SessionEvent = Schema.Union([
+  on(SessionAddress, Schema.Null, 'next', sessionOpen),
+  on(SessionAddress, Schema.Literal('Live'), 'next', sessionLine.Live.moves.next),
+  on(SessionAddress, Schema.Literal('Paused'), 'next', sessionLine.Paused.moves.next),
+])
+export type SessionEvent = Of<typeof SessionEvent>
+
+export const StoredEvent = Schema.Union([ProjectEvent, TaskEvent, SessionEvent])
+  .check(Schema.makeFilter((event) => event.read < event.number))
 export type StoredEvent = Of<typeof StoredEvent>
 export const StoredEvents = Schema.Array(StoredEvent)
 
 export const Submission = Schema.Union([
   Schema.TaggedStruct('StaffReport', {
     read: ReadPosition,
-    report: Schema.TaggedStruct('Work', { line: TaskAddress, report: WorkReport }),
+    report: Schema.TaggedStruct('Work', { line: TaskAddress, report: Schema.NullOr(result) }),
   }),
   Schema.TaggedStruct('HumanChoice', {
     read: ReadPosition,

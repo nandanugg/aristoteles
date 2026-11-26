@@ -31,7 +31,7 @@ import { verifyWork } from '../caller.ts'
 import { readOpenProject, staffAuthority } from '../../../core/actions/staff-session.ts'
 import { nextStep, type Selection } from '../../../core/derived/project/next-step.ts'
 import type { Of, Refusal as ProjectRefusal, SessionId } from '../../../core/schema/project.ts'
-import type { ProjectJournal } from '../../../core/services/project.ts'
+import type { Journal } from '../../../core/services/project.ts'
 
 // Under the 10-minute limit of a command in Claude Code (onboard waits no longer than this).
 export const WAIT_SECONDS = 540
@@ -410,7 +410,7 @@ export const commands: Commands = { wait, worker }
 
 // The credential adapter resolves a token to its lifetime before using the shared selection.
 export const waitOnProject = (
-  journal: ProjectJournal, authenticate: Effect.Effect<Of<typeof SessionId>, ProjectRefusal>,
+  journal: Journal, authenticate: Effect.Effect<Of<typeof SessionId>, ProjectRefusal>,
 ): Effect.Effect<Selection, ProjectRefusal> => Effect.gen(function* () {
   const id = yield* authenticate
   const project = yield* readOpenProject(journal)
