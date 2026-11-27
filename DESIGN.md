@@ -8,7 +8,7 @@ live staff session and review assignment.
 
 ## Journal
 
-A format-17 SQLite journal stores ordered events. Each write reads the current
+A format-18 SQLite journal stores ordered events. Each write reads the current
 projection inside a transaction, checks the actor and read position, and appends
 the event. The phase transitions fold those events into one Project projection.
 CLI and page views derive their next steps from that projection. The page loads a
@@ -19,6 +19,8 @@ snapshot and reads later events by position to stay current through reconnects.
 - A submitted proposal goes to a fresh reviewer who reports facts. The owner
   accepts the reviewed version, sends it back, or removes it. An answered
   Question belongs to its staffing draft and closes when the draft advances.
+  Each Project, Proposal, or Task keeps its own question map. A question move
+  addresses the owner and the question’s key within that map.
 - Accepted staffing assigns every role, with session limits per subscription and
   subagent capacity per staff. The journal reserves a Starting session before
   spawn. Its pane proves authority to become Live. Session loss retires its

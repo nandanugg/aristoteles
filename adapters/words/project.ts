@@ -1,4 +1,4 @@
-import { taskRole, taskRules, TaskBriefText, type Evidence, type Of, type Question, type QuestionText, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
+import { taskRole, taskRules, TaskBriefText, type Evidence, type Of, type Question, type QuestionAddress, type QuestionText, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
 
 const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
   ? `${evidence.file}:${evidence.lines.first}–${evidence.lines.last} ${evidence.text}`
@@ -28,7 +28,11 @@ export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = nu
   ].join('\n'))
 }
 
+export const questionAddressText = ({ owner, key }: Of<typeof QuestionAddress>) =>
+  `${owner._tag === 'Project' ? 'project' : owner.key}/${key}` as const
+
 export const projectQuestionWords = (
-  { key, text }: Of<typeof Question>, read: Of<typeof ReadPosition>,
-): readonly [Of<typeof QuestionText>, `work answer "$ARISTOTELES_TOKEN" ${Of<typeof Question>['key']} --on=${Of<typeof ReadPosition>} --file=answer.yaml`] =>
-  [text, `work answer "$ARISTOTELES_TOKEN" ${key} --on=${read} --file=answer.yaml`]
+  { question, line }: { readonly question: Question; readonly line: Of<typeof QuestionAddress> },
+  read: Of<typeof ReadPosition>,
+): readonly [Of<typeof QuestionText>, `work answer "$ARISTOTELES_TOKEN" ${ReturnType<typeof questionAddressText>} --on=${Of<typeof ReadPosition>} --file=answer.yaml`] =>
+  [question.text, `work answer "$ARISTOTELES_TOKEN" ${questionAddressText(line)} --on=${read} --file=answer.yaml`]

@@ -28,7 +28,7 @@ export const acceptDirection = (journal: Journal, project: Project, value: Direc
   const proposalKey = ProposalKey.make('proposal:direction-' + project.read)
   const line = { _tag: 'Proposal', key: proposalKey } as const
   const drafted = yield* cliProposal(journal, current, { line: { _tag: 'Proposal', key: proposalKey }, move: 'open', input: { value, previous: previous ? { _tag: 'Version', version: previous } : { _tag: 'None' } } })
-  const submitted = yield* cliProposal(journal, drafted.state, { line, move: 'submit', input: { value, question: null } })
+  const submitted = yield* cliProposal(journal, drafted.state, { line, move: 'submit', input: { value } })
   const proposal = submitted.state.proposals.get(proposalKey)
   if (!proposal) throw new Error('Missing direction to approve')
   const reviewing = yield* assignProposalReview(journal, proposal, active, submitted.state.read)

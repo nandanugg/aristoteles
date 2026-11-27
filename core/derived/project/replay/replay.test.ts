@@ -223,13 +223,13 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
     const reviewed = yield* startChild(journal, entered.state, reviewLine, session, 'Review')
     const proposalLine = { _tag: 'Proposal', key: ProposalKey.make('proposal:retained-review') } as const
     const draft = yield* cliProposal(journal, reviewed.state, { line: proposalLine, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
-    const submitted = yield* cliProposal(journal, draft.state, { line: proposalLine, move: 'submit', input: { question: null, value: direction } })
+    const submitted = yield* cliProposal(journal, draft.state, { line: proposalLine, move: 'submit', input: { value: direction } })
     const proposal = submitted.state.proposals.get(proposalLine.key)!
     const pending = yield* assignProposalReview(journal, proposal, session, submitted.state.read)
     const asked = yield* cliQuestion(journal, ownerAuthority, 'question', staff.key, pending.state.read, Bun.YAML.stringify({
-      key: questionKey, text: 'What is the answer?', form: textForm, about: { _tag: 'Project' },
+      key: questionKey, text: 'What is the answer?', form: textForm, owner: { _tag: 'Project' },
     }))
-    const answered = yield* cliQuestion(journal, staffAuthorityOf(), 'answer', questionKey, asked.state.read, answerYaml('9'))
+    const answered = yield* cliQuestion(journal, staffAuthorityOf(), 'answer', `project/${questionKey}`, asked.state.read, answerYaml('9'))
     const current = answered.state
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
@@ -328,14 +328,14 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
       const created = yield* create(journal)
       const live = yield* startFixtureSession(journal, created.state)
       const opened = yield* cliQuestion(journal, ownerAuthority, 'question', staff.key, live.state.read, Bun.YAML.stringify({
-        key: questionKey, text: 'Confirm the output.', form: textForm, about: { _tag: 'Project' },
+        key: questionKey, text: 'Confirm the output.', form: textForm, owner: { _tag: 'Project' },
       }))
       const response = yield* projectSnapshot(journal)
       const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => response.json()), () => {}))
       const trace = readTrace(join(traces, 'questionAnswer-' + kind + '.itf.json.gz'), 'questionAnswer', kind)
       let holder = session
       const replacement = { ...session, key: StaffSessionKey.make('session:2') }
-      const address = { _tag: 'Question', key: questionKey } as const
+      const address = { _tag: 'Question', owner: { _tag: 'Project' }, key: questionKey } as const
       const project = () => Effect.runPromise(readOpenProject(journal))
       yield* Effect.promise(() => replayQuestionAnswer(trace, kind, {
         replace: async () => {
@@ -352,7 +352,7 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
           const authority = actor === 1 ? ownerAuthority : staffAuthorityOf(holder)
           const text = String(message)
           if (surface === 'CLI') {
-            const outcome = await Effect.runPromise(Effect.result(cliQuestion(journal, authority, 'answer', questionKey, current.read, answerYaml(text))))
+            const outcome = await Effect.runPromise(Effect.result(cliQuestion(journal, authority, 'answer', `project/${questionKey}`, current.read, answerYaml(text))))
             if (Result.isSuccess(outcome)) return 'Committed'
             if (outcome.failure.code === 'WrongActor' || outcome.failure.code === 'WrongMove') return outcome.failure.code
             throw new Error(outcome.failure.why)

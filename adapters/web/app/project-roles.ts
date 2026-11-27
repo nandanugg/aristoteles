@@ -36,7 +36,7 @@ export function RoleCard({ project, submit }: {
               move: 'open', input: { previous: { _tag: 'None' }, value: proposal.success } })
             if (Result.isFailure(opened)) { setFailure(opened.failure); return }
             const sent = await submit({ read: opened.success.read, line: { _tag: 'Proposal', key },
-              move: 'submit', input: { value: proposal.success, question: null } })
+              move: 'submit', input: { value: proposal.success } })
             setFailure(Result.isFailure(sent) ? sent.failure : null)
           } finally { setBusy(false) }
         }}>

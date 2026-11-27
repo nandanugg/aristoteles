@@ -2,6 +2,7 @@ import { html } from 'htm/preact'
 import { useEffect, useState } from 'preact/hooks'
 import { Result, Schema } from 'effect'
 import { ownerProposals } from '../../../core/derived/project/review.ts'
+import { questionAddressText } from '../../words/project.ts'
 import { questionsFor } from '../../../core/derived/project/next-step.ts'
 import { ApprovedFiles, Rationale, approvedProposals, boundHostSession, type Of, type Project, type Refusal, type Submission, type TaskKey } from '../../../core/schema/project.ts'
 import { ProposalCard } from './project-proposal.ts'
@@ -22,8 +23,8 @@ function renderOnboarding({ project, submit, markerFiles, commandBlock }: {
     ${[...project.proposals.values()].filter(({ phase }) => phase._tag === 'Accepted').map((proposal) =>
       html`<${ProposalCard} key=${proposal.key} proposal=${proposal} read=${project.read} submit=${submit} />`)}
     <${RoleCard} project=${project} submit=${submit} />
-    ${questionsFor(project, project.owner).map((question) => html`<${QuestionCard} key=${question.key}
-      question=${question} read=${project.read} submit=${async (submission: Submission) => {
+    ${questionsFor(project, project.owner).map(({ question, line }) => html`<${QuestionCard} key=${questionAddressText(line)}
+      question=${question} line=${line} read=${project.read} submit=${async (submission: Submission) => {
         const result = await submit(submission)
         return Result.isFailure(result) ? result.failure : null
       }} />`)}

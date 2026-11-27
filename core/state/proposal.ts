@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 import {
-  FileContents, Rationale, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, staffOf, subagentCapacity,
+  FileContents, Rationale, currentQuestion, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, staffOf, subagentCapacity,
   validateStaffing, reviewOutcome, roleOf, type Project, type Proposal, type ProposalEvent, type ProposalValue, type Refusal, type StoredActor, type Version,
 } from '../schema/project.ts'
 
@@ -61,9 +61,9 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       const version = previous ?? effectiveVersion(project, value)
       if (version && version.acceptedAt > read) return stale()
       return store({
-      key: line.key, value, basis: version ? { _tag: 'Version', version } : { _tag: 'None' }, questions: [],
-      proposer, owner: project.owner, reviewer: project.roles.host, retryCount: RetryCount.make(0),
-      phase: { _tag: 'Drafting', feedback: { _tag: 'None' } }, lastChange: number,
+        key: line.key, value, basis: version ? { _tag: 'Version', version } : { _tag: 'None' }, questions: new Map(),
+        proposer, owner: project.owner, reviewer: project.roles.host, retryCount: RetryCount.make(0),
+        phase: { _tag: 'Drafting', feedback: { _tag: 'None' } }, lastChange: number,
       })
     })
   }
@@ -78,13 +78,15 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
   if (event.from === 'Drafting') {
     if (actor._tag !== stage.proposer._tag || (actor._tag === 'Staff' &&
         (stage.proposer._tag !== 'Staff' || actor.key !== stage.proposer.key))) return wrongActor()
-    const { value, question } = event.input
+    const { value } = event.input
     if (stage.value._tag !== value._tag || (stage.value._tag === 'Responsibility' &&
         (value._tag !== 'Responsibility' || JSON.stringify(stage.value.role) !== JSON.stringify(value.role)))) return wrongMove()
     if (actor._tag === 'Staff' && ![...project.sessions.values()].some(({ _tag, staff, startedAt }) =>
         _tag === 'Live' && staff.key === actor.key && startedAt <= read)) return wrongActor()
-    const consult = stage.questions.find((item) => item.lastChange > stage.lastChange)
-    if (consult ? question?.key !== consult.key || consult.state._tag !== 'Answered' || consult.lastChange > read : question !== null) return stale()
+    for (const question of stage.questions.values()) {
+      if (currentQuestion(stage, question) &&
+          (question.state._tag !== 'Answered' || question.lastChange > read)) return stale()
+    }
     return Result.flatMap(validateValue(project, value), (checked) =>
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
   }

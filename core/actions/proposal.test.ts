@@ -24,7 +24,7 @@ const choose = (line = first, choice: 'accept' | 'remove' = 'accept') =>
   ({ line, move: choice, input: {} })
 const missing = (code: string) => ({ _tag: 'Failure', failure: { code } })
 const ask = (key = first.key) => ({ line: { _tag: 'Proposal', key: key }, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
-const send = (line = first) => ({ line, move: 'submit', input: { value: direction, question: null } })
+const send = (line = first) => ({ line, move: 'submit', input: { value: direction } })
 
 test('proposal queue launches the host’s fresh child and retains the reviewed version at acceptance', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
@@ -124,7 +124,7 @@ test('departure retires the old child and releases the first proposal back into 
       run)
     expect(returned.state.proposals.get(first.key)?.phase._tag).toBe('Drafting')
     const revised = { ...direction, summary: Summary.make('Show the revised evidence') }
-    const resubmitted = yield* cliProposal(journal, returned.state, { ...send(), input: { value: revised, question: null } })
+    const resubmitted = yield* cliProposal(journal, returned.state, { ...send(), input: { value: revised } })
     expect(resubmitted.state.proposals.get(first.key)?.value).toEqual(revised)
     expect(ownerProposals(resubmitted.state)).toEqual([])
   }))),
@@ -140,7 +140,7 @@ test('only the owner changes a responsibility, which takes effect after review a
     expect(yield* Effect.result(cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } }, staffAuthorityOf())))
       .toMatchObject(missing('WrongActor'))
     const draft = yield* cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } })
-    yield* cliProposal(journal, draft.state, { ...send(), input: { value, question: null } })
+    yield* cliProposal(journal, draft.state, { ...send(), input: { value } })
     const child = yield* launchNextReview(dirname(path), journal, { reconcile: () => Effect.void, open: () => Effect.void })
     if (!child) throw new Error('Missing review')
     const proposal = child.state.proposals.get(first.key)
@@ -194,7 +194,7 @@ test('the page receives the committed review assignment dispatched by a submissi
     const draftStart = performance.now()
     const drafted = yield* cliProposal(journal, live.state, ask())
     yield* seen(draftStart)
-    const body: Submission = { read: drafted.state.read, line: first, move: 'submit', input: { value: direction, question: null } }
+    const body: Submission = { read: drafted.state.read, line: first, move: 'submit', input: { value: direction } }
     submitted = performance.now()
     const response = yield* projectSubmission(journal, new Request('http://localhost/project', {
       method: 'POST', body: JSON.stringify(body),
@@ -317,7 +317,7 @@ test('staffing stays effective while a replacement is reviewed, sent back, or re
     expect(draft.state.staffing).toEqual(prior)
     const launch = launchNextReview(dirname(path), journal, { reconcile: () => Effect.void, open: () => Effect.void })
     const review = (draft: Project) => Effect.gen(function* () {
-      yield* cliProposal(journal, draft, { ...send(), input: { value, question: null } })
+      yield* cliProposal(journal, draft, { ...send(), input: { value } })
       const assigned = yield* launch
       const phase = assigned?.state.proposals.get(first.key)?.phase
       if (!assigned || phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing review')

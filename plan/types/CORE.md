@@ -73,7 +73,7 @@ Use the name a person or agent can understand on its own. Read a state label wit
 | `Version<T>` | keep | A version carries the exact direction or responsibility that was in force for the task. |
 | Revision | keep | A revision proposes a new version of a direction, including its standards and rules. |
 | Onboarding direction draft | keep | It is the proposed direction the owner reviews during onboarding. |
-| Question | keep | A question asks for information the actor needs to proceed. |
+| Question | owned by Project, Proposal, or Task | The subject owns its question map. A question move addresses that owner and the question key. |
 | Answer, reply to a question | keep | The answer supplies the information requested by a question. |
 | Staffing | keep | Staffing shows who covers each role and what capacity they have. |
 | Staff assignment | keep | An assignment links a role to the staff that carries it out. |

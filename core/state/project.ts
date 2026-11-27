@@ -4,7 +4,7 @@ import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
   DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, ActivationEvent, approvedProposals, roleOf, ProjectEvent, ProposalEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffOf, subagentCapacity,
-  type LiveSession, type Project, type Projection, type Proposal, type Question, type StoredActor, type Refusal, type StaffSession,
+  type LiveSession, type Project, type Projection, type Question, type StoredActor, type Refusal, type StaffSession,
 } from '../schema/project.ts'
 
 export const readPosition = (state: Projection): typeof ReadPosition.Type =>
@@ -80,7 +80,7 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   const tasks = new Map(project.tasks)
   tasks.set(line.key, {
     key: line.key, name: draft.name, goal: draft.goal, reviewer, direction,
-    stages: [{ ...first, role }, ...rest.map((stage) => ({ ...stage, role }))], facts: draft.facts,
+    stages: [{ ...first, role }, ...rest.map((stage) => ({ ...stage, role }))], facts: draft.facts, questions: new Map(),
     phase: { _tag: 'Sent', retryCount: RetryCount.make(0), feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, lastChange: number,
   })
   return Result.succeed({ ...project, tasks })
@@ -179,47 +179,54 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
     if (!live) return retired()
     if (read < live.startedAt) return stale()
   }
-  const owned = [...project.proposals.values()].find((proposal) => proposal.questions.some(({ key }) => key === line.key))
-  const existing = owned?.questions.find(({ key }) => key === line.key) ?? project.questions.get(line.key)
-  const store = (question: Question, proposal?: Proposal) => proposal
-    ? Result.succeed({ ...project, proposals: new Map(project.proposals).set(proposal.key, {
-      ...proposal, questions: [...proposal.questions.filter(({ key }) => key !== question.key), question],
-    }) })
-    : Result.succeed({ ...project, questions: new Map(project.questions).set(question.key, question) })
-  if (event.from === null) {
-    if (existing) return stale()
-    const { to: recipient, text, form, about } = event.input
-    const to = actorFor(project, recipient)
-    if (!to) return wrongActor()
-    const ask = (subject: Question['about'], proposal?: Proposal) => store({
-      key: line.key, from: actor, to, text, form, about: subject, state: { _tag: 'Open' }, lastChange: number,
-    }, proposal)
-    switch (about._tag) {
-      case 'Project': return ask(about)
-      case 'Task': {
-        const task = project.tasks.get(about.task)
-        if (!task) return wrongMove()
-        if (task.lastChange > read) return stale()
-        return ask({ _tag: 'Task', task })
-      }
-      case 'Staffing': {
-        if (actor._tag !== 'Staff' || actor.key !== staffOf(project, project.roles.host)?.key || to._tag !== 'Human')
+  const { owner, key } = line
+  const move = (questions: Project['questions']) => {
+    const existing = questions.get(key)
+    const store = (question: Question) => Result.succeed(new Map(questions).set(key, question))
+    if (event.from === null) {
+      if (existing) return stale()
+      const { to: recipient, text, form } = event.input
+      const to = actorFor(project, recipient)
+      if (!to) return wrongActor()
+      return store({ key, from: actor, to, text, form, state: { _tag: 'Open' }, lastChange: number })
+    }
+    if (!existing) return wrongMove()
+    if (!sameActor(existing.to, actor)) return wrongActor()
+    if (existing.lastChange > read) return stale()
+    if (edge(questionLine, existing.state._tag, event.move, 'Answered') !== 'Allowed') return wrongMove()
+    const { answer } = event.input
+    if (!answerFor(existing.form, answer))
+      return Result.fail(refuse('InvalidInput', Rationale.make('The answer does not match this question’s form.')))
+    return store({ ...existing, state: { _tag: 'Answered', by: actor, answer }, lastChange: number })
+  }
+  switch (owner._tag) {
+    case 'Project':
+      return Result.map(move(project.questions), (questions) => ({ ...project, questions }))
+    case 'Task': {
+      const task = project.tasks.get(owner.key)
+      if (!task) return wrongMove()
+      if (event.from === null && task.lastChange > read) return stale()
+      return Result.map(move(task.questions), (questions) => ({
+        ...project, tasks: new Map(project.tasks).set(owner.key, { ...task, questions }),
+      }))
+    }
+    case 'Proposal': {
+      const proposal = project.proposals.get(owner.key)
+      if (!proposal || proposal.value._tag !== 'Staffing') return wrongMove()
+      if (event.from === null) {
+        if (actor._tag !== 'Staff' || actor.key !== staffOf(project, project.roles.host)?.key || event.input.to._tag !== 'Human')
           return wrongActor()
-        const proposal = project.proposals.get(about.proposal.key)
-        if (!proposal || proposal.value._tag !== 'Staffing' || proposal.phase._tag !== 'Drafting' ||
-            proposal.lastChange > read || proposal.questions.some((question) => currentQuestion(proposal, question))) return stale()
-        return ask({ _tag: 'Staffing' }, proposal)
+        if (proposal.phase._tag !== 'Drafting' || proposal.lastChange > read ||
+            [...proposal.questions.values()].some((question) => currentQuestion(proposal, question))) return stale()
+      } else {
+        const existing = proposal.questions.get(key)
+        if (existing && !currentQuestion(proposal, existing)) return stale()
       }
+      return Result.map(move(proposal.questions), (questions) => ({
+        ...project, proposals: new Map(project.proposals).set(owner.key, { ...proposal, questions }),
+      }))
     }
   }
-  if (!existing) return wrongMove()
-  if (!sameActor(existing.to, actor)) return wrongActor()
-  if (existing.lastChange > read || (owned && !currentQuestion(owned, existing))) return stale()
-  if (edge(questionLine, existing.state._tag, event.move, 'Answered') !== 'Allowed') return wrongMove()
-  const { answer } = event.input
-  if (!answerFor(existing.form, answer))
-    return Result.fail(refuse('InvalidInput', Rationale.make('The answer does not match this question’s form.')))
-  return store({ ...existing, state: { _tag: 'Answered', by: actor, answer }, lastChange: number }, owned)
 }
 
 export const applyEvent = (state: Projection, event: StoredEvent): Result.Result<Project, Refusal> => {

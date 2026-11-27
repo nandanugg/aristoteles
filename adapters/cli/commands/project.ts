@@ -8,7 +8,7 @@ import { Authority as ProjectAuthority, submit, type AuthenticatedActor } from '
 import { reportTaskReview } from '../../../core/actions/task-review.ts'
 import { decodeQuestionInput } from '../../../core/actions/question.ts'
 import {
-  Answer as ProjectAnswer, ProposalSubmission, QuestionKey, ReadPosition, StaffSessionKey, Rationale, StoredActor, TaskDraft, TaskKey, ReviewFacts, taskLine, refuse as projectRefuse,
+  Answer as ProjectAnswer, ProposalSubmission, QuestionAddress, ReadPosition, StaffSessionKey, Rationale, StoredActor, TaskDraft, TaskKey, ReviewFacts, taskLine, refuse as projectRefuse,
   type Of, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
@@ -16,7 +16,7 @@ import type { Committed, Journal } from '../../../core/services/project.ts'
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-// Format 17 question and answer commands bind the addressed recipient or question before intake.
+// Opening supplies the owner in YAML. Answers use the full address printed by wait.
 export const projectQuestionCommand = (
   journal: Journal, command: 'question' | 'answer', target: string, read: Of<typeof ReadPosition>, yaml: string,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
@@ -25,17 +25,22 @@ export const projectQuestionCommand = (
     catch: () => projectRefuse('InvalidInput', Rationale.make('Load a valid YAML question or answer.')),
   })
   if (command === 'answer') {
-    const key = yield* decodeQuestionInput(QuestionKey, target)
+    const [subject, key, ...extra] = target.split('/')
+    if (!subject || !key || extra.length)
+      return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Use the full question address printed by work wait.')))
+    const owner = subject === 'project' ? { _tag: 'Project' }
+      : { _tag: subject.startsWith('proposal:') ? 'Proposal' : 'Task', key: subject }
+    const line = yield* decodeQuestionInput(QuestionAddress, { _tag: 'Question', owner, key })
     const answer = yield* decodeQuestionInput(ProjectAnswer, raw)
-    return yield* submit(journal, { read, line: { _tag: 'Question', key }, move: 'answer', input: { answer } })
+    return yield* submit(journal, { read, line, move: 'answer', input: { answer } })
   }
   const to = yield* decodeQuestionInput(StoredActor, target === 'owner' ? { _tag: 'Human' } : { _tag: 'Staff', key: target })
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || 'to' in raw) {
+  if (!isRecord(raw) || 'to' in raw) {
     return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Address the recipient in the command.')))
   }
-  if (!('key' in raw)) return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Name the question.')))
-  const { key, ...fields } = raw
-  return yield* submit(journal, { read, line: { _tag: 'Question', key }, move: 'open', input: { ...fields, to } })
+  const { key, owner, ...fields } = raw
+  const line = yield* decodeQuestionInput(QuestionAddress, { _tag: 'Question', owner, key })
+  return yield* submit(journal, { read, line, move: 'open', input: { ...fields, to } })
 })
 
 const loadTaskYaml = (yaml: string) => Effect.try({
@@ -84,7 +89,7 @@ export const projectBriefCommand = (journal: Journal, target: unknown, commands?
   return projectTaskWords(task, blocked)
 })
 
-// Format 17 loads authored YAML, then uses the same proposal intake as the page.
+// Authored YAML uses the same proposal intake as the page.
 export const projectOnboard = (
   journal: Journal, read: Of<typeof ReadPosition>, yaml: string, review?: Effect.Effect<unknown, ProjectRefusal>,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {

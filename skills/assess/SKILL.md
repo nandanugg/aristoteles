@@ -29,17 +29,16 @@ host: &host
 
 Use the same role shape for the pipeline and work roles. The initial staff has `_tag: Staff`, `key`, `name`, its list of assigned `roles`, `subagents`, `model`, `launch`, `why`, and `subscription`. The subscription has a key, provider, account, plan, usage window, a session limit or Unlimited, and an estimate or NoEstimate. The owner launches the staff session with `work session launch <staff-key>`. The launched staff follows the pane prompt to run `work session ack <session-key>` before using its credential.
 
-Keep authored drafts in a local folder such as `.work/drafts/`. Submit each through `work onboard submit "$ARISTOTELES_TOKEN" --on=<read> --file=<draft.yaml>`. The file uses the proposal address and a move input. Open with `move: open` and `input: { value: ..., previous: { _tag: None } }`. For a new version of an accepted direction, give `previous: { _tag: Version, version: ... }` with the complete accepted version. Then use `move: submit` with the exact reviewed candidate in `input.value` and its answered Question address in `input.question`, or `null` when there was no consultation:
+Keep authored drafts in a local folder such as `.work/drafts/`. Submit each through `work onboard submit "$ARISTOTELES_TOKEN" --on=<read> --file=<draft.yaml>`. The file uses the proposal address and a move input. Open with `move: open` and `input: { value: ..., previous: { _tag: None } }`. For a new version of an accepted direction, give `previous: { _tag: Version, version: ... }` with the complete accepted version. Then use `move: submit` with the exact reviewed candidate in `input.value`.
 
 ```yaml
 line: { _tag: Proposal, key: proposal:document }
 move: submit
 input:
-  question: null
   value: <the complete direction>
 ```
 
-A staffing value uses `_tag: Staffing`, the single subscriptions list, and all staff assignments. Reference the subscription records from their assignments. Assign each role once. When you need the owner’s input, ask a Question about the staffing proposal and its current draft. Use `work question owner` with `about: { _tag: Staffing, proposal: { _tag: Proposal, key: ... } }` in the input. Carry the answered Question address in the submission. A responsibility value uses `_tag: Responsibility`, the role record, and the responsibility’s summary, introduction and duties.
+A staffing value uses `_tag: Staffing`, the single subscriptions list, and all staff assignments. Reference the subscription records from their assignments. Assign each role once. When you need the owner’s input, ask a Question about the staffing proposal and its current draft. Use `work question owner` with `owner: { _tag: Proposal, key: ... }` in the input. The draft owns the Question. Wait for its answer before submitting. A responsibility value uses `_tag: Responsibility`, the role record, and the responsibility’s summary, introduction and duties.
 
 ## Directions and evidence
 

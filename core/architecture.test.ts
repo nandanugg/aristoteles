@@ -153,7 +153,7 @@ test('every Project record key has a map of its own record type', () => {
     if (!ts.isVariableStatement(statement) || !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword))
       return []
     return statement.declarationList.declarations.flatMap(({ name }) =>
-      ts.isIdentifier(name) && name.text.endsWith('Key') ? [name.text] : [])
+      ts.isIdentifier(name) && /^[A-Z][A-Za-z]*Key$/u.test(name.text) ? [name.text] : [])
   })
   const paired: string[] = []
   const visit = (node: ts.Node): void => {
@@ -166,7 +166,7 @@ test('every Project record key has a map of its own record type', () => {
     }
     ts.forEachChild(node, visit)
   }
-  visit(sourceOf(domain + 'records.ts'))
+  for (const file of ['records.ts', 'proposal.ts', 'task.ts']) visit(sourceOf(domain + file))
   expect(declared.sort()).toEqual([...new Set(paired)].sort())
 })
 

@@ -2,7 +2,7 @@ import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
 import {
   Rationale, answerFor, refuse, type Answer as ProjectAnswer, type QuestionForm as ProjectForm,
-  type Of, type Question as ProjectQuestion, type ReadPosition, type Refusal, type Submission,
+  type Of, type Question as ProjectQuestion, type QuestionAddress, type ReadPosition, type Refusal, type Submission,
 } from '../../../core/schema/project.ts'
 
 export const answerFromForm = (form: ProjectForm, data: FormData): ProjectAnswer | null => {
@@ -44,15 +44,16 @@ const fieldsFor = (form: ProjectForm) => {
 }
 
 export const questionAnswerSubmission = (
-  question: ProjectQuestion, read: Of<typeof ReadPosition>, answer: ProjectAnswer,
+  line: Of<typeof QuestionAddress>, read: Of<typeof ReadPosition>, answer: ProjectAnswer,
 ): Submission => ({
-  read, line: { _tag: 'Question', key: question.key }, move: 'answer', input: { answer },
+  read, line, move: 'answer', input: { answer },
 })
 
 export function QuestionCard({
-  question, read, submit,
+  question, line, read, submit,
 }: {
   readonly question: ProjectQuestion
+  readonly line: Of<typeof QuestionAddress>
   readonly read: Of<typeof ReadPosition>
   readonly submit: (submission: Submission) => Promise<Refusal | null>
 }): ReturnType<typeof html> | null {
@@ -70,13 +71,14 @@ export function QuestionCard({
     }
     setBusy(true)
     try {
-      setFailure(await submit(questionAnswerSubmission(question, read, answer)))
+      setFailure(await submit(questionAnswerSubmission(line, read, answer)))
     } catch {
       setFailure(refuse('Unavailable', Rationale.make('The page could not send the answer.')))
     } finally {
       setBusy(false)
     }
   }}>
+    ${line.owner._tag === 'Project' ? null : html`<p>${line.owner._tag} ${line.owner.key}</p>`}
     <fieldset disabled=${busy}><legend>${question.text}</legend>${fieldsFor(question.form)}</fieldset>
     <button class="btn primary" type="submit" disabled=${busy}>Answer</button>
     ${failure ? html`<p class="error" role="alert">${failure.why}</p>` : null}

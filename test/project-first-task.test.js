@@ -30,7 +30,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=16; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=17; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -40,7 +40,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
         cwd: dir, env: { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db, WORK_NO_OPEN: '1' },
       })
       expect(result.exitCode).toBe(1)
-      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 17 project journal')
+      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 18 project journal')
       expect(readFileSync(db).equals(original)).toBe(true)
     }
     expect(existsSync(join(dir, '.work'))).toBe(false)
@@ -171,7 +171,7 @@ exec sleep 90
       const line = { _tag: 'Proposal', key }
       put('draft.yaml', { line, move: 'open', input: { previous: { _tag: 'None' }, value } })
       await apply(['onboard', 'submit', await basis(), '--file=draft.yaml'], live.token, key + ' open')
-      put('draft.yaml', { line, move: 'submit', input: { value, question: null } })
+      put('draft.yaml', { line, move: 'submit', input: { value } })
       const before = new Set(readdirSync(captures))
       const submitted = await apply(['onboard', 'submit', await basis(), '--file=draft.yaml'], live.token, key + ' submit')
       const review = await fresh(before)
@@ -193,7 +193,7 @@ exec sleep 90
       subscriptions: [local.subscription] }, 'Staffing')
     await proposal('proposal:direction', drafted, drafted.name)
     const question = 'Which wording should the work use?'
-    put('question.yaml', { key: 'question:wording', text: question, about: { _tag: 'Project' },
+    put('question.yaml', { key: 'question:wording', text: question, owner: { _tag: 'Project' },
       form: { _tag: 'Single', prompt: { text: question, placeholder: null } } })
     await apply(['question', 'owner', await basis(), '--file=question.yaml'], live.token, 'question')
     const card = browser.page.getByRole('form', { name: question })

@@ -19,7 +19,9 @@ export const TaskAddress = Schema.TaggedStruct('Task', { key: TaskKey })
 export const SessionAddress = Schema.TaggedStruct('Session', { key: StaffSessionKey })
 export const ActivationAddress = Schema.TaggedStruct('Activation', {})
 export const ProposalAddress = Schema.TaggedStruct('Proposal', { key: ProposalKey })
-export const QuestionAddress = Schema.TaggedStruct('Question', { key: QuestionKey })
+export const QuestionAddress = Schema.TaggedStruct('Question', {
+  owner: Schema.Union([ProjectAddress, ProposalAddress, TaskAddress]), key: QuestionKey,
+})
 
 const configuration = Schema.Struct({ owner: Human, host: Role, pipeline: Role, staff: Staff, roles: Schema.Array(Role) })
 export const TaskDraft = Schema.Struct({
@@ -32,7 +34,7 @@ const session = Schema.Struct({ session: LiveSession, staffing: EventNumber })
 const why = Schema.Struct({ why: Rationale })
 const files = Schema.Struct({ files: ApprovedFiles })
 const value = Schema.Struct({ value: ProposalValue, previous: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]) })
-const proposalDraft = Schema.Struct({ value: ProposalValue, question: Schema.NullOr(QuestionAddress) })
+const proposalDraft = Schema.Struct({ value: ProposalValue })
 const reviewFacts = Schema.Struct({ facts: ReviewFacts })
 const reviewReport = Schema.Struct({ ...reviewFacts.fields, session: LiveSession, review: EventNumber })
 const workProblem = Schema.Struct({
@@ -89,11 +91,6 @@ export const sessionLine = line({
 
 const question = Schema.Struct({
   to: StoredActor, text: QuestionText, form: QuestionForm,
-  about: Schema.Union([
-    Schema.TaggedStruct('Project', {}),
-    Schema.TaggedStruct('Staffing', { proposal: ProposalAddress }),
-    Schema.TaggedStruct('Task', { task: TaskKey }),
-  ]),
 })
 const answer = Schema.Struct({ answer: Answer })
 export const questionLine = line({

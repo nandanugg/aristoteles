@@ -3,11 +3,12 @@ import { Direction, Fact, Rule, Stage, sameStage } from './direction.ts'
 import { CommandOutput, Evidence, Lines, outcomeOf } from './evidence.ts'
 import { PromptOutcome, reviewing } from './review.ts'
 import { versionOf } from './version.ts'
+import { Question } from './question.ts'
 import type { Project } from './records.ts'
 import { LiveSession, Role, staffOf } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  ResultSummary, RetryCount, TaskKey, type Of,
+  QuestionKey, ResultSummary, RetryCount, TaskKey, recordsByKey, type Of,
 } from './values.ts'
 
 export const DirectionVersion = versionOf(Direction)
@@ -63,6 +64,7 @@ export const TaskStages = Schema.NonEmptyArray(Stage)
 export const Task = Schema.Struct({
   key: TaskKey, name: Name, goal: Goal, reviewer: Role, direction: DirectionVersion,
   stages: TaskStages, facts: Schema.Array(Fact),
+  questions: recordsByKey(Question, QuestionKey),
   phase: TaskPhase, lastChange: EventNumber,
   lastAttempt: Schema.Union([
     Schema.TaggedStruct('None', {}),

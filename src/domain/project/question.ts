@@ -1,7 +1,5 @@
 import { Schema } from 'effect'
-import type { Project } from './records.ts'
 import { Human, Staff } from './staff.ts'
-import { Task } from './task.ts'
 import type { Proposal } from './proposal.ts'
 import {
   AnswerText, EventNumber, OptionIndex, OptionText, Placeholder, QuestionKey, QuestionText,
@@ -50,24 +48,12 @@ const QuestionState = Schema.Union([
 ])
 export const Question = Schema.Struct({
   key: QuestionKey, from: Actor, to: Actor, text: QuestionText, form: QuestionForm, state: QuestionState,
-  about: Schema.Union([
-    Schema.TaggedStruct('Project', {}),
-    Schema.TaggedStruct('Staffing', {}),
-    Schema.TaggedStruct('Task', { task: Task }),
-  ]),
   lastChange: EventNumber,
 })
 export type Question = Of<typeof Question>
-
 
 export const currentQuestion = (proposal: Proposal, question: Question) =>
   proposal.phase._tag === 'Drafting' && question.lastChange > proposal.lastChange ? question : undefined
 
 export const sameActor = (left: Question['from'], right: Question['from']) =>
   (left._tag === 'Human' ? right._tag === 'Human' : right._tag === 'Staff' && left.key === right.key) ? left : undefined
-
-export const projectQuestions = (project: Project) => [
-  ...project.questions.values(),
-  ...[...project.proposals.values()].flatMap((proposal) => proposal.questions.filter((question) =>
-    currentQuestion(proposal, question))),
-]

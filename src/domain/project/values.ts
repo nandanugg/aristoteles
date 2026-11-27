@@ -1,6 +1,16 @@
-import { Schema } from 'effect'
+import { Schema, SchemaGetter } from 'effect'
 
 export type Of<S> = S extends { readonly Type: infer Value } ? Value : never
+
+export const recordsByKey = <S extends Schema.Top, K extends Schema.Top>(
+  value: S & { readonly Type: { readonly key: K['Type'] }; readonly DecodingServices: never; readonly EncodingServices: never },
+  key: K,
+) => Schema.Array(value)
+  .check(Schema.makeFilter((entries) => new Set(entries.map((item) => item.key)).size === entries.length))
+  .pipe(Schema.decodeTo(Schema.ReadonlyMap(Schema.toType(key), Schema.toType(value)), {
+    decode: SchemaGetter.transform((entries) => new Map(entries.map((item) => [item.key, item]))),
+    encode: SchemaGetter.transform((map) => [...map.values()]),
+  }))
 
 type Prefix = 'staff' | 'task' | 'session' | 'role' | 'subscription' | 'question' | 'proposal'
 const keyWithPrefix = (prefix: Prefix) => Schema.String.check(

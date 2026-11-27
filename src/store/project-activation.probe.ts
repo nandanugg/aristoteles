@@ -33,7 +33,7 @@ export const readyProject = (path: string, host = staff, projectDirectory?: Jour
   const proposalKey = ProposalKey.make('proposal:activation-direction')
   const line = { _tag: 'Proposal', key: proposalKey } as const
   const drafted = yield* cliProposal(journal, live.state, { line: { _tag: 'Proposal', key: proposalKey }, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
-  const submitted = yield* cliProposal(journal, drafted.state, { line, move: 'submit', input: { value: direction, question: null } })
+  const submitted = yield* cliProposal(journal, drafted.state, { line, move: 'submit', input: { value: direction } })
   const proposal = submitted.state.proposals.get(proposalKey)
   if (!proposal) throw new Error('Missing activation direction')
   const reviewing = yield* assignProposalReview(journal, proposal, onboarding, submitted.state.read)

@@ -50,7 +50,7 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   const live = existing?._tag === 'Live' ? existing : [...started.sessions.values()].find((item) => item._tag === 'Live')
   if (live?._tag !== 'Live') throw new Error('Missing onboarding session')
   const line = { _tag: 'Proposal', key } as const
-  const staged = yield* cliProposal(journal, started, { line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' }, question: null } })
+  const staged = yield* cliProposal(journal, started, { line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' } } })
   const proposal = staged.state.proposals.get(key)
   if (!proposal) throw new Error('Missing staffing proposal')
   const assigned = yield* assignProposalReview(journal, proposal, live, staged.state.read)

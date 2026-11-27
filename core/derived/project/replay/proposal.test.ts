@@ -44,7 +44,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
     yield* Effect.promise(() => replayOnboardingReview(trace, kind, {
       submit: async () => {
         const view = await project()
-        await Effect.runPromise(cliProposal(journal, view, { line, move: 'submit', input: { value: direction, question: null } },
+        await Effect.runPromise(cliProposal(journal, view, { line, move: 'submit', input: { value: direction } },
           staffAuthorityOf(lifetime === 1 ? session : second)))
       },
       launch: async (expected) => {

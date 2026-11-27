@@ -44,4 +44,6 @@ For a proposal, give an outcome on the draft, without a `rule` field. Use the ma
 
 ## Questions
 
-The addressed recipient answers using the form and read basis printed by wait. Staff use `work answer <token> <question-key> --on=<read> --file=answer.yaml`. The owner may answer from the page. For a single text form use `{ _tag: Single, text: ... }`.
+The addressed recipient answers using the form and read basis printed by wait. Staff use `work answer <token> <question-address> --on=<read> --file=answer.yaml`. The full address is `project/<question-key>`, `<proposal-key>/<question-key>`, or `<task-key>/<question-key>`. The owner may answer from the page. For a single text form use `{ _tag: Single, text: ... }`.
+
+When asking, set `owner` in the question YAML to the Project, Proposal, or Task line. For a task use `owner: { _tag: Task, key: task:example }`.

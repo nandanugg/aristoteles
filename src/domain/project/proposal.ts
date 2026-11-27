@@ -4,7 +4,7 @@ import { Direction } from './direction.ts'
 import { ReviewFacts, reviewing } from './review.ts'
 import { Human, Responsibility, Role, Staff, StaffingPlan } from './staff.ts'
 import { versionOf } from './version.ts'
-import { EventNumber, ProposalKey, Rationale, RetryCount, type Of } from './values.ts'
+import { EventNumber, ProposalKey, QuestionKey, Rationale, recordsByKey, RetryCount, type Of } from './values.ts'
 
 const staffing = Schema.TaggedStruct('Staffing', StaffingPlan.fields)
 export const ProposalValue = Schema.Union([
@@ -15,7 +15,7 @@ export const ProposalValue = Schema.Union([
 export type ProposalValue = Of<typeof ProposalValue>
 
 const proposalOf = <S extends Schema.Top>(value: S) => Schema.Struct({
-  key: ProposalKey, value, questions: Schema.Array(Question), basis: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]),
+  key: ProposalKey, value, questions: recordsByKey(Question, QuestionKey), basis: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]),
   proposer: Schema.Union([Human, Staff]), owner: Human, reviewer: Role, retryCount: RetryCount,
   phase: Schema.Union([
     Schema.TaggedStruct('Drafting', { feedback: Schema.Union([

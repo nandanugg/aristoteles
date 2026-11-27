@@ -4,7 +4,7 @@ import { Effect, Exit, Schema } from 'effect'
 import { Authority, submit, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, refuse, staffingAt,
+  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, refuse, staffingAt,
 } from '../../core/schema/project.ts'
 import { openProjectJournal, withProjectEnv } from '../../core/services/project.ts'
 import {
@@ -54,7 +54,8 @@ const help = [
   'work send <token> --on=<read> --file=task.yaml',
   'work brief <token> <task>',
   'work report|review <token> <task> --on=<read> --file=report.yaml',
-  'work question|answer [<token>] <address> --on=<read> --file=answer.yaml',
+  'work question [<token>] <recipient> --on=<read> --file=question.yaml',
+  'work answer [<token>] <question-address> --on=<read> --file=answer.yaml',
   'work skill install',
 ]
 
@@ -152,7 +153,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     const key = yield* decode(ProposalKey, subject)
     const proposal = project.proposals.get(key)
     if (!proposal) return yield* Effect.fail(invalid())
-    return ['Read ' + project.read, JSON.stringify(proposal, null, 2)]
+    return ['Read ' + project.read, JSON.stringify(Schema.encodeSync(Proposal)(proposal), null, 2)]
   }
   if (command === 'session' && known([])) {
     yield* requireOwner
@@ -190,7 +191,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (selected._tag !== 'Available') return [by._tag === 'Host'
       ? 'The bound host can send a task. Read ' + project.read + '.' : 'Nothing is due.']
     const { subject: target, read } = selected
-    if (target._tag === 'Question') return projectQuestionWords(target.question, read)
+    if (target._tag === 'Question') return projectQuestionWords(target, read)
     if (target._tag !== 'Task') return ['Read ' + read + '. Proposal ' + target.proposal.key + ' is due.']
     const task = target.task
     if ((by._tag === 'Staff' || by._tag === 'Host') && selected.for === 'Assign') {

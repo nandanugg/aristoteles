@@ -48,7 +48,7 @@ const commandFor = (staff: ProjectStaff, launch: string, prompt: string) => {
   return staff.launch.includes('{prompt}') ? command : command + ' ' + values.prompt
 }
 
-// The format 17 bootstrap uses the journal's launch identity and the approved staff template.
+// The host bootstrap uses the journal's launch identity and the approved staff template.
 export const spawnProjectBootstrap = (
   dir: string, launch: string, nonce: string, db: string | undefined, staff: ProjectStaff, project: URL,
 ): void => {
