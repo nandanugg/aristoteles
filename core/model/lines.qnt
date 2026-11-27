@@ -118,11 +118,6 @@ module lines {
       else task
     | _ => task
   }
-  pure def resumeTask(task: Task, retired: int, current: int): Task = match task {
-    | Working(attempt) => if (attempt.session == retired) Working({ ...attempt, session: current }) else task
-    | _ => task
-  }
-
   type ProposalPhase[draft, review] =
     Drafting(draft) | ProposalReview(review) | WaitingForOwner(draft) | Accepted(draft) | Removed
   type Proposal = ProposalPhase[int, { draft: int, review: Review }]

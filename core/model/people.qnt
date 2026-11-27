@@ -2,22 +2,24 @@ module people {
   import lines.* from "./lines"
   type SessionPhase[live, paused, ended] = Live(live) | Paused(paused) | Ended(ended)
   type Session = SessionPhase[{ staff: int, subscription: int, lifetime: int },
-    { staff: int, subscription: int, lifetime: int, checkpoint: int }, int]
+    { staff: int, subscription: int, lifetime: int }, int]
   type SessionKey = SessionPhase[PhaseKey, PhaseKey, PhaseKey]
   type SessionMove = | SessionNext
   pure val sessionLine: Line[SessionKey, SessionMove] = Map(
     Live(NoPayload) -> { owes: Engine, moves: Set((SessionNext, Ended(NoPayload)), (SessionNext, Paused(NoPayload))) },
-    Paused(NoPayload) -> { owes: Engine, moves: Set((SessionNext, Live(NoPayload))) },
+    Paused(NoPayload) -> { owes: Engine, moves: Set((SessionNext, Live(NoPayload)), (SessionNext, Ended(NoPayload))) },
     Ended(NoPayload) -> { owes: NoDuty, moves: Set() }
   )
   pure def live(staff: int, subscription: int, lifetime: int): Session =
     Live({ staff: staff, subscription: subscription, lifetime: lifetime })
   pure def sessionStaff(session: Session, staff: int): bool = match session {
     | Live(state) => state.staff == staff
+    | Paused(state) => state.staff == staff
     | _ => false
   }
   pure def sessionSubscription(session: Session, subscription: int): bool = match session {
     | Live(state) => state.subscription == subscription
+    | Paused(state) => state.subscription == subscription
     | _ => false
   }
   pure def current(session: Session, staff: int, lifetime: int): bool = match session {
@@ -26,17 +28,18 @@ module people {
   }
   pure def end(session: Session): Session = match session {
     | Live(state) => if (allows(sessionLine, Live(NoPayload), SessionNext, Ended(NoPayload))) Ended(state.lifetime) else session
+    | Paused(state) => if (allows(sessionLine, Paused(NoPayload), SessionNext, Ended(NoPayload))) Ended(state.lifetime) else session
     | _ => session
   }
-  pure def pause(session: Session, checkpoint: int): Session = match session {
+  pure def pause(session: Session): Session = match session {
     | Live(state) => if (allows(sessionLine, Live(NoPayload), SessionNext, Paused(NoPayload)))
-        Paused({ staff: state.staff, subscription: state.subscription, lifetime: state.lifetime, checkpoint: checkpoint })
+        Paused(state)
       else session
     | _ => session
   }
-  pure def resume(session: Session, lifetime: int): Session = match session {
-    | Paused(state) => if (allows(sessionLine, Paused(NoPayload), SessionNext, Live(NoPayload)) and lifetime > state.lifetime)
-        live(state.staff, state.subscription, lifetime)
+  pure def resume(session: Session): Session = match session {
+    | Paused(state) => if (allows(sessionLine, Paused(NoPayload), SessionNext, Live(NoPayload)))
+        Live(state)
       else session
     | _ => session
   }

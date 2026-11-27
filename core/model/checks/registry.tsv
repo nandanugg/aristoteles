@@ -7,5 +7,5 @@ onboardingReview	dependency failure,config changes	120	600
 activationCommit	crash,partial execution,out of order	120	600
 activationRollback	human intervention,config changes,data loss,crash	120	600
 activationHostBinding	human intervention,crash,out of order,partial execution	120	600
-staffReplacement	crash,timing,out of order,data loss	120	600
+staffReplacement	crash,human intervention	120	600
 questionAnswer	human intervention,duplicate,dependency failure	120	600

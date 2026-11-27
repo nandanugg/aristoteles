@@ -1,41 +1,45 @@
 module staffReplacementCase {
   import lines.* from "../lines"
   import people.* from "../people"
-  const currentRun: bool
+  const retainOnPause: bool
   pure val attempt: Attempt = { number: 1, session: 1, retries: 1, pointedOut: Set(1) }
-  pure val commands = [{ rule: 1, breaks: false, evidence: true }]
-  pure val result: Result = { artifact: 7, attempt: attempt }
-  pure val waiting = Reviewing({ result: result, commands: commands, review: Waiting })
+  pure val waiting = Reviewing({ result: { artifact: 7, attempt: attempt },
+    commands: [{ rule: 1, breaks: false, evidence: true }], review: Waiting })
   pure val pending = ProposalReview({ draft: 1, review: Waiting })
   var state: {
-    session: Session, past: Set[Session], work: Task, review: Task, proposal: Proposal,
-    question: Question, crashed: bool, staleTried: bool, staleApplied: bool
+    session: Session, work: Task, review: Task, proposal: Proposal, question: Question,
+    stopped: bool, intervened: bool, resumed: bool, staleTried: bool, staleApplied: bool
   }
   action init = state' = {
-    session: live(1, 1, 1), past: Set(), work: Working(attempt),
-    review: startReview(waiting, 1), proposal: reviewProposal(pending, 1),
-    question: Answered({ recipient: 1, text: 9 }), crashed: false,
-    staleTried: false, staleApplied: false
+    session: live(1, 1, 1), work: Working(attempt), review: startReview(waiting, 1),
+    proposal: reviewProposal(pending, 1), question: Answered({ recipient: 1, text: 9 }),
+    stopped: false, intervened: false, resumed: false, staleTried: false, staleApplied: false
   }
-  action retire = {
-    nondet withCheckpoint = Set(false, true).oneOf()
-    all {
-      current(state.session, 1, 1), state.work == Working(attempt),
-      state' = { ...state,
-        session: if (withCheckpoint) pause(state.session, 8) else end(state.session),
-        work: if (withCheckpoint) state.work else crashTask(state.work, 1, 1),
-        review: crashTask(state.review, 1, 1), proposal: crashProposal(state.proposal, 1),
-        crashed: not(withCheckpoint) }
-    }
+  action limited = all {
+    current(state.session, 1, 1), not(state.stopped), state.work == Working(attempt),
+    state' = { ...state, session: pause(state.session),
+      work: if (retainOnPause) state.work else crashTask(state.work, 1, 1),
+      review: if (retainOnPause) state.review else waiting,
+      proposal: if (retainOnPause) state.proposal else pending }
+  }
+  action reset = match state.session {
+    | Paused(_) => all { not(state.stopped), state' = { ...state, session: resume(state.session), resumed: true } }
+    | _ => all { false, state' = state }
+  }
+  action crash = all {
+    current(state.session, 1, 1), not(state.stopped), state.work == Working(attempt),
+    state' = { ...state, stopped: true }
+  }
+  action intervene = match state.session {
+    | Paused(_) => all { not(state.stopped), state' = { ...state, stopped: true, intervened: true } }
+    | _ => all { false, state' = state }
+  }
+  action retire = all {
+    state.stopped, state.work == Working(attempt),
+    state' = { ...state, session: end(state.session), work: crashTask(state.work, 1, 1), review: waiting, proposal: pending }
   }
   action replace = all {
-    state.session == Ended(1),
-    state' = { ...state, past: Set(state.session), session: live(1, 1, 2) }
-  }
-  action resumeCheckpoint = match state.session {
-    | Paused(_) => state' = { ...state, past: Set(state.session),
-        session: resume(state.session, 2), work: resumeTask(state.work, 1, 2) }
-    | _ => all { false, state' = state }
+    state.session == Ended(1), state' = { ...state, session: live(1, 1, 2) }
   }
   action startAgain = all {
     current(state.session, 1, 2), taskPhase(state.work) == Sent(NoPayload),
@@ -43,37 +47,38 @@ module staffReplacementCase {
   }
   action finishWork = {
     nondet lifetime = Set(1, 2).oneOf()
+    nondet freshRead = Set(false, true).oneOf()
     match state.work {
-      | Working(active) => {
-          val fresh = current(state.session, 1, lifetime)
-          val work = if (fresh or not(currentRun))
-            reportResult(state.work, active.number, active.session, 11) else state.work
-          if (current(state.session, 1, 2))
-            state' = { ...state, work: work, staleTried: state.staleTried or not(fresh),
-              staleApplied: state.staleApplied or (work != state.work and not(fresh)) }
-          else all { false, state' = state }
+      | Working(active) => all {
+          state.resumed or state.stopped,
+          val fresh = freshRead and ((not(state.stopped) and current(state.session, 1, lifetime)) or current(state.session, 1, 2) and lifetime == 2)
+          val work = if (fresh) reportResult(state.work, active.number, active.session, 11) else state.work
+          state' = { ...state, work: work, staleTried: state.staleTried or not(fresh),
+            staleApplied: state.staleApplied or (work != state.work and not(fresh)) }
         }
       | _ => all { false, state' = state }
     }
   }
-  action step = any { retire, replace, resumeCheckpoint, startAgain, finishWork, state' = state }
-  val continued = { ...attempt, number: if (state.crashed) 2 else 1, session: 2 }
+  action step = any { limited, reset, crash, intervene, retire, replace, startAgain, finishWork, state' = state }
+  val ended = state.session == Ended(1) or current(state.session, 1, 2)
+  val continued = if (ended) { ...attempt, number: 2, session: 2 } else attempt
   val WorkPreserved = match state.work {
-    | Sent(sent) => state.crashed and sent.last == 1 and sent.retries == 1 and sent.pointedOut == Set(1)
-    | Working(active) => active == (if (current(state.session, 1, 2)) continued else attempt)
+    | Sent(sent) => ended and sent.last == 1 and sent.retries == 1 and sent.pointedOut == Set(1)
+    | Working(active) => active == continued
     | ReadyToReview(saved) => saved.attempt == continued
     | _ => false
   }
-  val Safety = WorkPreserved and not(allows(taskLine, Working(NoPayload), Next, Sent(NoPayload))) and
-    not(state.staleApplied) and state.question == Answered({ recipient: 1, text: 9 }) and
-    (not(current(state.session, 1, 1)) implies state.review == waiting and state.proposal == pending) and
-    state.past.forall(old => not(sessionStaff(old, 1)))
-  val Success = not(state.crashed) and taskPhase(state.work) == ReadyToReview(NoPayload)
-  val Fault = state.crashed and state.staleTried and taskPhase(state.work) == ReadyToReview(NoPayload)
+  val Safety = WorkPreserved and (not(ended) or state.stopped) and not(state.staleApplied) and
+    state.review == (if (ended) waiting else startReview(waiting, 1)) and
+    state.proposal == (if (ended) pending else reviewProposal(pending, 1)) and
+    state.question == Answered({ recipient: 1, text: 9 })
+  val Success = state.resumed and not(ended) and state.staleTried and taskPhase(state.work) == ReadyToReview(NoPayload)
+  val Fault = ended and not(state.intervened) and state.staleTried and taskPhase(state.work) == ReadyToReview(NoPayload)
+  val Intervention = ended and state.intervened and taskPhase(state.work) == ReadyToReview(NoPayload)
 }
 module staffReplacement {
-  import staffReplacementCase(currentRun = true).* from "./staffReplacement"
+  import staffReplacementCase(retainOnPause = true).* from "./staffReplacement"
 }
 module staffReplacementMutant {
-  import staffReplacementCase(currentRun = false).* from "./staffReplacement"
+  import staffReplacementCase(retainOnPause = false).* from "./staffReplacement"
 }
