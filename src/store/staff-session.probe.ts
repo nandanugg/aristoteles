@@ -9,7 +9,7 @@ export const maker = role('maker')
 export const initialStaffing = (limit: 1 | 2 = 2): StaffingPlan => {
   const limited = { ...subscription, sessions: { _tag: 'Limited', max: SessionCount.make(limit) } } as const
   const host = { ...staff, subagents: SubagentCount.make(1) }
-  const other = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:other', roles: [maker], subagents: 1 })
+  const other = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:other', roles: [maker.key], subagents: 1 })
   return { staff: new Map([[host.key, host], [other.key, other]]), subscriptions: new Map([[limited.key, limited]]) }
 }
 export const sharedStaffing = (journal: Journal) => Effect.gen(function* () {

@@ -6,10 +6,10 @@ import { PromptOutcome, reviewing } from './review.ts'
 import { versionOf } from './version.ts'
 import { Question } from './question.ts'
 import type { Project } from './records.ts'
-import { Role, staffOf } from './staff.ts'
+import { Responsibility, staffOf } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  QuestionKey, ResultSummary, RetryCount, StoredActor, TaskKey, recordsByKey, type Of,
+  QuestionKey, ResultSummary, RetryCount, RoleKey, StoredActor, TaskKey, recordsByKey, type Of,
 } from './values.ts'
 
 export const DirectionVersion = versionOf(Direction)
@@ -61,9 +61,10 @@ export const TaskPhase = Schema.Union([
 ])
 export type TaskPhase = Of<typeof TaskPhase>
 export const TaskStages = Schema.NonEmptyArray(Stage)
-  .check(Schema.makeFilter((stages) => stages.every(({ role }) => role.key === stages[0].role.key)))
+  .check(Schema.makeFilter((stages) => stages.every(({ role }) => role === stages[0].role)))
 export const Task = Schema.Struct({
-  key: TaskKey, name: Name, goal: Goal, reviewer: Role, direction: DirectionVersion,
+  key: TaskKey, name: Name, goal: Goal, reviewer: RoleKey,
+  responsibility: versionOf(Responsibility), reviewerResponsibility: versionOf(Responsibility), direction: DirectionVersion,
   stages: TaskStages, facts: Schema.Array(Fact),
   questions: recordsByKey(Question, QuestionKey),
   retryCount: RetryCount, phase: TaskPhase, changedIn: EventNumber,
@@ -92,5 +93,5 @@ export const taskRole = (task: Task) => task.stages[0].role
 
 export const taskReviewStaff = (project: Project, task: Task) => {
   const reviewer = staffOf(project, task.reviewer)
-  return reviewer?.subagents === 0 ? staffOf(project, hostRole(project)) : reviewer
+  return reviewer?.subagents === 0 ? staffOf(project, hostRole(project).key) : reviewer
 }

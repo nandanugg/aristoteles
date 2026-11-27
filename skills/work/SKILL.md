@@ -11,7 +11,7 @@ After your first act, use `work wait <token>` for what is due. A fresh review ch
 
 ## Task brief and result
 
-`work brief <token> <task-key>` shows the goal, accepted direction and responsibility versions, stage slice, rule guidance, phase, and feedback. The host sends a task using `work send <token> --on=<read> --file=task.yaml`. The file carries `key`, `name`, `goal`, `reviewer` (the complete current role record), the complete accepted `direction: { number, value, acceptedIn }`, the nonempty `stages` copied from that direction, and the attached `facts`.
+`work brief <token> <task-key>` shows the goal, accepted direction and responsibility versions, stage slice, rule guidance, phase, and feedback. The host sends a task using `work send <token> --on=<read> --file=task.yaml`. The file carries `key`, `name`, `goal`, `reviewer` (a role key), the complete accepted `direction: { number, value, acceptedIn }`, the nonempty `stages` copied from that direction, and the attached `facts`. Each stage names its role by key. Sending pins the worker’s and reviewer’s responsibility versions.
 
 When you begin, submit `{}` with `work report <token> <task-key> --on=<read> --file=report.yaml`. Follow the brief and report the whole images of touched files. Paths are relative to the project. Changed ranges are inclusive, one-based, ordered, and nonoverlapping. For a deletion use `image: { _tag: Deleted, previousContents: ... }`.
 

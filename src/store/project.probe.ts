@@ -31,7 +31,7 @@ export const subscription = Schema.decodeUnknownSync(Subscription)({
   sessions: { _tag: 'Unlimited' }, estimate: { _tag: 'NoEstimate' },
 })
 export const staff = Schema.decodeUnknownSync(Staff)({
-  _tag: 'Staff', key: 'staff:worker', name: 'Worker', roles: [{ key: host.key }, { key: pipeline.key }], subagents: 2,
+  _tag: 'Staff', key: 'staff:worker', name: 'Worker', roles: [host.key, pipeline.key], subagents: 2,
   model: 'test-model', launch: 'agent', why: 'Read the evidence', subscription: { key: subscription.key },
 })
 export const session = Schema.decodeUnknownSync(LiveSession)({

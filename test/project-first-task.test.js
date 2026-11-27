@@ -113,8 +113,8 @@ exec sleep 90
     git(dir, 'config', 'user.name', owner.name)
     writeFileSync(join(dir, 'AGENTS.md'), 'Review the local output.\n')
     writeFileSync(join(dir, 'aristoteles.yaml'), 'models:\n  local:\n    skills: .claude/skills\n')
-    const local = { ...staff, roles: [{ key: host.key }], launch: launch + ' {session}' }
-    const worker = { ...local, key: 'staff:pipeline', name: 'Pipeline staff', roles: [{ key: pipeline.key }] }
+    const local = { ...staff, roles: [host.key], launch: launch + ' {session}' }
+    const worker = { ...local, key: 'staff:pipeline', name: 'Pipeline staff', roles: [pipeline.key] }
     put('project.yaml', { owner, roles: [host, pipeline], staff: local, subscription })
     await ok(['skill', 'install'])
     expect(existsSync(join(dir, '.claude/skills/aristoteles/SKILL.md'))).toBe(true)
@@ -163,7 +163,7 @@ exec sleep 90
       return { number, start }
     }
     const rule = direction.standards[0].rules[0]
-    const drafted = { ...direction, source: { _tag: 'Local' }, stages: [{ ...direction.stages[0], role: pipeline }],
+    const drafted = { ...direction, source: { _tag: 'Local' }, stages: [{ ...direction.stages[0], role: pipeline.key }],
       standards: [{ ...direction.standards[0], rules: [
         { ...rule, verification: { _tag: 'Command', text: 'test -f sample.md' } },
         { ...rule, name: 'Clear wording',
@@ -241,7 +241,7 @@ exec sleep 90
     const prompt = accepted.value.standards[0].rules[1]
     writeFileSync(join(dir, 'sample.md'), 'Local first result\n')
     const task = async (key, name) => {
-      put('task.yaml', { key, name, goal: 'Write the local result', reviewer: project.roles.find(({ _tag }) => _tag === 'Pipeline'),
+      put('task.yaml', { key, name, goal: 'Write the local result', reviewer: project.roles.find(({ _tag }) => _tag === 'Pipeline').key,
         direction: accepted, stages: accepted.value.stages, facts: [] })
       await apply(['send', await basis(), '--file=task.yaml'], hostToken, name + ' open')
     }

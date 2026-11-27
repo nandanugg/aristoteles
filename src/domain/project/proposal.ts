@@ -2,15 +2,15 @@ import { Schema } from 'effect'
 import { Question } from './question.ts'
 import { Direction } from './direction.ts'
 import { ReviewFacts, reviewing } from './review.ts'
-import { Responsibility, Role, StaffingPlan } from './staff.ts'
+import { Responsibility, StaffingPlan } from './staff.ts'
 import { versionOf } from './version.ts'
-import { EventNumber, FileContents, ProposalKey, QuestionKey, Rationale, recordsByKey, RetryCount, StoredActor, type Of } from './values.ts'
+import { EventNumber, FileContents, ProposalKey, RoleKey, QuestionKey, Rationale, recordsByKey, RetryCount, StoredActor, type Of } from './values.ts'
 
 export const staffing = Schema.TaggedStruct('Staffing', StaffingPlan.fields)
 export const ProposalValue = Schema.Union([
   Direction,
   staffing,
-  Schema.TaggedStruct('Responsibility', { ...Responsibility.fields, role: Role }),
+  Schema.TaggedStruct('Responsibility', { ...Responsibility.fields, role: RoleKey }),
 ])
 export type ProposalValue = Of<typeof ProposalValue>
 

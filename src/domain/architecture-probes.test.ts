@@ -13,6 +13,7 @@ const MOVES = 'core/state/project.ts'
 const sources = {
   [DOMAIN]: `
 import { Context, Effect, Schema } from 'effect'
+import type { RoleKey as ProjectRoleKey } from './values.ts'
 const key = (pattern: RegExp) => Schema.String.check(Schema.isPattern(pattern))
 export const RoleKey = key(/^role:[a-z]+$/).pipe(Schema.brand('ProbeRoleKey'))
 export type RoleKey = typeof RoleKey.Type
@@ -23,6 +24,7 @@ export type Notice = typeof Notice.Type
 export type Good = { readonly _tag: 'First'; readonly key: RoleKey; readonly count: Count; readonly key: \`role:\${RoleKey}\` }
   | { readonly _tag: 'Second'; readonly choice: 'a' | 'b' }
 export type Assignment = { readonly key: RoleKey; readonly counts: ReadonlyMap<RoleKey, Count> }
+export type ProjectRoleReference = { readonly reviewer: typeof ProjectRoleKey.Type }
 export type EmbeddedKey = { readonly reviewer: RoleKey }
 export type Task = { phase: { _tag: 'Sent' } | { _tag: 'Done' } }
 export const decodeCount = (input: unknown) => Schema.decodeUnknownSync(Count)(input)
@@ -113,6 +115,8 @@ test('both compiler graphs expose raw, inferred, wrapped and unsafe values', () 
   expect(rules(DOMAIN, 'EmptyCheck')).toContain('unrefined-brand')
   expect(rules(DOMAIN, 'RawService')).toContain('bare-string')
   expect(rules(DOMAIN, 'EmbeddedKey')).toContain('record-key-reference')
+  const engine = scan(graph.engine, ROOT, (file) => file === DOMAIN || file === 'src/domain/project/values.ts')
+  expect(engine.filter((row) => row.declaration === 'ProjectRoleReference')).toEqual([])
   expect(rules(DOMAIN, 'castKey')).toContain('brand-cast')
   expect(rules(BROWSER, 'BrowserPrimitive')).toEqual(['bare-string'])
   expect(rules(BROWSER, 'inferredRawView')).toEqual(['bare-number', 'bare-string'])

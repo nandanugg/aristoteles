@@ -3,7 +3,7 @@ import { applyProjectPhase } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import { hostRole,
-  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, versionOf,
+  DirectionVersion, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, versionOf,
   type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal,
 } from '../schema/project.ts'
 
@@ -23,9 +23,9 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     if (read !== 0) return stale()
     const { input } = event
     const { owner, roles, staff, subscription } = input
-    if (!staff.roles.some(({ key }) => roles.get(key)?._tag === 'Host') ||
-        new Set(staff.roles.map((role) => role.key)).size !== staff.roles.length ||
-        staff.roles.some((role) => !roles.has(role.key))) {
+    if (!staff.roles.some((key) => roles.get(key)?._tag === 'Host') ||
+        new Set(staff.roles).size !== staff.roles.length ||
+        staff.roles.some((role) => !roles.has(role))) {
       return Result.fail(refuse('InvalidInput', Rationale.make('The project needs distinct roles and an assigned host.')))
     }
     if (staff.subscription.key !== subscription.key)
@@ -45,7 +45,6 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
 
 const sameApprovedProposals = Schema.toEquivalence(Schema.NonEmptyArray(versionOf(ProposalValue)))
 const sameDirection = Schema.toEquivalence(DirectionVersion)
-const sameRole = Schema.toEquivalence(Role)
 const equalStage = Schema.toEquivalence(Stage)
 
 const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): Result.Result<Project, Refusal> => {
@@ -55,11 +54,10 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   if (activation.work.startedIn > read) return stale()
   if (actor._tag !== 'Session' || actor.key !== boundHostSession(project)?.key) return retired()
   if (project.tasks.has(key)) return stale()
-  const role = roleOf(project, draft.stages[0].role.key)
-  const reviewer = roleOf(project, draft.reviewer.key)
+  const role = roleOf(project, draft.stages[0].role)
+  const reviewer = roleOf(project, draft.reviewer)
   if (!role || !reviewer) return wrongActor()
-  if (role.responsibility.acceptedIn > read || reviewer.responsibility.acceptedIn > read ||
-      !sameRole(reviewer, draft.reviewer)) return stale()
+  if (role.responsibility.acceptedIn > read || reviewer.responsibility.acceptedIn > read) return stale()
   const direction = draft.direction
   const proposals = [...project.proposals.values()]
   if (direction.acceptedIn > read || !proposals.some(({ phase }) =>
@@ -71,12 +69,13 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   const offset = source.findIndex((_, index) => draft.stages.every((stage, delta) =>
     source[index + delta] !== undefined && equalStage(source[index + delta]!, stage)))
   const [first, ...rest] = offset < 0 ? [] : source.slice(offset, offset + draft.stages.length)
-  if (!first || [first, ...rest].some((stage) => stage.role.key !== role.key))
+  if (!first || [first, ...rest].some((stage) => stage.role !== role.key))
     return Result.fail(refuse('InvalidInput', Rationale.make('Use a contiguous stage slice assigned to the role.')))
   const tasks = new Map(project.tasks)
   tasks.set(key, {
-    key, name: draft.name, goal: draft.goal, reviewer, direction,
-    stages: [{ ...first, role }, ...rest.map((stage) => ({ ...stage, role }))], facts: draft.facts, questions: new Map(),
+    key, name: draft.name, goal: draft.goal, reviewer: reviewer.key, direction,
+    responsibility: role.responsibility, reviewerResponsibility: reviewer.responsibility,
+    stages: [first, ...rest], facts: draft.facts, questions: new Map(),
     retryCount: RetryCount.make(0), phase: { _tag: 'Sent', feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, changedIn: number,
   })
   return Result.succeed({ ...project, tasks })
@@ -107,7 +106,7 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
       return Result.succeed({ ...project, sessions })
     }
     const activation = project.phase
-    const host = staffOf(project, hostRole(project))
+    const host = staffOf(project, hostRole(project).key)
     if (activation._tag === 'RollingBack' && host?.key === staff.key) return wrongMove()
     const live: LiveSession = { _tag: 'Live', key, staff, startedIn: number, changedIn: number, pane: event.input.pane }
     sessions.set(key, live)
@@ -215,7 +214,7 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
       const proposal = project.proposals.get(owner.key)
       if (!proposal || proposal.value._tag !== 'Staffing') return wrongMove()
       if (event.from === null) {
-        if (actor._tag !== 'Staff' || actor.key !== staffOf(project, hostRole(project))?.key || event.input.to._tag !== 'Human')
+        if (actor._tag !== 'Staff' || actor.key !== staffOf(project, hostRole(project).key)?.key || event.input.to._tag !== 'Human')
           return wrongActor()
         if (proposal.phase._tag !== 'Drafting' || proposal.changedIn > read ||
             [...proposal.questions.values()].some((question) => currentQuestion(proposal, question))) return stale()

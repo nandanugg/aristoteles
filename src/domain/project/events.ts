@@ -8,10 +8,10 @@ import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, Directio
 import { Evidence } from './evidence.ts'
 import { Fact } from './direction.ts'
 import { Answer, AnswerKind, QuestionRecipient } from './question.ts'
-import { Human, Pane, Role, Roles, Staff, Subscription } from './staff.ts'
+import { Human, Pane, Roles, Staff, Subscription } from './staff.ts'
 import {
   AttemptNumber, EventNumber, Goal, Name, ProposalKey, QuestionKey, Markdown, Rationale,
-  RetryLimit, StaffSessionKey, TaskKey, type Of,
+  RetryLimit, RoleKey, StaffSessionKey, TaskKey, type Of,
 } from './values.ts'
 
 const questionOwner = Schema.Union([
@@ -22,7 +22,7 @@ const questionOwner = Schema.Union([
 
 const configuration = Schema.Struct({ owner: Human, roles: Roles, staff: Staff, subscription: Subscription })
 export const TaskDraft = Schema.Struct({
-  name: Name, goal: Goal, reviewer: Role, direction: DirectionVersion,
+  name: Name, goal: Goal, reviewer: RoleKey, direction: DirectionVersion,
   stages: TaskStages,
   facts: Schema.Array(Fact).check(Schema.makeFilter((facts) => new Set(facts.map(({ name }) => name)).size === facts.length)),
 })

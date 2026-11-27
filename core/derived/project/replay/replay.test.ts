@@ -187,7 +187,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         const limit = first.capacity.sessionLimit
         if (limit._tag !== 'Limited') throw new Error('Expected a provider limit')
         const children = [...current.tasks.values()].flatMap((task) =>
-          task.phase._tag === 'Working' ? [roles.findIndex((role) => role.key === taskRole(task).key)] : [],
+          task.phase._tag === 'Working' ? [roles.findIndex((role) => role.key === taskRole(task))] : [],
         ).sort()
         expect(Number(first.capacity.usedSubagents)).toBe(children.length)
         expect(Number(first.capacity.liveSessions)).toBe([...current.sessions.values()].filter((s) => s._tag === 'Live').length)
@@ -196,7 +196,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
           children,
           sessions: [...current.sessions.values()].flatMap((live) => live._tag === 'Live' ? [ids.indexOf(live.staff.key)] : []).sort(),
           allowance: cards.map(({ staff }) => staff.subagents),
-          assignments: roles.map((role) => cards.findIndex(({ staff }) => staff.roles.some((item) => item.key === role.key))),
+          assignments: roles.map((role) => cards.findIndex(({ staff }) => staff.roles.includes(role.key))),
         }
       },
     }))

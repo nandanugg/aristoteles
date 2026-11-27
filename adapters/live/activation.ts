@@ -128,7 +128,7 @@ export const projectActivationOperations = (
       const phase = project.phase
       if (phase._tag !== 'Activating' && phase._tag !== 'Active') return yield* Effect.fail(wrong())
       if (phase._tag === 'Active' && phase.work._tag !== 'NotStarted') return yield* Effect.fail(wrong())
-      const staff = staffOf(project, hostRole(project))
+      const staff = staffOf(project, hostRole(project).key)
       if (!staff) return yield* Effect.fail(wrong())
       const previous = hostSession(project)
       let state = project
@@ -201,7 +201,7 @@ export const projectActivationOperations = (
       }
       yield* protectedIO(() => {
         for (const previous of project.sessions.values()) {
-          if (previous._tag === 'Ended' && previous.staff.key === staffOf(project, hostRole(project))?.key && previous.startedIn > phase.approvedIn)
+          if (previous._tag === 'Ended' && previous.staff.key === staffOf(project, hostRole(project).key)?.key && previous.startedIn > phase.approvedIn)
             removeProjectSession(dir, journal.directory, previous.key)
         }
       })

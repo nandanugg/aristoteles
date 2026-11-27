@@ -29,7 +29,7 @@ function renderOnboarding({ project, submit, markerFiles, commandBlock }: {
         return Result.isFailure(result) ? result.failure : null
       }} />`)}
     <${ActivationPanel} project=${project} submit=${submit} markerFiles=${markerFiles} />
-    ${[...project.tasks.values()].map((task) => html`<${TaskPanel} key=${task.key} task=${task} commandBlock=${commandBlock} />`)}
+    ${[...project.tasks.values()].map((task) => html`<${TaskPanel} key=${task.key} task=${task} project=${project} commandBlock=${commandBlock} />`)}
   </section>`
 }
 

@@ -10,12 +10,13 @@ import { liveTaskCommands } from '../../adapters/live/task-commands.ts'
 import { projectCommandStatus, projectEvents, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
 import { agree, readyActivation, startWork } from '../../src/store/project-activation.probe.ts'
 import { pipeline, create, host, open, ownerInput, session, staffInput, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
-import { direction } from '../../src/store/proposal.probe.ts'
+import { cliProposal, direction, evidence } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
 import { acceptDirection, activateTasks, boundHost, draftFor, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { recoverTaskCommand, runTaskCommands, taskCommandBlock } from '../effects/project-commands.ts'
-import { Command, CommandOutcome, CommandText, Direction, EventNumber, Goal, ReadPosition, StaffSessionKey, TaskKey, taskRole, taskRules } from '../schema/project.ts'
+import { Command, CommandOutcome, CommandText, Direction, EventNumber, Goal, ProposalKey, ReadPosition, RoleKey, StaffSessionKey, Summary, TaskKey, taskRole, taskRules } from '../schema/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
+import { assignProposalReview } from './proposal.ts'
 import { readOpenProject } from './staff-session.ts'
 
 const auth = (actor: AuthenticatedActor) => Effect.provideService(Authority, { actor: Effect.succeed(actor) })
@@ -51,16 +52,36 @@ test('the host sends a checked stage slice only after work starts and its basis 
       .toMatchObject(refused('InvalidInput'))
     const pipelineStage = [...started.proposals.values()].flatMap(({ phase }) =>
       phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' ? phase.version.value.stages : [],
-    ).find(({ role }) => role.key === pipeline.key)!
+    ).find(({ role }) => role === pipeline.key)!
     expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [draft.stages[0], pipelineStage] })))
       .toMatchObject(refused('InvalidInput'))
+    expect(yield* Effect.result(sendDraft(journal, started, { ...draft, reviewer: RoleKey.make('role:missing') })))
+      .toMatchObject(refused('WrongActor'))
     const sent = yield* sendDraft(journal, started)
     expect(sent.event).toMatchObject({ line: 'Task', key: draft.key, from: null, move: 'open' })
     expect(sent.event.input).not.toHaveProperty('role')
     const task = sent.state.tasks.get(draft.key)!
     expect(task.direction.acceptedIn).toBe(draft.direction.acceptedIn)
-    expect(taskRole(task).responsibility).toEqual(host.responsibility)
-    const revised = yield* acceptDirection(journal, sent.state, {
+    expect(taskRole(task)).toBe(host.key)
+    expect(task.responsibility).toEqual(host.responsibility)
+    expect(task.reviewer).toBe(pipeline.key)
+    expect(task.reviewerResponsibility).toEqual(pipeline.responsibility)
+    const line = { line: 'Proposal', key: ProposalKey.make('proposal:new-worker-responsibility') } as const
+    const value = { _tag: 'Responsibility', role: host.key, ...host.responsibility.value,
+      summary: Summary.make('A newer role summary') }
+    const change = yield* cliProposal(journal, sent.state, { ...line, move: 'open', input: { value, previous: { _tag: 'None' } } })
+    const submitted = yield* cliProposal(journal, change.state, { ...line, move: 'submit', input: { value } })
+    const edits = submitted.state.proposals.get(line.key)!
+    const reviewHost = submitted.state.sessions.get(boundHost)
+    if (reviewHost?._tag !== 'Live') throw new Error('Expected a live host reviewer')
+    const assigned = yield* assignProposalReview(journal, edits, reviewHost, submitted.state.read)
+    const reviewed = yield* cliProposal(journal, assigned.state, {
+      ...line, move: 'review', input: { facts: evidence('Holds', 'Responsibility') },
+    }, { _tag: 'Review', ...line, session: reviewHost, queuedIn: edits.changedIn })
+    const edited = yield* cliProposal(journal, reviewed.state, { ...line, move: 'accept', input: {} })
+    expect(edited.state.roles.get(host.key)?.responsibility.value.summary).toBe(value.summary)
+    expect(edited.state.tasks.get(draft.key)?.responsibility).toEqual(host.responsibility)
+    const revised = yield* acceptDirection(journal, edited.state, {
       ...task.direction.value,
       stages: [{ ...task.stages[0], work: Goal.make('A changed assignment.') }],
     }, task.direction)

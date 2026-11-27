@@ -1,13 +1,12 @@
 import { Schema } from 'effect'
 import { Command, Lines, Quote } from './evidence.ts'
-import { Role } from './staff.ts'
 import {
   ContextValue, ExampleText, FilePath, GitCommit, Goal, GuidanceText,
-  Name, QuestionText, RepositoryAddress, Summary, type Of,
+  Name, QuestionText, RepositoryAddress, RoleKey, Summary, type Of,
 } from './values.ts'
 
 export const Stage = Schema.Struct({
-  name: Name, role: Role, work: Goal,
+  name: Name, role: RoleKey, work: Goal,
   where: Schema.Union([
     Schema.TaggedStruct('Project', {}),
     Schema.TaggedStruct('File', { file: FilePath }),
@@ -57,5 +56,5 @@ export type Direction = Of<typeof Direction>
 
 // Match the stage's work in its direction. A sent task pins the current responsibility.
 export const sameStage = (left: Of<typeof Stage>, right: Of<typeof Stage>) =>
-  left.name === right.name && left.work === right.work && left.role.key === right.role.key &&
+  left.name === right.name && left.work === right.work && left.role === right.role &&
   JSON.stringify(left.where) === JSON.stringify(right.where) ? left : undefined

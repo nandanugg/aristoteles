@@ -28,7 +28,7 @@ roles:
         duties: [Send a task drawn from one accepted stage slice.]
 ```
 
-Use the same role shape with `_tag: Pipeline` or `_tag: Work` for the other roles. The initial staff has `_tag: Staff`, `key`, `name`, its list of assigned `roles` as `{ key: role:host }` references, `subagents`, `model`, `launch`, `why`, and `subscription`. The staff’s `subscription` is a `{ key: subscription:example }` reference. The opening file’s subscription record has a key, provider, account, plan, usage window, a session limit or Unlimited, and an estimate or NoEstimate. The owner launches the staff session with `work session launch <staff-key>`. The launched staff follows the pane prompt to run `work session ack <session-key>` before using its credential.
+Use the same role shape with `_tag: Pipeline` or `_tag: Work` for the other roles. The initial staff has `_tag: Staff`, `key`, `name`, its list of assigned `roles` as role keys such as `role:host`, `subagents`, `model`, `launch`, `why`, and `subscription`. The staff’s `subscription` is a `{ key: subscription:example }` reference. The opening file’s subscription record has a key, provider, account, plan, usage window, a session limit or Unlimited, and an estimate or NoEstimate. The owner launches the staff session with `work session launch <staff-key>`. The launched staff follows the pane prompt to run `work session ack <session-key>` before using its credential.
 
 Keep authored drafts in a local folder such as `.work/drafts/`. Submit each through `work onboard submit "$ARISTOTELES_TOKEN" --on=<read> --file=<draft.yaml>`. The file gives the line, proposal key, move, and input. Open with `move: open` and `input: { value: ..., previous: { _tag: None } }`. For a new version of an accepted direction, give `previous: { _tag: Version, version: ... }` with the complete accepted version. Then use `move: submit` with the exact reviewed candidate in `input.value`.
 
@@ -40,11 +40,11 @@ input:
   value: <the complete direction>
 ```
 
-A staffing value uses `_tag: Staffing`, the single subscriptions list, and all staff assignments. Reference the subscription records from their assignments. Assign each role once. When you need the owner’s input, ask a Question about the staffing proposal and its current draft. Use `work question owner` with `owner: { _tag: Proposal, key: ... }` in the input. The draft owns the Question. Wait for its answer before submitting. A responsibility value uses `_tag: Responsibility`, the role record, and the responsibility’s summary, introduction and duties.
+A staffing value uses `_tag: Staffing`, the single subscriptions list, and all staff assignments. Reference the subscription records from their assignments. Assign each role once. When you need the owner’s input, ask a Question about the staffing proposal and its current draft. Use `work question owner` with `owner: { _tag: Proposal, key: ... }` in the input. The draft owns the Question. Wait for its answer before submitting. A responsibility value uses `_tag: Responsibility`, the role key, and the responsibility’s summary, introduction and duties.
 
 ## Directions and evidence
 
-A direction has a name, summary, text, source, ordered stages, and standards. Use `{ _tag: Local }` for a local source. For company directions record the repository, merged commit and folder in a Company source. Each stage carries its name, role record, work, and location (Project, File, or Passage). A standard has a scope of Everywhere or Where. Where names AllStages or NamedStages and the matching context facts. Fact names are `System`, `Field`, `Language`, `Repository`, `Audience`, and `Output`.
+A direction has a name, summary, text, source, ordered stages, and standards. Use `{ _tag: Local }` for a local source. For company directions record the repository, merged commit and folder in a Company source. Each stage carries its name, role key, work, and location (Project, File, or Passage). A standard has a scope of Everywhere or Where. Where names AllStages or NamedStages and the matching context facts. Fact names are `System`, `Field`, `Language`, `Repository`, `Audience`, and `Output`.
 
 Use `{ _tag: Command, text: ... }` for a deterministic test, or `{ _tag: Prompt, question: ..., source: <Quote> }` for a judgment check. The `holds` and `breaks` example lists each require a Quote or MadeUp excerpt. Put baseline failures in `knownBreaks` with their source locations. Include `knownBreaks: []` when there are none.
 

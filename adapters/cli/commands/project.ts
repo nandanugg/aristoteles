@@ -80,9 +80,9 @@ export const projectReviewCommand = (
 
 export const projectBriefCommand = (journal: Journal, target: string, commands?: TaskCommands) => Effect.gen(function* () {
   const key = yield* checkedTaskInput(TaskKey, target)
-  const task = yield* taskBrief(journal, key)
+  const { project, task } = yield* taskBrief(journal, key)
   const blocked = commands && task.phase._tag === 'ReadyToReview' ? yield* taskCommandBlock(journal, key, commands) : null
-  return projectTaskWords(task, blocked)
+  return projectTaskWords(project, task, blocked)
 })
 
 // Authored YAML uses the same proposal intake as the page.

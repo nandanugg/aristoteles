@@ -11,10 +11,10 @@ const stale = () => Result.fail(refuse('Stale', Rationale.make('The proposal or 
 const effectiveVersion = (project: Project, value: ProposalValue): Version<ProposalValue> | undefined => {
   if (value._tag === 'Staffing') return project.staffing._tag === 'StaffingAccepted' ? project.staffing.version : undefined
   if (value._tag !== 'Responsibility') return undefined
-  const role = roleOf(project, value.role.key)
+  const role = roleOf(project, value.role)
   if (!role) return undefined
   const { responsibility } = role
-  return { ...responsibility, value: { ...responsibility.value, _tag: 'Responsibility', role } }
+  return { ...responsibility, value: { ...responsibility.value, _tag: 'Responsibility', role: role.key } }
 }
 
 const sameVersion = Schema.toEquivalence(versionOf(ProposalValue))
@@ -31,10 +31,10 @@ const validateValue = (
 ): Result.Result<ProposalValue, Refusal> => {
   if (value._tag === 'Staffing') return Result.map(validateStaffing(project, value, move), (plan) => ({ ...plan, _tag: 'Staffing' }))
   if (value._tag === 'Responsibility') {
-    const role = roleOf(project, value.role.key)
-    return role ? Result.succeed({ ...value, role }) : wrongMove()
+    const role = roleOf(project, value.role)
+    return role ? Result.succeed(value) : wrongMove()
   }
-  if (value.stages.some(({ role }) => !roleOf(project, role.key))) return wrongActor()
+  if (value.stages.some(({ role }) => !roleOf(project, role))) return wrongActor()
   return Result.succeed(value)
 }
 
@@ -54,8 +54,6 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     const previous = event.input.previous._tag === 'Version' ? event.input.previous.version : undefined
     if (previous && (event.input.value._tag !== 'Direction' || previous.value._tag !== 'Direction' ||
         previous.acceptedIn > read || !latestDirectionVersion(project, previous))) return stale()
-    if (event.input.value._tag === 'Responsibility' &&
-        JSON.stringify(roleOf(project, event.input.value.role.key)) !== JSON.stringify(event.input.value.role)) return stale()
     return Result.flatMap(validateValue(project, event.input.value, event.move), (value) => {
       const version = previous ?? effectiveVersion(project, value)
       if (version && version.acceptedIn > read) return stale()
@@ -79,7 +77,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     if (!acting || !proposer || !sameActor(proposer, acting)) return wrongActor()
     const { value } = event.input
     if (stage.value._tag !== value._tag || (stage.value._tag === 'Responsibility' &&
-        (value._tag !== 'Responsibility' || JSON.stringify(stage.value.role) !== JSON.stringify(value.role)))) return wrongMove()
+        (value._tag !== 'Responsibility' || stage.value.role !== value.role))) return wrongMove()
     for (const question of stage.questions.values()) {
       if (currentQuestion(stage, question) &&
           (question.state._tag !== 'Answered' || question.changedIn > read)) return stale()
@@ -88,7 +86,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
   }
   if (event.from === 'Reviewing' && phase._tag === 'Reviewing') {
-    const reviewer = staffOf(project, hostRole(project))
+    const reviewer = staffOf(project, hostRole(project).key)
     if (!session || actor._tag !== 'Session' || !reviewer || reviewer.key !== session.staff.key)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the assigned host’s live session.')))
     if (event.move === 'assign') {
@@ -134,7 +132,9 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       }
     } else if (value._tag === 'Responsibility') {
       const { summary, introduction, duties } = value
-      const role = { ...value.role, responsibility: {
+      const current = roleOf(project, value.role)
+      if (!current) return wrongMove()
+      const role = { ...current, responsibility: {
         number: versionNumber, value: { summary, introduction, duties }, acceptedIn: number,
       } }
       state = { ...project, roles: new Map(project.roles).set(role.key, role) }

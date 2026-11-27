@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks'
 import { ReviewEvidence } from './project-evidence.ts'
 import { ReviewInput } from './review-input.ts'
 import { Result } from 'effect'
-import { Rationale, type Of, type Project, type Proposal as ProjectProposal, type ReadPosition, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
+import { Rationale, roleOf, type Of, type Project, type Proposal as ProjectProposal, type ReadPosition, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
 import { StaffingView } from './project-staffing.ts'
 import type { ProposalReply } from './project-api.ts'
 
@@ -27,11 +27,11 @@ export function ProposalCard({ proposal, project, read, submit }: {
     setBusy(false)
   }
   return html`<article class="review-stage">
-    <h3>${value._tag === 'Staffing' ? 'Staffing' : value._tag === 'Direction' ? value.name : value.role.name}</h3>
+    <h3>${value._tag === 'Staffing' ? 'Staffing' : value._tag === 'Direction' ? value.name : roleOf(project, value.role)?.name ?? value.role}</h3>
     ${value._tag === 'Staffing' ? html`<${StaffingView} plan=${value} project=${project} />` :
       value._tag === 'Direction' ? html`<p>${value.summary}</p><p>${value.text}</p>
         ${value.source._tag === 'Company' ? html`<p>${value.source.repository} · ${value.source.commit}</p>` : null}
-        <ol>${value.stages.map((stage, index) => html`<li key=${index}>${stage.name} · ${stage.role.name} · ${stage.work}</li>`)}</ol>
+        <ol>${value.stages.map((stage, index) => html`<li key=${index}>${stage.name} · ${roleOf(project, stage.role)?.name ?? stage.role} · ${stage.work}</li>`)}</ol>
         ${value.standards.map((standard, index) => html`<section key=${index}><h4>${standard.name}</h4><p>${standard.text}</p>
           ${standard.scope._tag === 'Where' ? html`<ul>${standard.scope.facts.map((fact) =>
             html`<li>${fact.name} · ${fact.value}</li>`)}</ul>` : null}

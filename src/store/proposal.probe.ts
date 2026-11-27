@@ -14,7 +14,7 @@ export const direction = Schema.decodeUnknownSync(Direction)({
   _tag: 'Direction', name: 'Write a document',
   summary: 'Show the evidence', text: 'A direction with a scoped rule.',
   source: { _tag: 'Company', repository: 'https://example.test/directions', commit: 'a'.repeat(40), folder: 'docs' },
-  stages: [{ name: 'Write', role: host, work: 'Write the document.', where: { _tag: 'Project' } }],
+  stages: [{ name: 'Write', role: host.key, work: 'Write the document.', where: { _tag: 'Project' } }],
   standards: [{
     _tag: 'Standard', name: 'Evidence', text: 'Report what the tests show.', scope: { _tag: 'Everywhere' },
     rules: [{

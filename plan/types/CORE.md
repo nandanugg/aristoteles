@@ -50,7 +50,7 @@ Use the name a person or agent can understand on its own. Read a state label wit
 | DashChange, DraftChange | rename to Direction diff | The view shows which part of the direction changes. |
 | Staffing consultation | owned by Proposal | A draft’s Question closes when the draft advances. |
 | Fresh check job | rename to JudgmentJob | The job calls for judgment from a fresh point of view. |
-| `TaskKey`, `ProposalKey`, `QuestionKey`, `StaffSessionKey`, `StaffKey`, `RoleKey`, `SubscriptionKey` | keep | The key belongs to the same named record type in a Project map and addresses its journal moves. |
+| `TaskKey`, `ProposalKey`, `QuestionKey`, `StaffSessionKey`, `StaffKey`, `RoleKey`, `SubscriptionKey` | keep | A key exists only for a map, and may name an entry of that map from elsewhere in the same project. |
 | Project, Human | singleton lines and owner | Each journal has one project and one owner. The directory separates journals in storage. |
 | Responsibility, Direction, Stage, Standard, Rule, StaffingPlan | by value | Drafts, scopes, and outcomes carry the checked value. Versions carry the accepted value and its event number. |
 | HostLaunch | removed | StaffSession.Starting reserves the lifetime before spawn. The pane’s answer makes it Live, and cancellation or failure ends it. |
@@ -283,7 +283,7 @@ This section follows the [settled design and all three reassessment passes](DESI
 
 ### 2.1 Values, authority, and versions
 
-A record carries its own key. References in the project carry records, including the actual value in `Version<T>`. Journal events and submissions use keys for entry addresses. Maps index entries by those keys. Roles and staff use separate key types. A staff can serve both the host and the pipeline, and each of those roles still has its own responsibility.
+A record carries its own key. A key exists only for a map, and may name an entry of that map from elsewhere in the same project. Versions carry their checked values. Journal events and submissions use keys for entry addresses. Maps index entries by those keys. Roles and staff use separate key types. A staff can serve both the host and the pipeline, and each of those roles still has its own responsibility.
 
 A live `StaffSession` is one lifetime of a staff’s session in a pane. Pausing preserves a checkpoint on that lifetime. Resuming creates a new lifetime and retires authority from the old one. A task attempt belongs to its task, is numbered within it, and records its live session and whether the work runs in the main session or a child. The authority adapter checks the actual run when it authenticates a review.
 

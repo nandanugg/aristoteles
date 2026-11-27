@@ -4,7 +4,7 @@ import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import { recordTaskCommands, sendTask } from '../../core/actions/task.ts'
 import { hostRole, staffedIn,
-  ApprovedFiles, Direction, rolesOf, roleOf, ProposalKey, StaffSessionKey, Submission, TaskDraft, TaskKey, staffOf,
+  ApprovedFiles, Direction, rolesOf, ProposalKey, StaffSessionKey, Submission, TaskDraft, TaskKey, staffOf,
   type Of, type Project, type ReadPosition,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
@@ -17,7 +17,7 @@ export const taskLine = { line: 'Task', key: taskKey } as const
 export const boundHost = session.key
 
 export const acceptDirection = (journal: Journal, project: Project, value: Direction, previous?: Of<typeof TaskDraft>['direction']) => Effect.gen(function* () {
-  const assigned = staffOf(project, hostRole(project))!
+  const assigned = staffOf(project, hostRole(project).key)!
   const existing = [...project.sessions.values()].find((value) => value._tag === 'Live' && value.staff.key === assigned.key)
   const key = existing?.key ?? StaffSessionKey.make('session:direction-' + project.read)
   const current = existing ? project : (yield* startSession(journal, project, {
@@ -44,13 +44,13 @@ export const activateTasks = (journal: Journal, project: Project, value?: Direct
     { staff: new Map([[staff.key, staff]]), subscriptions: new Map([[subscription.key, subscription]]) })
   const selected = value ?? Schema.decodeUnknownSync(Direction)({
     ...direction, standards: [], stages: rolesOf(staffed).map((role) => ({
-      ...direction.stages[0], role,
+      ...direction.stages[0], role: role.key,
     })),
   })
   const ready = yield* acceptDirection(journal, staffed, selected)
   const line = { line: 'Project' } as const
   const authorized = yield* ownerInput(journal, { read: ready.read, ...line, move: 'next', input: { files } })
-  const assigned = staffOf(authorized.state, hostRole(authorized.state))!
+  const assigned = staffOf(authorized.state, hostRole(authorized.state).key)!
   return (yield* startSession(journal, authorized.state, {
     key: boundHost, staff: assigned.key, pane: session.pane, staffedIn: staffedIn(authorized.state),
   })).state
@@ -61,8 +61,8 @@ export const draftFor = (project: Project, key = taskKey, role = host, reviewer 
   if (accepted?.phase._tag !== 'Accepted' || accepted.phase.version.value._tag !== 'Direction') throw new Error('Missing task direction')
   const { value } = accepted.phase.version
   return Schema.decodeUnknownSync(Schema.Struct({ key: TaskKey, ...TaskDraft.fields }))({
-    key, name: 'First work', goal: 'Supply a result', reviewer: roleOf(project, reviewer.key) ?? reviewer,
-    direction: accepted.phase.version, stages: value.stages.filter((stage) => stage.role.key === role.key), facts: [],
+    key, name: 'First work', goal: 'Supply a result', reviewer: reviewer.key,
+    direction: accepted.phase.version, stages: value.stages.filter((stage) => stage.role === role.key), facts: [],
   })
 }
 

@@ -17,7 +17,7 @@ export const applyProjectPhase = (project: Project, event: Exclude<ProjectEvent,
     ? Result.succeed({ ...project, phase: next, changedIn: number }) : wrong()
   if (phase._tag === 'Onboarding' && from === 'Onboarding') {
     const proposals = approvedProposals(project)
-    const staff = staffOf(project, hostRole(project))
+    const staff = staffOf(project, hostRole(project).key)
     if (!proposals || !staff) return wrong()
     if (project.changedIn > read || proposals.some(({ acceptedIn }) => acceptedIn > read)) return stale()
     return commit({ _tag: 'Activating', approvedIn: number, files: event.input.files, proposals })
@@ -30,7 +30,7 @@ export const applyProjectPhase = (project: Project, event: Exclude<ProjectEvent,
   if (event.move === 'end')
     return [...project.sessions.values()].every((session) => session._tag === 'Ended')
       ? commit({ _tag: 'Ended', endedIn: number }) : wrong()
-  const host = staffOf(project, hostRole(project))
+  const host = staffOf(project, hostRole(project).key)
   return phase.work._tag === 'NotStarted' && (boundHostSession(project) || [...project.sessions.values()].some((session) =>
     session.staff.key === host?.key && session._tag === 'Ended' && session.startedIn > phase.approvedIn)) ? commit({ ...phase, work: { _tag: 'Started', startedIn: number } }) : wrong()
 }

@@ -161,7 +161,7 @@ test('only the owner changes a responsibility, which takes effect after review a
     const staffed = yield* sharedStaffing(journal)
     const live = yield* startFixtureSession(journal, staffed)
     const previous = hostRole(live.state).responsibility
-    const value = { _tag: 'Responsibility', ...previous.value, role: hostRole(live.state), summary: Summary.make('New owner wording') }
+    const value = { _tag: 'Responsibility', ...previous.value, role: hostRole(live.state).key, summary: Summary.make('New owner wording') }
     expect(yield* Effect.result(cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } }, staffAuthorityOf())))
       .toMatchObject(missing('WrongActor'))
     const draft = yield* cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } })
@@ -177,8 +177,8 @@ test('only the owner changes a responsibility, which takes effect after review a
     expect(hostRole(accepted.state).responsibility.value.summary).toBe(value.summary)
     expect(Number(hostRole(accepted.state).responsibility.number)).toBe(2)
     expect(accepted.state.staffing).toEqual(staffed.staffing)
-    expect(staffByKey(accepted.state, staff.key)?.roles).toContainEqual({ key: hostRole(accepted.state).key })
-    expect(accepted.state.sessions.get(session.key)?.staff.roles).toContainEqual({ key: hostRole(live.state).key })
+    expect(staffByKey(accepted.state, staff.key)?.roles).toContain(hostRole(accepted.state).key)
+    expect(accepted.state.sessions.get(session.key)?.staff.roles).toContain(hostRole(live.state).key)
     const projected = Schema.encodeSync(Projection)(accepted.state)
     expect(projected).not.toHaveProperty('staff')
     expect(projected).not.toHaveProperty('subscriptions')

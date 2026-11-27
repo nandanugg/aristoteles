@@ -40,7 +40,7 @@ export const approvedProposals = (project: Project) => {
 
 export const hostSession = (project: Project) => {
   if (project.phase._tag === 'Onboarding' || project.phase._tag === 'Ended') return undefined
-  const staff = staffOf(project, hostRole(project))
+  const staff = staffOf(project, hostRole(project).key)
   return staff && latestSession(project, staff)
 }
 

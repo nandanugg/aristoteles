@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import { html } from 'htm/preact'
 import { ReviewEvidence } from './project-evidence.ts'
-import { taskRole, taskRules, type Refusal, type Task, type TaskKey, type Of, type WholeFile } from '../../../core/schema/project.ts'
+import { roleOf, taskRole, taskRules, type Project, type Refusal, type Task, type TaskKey, type Of, type WholeFile } from '../../../core/schema/project.ts'
 
 function FileResult({ file }: { readonly file: WholeFile }) {
   const { image } = file
@@ -18,8 +18,9 @@ function FileResult({ file }: { readonly file: WholeFile }) {
   </details>`
 }
 
-export function TaskPanel({ task, commandBlock }: {
+export function TaskPanel({ task, project, commandBlock }: {
   readonly task: Task
+  readonly project: Project
   readonly commandBlock?: (key: Of<typeof TaskKey>) => Promise<Refusal['why'] | null>
 }) {
   const { phase } = task
@@ -38,10 +39,11 @@ export function TaskPanel({ task, commandBlock }: {
   const outcomes = phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.outcomes : null
   return html`<article aria-label=${task.name}>
     <h3>${task.name}</h3><p>${task.goal}</p>
-    <p>${taskRole(task).name} · ${phase._tag === 'ReadyToReview' ? 'Ready to review' : phase._tag}</p>
+    <p>${roleOf(project, taskRole(task))?.name ?? taskRole(task)} · ${phase._tag === 'ReadyToReview' ? 'Ready to review' : phase._tag}</p>
     <details>
       <summary>Task brief</summary>
       <p>${task.direction.value.name} · version ${task.direction.number}</p>
+      <p>Responsibility version ${task.responsibility.number}</p>
       ${task.stages.map((stage, index) => html`<p key=${index}>${stage.name} · ${stage.work}</p>`)}
       ${taskRules(task).map((rule, index) => html`<p key=${index}>${rule.name} · ${rule.text}</p>`)}
     </details>

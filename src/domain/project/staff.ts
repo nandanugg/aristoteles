@@ -35,7 +35,7 @@ export const Subscription = Schema.Struct({
 })
 export const Staff = Schema.TaggedStruct('Staff', {
   key: StaffKey, name: Name, model: ModelName, launch: LaunchText, subagents: SubagentCount,
-  roles: Schema.NonEmptyArray(Schema.Struct({ key: RoleKey })), subscription: Schema.Struct({ key: SubscriptionKey }), why: Rationale,
+  roles: Schema.NonEmptyArray(RoleKey), subscription: Schema.Struct({ key: SubscriptionKey }), why: Rationale,
 })
 export type Staff = Of<typeof Staff>
 export type Subscription = Of<typeof Subscription>
@@ -70,8 +70,8 @@ export const staffByKey = (project: Project, key: Of<typeof StaffKey>): Staff | 
 export const subscriptionOf = (project: Project, staff: Staff): Subscription | undefined =>
   staffingPlan(project).subscriptions.get(staff.subscription.key)
 
-export const staffOf = (project: Project, role: Role): Staff | undefined =>
-  projectStaff(project).find((staff) => staff.roles.some(({ key }) => key === role.key))
+export const staffOf = (project: Project, role: Of<typeof RoleKey>): Staff | undefined =>
+  projectStaff(project).find((staff) => staff.roles.includes(role))
 
 export const liveSession = (project: Project, key: Of<typeof StaffSessionKey>): LiveSession | undefined => {
   const session = project.sessions.get(key)
@@ -127,7 +127,7 @@ export const validateStaffing = (
   for (const staff of plan.staff.values()) {
     const subscription = plan.subscriptions.get(staff.subscription.key)
     if (!subscription) return invalid(Rationale.make('Use the listed subscriptions.'))
-    for (const { key } of staff.roles) {
+    for (const key of staff.roles) {
       const role = roleOf(project, key)
       if (!role || assigned.has(key)) return invalid(Rationale.make('Assign each project role exactly once.'))
       if (role._tag !== 'Work' && staff.subagents === 0)
@@ -140,7 +140,7 @@ export const validateStaffing = (
     if (current && session && session._tag !== 'Ended') {
       const prior = subscriptionOf(project, current)
       if (prior?.key !== subscription.key || prior.provider !== subscription.provider || prior.account !== subscription.account ||
-          current.roles.some(({ key }) => !staff.roles.some((role) => role.key === key)))
+          current.roles.some((key) => !staff.roles.includes(key)))
         return invalid(Rationale.make('Run work session end before changing the staff’s subscription or assigned roles.'))
     }
     if (subagentCapacity(project, staff).usedSubagents > staff.subagents) {

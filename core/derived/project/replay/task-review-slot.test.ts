@@ -20,16 +20,16 @@ import { integer, readTrace, record, registeredChecks } from './driver.ts'
 const check = 'reviewSlot'
 const kinds = ['success', 'fault', 'mutant'] as const
 const workRole = role('maker')
-const hostStaff = Staff.make({ ...staff, roles: [host], subagents: Schema.decodeUnknownSync(Staff.fields.subagents)(1) })
-const ownStaff = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:own', roles: [pipeline], subagents: 1 })
-const queuedStaff = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:queue', roles: [workRole], subagents: 0 })
+const hostStaff = Staff.make({ ...staff, roles: [host.key], subagents: Schema.decodeUnknownSync(Staff.fields.subagents)(1) })
+const ownStaff = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:own', roles: [pipeline.key], subagents: 1 })
+const queuedStaff = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:queue', roles: [workRole.key], subagents: 0 })
 const ownKey = StaffSessionKey.make('session:own')
 const firstHost = { ...session, staff: hostStaff }
 const ownSession = { ...session, key: ownKey, staff: ownStaff }
 const lines = [1, 2, 3, 4].map((key) => ({ line: 'Task', key: TaskKey.make('task:slot-' + key) } as const))
 const direction = Schema.decodeUnknownSync(Direction)({
   ...promptDirection,
-  stages: [promptDirection.stages[0], { ...promptDirection.stages[0], role: pipeline }],
+  stages: [promptDirection.stages[0], { ...promptDirection.stages[0], role: pipeline.key }],
 })
 const fixture = (kind: typeof kinds[number]) => join(import.meta.dir, 'traces', check + '-' + kind + '.itf.json.gz')
 

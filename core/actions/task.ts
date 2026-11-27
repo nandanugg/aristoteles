@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Rationale, refuse, liveSession, activeWork, boundHostSession, staffByKey, taskRole, taskLine, type CommandOutcome, type Of, type Refusal, type Task, type TaskKey, type TaskDraft, type ReadPosition } from '../schema/project.ts'
+import { Rationale, refuse, liveSession, activeWork, boundHostSession, staffByKey, taskRole, taskLine, type CommandOutcome, type Of, type Refusal, type Project, type Task, type TaskKey, type TaskDraft, type ReadPosition } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { Authority, recordObserved, submit } from './project.ts'
 import { readOpenProject } from './staff-session.ts'
@@ -14,16 +14,16 @@ export const reportWork = (
 ): Effect.Effect<Committed, Refusal, Authority> =>
   submit(journal, { read, line: 'Task', key, move: 'reason' in input ? 'raise' : 'next', input })
 
-export const taskBrief = (journal: Journal, key: Of<typeof TaskKey>): Effect.Effect<Task, Refusal, Authority> =>
+export const taskBrief = (journal: Journal, key: Of<typeof TaskKey>): Effect.Effect<{ readonly project: Project; readonly task: Task }, Refusal, Authority> =>
   Effect.gen(function* () {
     const actor = yield* (yield* Authority).actor
     const project = yield* readOpenProject(journal)
     const task = project.tasks.get(key)
     if (!task || !activeWork(project))
       return yield* Effect.fail(refuse('WrongMove', Rationale.make('This task is unavailable.')))
-    if (actor._tag === 'Human') return task
+    if (actor._tag === 'Human') return { project, task }
     if (actor._tag === 'Host' && project.phase._tag === 'Active' &&
-      actor.session.key === boundHostSession(project)?.key) return task
+      actor.session.key === boundHostSession(project)?.key) return { project, task }
     if (actor._tag === 'Staff' || actor._tag === 'Review') {
       const session = liveSession(project, actor.session.key)
       if (session?.staff.key !== actor.session.staff.key)
@@ -32,11 +32,11 @@ export const taskBrief = (journal: Journal, key: Of<typeof TaskKey>): Effect.Eff
         const phase = task.phase
         if (actor.line === 'Task' && actor.key === key && phase._tag === 'Reviewing' &&
             phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === session.key &&
-            phase.assignment.queuedIn === actor.queuedIn) return task
+            phase.assignment.queuedIn === actor.queuedIn) return { project, task }
         return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current fresh review.')))
       }
       const staff = staffByKey(project, session.staff.key)
-      if (staff?.roles.some(({ key }) => key === taskRole(task).key || key === task.reviewer.key)) return task
+      if (staff?.roles.some((role) => role === taskRole(task) || role === task.reviewer)) return { project, task }
     }
     return yield* Effect.fail(refuse('WrongActor', Rationale.make('Read the brief as the owner, host or assigned staff.')))
   })

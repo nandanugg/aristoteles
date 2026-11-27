@@ -6,14 +6,16 @@ const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === '
   ? `${evidence.file}:${evidence.lines.first}–${evidence.lines.last} ${evidence.text}`
   : `${evidence.command.text} (exit ${evidence.exit}) ${evidence.stdout}${evidence.stderr}`
 
-export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = null): Of<typeof TaskBriefText> => {
+export const projectTaskWords = (project: Project, task: Task, blocked: Refusal['why'] | null = null): Of<typeof TaskBriefText> => {
   const { phase } = task
   return TaskBriefText.make([
     `Task ${task.key}: ${task.name}`,
     `Goal: ${task.goal}`,
     `Direction: ${task.direction.value.name} (version ${task.direction.number})`,
-    `Role: ${taskRole(task).name} (responsibility version ${taskRole(task).responsibility.number})`,
-    ...taskRole(task).responsibility.value.duties,
+    `Role: ${roleOf(project, taskRole(task))?.name ?? taskRole(task)} (responsibility version ${task.responsibility.number})`,
+    ...task.responsibility.value.duties,
+    `Reviewer ${roleOf(project, task.reviewer)?.name ?? task.reviewer} (responsibility version ${task.reviewerResponsibility.number})`,
+    ...task.reviewerResponsibility.value.duties,
     ...task.stages.map((stage) => `${stage.name}: ${stage.work}`),
     ...taskRules(task).map((rule) => `${rule.name}: ${rule.text}`),
     `Phase: ${phase._tag}`,
@@ -57,7 +59,7 @@ export const projectIntroductionWords = (
 ): Of<typeof Introduction> => {
   const staff = staffByKey(project, session.staff.key) ?? session.staff
   const roles = staff.roles.flatMap((assigned) => {
-    const role = roleOf(project, assigned.key)
+    const role = roleOf(project, assigned)
     if (!role) return []
     const { summary, introduction, duties } = role.responsibility.value
     return [`Role ${role.name}`, summary, introduction, ...duties.map((duty) => `- ${duty}`)]

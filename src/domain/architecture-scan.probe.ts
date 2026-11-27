@@ -56,6 +56,36 @@ export function scan(program: ts.Program, root: string, included = contracts,
     const declaration = marker?.valueDeclaration ?? marker?.declarations?.[0]
     return marker && declaration ? memberType(marker, declaration).getProperties().map((key) => key.name) : []
   }
+  const typeArguments = (type: ts.Type) => type.aliasTypeArguments
+    ?? (type.flags & ts.TypeFlags.Object && (type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference
+      ? checker.getTypeArguments(type as ts.TypeReference) : [])
+  const isMap = (type: ts.Type) => {
+    const name = type.getSymbol()?.name
+    return name === 'Map' || name === 'ReadonlyMap'
+  }
+  const mapKeys = new Set<string>()
+  const visited = new Set<ts.Type>()
+  const collectMapKeys = (type: ts.Type, node: ts.Node): void => {
+    if (visited.has(type)) return
+    visited.add(type)
+    if (type.isUnion()) {
+      for (const part of type.types) collectMapKeys(part, node)
+    } else if (isMap(type)) {
+      const [key, value] = typeArguments(type)
+      if (key) for (const brand of brandKeys(key)) mapKeys.add(brand)
+      if (value) collectMapKeys(value, node)
+    } else if (checker.isArrayType(type) || checker.isTupleType(type)) {
+      for (const element of typeArguments(type)) collectMapKeys(element, node)
+    } else if (type.flags & ts.TypeFlags.Object && !type.getCallSignatures().length) {
+      for (const property of type.getProperties()) collectMapKeys(memberType(property, node), node)
+    }
+  }
+  const records = program.getSourceFiles().find((file) => projectPath(root, file.fileName) === 'src/domain/project/records.ts')
+  const project = records && exportsOf(checker, records).find((symbol) => symbol.name === 'Project')?.valueDeclaration
+  if (project) {
+    const output = schemaOutput(checker.getTypeAtLocation(project))
+    if (output) collectMapKeys(memberType(output, project), project)
+  }
   // Follow the applied schema chain or the return of a local schema factory. A check in
   // an annotation, an unused variable, or a sibling expression cannot approve a brand.
   const usedFunctions = (expression: ts.Expression, chain = new Set<ts.Symbol>()): ReadonlySet<string> => {
@@ -166,9 +196,6 @@ export function scan(program: ts.Program, root: string, included = contracts,
         result.set(keyOf(item), item)
       }
       const active = new Set<ts.Type>()
-      const typeArguments = (type: ts.Type) => type.aliasTypeArguments
-        ?? (type.flags & ts.TypeFlags.Object && (type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference
-          ? checker.getTypeArguments(type as ts.TypeReference) : [])
 
       const structured = (type: ts.Type): boolean => !!(type.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection)) ||
         (type.isUnion() && type.types.some(structured))
@@ -182,7 +209,7 @@ export function scan(program: ts.Program, root: string, included = contracts,
           if (keys.some((key) => !refined.has(key) || unchecked.has(key))) finding(path, 'unrefined-brand')
           const record = /^src\/domain\/project\/(?!events\.ts$)/.test(fileName)
           if (record && /^\$[.<]/.test(path) && !path.startsWith('$<') && !path.includes('()') &&
-              keys.some((key) => /Key$/.test(key)) && !/\.key(?:[.<\[]|$)|\[key\]/.test(path))
+              keys.some((key) => /Key$/.test(key) && !mapKeys.has(key)) && !/\.key(?:[.<\[]|$)|\[key\]/.test(path))
             finding(path, 'record-key-reference')
           return
         }
@@ -218,7 +245,7 @@ export function scan(program: ts.Program, root: string, included = contracts,
           if (!reads.has(owner)) reads.set(owner, path)
           dependencies.set(node, reads)
           typeArguments(type).forEach((arg, i) =>
-            walk(arg, i === 0 && (name?.name === 'Map' || name?.name === 'ReadonlyMap') ? `${path}[key]` : `${path}<${i}>`))
+            walk(arg, i === 0 && isMap(type) ? `${path}[key]` : `${path}<${i}>`))
           return
         }
         active.add(type)
@@ -293,7 +320,7 @@ export function scan(program: ts.Program, root: string, included = contracts,
             const args = typeArguments(type)
             const values = native(name, 'Effect') && name?.name === 'Effect' ? args.slice(0, 2) : args
             values.forEach((arg, i) =>
-              walk(arg, i === 0 && (name?.name === 'Map' || name?.name === 'ReadonlyMap') ? `${path}[key]` : `${path}<${i}>`))
+              walk(arg, i === 0 && isMap(type) ? `${path}[key]` : `${path}<${i}>`))
             return
           }
           for (const signature of type.getCallSignatures()) {

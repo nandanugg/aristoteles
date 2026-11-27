@@ -5,7 +5,7 @@ function renderStaffing({ plan, project }: { readonly plan: ProjectStaffing; rea
   return html`<section aria-label="Staffing arrangement">
     <ul>${[...plan.staff.values()].map((staff) => html`<li key=${staff.key}>
       <strong>${staff.name}</strong> · ${staff.model} · ${staff.subagents} subagents
-      <ul>${staff.roles.map((role) => html`<li key=${role.key}>${roleOf(project, role.key)?.name ?? role.key}</li>`)}</ul>
+      <ul>${staff.roles.map((role) => html`<li key=${role}>${roleOf(project, role)?.name ?? role}</li>`)}</ul>
     </li>`)}</ul>
     <h4>Subscriptions</h4>
     <ul>${[...plan.subscriptions.values()].map((sub) => html`<li key=${sub.key}>
