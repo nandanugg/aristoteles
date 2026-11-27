@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { readOpenProject, staffAuthority } from '../../../core/actions/staff-session.ts'
-import { nextStep, type Selection } from '../../../core/derived/project/next-step.ts'
+import { nextStep } from '../../../core/derived/project/next-step.ts'
 import { reportWork, sendTask, taskBrief } from '../../../core/actions/task.ts'
 import { runTaskCommands, taskCommandBlock, type TaskCommands } from '../../../core/effects/project-commands.ts'
 import { projectTaskWords } from '../../words/project.ts'
@@ -104,17 +104,17 @@ export const projectOnboard = (
 // The credential adapter resolves a token to its lifetime before using the shared selection.
 export const waitOnProject = (
   journal: Journal, authenticate: Effect.Effect<Of<typeof StaffSessionKey>, ProjectRefusal>, on?: Of<typeof ReadPosition>,
-): Effect.Effect<Selection, ProjectRefusal> => Effect.gen(function* () {
+) => Effect.gen(function* () {
   const key = yield* authenticate
   const project = yield* readOpenProject(journal)
   const session = yield* staffAuthority(project, key)
-  const events = yield* journal.eventsAfter(ReadPosition.make(0))
-  return nextStep(project, session, events.filter((event) => event.number <= project.read), on)
+  const events = (yield* journal.eventsAfter(ReadPosition.make(0))).filter((event) => event.number <= project.read)
+  return { project, session, events, step: nextStep(project, session, events, on) }
 })
 
 export const waitOnTaskReview = (
   journal: Journal, authenticate: Effect.Effect<AuthenticatedActor, ProjectRefusal>,
-): Effect.Effect<Selection, ProjectRefusal> => Effect.gen(function* () {
+) => Effect.gen(function* () {
   const actor = yield* authenticate
   const project = yield* readOpenProject(journal)
   if (actor._tag === 'Review' && actor.line === 'Task') {
@@ -123,7 +123,7 @@ export const waitOnTaskReview = (
     if (task?.phase._tag === 'Reviewing' && task.phase.assignment._tag === 'Assigned' &&
         task.phase.assignment.actor.key === session.key && actor.session.staff.key === session.staff.key &&
         task.phase.assignment.queuedIn === actor.queuedIn) {
-      return { _tag: 'Available', subject: { _tag: 'Task', task }, for: 'Review', read: project.read }
+      return { project, task }
     }
   }
   return yield* Effect.fail(projectRefuse('RetiredSession', Rationale.make('Use the current child assigned to review this task.')))

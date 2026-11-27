@@ -147,11 +147,14 @@ exec sleep 90
     }
     let live = await launchStaff()
     expect(live.introduction).toContain('Session introduction for ' + local.name)
+    expect(live.introduction.indexOf('Session ' + live.key + ' · Live.')).toBeGreaterThan(-1)
+    expect(live.introduction.indexOf('Session ' + live.key + ' · Live.')).toBeLessThan(
+      live.introduction.indexOf('Session introduction for ' + local.name))
     expect(live.introduction).toContain(host.responsibility.value.introduction)
     expect(live.introduction).toContain('No accepted directions yet.')
     const introducedAt = (await state()).read
     expect((await ok(['wait'], live)).trimEnd()).toBe(live.introduction.split('\n').slice(1).join('\n'))
-    expect((await ok(['wait', live.continuation], live)).trim()).toBe('Nothing is due.')
+    expect((await ok(['wait', live.continuation], live)).trim()).toBe('Nothing is due.\nContinue with work wait <token> ' + live.continuation)
     expect((await state()).read).toBe(introducedAt)
     const apply = async (args, token, label) => {
       const start = Date.now()
@@ -209,13 +212,21 @@ exec sleep 90
     const question = 'Which wording should the work use?'
     put('question.yaml', { key: 'question:wording', text: question, owner: { _tag: 'Project' },
       expects: { _tag: 'ShortAnswer' } })
-    await apply(['question', 'owner', await basis(), '--file=question.yaml'], live.token, 'question')
+    const asked = await apply(['question', 'owner', await basis(), '--file=question.yaml'], live.token, 'question')
     const card = browser.page.getByRole('form', { name: question })
     await card.getByRole('textbox').fill('Use the local wording.')
     let started = Date.now()
     await card.getByRole('button', { name: 'Answer' }).click()
     await card.waitFor({ state: 'hidden' })
     measures.push(['answer', Date.now() - started])
+    const reply = await ok(['wait', '--on=' + asked.number], live)
+    expect(reply).toContain('Answer to project/question:wording')
+    expect(reply).toContain('Use the local wording.')
+    expect(reply).toContain('Nothing is due.')
+    expect(reply.indexOf('Use the local wording.')).toBeLessThan(reply.indexOf('Nothing is due.'))
+    const replyBasis = /Continue with work wait <token> (--on=\d+)/u.exec(reply)[1]
+    expect(await ok(['wait', replyBasis], live)).not.toContain('Answer to project/question:wording')
+
 
     const button = (name) => browser.page.getByRole('button', { name, exact: true })
     await button('Review activation files').click()
@@ -254,7 +265,7 @@ exec sleep 90
     }
     const beforeCrash = await report(key, {}, 'begin')
     const finish = async (attempt, result, outcome) => {
-      await report(key, { attempt, summary: 'A local sample', files: [{ path: 'sample.md',
+      const resultReport = await report(key, { attempt, summary: 'A local sample', files: [{ path: 'sample.md',
         image: { _tag: 'Present', contents: result + '\n' }, changed: [{ first: 1, last: 1 }] }] }, 'result')
       await browser.phase(name, pipeline.name, 'Reviewing')
       const before = new Set(readdirSync(captures))
@@ -263,6 +274,15 @@ exec sleep 90
       expect(await ok(['wait'], { token: child.token })).toContain('Clear wording')
       put('facts.yaml', { outcomes: [{ _tag: outcome, rule: prompt, evidence: excerpt(result) }], findings: [] })
       await apply(['review', key, await basis(), '--file=facts.yaml'], child.token, 'task review')
+      if (outcome === 'Breaks') {
+        const stale = await call(['report', key, '--on=' + resultReport.number, '--file=report.yaml'], live)
+        expect(stale.code).toBe(1)
+        expect(stale.err).toContain('Stale')
+        const returned = await ok(['wait', '--on=' + resultReport.number], live)
+        expect(returned).toContain('Task ' + key + ' returned')
+        expect(returned).toContain('Clear wording · Breaks')
+        expect(returned.indexOf('Task ' + key + ' returned')).toBeLessThan(returned.indexOf('work report'))
+      }
       return child.token
     }
     const child = await finish(1, 'Local first result', 'Breaks')

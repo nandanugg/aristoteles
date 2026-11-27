@@ -51,7 +51,7 @@ test('pause holds the attempt and its slot, and reset requires a fresh read on t
     yield* send(journal, working.state.read, second)
     yield* startChild(journal, yield* readOpenProject(journal), second, session, 'Work')
     const project = yield* readOpenProject(journal)
-    expect(yield* waitOnProject(journal, Effect.succeed(session.key))).toMatchObject({ _tag: 'Available' })
+    expect((yield* waitOnProject(journal, Effect.succeed(session.key))).step).toMatchObject({ _tag: 'Available' })
     yield* observeSession(journal, project, address, 'Paused')
     const paused = yield* readOpenProject(journal)
     expect(paused.sessions.get(session.key)?._tag).toBe('Paused')

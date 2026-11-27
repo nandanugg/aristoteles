@@ -36,8 +36,8 @@ test('review intake takes only facts from the current fresh child and gives feed
     const yaml = Bun.YAML.stringify(report('Breaks'))
     const intake = (actor: AuthenticatedActor, input = yaml) =>
       projectReviewCommand(journal, taskKey, first.read, input).pipe(auth(actor))
-    expect(yield* waitOnProject(journal, Effect.succeed(session.key))).toEqual({ _tag: 'Awaiting' })
-    expect(yield* waitOnTaskReview(journal, Effect.succeed(child))).toMatchObject({ _tag: 'Available', for: 'Review' })
+    expect((yield* waitOnProject(journal, Effect.succeed(session.key))).step).toEqual({ _tag: 'Awaiting' })
+    expect((yield* waitOnTaskReview(journal, Effect.succeed(child))).task.key).toBe(taskKey)
     expect(yield* Effect.result(intake(staffAuthorityOf()))).toMatchObject(refused('WrongActor'))
     expect(yield* Effect.result(intake(child, Bun.YAML.stringify({ ...report(), move: 'next' }))))
       .toMatchObject(refused('InvalidInput'))
@@ -51,7 +51,7 @@ test('review intake takes only facts from the current fresh child and gives feed
     })
     expect(yield* projectBriefCommand(journal, taskKey).pipe(auth(staffAuthorityOf()))).toContain('Review feedback for Readable result')
     expect((yield* readOpenProject(journal)).tasks.get(taskKey)?.retryCount).toBe(RetryCount.make(1))
-    expect(yield* waitOnProject(journal, Effect.succeed(session.key))).toMatchObject({ _tag: 'Available', for: 'Report' })
+    expect((yield* waitOnProject(journal, Effect.succeed(session.key))).step).toMatchObject({ _tag: 'Available', for: 'Report' })
     const result = yield* staffInput(journal, resultInput(back.state.read))
     const again = yield* commandOutcomes(journal, result.state.read)
     const second = (yield* startChild(journal, again.state, taskLine.key, session, 'Review')).state
@@ -60,7 +60,7 @@ test('review intake takes only facts from the current fresh child and gives feed
     expect(yield* journal.eventsAfter(second.read)).toEqual([])
     const raised = yield* reportReview(journal, second, 'Breaks')
     expect(raised.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Raised', reason: 'Misses', evidence: [artifactQuote] })
-    expect(yield* waitOnProject(journal, Effect.succeed(session.key))).toEqual({ _tag: 'Awaiting' })
+    expect((yield* waitOnProject(journal, Effect.succeed(session.key))).step).toEqual({ _tag: 'Awaiting' })
   })))))
 
 test('a recorded command failure still returns work when every prompt holds', () =>

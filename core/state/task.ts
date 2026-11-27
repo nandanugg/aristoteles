@@ -9,7 +9,7 @@ const wrongMove = () => Result.fail(refuse('WrongMove', Rationale.make('That mov
 const wrongActor = () => Result.fail(refuse('WrongActor', Rationale.make('The actor does not serve the assigned task role.')))
 const retired = () => Result.fail(refuse('RetiredSession', Rationale.make('Use the current live task session.')))
 const noChild = () => Result.fail(refuse('NoCapacity', Rationale.make('The staff has no free subagent slot.')))
-const stale = () => Result.fail(refuse('Stale', Rationale.make('The task changed after it was read.')))
+const stale = () => Result.fail(refuse('Stale', Rationale.make('The task changed after it was read. Run work wait before trying again.')))
 
 export const restartTask = (task: Task, phase: Extract<TaskPhase, { _tag: 'Working' }>, number: Of<typeof EventNumber>): Result.Result<Task, Refusal> =>
   edge(taskLine, phase._tag, 'restart', 'Sent') === 'Allowed'

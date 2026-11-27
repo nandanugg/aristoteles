@@ -1,7 +1,8 @@
 import {
-  ReadPosition, actorFor, currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
+  actorFor, type ReadPosition, currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
   taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
+import { lastSessionAct } from './session-read.ts'
 import { mayAssignTaskReview } from './review.ts'
 
 export type Selection =
@@ -11,7 +12,7 @@ export type Selection =
       readonly _tag: 'Available'
       readonly subject: { readonly _tag: 'Task'; readonly task: Task } | { readonly _tag: 'Question'; readonly question: Question; readonly owner: QuestionEvent['owner'] }
         | { readonly _tag: 'Proposal'; readonly proposal: Proposal }
-      readonly for: 'Report' | 'Answer' | 'Choose' | 'Assign' | 'Review'
+      readonly for: 'Report' | 'Answer' | 'Choose' | 'Assign'
       readonly read: Of<typeof ReadPosition>
     }
 
@@ -51,10 +52,8 @@ export const nextStep = (
 ): Selection => {
   if (project.phase._tag === 'Ended') return { _tag: 'Awaiting' }
   const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
-  // Opening a review can produce an engine event under the session's key.
-  if (current && on !== Number(current.startedIn) && !events.some(({ actor, move }) =>
-    actor._tag === 'Session' && actor.key === current.key && move !== 'assign',
-  )) return { _tag: 'Introduction', subject: project, read: ReadPosition.make(current.startedIn) }
+  if (current && (on === undefined || on < current.startedIn) && !lastSessionAct(current, events))
+    return { _tag: 'Introduction', subject: project, read: project.read }
   const [question] = questionsFor(project, authority)
   const owes = (task: Task): boolean => {
     if (!current || !activeWork(project)) return false

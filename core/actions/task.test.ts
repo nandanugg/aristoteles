@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test'
+import { sessionUpdates } from '../derived/project/session-read.ts'
+import { sessionUpdateWords } from '../../adapters/words/project.ts'
 import { acceptedDirections } from '../derived/project/next-step.ts'
 import { chromium } from 'playwright'
 import { Database } from 'bun:sqlite'
@@ -85,6 +87,15 @@ test('the host sends a checked stage slice only after work starts and its basis 
       ...task.direction.value,
       stages: [{ ...task.stages[0], work: Goal.make('A changed assignment.') }],
     }, task.direction)
+    const events = yield* journal.eventsAfter(sent.state.read)
+    const updates = sessionUpdates(revised, reviewHost, events, sent.state.read)
+    const accepted = updates.filter((event) => event.line === 'Proposal' && event.move === 'accept')
+    expect(accepted.map(({ number }) => ReadPosition.make(number))).toEqual([ReadPosition.make(edited.event.number), revised.read])
+    expect(accepted.map((event) => sessionUpdateWords(revised, reviewHost, event)).join('\n'))
+      .toContain('A newer role summary')
+    expect(accepted.map((event) => sessionUpdateWords(revised, reviewHost, event)).join('\n'))
+      .toContain('A changed assignment.')
+    expect(sessionUpdates(edited.state, reviewHost, events, edited.state.read)).toEqual([])
     expect(revised.tasks.get(draft.key)).toEqual(task)
     const directions = acceptedDirections(revised)
     expect(directions.map(({ acceptedIn }) => acceptedIn)).not.toContain(task.direction.acceptedIn)

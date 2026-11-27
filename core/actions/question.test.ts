@@ -52,7 +52,7 @@ test('CLI and page see the same owed question, enforce the recipient, and append
     const events = yield* journal.eventsAfter(ReadPosition.make(0))
     const introduction = nextStep(project, session, events)
     if (introduction._tag !== 'Introduction') throw new Error('Expected the session introduction first')
-    expect(introduction.read).toBe(ReadPosition.make(project.sessions.get(session.key)!.startedIn))
+    expect(introduction.read).toBe(project.read)
     const due = nextStep(project, session, events, introduction.read)
     if (due._tag !== 'Available' || due.subject._tag !== 'Question') throw new Error('Expected a question')
     expect(projectQuestionWords(due.subject, due.read).map(String)).toEqual([

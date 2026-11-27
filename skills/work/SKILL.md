@@ -5,9 +5,9 @@ description: Take the next step of an Aristoteles task, answer a Question, or re
 
 # Work in an Aristoteles Project
 
-In a new staff pane, follow its launch prompt to become Live and read the role responsibilities and accepted directions. The introduction prints a `work wait <token> --on=<session-start>` command. Use your private credential in that command. Reuse the printed session-start value while waiting for your first act. If you missed the introduction, run `work wait <token>` to derive it again.
+In a new staff pane, follow its launch prompt to become Live. The output shows relevant journal changes, the role responsibilities and accepted directions, and a `work wait <token> --on=<last-read>` command. Use your private credential and the latest printed read position. Each wait shows changes since that position before it gives the next step. Without `--on`, it derives the starting point from your last act in this session or repeats the introduction if you have yet to act.
 
-After your first act, use `work wait <token>` for what is due. A fresh review child uses `work wait <token>` to get its assigned review. Use the read basis and address from that response. Your credential is private to its session or review. A refusal for a retired session or review calls for a new assignment.
+A fresh review child uses `work wait <token>` to get its assigned review. Use the read basis and address from that response. Your credential is private to its session or review. If an act is stale, run wait again before retrying. A refusal for a retired session or review calls for a new assignment.
 
 ## Task brief and result
 
