@@ -1,16 +1,7 @@
-// The marker line (onboarding v2: ONBOARDING-V2 section 7 O5, section 8 OV2-6, sections 10-12).
-// The project's own instruction files stay, a fallback for working without aristoteles, with one
-// line at the top that sends aristoteles sessions away from them. The marker is the aristoteles
-// launch itself: every session the harness starts fresh (the host's bootstrap launch, a
-// persistent role) and every maker a role starts gets a first prompt that begins with the launch
-// opening, and the line names it. (`work run continue` keeps a host's existing context: it is
-// not such a launch; pass 6 relaunches the host fresh at activation.)
-// activation.qnt is the model of how these writes take part in activation: a file is DONE when it
-// equals its approved revision plus the line (the file decides, not a note), a file the person
-// changed after approving it is never written, and a roll back restores the kept original.
-// Assumption (stated for pass 6): no other writer renames over an instruction file in the instant
-// between the last check and the publishing rename; an edit before that check is seen and kept.
-// Bytes are handled as latin1 strings, which keep every byte as it is (the line is ASCII).
+// The host bootstrap opening tells its session to use Project instructions. Activation
+// marks only the approved bytes and rollback restores the private original. The last
+// read before publishing detects intervening edits. Bytes use latin1 so the ASCII
+// marker can be added and removed without changing the original encoding.
 import { Schema } from 'effect'
 import { Rationale, type Of } from '../../core/schema/project.ts'
 import { createHash, randomUUID } from 'node:crypto'
