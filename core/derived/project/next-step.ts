@@ -1,6 +1,6 @@
 import {
   actorFor, type ReadPosition, currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
-  fixDuty, pipelineStaff, taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
+  fixDuty, pendingFix, pipelineStaff, taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
 import { lastSessionAct } from './session-read.ts'
 import { mayAssignTaskReview } from './review.ts'
@@ -73,6 +73,8 @@ export const nextStep = (
     const subject = { _tag: 'Task', task } as const
     const fix = pipeline && fixDuty(project, task)
     if (fix) due.push({ _tag: 'Available', subject, for: fix, read: project.read })
+    else if (authority._tag === 'Human' && task.phase._tag === 'Raised' && !pendingFix(project, task.key))
+      due.push({ _tag: 'Available', subject, for: 'Choose', read: project.read })
     else if (owes(task)) due.push({ _tag: 'Available', subject, for: 'Report', read: project.read })
     else if (current && mayAssignTaskReview(project, events, task, current) === 'Allowed')
       due.push({ _tag: 'Available', subject, for: 'Assign', read: project.read })

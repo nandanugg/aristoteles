@@ -50,8 +50,8 @@ export const sessionUpdates = (
       case 'Proposal': {
         const proposal = project.proposals.get(event.key)
         if (!proposal) return false
-        if (proposal.subject._tag === 'Fix' && pipeline && (event.move === 'submitFix' || event.move === 'sendBack' ||
-            event.move === 'withdrawFix' || event.move === 'accept' || event.move === 'releaseFixReview')) return true
+        if (proposal.subject._tag === 'Fix' && pipeline && (event.move === 'submit' || event.move === 'sendBack' ||
+            event.move === 'remove' || event.move === 'accept' || event.move === 'release')) return true
         if (event.from === 'WaitingForOwner' && event.move === 'accept')
           return proposal.phase._tag === 'Accepted' && proposal.phase.version.value._tag === 'Direction'
         if (event.from === 'Reviewing' && event.move === 'assign')

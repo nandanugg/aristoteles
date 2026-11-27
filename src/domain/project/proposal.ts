@@ -18,12 +18,15 @@ const encodeProposalValue = Schema.encodeSync(ProposalValue)
 export const proposalText = (value: ProposalValue): Of<typeof FileContents> =>
   FileContents.make(JSON.stringify(encodeProposalValue(value), null, 2))
 
-export const FixDraft = Schema.Union([Direction, staffing])
+export const ProposalSubject = Schema.Union([
+  Schema.TaggedStruct('Onboarding', {}),
+  Schema.TaggedStruct('Fix', { task: TaskKey }),
+])
 
 const proposalOf = <S extends Schema.Top>(value: S) => Schema.Struct({
   key: ProposalKey, value, questions: recordsByKey(Question, QuestionKey), basis: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]),
   proposer: StoredActor, retryCount: RetryCount,
-  subject: Schema.Union([Schema.TaggedStruct('Onboarding', {}), Schema.TaggedStruct('Fix', { task: TaskKey })]),
+  subject: ProposalSubject,
   phase: Schema.Union([
     Schema.TaggedStruct('Drafting', { feedback: Schema.Union([
       Schema.TaggedStruct('None', {}),

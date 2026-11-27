@@ -34,9 +34,9 @@ The pipeline reads the task’s evidence and records its assessment with `work a
 
 - **Staff** runs `work try-again <token> <task-key> --on=<read>` once per task. The task returns with the breaks and a fresh review retry count. On a second Staff miss, propose staffing with a stronger model for the role that did the work. Give a reason in the staffing draft. End the previous-model session before the owner accepts.
 - **Guidance** submits the full direction with one applicable rule added or revised. Keep the rest of the direction intact.
-- **MovingTarget** follows the app’s directions. The assessment stays with the raised task.
+- **MovingTarget** follows the app’s directions and takes the same one automatic retry. On another miss, use the Staffing proposal route.
 
-To submit the first fix, write `{ line: Proposal, key: <proposal-key>, move: submitFix, input: { task: <task-key>, value } }` and run `work onboard submit <token> --on=<read> --file=fix.yaml`. The submitted draft goes to fresh review. If the owner sends it back, read the reason with `work onboard show <token> <proposal-key>`, assess the task again, and submit a revised draft with `move: submit` and `input: { value }` on the same proposal. If the assessment changes the cause, the old draft is withdrawn.
+To submit the first fix, write `{ line: Proposal, key: <proposal-key>, move: submit, input: { subject: { _tag: Fix, task: <task-key> }, value } }` and run `work onboard submit <token> --on=<read> --file=fix.yaml`. The submitted draft goes to fresh review. If the owner sends it back, read the reason with `work onboard show <token> <proposal-key>`, assess the task again, and submit a revised draft with `move: submit` and `input: { value }` on the same proposal. If the assessment changes the cause, the old draft is withdrawn.
 
 The owner can take a finished result as is with `work take-as-is <task-key> --on=<read> --why=<reason>`. As sender of the root task, the owner can also `work drop <task-key> --on=<read> --why=<reason>`. These choices are available from the Project page.
 

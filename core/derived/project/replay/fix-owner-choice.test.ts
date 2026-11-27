@@ -84,17 +84,18 @@ for (const kind of ['success', 'fault', 'mutant'] as const) test('Raised fix own
           const live = state.sessions.get(session.key)
           if (live?._tag !== 'Live') throw new Error('Expected pipeline authority')
           expect(nextStep(state, live, yield* journal.eventsAfter(origin), state.read)).toMatchObject({ for: 'Assess' })
-          state = (yield* assess(journal, state.read, missed === 'StaffMiss' ? 'Staff' : 'Guidance')).state
+          state = (yield* assess(journal, state.read, missed === 'StaffMiss' ? 'Staff' : missed === 'MovingTarget' ? 'MovingTarget' : 'Guidance')).state
           break
         }
-        case 'submitFix': {
+        case 'submitFirst': {
           const task = state.tasks.get(taskKey)
           const value = task?.phase._tag === 'Raised' && task.phase.fix._tag === 'Assessed' &&
-            task.phase.fix.assessment.missed === 'Staff' ? fixStaffing(state) : fixDirection(1)
+            task.phase.fix.assessment.missed !== 'Guidance' ? fixStaffing(state) : fixDirection(1)
           const committed = yield* cliProposal(journal, state, {
-            ...proposalLine, move: 'submitFix', input: { task: taskKey, value },
+            ...proposalLine, move: 'submit', input: { subject: { _tag: 'Fix', task: taskKey }, value },
           }, byPipeline)
-          expect(committed.following.map(({ move }) => move)).toEqual(['linkFix'])
+          expect(committed.following).toEqual([])
+          expect(committed.state.tasks.get(taskKey)).toEqual(task)
           state = committed.state
           break
         }
@@ -194,14 +195,15 @@ test('task closure and pending fix withdrawal share one append', () =>
     const raised = yield* raiseAfterReview(journal, working)
     const { state: assessed } = yield* assess(journal, raised.read, 'Guidance')
     const proposed = (value: unknown) => cliProposal(journal, assessed, {
-      ...proposalLine, move: 'submitFix', input: { task: taskKey, value },
+      ...proposalLine, move: 'submit', input: { subject: { _tag: 'Fix', task: taskKey }, value },
     }, byPipeline)
     const wrongKind = yield* Effect.result(proposed(fixStaffing(assessed)))
     expect(Result.getOrThrow(Result.flip(wrongKind)).code).toBe('WrongMove')
     const wrongTier = yield* Effect.result(proposed({ ...fixDirection(1), text: 'Changed the whole direction.' }))
     expect(Result.getOrThrow(Result.flip(wrongTier)).code).toBe('InvalidInput')
     expect(yield* journal.eventsAfter(assessed.read)).toEqual([])
-    const { state: submitted } = yield* cliProposal(journal, assessed, {      ...proposalLine, move: 'submitFix', input: { task: taskKey, value: fixDirection(1) },
+    const { state: submitted } = yield* cliProposal(journal, assessed, {
+      ...proposalLine, move: 'submit', input: { subject: { _tag: 'Fix', task: taskKey }, value: fixDirection(1) },
     }, byPipeline)
     const reviewed = yield* reviewFix(journal, submitted)
     const write = (sql: string) => Effect.sync(() => {
@@ -214,7 +216,7 @@ test('task closure and pending fix withdrawal share one append', () =>
     expect(yield* journal.eventsAfter(reviewed.read)).toEqual([])
     yield* write('DROP TRIGGER fail_withdrawal')
     const dropped = yield* taskMove(journal, reviewed, 'drop', true)
-    expect(dropped.following.map(({ move }) => move)).toEqual(['withdrawFix'])
+    expect(dropped.following.map(({ move }) => move)).toEqual(['remove'])
     expect(dropped.state.tasks.get(taskKey)?.phase).toEqual({ _tag: 'Dropped', why })
     expect(dropped.state.proposals.get(proposalLine.key)?.phase).toEqual({ _tag: 'Removed' })
   })))))
@@ -259,12 +261,12 @@ test('a moving-target reassessment leaves the policy with the app and keeps the 
     }
     const { state: assessed } = yield* assess(journal, raised.read, 'Guidance')
     const { state: submitted } = yield* cliProposal(journal, assessed, {
-      ...proposalLine, move: 'submitFix', input: { task: taskKey, value: fixDirection(1) },
+      ...proposalLine, move: 'submit', input: { subject: { _tag: 'Fix', task: taskKey }, value: fixDirection(1) },
     }, byPipeline)
     const reviewed = yield* reviewFix(journal, submitted)
     const { state: returned } = yield* cliProposal(journal, reviewed, { ...proposalLine, move: 'sendBack', input: { why } })
     const reassessed = yield* assess(journal, returned.read, 'MovingTarget')
-    expect(reassessed.following.map(({ move }) => move)).toEqual(['withdrawFix'])
+    expect(reassessed.following.map(({ move }) => move)).toEqual(['remove'])
     expect(reassessed.state.proposals.get(proposalLine.key)?.phase._tag).toBe('Removed')
     expect(reassessed.state.tasks.get(taskKey)?.phase).toMatchObject({
       _tag: 'Raised', fix: { _tag: 'Assessed', assessment: { missed: 'MovingTarget', why } },

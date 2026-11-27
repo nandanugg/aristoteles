@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { ApprovedFiles } from './activation.ts'
 import { Assessment } from './fix.ts'
-import { FixDraft, ProposalValue } from './proposal.ts'
+import { ProposalSubject, ProposalValue } from './proposal.ts'
 import { versionOf } from './version.ts'
 import { ReviewFacts } from './review.ts'
 import { line, protocol } from './lines.ts'
@@ -35,9 +35,12 @@ const why = Schema.Struct({ why: Rationale })
 const files = Schema.Struct({ files: ApprovedFiles })
 const value = Schema.Struct({ value: ProposalValue, previous: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]) })
 const proposalDraft = Schema.Struct({ value: ProposalValue })
-const fixDraft = Schema.Struct({ task: TaskKey, value: FixDraft })
+const firstFix = Schema.Struct({ subject: ProposalSubject.members[1], value: ProposalValue })
 const fixProposal = Schema.Struct({ proposal: ProposalKey })
-const fixRemoval = Schema.Struct({ task: TaskKey })
+const reviewRelease = Schema.Union([
+  Schema.TaggedStruct('SessionEnded', session.fields),
+  Schema.TaggedStruct('ReviewStopped', { queuedIn: EventNumber }),
+])
 const reviewFacts = Schema.Struct({ facts: ReviewFacts })
 const reviewReport = Schema.Struct({ ...reviewFacts.fields, queuedIn: EventNumber })
 const workProblem = Schema.Struct({
@@ -94,7 +97,6 @@ export const taskLine = line({
   Raised: { from: Schema.Literal('Raised'), owes: 'None', moves: {
     assess: { to: ['Raised'], input: Assessment, owes: 'Pipeline', submission: { move: 'assess', input: Assessment } },
     tryAgain: { to: ['Sent'], input: empty, owes: 'Pipeline', submission: { move: 'tryAgain', input: empty } },
-    linkFix: { to: ['Raised'], input: fixProposal, owes: 'Engine' },
     applyFix: { to: ['Sent'], input: fixProposal, owes: 'Engine' },
     takeAsIs: { to: ['Done'], input: why, owes: 'Owner', submission: { move: 'takeAsIs', input: why } },
     drop: { to: ['Dropped'], input: why, owes: 'Owner', submission: { move: 'drop', input: why } },
@@ -131,25 +133,23 @@ export const questionLine = line({
 export const proposalLine = line({
   null: { from: Schema.Null, owes: 'Anyone', moves: {
     open: { to: ['Drafting'], input: value, submission: { move: 'open', input: value } },
-    submitFix: { to: ['Reviewing'], input: fixDraft, owes: 'Pipeline', submission: { move: 'submitFix', input: fixDraft } },
+    submit: { to: ['Reviewing'], input: firstFix, owes: 'Pipeline', submission: { move: 'submit', input: firstFix } },
   } },
   Drafting: { from: Schema.Literal('Drafting'), owes: 'Proposer', moves: {
     submit: { to: ['Reviewing'], input: proposalDraft, submission: { move: 'submit', input: proposalDraft } },
-    withdrawFix: { to: ['Removed'], input: fixRemoval, owes: 'Engine' },
+    remove: { to: ['Removed'], input: ProposalSubject.members[1], owes: 'Engine' },
   } },
   Reviewing: { from: Schema.Literal('Reviewing'), owes: 'Reviewer', moves: {
     assign: { to: ['Reviewing'], input: empty, owes: 'Engine' },
-    release: { to: ['Reviewing'], input: session, owes: 'Engine' },
-    withdrawFix: { to: ['Removed'], input: fixRemoval, owes: 'Engine' },
-    releaseFixReview: { to: ['Reviewing'], input: Schema.Struct({ queuedIn: EventNumber }), owes: 'Engine' },
+    release: { to: ['Reviewing'], input: reviewRelease, owes: 'Engine' },
+    remove: { to: ['Removed'], input: ProposalSubject.members[1], owes: 'Engine' },
     next: { to: ['WaitingForOwner'], input: reviewReport, submission: { move: 'review', input: reviewFacts } },
     sendBack: { to: ['Drafting'], input: reviewReport },
   } },
   WaitingForOwner: { from: Schema.Literal('WaitingForOwner'), owes: 'Owner', moves: {
     sendBack: { to: ['Drafting'], input: why, submission: { move: 'sendBack', input: why } },
-    withdrawFix: { to: ['Removed'], input: fixRemoval, owes: 'Engine' },
     accept: { to: ['Accepted'], input: empty, submission: { move: 'accept', input: empty } },
-    remove: { to: ['Removed'], input: empty, submission: { move: 'remove', input: empty } },
+    remove: { to: ['Removed'], input: ProposalSubject, submission: { move: 'remove', input: empty } },
   } },
   Accepted: { from: Schema.Literal('Accepted'), owes: 'None', moves: {} },
   Removed: { from: Schema.Literal('Removed'), owes: 'None', moves: {} },
@@ -191,7 +191,6 @@ export const TaskEvent = Schema.Union([
   taskProtocol.event('Reviewing', 'raise'),
   taskProtocol.event('Raised', 'assess'),
   taskProtocol.event('Raised', 'tryAgain'),
-  taskProtocol.event('Raised', 'linkFix'),
   taskProtocol.event('Raised', 'applyFix'),
   taskProtocol.event('Raised', 'takeAsIs'),
   taskProtocol.event('Raised', 'drop'),
@@ -230,14 +229,12 @@ const questionRequests = [
 const proposalProtocol = protocol({ line: Schema.Literal('Proposal'), key: ProposalKey }, proposalLine)
 export const ProposalEvent = Schema.Union([
   proposalProtocol.event('null', 'open'),
-  proposalProtocol.event('null', 'submitFix'),
-  proposalProtocol.event('Drafting', 'withdrawFix'),
-  proposalProtocol.event('Reviewing', 'withdrawFix'),
-  proposalProtocol.event('WaitingForOwner', 'withdrawFix'),
+  proposalProtocol.event('null', 'submit'),
+  proposalProtocol.event('Drafting', 'remove'),
+  proposalProtocol.event('Reviewing', 'remove'),
   proposalProtocol.event('Drafting', 'submit'),
   proposalProtocol.event('Reviewing', 'assign'),
   proposalProtocol.event('Reviewing', 'release'),
-  proposalProtocol.event('Reviewing', 'releaseFixReview'),
   proposalProtocol.event('Reviewing', 'next'),
   proposalProtocol.event('Reviewing', 'sendBack'),
   proposalProtocol.event('WaitingForOwner', 'sendBack'),
@@ -247,7 +244,7 @@ export const ProposalEvent = Schema.Union([
 export type ProposalEvent = Of<typeof ProposalEvent>
 const proposalRequests = [
   proposalProtocol.request('null', proposalLine.null.moves.open),
-  proposalProtocol.request('null', proposalLine.null.moves.submitFix),
+  proposalProtocol.request('null', proposalLine.null.moves.submit),
   proposalProtocol.request('Drafting', proposalLine.Drafting.moves.submit),
   proposalProtocol.request('Reviewing', proposalLine.Reviewing.moves.next),
   proposalProtocol.request('WaitingForOwner', proposalLine.WaitingForOwner.moves.sendBack),

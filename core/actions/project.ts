@@ -1,6 +1,6 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
-  EventNumber, ReadPosition, Rationale, hostSession, RetryLimit as RetryLimitValue, staffedIn, submissionParty, taskLine, StoredEvent, Submission, liveSession, boundHostSession, refuse, reviewOutcome,
+  EventNumber, ReadPosition, Rationale, hostSession, RetryLimit as RetryLimitValue, staffedIn, submissionParty, proposalLine, taskLine, StoredEvent, Submission, liveSession, boundHostSession, pendingFix, refuse, reviewOutcome,
   type Project, type ProposalKey, type TaskKey, type LiveSession, type Of, type Projection, type Refusal, type StoredActor, type Party,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
@@ -48,25 +48,23 @@ const followingMoves = (event: StoredEvent, project: Project, before: Projection
     }
     for (const { key, phase } of project.proposals.values()) {
       if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === event.key)
-        moves.push({ line: 'Proposal', key, from: 'Reviewing', move: 'release', input })
+        moves.push({ line: 'Proposal', key, from: 'Reviewing', move: 'release', input: { _tag: 'SessionEnded', ...input } })
     }
     return moves
   }
   if (event.line === 'Task' && event.from === 'Raised') {
     const prior = before?.tasks.get(event.key)?.phase
     const current = project.tasks.get(event.key)?.phase
-    if (prior?._tag !== 'Raised' || prior.fix._tag !== 'Proposed') return []
-    if (event.move !== 'drop' && event.move !== 'takeAsIs' &&
-        !(event.move === 'assess' && current?._tag === 'Raised' && current.fix._tag === 'Assessed')) return []
-    const proposal = project.proposals.get(prior.fix.proposal)
+    if (prior?._tag !== 'Raised' || !before) return []
+    const changedCause = event.move === 'assess' && prior.fix._tag === 'Assessed' && current?._tag === 'Raised' &&
+      prior.fix.assessment.missed !== event.input.missed
+    if (event.move !== 'drop' && event.move !== 'takeAsIs' && !changedCause) return []
+    const proposal = pendingFix(before, event.key)
     const from = proposal?.phase._tag
     if (!proposal || (from !== 'Drafting' && from !== 'Reviewing' && from !== 'WaitingForOwner')) return []
-    return [{ line: 'Proposal', key: proposal.key, move: 'withdrawFix', from, input: { task: event.key } }]
+    return [{ line: 'Proposal', key: proposal.key, move: 'remove', from, input: { _tag: 'Fix', task: event.key } }]
   }
   if (event.line !== 'Proposal') return []
-  if (event.move === 'submitFix') return [{
-    line: 'Task', key: event.input.task, from: 'Raised', move: 'linkFix', input: { proposal: event.key },
-  }]
   if (event.move !== 'accept') return []
   const proposal = project.proposals.get(event.key)
   if (proposal?.phase._tag !== 'Accepted') return []
@@ -187,11 +185,12 @@ const moveFor = (
     return moved({ ...request, from: 'Open' })
   }
   switch (request.move) {
-    case 'open':
-    case 'submitFix': return moved({ ...request, from: null })
-    case 'submit': return moved({ ...request, from: 'Drafting' })
+    case 'open': return moved({ ...request, from: null })
+    case 'submit': return Schema.is(proposalLine.null.moves.submit.input)(request.input)
+      ? moved({ ...request, input: request.input, from: null })
+      : moved({ ...request, input: request.input, from: 'Drafting' })
+    case 'remove': return moved({ ...request, from: 'WaitingForOwner', input: { _tag: 'Onboarding' } })
     case 'accept':
-    case 'remove':
     case 'sendBack': return moved({ ...request, from: 'WaitingForOwner' })
     case 'review': {
       const { line, key, input: { facts } } = request

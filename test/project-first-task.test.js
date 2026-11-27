@@ -31,7 +31,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=25; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=26; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -347,7 +347,7 @@ exec sleep 90
           ? { ...rule, text: 'Make the result clear and concise.' } : rule),
       })),
     }
-    put('fix.yaml', { line: 'Proposal', key: 'proposal:fix', move: 'submitFix', input: { task: raisedKey, value: fixDraft } })
+    put('fix.yaml', { line: 'Proposal', key: 'proposal:fix', move: 'submit', input: { subject: { _tag: 'Fix', task: raisedKey }, value: fixDraft } })
     const beforeFixReview = new Set(readdirSync(captures))
     await apply(['onboard', 'submit', await basis(), '--file=fix.yaml'], live.token, 'submit fix')
     const fixReviewer = await fresh(beforeFixReview)

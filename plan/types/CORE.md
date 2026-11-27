@@ -254,7 +254,7 @@ Nanda accepted the Round 70 names and moves with the removals recorded below. Th
 | integrate | removed as a move | The integration result gives the later parallel task its basis for returning to review. |
 | evaluateFix | removed as a move | The assessment stays with Evaluating until a proposal, split, or question is ready. |
 | draftFix | removed as a move | The first draft enters Reviewing in the same move that submits it. |
-| submitFix | U9 | The pipeline submits the first complete fix draft and opens fresh review. A revised draft uses submit. |
+| submit | U9 | A first fix submission has a Fix subject. A revised draft uses the same move. |
 | Project.apply | keep | The engine applies the accepted staffing or responsibility in the same transaction as proposal acceptance. |
 | acceptFix | rename to accept | The owner accepts the nested proposal and the task returns to Sent. |
 | sendBackFix | rename to sendBack | The owner returns the proposal to Drafting with feedback. |
@@ -274,7 +274,7 @@ Nanda accepted the Round 70 names and moves with the removals recorded below. Th
 | openQuestion | removed as a move | The question is created in Open with an identified recipient. |
 | startSession | removed as a move | The observation of a new session adds its Live record to the project. |
 | Preparing | removed from Fix | A proposal uses Drafting when it is returned for changes. |
-| Proposed | U9 | The raised task names the proposal entry in the project. |
+| Proposed | removed in U9 review | The proposal names its task through its Fix subject. |
 | Evaluating | keep | The pipeline assesses the break at the raised task’s review tier. |
 | ReviewLevel | keep | The tier identifies a rule, standard, direction, or principle. |
 
@@ -283,16 +283,16 @@ Nanda accepted the Round 70 names and moves with the removals recorded below. Th
 | Name | Where it appears | Meaning |
 | --- | --- | --- |
 | `Assessment`, `missed`, `Staff`, `Guidance`, `MovingTarget` | Raised | The pipeline names the cause and records its reasoning in `why`. |
-| `Fix`, `fix`, `Unassessed`, `Assessed`, `Proposed`, `assessment`, `proposal` | Raised | The task keeps its assessment and names the proposal entry after submission. |
+| `Fix`, `fix`, `Unassessed`, `Assessed`, `assessment` | Raised | The task keeps its assessment. |
 | `retained`, `NoResult`, `Retained` | Raised | Distinguishes an unfinished raise from a finished result with its evidence and feedback. |
 | `automaticRetry`, `Available`, `Used` | Task | Tracks the single pipeline retry through subsequent phases. |
 | `accepted`, `Reviewed`, `Owner { why }` | Done | Shows how the task’s result was accepted. |
 | `Dropped { why }`, `drop` | Task | The sender closes a raised task and records the reason. The root sender is the owner. |
 | `assess`, `tryAgain`, `takeAsIs` | Task | Record the cause, resend for the one pipeline retry, or keep the finished result by owner choice. |
-| `FixDraft`, `submitFix`, `linkFix` | Proposal and Task | Submit the complete Direction or Staffing draft for review, then associate its entry with the raised task. |
+| `submit` | Proposal | Submit the complete Direction or Staffing draft with its Fix subject for review. |
 | `applyFix` | Task | Resend under the exact accepted direction or applied staffing. |
 | `subject`, `Onboarding`, `Fix { task }` | Proposal | Tells an ordinary proposal apart from a proposal meant to resolve a raised task. |
-| `withdrawFix`, `releaseFixReview` | Proposal | Record the withdrawal when the task closes or picks another route, or release a confirmed stopped review for a replacement. |
+| `remove`, `release` | Proposal | Record the withdrawal when the task closes or picks another route, or release a confirmed stopped review for a replacement. Release records `SessionEnded` or `ReviewStopped`. |
 | `Assess`, `TryAgain`, `DraftFix` | Work wait | The pipeline’s next action on the raised case. |
 
 ## 2. Core types

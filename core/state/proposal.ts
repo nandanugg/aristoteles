@@ -2,7 +2,7 @@ import { Result, Schema } from 'effect'
 import { fixKind, staffForFix } from './raised.ts'
 import { hostRole,
   Direction, ProposalValue, Rationale, actorFor, currentQuestion, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, sameActor, staffOf, subagentCapacity,
-  validateStaffing, reviewOutcome, ruleCoverage, proposalReviewRules, roleOf, activeWork, latestSession, pipelineStaff, taskRules, type Task, type Project, type Proposal, type ProposalEvent, type Refusal, type Version, proposalText, versionOf,
+  validateStaffing, reviewOutcome, ruleCoverage, proposalReviewRules, roleOf, activeWork, latestSession, pendingFix, pipelineStaff, taskRules, type Task, type Project, type Proposal, type ProposalEvent, type Refusal, type Version, proposalText, versionOf,
 } from '../schema/project.ts'
 
 const wrongMove = () => Result.fail(refuse('WrongMove', Rationale.make('That move does not apply to the proposal’s phase.')))
@@ -102,17 +102,17 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     Result.succeed({ ...project, proposals: new Map(project.proposals).set(key, proposal) })
   if (event.from === null) {
     if (stage) return stale()
-    if (event.move === 'submitFix') {
+    if (event.move === 'submit') {
       if (!session || session.staff.key !== pipelineStaff(project)?.key) return wrongActor()
-      const task = project.tasks.get(event.input.task)
-      if (!activeWork(project) || task?.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Assessed') return wrongMove()
+      const task = project.tasks.get(event.input.subject.task)
+      if (!activeWork(project) || task?.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Assessed' || pendingFix(project, task.key)) return wrongMove()
       if (task.changedIn > read || session.startedIn > read) return stale()
-      const { value } = event.input
+      const { subject, value } = event.input
       const version = value._tag === 'Direction' ? directionBasis(project, task) : effectiveVersion(project, value)
       if (!version || version.acceptedIn > read) return stale()
       return Result.flatMap(validFix(project, task, value, version, 'submit'), (checked) => store({
         key, value: checked, basis: { _tag: 'Version', version }, questions: new Map(),
-        subject: { _tag: 'Fix', task: task.key }, proposer: actor, retryCount: RetryCount.make(0),
+        subject, proposer: actor, retryCount: RetryCount.make(0),
         phase: { _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, changedIn: number,
       }))
     }
@@ -139,18 +139,21 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       ? store({ ...stage, ...fields, phase, changedIn: number }) : wrongMove()
 
   const task = stage.subject._tag === 'Fix' ? project.tasks.get(stage.subject.task) : undefined
-  if (event.move === 'withdrawFix') {
+  if (event.move === 'remove' && event.input._tag === 'Fix') {
     if (actor._tag !== 'Human' || !task || event.input.task !== task.key || task.changedIn !== Number(read)) return wrongActor()
     if (task.phase._tag === 'Dropped' || (task.phase._tag === 'Done' && task.phase.accepted._tag === 'Owner') ||
         (task.phase._tag === 'Raised' && task.phase.fix._tag === 'Assessed' && phase._tag === 'Drafting'))
       return move({ _tag: 'Removed' })
     return wrongMove()
   }
+  if (event.move === 'remove')
+    return event.from === 'WaitingForOwner' && actor._tag === 'Human' && stage.subject._tag === 'Onboarding'
+      ? move({ _tag: 'Removed' }) : wrongMove()
   if (event.from === 'Drafting') {
     const proposer = actorFor(project, stage.proposer)
     if (stage.subject._tag === 'Fix') {
       if (!session || session.staff.key !== pipelineStaff(project)?.key || session.startedIn > read) return wrongActor()
-      if (task?.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Proposed' || task.phase.fix.proposal !== key) return wrongMove()
+      if (task?.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Assessed' || pendingFix(project, task.key)?.key !== key) return wrongMove()
       if (task.changedIn > read || (phase._tag === 'Drafting' && phase.feedback._tag === 'Owner' && task.changedIn <= stage.changedIn))
         return stale()
     } else if (!acting || !proposer || !sameActor(proposer, acting)) return wrongActor()
@@ -173,17 +176,16 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
   }
   if (event.from === 'Reviewing' && phase._tag === 'Reviewing') {
-    if (event.move === 'releaseFixReview') {
-      if (actor._tag !== 'Human') return wrongActor()
-      if (!task || phase.assignment._tag !== 'Assigned' || phase.assignment.queuedIn !== event.input.queuedIn) return wrongMove()
-      return move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
-    }
     if (event.move === 'release') {
       if (actor._tag !== 'Human') return wrongActor()
-      const ended = project.sessions.get(event.input.session)
-      if (phase.assignment._tag !== 'Assigned' || phase.assignment.actor.key !== event.input.session || ended?._tag !== 'Ended')
-        return wrongMove()
-      if (ended.changedIn > read) return stale()
+      if (phase.assignment._tag !== 'Assigned') return wrongMove()
+      if (event.input._tag === 'ReviewStopped') {
+        if (!task || phase.assignment.queuedIn !== event.input.queuedIn) return wrongMove()
+      } else {
+        const ended = project.sessions.get(event.input.session)
+        if (phase.assignment.actor.key !== event.input.session || ended?._tag !== 'Ended') return wrongMove()
+        if (ended.changedIn > read) return stale()
+      }
       return move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
     }
     const reviewer = staffOf(project, hostRole(project).key)
@@ -214,14 +216,13 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     return move({ _tag: 'Drafting', feedback: { _tag: 'Review', facts } }, { retryCount: retries })
   }
   if (event.from !== 'WaitingForOwner' || actor._tag !== 'Human') return wrongActor()
-  if (event.move === 'remove') return task ? wrongMove() : move({ _tag: 'Removed' })
   if (event.move === 'sendBack') return move({ _tag: 'Drafting', feedback: { _tag: 'Owner', why: event.input.why } })
   const previous = stage.basis._tag === 'Version' ? stage.basis.version : undefined
   if (stage.value._tag === 'Direction' ? previous && !latestDirectionVersion(project, previous)
     : effectiveVersion(project, stage.value)?.acceptedIn !== previous?.acceptedIn) return stale()
   const versionNumber = (previous?.number ?? 0) + 1
   if (!Schema.is(VersionNumber)(versionNumber)) return wrongMove()
-  if (task && (task.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Proposed' || task.phase.fix.proposal !== key))
+  if (task && (task.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Assessed' || pendingFix(project, task.key)?.key !== key))
     return wrongMove()
   if (task && task.changedIn > read) return stale()
   const accepted = task && previous ? validFix(project, task, stage.value, previous, 'accept')

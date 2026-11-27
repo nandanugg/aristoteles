@@ -18,8 +18,9 @@ module fixOwnerChoiceCase {
     all { state.phase == Unresolved, state.retained, state.missed == Unassessed,
       state' = { ...state, missed: missed } }
   }
+  def retryCause(missed: Missed): bool = missed == StaffMiss or missed == MovingTarget
   action tryAgain = all {
-    state.phase == Unresolved, state.missed == StaffMiss, state.proposal == Removed,
+    state.phase == Unresolved, retryCause(state.missed), state.proposal == Removed,
     state' = if (state.retries == 0 or not(retryGuard)) { ...state, phase: SentAgain, retries: state.retries + 1 }
       else { ...state, declinedRetry: true }
   }
@@ -27,9 +28,9 @@ module fixOwnerChoiceCase {
     state.phase == SentAgain, state.proposal == Removed,
     state' = { ...state, phase: Unresolved, missed: Unassessed }
   }
-  action submitFix = all {
+  action submitFirst = all {
     state.phase == Unresolved, state.proposal == Removed,
-    state.missed == GuidanceMiss or (state.missed == StaffMiss and state.retries == 1),
+    state.missed == GuidanceMiss or (retryCause(state.missed) and state.retries == 1),
     state' = { ...state, proposal: submit(Drafting(1)) }
   }
   action resubmit = all { state.proposal == Drafting(2),
@@ -59,11 +60,11 @@ module fixOwnerChoiceCase {
     all { state.phase == Unresolved,
       state' = if (actor == 9) { ...state, phase: Dropped, proposal: Removed } else state }
   }
-  action step = any { assess, tryAgain, raiseAgain, submitFix, resubmit, review, sendBack,
+  action step = any { assess, tryAgain, raiseAgain, submitFirst, resubmit, review, sendBack,
     accept, takeAsIs, drop, state' = state }
   val Safety = state.retries <= 1 and not(state.badBasis) and (state.phase == Taken implies state.retained)
   val Success = state.phase == SentAgain and state.missed == GuidanceMiss and state.proposal == Accepted(2)
-  val Fault = state.declinedRetry and state.proposal == WaitingForOwner(1) and state.missed == StaffMiss
+  val Fault = state.declinedRetry and state.proposal == WaitingForOwner(1) and state.missed == MovingTarget
 }
 module fixOwnerChoice {
   import fixOwnerChoiceCase(basisGuard = true, retryGuard = true).* from "./fixOwnerChoice"

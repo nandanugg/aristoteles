@@ -4,7 +4,7 @@ import { Result } from 'effect'
 import { ReviewInput } from './review-input.ts'
 import type { ProposalReply } from './project-api.ts'
 import { ReviewEvidence } from './project-evidence.ts'
-import { Rationale, takeAsIsEligibility, roleOf, taskRole, taskRules, type Project, type Refusal, type Submission, type Task, type TaskKey, type Of, type WholeFile } from '../../../core/schema/project.ts'
+import { Rationale, pendingFix, takeAsIsEligibility, roleOf, taskRole, taskRules, type Project, type Refusal, type Submission, type Task, type TaskKey, type Of, type WholeFile } from '../../../core/schema/project.ts'
 
 function FileResult({ file }: { readonly file: WholeFile }) {
   const { image } = file
@@ -46,7 +46,7 @@ export function TaskPanel({ task, project, commandBlock, submit }: {
   }, [task.key, task.changedIn, phase._tag, commandBlock])
   const raised = phase._tag === 'Raised' ? phase : undefined
   const retained = raised?.retained._tag === 'Retained' ? raised.retained : undefined
-  const proposal = raised?.fix._tag === 'Proposed' ? project.proposals.get(raised.fix.proposal) : undefined
+  const proposal = raised ? pendingFix(project, task.key) : undefined
   const result = phase._tag === 'ReadyToReview' || phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.result : retained?.result
   const feedback = phase._tag === 'Working' ? phase.attempt.feedback : phase._tag === 'Sent' ? phase.feedback : null
   const outcomes = phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.outcomes : retained?.outcomes

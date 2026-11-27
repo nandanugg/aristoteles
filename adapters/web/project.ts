@@ -34,8 +34,8 @@ export const projectSubmission = (
   })
   return Effect.matchEffect(Effect.flatMap(input, (body) => submit(journal, body)), {
     onSuccess: ({ event, following }) => Effect.gen(function* () {
-      if (review && (event.line === 'Proposal' && (event.from !== null || event.move === 'submitFix') ||
-          following.some((entry) => entry.line === 'Proposal' && entry.move === 'withdrawFix')))
+      if (review && (event.line === 'Proposal' && (event.from !== null || event.move === 'submit') ||
+          following.some((entry) => entry.line === 'Proposal' && entry.move === 'remove')))
         yield* Effect.forkDetach(Effect.result(review))
       if (activate && event.line === 'Project' && event.from === 'Onboarding' && event.move === 'next')
         yield* Effect.forkDetach(Effect.result(activate))

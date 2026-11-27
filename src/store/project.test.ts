@@ -45,7 +45,7 @@ test('the project opens with one Host and one Pipeline in the role map', () => w
 
 test.each([
   ['old store', 'CREATE TABLE event (seq); PRAGMA user_version = 10'],
-  ['previous project format', `${PROJECT_EVENTS} PRAGMA application_id = ${PROJECT_APPLICATION}; PRAGMA user_version = 25`],
+  ['previous project format', `${PROJECT_EVENTS} PRAGMA application_id = ${PROJECT_APPLICATION}; PRAGMA user_version = 26`],
   ['foreign SQLite database', 'CREATE TABLE unrelated (row)'],
   ['foreign matching version', `CREATE TABLE project_event (row); PRAGMA user_version = ${PROJECT_FORMAT}`],
   ['regular file', ''],

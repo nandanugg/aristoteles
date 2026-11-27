@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { acceptedDirections } from '../../core/derived/project/next-step.ts'
-import { DirectionVersion, Introduction, Markdown, roleOf, staffByKey, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type ReadPosition, type Refusal, type ReviewFacts, type StoredEvent, type Task } from '../../core/schema/project.ts'
+import { DirectionVersion, Introduction, Markdown, pendingFix, roleOf, staffByKey, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type ReadPosition, type Refusal, type ReviewFacts, type StoredEvent, type Task } from '../../core/schema/project.ts'
 
 const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
   ? `${evidence.file}:${evidence.lines.first}–${evidence.lines.last} ${evidence.text}`
@@ -8,6 +8,7 @@ const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === '
 
 export const projectTaskWords = (project: Project, task: Task, blocked: Refusal['why'] | null = null): Of<typeof TaskBriefText> => {
   const { phase } = task
+  const proposal = phase._tag === 'Raised' ? pendingFix(project, task.key) : undefined
   return TaskBriefText.make([
     `Task ${task.key}: ${task.name}`,
     `Goal: ${task.goal}`,
@@ -31,8 +32,8 @@ export const projectTaskWords = (project: Project, task: Task, blocked: Refusal[
       ...(phase.fix._tag !== 'Unassessed' ? [
         `Assessment: ${phase.fix.assessment.missed} · ${phase.fix.assessment.why}`,
         ...(phase.fix.assessment.missed === 'MovingTarget' ? ['Follow the app’s directions for a moving target.'] : []),
-        ...(phase.fix._tag === 'Proposed' ? [
-          `Fix proposal ${phase.fix.proposal} · ${project.proposals.get(phase.fix.proposal)?.phase._tag}`,
+        ...(proposal ? [
+          `Fix proposal ${proposal.key} · ${proposal.phase._tag}`,
         ] : []),
       ] : []),
     ] : []),
@@ -132,10 +133,9 @@ export const sessionUpdateWords = (project: Project, session: LiveSession, event
         }
         if (event.move === 'sendBack')
           return `Proposal ${event.key} returned\n${event.from === 'Reviewing' ? reviewFactsWords(event.input.facts).join('\n') : event.input.why}`
-        if (event.move === 'submitFix') return `Fix proposal ${event.key} submitted for task ${event.input.task}.`
-        if (event.move === 'withdrawFix') return `Fix proposal ${event.key} withdrawn for task ${event.input.task}.`
+        if (event.from === null && event.move === 'submit') return `Fix proposal ${event.key} submitted for task ${event.input.subject.task}.`
         if (event.move === 'accept') return `Proposal ${event.key} accepted.`
-        if (event.move === 'release' || event.move === 'releaseFixReview') return `Proposal ${event.key} returned to the review queue.`
+        if (event.move === 'release') return `Proposal ${event.key} returned to the review queue.`
         if (event.move === 'remove') return `Proposal ${event.key} removed.`
         return `Proposal ${event.key} assigned for review.`
       }
@@ -151,7 +151,6 @@ export const sessionUpdateWords = (project: Project, session: LiveSession, event
             case 'tryAgain': return `Task ${event.key} sent for its one automatic retry.`
             case 'takeAsIs': return `Task ${event.key} taken as is · ${event.input.why}`
             case 'drop': return `Task ${event.key} dropped · ${event.input.why}`
-            case 'linkFix': return `Task ${event.key} linked to fix proposal ${event.input.proposal}.`
             case 'applyFix': return `Task ${event.key} sent under accepted fix ${event.input.proposal}.`
           }
         }

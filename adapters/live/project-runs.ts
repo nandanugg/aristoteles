@@ -6,7 +6,7 @@ import { recordObserved, type AuthenticatedActor, type CloseRaised } from '../..
 import { acknowledgeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import {
   EventNumber, HostCredential, LaunchNonce, LaunchVerifier, boundHostSession, PaneAddress, ProjectCredential, ProposalKey, Rationale, StaffSessionKey, TaskKey,
-  activeWork, takeAsIsEligibility, refuse, type Of, type Project, type Refusal, type Staff,
+  activeWork, pendingFix, takeAsIsEligibility, refuse, type Of, type Project, type Refusal, type Staff,
 } from '../../core/schema/project.ts'
 import { dbPath, digest, projectLock, removeProjectSession } from '../../core/services/project.ts'
 import type { Journal } from '../../core/services/project.ts'
@@ -110,7 +110,7 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
         const { queuedIn } = phase.assignment
         if (yield* perform(() => reviewIsRunning(proposal.key, queuedIn))) continue
         const released = yield* recordObserved(journal, { _tag: 'Human' }, read, {
-          line: 'Proposal', from: 'Reviewing', key: proposal.key, move: 'releaseFixReview', input: { queuedIn },
+          line: 'Proposal', from: 'Reviewing', key: proposal.key, move: 'release', input: { _tag: 'ReviewStopped', queuedIn },
         })
         read = released.state.read
       }
@@ -147,12 +147,12 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
       const project = yield* readOpenProject(journal)
       const task = project.tasks.get(request.key)
       const phase = task?.phase
-      if (activeWork(project) && task && phase?._tag === 'Raised' && phase.fix._tag === 'Proposed' &&
+      if (activeWork(project) && task && phase?._tag === 'Raised' &&
           task.changedIn <= request.read && request.read <= project.read &&
           (request.move === 'drop' || takeAsIsEligibility(phase) === 'Allowed')) {
-        const proposal = project.proposals.get(phase.fix.proposal)
+        const proposal = pendingFix(project, task.key)
         const review = proposal?.phase
-        if (proposal && review?._tag === 'Reviewing' && review.assignment._tag === 'Assigned') {
+        if (proposal && proposal.changedIn <= request.read && review?._tag === 'Reviewing' && review.assignment._tag === 'Assigned') {
           const { queuedIn } = review.assignment
           yield* perform(() => {
             for (const key of keys()) {
