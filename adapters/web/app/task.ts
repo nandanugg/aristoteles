@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { html } from 'htm/preact'
-import { ReviewEvidence } from './review.ts'
+import { ReviewEvidence } from './project-evidence.ts'
 import { taskRole, taskRules, type Refusal, type Task, type TaskId, type Of, type WholeFile } from '../../../core/schema/project.ts'
 
 function FileResult({ file }: { readonly file: WholeFile }) {

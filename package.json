@@ -12,6 +12,7 @@
     "spec": "sh core/model/spec.sh",
     "spec:check": "sh core/model/spec.sh --check",
     "spec:tlc": "sh core/model/tlc.sh",
+    "spec:conformance": "bun test --timeout 30000 core/derived/project/replay",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p adapters/web/app/tsconfig.json"
   },
   "devDependencies": {

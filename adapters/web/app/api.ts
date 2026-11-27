@@ -1,7 +1,7 @@
 import { type ActivationPost } from '../contract.ts'
 // The page's links to the server: the JSON routes (fetch, in Effect), the one websocket, the
 // acts of the person, and the toast at the bottom of the page.
-import { Data, Effect, Result, Schema } from 'effect'
+import { Data, Effect, Schema } from 'effect'
 import type { OnboardingAct } from '../../../src/domain/onboarding.ts'
 import { pipeOutbox } from './pipe-outbox.ts'
 import { createSocket } from './pipe-socket.ts'
@@ -201,29 +201,4 @@ export const postActivation = (body: typeof ActivationPost.Type) =>
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }))
 
-import { Refusal as ProjectRefusal, Rationale, refuse as refuseProject, type Project, type Submission } from '../../../core/schema/project.ts'
-import { receiveProjectPayload, replaceProjectSnapshot, type PageProject } from './project-state.ts'
-
-export type ProposalReply = Result.Result<Project, ProjectRefusal>
-
-export const postProjectSubmission = async (
-  endpoint: URL, snapshot: URL, page: PageProject, submission: Submission,
-): Promise<ProposalReply> => {
-  const failed = () => Result.fail(refuseProject('Unavailable', Rationale.make('Could not read the project’s committed response.')))
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST', body: JSON.stringify(submission), headers: { 'content-type': 'application/json' },
-    })
-    const body: unknown = await response.json()
-    if (!response.ok) {
-      const refusal = Schema.decodeUnknownResult(ProjectRefusal, { onExcessProperty: 'error' })(body)
-      return Result.isSuccess(refusal) ? Result.fail(refusal.success) : failed()
-    }
-    const applied = receiveProjectPayload(page, body)
-    if (Result.isSuccess(applied) && applied.success) return Result.succeed(applied.success)
-    const current = await fetch(snapshot)
-    return current.ok ? replaceProjectSnapshot(page, await current.json()) : failed()
-  } catch {
-    return failed()
-  }
-}
+export { postProjectSubmission, type ProposalReply } from './project-api.ts'

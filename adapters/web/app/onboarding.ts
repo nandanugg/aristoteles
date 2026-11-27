@@ -1,17 +1,11 @@
-import { TaskPanel } from './task.ts'
 import { html } from 'htm/preact'
 import { useEffect, useState } from 'preact/hooks'
-import { Result, Schema } from 'effect'
-import { ownerProposals } from '../../../core/derived/project/review.ts'
-import { questionsFor } from '../../../core/derived/project/next-step.ts'
-import { ApprovedFiles, Rationale, approvedProposals, type Of, type Project, type Refusal, type Submission, type TaskId } from '../../../core/schema/project.ts'
 import { type DirView, OnboardingView } from '../contract.ts'
 import { AiToast } from './ai.ts'
-import { api, attempt, postOnboarding, type ProposalReply } from './api.ts'
+import { api, attempt, postOnboarding } from './api.ts'
 import { Modal } from './modal.ts'
-import { directionLabel, DirectionModal, ProposalCard, ReviewInput } from './onboarding-review.ts'
-import { RoleCard, Roles } from './onboarding-roles.ts'
-import { QuestionCard } from './questions.ts'
+import { directionLabel, DirectionModal, ReviewInput } from './onboarding-review.ts'
+import { Roles } from './onboarding-roles.ts'
 import { Staffing } from './staffing.ts'
 
 type View = typeof OnboardingView.Type
@@ -165,67 +159,4 @@ export function Onboarding({ dir, version }: { dir: Dir; version: number }) {
   </div>`
 }
 
-function renderOnboarding({ project, submit, markerFiles, commandBlock }: {
-  readonly project: Project
-  readonly submit: (submission: Submission) => Promise<ProposalReply>
-  readonly markerFiles: () => Promise<unknown>
-  readonly commandBlock?: (id: Of<typeof TaskId>) => Promise<Refusal['why'] | null>
-}): ReturnType<typeof html> {
-  return html`<section aria-label="Onboarding">
-    ${ownerProposals(project).map((proposal) => html`<${ProposalCard} key=${proposal.id} proposal=${proposal}
-      read=${project.read} submit=${submit} />`)}
-    ${[...project.proposals.values()].filter(({ phase }) => phase._tag === 'Accepted').map((proposal) =>
-      html`<${ProposalCard} key=${proposal.id} proposal=${proposal} read=${project.read} submit=${submit} />`)}
-    <${RoleCard} project=${project} submit=${submit} />
-    ${questionsFor(project, project.owner).map((question) => html`<${QuestionCard} key=${question.id}
-      question=${question} read=${project.read} submit=${async (submission: Submission) => {
-        const result = await submit(submission)
-        return Result.isFailure(result) ? result.failure : null
-      }} />`)}
-    <${ActivationPanel} project=${project} submit=${submit} markerFiles=${markerFiles} />
-    ${[...project.tasks.values()].map((task) => html`<${TaskPanel} key=${task.id} task=${task} commandBlock=${commandBlock} />`)}
-  </section>`
-}
-
-export { renderOnboarding as OnboardingView }
-
-export function ActivationPanel({ project, submit, markerFiles }: {
-  readonly project: Project
-  readonly submit: (submission: Submission) => Promise<ProposalReply>
-  readonly markerFiles: () => Promise<unknown>
-}): ReturnType<typeof html> {
-  const [files, setFiles] = useState<Of<typeof ApprovedFiles> | null>(null)
-  const [failure, setFailure] = useState<Refusal['why'] | null>(null)
-  const [busy, setBusy] = useState(false)
-  const { activation, read, id } = project
-  useEffect(() => setFiles(null), [activation._tag])
-  const send = async (submission: Extract<Submission, { line: { _tag: 'Activation' } }>) => {
-    setBusy(true)
-    try {
-      const response = await submit(submission)
-      setFailure(Result.isFailure(response) ? response.failure.why : null)
-    } finally { setBusy(false) }
-  }
-  return html`<section aria-label="Activation" class="review-stage">
-    ${activation._tag === 'Onboarding' && approvedProposals(project)
-      ? files ? html`<ul>${files.map(({ path }) => html`<li key=${path}>${path}</li>`)}</ul>
-        <button class="btn primary" disabled=${busy} onClick=${() =>
-          void send({ read, line: { _tag: 'Activation', id }, move: 'next', input: { files } })}>Approve and activate</button>`
-        : html`<button class="btn" disabled=${busy} onClick=${async () => {
-          setBusy(true)
-          try {
-            setFiles(Schema.decodeUnknownSync(ApprovedFiles, { onExcessProperty: 'error' })(await markerFiles()))
-            setFailure(null)
-          } catch {
-            setFailure(Rationale.make('Could not read the activation files.'))
-          } finally { setBusy(false) }
-        }}>Review activation files</button>`
-      : activation._tag === 'Onboarding' ? html`<p>Accept the onboarding proposals before activation.</p>`
-      : activation._tag === 'Activating' ? html`<p>Waiting for the bound host to acknowledge activation.</p>`
-      : activation._tag === 'RollingBack' ? html`<p>Restoring approved files.</p>`
-      : activation.work._tag === 'NotStarted' ? html`<button class="btn primary" disabled=${busy} onClick=${() =>
-        void send({ read, line: { _tag: 'Activation', id }, move: 'start', input: {} })}>Start work</button>`
-      : html`<p>Work is open.</p>`}
-    ${failure ? html`<p role="alert">${failure}</p>` : null}
-  </section>`
-}
+export { OnboardingView, ActivationPanel } from './project-onboarding.ts'

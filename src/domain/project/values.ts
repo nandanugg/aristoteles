@@ -95,5 +95,9 @@ export const LaunchVerifier = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64
 export const HostCredential = Schema.String.check(Schema.isPattern(/^host\.[a-f0-9]{64}$/u))
   .pipe(Schema.brand('HostCredential'))
 
+const RunCredential = Schema.String.check(Schema.isPattern(/^run\.[a-f0-9]{32}\.[a-f0-9]{64}$/u))
+  .pipe(Schema.brand('RunCredential'))
+export const ProjectCredential = Schema.Union([HostCredential, RunCredential])
+
 export const CommandExit = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 255 })).pipe(Schema.brand('CommandExit'))
 export const CommandTextOutput = Schema.String.check(Schema.isMaxLength(1_000_000)).pipe(Schema.brand('CommandTextOutput'))

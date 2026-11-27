@@ -9,7 +9,7 @@ import {
   ApprovedFiles, HostCredential, LaunchNonce, LaunchVerifier, PaneAddress, ProjectId, Rationale, SessionId, refuse,
   type ApprovedFile, type EventNumber, type HostLaunch, type Of, type Pane, type Project, type Refusal, type Staff,
 } from '../../core/schema/project.ts'
-import { activationId, activationLock, sha } from '../../core/services/index.ts'
+import { projectLock, digest } from '../../core/services/project.ts'
 import {
   openProjectJournal, projectOriginals, readProjectLaunchFile, removeProjectLaunch, retireProjectLaunchSecret, writeProjectLaunchFile,
   type Committed, type Journal,
@@ -17,7 +17,7 @@ import {
 import { bootstrapPane, observeBootstrap, spawnProjectBootstrap, stopBootstrap } from './bootstrap.ts'
 import { codexFallbackNames, contentOf, inventoryOf, manifestOf, markFile, preflight, restoreFile, safeEntry } from './markers.ts'
 
-export const projectIdAt = (directory: string) => ProjectId.make('project:' + sha(resolve(directory)))
+export const projectIdAt = (directory: string) => ProjectId.make('project:' + digest(resolve(directory)))
 
 export const activationJournal = (directory: string, mode: 'Read' | 'Write') =>
   openProjectJournal(projectIdAt(directory), mode)
@@ -64,7 +64,7 @@ const unavailable = () => refuse('Unavailable', Rationale.make('Confirm the laun
 const wrong = () => refuse('WrongMove', Rationale.make('That operation is unavailable in the current activation phase.'))
 const retired = () => refuse('RetiredSession', Rationale.make('Use the current bound host and its own credential.'))
 const matches = (left: string | null, right: string): boolean =>
-  left !== null && timingSafeEqual(Buffer.from(sha(left), 'hex'), Buffer.from(sha(right), 'hex'))
+  left !== null && timingSafeEqual(Buffer.from(digest(left), 'hex'), Buffer.from(digest(right), 'hex'))
 
 export const projectActivationFiles = (dir: string): Effect.Effect<Of<typeof ApprovedFiles>, Refusal> =>
   protectedIO(() => {
@@ -94,7 +94,7 @@ export const projectActivationOperations = (
 ): ActivationOperations => {
   const locked = <A>(use: (project: Project) => Effect.Effect<A, Refusal>) =>
     Effect.scoped(Effect.gen(function* () {
-      yield* Effect.mapError(activationLock(dir), unavailable)
+      yield* Effect.mapError(projectLock(dir), unavailable)
       return yield* Effect.flatMap(readOpenProject(journal), use)
     }))
   const line = { _tag: 'Activation', id: journal.id } as const
@@ -178,7 +178,7 @@ export const projectActivationOperations = (
         const secret = HostCredential.make('host.' + randomBytes(32).toString('hex'))
         writeProjectLaunchFile(dir, journal.id, phase.at, id, 'nonce', privateNonce)
         writeProjectLaunchFile(dir, journal.id, phase.at, id, 'secret', secret)
-        writeProjectLaunchFile(dir, journal.id, phase.at, id, 'verifier', LaunchVerifier.make(sha(secret)))
+        writeProjectLaunchFile(dir, journal.id, phase.at, id, 'verifier', LaunchVerifier.make(digest(secret)))
         return privateNonce
       })
       yield* provider.spawn(launch.id, nonce, phase.staff)
@@ -248,7 +248,7 @@ export const projectActivationOperations = (
       const phase = project.activation
       if (phase._tag !== 'Active' || phase.binding.id !== id || phase.work._tag === 'NotStarted') return yield* Effect.fail(retired())
       yield* confirmBoundPane(phase.binding)
-      if (!(yield* protectedIO(() => matches(proof(phase.at, id, 'verifier'), sha(credential)))))
+      if (!(yield* protectedIO(() => matches(proof(phase.at, id, 'verifier'), digest(credential)))))
         return yield* Effect.fail(retired())
       const active = phase.work._tag === 'Started' ? (yield* recordHostUse(journal, project, id)).state : project
       yield* protectedIO(() => retireProjectLaunchSecret(dir, journal.id, phase.at, projectLaunch(id)))
@@ -257,7 +257,7 @@ export const projectActivationOperations = (
   }
 }
 
-export const newProjectLaunch = (): Of<typeof SessionId> => SessionId.make('session:' + activationId())
+export const newProjectLaunch = (): Of<typeof SessionId> => SessionId.make('session:' + randomBytes(16).toString('hex'))
 
 export const resumeProjectActivation = (
   journal: Journal, operations: ActivationOperations, action: 'resume' | 'relaunch' | 'rollback',

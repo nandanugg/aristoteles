@@ -1,10 +1,6 @@
-// One process of `work`: `work start` serves the page of the dir (adapters/web), and any other
-// command is one call of the CLI on the real terminal (adapters/cli). The dir is WORK_DIR, or the
-// nearest folder above the current one with an aristoteles.yaml. bin/work.js runs this file as a
-// CommonJS bundle (for its bytecode), so nothing here awaits at the top level.
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { runOnTerminal } from '../adapters/cli/bin.ts'
+import { dirname, join, resolve } from 'node:path'
+import { runProjectCli } from '../adapters/cli/project.ts'
 
 const dirOf = (start: string): string => {
   for (let dir = start; ; dir = dirname(dir)) {
@@ -13,13 +9,25 @@ const dirOf = (start: string): string => {
   }
 }
 
-const run = async (argv: ReadonlyArray<string>, dir: string): Promise<number> => {
-  if (argv[0] !== 'start') return runOnTerminal(argv, dir)
-  // The page's code loads only for `work start`.
-  const { startCommand } = await import('../adapters/web/start.ts')
-  return startCommand(dir, argv, process.env)
+const run = async (argv: readonly string[], dir: string) => {
+  const db = process.env.ARISTOTELES_DB
+  const env = db === undefined ? process.env : { ...process.env, ARISTOTELES_DB: resolve(dir, db) }
+  if (argv[0] === 'start') {
+    const { startProjectCommand } = await import('../adapters/web/project-start.ts')
+    return startProjectCommand(dir, argv, env)
+  }
+  return runProjectCli(argv, {
+    cwd: dir, env,
+    out: (line) => process.stdout.write(line + '\n'),
+    err: (line) => process.stderr.write(line + '\n'),
+    isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    readLine: (prompt) => globalThis.prompt(prompt),
+    now: () => new Date().toISOString(),
+    gitUser: () => Bun.spawnSync(['git', 'config', 'user.name'], { cwd: dir }).stdout.toString().trim(),
+    random: () => crypto.randomUUID(),
+  })
 }
 
-run(process.argv.slice(2), process.env.WORK_DIR ?? dirOf(process.cwd())).then((code) => {
+run(process.argv.slice(2), resolve(process.env.WORK_DIR ?? dirOf(process.cwd()))).then((code) => {
   process.exitCode = code
 })

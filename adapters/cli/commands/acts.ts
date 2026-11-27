@@ -5,17 +5,6 @@
 // the step was derived from. An agent's next step is not printed: it runs `work wait` again.
 import { isAbsolute, join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { reportWork, sendTask, taskBrief } from '../../../core/actions/task.ts'
-import { runTaskCommands, taskCommandBlock, type TaskCommands } from '../../../core/effects/project-commands.ts'
-import { projectTaskWords } from '../../words/work.ts'
-import { Authority as ProjectAuthority, submit } from '../../../core/actions/project.ts'
-import { reportTaskReview } from '../../../core/actions/task-review.ts'
-import { decodeQuestionInput } from '../../../core/actions/question.ts'
-import {
-  Answer as ProjectAnswer, QuestionId, Rationale, StoredActor, TaskDraft, TaskId, ReviewFacts, taskLine, refuse as projectRefuse,
-  type Of, type ReadPosition, type Refusal as ProjectRefusal,
-} from '../../../core/schema/project.ts'
-import type { Committed, Journal } from '../../../core/services/project.ts'
 import { settleWorker } from '../../../core/actions/worker.ts'
 import {
   WORK,
@@ -784,70 +773,4 @@ const run: Command = (call) =>
 
 export const commands: Commands = { ...fresh(ACTS), 'recheck-brief': recheckBrief, run, top: topCommand(openTop), hook, forward }
 
-// Format 16 question and answer commands bind the addressed recipient or question before intake.
-export const projectQuestionCommand = (
-  journal: Journal, command: 'question' | 'answer', target: string, read: Of<typeof ReadPosition>, yaml: string,
-): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
-  const raw = yield* Effect.try({
-    try: () => parseYaml(yaml),
-    catch: () => projectRefuse('InvalidInput', Rationale.make('Load a valid YAML question or answer.')),
-  })
-  if (command === 'answer') {
-    const id = yield* decodeQuestionInput(QuestionId, target)
-    const answer = yield* decodeQuestionInput(ProjectAnswer, raw)
-    return yield* submit(journal, { read, line: { _tag: 'Question', id }, move: 'answer', input: { answer } })
-  }
-  const to = yield* decodeQuestionInput(StoredActor, { _tag: target.startsWith('human:') ? 'Human' : 'Staff', id: target })
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || 'to' in raw) {
-    return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Address the recipient in the command.')))
-  }
-  if (!('id' in raw)) return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Name the question.')))
-  const { id, ...fields } = raw
-  return yield* submit(journal, { read, line: { _tag: 'Question', id }, move: 'open', input: { ...fields, to } })
-})
-
-const loadTaskYaml = (yaml: string) => Effect.try({
-  try: () => parseYaml(yaml),
-  catch: () => projectRefuse('InvalidInput', Rationale.make('Load a valid YAML task or work report.')),
-})
-const checkedTaskInput = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, value: unknown) => Effect.mapError(
-  Schema.decodeUnknownEffect(schema, { onExcessProperty: 'error' })(value),
-  () => projectRefuse('InvalidInput', Rationale.make('Use the checked task or work report form.')),
-)
-
-export const projectSendCommand = (
-  journal: Journal, read: Of<typeof ReadPosition>, yaml: string,
-): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
-  const { id, ...draft } = yield* checkedTaskInput(Schema.Struct({ id: TaskId, ...TaskDraft.fields }), yield* loadTaskYaml(yaml))
-  return yield* sendTask(journal, { _tag: 'Task', id }, read, draft)
-})
-
-export const projectReportCommand = (
-  journal: Journal, target: unknown, read: Of<typeof ReadPosition>, yaml: string,
-  commands?: TaskCommands,
-): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
-  const id = yield* checkedTaskInput(TaskId, target)
-  const line = { _tag: 'Task', id } as const
-  const report = yield* checkedTaskInput(Schema.Union([taskLine.Working.moves.next.submission.input, taskLine.Working.moves.raise.submission.input, taskLine.Sent.moves.next.submission.input]),
-    yield* loadTaskYaml(yaml))
-  const committed = yield* reportWork(journal, line, read, report)
-  // A failure to run or append command evidence leaves the accepted report available for recovery.
-  if (commands && 'files' in report) yield* Effect.result(runTaskCommands(journal, line, commands))
-  return committed
-})
-
-export const projectReviewCommand = (
-  journal: Journal, target: unknown, read: Of<typeof ReadPosition>, yaml: string,
-): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
-  const id = yield* checkedTaskInput(TaskId, target)
-  const facts = yield* checkedTaskInput(ReviewFacts, yield* loadTaskYaml(yaml))
-  return yield* reportTaskReview(journal, { _tag: 'Task', id }, read, facts)
-})
-
-export const projectBriefCommand = (journal: Journal, target: unknown, commands?: TaskCommands) => Effect.gen(function* () {
-  const id = yield* checkedTaskInput(TaskId, target)
-  const line = { _tag: 'Task', id } as const
-  const task = yield* taskBrief(journal, line)
-  const blocked = commands && task.phase._tag === 'ReadyToReview' ? yield* taskCommandBlock(journal, line, commands) : null
-  return projectTaskWords(task, blocked)
-})
+export { projectBriefCommand, projectQuestionCommand, projectReportCommand, projectReviewCommand, projectSendCommand } from './project.ts'

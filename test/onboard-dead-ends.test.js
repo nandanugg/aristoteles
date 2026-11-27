@@ -195,15 +195,16 @@ describe('O4: a question needs a draft', () => {
   })
 })
 
-describe('O5: the assess skill quotes the CLI as it prints', () => {
-  test('each `next: ...` that the skill quotes is a line that the commands print', async () => {
-    const skill = readFileSync(join(import.meta.dir, '..', 'skills', 'assess', 'SKILL.md'), 'utf8')
-    const quoted = [...skill.matchAll(/`(next: [^`]+)`/g)].map((m) => m[1])
-    const p = onboardingProject()
-    p.write('draft.yaml', ONBOARD_CONFIG)
-    const printed = lines(ok(await p.agent('onboard config --file=draft.yaml')))
-    for (const q of quoted) expect(printed).toContain(q)
-    // The skill says what to do when the start is refused.
-    expect(skill).toContain('the store cannot start')
-  })
+test('the assessment skill names the shipped journal onboarding commands', () => {
+  const root = join(import.meta.dir, '..')
+  const skill = readFileSync(join(root, 'skills', 'assess', 'SKILL.md'), 'utf8')
+  const result = Bun.spawnSync([process.execPath, join(root, 'bin', 'work.js'), 'help'])
+  expect(result.exitCode).toBe(0)
+  const help = result.stdout.toString()
+  for (const command of ['work onboard open', 'work onboard submit', 'work onboard status', 'work session launch', 'work start']) {
+    expect(skill).toContain(command)
+    expect(help).toContain(command)
+  }
+  expect(skill).toContain('ReadyToReview')
+  expect(skill).not.toContain('work onboard config')
 })

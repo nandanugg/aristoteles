@@ -3,7 +3,7 @@ import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { nextProposalReview } from '../../core/derived/project/review.ts'
 import { Rationale, ReadPosition, refuse, type Project, type Proposal, type Refusal, type LiveSession, type EventNumber, type Of } from '../../core/schema/project.ts'
-import { activationLock } from '../../core/services/index.ts'
+import { projectLock } from '../../core/services/project.ts'
 import type { Committed, Journal } from '../../core/services/project.ts'
 
 export interface Reviews {
@@ -15,7 +15,7 @@ export interface Reviews {
 export const launchNextReview = (
   directory: string, journal: Journal, provider: Reviews,
 ): Effect.Effect<Committed | null, Refusal> => Effect.scoped(Effect.gen(function* () {
-  yield* Effect.mapError(activationLock(directory), () =>
+  yield* Effect.mapError(projectLock(directory), () =>
     refuse('Unavailable', Rationale.make('Could not acquire the onboarding review lock.')))
   const project = yield* readOpenProject(journal)
   yield* provider.reconcile(project)

@@ -34,6 +34,15 @@ const kinds = ['success', 'fault', 'mutant'] as const
 const filename = (kind: typeof kinds[number]) => check + '-' + kind + '.itf.json.gz'
 const origin = ReadPosition.make(0)
 
+test('every registered check has its success, fault and mutant witnesses', () => {
+  const expected = registeredChecks(root).flatMap((check) => kinds.map((kind) => {
+    const name = check + '-' + kind + '.itf.json.gz'
+    expect(readTrace(join(traces, name), check, kind).states.length).toBeGreaterThan(1)
+    return name
+  }))
+  expect(readdirSync(traces).sort()).toEqual(expected.sort())
+})
+
 test('the append seam has all three registered trace inputs', () => {
   expect(registeredChecks(root)).toContain(check)
   expect(readdirSync(traces).filter((name) => name.startsWith(check + '-')).sort())

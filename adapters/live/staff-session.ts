@@ -8,7 +8,7 @@ import {
   type EventNumber, type LiveSession, type Of, type Pane, type Project, type Refusal,
   type SessionAddress, type SessionId, type Staff, type StaffId, type TaskAddress,
 } from '../../core/schema/project.ts'
-import { activationLock } from '../../core/services/index.ts'
+import { projectLock } from '../../core/services/project.ts'
 import type { Committed, Journal } from '../../core/services/project.ts'
 
 export interface Sessions {
@@ -37,7 +37,7 @@ export const staffSessionOperations = (
 ): StaffSessionOperations => {
   const locked = <A>(run: (project: Project) => Effect.Effect<A, Refusal>) =>
     Effect.scoped(Effect.gen(function* () {
-      yield* Effect.mapError(activationLock(directory), () =>
+      yield* Effect.mapError(projectLock(directory), () =>
         refuse('Unavailable', Rationale.make('Could not acquire the project session lock.')))
       const project = yield* readOpenProject(journal)
       yield* provider.reconcile(project)

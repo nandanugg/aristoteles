@@ -2,7 +2,7 @@ import { taskCommandBlock, type TaskCommands } from '../../core/effects/project-
 import { taskBrief } from '../../core/actions/task.ts'
 import { Effect, Option, Result, Schema, Stream } from 'effect'
 import { projectActivationFiles } from '../live/activation.ts'
-import { ownerProposals } from './view.ts'
+import { ownerProposals } from '../../core/derived/project/review.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'
 import { ApprovedFiles, approvedProposals, Projection, Proposal, ReadPosition, Refusal, Rationale, StoredEvents, TaskEvent, refuse, type Of, type TaskAddress } from '../../core/schema/project.ts'

@@ -1,4 +1,4 @@
-import { ReviewEvidence } from './review.ts'
+import { ReviewInput } from './review-input.ts'
 import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
 import type { DirectionCard, QuestionView } from '../contract.ts'
@@ -16,26 +16,7 @@ type Example = NonNullable<Rule['examples']>[number]
 type Sample = Example['output']
 type Choice = 'A' | 'B' | { readonly words: string }
 
-export function ReviewInput({ label, action, onSubmit, compact = false }: {
-  label: string
-  action: string
-  compact?: boolean
-  onSubmit: (words: string) => Promise<unknown>
-}) {
-  const [words, setWords] = useState('')
-  const [saving, setSaving] = useState(false)
-  return html`<form class=${compact ? 'review-input review-input-compact' : 'review-input'} onSubmit=${async (event: Event) => {
-    event.preventDefault()
-    if (!words.trim() || saving) return
-    setSaving(true)
-    try { await onSubmit(words.trim()) } finally { setSaving(false) }
-  }}>
-    <label class="field">${compact ? '' : html`<span>${label}</span>`}
-      <textarea rows="2" aria-label=${compact ? label : undefined} placeholder=${compact ? label : undefined} value=${words}
-        onInput=${(e: Event) => setWords((e.currentTarget as HTMLTextAreaElement).value)} /></label>
-    <button class="btn primary" disabled=${saving || !words.trim()}>${action}</button>
-  </form>`
-}
+export { ReviewInput } from './review-input.ts'
 
 export const directionLabel = (card: ReviewDirection) => {
   if (card.state === 'loading') {
@@ -238,51 +219,4 @@ export function DirectionModal({ card, onClose, readOnly = false }: {
   <//>`
 }
 
-import { Result } from 'effect'
-import { Rationale, type Of, type Proposal as ProjectProposal, type ReadPosition, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
-import { StaffingView } from './staffing.ts'
-import type { ProposalReply } from './api.ts'
-
-export function ProposalCard({ proposal, read, submit }: {
-  readonly proposal: ProjectProposal
-  readonly read: Of<typeof ReadPosition>
-  readonly submit: (submission: Submission) => Promise<ProposalReply>
-}): ReturnType<typeof html> | null {
-  const { phase, value } = proposal
-  const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState<ProjectRefusal | null>(null)
-  if (phase._tag !== 'WaitingForOwner' && phase._tag !== 'Accepted') return null
-  type OwnerMove = Extract<Submission, { line: { _tag: 'Proposal' }; move: 'accept' | 'remove' | 'sendBack' }>
-  type Choice<M> = M extends OwnerMove ? Pick<M, 'move' | 'input'> : never
-  const choose = async (choice: Choice<OwnerMove>) => {
-    if (busy) return
-    setBusy(true)
-    const result = await submit({ ...choice, read, line: { _tag: 'Proposal', id: proposal.id } })
-    setFailure(Result.isFailure(result) ? result.failure : null)
-    setBusy(false)
-  }
-  return html`<article class="review-stage">
-    <h3>${value._tag === 'Staffing' ? 'Staffing' : value._tag === 'Direction' ? value.name : value.role.name}</h3>
-    ${value._tag === 'Staffing' ? html`<${StaffingView} plan=${value} />` :
-      value._tag === 'Direction' ? html`<p>${value.summary}</p><p>${value.text}</p>
-        ${value.source._tag === 'Company' ? html`<p>${value.source.repository} · ${value.source.commit}</p>` : null}
-        <ol>${value.stages.map((stage) => html`<li key=${stage.id}>${stage.name} · ${stage.role.name} · ${stage.work}</li>`)}</ol>
-        ${value.standards.map((standard) => html`<section key=${standard.id}><h4>${standard.name}</h4><p>${standard.text}</p>
-          ${standard.scope._tag === 'Where' ? html`<ul>${standard.scope.facts.map((fact) =>
-            html`<li>${fact.name} · ${fact.value}</li>`)}</ul>` : null}
-          <ul>${standard.rules.map((rule) => html`<li key=${rule.id}>
-            <strong>${rule.name}</strong><p>${rule.text}</p>
-            ${rule.examples.map(({ example, result }) => html`<blockquote>${example.text}<footer>${result}</footer></blockquote>`)}
-          </li>`)}</ul>
-        </section>`)}`
-        : html`<p>${value.summary}</p><p>${value.introduction}</p><ul>${value.duties.map((duty) => html`<li>${duty}</li>`)}</ul>`}
-    ${phase._tag === 'WaitingForOwner' ? html`
-      <ul>${phase.facts.outcomes.map((outcome) => html`<li><${ReviewEvidence} evidence=${outcome.evidence} /></li>`)}</ul>
-      <button class="btn primary" disabled=${busy} onClick=${() => void choose({ move: 'accept', input: {} })}>Accept</button>
-      <button class="btn" disabled=${busy} onClick=${() => void choose({ move: 'remove', input: {} })}>Remove</button>
-      <${ReviewInput} label="What should change?" action="Send back" onSubmit=${(why: string) =>
-        choose({ move: 'sendBack', input: { why: Rationale.make(why) } })} />
-    ` : html`<p>Accepted · version ${phase.version.number}</p>`}
-    ${failure ? html`<p role="alert">${failure.why}</p>` : null}
-  </article>`
-}
+export { ProposalCard } from './project-proposal.ts'

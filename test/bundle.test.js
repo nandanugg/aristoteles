@@ -49,10 +49,10 @@ describe('bin/work.js', () => {
     const cache = join(code, '.cache', 'cli')
     const bundles = () => (existsSync(cache) ? readdirSync(cache) : [])
     // The words of the sources (bin/main.ts, the entry of the bundle) and of bin/work.js.
-    const calls = [['log'], ['help'], ['guide', 'limits']]
+    const calls = [['status'], ['help'], ['onboard', 'show', 'proposal:example']]
     const sources = calls.map((argv) => run('bin/main.ts', ...argv))
     const same = () => expect(calls.map((argv) => run('bin/work.js', ...argv))).toEqual(sources)
-    expect(sources.map((r) => r.code)).toEqual([0, 0, 0])
+    expect(sources.map((r) => r.code)).toEqual([1, 0, 1])
     expect(bundles()).toEqual([])
 
     // The first call builds the bundle; the calls after it load it.
@@ -85,7 +85,7 @@ describe('bin/work.js', () => {
     rmSync(join(code, '.cache'), { recursive: true })
     const at = (argv) =>
       Bun.spawn(['bun', join(code, 'bin', 'work.js'), ...argv], { env, cwd: p.dir, stdout: 'pipe' })
-    const started = [0, 1, 2, 3].map(() => at(['log']))
+    const started = [0, 1, 2, 3].map(() => at(['status']))
     const words = await Promise.all(started.map((s) => new Response(s.stdout).text()))
     expect(words).toEqual(started.map(() => sources[0].out))
     expect(bundles()).toEqual([second])

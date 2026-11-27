@@ -67,6 +67,7 @@ const runningUrl = async (dir: string, record: string): Promise<string | undefin
 
 // The CLI of this copy of aristoteles, whatever process calls this.
 const CLI = join(import.meta.dir, '..', '..', 'bin', 'work.js')
+const fixtureEntry = (env: Env) => env.ARISTOTELES_LEGACY_FIXTURE_ENTRY ?? CLI
 
 // work start --detach (Nanda, 2026-11-13): the host starts the UI from its own shell, and the UI
 // must outlive that shell. The server runs as its own process group, and its words go to a log
@@ -86,7 +87,7 @@ export const workStartDetached = async (
   const log = record.replace(/\.json$/, '.log')
   mkdirSync(dirname(record), { recursive: true })
   const words = openSync(log, 'a')
-  const child = spawn(process.execPath, [CLI, 'start'], {
+  const child = spawn(process.execPath, [fixtureEntry(env), 'start'], {
     cwd: dir,
     env: { ...env, WORK_DIR: dir },
     detached: true,
@@ -117,7 +118,7 @@ const restartOn =
   async (port: number) => {
     out('the code changed; the UI restarts on it')
     pump?.close()
-    const child = spawn(process.execPath, [CLI, 'start'], {
+    const child = spawn(process.execPath, [fixtureEntry(env), 'start'], {
       cwd: dir,
       env: { ...env, WORK_DIR: dir, WORK_PORT: String(port), WORK_NO_OPEN: '1' },
       detached: true,

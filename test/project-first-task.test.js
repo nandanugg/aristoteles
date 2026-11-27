@@ -1,0 +1,301 @@
+import { expect, test } from 'bun:test'
+import { Database } from 'bun:sqlite'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { bootstrapSocket } from '../adapters/live/bootstrap.ts'
+import { direction } from '../src/store/proposal.probe.ts'
+import { host, owner, pipeline, staff } from '../src/store/project.probe.ts'
+import { openProjectPage } from './browser/project-first-task.check.js'
+
+const bin = resolve(import.meta.dir, '../bin/work.js')
+const quote = (word) => "'" + word.replaceAll("'", "'\\''") + "'"
+const until = async (read, description) => {
+  const deadline = Date.now() + 10000
+  do {
+    const value = await read()
+    if (value) return value
+    await Bun.sleep(35)
+  } while (Date.now() < deadline)
+  throw new Error('Did not observe ' + description)
+}
+const git = (cwd, ...args) => expect(Bun.spawnSync(['git', '-C', cwd, ...args]).exitCode).toBe(0)
+const excerpt = (text) => ({ _tag: 'Quote', file: 'sample.md', lines: { first: 1, last: 1 }, text })
+const terminal = (args) => ['script', '-qec', [process.execPath, bin, ...args].map(quote).join(' '), '/dev/null']
+
+test('shipped work refuses an older SQLite format before writing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'project-format-'))
+  const db = join(dir, 'old.db')
+  try {
+    git(dir, 'init', '-q')
+    git(dir, 'config', 'user.name', owner.name)
+    const database = new Database(db)
+    database.exec("PRAGMA user_version=10; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.close()
+    const original = readFileSync(db)
+    const yaml = join(dir, 'project.yaml')
+    writeFileSync(yaml, Bun.YAML.stringify({ owner, host, pipeline, roles: [], staff }))
+    for (const args of [['status'], ['start'], ['onboard', 'open', '--file=' + yaml]]) {
+      const result = Bun.spawnSync(terminal(args), {
+        cwd: dir, env: { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db, WORK_NO_OPEN: '1' },
+      })
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 16 project journal')
+      expect(readFileSync(db).equals(original)).toBe(true)
+    }
+    expect(existsSync(join(dir, '.work'))).toBe(false)
+    expect(existsSync(join(dir, 'project-ui'))).toBe(false)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+}, 30_000)
+
+test('the bundled CLI and served page complete the local first task and refuse stale input', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'project-first-task-'))
+  const dir = join(scratch, 'repo')
+  const db = join(scratch, 'project.db')
+  const captures = join(scratch, 'launches')
+  const path = join(scratch, 'bin')
+  mkdirSync(dir)
+  mkdirSync(captures, { mode: 0o700 })
+  mkdirSync(path)
+  const launch = join(scratch, 'local-session')
+  const realTmux = Bun.which('tmux')
+  if (!realTmux) throw new Error('tmux is required for the local rehearsal')
+  writeFileSync(join(path, 'tmux'), `#!/bin/sh
+key=
+for arg in "$@"; do
+  case "$arg" in
+    boot-*) key=$(printf '%s' "$arg" | cut -c 6-);;
+  esac
+done
+case " $* " in
+  *" new-session "*) [ -z "$key" ] || date +%s%3N > ${quote(captures)}/"$key.issued";;
+esac
+exec ${quote(realTmux)} "$@"
+`, { mode: 0o700 })
+  writeFileSync(launch, `#!/bin/sh
+umask 077
+if [ -n "$ARISTOTELES_BOOTSTRAP_PROJECT" ]; then
+  ${quote(process.execPath)} ${quote(bin)} activation ack "$ARISTOTELES_BOOTSTRAP_SESSION" >/dev/null || exit
+  ${quote(process.execPath)} ${quote(bin)} activation collect "$ARISTOTELES_BOOTSTRAP_SESSION" > ${quote(captures)}/host || exit
+else
+  key=$(printf '%s' "$ARISTOTELES_SESSION" | cut -c 9-)
+  printf '%s' "$ARISTOTELES_TOKEN" > ${quote(captures)}/"$key.token"
+  date +%s%3N > ${quote(captures)}/"$key.started"
+fi
+exec sleep 90
+`, { mode: 0o700 })
+  const env = { ...process.env, PATH: path + ':' + process.env.PATH, WORK_DIR: dir,
+    ARISTOTELES_DB: db, WORK_NO_OPEN: '1' }
+  for (const key of ['TMUX', 'TMUX_PANE', 'ARISTOTELES_SESSION', 'ARISTOTELES_TOKEN']) delete env[key]
+  const call = async (args, options = {}) => {
+    const child = Bun.spawn(options.owner ? terminal(args) : [process.execPath, bin, ...args], {
+      cwd: dir, env: { ...env, ...(options.token ? { ARISTOTELES_TOKEN: options.token } : {}) },
+      stdout: 'pipe', stderr: 'pipe',
+    })
+    const [out, err, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited])
+    return { out: out.replaceAll('\r', ''), err, code }
+  }
+  const ok = async (args, options) => {
+    const result = await call(args, options)
+    expect(result.err + (result.code ? result.out : '')).toBe('')
+    expect(result.code).toBe(0)
+    return result.out
+  }
+  const ownerCall = { owner: true }
+  const put = (name, input) => writeFileSync(join(dir, name), Bun.YAML.stringify(input))
+  let browser
+  let webPid
+  try {
+    git(dir, 'init', '-q')
+    git(dir, 'config', 'user.name', owner.name)
+    writeFileSync(join(dir, 'AGENTS.md'), 'Review the local output.\n')
+    writeFileSync(join(dir, 'aristoteles.yaml'), 'models:\n  local:\n    skills: .claude/skills\n')
+    const local = { ...staff, launch: launch + ' {session}' }
+    put('project.yaml', { owner, host, pipeline, roles: [], staff: local })
+    await ok(['skill', 'install'])
+    expect(existsSync(join(dir, '.claude/skills/aristoteles/SKILL.md'))).toBe(true)
+    await ok(['onboard', 'open', '--file=project.yaml'], ownerCall)
+    const web = await ok(['start', '--detach'])
+    const url = new URL(/Project page (http:[^\s]+)/u.exec(web)?.[1])
+    const record = readdirSync(join(scratch, 'project-ui')).find((name) => name.endsWith('.json'))
+    const webRecord = join(scratch, 'project-ui', record)
+    webPid = JSON.parse(readFileSync(webRecord, 'utf8')).pid
+    for (const skill of ['work', 'assess', 'role-fitness'])
+      expect(existsSync(join(dir, '.claude', 'skills', skill, 'SKILL.md'))).toBe(true)
+    const state = async () => (await fetch(new URL('api/project/snapshot', url))).json()
+    const basis = async () => '--on=' + (await state()).read
+    const events = async () => (await fetch(new URL('api/project/events?after=0', url))).json()
+    const submit = (body, route = 'api/project/submissions') => fetch(new URL(route, url), {
+      method: 'POST', headers: { origin: url.origin, 'content-type': 'application/json' }, body: JSON.stringify(body),
+    })
+    browser = await openProjectPage(url.href)
+    await browser.read(1)
+    const measures = []
+    const launchStaff = async () => {
+      const launched = await ok(['session', 'launch', staff.id], ownerCall)
+      const id = /Staff session (session:[a-f0-9]+)/u.exec(launched)?.[1]
+      const file = join(captures, id.slice(8) + '.token')
+      return { id, token: await until(() => existsSync(file) && readFileSync(file, 'utf8'), 'staff start') }
+    }
+    let live = await launchStaff()
+    const apply = async (args, token, label) => {
+      const start = Date.now()
+      const text = await ok(args, token ? { token } : ownerCall)
+      const number = Number(/Committed event (\d+)/u.exec(text)?.[1])
+      expect(Number.isFinite(number)).toBe(true)
+      await browser.read(number)
+      measures.push([label, Date.now() - start])
+      return { number, start }
+    }
+    const rule = direction.standards[0].rules[0]
+    const drafted = { ...direction, source: { _tag: 'Local' }, stages: [{ ...direction.stages[0], role: host }],
+      standards: [{ ...direction.standards[0], rules: [
+        { ...rule, verification: { _tag: 'Command', text: 'test -f sample.md' } },
+        { ...rule, id: 'rule:wording', name: 'Clear wording',
+          verification: { _tag: 'Prompt', question: 'Is the wording clear?', source: excerpt('Local first result') }, examples: [] },
+      ] }],
+    }
+    const fresh = async (before) => {
+      const file = await until(() => readdirSync(captures).find((name) => name.endsWith('.started') && !before.has(name)), 'fresh child')
+      const key = file.slice(0, -'.started'.length)
+      const started = Number(readFileSync(join(captures, key + '.started'), 'utf8'))
+      const issued = Number(readFileSync(join(captures, key + '.issued'), 'utf8'))
+      return { token: readFileSync(join(captures, key + '.token'), 'utf8'), started, issued, startup: started - issued }
+    }
+    const reviewStarts = []
+    const proposal = async (id, value, title) => {
+      const line = { _tag: 'Proposal', id }
+      put('draft.yaml', { line, move: 'open', input: { value } })
+      await apply(['onboard', 'submit', await basis(), '--file=draft.yaml'], live.token, id + ' open')
+      put('draft.yaml', { line, move: 'submit', input: { value, question: null } })
+      const before = new Set(readdirSync(captures))
+      const submitted = await apply(['onboard', 'submit', await basis(), '--file=draft.yaml'], live.token, id + ' submit')
+      const review = await fresh(before)
+      const commit = (await events()).find(({ number }) => number === submitted.number)
+      reviewStarts.push({
+        fromSubmit: review.started - submitted.start,
+        commitToDispatch: review.issued - Date.parse(commit.at),
+        childStartup: review.startup,
+      })
+      expect(await ok(['wait'], { token: review.token })).toContain('Draft for review (proposal.json)')
+      put('facts.yaml', { outcomes: [{ _tag: 'Holds',
+        evidence: { _tag: 'Quote', file: 'proposal.json', lines: { first: 2, last: 2 }, text: JSON.stringify(value._tag) } }], findings: [] })
+      await apply(['review', id, await basis(), '--file=facts.yaml'], review.token, id + ' review')
+      const start = Date.now()
+      await browser.accept(title)
+      measures.push([id + ' accept', Date.now() - start])
+    }
+    await proposal('proposal:staffing', { _tag: 'Staffing', id: 'staffing:local', staff: [local],
+      subscriptions: [local.subscription] }, 'Staffing')
+    await proposal('proposal:direction', drafted, drafted.name)
+    const question = 'Which wording should the work use?'
+    put('question.yaml', { id: 'question:wording', text: question, about: { _tag: 'Project' },
+      form: { _tag: 'Single', prompt: { text: question, placeholder: null } } })
+    await apply(['question', owner.id, await basis(), '--file=question.yaml'], live.token, 'question')
+    const card = browser.page.getByRole('form', { name: question })
+    await card.getByRole('textbox').fill('Use the local wording.')
+    let started = Date.now()
+    await card.getByRole('button', { name: 'Answer' }).click()
+    await card.waitFor({ state: 'hidden' })
+    measures.push(['answer', Date.now() - started])
+
+    const button = (name) => browser.page.getByRole('button', { name, exact: true })
+    await button('Review activation files').click()
+    started = Date.now()
+    await button('Approve and activate').click()
+    await browser.page.getByText('Waiting for the bound host to acknowledge activation.').waitFor({ timeout: 1000 }).catch(() => {})
+    await button('Start work').waitFor()
+    measures.push(['activation to binding', Date.now() - started])
+    started = Date.now()
+    await button('Start work').click()
+    await browser.page.getByText('Work is open.', { exact: true }).waitFor()
+    measures.push(['start work', Date.now() - started])
+    const hostToken = await until(() => existsSync(join(captures, 'host')) && readFileSync(join(captures, 'host'), 'utf8').trim(), 'host credential')
+    const project = await state()
+    const accepted = project.proposals.find(({ id }) => id === 'proposal:direction').phase.version
+    const prompt = accepted.value.standards[0].rules[1]
+    writeFileSync(join(dir, 'sample.md'), 'Local first result\n')
+    const task = async (id, name) => {
+      put('task.yaml', { id, name, goal: 'Write the local result', reviewer: pipeline.id,
+        direction: { id: accepted.value.id, acceptedAt: accepted.acceptedAt }, stages: accepted.value.stages, facts: [] })
+      await apply(['send', await basis(), '--file=task.yaml'], hostToken, name + ' open')
+    }
+    const id = 'task:first'
+    const name = 'Local first result'
+    await task(id, name)
+    const report = async (id, input, label) => {
+      put('report.yaml', input)
+      return apply(['report', id, await basis(), '--file=report.yaml'], live.token, label)
+    }
+    const beforeCrash = await report(id, {}, 'begin')
+    const finish = async (attempt, result, outcome) => {
+      await report(id, { attempt, summary: 'A local sample', files: [{ path: 'sample.md',
+        image: { _tag: 'Present', contents: result + '\n' }, changed: [{ first: 1, last: 1 }] }] }, 'result')
+      await browser.phase(name, host.name, 'Reviewing')
+      const before = new Set(readdirSync(captures))
+      await apply(['wait'], live.token, 'assign task review')
+      const child = await fresh(before)
+      expect(await ok(['wait'], { token: child.token })).toContain('Clear wording')
+      put('facts.yaml', { outcomes: [{ _tag: outcome, rule: prompt, evidence: excerpt(result) }], findings: [] })
+      await apply(['review', id, await basis(), '--file=facts.yaml'], child.token, 'task review')
+      return child.token
+    }
+    const child = await finish(1, 'Local first result', 'Breaks')
+    await browser.phase(name, host.name, 'Working')
+    await browser.page.getByRole('heading', { name: 'Review feedback' }).waitFor()
+    expect((await state()).tasks.find((task) => task.id === id).phase.attempt.retryCount).toBe(1)
+    expect((await call(['wait'], { token: child })).code).toBe(1)
+
+    Bun.spawnSync([realTmux, '-L', bootstrapSocket(dir), 'kill-session', '-t', '=boot-' + live.id.slice(8)])
+    await browser.phase(name, host.name, 'Sent')
+    const oldReport = await submit({ read: beforeCrash.number, line: { _tag: 'Task', id }, move: 'next', input: {} })
+    expect(oldReport.status).toBe(403)
+    expect((await oldReport.json()).code).toBe('WrongActor')
+    for (const route of ['api/onboarding', 'api/activation', 'api/staffing', 'api/act'])
+      expect((await submit({}, route)).status).toBe(404)
+    const old = live.token
+    live = await launchStaff()
+    expect((await call(['wait'], { token: old })).code).toBe(1)
+    await report(id, {}, 'restart begin')
+    writeFileSync(join(dir, 'sample.md'), 'Local second result\n')
+    await finish(2, 'Local second result', 'Holds')
+    await browser.phase(name, host.name, 'Done')
+    const done = (await state()).tasks.find((task) => task.id === id)
+    expect(done.phase.result.attempt.number).toBe(2)
+    expect(done.phase.outcomes.map(({ _tag }) => _tag)).toEqual(['Holds', 'Holds'])
+
+    await task('task:raise', 'Wrong cut')
+    await report('task:raise', {}, 'begin later task')
+    await report('task:raise', { attempt: 1, reason: 'WrongTask', evidence: excerpt('Local second result') }, 'raise')
+    await browser.phase('Wrong cut', host.name, 'Raised')
+    expect(await ok(['brief', 'task:raise'], ownerCall)).toContain('Reason: WrongTask')
+    const beforeRestart = (await state()).read
+    process.kill(webPid)
+    await until(() => !existsSync(webRecord), 'server shutdown')
+    await browser.page.getByText('Project connection unavailable. Reconnecting…', { exact: true }).waitFor()
+    env.WORK_PORT = url.port
+    await ok(['start', '--detach'])
+    webPid = JSON.parse(readFileSync(webRecord, 'utf8')).pid
+    await browser.page.getByText('Project connection unavailable. Reconnecting…', { exact: true }).waitFor({ state: 'hidden' })
+    await browser.read(beforeRestart)
+    const committed = await events()
+    expect(committed.map(({ number }) => number)).toEqual(committed.map((_, index) => index + 1))
+    expect((await state()).read).toBe(beforeRestart)
+    const stale = await submit({ read: 1, line: { _tag: 'Activation', id: project.id }, move: 'start', input: {} })
+    expect(stale.status).toBe(409)
+    expect((await stale.json()).code).toBe('Stale')
+    for (const secret of [hostToken, live.token, child]) {
+      expect(JSON.stringify(committed)).not.toContain(secret)
+      await browser.noSecret(secret)
+      expect(readFileSync(webRecord + '.log', 'utf8')).not.toContain(secret)
+    }
+    console.log('U8 local feedback ms', JSON.stringify({ moves: measures, reviewStarts }))
+    expect(Math.max(...measures.filter(([label]) => label !== 'activation to binding').map(([, ms]) => ms))).toBeLessThan(1000)
+    expect(Math.max(...reviewStarts.map(({ fromSubmit }) => fromSubmit))).toBeLessThan(1000)
+  } finally {
+    await browser?.close()
+    if (webPid) { try { process.kill(webPid) } catch {} }
+    Bun.spawnSync([realTmux, '-L', bootstrapSocket(dir), 'kill-server'])
+    rmSync(scratch, { recursive: true, force: true })
+  }
+}, 90_000)

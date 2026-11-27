@@ -105,7 +105,7 @@ Generate a canonical ITF trace for each of those three paths from the pinned Qui
 
 The driver maps initial state to deterministic fixture setup through domain constructors and public intake. It submits picked facts, owner choices, or observed IO to the actual engine entry point using a real temporary SQLite store. Inject production ports from `replay.test.ts` so the driver stays within the derived layer’s dependency rules. Simulate the outside world at the `Files`, `Commands` and `Sessions` ports when the model abbreviates an IO step. An abbreviated model action may span several runtime observations. Document their boundary and compare after each model step, plus any intermediate invariant relevant to that fault. Compare the current phase and duty, event effect, attempts and basis, proposal versions, owed actors, capacity, host queue, session/activation binding, and durable refolds wherever the case models them. Feed the committed event response to the same reactive fold the browser uses and compare its checked projection. Test actual HTTP and CLI intake in the relevant unit to catch mapping, authority and routing errors. Use model state as the oracle and action/picks as input. Never install an expected destination in the runtime fixture.
 
-For each mutant trace, replay its common prefix and deliver the offending input to the production guard. Test that the runtime refuses it or reconciles without applying the invalid change. Compare the event suffix and reloaded projection, including the legitimate state change for refusal-with-reconciliation cases. A passing TLC run or a matched final state alone does not satisfy replay coverage. At U8 run `bun run spec:check`, `bun run spec:tlc`, and `bun test core/derived/project/replay/replay.test.ts`. Keep its acceptance report alongside the scratch rehearsal with the exact revision tested.
+For each mutant trace, replay its common prefix and deliver the offending input to the production guard. Test that the runtime refuses it or reconciles without applying the invalid change. Compare the event suffix and reloaded projection, including the legitimate state change for refusal-with-reconciliation cases. A passing TLC run or a matched final state alone does not satisfy replay coverage. At U8 run `bun run spec:check`, `bun run spec:tlc`, and `bun run spec:conformance`. Keep its acceptance report alongside the scratch rehearsal with the exact revision tested.
 
 | Quint case | Executable checkpoint | What the replay compares |
 | --- | --- | --- |
@@ -193,6 +193,7 @@ These are the proposed spellings for the first delivery. Types and printed paths
 | U7 | `knownBreaks` | Pinned quotes documenting pre-existing breaks of a rule. Matching quotes outside the changed lines remain in the result. |
 | U7 | `RetryLimit` | The configured number of times review can return the work. |
 | U7 | `WrongTask` | A raise reason for evidence that the current task as cut contradicts what exists or needs a prerequisite. |
+| U8 | `ProjectCredential` | Private credential for the bound host, staff session or fresh review. |
 
 Start work takes the `start` move on Activation. The latest launch in
 Activating is the last entry of `launches`. Active keeps the current

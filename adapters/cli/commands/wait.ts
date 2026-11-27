@@ -3,8 +3,6 @@
 // the agent does it and runs work wait again. Nothing is typed into a terminal: this command is how
 // they hear of work. While it blocks, a marker next to the store says that the actor waits, so
 // that the watcher does not take it for a silent terminal (adapters/live/waiting.ts).
-import type { AuthenticatedActor } from '../../../core/actions/project.ts'
-import { ReadPosition as ProjectRead, Rationale, refuse as refuseProject } from '../../../core/schema/project.ts'
 import { randomUUID } from 'node:crypto'
 import { Effect, Fiber } from 'effect'
 import { canCheckpoint, checkpointWorker, helperCredential } from '../../../core/actions/recheck.ts'
@@ -28,10 +26,6 @@ import type { Command, Commands } from '../command.ts'
 import { textOf } from '../args.ts'
 import { verifyWork } from '../caller.ts'
 
-import { readOpenProject, staffAuthority } from '../../../core/actions/staff-session.ts'
-import { nextStep, type Selection } from '../../../core/derived/project/next-step.ts'
-import type { Of, Refusal as ProjectRefusal, SessionId } from '../../../core/schema/project.ts'
-import type { Journal } from '../../../core/services/project.ts'
 
 // Under the 10-minute limit of a command in Claude Code (onboard waits no longer than this).
 export const WAIT_SECONDS = 540
@@ -373,30 +367,4 @@ const wait: Command = (call) =>
 
 export const commands: Commands = { wait, worker }
 
-// The credential adapter resolves a token to its lifetime before using the shared selection.
-export const waitOnProject = (
-  journal: Journal, authenticate: Effect.Effect<Of<typeof SessionId>, ProjectRefusal>,
-): Effect.Effect<Selection, ProjectRefusal> => Effect.gen(function* () {
-  const id = yield* authenticate
-  const project = yield* readOpenProject(journal)
-  const session = yield* staffAuthority(project, id)
-  const events = yield* journal.eventsAfter(ProjectRead.make(0))
-  return nextStep(project, session, events.filter((event) => event.number <= project.read))
-})
-
-export const waitOnTaskReview = (
-  journal: Journal, authenticate: Effect.Effect<AuthenticatedActor, ProjectRefusal>,
-): Effect.Effect<Selection, ProjectRefusal> => Effect.gen(function* () {
-  const actor = yield* authenticate
-  const project = yield* readOpenProject(journal)
-  if (actor._tag === 'Review' && actor.line._tag === 'Task') {
-    const session = yield* staffAuthority(project, actor.session.id)
-    const task = project.tasks.get(actor.line.id)
-    if (task?.phase._tag === 'Reviewing' && task.phase.assignment._tag === 'Assigned' &&
-        task.phase.assignment.by.id === session.staff.id && actor.session.staff.id === session.staff.id &&
-        task.phase.assignment.review === actor.review) {
-      return { _tag: 'Available', subject: { _tag: 'Task', task }, for: 'Review', read: project.read }
-    }
-  }
-  return yield* Effect.fail(refuseProject('RetiredSession', Rationale.make('Use the current child assigned to review this task.')))
-})
+export { waitOnProject, waitOnTaskReview } from './project.ts'

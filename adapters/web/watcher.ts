@@ -99,14 +99,15 @@ export const createWatcher = (options: WatcherOptions): Watcher => {
     return next
   }
 
+  const fixtureCli = env.ARISTOTELES_LEGACY_FIXTURE_ENTRY ?? fileURLToPath(new URL('../../bin/work.js', import.meta.url))
   // The engine (the revives, the evidence, the rule runs) for a store with a top; then the
   // person's typed sends.
   const say = {
-    helperAck: `${quote(process.execPath)} ${quote(fileURLToPath(new URL('../../bin/work.js', import.meta.url)))} recheck-helper ack`,
+    helperAck: `${quote(process.execPath)} ${quote(fixtureCli)} recheck-helper ack`,
     helperPrompt: (job: string) => `${launchOpening('a fresh recheck helper')} ` +
       `Run work recheck-brief ${job}. Judge the exact result and write YAML with on and findings (item, version, outcome holds or breaks, evidence). ` +
       `Submit work recheck-report ${job} --file=<report>, then stop.`,
-    workerAck: `${quote(process.execPath)} ${quote(fileURLToPath(new URL('../../bin/work.js', import.meta.url)))} worker ack`,
+    workerAck: `${quote(process.execPath)} ${quote(fixtureCli)} worker ack`,
     workerPrompt: (members: ReadonlyArray<string>) =>
       `${launchOpening('a worker')} Your identities are ${members.join(', ')}. Use the identity and receipt selected by each wait.`,
     bootstrap: (session: string) => {
