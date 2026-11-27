@@ -256,7 +256,7 @@ test('the first authenticated send keeps the read basis from Start work', () => 
     const working = yield* projectReportCommand(journal, taskKey, sent.state.read, '{}')
       .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))
     expect(working.state.tasks.get(taskKey)?.phase).toMatchObject({
-      _tag: 'Working', attempt: { session: { key: boundHost } },
+      _tag: 'Working', attempt: { actor: { key: boundHost } },
     })
     expect(yield* Effect.result(operations.collect(boundHost, nonce))).toMatchObject(refused('RetiredSession'))
   }))),

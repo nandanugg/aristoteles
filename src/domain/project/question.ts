@@ -1,8 +1,8 @@
 import { Schema } from 'effect'
-import { Human, Staff } from './staff.ts'
+import type { Project } from './records.ts'
 import type { Proposal } from './proposal.ts'
 import {
-  AnswerText, EventNumber, OptionIndex, OptionText, Placeholder, QuestionKey, QuestionText,
+  AnswerText, EventNumber, OptionIndex, OptionText, Placeholder, QuestionKey, QuestionText, StaffKey, StoredActor,
   type Of,
 } from './values.ts'
 
@@ -41,13 +41,13 @@ export const answerFor = (form: QuestionForm, value: unknown): Answer | null => 
   return fits ? value : null
 }
 
-const Actor = Schema.Union([Human, Staff])
+const recipient = Schema.Union([StoredActor.members[0], Schema.TaggedStruct('Staff', { key: StaffKey })])
 const QuestionState = Schema.Union([
   Schema.TaggedStruct('Open', {}),
-  Schema.TaggedStruct('Answered', { by: Actor, answer: Answer }),
+  Schema.TaggedStruct('Answered', { by: StoredActor, answer: Answer }),
 ])
 export const Question = Schema.Struct({
-  key: QuestionKey, from: Actor, to: Actor, text: QuestionText, form: QuestionForm, state: QuestionState,
+  key: QuestionKey, from: StoredActor, to: recipient, text: QuestionText, form: QuestionForm, state: QuestionState,
   lastChange: EventNumber,
 })
 export type Question = Of<typeof Question>
@@ -55,5 +55,11 @@ export type Question = Of<typeof Question>
 export const currentQuestion = (proposal: Proposal, question: Question) =>
   proposal.phase._tag === 'Drafting' && question.lastChange > proposal.lastChange ? question : undefined
 
-export const sameActor = (left: Question['from'], right: Question['from']) =>
+export const actorFor = (project: Project, actor: StoredActor): Question['to'] | undefined => {
+  if (actor._tag === 'Human') return actor
+  const session = project.sessions.get(actor.key)
+  return session && { _tag: 'Staff', key: session.staff.key }
+}
+
+export const sameActor = (left: Question['to'], right: Question['to']) =>
   (left._tag === 'Human' ? right._tag === 'Human' : right._tag === 'Staff' && left.key === right.key) ? left : undefined

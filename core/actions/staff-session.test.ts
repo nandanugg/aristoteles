@@ -60,7 +60,7 @@ test('pause retires authority, releases charges, and resumes the same attempt wi
     })
     const resumed = yield* readOpenProject(journal)
     expect(resumed.sessions.get(session.key)?._tag).toBe('Paused')
-    expect(resumed.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, session: { key: continued.key } } })
+    expect(resumed.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, actor: { key: continued.key } } })
     expect(yield* Effect.result(staffInput(journal, resultInput(resumed.read), session))).toMatchObject(rejected('RetiredSession'))
     expect(yield* Effect.result(staffInput(journal, resultInput(readPosition(working.state)), continued))).toMatchObject(rejected('Stale'))
     const reported = yield* staffInput(journal, resultInput(resumed.read), continued)
@@ -101,7 +101,7 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     const latest = yield* readOpenProject(journal)
     yield* startChild(journal, latest, ongoing, continued, 'Work')
     expect((yield* readOpenProject(journal)).tasks.get(ongoing)?.phase).toMatchObject({
-      _tag: 'Working', attempt: { number: 2, retryCount: 0, session: { key: continued.key } },
+      _tag: 'Working', attempt: { number: 2, retryCount: 0, actor: { key: continued.key } },
     })
     expect(yield* Effect.result(begin(journal, latest.read))).toMatchObject(rejected('RetiredSession'))
   }))),

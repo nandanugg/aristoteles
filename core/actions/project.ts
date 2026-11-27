@@ -80,7 +80,7 @@ const moveFor = (
     if (request.move === 'open') {
       const activation = project.activation
       if (authenticated._tag !== 'Host' || activation._tag !== 'Active' ||
-          authenticated.session.key !== boundHostSession(project)?.key || authenticated.session.staff.key !== activation.staff.key)
+          authenticated.session.key !== boundHostSession(project)?.key)
         return Result.fail(retired())
       return moved({ ...request, from: null })
     }
@@ -90,7 +90,7 @@ const moveFor = (
     if (request.move === 'review') {
       if (!task || task.phase._tag !== 'Reviewing' || authenticated._tag !== 'Review' ||
           authenticated.line !== line || authenticated.key !== key ||
-          task.phase.assignment._tag !== 'Assigned' || task.phase.assignment.by.key !== current.staff.key ||
+          task.phase.assignment._tag !== 'Assigned' || task.phase.assignment.actor.key !== current.key ||
           task.phase.assignment.review !== authenticated.review) return Result.fail(retired())
       const { facts } = request.input
       const report = { review: authenticated.review, facts, limit }
@@ -103,7 +103,7 @@ const moveFor = (
         }
       })
     }
-    if (task?.phase._tag === 'Working' && task.phase.attempt.session.key !== current.key) return Result.fail(retired())
+    if (task?.phase._tag === 'Working' && task.phase.attempt.actor.key !== current.key) return Result.fail(retired())
     if (request.move === 'raise')
       return moved({ line, key, from: 'Working', move: 'raise', input: request.input })
     const { input } = request
@@ -130,7 +130,7 @@ const moveFor = (
       const phase = project.proposals.get(key)?.phase
       if (!current || authenticated._tag !== 'Review' || phase?._tag !== 'Reviewing' ||
           authenticated.line !== line || authenticated.key !== key ||
-          phase.assignment._tag !== 'Assigned' || phase.assignment.by.key !== current.staff.key ||
+          phase.assignment._tag !== 'Assigned' || phase.assignment.actor.key !== current.key ||
           phase.assignment.review !== authenticated.review) return Result.fail(retired())
       const input = { review: authenticated.review, facts }
       return reviewOutcome(facts) === 'Holds'

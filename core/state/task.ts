@@ -32,13 +32,13 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
       const { where, staffing } = event.input
       if (staffing !== staffingAt(project) || read < staffing) return stale()
       const staff = staffOf(project, taskRole(task))
-      if (!session) return retired()
+      if (!session || actor._tag !== 'Session') return retired()
       if (read < session.startedAt) return stale()
       if (!staff || staff.key !== session.staff.key) return wrongActor()
       if (where === 'Subagent' && subagentCapacity(project, staff).freeSubagents === 0) return noChild()
       const next = task.lastAttempt._tag === 'None' ? 1 : task.lastAttempt.number + 1
       if (!Schema.is(AttemptNumber)(next)) return wrongMove()
-      return entered({ _tag: 'Working', attempt: { number: next, session, where, retryCount: before.retryCount, feedback: before.feedback } },
+      return entered({ _tag: 'Working', attempt: { number: next, actor, where, retryCount: before.retryCount, feedback: before.feedback } },
         { _tag: 'Attempted', number: next })
     }
     case 'Working': {
@@ -46,11 +46,11 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
       const { attempt } = before
       if (event.move === 'restart') {
         if (actor._tag !== 'Human') return wrongActor()
-        if (attempt.session.key !== event.input.session || project.sessions.get(event.input.session)?._tag !== 'Ended') return wrongMove()
+        if (attempt.actor.key !== event.input.session || project.sessions.get(event.input.session)?._tag !== 'Ended') return wrongMove()
         return restartTask(task, before, number)
       }
       if (actor._tag !== 'Session') return wrongActor()
-      if (session?.key !== attempt.session.key) return retired()
+      if (session?.key !== attempt.actor.key) return retired()
       if (event.input.attempt !== attempt.number) return stale()
       if (event.move === 'raise') return entered({ _tag: 'Raised', reason: event.input.reason, evidence: event.input.evidence })
       return entered({
@@ -73,24 +73,24 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
         const { staffing } = event.input
         if (staffing !== staffingAt(project) || read < staffing) return stale()
         if (before.assignment._tag !== 'Waiting') return wrongMove()
-        if (!session || read < session.startedAt) return retired()
+        if (!session || actor._tag !== 'Session' || read < session.startedAt) return retired()
         const reviewer = taskReviewStaff(project, task)
         if (!reviewer || reviewer.key !== session.staff.key) return wrongActor()
         if (subagentCapacity(project, reviewer).freeSubagents === 0) return noChild()
-        return entered({ ...before, assignment: { _tag: 'Assigned', by: session.staff, review: task.lastChange } })
+        return entered({ ...before, assignment: { _tag: 'Assigned', actor, review: task.lastChange } })
       }
       const { assignment } = before
       const { review, facts, limit } = event.input
       if (assignment._tag !== 'Assigned' || review !== assignment.review) return retired()
-      if (!session || read < session.startedAt || session.staff.key !== assignment.by.key) return retired()
+      if (!session || read < session.startedAt || session.key !== assignment.actor.key) return retired()
       return Result.flatMap(reviewTask(task, before, facts, limit), (phase) => {
         if (reviewMove(phase) !== event.move || (event.move === 'raise' && (phase._tag !== 'Raised' || phase.reason !== event.input.reason)))
           return wrongMove()
         if (phase._tag === 'Working') {
           const { attempt } = phase
-          const working = liveSession(project, attempt.session.key)
+          const working = liveSession(project, attempt.actor.key)
           if (!working) return retired()
-          if (attempt.where === 'Subagent' && working.staff.key !== assignment.by.key &&
+          if (attempt.where === 'Subagent' && working.staff.key !== session.staff.key &&
               subagentCapacity(project, working.staff).freeSubagents === 0) return noChild()
         }
         return entered(phase)

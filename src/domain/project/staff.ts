@@ -103,12 +103,12 @@ export const subagentCapacity = (project: Project, staff: Staff) => {
   const used = [...project.tasks.values()].filter(({ phase }) => {
     if (phase._tag === 'Working') {
       const { attempt } = phase
-      return attempt.where === 'Subagent' && liveSession(project, attempt.session.key)?.staff.key === staff.key
+      return attempt.where === 'Subagent' && liveSession(project, attempt.actor.key)?.staff.key === staff.key
     }
-    return phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.by.key === staff.key
+    return phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && project.sessions.get(phase.assignment.actor.key)?.staff.key === staff.key
   }).length
   const proposals = [...project.proposals.values()].filter(({ phase }) =>
-    phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.by.key === staff.key,
+    phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && project.sessions.get(phase.assignment.actor.key)?.staff.key === staff.key,
   ).length
   const occupied = used + proposals
   return { usedSubagents: SubagentCount.make(occupied), freeSubagents: SubagentCount.make(Math.max(0, staff.subagents - occupied)) }

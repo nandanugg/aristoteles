@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 import { ProposalValue } from './proposal.ts'
 import { versionOf } from './version.ts'
 import type { Project } from './records.ts'
-import { Staff, latestSession } from './staff.ts'
+import { latestSession, staffOf } from './staff.ts'
 import { EventNumber, FilePath, Rationale, type Of } from './values.ts'
 
 const FileHash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)).pipe(Schema.brand('FileHash'))
@@ -19,7 +19,7 @@ const work = Schema.Union([
   Schema.TaggedStruct('Used', { at: EventNumber, usedAt: EventNumber }),
 ])
 const approved = {
-  at: EventNumber, files: ApprovedFiles, proposals: Schema.NonEmptyArray(versionOf(ProposalValue)), staff: Staff,
+  at: EventNumber, files: ApprovedFiles, proposals: Schema.NonEmptyArray(versionOf(ProposalValue)),
 }
 export const Activation = Schema.Union([
   Schema.TaggedStruct('Onboarding', {}),
@@ -39,8 +39,11 @@ export const approvedProposals = (project: Project) => {
   return first ? [first, ...rest] as const : null
 }
 
-export const hostSession = (project: Project) => project.activation._tag === 'Onboarding'
-  ? undefined : latestSession(project, project.activation.staff)
+export const hostSession = (project: Project) => {
+  if (project.activation._tag === 'Onboarding') return undefined
+  const staff = staffOf(project, project.roles.host)
+  return staff && latestSession(project, staff)
+}
 
 export const boundHostSession = (project: Project) => {
   const session = hostSession(project)

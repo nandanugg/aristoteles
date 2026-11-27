@@ -19,7 +19,7 @@ import { activateTasks, begin, commandOutcomes, resultInput, send, taskKey, task
 import {
   answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, textForm,
 } from '../../../../src/store/question.probe.ts'
-import { capacity, staffingAt, projectStaff, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { capacity, staffingAt, projectStaff, actorFor, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -289,7 +289,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
         const attempt = phase._tag === 'Working' ? phase.attempt : phase.result.attempt
         const image = phase._tag === 'ReadyToReview' ? phase.result.files[0]?.image : null
         return {
-          phase: phase._tag, attempt: attempt.number, lifetime: attempt.session.key === replacement ? 2 : 1,
+          phase: phase._tag, attempt: attempt.number, lifetime: attempt.actor.key === replacement ? 2 : 1,
           retries: attempt.retryCount, pointedOut: count(attempt.feedback), artifact: image?._tag === 'Present' ? Number(image.contents) : null,
         }
       },
@@ -374,8 +374,8 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
           const actual = question.state
           const events = await Effect.runPromise(journal.eventsAfter(opened.state.read))
           const accepted = events.filter((event) => event.line === 'Question' && event.move === 'answer').length
-          const by = actual._tag === 'Open' ? question.to : actual.by
-          const recipient = by._tag === 'Staff' && by.key === staff.key ? 2 : 1
+          const by = actual._tag === 'Open' ? question.to : actorFor(current, actual.by)
+          const recipient = by?._tag === 'Staff' && by.key === staff.key ? 2 : 1
           if (actual._tag === 'Answered' && actual.answer._tag !== 'Single') throw new Error('Expected a textual answer')
           const currentSession = current.sessions.get(holder.key)
           if (currentSession?._tag !== 'Live') throw new Error('Wrong live session')

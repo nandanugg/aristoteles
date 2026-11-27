@@ -23,7 +23,7 @@ export const taskBrief = (journal: Journal, key: Of<typeof TaskKey>): Effect.Eff
       return yield* Effect.fail(refuse('WrongMove', Rationale.make('This task is unavailable.')))
     if (actor._tag === 'Human') return task
     if (actor._tag === 'Host' && project.activation._tag === 'Active' &&
-      actor.session.key === boundHostSession(project)?.key && actor.session.staff.key === project.activation.staff.key) return task
+      actor.session.key === boundHostSession(project)?.key) return task
     if (actor._tag === 'Staff' || actor._tag === 'Review') {
       const session = liveSession(project, actor.session.key)
       if (session?.staff.key !== actor.session.staff.key)
@@ -31,7 +31,7 @@ export const taskBrief = (journal: Journal, key: Of<typeof TaskKey>): Effect.Eff
       if (actor._tag === 'Review') {
         const phase = task.phase
         if (actor.line === 'Task' && actor.key === key && phase._tag === 'Reviewing' &&
-            phase.assignment._tag === 'Assigned' && phase.assignment.by.key === session.staff.key &&
+            phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === session.key &&
             phase.assignment.review === actor.review) return task
         return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current fresh review.')))
       }

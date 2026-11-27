@@ -6,7 +6,7 @@ import { waitOnProject, waitOnTaskReview } from '../../adapters/cli/commands/pro
 import { staffSessionOperations, type Sessions } from '../../adapters/live/staff-session.ts'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
-import { open, session, staff, staffInput, withJournal } from '../../src/store/project.probe.ts'
+import { open, session, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
 import { artifactQuote, commandOutcomes, promptDirection, reportReview, resultInput, reviewAs, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { CommandOutcome, Direction, Rationale, RetryLimit as RetryLimitValue, refuse, StaffSessionKey, staffingAt } from '../schema/project.ts'
@@ -178,6 +178,6 @@ test('two schedulers open only one fresh child and the waiting phase survives a 
     expect(contenders.filter(Result.isSuccess)).toHaveLength(1)
     expect(calls).toBe(2)
     expect((yield* readOpenProject(journal)).tasks.get(taskKey)?.phase).toMatchObject({
-      _tag: 'Reviewing', assignment: { _tag: 'Assigned', by: { key: staff.key } },
+      _tag: 'Reviewing', assignment: { _tag: 'Assigned', actor: { key: session.key } },
     })
   })))))

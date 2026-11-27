@@ -1,8 +1,7 @@
 import { Schema } from 'effect'
 import { Rule } from './direction.ts'
 import { Evidence, Outcome, Quote, outcomeOf } from './evidence.ts'
-import { Staff } from './staff.ts'
-import { EventNumber, FileContents, Rationale, type Of } from './values.ts'
+import { EventNumber, FileContents, Rationale, StoredActor, type Of } from './values.ts'
 
 export const PromptOutcome = outcomeOf({ rule: Rule, evidence: Quote }).check(Schema.makeFilter(({ rule }) =>
   rule.verification._tag === 'Prompt'))
@@ -18,7 +17,7 @@ export const reviewOutcome = (facts: ReviewFacts): 'Holds' | 'Breaks' =>
 
 const Assignment = Schema.Union([
   Schema.TaggedStruct('Waiting', {}),
-  Schema.TaggedStruct('Assigned', { by: Staff, review: EventNumber }),
+  Schema.TaggedStruct('Assigned', { actor: StoredActor.members[1], review: EventNumber }),
 ])
 export const reviewing = <const Fields extends Schema.Struct.Fields>(fields: Fields) =>
   Schema.TaggedStruct('Reviewing', { ...fields, assignment: Assignment })

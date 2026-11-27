@@ -5,10 +5,10 @@ import { PromptOutcome, reviewing } from './review.ts'
 import { versionOf } from './version.ts'
 import { Question } from './question.ts'
 import type { Project } from './records.ts'
-import { LiveSession, Role, staffOf } from './staff.ts'
+import { Role, staffOf } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  QuestionKey, ResultSummary, RetryCount, TaskKey, recordsByKey, type Of,
+  QuestionKey, ResultSummary, RetryCount, StoredActor, TaskKey, recordsByKey, type Of,
 } from './values.ts'
 
 export const DirectionVersion = versionOf(Direction)
@@ -46,7 +46,7 @@ export const ReviewFeedback = Schema.Union([
   Schema.TaggedStruct('Review', { breaks: Schema.NonEmptyArray(BreakingOutcome) }),
 ])
 export const Attempt = Schema.Struct({
-  number: AttemptNumber, retryCount: RetryCount, session: LiveSession, where: Schema.Literals(['Session', 'Subagent']), feedback: ReviewFeedback,
+  number: AttemptNumber, retryCount: RetryCount, actor: StoredActor.members[1], where: Schema.Literals(['Session', 'Subagent']), feedback: ReviewFeedback,
 })
 const Result = Schema.Struct({ ...WorkResult.fields, attempt: Attempt, at: EventNumber })
 export const RaiseReason = Schema.Literals(['Tries', 'Misses', 'NoRule', 'TooBig', 'WrongTask', 'ContractWrong', 'RejectedByHuman'])

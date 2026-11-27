@@ -87,9 +87,11 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
         const phase = project.tasks.get(line.key)?.phase
         if (modeled === undefined) expect(phase?._tag).toBe('Done')
         else if (modeled === 'Waiting') expect(phase).toMatchObject({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
-        else expect(phase).toMatchObject({ _tag: 'Reviewing', assignment: {
-          _tag: 'Assigned', by: { key: record(modeled).value === 0 ? hostStaff.key : ownStaff.key },
-        } })
+        else {
+          if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Expected an assigned review')
+          expect(project.sessions.get(phase.assignment.actor.key)?.staff.key)
+            .toBe(record(modeled).value === 0 ? hostStaff.key : ownStaff.key)
+        }
       }
       const occupied = [hostStaff, ownStaff].map((by, i) => subagentCapacity(project, by).freeSubagents ? null : [0, 2][i])
         .filter((by) => by !== null)

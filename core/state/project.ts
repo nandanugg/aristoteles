@@ -3,7 +3,7 @@ import { applyActivationMove } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
-  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, subagentCapacity, versionOf,
+  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, subagentCapacity, versionOf,
   type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal, type StaffSession,
 } from '../schema/project.ts'
 
@@ -115,28 +115,29 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
       return Result.succeed({ ...project, sessions })
     }
     const activation = project.activation
-    if (activation._tag === 'RollingBack' && activation.staff.key === staff.key) return wrongMove()
+    const host = staffOf(project, project.roles.host)
+    if (activation._tag === 'RollingBack' && host?.key === staff.key) return wrongMove()
     const live: LiveSession = { _tag: 'Live', key, staff, startedAt: number, pane: event.input.pane }
     sessions.set(key, live)
     let next = activation
-    if (activation._tag === 'Activating' && activation.staff.key === staff.key) {
+    if (activation._tag === 'Activating' && host?.key === staff.key) {
       const proposals = approvedProposals(project)
       if (!proposals || !sameApprovedProposals(proposals, activation.proposals)) return stale()
       next = { ...activation, _tag: 'Active', work: { _tag: 'NotStarted' } }
     }
-    if (activation._tag === 'Active' && activation.staff.key === staff.key && activation.work._tag !== 'NotStarted' &&
+    if (activation._tag === 'Active' && host?.key === staff.key && activation.work._tag !== 'NotStarted' &&
         startedAt < activation.work.at) return wrongMove()
     const tasks = new Map(project.tasks)
     const paused = previous.previous
     if (paused._tag === 'Paused') {
       const continuing = [...tasks.values()].filter(({ phase }) => phase._tag === 'Working' &&
-        phase.attempt.session.key === paused.key)
+        phase.attempt.actor.key === paused.key)
       const children = continuing.filter(({ phase }) => phase._tag === 'Working' && phase.attempt.where === 'Subagent')
       if (children.length > subagentCapacity(project, staff).freeSubagents) return noChild()
       for (const task of continuing) {
         const phase = task.phase
         if (phase._tag === 'Working')
-          tasks.set(task.key, { ...task, phase: { ...phase, attempt: { ...phase.attempt, session: live } }, lastChange: number })
+          tasks.set(task.key, { ...task, phase: { ...phase, attempt: { ...phase.attempt, actor: { _tag: 'Session', key } } }, lastChange: number })
       }
     }
     return Result.succeed({ ...project, sessions, tasks, activation: next,
@@ -147,18 +148,18 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
     sessions.set(session.key, session)
     for (const [key, task] of tasks) {
       const phase = task.phase
-      if (session._tag === 'Ended' && phase._tag === 'Working' && phase.attempt.session.key === previous.key) {
+      if (session._tag === 'Ended' && phase._tag === 'Working' && phase.attempt.actor.key === previous.key) {
         const restarted = restartTask(task, phase, number)
         if (Result.isSuccess(restarted)) tasks.set(key, restarted.success)
       }
-      if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.by.key === previous.staff.key) {
+      if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key) {
         tasks.set(key, { ...task, phase: { ...phase, assignment: { _tag: 'Waiting' } }, lastChange: number })
       }
     }
     const proposals = new Map(project.proposals)
     for (const [key, proposal] of proposals) {
       const phase = proposal.phase
-      if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.by.key === previous.staff.key)
+      if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key)
         proposals.set(key, { ...proposal, phase: { _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, lastChange: number })
     }
     return { ...project, sessions, tasks, proposals }
@@ -171,7 +172,7 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
 
 const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Result<Project, Refusal> => {
   const { owner, key, number, read } = event
-  const actor = event.actor._tag === 'Human' ? project.owner : liveSession(project, event.actor.key)?.staff
+  const actor = actorFor(project, event.actor)
   if (!actor) return retired()
   const move = (questions: Project['questions']) => {
     const existing = questions.get(key)
@@ -179,9 +180,8 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
     if (event.from === null) {
       if (existing) return stale()
       const { to: recipient, text, form } = event.input
-      const to = recipient._tag === 'Human' ? project.owner : staffByKey(project, recipient.key)
-      if (!to) return wrongActor()
-      return store({ key, from: actor, to, text, form, state: { _tag: 'Open' }, lastChange: number })
+      if (recipient._tag === 'Staff' && !staffByKey(project, recipient.key)) return wrongActor()
+      return store({ key, from: event.actor, to: recipient, text, form, state: { _tag: 'Open' }, lastChange: number })
     }
     if (!existing) return wrongMove()
     if (!sameActor(existing.to, actor)) return wrongActor()
@@ -190,7 +190,7 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
     const { answer } = event.input
     if (!answerFor(existing.form, answer))
       return Result.fail(refuse('InvalidInput', Rationale.make('The answer does not match this question’s form.')))
-    return store({ ...existing, state: { _tag: 'Answered', by: actor, answer }, lastChange: number })
+    return store({ ...existing, state: { _tag: 'Answered', by: event.actor, answer }, lastChange: number })
   }
   switch (owner._tag) {
     case 'Project':

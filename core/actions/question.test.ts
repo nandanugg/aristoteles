@@ -64,7 +64,7 @@ test('CLI and page see the same owed question, enforce the recipient, and append
     expect(response.status).toBe(200)
     const updated = Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => response.json())))
     expect(updated?.questions.get(questionKey)?.state).toMatchObject({
-      _tag: 'Answered', by: { key: staff.key }, answer: { text: 'Accepted' },
+      _tag: 'Answered', by: { key: session.key }, answer: { text: 'Accepted' },
     })
     expect(yield* Effect.result(cliQuestion(journal, staffAuthorityOf(), 'answer', projectAddress,
       readPosition(updated), answerYaml('duplicate')))).toMatchObject(failure('WrongMove'))
@@ -144,7 +144,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     expect(reply.status).toBe(200)
     const answered = yield* readOpenProject(journal)
     expect(answered.proposals.get(line.key)?.questions.get(laterKey)).toMatchObject({
-      state: { _tag: 'Answered', by: owner, answer: { text: 'Keep one slot.' } },
+      state: { _tag: 'Answered', by: { _tag: 'Human' }, answer: { text: 'Keep one slot.' } },
     })
     expect(answered.proposals.get(line.key)?.questions.get(questionKey)?.state._tag).toBe('Answered')
     expect(yield* Effect.result(cliQuestion(journal, ownerAuthority, 'answer', questionAddressText(address(laterKey)), ReadPosition.make(0),

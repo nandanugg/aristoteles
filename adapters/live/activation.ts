@@ -7,7 +7,7 @@ import type { AuthenticatedActor } from '../../core/actions/project.ts'
 import { observeActivation, recordHostUse } from '../../core/actions/project-activation.ts'
 import { acknowledgeSession, cancelSession, observeSession, readOpenProject, reserveSession } from '../../core/actions/staff-session.ts'
 import {
-  ApprovedFiles, HostCredential, LaunchNonce, LaunchVerifier, PaneAddress, Rationale, StaffSessionKey, boundHostSession, hostSession, hostReplacement, staffingAt, refuse,
+  ApprovedFiles, HostCredential, LaunchNonce, LaunchVerifier, PaneAddress, Rationale, StaffSessionKey, boundHostSession, hostSession, hostReplacement, staffingAt, staffOf, refuse,
   type ApprovedFile, type EventNumber, type Of, type Pane, type Project, type Refusal, type Staff, type LiveSession,
 } from '../../core/schema/project.ts'
 import { projectLock, digest } from '../../core/services/project.ts'
@@ -136,6 +136,8 @@ export const projectActivationOperations = (
       const phase = project.activation
       if (phase._tag !== 'Activating' && phase._tag !== 'Active') return yield* Effect.fail(wrong())
       if (phase._tag === 'Active' && phase.work._tag !== 'NotStarted') return yield* Effect.fail(wrong())
+      const staff = staffOf(project, project.roles.host)
+      if (!staff) return yield* Effect.fail(wrong())
       const previous = hostSession(project)
       let state = project
       if (previous && previous._tag !== 'Ended') {
@@ -149,7 +151,7 @@ export const projectActivationOperations = (
           : yield* observeSession(journal, project, previous.key, 'Ended')
         state = retired.state
       }
-      return yield* reserveSession(journal, state, key, phase.staff, staffingAt(state))
+      return yield* reserveSession(journal, state, key, staff, staffingAt(state))
     })),
     mark: locked((project) => Effect.gen(function* () {
       const phase = project.activation
@@ -179,7 +181,7 @@ export const projectActivationOperations = (
         writeProjectLaunchFile(dir, journal.directory, phase.at, key, 'verifier', LaunchVerifier.make(digest(secret)))
         return privateNonce
       })
-      yield* provider.spawn(launch.key, nonce, phase.staff)
+      yield* provider.spawn(launch.key, nonce, launch.staff)
     })),
     acknowledge: (key, nonce) => locked((project) => Effect.gen(function* () {
       const phase = project.activation
@@ -216,7 +218,7 @@ export const projectActivationOperations = (
       }
       yield* protectedIO(() => {
         for (const previous of project.sessions.values()) {
-          if (previous._tag === 'Ended' && previous.staff.key === phase.staff.key && previous.startedAt > phase.at)
+          if (previous._tag === 'Ended' && previous.staff.key === staffOf(project, project.roles.host)?.key && previous.startedAt > phase.at)
             removeProjectLaunch(dir, journal.directory, phase.at, projectLaunch(previous.key))
         }
       })

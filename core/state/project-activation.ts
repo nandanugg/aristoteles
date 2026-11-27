@@ -21,7 +21,7 @@ export const applyActivationMove = (project: Project, event: ActivationEvent): R
     const staff = staffOf(project, project.roles.host)
     if (!proposals || !staff) return wrong()
     if (project.lastChange > read || proposals.some(({ acceptedAt }) => acceptedAt > read)) return stale()
-    return commit({ _tag: 'Activating', at: number, files: event.input.files, proposals, staff })
+    return commit({ _tag: 'Activating', at: number, files: event.input.files, proposals })
   }
   if (phase._tag === 'Activating' && from === 'Activating')
     return commit({ ...phase, _tag: 'RollingBack', why: event.input.why })
@@ -32,6 +32,7 @@ export const applyActivationMove = (project: Project, event: ActivationEvent): R
       phase.work._tag === 'Started' ? commit({ ...phase, work: { _tag: 'Used', at: phase.work.at, usedAt: number } }) : retired()
   }
   if (project.lastChange > read) return stale()
+  const host = staffOf(project, project.roles.host)
   return phase.work._tag === 'NotStarted' && (boundHostSession(project) || [...project.sessions.values()].some((session) =>
-    session.staff.key === phase.staff.key && session._tag === 'Ended' && session.startedAt > phase.at)) ? commit({ ...phase, work: { _tag: 'Started', at: number } }) : wrong()
+    session.staff.key === host?.key && session._tag === 'Ended' && session.startedAt > phase.at)) ? commit({ ...phase, work: { _tag: 'Started', at: number } }) : wrong()
 }

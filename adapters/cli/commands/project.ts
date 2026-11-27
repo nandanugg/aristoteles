@@ -121,7 +121,7 @@ export const waitOnTaskReview = (
     const session = yield* staffAuthority(project, actor.session.key)
     const task = project.tasks.get(actor.key)
     if (task?.phase._tag === 'Reviewing' && task.phase.assignment._tag === 'Assigned' &&
-        task.phase.assignment.by.key === session.staff.key && actor.session.staff.key === session.staff.key &&
+        task.phase.assignment.actor.key === session.key && actor.session.staff.key === session.staff.key &&
         task.phase.assignment.review === actor.review) {
       return { _tag: 'Available', subject: { _tag: 'Task', task }, for: 'Review', read: project.read }
     }

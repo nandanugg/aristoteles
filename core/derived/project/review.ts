@@ -6,8 +6,8 @@ export const hostQueue = (project: Project, events: readonly StoredEvent[]): rea
     if (event.line === 'Proposal' && event.from === 'Drafting' && event.move === 'submit')
       entries.set(event.key, event.number)
   }
-  return [...project.proposals.values()].filter(({ phase, reviewer }) => phase._tag === 'Reviewing' &&
-    phase.assignment._tag === 'Waiting' && reviewer.key === project.roles.host.key && project.status._tag === 'Open')
+  return [...project.proposals.values()].filter(({ phase }) => phase._tag === 'Reviewing' &&
+    phase.assignment._tag === 'Waiting' && project.status._tag === 'Open')
     .sort((a, b) => (entries.get(a.key) ?? a.lastChange) - (entries.get(b.key) ?? b.lastChange))
 }
 

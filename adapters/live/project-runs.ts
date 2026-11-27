@@ -43,7 +43,7 @@ const current = (project: Project, run: Of<typeof Run>): AuthenticatedActor | nu
   const { line, review } = run
   const phase = (line._tag === 'Proposal' ? project.proposals.get(line.key) : project.tasks.get(line.key))?.phase
   if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned' ||
-      phase.assignment.by.key !== session.staff.key || phase.assignment.review !== review) return null
+      phase.assignment.actor.key !== session.key || phase.assignment.review !== review) return null
   const actor = { _tag: 'Review', review, session } as const
   return line._tag === 'Task' ? { ...actor, line: 'Task', key: line.key } : { ...actor, line: 'Proposal', key: line.key }
 }

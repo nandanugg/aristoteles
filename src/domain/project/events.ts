@@ -7,11 +7,11 @@ import { line, protocol } from './lines.ts'
 import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, DirectionVersion, type TaskPhase } from './task.ts'
 import { Evidence } from './evidence.ts'
 import { Fact } from './direction.ts'
-import { Answer, QuestionForm } from './question.ts'
+import { Answer, Question, QuestionForm } from './question.ts'
 import { Human, Pane, Role, Staff } from './staff.ts'
 import {
   AttemptNumber, EventNumber, Goal, Name, ProposalKey, QuestionKey, QuestionText, Rationale,
-  RetryLimit, StaffKey, StaffSessionKey, TaskKey, type Of,
+  RetryLimit, StaffSessionKey, TaskKey, type Of,
 } from './values.ts'
 
 const questionOwner = Schema.Union([
@@ -87,7 +87,7 @@ export const sessionLine = line({
 })
 
 const question = Schema.Struct({
-  to: Schema.Union([Schema.TaggedStruct('Human', {}), Schema.TaggedStruct('Staff', { key: StaffKey })]), text: QuestionText, form: QuestionForm,
+  to: Question.fields.to, text: QuestionText, form: QuestionForm,
 })
 const answer = Schema.Struct({ answer: Answer })
 export const questionLine = line({

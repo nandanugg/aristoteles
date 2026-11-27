@@ -1,5 +1,5 @@
 import {
-  ReadPosition, currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
+  ReadPosition, actorFor, currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
   taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
 import { mayAssignTaskReview } from './review.ts'
@@ -22,7 +22,8 @@ const currentSession = (project: Project, authority: LiveSession): LiveSession |
 
 export const questionsFor = (project: Project, authority: LiveSession | Of<typeof Human>) => {
   if (project.status._tag === 'Ended') return []
-  const actor = authority._tag === 'Human' ? project.owner : currentSession(project, authority)?.staff
+  const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
+  const actor = authority._tag === 'Human' ? { _tag: 'Human' } as const : current && actorFor(project, { _tag: 'Session', key: current.key })
   if (!actor) return []
   const due = (owner: QuestionEvent['owner'], questions: Iterable<Question>) =>
     [...questions].filter((question) =>
@@ -60,7 +61,7 @@ export const nextStep = (
     const { phase } = task
     switch (taskLine[phase._tag].owes) {
       case 'Assignee':
-        if (phase._tag === 'Working') return phase.attempt.session.key === current.key
+        if (phase._tag === 'Working') return phase.attempt.actor.key === current.key
         return staffOf(project, taskRole(task))?.key === current.staff.key
       default:
         return false
@@ -74,12 +75,13 @@ export const nextStep = (
     else if (current && mayAssignTaskReview(project, events, task, current) === 'Allowed')
       due.push({ _tag: 'Available', subject, for: 'Assign', read: project.read })
   }
-  const actor = authority._tag === 'Human' ? authority : current?.staff
+  const actor = authority._tag === 'Human' ? { _tag: 'Human' } as const : current && actorFor(project, { _tag: 'Session', key: current.key })
   for (const proposal of project.proposals.values()) {
     const duty = proposalLine[proposal.phase._tag].owes
     const owner = duty === 'Owner' && actor?._tag === 'Human'
-    const proposer = duty === 'Proposer' && actor && sameActor(proposal.proposer, actor)
-    if (owner || proposer) due.push({ _tag: 'Available', subject: { _tag: 'Proposal', proposal },
+    const proposer = actorFor(project, proposal.proposer)
+    const proposing = duty === 'Proposer' && actor && proposer && sameActor(proposer, actor)
+    if (owner || proposing) due.push({ _tag: 'Available', subject: { _tag: 'Proposal', proposal },
       for: actor?._tag === 'Human' ? 'Choose' : 'Report', read: project.read })
   }
   const since = ({ subject }: typeof due[number]) =>
