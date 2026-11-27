@@ -10,13 +10,13 @@ staff act under the session key and checks that exact lifetime during replay.
 
 ## Journal
 
-A format-24 SQLite journal stores ordered events using the same line fields as
+The SQLite Project journal stores ordered events using the same line fields as
 submissions. Each write reads the current projection inside a transaction, checks
 the actor and read position, and appends the event. Consequences on other lines
 have their own events in the same transaction. Activation appends Project.next
 after Session.next. Retirement appends Task.restart and the Task or Proposal
 review releases it triggers. Staffing and responsibility acceptance appends
-Project.publish. The fold applies one line's move per event.
+Project.apply. The fold applies one line's move per event.
 CLI and page views derive their next steps from that projection. The page loads a
 snapshot and reads later events by position to stay current through reconnects.
 

@@ -50,13 +50,13 @@ const followingMoves = (event: StoredEvent, project: Project): readonly MoveInpu
   if (event.line !== 'Proposal' || event.move !== 'accept') return []
   const accepted = project.proposals.get(event.key)?.phase
   if (accepted?._tag !== 'Accepted' || accepted.version.value._tag === 'Direction') return []
-  const publish = { line: 'Project', move: 'publish', input: { proposal: event.key } } as const
+  const apply = { line: 'Project', move: 'apply', input: { proposal: event.key } } as const
   const from = project.phase._tag
   switch (from) {
-    case 'Onboarding': return [{ ...publish, from }]
-    case 'Activating': return [{ ...publish, from }]
-    case 'RollingBack': return [{ ...publish, from }]
-    case 'Active': return [{ ...publish, from }]
+    case 'Onboarding': return [{ ...apply, from }]
+    case 'Activating': return [{ ...apply, from }]
+    case 'RollingBack': return [{ ...apply, from }]
+    case 'Active': return [{ ...apply, from }]
     case 'Ended': return []
   }
 }

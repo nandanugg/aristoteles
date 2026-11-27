@@ -6,7 +6,7 @@ import { ReadPosition } from '../../core/schema/project.ts'
 import { readPosition } from '../../core/state/project.ts'
 import { create, host, open, owner, ownerInput, pipeline, staff, staffInput, subscription, withJournal } from './project.probe.ts'
 import { promptDirection, resultInput, toWorking } from './task.probe.ts'
-import { PROJECT_FORMAT } from './schema.ts'
+import { PROJECT_APPLICATION, PROJECT_EVENTS, PROJECT_FORMAT } from './schema.ts'
 
 const start = ReadPosition.make(0)
 const query = (path: string, action: (db: Database) => void) => {
@@ -14,7 +14,7 @@ const query = (path: string, action: (db: Database) => void) => {
   try { action(db) } finally { db.close() }
 }
 
-test('a missing journal stays missing in read mode and fresh creation uses format 24', () => withJournal(async (path) => {
+test('a missing journal stays missing in read mode and fresh creation uses the current format', () => withJournal(async (path) => {
   expect(await Effect.runPromise(Effect.scoped(Effect.result(open(path, 'Read'))))).toMatchObject({
     _tag: 'Failure', failure: { code: 'InvalidInput' },
   })
@@ -45,9 +45,9 @@ test('the project opens with one Host and one Pipeline in the role map', () => w
 
 test.each([
   ['old store', 'CREATE TABLE event (seq); PRAGMA user_version = 10'],
-  ['previous project format', 'PRAGMA user_version = 23'],
+  ['previous project format', `${PROJECT_EVENTS} PRAGMA application_id = ${PROJECT_APPLICATION}; PRAGMA user_version = 24`],
   ['foreign SQLite database', 'CREATE TABLE unrelated (row)'],
-  ['foreign matching version', 'CREATE TABLE project_event (row); PRAGMA user_version = 24'],
+  ['foreign matching version', `CREATE TABLE project_event (row); PRAGMA user_version = ${PROJECT_FORMAT}`],
   ['regular file', ''],
 ])('refuses a foreign or old journal before modifying it: %s', (_name, sql) => withJournal(async (path) => {
   if (sql) query(path, (db) => db.exec(sql))

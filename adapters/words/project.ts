@@ -86,15 +86,15 @@ export const sessionUpdateWords = (project: Project, session: LiveSession, event
   const words = (() => {
     switch (event.line) {
       case 'Project': {
-        if (event.move === 'publish') {
+        if (event.move === 'apply') {
           const phase = project.proposals.get(event.input.proposal)?.phase
           if (phase?._tag === 'Accepted') {
             const { value, number } = phase.version
             if (value._tag === 'Responsibility')
-              return `Responsibility for ${roleOf(project, value.role)?.name ?? value.role} (version ${number})\n${value.summary}\n${value.introduction}\n${value.duties.map((duty) => '- ' + duty).join('\n')}`
+              return `Applied responsibility for ${roleOf(project, value.role)?.name ?? value.role} (version ${number})\n${value.summary}\n${value.introduction}\n${value.duties.map((duty) => '- ' + duty).join('\n')}`
             if (value._tag === 'Staffing') {
               const staff = value.staff.get(session.staff.key)
-              return [`Accepted staffing (version ${number})`, ...(staff
+              return [`Applied staffing (version ${number})`, ...(staff
                 ? [`${staff.name} · ${staff.roles.join(', ')} · ${staff.model}`, staff.why] : [])].join('\n')
             }
           }

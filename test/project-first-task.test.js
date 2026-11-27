@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { bootstrapSocket } from '../adapters/live/bootstrap.ts'
 import { direction } from '../src/store/proposal.probe.ts'
 import { owner, host, pipeline, staff, subscription } from '../src/store/project.probe.ts'
+import { PROJECT_FORMAT } from '../src/store/schema.ts'
 import { openProjectPage } from './browser/project-first-task.check.js'
 
 const bin = resolve(import.meta.dir, '../bin/work.js')
@@ -30,7 +31,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=23; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=24; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -40,7 +41,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
         cwd: dir, env: { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db, WORK_NO_OPEN: '1' },
       })
       expect(result.exitCode).toBe(1)
-      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 24 project journal')
+      expect(result.stdout.toString() + result.stderr.toString()).toContain(`not a format ${PROJECT_FORMAT} project journal`)
       expect(readFileSync(db).equals(original)).toBe(true)
     }
     expect(existsSync(join(dir, '.work'))).toBe(false)

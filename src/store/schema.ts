@@ -1,4 +1,4 @@
-export const PROJECT_FORMAT = 24
+export const PROJECT_FORMAT = 25
 export const PROJECT_APPLICATION = 0x41524953
 
 export const PROJECT_EVENTS = `

@@ -139,7 +139,7 @@ test('rollback is repeatable, preserves later edits and keeps accepted proposals
   }))),
 ))
 
-test('format 24 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
+test('activation opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const f = yield* readyProject(path, { ...staff, launch: LaunchText.make('sleep 30 # {session}') }, projectDirectoryAt(dirname(path)))
     const provider = liveProjectBootstrap(f.directory, path, f.journal.directory)

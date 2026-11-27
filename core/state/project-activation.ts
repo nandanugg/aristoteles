@@ -17,7 +17,7 @@ export const applyProjectPhase = (project: Project, event: Exclude<ProjectEvent,
   if (actor._tag !== 'Human') return wrongActor()
   const commit = (next: ProjectPhase) => edge(projectLine, from, move, next._tag) === 'Allowed'
     ? Result.succeed({ ...project, phase: next, changedIn: number }) : wrong()
-  if (move === 'publish') {
+  if (move === 'apply') {
     const accepted = project.proposals.get(event.input.proposal)?.phase
     if (read !== project.read || accepted?._tag !== 'Accepted' || accepted.version.acceptedIn !== Number(read))
       return stale()

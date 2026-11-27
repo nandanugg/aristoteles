@@ -29,7 +29,7 @@ export const TaskDraft = Schema.Struct({
 const empty = Schema.Record(Schema.String, Schema.Never)
 const staffing = Schema.Struct({ staffedIn: EventNumber })
 const session = Schema.Struct({ session: StaffSessionKey })
-const publication = Schema.Struct({ proposal: ProposalKey })
+const acceptedProposal = Schema.Struct({ proposal: ProposalKey })
 const why = Schema.Struct({ why: Rationale })
 const files = Schema.Struct({ files: ApprovedFiles })
 const value = Schema.Struct({ value: ProposalValue, previous: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]) })
@@ -47,19 +47,19 @@ export const projectLine = line({
   null: { from: Schema.Null, owes: 'Owner', moves: { open: { to: ['Onboarding'], input: configuration, submission: { move: 'open', input: configuration } } } },
   Onboarding: { from: Schema.Literal('Onboarding'), owes: 'Owner', moves: {
     next: { to: ['Activating'], input: files, submission: { move: 'next', input: files } },
-    publish: { to: ['Onboarding'], input: publication, owes: 'Engine' },
+    apply: { to: ['Onboarding'], input: acceptedProposal, owes: 'Engine' },
   } },
   Activating: { from: Schema.Literal('Activating'), owes: 'Engine', moves: {
     next: { to: ['Active'], input: session },
     back: { to: ['RollingBack'], input: why },
-    publish: { to: ['Activating'], input: publication },
+    apply: { to: ['Activating'], input: acceptedProposal },
   } },
   RollingBack: { from: Schema.Literal('RollingBack'), owes: 'Engine', moves: {
     back: { to: ['Onboarding'], input: empty },
-    publish: { to: ['RollingBack'], input: publication },
+    apply: { to: ['RollingBack'], input: acceptedProposal },
   } },
   Active: { from: Schema.Literal('Active'), owes: 'None', moves: {
-    publish: { to: ['Active'], input: publication, owes: 'Engine' },
+    apply: { to: ['Active'], input: acceptedProposal, owes: 'Engine' },
     end: { to: ['Ended'], input: empty, owes: 'Owner', submission: { move: 'end', input: empty } },
     start: { to: ['Active'], input: empty, owes: 'Owner', submission: { move: 'start', input: empty } },
   } },
@@ -140,11 +140,11 @@ const projectProtocol = protocol({ line: Schema.Literal('Project') }, projectLin
 export const ProjectEvent = Schema.Union([
   projectProtocol.event('null', 'open'),
   projectProtocol.event('Onboarding', 'next'),
-  projectProtocol.event('Onboarding', 'publish'),
+  projectProtocol.event('Onboarding', 'apply'),
   projectProtocol.event('Activating', 'next'),
-  projectProtocol.event('Activating', 'publish'),
-  projectProtocol.event('RollingBack', 'publish'),
-  projectProtocol.event('Active', 'publish'),
+  projectProtocol.event('Activating', 'apply'),
+  projectProtocol.event('RollingBack', 'apply'),
+  projectProtocol.event('Active', 'apply'),
   projectProtocol.event('Activating', 'back'),
   projectProtocol.event('RollingBack', 'back'),
   projectProtocol.event('Active', 'end'),

@@ -255,6 +255,7 @@ Nanda accepted the Round 70 names and moves with the removals recorded below. Th
 | evaluateFix | removed as a move | The assessment stays with Evaluating until a proposal, split, or question is ready. |
 | draftFix | removed as a move | The first draft enters Reviewing in the same move that submits it. |
 | submitFix | rename to submit | The fix submits its draft through the proposal line. |
+| Project.apply | keep | The engine applies the accepted staffing or responsibility in the same transaction as proposal acceptance. |
 | acceptFix | rename to accept | The owner accepts the nested proposal and the task returns to Sent. |
 | sendBackFix | rename to sendBack | The owner returns the proposal to Drafting with feedback. |
 | evaluateAgain | removed as a move | Going back on the fix line returns it to Evaluating. |

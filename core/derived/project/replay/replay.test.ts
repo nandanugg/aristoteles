@@ -172,8 +172,15 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         active.delete(role)
       },
       changePlan: async () => {
-        await Effect.runPromise(acceptStaffing(journal, await project(), initialStaffing(1)))
-        versions.set(2, staffedIn(await project()))
+        const before = await project()
+        const current = await Effect.runPromise(acceptStaffing(journal, before, initialStaffing(1)))
+        const events = await Effect.runPromise(journal.eventsAfter(before.read))
+        const accepted = events.find((event) => event.line === 'Proposal' && event.move === 'accept')
+        if (!accepted) throw new Error('Expected the staffing proposal acceptance')
+        expect(events.filter((event) => event.line === 'Project' && event.move === 'apply')).toMatchObject([
+          { from: 'Active', input: { proposal: accepted.key }, number: accepted.number + 1, read: accepted.number },
+        ])
+        versions.set(2, staffedIn(current))
       },
       observe: async () => {
         const current = await project()

@@ -26,7 +26,7 @@ export const sessionUpdates = (
     if (event.number <= after || event.number > project.read) return false
     switch (event.line) {
       case 'Project': {
-        if (event.move === 'publish') {
+        if (event.move === 'apply') {
           const proposal = project.proposals.get(event.input.proposal)
           if (proposal?.phase._tag !== 'Accepted') return false
           const { value } = proposal.phase.version

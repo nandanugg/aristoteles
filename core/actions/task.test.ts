@@ -90,7 +90,7 @@ test('the host sends a checked stage slice only after work starts and its basis 
     const events = yield* journal.eventsAfter(sent.state.read)
     const updates = sessionUpdates(revised, reviewHost, events, sent.state.read)
     const accepted = updates.filter((event) => event.line === 'Proposal' && event.move === 'accept' ||
-      event.line === 'Project' && event.move === 'publish')
+      event.line === 'Project' && event.move === 'apply')
     expect(accepted.map(({ number }) => ReadPosition.make(number))).toEqual([edited.state.read, revised.read])
     expect(accepted.map((event) => sessionUpdateWords(revised, reviewHost, event)).join('\n'))
       .toContain('A newer role summary')

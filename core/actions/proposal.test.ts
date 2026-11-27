@@ -181,7 +181,7 @@ test('only the owner changes a responsibility, which takes effect after review a
     const proposalOnly = Result.getOrThrow(applyEvent(reviewed.state, accepted.event))
     expect(hostRole(proposalOnly).responsibility).toEqual(previous)
     expect(accepted.following).toMatchObject([
-      { line: 'Project', from: 'Onboarding', move: 'publish', input: { proposal: first.key } },
+      { line: 'Project', from: 'Onboarding', move: 'apply', input: { proposal: first.key } },
     ])
     expect(Result.getOrThrow(applyEvent(proposalOnly, accepted.following[0]!))).toEqual(accepted.state)
     expect(hostRole(accepted.state).responsibility.value.summary).toBe(value.summary)
