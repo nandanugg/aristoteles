@@ -13,3 +13,12 @@ imports its transitions from [lines](lines.qnt), [people](people.qnt), or
   a counterexample.
 - `bun run spec:conformance` replays the registered success, fault and mutant
   witnesses against the Project journal implementation.
+
+Each check defines `init`, `step`, `Safety`, `Success`, and `Fault` in a
+shared case. The mutant removes one guard. Use `ONLY` with an extended regular
+expression to select registry rows, and `OUT` to choose the log directory.
+The target is 120 seconds per row, with a 600-second cutoff. The shared model
+stays under about 500 lines and each check stays under about 80.
+
+The task line accepts `WrongTask` and `TooBig` as raises from Working. Raised
+ends the modeled task. The sender decides how to re-split the work.

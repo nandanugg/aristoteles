@@ -1,60 +1,33 @@
-// The moves are the one way to change the state of a record (REVIEW-3 3.10): outside
-// src/domain/moves.ts, no code writes a state field of a record, as a literal state or as a copy
-// of a record with a new state. A step that narrows a record writes the same state back (end:
-// run.end), and only that passes. Tests and probes build records in any state: not read.
-import { describe, expect, test } from 'bun:test'
-import { readdirSync, readFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
-import ts from 'typescript'
+import { expect, test } from 'bun:test'
+import { resolve } from 'node:path'
+import { programs } from './architecture-projects.probe.ts'
+import { ceilingDigest, compareBaseline, keyOf, scan } from './architecture-scan.probe.ts'
+import baseline from './domain-primitive-baseline.json' with { type: 'json' }
+import ceiling from './domain-primitive-baseline-u0.json' with { type: 'json' }
 
-const SRC = join(import.meta.dir, '..')
-// The state field of each record with a lifecycle (model.ts, ui-model.ts, work.ts).
-const STATE_FIELDS = ['end', 'status', 'revoked', 'fixed', 'state', 'opened', 'untouched', 'claim']
+const ROOT = resolve(import.meta.dir, '../..')
 
-const sources = (dir: string): ReadonlyArray<string> =>
-  readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const path = join(dir, e.name)
-    if (e.isDirectory()) return e.name === 'app' ? [] : sources(path)
-    const test = e.name.endsWith('.test.ts') || e.name.endsWith('.probe.ts')
-    return e.name.endsWith('.ts') && !test ? [path] : []
-  })
-
-// Each write of a state field in a file: a literal state, or a new state in a copy of a record.
-const writesOf = (path: string): ReadonlyArray<string> => {
-  const file = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true)
-  const found: Array<string> = []
-  const visit = (node: ts.Node): void => {
-    if (ts.isObjectLiteralExpression(node)) {
-      const copy = node.properties.some(ts.isSpreadAssignment)
-      for (const p of node.properties) {
-        if (!ts.isPropertyAssignment(p) || !ts.isIdentifier(p.name)) continue
-        const field = p.name.text
-        if (!STATE_FIELDS.includes(field)) continue
-        const value = p.initializer
-        const literal =
-          ts.isObjectLiteralExpression(value) &&
-          value.properties.some((x) => x.name !== undefined && x.name.getText(file) === '_tag')
-        const sameBack = ts.isPropertyAccessExpression(value) && value.name.text === field
-        if (literal || (copy && !sameBack)) {
-          const { line } = file.getLineAndCharacterOfPosition(p.getStart(file))
-          found.push(`${relative(SRC, path)}:${line + 1} ${field}`)
-        }
-      }
-    }
-    ts.forEachChild(node, visit)
-  }
-  visit(file)
-  return found
-}
-
-describe('the moves of the records', () => {
-  test('outside moves.ts, no code writes a state of a record', () => {
-    const files = sources(SRC).filter((p) => relative(SRC, p) !== join('domain', 'moves.ts'))
-    expect(files.flatMap(writesOf)).toEqual([])
-  })
-
-  test('the check finds a literal state, and a copy with a new state', () => {
-    const probe = join(import.meta.dir, 'moves.ts')
-    expect(writesOf(probe).length).toBeGreaterThan(2)
-  })
+test('the surviving U0 findings are frozen and unique', () => {
+  expect(ceilingDigest(ceiling)).toBe('df80b952e789daf7b8981ba0396db7369b096dc82c29b776302686bbeba3063f')
+  expect(new Set(ceiling).size).toBe(ceiling.length)
 })
+
+// The checker can print a readonly array element as either [] or <0>.
+// Reconcile only the same declaration, source tokens, rule, and element path.
+const baselineKeys = new Set(baseline.map(keyOf))
+
+test('both project type graphs match the shrinking baseline exactly', () => {
+  const { engine, browser } = programs(ROOT)
+  const measured = new Map([engine, browser]
+    .flatMap((program) => scan(program, ROOT))
+    .map((finding) => [keyOf(finding), finding]))
+  const normalized = [...measured.values()].map((finding) => {
+    if (baselineKeys.has(keyOf(finding))) return finding
+    const equivalent = { ...finding, path: finding.path.replaceAll('[]', '<0>') }
+    return baselineKeys.has(keyOf(equivalent)) ? equivalent : finding
+  })
+  expect(new Set(normalized.map(keyOf)).size).toBe(measured.size)
+  expect(compareBaseline(normalized, baseline, ceiling)).toEqual({
+    newFindings: [], staleBaseline: [], outsideCeiling: [], duplicateEntries: 0,
+  })
+}, 30_000)

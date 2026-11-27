@@ -1,7 +1,4 @@
-// work skill install (ruling 12): the /aristoteles skill in a project, with no edit of its own
-// instruction files. Two local links point to the one SKILL.md of this code: one in the skills
-// folder of the AI CLI, one in the shared skills folder of the agents standard. Git of the dir
-// excludes both, so they stay on this machine. It needs no aristoteles.yaml and no store.
+// Link the project skill into the local Claude and agents folders.
 import { lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { excludeFromGit } from './git-exclude.ts'

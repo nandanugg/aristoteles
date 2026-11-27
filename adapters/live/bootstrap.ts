@@ -1,21 +1,18 @@
 // A bootstrap host has its own managed tmux session, located by the reserved launch ID.
-import { readStaffing, sha } from '../../core/services/index.ts'
-import { refuse } from '../../core/schema/index.ts'
-import { Effect } from 'effect'
-import { basename } from 'node:path'
-import { fill } from '../../core/effects/lines.ts'
+import { digest, providerSessionId } from '../../core/services/project.ts'
 import { launchOpening } from './markers.ts'
+import type { Of, ProjectId, Staff as ProjectStaff } from '../../core/schema/project.ts'
 
 export const NONCE_ENV = 'ARISTOTELES_LAUNCH_NONCE'
-export const bootstrapSocket = (dir: string) => `ar-bootstrap-${sha(dir).slice(0, 20)}`
-export const isBootstrapSocket = (dir: string, path: string): boolean => basename(path) === bootstrapSocket(dir)
+export const PROJECT_ENV = 'ARISTOTELES_BOOTSTRAP_PROJECT'
+const SESSION_ENV = 'ARISTOTELES_BOOTSTRAP_SESSION'
+export const bootstrapSocket = (dir: string) => `ar-bootstrap-${digest(dir).slice(0, 20)}`
 const tmux = (dir: string, args: readonly string[]) => {
   const env = { ...process.env }
-  for (const name of ['TMUX', 'TMUX_PANE', 'TMUX_SOCKET', NONCE_ENV]) delete env[name]
+  for (const name of ['TMUX', 'TMUX_PANE', 'TMUX_SOCKET', NONCE_ENV, PROJECT_ENV, SESSION_ENV]) delete env[name]
   return Bun.spawnSync(['tmux', '-f', '/dev/null', '-L', bootstrapSocket(dir), ...args], { env })
 }
-export const bootstrapSession = (launch: string): string => `boot-${launch}`
-export const isBootstrapSession = (session: string): boolean => /^boot-[a-f0-9]{32}$/.test(session)
+const bootstrapSession = (launch: string): string => `boot-${launch}`
 export const bootstrapPane = (dir: string, launch: string) => {
   const result = tmux(dir, [
     'list-panes', '-t', `=${bootstrapSession(launch)}`, '-F', '#{pane_dead} #{pane_id} #{socket_path}',
@@ -24,7 +21,7 @@ export const bootstrapPane = (dir: string, launch: string) => {
   const match = /^0 (%\d+) (.+)$/m.exec(result.stdout.toString())
   return match ? { pane: match[1]!, socket: match[2]! } : null
 }
-export const bootstrapAlive = (dir: string, launch: string): boolean =>
+const bootstrapAlive = (dir: string, launch: string): boolean =>
   bootstrapPane(dir, launch) !== null
 export const observeBootstrap = (dir: string, launch: string): 'live' | 'ended' | 'unknown' => {
   try {
@@ -32,7 +29,7 @@ export const observeBootstrap = (dir: string, launch: string): 'live' | 'ended' 
       'list-panes', '-t', `=${bootstrapSession(launch)}`, '-F', '#{pane_dead}',
     ])
     if (result.exitCode === 0) return /^0$/m.test(result.stdout.toString()) ? 'live' : 'ended'
-    return /can't find session|no server running|No such file or directory/.test(result.stderr.toString())
+    return /can't find (session|window|pane)|no server running|No such file or directory/.test(result.stderr.toString())
       ? 'ended' : 'unknown'
   } catch {
     return 'unknown'
@@ -41,32 +38,43 @@ export const observeBootstrap = (dir: string, launch: string): 'live' | 'ended' 
 export const stopBootstrap = (dir: string, launch: string): void => {
   const result = tmux(dir, ['kill-session', '-t', `=boot-${launch}`])
   if (result.exitCode !== 0 && bootstrapAlive(dir, launch)) {
-    throw refuse('the pending bootstrap pane could not be stopped')
+    throw new Error('the pending bootstrap pane could not be stopped')
   }
 }
-export const bootstrapTemplate = (dir: string, host: string) =>
-  Effect.gen(function* () {
-    const staffing = yield* readStaffing(dir)
-    const binding = staffing?.roles[host]
-    if (!binding?.persistent) return yield* refuse('the bootstrap host needs a persistent staffing binding')
-    return binding
-  })
-export const spawnBootstrap = (
-  dir: string, launch: string, nonce: string, db: string | undefined,
-  binding: { readonly launch: string; readonly model: string },
+const shellWord = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'"
+const commandFor = (staff: ProjectStaff, launch: string, prompt: string) => {
+  const values = { session: providerSessionId(launch), model: shellWord(staff.model), prompt: shellWord(prompt) }
+  const command = staff.launch.replace(/\{(session|model|prompt)\}/gu, (_, key: keyof typeof values) => values[key])
+  return staff.launch.includes('{prompt}') ? command : command + ' ' + values.prompt
+}
+
+// The format 16 bootstrap uses the journal's launch identity and the approved staff template.
+export const spawnProjectBootstrap = (
+  dir: string, launch: string, nonce: string, db: string | undefined, staff: ProjectStaff, project: Of<typeof ProjectId>,
 ): void => {
   const prompt = [
     launchOpening('host'),
-    'You are starting in bootstrap mode.',
-    `Run work activation ack ${launch}, then work wait --launch ${launch}.`,
-    'Work starts after the person opens the top. Use the token that wait gives you.',
+    `Run work activation ack session:${launch} from this pane, then work activation collect session:${launch}.`,
+    'Wait for Start work before submitting work.',
   ].join(' ')
   const args = [
-    'new-session', '-d', '-s', `boot-${launch}`, '-c', dir,
-    '-e', `${NONCE_ENV}=${nonce}`,
+    'new-session', '-d', '-s', bootstrapSession(launch), '-c', dir, '-e', `${NONCE_ENV}=${nonce}`,
+    '-e', `${PROJECT_ENV}=${project}`, '-e', `${SESSION_ENV}=session:${launch}`, '-e', `WORK_DIR=${dir}`,
     ...(db === undefined ? [] : ['-e', `ARISTOTELES_DB=${db}`]),
-    '--', 'sh', '-c', fill(binding.launch, { session: launch, model: binding.model, prompt }),
+    '--', 'sh', '-c', commandFor(staff, launch, prompt),
   ]
-  const result = tmux(dir, args)
-  if (result.exitCode !== 0) throw refuse('the bootstrap host could not be launched')
+  if (tmux(dir, args).exitCode !== 0) throw new Error('the project bootstrap host could not be launched')
+}
+
+// Staff sessions and fresh reviews use the same private tmux socket as the host.
+export const spawnProjectRun = (
+  dir: string, launch: string, db: string | undefined, staff: ProjectStaff, token: string, prompt: string,
+): void => {
+  const args = [
+    'new-session', '-d', '-s', bootstrapSession(launch), '-c', dir,
+    '-e', `ARISTOTELES_TOKEN=${token}`, '-e', `ARISTOTELES_SESSION=session:${launch}`, '-e', `WORK_DIR=${dir}`,
+    ...(db === undefined ? [] : ['-e', `ARISTOTELES_DB=${db}`]),
+    '--', 'sh', '-c', commandFor(staff, launch, prompt),
+  ]
+  if (tmux(dir, args).exitCode !== 0) throw new Error('The project session could not be launched')
 }

@@ -18,14 +18,13 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { initiated, onboardingProject } from './harness.js'
 
 const ROOT = join(import.meta.dir, '..')
 
 // The code of aristoteles in a temp folder, with the installed packages of this one.
 const copy = () => {
   const dir = mkdtempSync(join(tmpdir(), 'work-code-'))
-  for (const part of ['bin', 'core', 'adapters', 'src', 'guides', 'skills']) {
+  for (const part of ['bin', 'core', 'adapters', 'src', 'skills']) {
     cpSync(join(ROOT, part), join(dir, part), { recursive: true })
   }
   for (const file of ['package.json', 'bun.lock', 'tsconfig.json']) {
@@ -38,21 +37,21 @@ const copy = () => {
 describe('bin/work.js', () => {
   test('the words of the sources; a new bundle after a change; none if a build fails', async () => {
     const code = copy()
-    const { p } = await initiated()
-    const db = join(p.dir, '.work', 'aristoteles.db')
-    const env = { ...process.env, WORK_DIR: p.dir, ARISTOTELES_DB: db }
+    const dir = mkdtempSync(join(tmpdir(), 'work-project-'))
+    const db = join(dir, '.work', 'aristoteles.db')
+    const env = { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db }
     for (const key of ['TMUX', 'TMUX_PANE', 'TMUX_SOCKET']) delete env[key]
     const run = (entry, ...argv) => {
-      const r = Bun.spawnSync(['bun', join(code, entry), ...argv], { env, cwd: p.dir })
+      const r = Bun.spawnSync(['bun', join(code, entry), ...argv], { env, cwd: dir })
       return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() }
     }
     const cache = join(code, '.cache', 'cli')
     const bundles = () => (existsSync(cache) ? readdirSync(cache) : [])
     // The words of the sources (bin/main.ts, the entry of the bundle) and of bin/work.js.
-    const calls = [['log'], ['help'], ['guide', 'limits']]
+    const calls = [['status'], ['help'], ['onboard', 'show', 'proposal:example']]
     const sources = calls.map((argv) => run('bin/main.ts', ...argv))
     const same = () => expect(calls.map((argv) => run('bin/work.js', ...argv))).toEqual(sources)
-    expect(sources.map((r) => r.code)).toEqual([0, 0, 0])
+    expect(sources.map((r) => r.code)).toEqual([1, 0, 1])
     expect(bundles()).toEqual([])
 
     // The first call builds the bundle; the calls after it load it.
@@ -64,7 +63,7 @@ describe('bin/work.js', () => {
     expect(bundles()).toEqual([first])
 
     // One source file changes: the next call builds again, and the old bundle goes.
-    appendFileSync(join(code, 'core', 'derived', 'steps.ts'), '// a change after the build\n')
+    appendFileSync(join(code, 'core', 'derived', 'project', 'next-step.ts'), '// a change after the build\n')
     same()
     const [second] = bundles()
     expect(bundles()).toHaveLength(1)
@@ -84,25 +83,23 @@ describe('bin/work.js', () => {
     // others leave no trace.
     rmSync(join(code, '.cache'), { recursive: true })
     const at = (argv) =>
-      Bun.spawn(['bun', join(code, 'bin', 'work.js'), ...argv], { env, cwd: p.dir, stdout: 'pipe' })
-    const started = [0, 1, 2, 3].map(() => at(['log']))
+      Bun.spawn(['bun', join(code, 'bin', 'work.js'), ...argv], { env, cwd: dir, stdout: 'pipe' })
+    const started = [0, 1, 2, 3].map(() => at(['status']))
     const words = await Promise.all(started.map((s) => new Response(s.stdout).text()))
     expect(words).toEqual(started.map(() => sources[0].out))
     expect(bundles()).toEqual([second])
     rmSync(code, { recursive: true, force: true })
   }, 30000)
 
-  // Ruling 12, onboarding 2026-11-14: the install links the SKILL.md of the code root. In the bundle
-  // each file keeps its own folder, so the link never points into .cache/.
   test('work skill install from the bundle links the SKILL.md of the code, never the cache', () => {
     const code = copy()
-    const p = onboardingProject()
-    const env = { ...process.env, WORK_DIR: p.dir, ARISTOTELES_DB: join(p.dir, '.work', 'aristoteles.db') }
+    const dir = mkdtempSync(join(tmpdir(), 'work-project-'))
+    const env = { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: join(dir, '.work', 'aristoteles.db') }
     for (const key of ['TMUX', 'TMUX_PANE', 'TMUX_SOCKET']) delete env[key]
-    const r = Bun.spawnSync(['bun', join(code, 'bin', 'work.js'), 'skill', 'install'], { env, cwd: p.dir })
+    const r = Bun.spawnSync(['bun', join(code, 'bin', 'work.js'), 'skill', 'install'], { env, cwd: dir })
     expect(r.exitCode).toBe(0)
     expect(readdirSync(join(code, '.cache', 'cli'))).toHaveLength(1)
-    const link = readlinkSync(join(p.dir, '.claude', 'skills', 'aristoteles', 'SKILL.md'))
+    const link = readlinkSync(join(dir, '.claude', 'skills', 'aristoteles', 'SKILL.md'))
     expect(link).toBe(join(realpathSync(code), 'skills', 'aristoteles', 'SKILL.md'))
     expect(link).not.toContain('.cache')
     rmSync(code, { recursive: true, force: true })

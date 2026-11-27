@@ -13,7 +13,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { launchWords, makerWords } from '../words/work.ts'
 import {
   codexFallbackNames,
   contentOf,
@@ -22,6 +21,7 @@ import {
   inventoryOf,
   LAUNCH_OPENING,
   LAUNCH_PROJECT,
+  launchOpening,
   manifestOf,
   MARKER_LINE,
   markFile,
@@ -57,18 +57,8 @@ const entry = (dir: string, path: string): Entry => {
 }
 
 describe('the launch opening is the marker', () => {
-  // The fresh launches: a role's and the host's bootstrap launch (pass 6) by launchWords, a
-  // maker's by makerWords. `work run continue` keeps a host's own context: not a launch.
-  test('fresh launches and makers begin with the words the line names', () => {
-    const token = { actor: 'x', ep: 1, secret: 's' }
-    for (const prompt of [
-      launchWords('host', 'w', token),
-      launchWords('role:dev', 'w', token),
-      makerWords('maker:3', 'w.maker:3.0.s'),
-    ]) {
-      expect(prompt.startsWith(`${LAUNCH_OPENING} `)).toBe(true)
-      expect(prompt.split('. ')[0]?.endsWith(LAUNCH_PROJECT.slice(0, -1))).toBe(true)
-    }
+  test('the bootstrap opening matches the words the marker names', () => {
+    expect(launchOpening('host')).toBe(`${LAUNCH_OPENING} host ${LAUNCH_PROJECT}`)
     expect(MARKER_LINE).toContain(`"${LAUNCH_OPENING} <actor> ${LAUNCH_PROJECT}"`)
     expect(MARKER_LINE).not.toContain('\n')
   })
@@ -107,7 +97,9 @@ describe('inventoryOf', () => {
       'model = "x"\nproject_doc_fallback_filenames = ["TEAM.md", ".agents.md"]\n',
     )
     const at = join(home, '.codex')
-    expect(codexFallbackNames(home, at)).toEqual({ names: ['TEAM.md', '.agents.md'], unresolved: null })
+    const configured = codexFallbackNames(home, at)
+    expect(configured.names.map(String)).toEqual(['TEAM.md', '.agents.md'])
+    expect(configured.unresolved).toBeNull()
     const none = mkdtempSync(join(tmpdir(), 'markers-none-'))
     expect(codexFallbackNames(none, join(none, '.codex'))).toEqual({ names: [], unresolved: null })
     writeFileSync(join(at, 'config.toml'), "project_doc_fallback_filenames = ['TEAM.md']\n")
@@ -267,7 +259,7 @@ describe('paths', () => {
   })
 })
 
-describe('round 23', () => {
+describe('publication races', () => {
   test('a folder on the path swapped for a link at the last moment: nothing published', () => {
     const { dir, kept } = project()
     const e = entry(dir, 'pkg/api/CLAUDE.md')
@@ -334,7 +326,7 @@ describe('round 23', () => {
   })
 })
 
-describe('round 24', () => {
+describe('private originals', () => {
   test('a link or a folder where an original is kept: refused, nothing outside written', () => {
     const { dir, kept } = project()
     const e = entry(dir, 'CLAUDE.md')
@@ -386,7 +378,7 @@ describe('round 24', () => {
   })
 })
 
-describe('round 25', () => {
+describe('original storage recovery', () => {
   test('a link above the kept folder: refused before any folder is made, nothing outside', () => {
     const { dir, kept } = project()
     const out = mkdtempSync(join(tmpdir(), 'markers-work-'))

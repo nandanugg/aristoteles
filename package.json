@@ -7,23 +7,19 @@
   },
   "scripts": {
     "test": "bun test --timeout 30000 --parallel=12 --path-ignore-patterns='plan/**' test/ core/ adapters/ src/",
-    "test:fast": "bun test --timeout 30000 --parallel=12 --path-ignore-patterns='plan/**' $(bun test/slow-files.js --skip) test/ core/ adapters/ src/",
-    "test:slow": "bun test --timeout 30000 --parallel=12 --path-ignore-patterns='plan/**' $(bun test/slow-files.js)",
     "spec": "sh core/model/spec.sh",
     "spec:check": "sh core/model/spec.sh --check",
     "spec:tlc": "sh core/model/tlc.sh",
+    "spec:conformance": "bun test --timeout 30000 core/derived/project/replay",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p adapters/web/app/tsconfig.json"
   },
   "devDependencies": {
     "@informalsystems/quint": "0.33.1",
-    "ajv": "8.17.1",
     "bun-types": "1.4.4",
     "playwright": "1.59.1",
     "typescript": "6.0.3"
   },
   "dependencies": {
-    "@xterm/addon-fit": "0.10.0",
-    "@xterm/xterm": "5.5.0",
     "effect": "4.0.3",
     "htm": "3.1.1",
     "preact": "10.26.9"

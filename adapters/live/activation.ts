@@ -1,288 +1,294 @@
-import { randomUUID } from 'node:crypto'
-import { bindWorker, reserveWorker } from '../../core/actions/worker.ts'
-import { foldRuntime } from '../../core/state/worker-runtime.ts'
-import { stageWorkerLaunch } from '../../core/services/index.ts'
-import { dispatch } from '../../core/actions/index.ts'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { Effect } from 'effect'
+import { join, resolve } from 'node:path'
+import { Effect, Schema } from 'effect'
+import type { AuthenticatedActor } from '../../core/actions/project.ts'
+import { observeActivation, recordHostUse } from '../../core/actions/project-activation.ts'
+import { readOpenProject } from '../../core/actions/staff-session.ts'
 import {
-  activationOf, appendActivated, appendHostRebound, deleteInactive,
-  type ActivationState,
-} from '../../core/actions/activation.ts'
-import { type Author, type Refused, refuse } from '../../core/schema/index.ts'
+  ApprovedFiles, HostCredential, LaunchNonce, LaunchVerifier, PaneAddress, ProjectId, Rationale, SessionId, refuse,
+  type ApprovedFile, type EventNumber, type HostLaunch, type Of, type Pane, type Project, type Refusal, type Staff,
+} from '../../core/schema/project.ts'
+import { projectLock, digest } from '../../core/services/project.ts'
 import {
-  type ActivationRecord, type OnboardingFiles, activationId, activationIO, activationLock, applyStartupFiles,
-  readConfigText, Env, finishOnboardingStart, keptOriginals, prepareStart, readActivationRecord, readLaunchFile,
-  removeActivationGeneration, removeActivationRecord, removeLaunch, retireSecret, sha, staffingConfirmed, Store, writeActivationRecord,
-  writeLaunchFile,
-} from '../../core/services/index.ts'
-import { foldWork } from '../../core/state/c16/fold.ts'
-import { bootstrapAlive, bootstrapTemplate, spawnBootstrap, stopBootstrap } from './bootstrap.ts'
-import { configProblems } from './config-problems.ts'
-import { codexFallbackNames, contentOf, inventoryOf, manifestOf, markFile, preflight, restoreFile } from './markers.ts'
+  projectOriginals, readProjectLaunchFile, removeProjectLaunch, retireProjectLaunchSecret, writeProjectLaunchFile,
+  type Committed, type Journal,
+} from '../../core/services/project.ts'
+import { bootstrapPane, observeBootstrap, spawnProjectBootstrap, stopBootstrap } from './bootstrap.ts'
+import { codexFallbackNames, contentOf, inventoryOf, manifestOf, markFile, preflight, restoreFile, safeEntry } from './markers.ts'
 
-export const activationEvents = (dir: string) => Effect.scoped(Effect.gen(function* () {
-  const opened = yield* (yield* Store).open(dir, { create: false })
-  return yield* opened.events
-}).pipe(Effect.catchTag('Refused', (error) => error.message.startsWith('no work store in ')
-  ? Effect.succeed([]) : Effect.fail(error))))
+export const projectIdAt = (directory: string) => ProjectId.make('project:' + digest(resolve(directory)))
 
-const readState = (dir: string) => Effect.map(activationEvents(dir), activationOf)
-const locked = <A, E, R>(dir: string, effect: Effect.Effect<A, E, R>) =>
-  Effect.scoped(Effect.andThen(activationLock(dir), effect))
-const recordAt = (dir: string) => activationIO(() => readActivationRecord(dir))
-const save = (dir: string, record: ActivationRecord) =>
-  activationIO(() => writeActivationRecord(dir, record))
-const scan = (dir: string) => inventoryOf(dir, codexFallbackNames().names)
-const no = (words: string) => Effect.fail(refuse(words))
-type Person = Extract<Author, { _tag: 'Person' }>
+export const activationOwner = (journal: Journal, name: string): Effect.Effect<AuthenticatedActor, Refusal> =>
+  Effect.flatMap(readOpenProject(journal), (project) =>
+    project.owner.name === name
+      ? Effect.succeed({ _tag: 'Human', actor: project.owner } as const)
+      : Effect.fail(refuse('WrongActor', Rationale.make('Only the project owner can change activation.'))))
 
-export const markerApproval = (dir: string) => activationIO(() => {
-  const inventory = scan(dir)
-  const manifest = manifestOf(dir, inventory.files)
-  const problems = [...inventory.incomplete, ...manifest.unread]
-  if (problems.length > 0) throw refuse(problems.join('\n'))
-  return { entries: manifest.entries, reported: inventory.reported }
+const protectedIO = <A>(operation: () => A): Effect.Effect<A, Refusal> =>
+  Effect.try({ try: operation, catch: () => refuse('Unavailable', Rationale.make('The activation operation could not be confirmed.')) })
+
+const projectLaunch = (id: Of<typeof SessionId>): string => {
+  const suffix = id.slice('session:'.length)
+  if (!/^[a-f0-9]{32}$/.test(suffix)) throw new Error('Invalid bootstrap launch address')
+  return suffix
+}
+type Observation = 'Running' | 'Ended' | 'Unknown'
+export interface ProjectBootstrap {
+  readonly observe: (id: Of<typeof SessionId>) => Effect.Effect<Observation, Refusal>
+  readonly pane: (id: Of<typeof SessionId>) => Effect.Effect<Of<typeof Pane> | null, Refusal>
+  readonly spawn: (id: Of<typeof SessionId>, nonce: Of<typeof LaunchNonce>, staff: Staff) => Effect.Effect<void, Refusal>
+  readonly stop: (id: Of<typeof SessionId>) => Effect.Effect<void, Refusal>
+}
+
+export const liveProjectBootstrap = (dir: string, db: string | undefined, project: Of<typeof ProjectId>): ProjectBootstrap => ({
+  observe: (id) => protectedIO(() => {
+    const observed = observeBootstrap(dir, projectLaunch(id))
+    return observed === 'live' ? 'Running' : observed === 'ended' ? 'Ended' : 'Unknown'
+  }),
+  pane: (id) => protectedIO(() => {
+    const current = bootstrapPane(dir, projectLaunch(id))
+    return current ? { address: PaneAddress.make(current.pane) } : null
+  }),
+  spawn: (id, nonce, staff) => protectedIO(() => spawnProjectBootstrap(dir, projectLaunch(id), nonce, db, staff, project)),
+  stop: (id) => protectedIO(() => stopBootstrap(dir, projectLaunch(id))),
 })
 
-export const prepareActivation = (
-  dir: string, by: Person, manifest: ActivationRecord['manifest'],
-  blocked: (files: OnboardingFiles) => Refused | undefined,
-  requireStaffingConfirmation = false,
-) => locked(dir, Effect.gen(function* () {
-  if ((yield* recordAt(dir)) !== null) return yield* no('an activation already exists; use work activation resume')
-  if ((yield* activationEvents(dir)).length !== 0) return yield* no('the workflow already exists')
-  const env = (yield* Env).vars
-  const start = yield* prepareStart(dir, by.name, env, blocked, false)
-  if (requireStaffingConfirmation && !(yield* staffingConfirmed(dir, by.name))) {
-    return yield* no('Confirm the current staffing before starting activation.')
-  }
-  const problems = yield* activationIO(() => preflight(dir, manifest, scan(dir)))
-  if (problems.length > 0) return yield* no(problems.join('\n'))
-  const config = yield* readConfigText(dir, start.files[0]!.after)
-  const invalid = yield* configProblems(config.config)
-  if (invalid.length > 0) return yield* no(invalid.join('\n'))
-  const record: ActivationRecord = {
-    generation: Date.now(), owner: by.name, phase: 'activating', manifest,
-    marked: [], files: start.files, directions: start.directions,
-    pending: null, committed: null, retired: false,
-  }
-  yield* save(dir, record)
-}))
+const entry = (file: ApprovedFile) => ({ path: file.path, hash: file.hash, premarked: file.before === 'Marked' })
+const inventory = (dir: string) => inventoryOf(dir, codexFallbackNames().names)
+const original = (dir: string, file: ApprovedFile) => readFileSync(join(dir, file.path)).toString('latin1')
+const unavailable = () => refuse('Unavailable', Rationale.make('Confirm the launch and its approved files before continuing.'))
+const wrong = () => refuse('WrongMove', Rationale.make('That operation is unavailable in the current activation phase.'))
+const retired = () => refuse('RetiredSession', Rationale.make('Use the current bound host and its own credential.'))
+const matches = (left: string | null, right: string): boolean =>
+  left !== null && timingSafeEqual(Buffer.from(digest(left), 'hex'), Buffer.from(digest(right), 'hex'))
 
-// Always reconcile the journal before discarding anything in a pending record.
-const reconcile = (dir: string, record: ActivationRecord, state: ActivationState) =>
-  Effect.gen(function* () {
-    const pending = record.pending
-    if (!pending) return record
-    if (state?.generation === record.generation && state.binding?.launch === pending.launch) {
-      const old = record.committed
-      const next: ActivationRecord = {
-        ...record, phase: 'active', pending: null, retired: false,
-        committed: { launch: pending.launch, nonceVerifier: pending.nonceVerifier },
-      }
-      if (old !== null && old.launch !== pending.launch) {
-        // Retrying cleanup is safe while the pending record still identifies this commit.
-        yield* activationIO(() => removeLaunch(dir, record.generation, old.launch))
-      }
-      yield* save(dir, next)
-      return next
-    }
-    if (state?.topOpened || !bootstrapAlive(dir, pending.launch)) {
-      yield* activationIO(() => {
-        stopBootstrap(dir, pending.launch)
-        removeLaunch(dir, record.generation, pending.launch)
-      })
-      const next = { ...record, pending: null }
-      yield* save(dir, next)
-      return next
-    }
-    return record
+export const projectActivationFiles = (dir: string): Effect.Effect<Of<typeof ApprovedFiles>, Refusal> =>
+  protectedIO(() => {
+    const scanned = inventory(dir)
+    const manifest = manifestOf(dir, scanned.files)
+    if (scanned.incomplete.length || manifest.unread.length) throw new Error('Incomplete marker inventory')
+    return Schema.decodeUnknownSync(ApprovedFiles)(manifest.entries.map(({ path, hash, premarked }) => ({
+      path, hash, before: premarked ? 'Marked' : 'Unmarked',
+    })))
   })
 
-const reserve = (
-  dir: string, record: ActivationRecord, kind: 'activate' | 'rebind', expected: string | null,
-) => Effect.gen(function* () {
-  const env = (yield* Env).vars
-  const config = yield* readConfigText(dir, record.files[0]!.after)
-  const host = Object.entries(config.config.roles).find(([, role]) =>
-    role.kind === 'agent' && role.persistence.persistent && role.acts.includes('split'))
-  if (!host) return yield* no('there is no persistent host role')
-  const template = yield* bootstrapTemplate(dir, host[0])
-  const launch = activationId()
-  const nonce = activationId() + activationId()
-  const pending = { kind, launch, nonceVerifier: sha(nonce), expected, acknowledged: false }
-  yield* save(dir, { ...record, pending })
-  yield* activationIO(() => {
-    writeLaunchFile(dir, record.generation, launch, 'nonce', nonce)
-    spawnBootstrap(dir, launch, nonce, env.ARISTOTELES_DB, template)
-  })
-  return 'Bootstrap host started. Run work activation resume after it acknowledges.'
-})
+export interface ActivationOperations {
+  readonly reserve: (id: Of<typeof SessionId>) => Effect.Effect<Committed, Refusal>
+  readonly mark: Effect.Effect<void, Refusal>
+  readonly spawn: Effect.Effect<void, Refusal>
+  readonly acknowledge: (id: Of<typeof SessionId>, nonce: Of<typeof LaunchNonce>) => Effect.Effect<Committed, Refusal>
+  readonly commit: Effect.Effect<Committed, Refusal>
+  readonly rollback: (why: Of<typeof Rationale>) => Effect.Effect<Committed, Refusal>
+  readonly restore: Effect.Effect<void, Refusal>
+  readonly reconcile: Effect.Effect<Committed | null, Refusal>
+  readonly collect: (id: Of<typeof SessionId>, nonce: Of<typeof LaunchNonce>) => Effect.Effect<Of<typeof HostCredential>, Refusal>
+  readonly authenticate: (id: Of<typeof SessionId>, credential: Of<typeof HostCredential>) => Effect.Effect<Project, Refusal>
+}
 
-const checkedMarkers = (dir: string, record: ActivationRecord) =>
-  activationIO(() => {
-    const problems = preflight(dir, record.manifest, scan(dir))
-    if (problems.length > 0) throw refuse(problems.join('\n'))
-  })
-
-const append = (dir: string, by: Person, record: ActivationRecord) =>
-  Effect.gen(function* () {
-    const pending = record.pending!
-    if (pending.kind === 'activate') {
-      yield* checkedMarkers(dir, record)
-      yield* activationIO(() => {
-        for (const entry of record.manifest) {
-          if (contentOf(readFileSync(join(dir, entry.path)).toString('latin1'), entry) !== 'Marked') {
-            throw refuse(`${entry.path} is not marked; resume must mark the approved manifest`)
-          }
-        }
-      })
-    }
-    if (!bootstrapAlive(dir, pending.launch)) return yield* no('the bootstrap host exited; resume to replace it')
-    const secret = activationId() + activationId()
-    yield* activationIO(() => writeLaunchFile(dir, record.generation, pending.launch, 'secret', secret))
-    const input = { generation: record.generation, launch: pending.launch, hostVerifier: sha(secret) }
-    if (pending.kind === 'activate') yield* appendActivated(by, input)
-    else yield* appendHostRebound(by, { ...input, expected: pending.expected! })
-    yield* reconcile(dir, record, yield* readState(dir))
-    if (pending.kind === 'activate') yield* finishOnboardingStart(dir)
-    return pending.kind === 'activate' ? 'Project activated.' : 'Bootstrap host rebound.'
-  })
-
-export const runActivation = (dir: string, by: Person, action: 'resume' | 'relaunch' | 'rollback') =>
-  locked(dir, Effect.gen(function* () {
-    const original = yield* recordAt(dir)
-    if (!original || original.owner !== by.name) return yield* no('no activation for this person')
-    const state = yield* readState(dir)
-    if (state !== null && state.generation !== original.generation) return yield* no('another generation owns the store')
-    let record = yield* reconcile(dir, original, state)
-    if (action === 'rollback') {
-      if (state?.active) return yield* no('an active workflow cannot be rolled back')
-      record = { ...record, phase: 'rolling back' }
-      yield* save(dir, record)
-      if (record.pending) yield* activationIO(() => {
-        stopBootstrap(dir, record.pending!.launch)
-        removeLaunch(dir, record.generation, record.pending!.launch)
-      })
-      for (const entry of record.manifest) {
-        const outcome = yield* activationIO(() => restoreFile(dir, keptOriginals(record.generation), entry))
-        if (outcome._tag === 'Unsafe' || outcome._tag === 'NoOriginal') {
-          return yield* no(`cannot restore ${entry.path}: ${outcome._tag}`)
-        }
-      }
-      if (state !== null) yield* deleteInactive(record.generation)
-      yield* activationIO(() => {
-        applyStartupFiles(dir, record, true)
-        removeActivationGeneration(dir, record.generation)
-        removeActivationRecord(dir)
-      })
-      return 'Activation rolled back.'
-    }
-    if (record.phase === 'rolling back') return yield* no('resume the rollback before starting again')
-    if (record.pending) {
-      return record.pending.acknowledged
-        ? yield* append(dir, by, record)
-        : 'Waiting for the bootstrap host to acknowledge.'
-    }
-    if (state?.active) {
-      if (action !== 'relaunch') {
-        yield* finishOnboardingStart(dir)
-        return 'Project activated.'
-      }
-      const launch = state.binding?.launch
-      if (state.topOpened || !launch || bootstrapAlive(dir, launch)) {
-        return yield* no('the pre-top host is not eligible for relaunch')
-      }
-      return yield* reserve(dir, record, 'rebind', launch)
-    }
-    if (action === 'relaunch') return yield* no('resume initial activation first')
-    yield* checkedMarkers(dir, record)
-    if (state === null) {
-      yield* activationIO(() => applyStartupFiles(dir, record, false))
-      yield* dispatch({
-        by,
-        input: { _tag: 'DefineWorkflow', target: {},
-          content: { directions: record.directions, activation: { generation: record.generation } } },
-      })
-    }
-    for (const entry of record.manifest) {
-      const outcome = yield* activationIO(() => markFile(dir, keptOriginals(record.generation), entry))
-      if (outcome._tag !== 'Done' && outcome._tag !== 'Written') {
-        return yield* no(`cannot mark ${entry.path}: ${outcome._tag}`)
-      }
-      if (!record.marked.includes(entry.path)) {
-        record = { ...record, marked: [...record.marked, entry.path] }
-        yield* save(dir, record)
-      }
-    }
-    return yield* reserve(dir, record, 'activate', null)
-  }))
-
-const prove = (nonce: string | undefined, hash: string | undefined) =>
-  nonce !== undefined && hash !== undefined && sha(nonce) === hash
-
-// Transfer the existing live bootstrap session into the runtime exactly once.
-export const acquireBootstrapWorker = (dir: string, worker: string, session: string) =>
-  locked(dir, Effect.gen(function* () {
-    const events = yield* activationEvents(dir)
-    const state = activationOf(events)
-    if (!state?.topOpened || state.binding === null || session !== `boot-${state.binding.launch}`) return
-    if (foldRuntime(events).workers.has(worker)) return
-    const launch = randomUUID().replaceAll('-', '')
-    if ((yield* reserveWorker(worker, launch)) === null) return
-    const secret = randomUUID().replaceAll('-', '')
-    yield* Effect.sync(() => stageWorkerLaunch(dir, launch, 'secret', secret))
-    if (bootstrapAlive(dir, state.binding.launch)) {
-      yield* bindWorker(worker, 1, launch, session, secret)
-    }
-  }))
-
-export const bootstrapRequest = (
-  dir: string, launch: string, nonce: string | undefined, action: 'ack' | 'wait',
-) => locked(dir, Effect.gen(function* () {
-  const original = yield* recordAt(dir)
-  if (!original) return yield* no('replaced; exit')
-  const verifier = original.pending?.launch === launch ? original.pending.nonceVerifier
-    : original.committed?.launch === launch ? original.committed.nonceVerifier : undefined
-  if (!prove(nonce, verifier)) return yield* no('replaced; exit')
-  const events = yield* activationEvents(dir)
-  const state = activationOf(events)
-  const record = yield* reconcile(dir, original, state)
-  if (action === 'ack') {
-    if (record.pending?.launch !== launch || !bootstrapAlive(dir, launch)) return yield* no('replaced; exit')
-    yield* save(dir, { ...record, pending: { ...record.pending, acknowledged: true } })
-    return { line: 'Bootstrap host acknowledged.', token: null, top: false }
-  }
-  if (state?.binding?.launch !== launch || record.committed?.launch !== launch) {
-    if (record.pending?.launch !== launch) return yield* no('replaced; exit')
-    return { line: 'Waiting for activation.', token: null, top: false }
-  }
-  const host = [...foldRuntime(events).workers.values()].find(({ reservation }) => reservation.members.includes('host'))
-  if (state.topOpened && (host?.fenced || (host?.reservation.generation ?? 0) > 1 ||
-    (foldWork(events)?.state.ep.get('host') ?? 0) !== 0))
-    return yield* no('replaced; exit')
-  if (record.retired) return { line: 'Bound to the top: work wait <your token>.', token: null, top: true }
-  const secret = yield* activationIO(() => readLaunchFile(dir, record.generation, launch, 'secret'))
-  if (secret === null || sha(secret) !== state.binding.verifier) return yield* no('the bound launch credential is unavailable')
-  return { line: '', token: `w.host.0.${secret}`, top: state.topOpened }
-}))
-
-export const retireHostDelivery = (dir: string, token: string) =>
-  Effect.gen(function* () {
-    if (!token.startsWith('w.host.0.') || (yield* recordAt(dir)) === null) return
-    yield* locked(dir, Effect.gen(function* () {
-      const events = yield* activationEvents(dir)
-      const state = activationOf(events)
-      const record = yield* recordAt(dir)
-      const folded = foldWork(events)
-      const verifier = sha(token.slice('w.host.0.'.length))
-      if (!state?.topOpened || state.binding?.verifier !== verifier ||
-        (folded?.state.ep.get('host') ?? 0) !== 0 || !record) return
-      const current = yield* reconcile(dir, record, state)
-      if (current.committed?.launch !== state.binding.launch) return
-      if (!current.retired) yield* save(dir, { ...current, retired: true })
-      yield* activationIO(() => retireSecret(dir, current.generation, state.binding!.launch))
+export const projectActivationOperations = (
+  dir: string, journal: Journal, provider: ProjectBootstrap,
+): ActivationOperations => {
+  const locked = <A>(use: (project: Project) => Effect.Effect<A, Refusal>) =>
+    Effect.scoped(Effect.gen(function* () {
+      yield* Effect.mapError(projectLock(dir), unavailable)
+      return yield* Effect.flatMap(readOpenProject(journal), use)
     }))
+  const line = { _tag: 'Activation', id: journal.id } as const
+  const launchLine = (id: Of<typeof SessionId>) => ({ _tag: 'HostLaunch', id } as const)
+  const candidate = (project: Project) => {
+    const { activation } = project
+    const launch = activation._tag === 'Activating' ? activation.launches.at(-1)
+      : activation._tag === 'Active' && activation.work._tag === 'NotStarted' ? activation.replacement : null
+    return launch?._tag === 'Reserved' || launch?._tag === 'Acknowledged' ? launch : null
+  }
+  const cancel = (project: Project, launch: Extract<HostLaunch, { _tag: 'Reserved' | 'Acknowledged' }>) =>
+    observeActivation(journal, project, { line: launchLine(launch.id), from: launch._tag, move: 'cancel', input: {} })
+  const currentPane = (id: Of<typeof SessionId>) => Effect.gen(function* () {
+    if ((yield* provider.observe(id)) !== 'Running') return yield* Effect.fail(retired())
+    const pane = yield* provider.pane(id)
+    return pane ?? (yield* Effect.fail(retired()))
   })
+  const confirmBoundPane = (binding: { readonly id: Of<typeof SessionId>; readonly pane: Of<typeof Pane> }) =>
+    Effect.flatMap(currentPane(binding.id), (pane) =>
+      pane.address === binding.pane.address ? Effect.void : Effect.fail(retired()))
+  const checkFiles = (files: readonly ApprovedFile[], marked: 'Required' | 'Optional') => protectedIO(() => {
+    if (preflight(dir, files.map(entry), inventory(dir)).length) throw new Error('The approved files have changed')
+    if (marked === 'Required' && files.some((file) =>
+      safeEntry(dir, entry(file)) !== null || contentOf(original(dir, file), entry(file)) !== 'Marked'))
+      throw new Error('Marks are incomplete')
+  })
+  const proof = (generation: Of<typeof EventNumber>, id: Of<typeof SessionId>, key: 'nonce' | 'secret' | 'verifier') =>
+    readProjectLaunchFile(dir, journal.id, generation, projectLaunch(id), key)
+  const stop = (id: Of<typeof SessionId>) => Effect.gen(function* () {
+    if ((yield* provider.observe(id)) !== 'Ended') yield* provider.stop(id)
+    if ((yield* provider.observe(id)) !== 'Ended') return yield* Effect.fail(unavailable())
+  })
+  const restore = (project: Project) => Effect.gen(function* () {
+    const phase = project.activation
+    if (phase._tag !== 'RollingBack') return yield* Effect.fail(wrong())
+    yield* protectedIO(() => {
+      for (const file of phase.files) {
+        const outcome = restoreFile(dir, projectOriginals(journal.id, phase.at), entry(file))
+        if (outcome._tag === 'Unsafe' || outcome._tag === 'NoOriginal') throw new Error('Cannot restore the approved image')
+      }
+    })
+  })
+  return {
+    reserve: (id) => locked((project) => Effect.gen(function* () {
+      yield* protectedIO(() => { projectLaunch(id) })
+      const phase = project.activation
+      if (phase._tag !== 'Activating' && phase._tag !== 'Active') return yield* Effect.fail(wrong())
+      if (phase._tag === 'Active' && (yield* provider.observe(phase.binding.id)) !== 'Ended')
+        return yield* Effect.fail(wrong())
+      const previous = phase._tag === 'Activating' ? phase.launches.at(-1) : null
+      let state = project
+      if (previous?._tag === 'Reserved' || previous?._tag === 'Acknowledged') {
+        if (previous.id === id || (yield* provider.observe(previous.id)) !== 'Ended') return yield* Effect.fail(wrong())
+        yield* protectedIO(() => removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(previous.id)))
+        state = (yield* cancel(project, previous)).state
+      }
+      return yield* observeActivation(journal, state, { line: launchLine(id), from: null, move: 'reserve', input: {} })
+    })),
+    mark: locked((project) => Effect.gen(function* () {
+      const phase = project.activation
+      if (phase._tag !== 'Activating') return yield* Effect.fail(wrong())
+      yield* checkFiles(phase.files, 'Optional')
+      yield* protectedIO(() => {
+        for (const file of phase.files) {
+          const outcome = markFile(dir, projectOriginals(journal.id, phase.at), entry(file))
+          if (outcome._tag !== 'Written' && outcome._tag !== 'Done') throw new Error('Marking was interrupted')
+        }
+      })
+    })),
+    spawn: locked((project) => Effect.gen(function* () {
+      const phase = project.activation
+      const launch = candidate(project)
+      if (!launch || (phase._tag !== 'Activating' && phase._tag !== 'Active')) return yield* Effect.fail(wrong())
+      const observed = yield* provider.observe(launch.id)
+      if (observed === 'Running') return
+      if (observed !== 'Ended' || launch._tag !== 'Reserved') return yield* Effect.fail(unavailable())
+      const nonce = yield* protectedIO(() => {
+        const id = projectLaunch(launch.id)
+        if (proof(phase.at, launch.id, 'nonce') !== null) throw new Error('An ended launch requires a fresh reservation')
+        const privateNonce = LaunchNonce.make(randomBytes(32).toString('hex'))
+        const secret = HostCredential.make('host.' + randomBytes(32).toString('hex'))
+        writeProjectLaunchFile(dir, journal.id, phase.at, id, 'nonce', privateNonce)
+        writeProjectLaunchFile(dir, journal.id, phase.at, id, 'secret', secret)
+        writeProjectLaunchFile(dir, journal.id, phase.at, id, 'verifier', LaunchVerifier.make(digest(secret)))
+        return privateNonce
+      })
+      yield* provider.spawn(launch.id, nonce, phase.staff)
+    })),
+    acknowledge: (id, nonce) => locked((project) => Effect.gen(function* () {
+      const phase = project.activation
+      const launch = candidate(project)
+      if ((phase._tag !== 'Activating' && phase._tag !== 'Active') || launch?._tag !== 'Reserved' || launch.id !== id)
+        return yield* Effect.fail(retired())
+      if (!(yield* protectedIO(() => matches(proof(phase.at, id, 'nonce'), nonce)))) return yield* Effect.fail(retired())
+      const pane = yield* currentPane(id)
+      return yield* observeActivation(journal, project, { line: launchLine(id), from: 'Reserved', move: 'acknowledge', input: { pane } })
+    })),
+    commit: locked((project) => Effect.gen(function* () {
+      const phase = project.activation
+      const launch = candidate(project)
+      if (launch?._tag !== 'Acknowledged' || (phase._tag !== 'Activating' && phase._tag !== 'Active'))
+        return yield* Effect.fail(retired())
+      const pane = yield* currentPane(launch.id)
+      yield* checkFiles(phase.files, 'Required')
+      return yield* observeActivation(journal, project, {
+        line: launchLine(launch.id), from: 'Acknowledged', move: 'bind', input: { pane },
+      })
+    })),
+    rollback: (why) => locked((project) => observeActivation(journal, project, { line, from: 'Activating', move: 'back', input: { why } })),
+    restore: locked(restore),
+    reconcile: locked((project) => Effect.gen(function* () {
+      const phase = project.activation
+      if (phase._tag === 'RollingBack') {
+        yield* restore(project)
+        const launch = phase.launches.at(-1)
+        let state = project
+        if (launch?._tag === 'Reserved' || launch?._tag === 'Acknowledged') {
+          const { id } = launch
+          yield* stop(id)
+          yield* protectedIO(() => removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(id)))
+          state = (yield* cancel(project, launch)).state
+        }
+        return yield* observeActivation(journal, state, { line, from: 'RollingBack', move: 'back', input: {} })
+      }
+      if (phase._tag !== 'Active' || !phase.replacement) return null
+      const launch = phase.replacement
+      const { id } = launch
+      if (launch._tag === 'Reserved' || launch._tag === 'Acknowledged') {
+        if (phase.work._tag === 'NotStarted' && (yield* provider.observe(id)) !== 'Ended') return null
+        yield* stop(id)
+        yield* protectedIO(() => removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(id)))
+        return yield* cancel(project, launch)
+      }
+      if (launch._tag !== 'Bound') return null
+      yield* protectedIO(() => {
+        for (const previous of phase.launches) {
+          if (previous.id !== id) removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(previous.id))
+        }
+      })
+      return yield* observeActivation(journal, project, { line, from: 'Active', move: 'clearReplacement', input: { id } })
+    })),
+    collect: (id, nonce) => locked((project) => Effect.gen(function* () {
+      const phase = project.activation
+      if (phase._tag !== 'Active' || phase.binding.id !== id || phase.work._tag === 'Used') return yield* Effect.fail(retired())
+      yield* confirmBoundPane(phase.binding)
+      return yield* Effect.flatMap(protectedIO(() => matches(proof(phase.at, id, 'nonce'), nonce)
+        ? proof(phase.at, id, 'secret') : null),
+      (value) => Schema.is(HostCredential)(value) ? Effect.succeed(value) : Effect.fail(retired()))
+    })),
+    authenticate: (id, credential) => locked((project) => Effect.gen(function* () {
+      const phase = project.activation
+      if (phase._tag !== 'Active' || phase.binding.id !== id || phase.work._tag === 'NotStarted') return yield* Effect.fail(retired())
+      yield* confirmBoundPane(phase.binding)
+      if (!(yield* protectedIO(() => matches(proof(phase.at, id, 'verifier'), digest(credential)))))
+        return yield* Effect.fail(retired())
+      const active = phase.work._tag === 'Started' ? (yield* recordHostUse(journal, project, id)).state : project
+      yield* protectedIO(() => retireProjectLaunchSecret(dir, journal.id, phase.at, projectLaunch(id)))
+      return active
+    })),
+  }
+}
+
+export const newProjectLaunch = (): Of<typeof SessionId> => SessionId.make('session:' + randomBytes(16).toString('hex'))
+
+export const resumeProjectActivation = (
+  journal: Journal, operations: ActivationOperations, action: 'resume' | 'relaunch' | 'rollback',
+): Effect.Effect<void, Refusal> => Effect.gen(function* () {
+  const project = yield* readOpenProject(journal)
+  const phase = project.activation
+  if (action === 'rollback') {
+    if (phase._tag !== 'RollingBack') yield* operations.rollback(Rationale.make('The owner canceled activation.'))
+    yield* operations.reconcile
+    return
+  }
+  if (phase._tag === 'RollingBack') { yield* operations.reconcile; return }
+  if (phase._tag === 'Onboarding') return yield* Effect.fail(wrong())
+  if (phase._tag === 'Activating') yield* operations.mark
+  if (action === 'relaunch' || (phase._tag === 'Activating' && (!phase.launches.length || phase.launches.at(-1)?._tag === 'Cancelled')))
+    yield* operations.reserve(newProjectLaunch())
+  else if (phase._tag === 'Active' && (!phase.replacement || phase.work._tag !== 'NotStarted' || phase.replacement.id === phase.binding.id)) {
+    yield* operations.reconcile
+    return
+  }
+  const current = (yield* readOpenProject(journal)).activation
+  const launch = current._tag === 'Activating' ? current.launches.at(-1) : current._tag === 'Active' ? current.replacement : null
+  if (launch?._tag === 'Acknowledged') {
+    yield* operations.commit
+    yield* operations.reconcile
+  } else {
+    yield* operations.spawn
+  }
+})
+
+export const boundHostAuthority = (
+  operations: ActivationOperations, launch: Of<typeof SessionId>, credential: Of<typeof HostCredential>,
+): Effect.Effect<Extract<AuthenticatedActor, { _tag: 'Host' }>, Refusal> =>
+  Effect.flatMap(operations.authenticate(launch, credential), (project) =>
+    project.activation._tag === 'Active'
+      ? Effect.succeed({ _tag: 'Host', id: launch, staff: project.activation.staff } as const)
+      : Effect.fail(retired()))
