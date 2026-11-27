@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { Direction } from './direction.ts'
-import { ReviewFacts } from './review.ts'
+import { ReviewFacts, reviewing } from './review.ts'
 import { Human, Responsibility, Role, Staff, StaffingPlan } from './staff.ts'
 import { EventNumber, ProposalId, Rationale, RetryCount, VersionNumber, type Of } from './values.ts'
 
@@ -19,8 +19,12 @@ const proposalOf = <S extends Schema.Top>(value: S) => Schema.Struct({
   id: ProposalId, value, basis: Schema.NullOr(EventNumber),
   proposer: Schema.Union([Human, Staff]), owner: Human, reviewer: Role, retryCount: RetryCount,
   phase: Schema.Union([
-    Schema.TaggedStruct('Drafting', { feedback: Schema.NullOr(Schema.Union([ReviewFacts, Rationale])) }),
-    Schema.TaggedStruct('Reviewing', { by: Schema.NullOr(Staff), review: Schema.NullOr(EventNumber) }),
+    Schema.TaggedStruct('Drafting', { feedback: Schema.Union([
+      Schema.TaggedStruct('None', {}),
+      Schema.TaggedStruct('Review', { facts: ReviewFacts }),
+      Schema.TaggedStruct('Owner', { why: Rationale }),
+    ]) }),
+    reviewing({}),
     Schema.TaggedStruct('WaitingForOwner', { by: Staff, review: EventNumber, facts: ReviewFacts }),
     Schema.TaggedStruct('Accepted', { version: versionOf(value) }),
     Schema.TaggedStruct('Removed', {}),

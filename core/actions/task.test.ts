@@ -14,7 +14,7 @@ import { direction } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
 import { acceptDirection, activateTasks, boundHost, draftFor, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { recoverTaskCommand, runTaskCommands, taskCommandBlock } from '../effects/project-commands.ts'
-import { Command, CommandOutcome, CommandText, Direction, EventNumber, Goal, ReadPosition, SessionId, StageId, TaskId, taskRules } from '../schema/project.ts'
+import { Command, CommandOutcome, CommandText, Direction, EventNumber, Goal, ReadPosition, SessionId, StageId, TaskId, taskRole, taskRules } from '../schema/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
 import { readOpenProject } from './staff-session.ts'
 
@@ -45,14 +45,21 @@ test('the host sends a checked stage slice only after work starts and its basis 
     expect(yield* Effect.result(projectSendCommand(journal, started.read, Bun.YAML.stringify(draft)).pipe(auth({
       ...hostAuth, id: SessionId.make('session:previous-host'),
     })))).toMatchObject(refused('RetiredSession'))
-    expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [StageId.make('stage:missing')] })))
+    expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [{ ...draft.stages[0], id: StageId.make('stage:missing') }] })))
       .toMatchObject(refused('InvalidInput'))
     expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [draft.stages[0], ...draft.stages] })))
       .toMatchObject(refused('InvalidInput'))
+    const pipelineStage = [...started.proposals.values()].flatMap(({ phase }) =>
+      phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' ? phase.version.value.stages : [],
+    ).find(({ role }) => role.id === started.roles.pipeline.id)!
+    expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [draft.stages[0], pipelineStage] })))
+      .toMatchObject(refused('InvalidInput'))
     const sent = yield* sendDraft(journal, started)
+    expect(sent.event).toMatchObject({ line: { _tag: 'Task', id: draft.id }, from: null, move: 'open' })
+    expect(sent.event.input).not.toHaveProperty('role')
     const task = sent.state.tasks.get(draft.id)!
     expect(task.direction.acceptedAt).toBe(draft.direction.acceptedAt)
-    expect(task.role.responsibility).toEqual(host.responsibility)
+    expect(taskRole(task).responsibility).toEqual(host.responsibility)
     const revised = yield* acceptDirection(journal, sent.state, {
       ...task.direction.value,
       stages: [{ ...task.stages[0], work: Goal.make('A changed assignment.') }],
@@ -76,7 +83,7 @@ test('competing starts admit one attempt and a whole-file report uses the checke
     const { state: started } = yield* startWork(journal, yield* activateTasks(journal, created.state))
     const live = yield* startFixtureSession(journal, started)
     const sent = yield* send(journal, live.state.read)
-    const begin = (target: typeof journal) => projectReportCommand(target, taskId, sent.state.read, '_tag: Start')
+    const begin = (target: typeof journal) => projectReportCommand(target, taskId, sent.state.read, '{}')
       .pipe(auth(staffAuthorityOf()))
     const began = yield* Effect.all([Effect.result(begin(journal)), Effect.result(begin(other))], { concurrency: 'unbounded' })
     expect(began.filter(Result.isSuccess)).toHaveLength(1)
@@ -84,7 +91,7 @@ test('competing starts admit one attempt and a whole-file report uses the checke
     const project = yield* readOpenProject(other)
     expect(yield* Effect.result(staffInput(other, resultInput(project.read, 7, 2)))).toMatchObject(refused('Stale'))
     const contents = 'unchanged\nShe said "hello".\n'
-    const work = { _tag: 'Result', summary: 'Finished', attempt: 1,
+    const work = { summary: 'Finished', attempt: 1,
       files: [{ path: 'notes.md', image: { _tag: 'Present', contents }, changed: [{ first: 2, last: 2 }] }] }
     const invalid = { ...work, files: [{ ...work.files[0], changed: [{ first: 2, last: 3 }] }] }
     expect(yield* Effect.result(projectReportCommand(other, taskId, project.read, Bun.YAML.stringify(invalid))
@@ -175,9 +182,7 @@ test('HTTP records a result before running its pinned command and journals a suc
     expect(project.tasks.get(taskId)?.phase).toMatchObject({
       _tag: 'Reviewing', outcomes: [{ _tag: 'Holds', evidence: { exit: 0, stdout: '7' } }],
     })
-    expect(yield* Effect.result(ownerInput(journal, {
-      _tag: 'HumanChoice', read: project.read, choice: { _tag: 'StartWork', line: { _tag: 'Activation', id: journal.id } },
-    }))).toMatchObject(refused('WrongMove'))
+    expect(yield* Effect.result(ownerInput(journal, { read: project.read, line: { _tag: 'Activation', id: journal.id }, move: 'start', input: {} }))).toMatchObject(refused('WrongMove'))
   }))),
 ))
 
@@ -188,7 +193,7 @@ test('the task panel marks changed lines and shows only committed command outcom
     writeFileSync(join(directory, 'notes.md'), contents)
     const journal = yield* open(path)
     const working = yield* toWorking(journal, withCommand('printf tested'))
-    const result = { _tag: 'Result', summary: 'Recorded the notes', attempt: 1,
+    const result = { summary: 'Recorded the notes', attempt: 1,
       files: [{ path: 'notes.md', image: { _tag: 'Present', contents }, changed: [{ first: 2, last: 2 }] }] }
     yield* projectReportCommand(journal, taskId, working.state.read, Bun.YAML.stringify(result)).pipe(auth(staffAuthorityOf()))
     const commands = liveTaskCommands(directory)

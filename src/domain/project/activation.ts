@@ -11,7 +11,15 @@ export type ApprovedFile = Of<typeof ApprovedFile>
 export const ApprovedFiles = Schema.NonEmptyArray(ApprovedFile).check(
   Schema.makeFilter((files) => new Set(files.map(({ path }) => path)).size === files.length),
 )
-export const HostLaunch = Schema.Struct({ id: SessionId, pane: Schema.NullOr(Pane) })
+const launch = <T extends 'Reserved' | 'Acknowledged' | 'Bound' | 'Cancelled', const Fields extends Schema.Struct.Fields>(
+  tag: T, fields: Fields,
+) => Schema.TaggedStruct(tag, { ...fields, id: SessionId })
+export const HostLaunch = Schema.Union([
+  launch('Reserved', {}),
+  launch('Acknowledged', { pane: Pane }),
+  launch('Bound', { pane: Pane }),
+  launch('Cancelled', {}),
+])
 export type HostLaunch = Of<typeof HostLaunch>
 const pinned = Schema.Struct({ id: ProposalId, acceptedAt: EventNumber })
 const work = Schema.Union([

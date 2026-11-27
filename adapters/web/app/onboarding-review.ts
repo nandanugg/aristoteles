@@ -251,11 +251,12 @@ export function ProposalCard({ proposal, read, submit }: {
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<ProjectRefusal | null>(null)
   if (phase._tag !== 'WaitingForOwner' && phase._tag !== 'Accepted') return null
-  const choose = async (choice: Extract<Extract<Submission, { _tag: 'HumanChoice' }>['choice'], { _tag: 'ChooseProposal' }>['choice']) => {
+  type OwnerMove = Extract<Submission, { line: { _tag: 'Proposal' }; move: 'accept' | 'remove' | 'sendBack' }>
+  type Choice<M> = M extends OwnerMove ? Pick<M, 'move' | 'input'> : never
+  const choose = async (choice: Choice<OwnerMove>) => {
     if (busy) return
     setBusy(true)
-    const result = await submit({ _tag: 'HumanChoice', read,
-      choice: { _tag: 'ChooseProposal', line: { _tag: 'Proposal', id: proposal.id }, choice } })
+    const result = await submit({ ...choice, read, line: { _tag: 'Proposal', id: proposal.id } })
     setFailure(Result.isFailure(result) ? result.failure : null)
     setBusy(false)
   }
@@ -275,11 +276,13 @@ export function ProposalCard({ proposal, read, submit }: {
         </section>`)}`
         : html`<p>${value.summary}</p><p>${value.introduction}</p><ul>${value.duties.map((duty) => html`<li>${duty}</li>`)}</ul>`}
     ${phase._tag === 'WaitingForOwner' ? html`
-      <ul>${phase.facts.outcomes.map((outcome) => html`<li>${outcome.evidence}</li>`)}</ul>
-      <button class="btn primary" disabled=${busy} onClick=${() => void choose({ _tag: 'accept' })}>Accept</button>
-      <button class="btn" disabled=${busy} onClick=${() => void choose({ _tag: 'remove' })}>Remove</button>
+      <ul>${phase.facts.outcomes.map((outcome) => html`<li>${outcome.evidence._tag === 'Quote'
+        ? html`<blockquote>${outcome.evidence.text}<footer>${outcome.evidence.file} · ${outcome.evidence.lines.first}–${outcome.evidence.lines.last}</footer></blockquote>`
+        : html`<p>Exit ${outcome.evidence.exit}</p><pre>${outcome.evidence.stdout}${outcome.evidence.stderr}</pre>`}</li>`)}</ul>
+      <button class="btn primary" disabled=${busy} onClick=${() => void choose({ move: 'accept', input: {} })}>Accept</button>
+      <button class="btn" disabled=${busy} onClick=${() => void choose({ move: 'remove', input: {} })}>Remove</button>
       <${ReviewInput} label="What should change?" action="Send back" onSubmit=${(why: string) =>
-        choose({ _tag: 'sendBack', why: Rationale.make(why) })} />
+        choose({ move: 'sendBack', input: { why: Rationale.make(why) } })} />
     ` : html`<p>Accepted · version ${phase.version.number}</p>`}
     ${failure ? html`<p role="alert">${failure.why}</p>` : null}
   </article>`

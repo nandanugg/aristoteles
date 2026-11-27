@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { html } from 'htm/preact'
-import { taskRules, type Refusal, type Task, type TaskId, type Of, type WholeFile } from '../../../core/schema/project.ts'
+import { taskRole, taskRules, type Refusal, type Task, type TaskId, type Of, type WholeFile } from '../../../core/schema/project.ts'
 
 function FileResult({ file }: { readonly file: WholeFile }) {
   const { image } = file
@@ -36,7 +36,7 @@ export function TaskPanel({ task, commandBlock }: {
   const outcomes = phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.outcomes : null
   return html`<article aria-label=${task.name}>
     <h3>${task.name}</h3><p>${task.goal}</p>
-    <p>${task.role.name} · ${phase._tag === 'ReadyToReview' ? 'Ready to review' : phase._tag}</p>
+    <p>${taskRole(task).name} · ${phase._tag === 'ReadyToReview' ? 'Ready to review' : phase._tag}</p>
     <details>
       <summary>Task brief</summary>
       <p>${task.direction.value.name} · version ${task.direction.number}</p>

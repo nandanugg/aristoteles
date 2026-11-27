@@ -1,4 +1,5 @@
 import { Result, Schema } from 'effect'
+import { rolesOf, roleOf, staffingAt } from './roles.ts'
 import type { Project } from './records.ts'
 import {
   AccountName, DutyText, HumanId, Introduction, ResponsibilityId, Summary, VersionNumber, EventNumber, LaunchText, ModelName, Name, PaneAddress, PlanName, ProviderName, Rationale,
@@ -79,12 +80,12 @@ export const subagentCapacity = (project: Project, staff: Staff) => {
   const used = [...project.tasks.values()].filter(({ phase }) => {
     if (phase._tag === 'Working') {
       const { attempt } = phase
-      return attempt.place === 'Child' && liveSession(project, attempt.session.id)?.staff.id === staff.id
+      return attempt.where === 'Subagent' && liveSession(project, attempt.session.id)?.staff.id === staff.id
     }
-    return phase._tag === 'Reviewing' && phase.by?.id === staff.id
+    return phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.by.id === staff.id
   }).length
   const proposals = [...project.proposals.values()].filter(({ phase }) =>
-    phase._tag === 'Reviewing' && phase.by?.id === staff.id,
+    phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.by.id === staff.id,
   ).length
   const occupied = used + proposals
   return { usedSubagents: SubagentCount.make(occupied), freeSubagents: SubagentCount.make(Math.max(0, staff.subagents - occupied)) }
@@ -107,14 +108,14 @@ export const validateStaffing = (project: Project, plan: StaffingPlan): Result.R
     staffIds.add(staff.id)
     const roles: Role[] = []
     for (const candidate of staff.roles) {
-      const role = project.roles.get(candidate.id)
+      const role = roleOf(project, candidate.id)
       if (!role || assigned.has(role.id)) return invalid(Rationale.make('Assign each project role exactly once.'))
       assigned.add(role.id)
       roles.push(role)
     }
     const [first, ...rest] = roles
     if (!first) return invalid(Rationale.make('Assign at least one role to each staff.'))
-    if (staff.subagents === 0 && roles.some(({ id }) => id === project.host.id || id === project.pipeline.id)) {
+    if (staff.subagents === 0 && roles.some(({ id }) => id === project.roles.host.id || id === project.roles.pipeline.id)) {
       return Result.fail(refuse('StaffingMinimum', Rationale.make('Host and pipeline each need access to a subagent.')))
     }
     const current = project.staff.get(staff.id)
@@ -141,14 +142,14 @@ export const validateStaffing = (project: Project, plan: StaffingPlan): Result.R
     }
   }
   const [first, ...rest] = canonical
-  if (!first || assigned.size !== project.roles.size) return invalid(Rationale.make('Cover every project role.'))
+  if (!first || assigned.size !== rolesOf(project).length) return invalid(Rationale.make('Cover every project role.'))
   return Result.succeed({ ...plan, staff: [first, ...rest] })
 }
 
 export const sessionMayStart = (
   project: Project, id: Of<typeof StaffId>, staffing: Of<typeof EventNumber>, previous: StaffSession | null,
 ): Result.Result<Staff, Refusal> => {
-  if (staffing !== project.staffingAt) return Result.fail(refuse('Stale', Rationale.make('Staffing changed before launch.')))
+  if (staffing !== staffingAt(project)) return Result.fail(refuse('Stale', Rationale.make('Staffing changed before launch.')))
   const staff = project.staff.get(id)
   if (!staff) return Result.fail(refuse('WrongActor', Rationale.make('Staffing does not include that staff.')))
   const latest = latestSession(project, staff)

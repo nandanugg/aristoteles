@@ -1,7 +1,7 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
-  ReadPosition, Rationale, StoredEvent, Submission, liveSession, refuse, reviewOutcome,
-  type EventNumber, type LiveSession, type Of, type Projection, type Refusal, type SessionId, type Staff, type StoredActor,
+  ReadPosition, Rationale, staffingAt, submissionParty, StoredEvent, Submission, liveSession, refuse, reviewOutcome,
+  type EventNumber, type LiveSession, type Of, type Projection, type Refusal, type SessionId, type Staff, type StoredActor, type Party,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
 import { applyEvent, fold, readPosition } from '../state/project.ts'
@@ -29,7 +29,8 @@ const commit = (
   const edit: Write = (events, number) => Result.flatMap(fold(events), (state) => {
     if (read > readPosition(state)) return Result.fail(refuse('Stale', Rationale.make('That read is ahead of the journal.')))
     return Result.flatMap(build(state), (move) => {
-      const entry = { number, actor, read, at, ...move }
+      const { line, from, move: name, input } = move
+      const entry = { line, from, move: name, input, number, actor, read, at }
       if (!Schema.is(StoredEvent)(entry)) {
         return Result.fail(refuse('WrongMove', Rationale.make('The stored input must match the move on its line.')))
       }
@@ -43,25 +44,75 @@ const wrongActor = () => refuse('WrongActor', Rationale.make('Use the input for 
 const retired = () => refuse('RetiredSession', Rationale.make('Report from the attempt’s live session.'))
 const readSubmission = Schema.decodeUnknownEffect(Submission, { onExcessProperty: 'error' })
 
-type QuestionMove = Extract<MoveInput, { line: { _tag: 'Question' } }>
-type QuestionSubmission =
-  Extract<Extract<Submission, { _tag: 'HumanChoice' }>['choice'], { _tag: 'Question' | 'Answer' }>
-const questionMove = (input: QuestionSubmission): QuestionMove => {
-  if (input._tag === 'Answer') return { line: input.line, from: 'Open', move: 'answer', input: { answer: input.answer } }
-  const { id, ...fields } = input.question
-  return { line: { _tag: 'Question', id }, from: null, move: 'next', input: fields }
+type Address = Submission['line']['_tag']
+const onLine = <L extends Address>(request: Submission, line: L):
+  request is Extract<Submission, { line: { _tag: L } }> => request.line._tag === line
+
+const maySubmit = (actor: AuthenticatedActor, party: Party | undefined) => {
+  switch (party) {
+    case 'Owner': return actor._tag === 'Human'
+    case 'Host': return actor._tag === 'Host'
+    case 'Reviewer': return actor._tag === 'Review'
+    case 'Assignee': return actor._tag === 'Staff'
+    case 'Actor':
+    case 'Recipient':
+    case 'Proposer': return actor._tag === 'Human' || actor._tag === 'Staff'
+    default: return false
+  }
 }
-type ProposalMove = Extract<MoveInput, { line: { _tag: 'Proposal' } }>
-type ProposalSubmission = Extract<Extract<Submission, { _tag: 'HumanChoice' }>['choice'],
-  { _tag: 'Proposal' | 'SubmitProposal' | 'ChooseProposal' }>
-const proposalMove = (input: ProposalSubmission): ProposalMove => {
-  switch (input._tag) {
-    case 'Proposal': return { line: { _tag: 'Proposal', id: input.id }, from: null, move: 'next', input: { value: input.value } }
-    case 'SubmitProposal': return { line: input.line, from: 'Drafting', move: 'submit', input: { value: input.value, question: input.question } }
-    case 'ChooseProposal': {
-      const { choice, line } = input
-      if (choice._tag === 'sendBack') return { line, from: 'WaitingForOwner', move: 'sendBack', input: { why: choice.why } }
-      return { line, from: 'WaitingForOwner', move: choice._tag, input: {} }
+
+const moveFor = (
+  project: Projection, request: Submission, authenticated: AuthenticatedActor,
+): Result.Result<MoveInput, Refusal> => {
+  const moved = (input: MoveInput) => Result.succeed(input)
+  if (onLine(request, 'Project')) {
+    if (request.move === 'open') return moved({ ...request, from: null })
+    return moved({ ...request, from: 'Open' })
+  }
+  if (!project) return Result.fail(refuse('WrongMove', Rationale.make('Open the project first.')))
+  const current = authenticated._tag === 'Staff' || authenticated._tag === 'Review'
+    ? liveSession(project, authenticated.session.id) : null
+  if ((authenticated._tag === 'Staff' || authenticated._tag === 'Review') &&
+      current?.staff.id !== authenticated.session.staff.id) return Result.fail(retired())
+  if (onLine(request, 'Task')) {
+    if (request.move === 'open') {
+      const activation = project.activation
+      if (authenticated._tag !== 'Host' || activation._tag !== 'Active' ||
+          authenticated.id !== activation.binding.id || authenticated.staff.id !== activation.staff.id)
+        return Result.fail(retired())
+      return moved({ ...request, from: null })
+    }
+    if (!current) return Result.fail(retired())
+    const { input, line } = request
+    if ('attempt' in input) {
+      const task = project.tasks.get(line.id)
+      if (task?.phase._tag === 'Working' && task.phase.attempt.session.id !== current.id) return Result.fail(retired())
+      return moved({ line, from: 'Working', move: 'next', input: { ...input, session: current.id } })
+    }
+    return moved({ line, from: 'Sent', move: 'next', input: { session: current, staffing: staffingAt(project), where: 'Session' } })
+  }
+  if (onLine(request, 'Activation')) {
+    if (request.move === 'next') return moved({ ...request, from: 'Onboarding' })
+    return moved({ ...request, from: 'Active' })
+  }
+  if (onLine(request, 'Question')) {
+    if (request.move === 'open') return moved({ ...request, from: null })
+    return moved({ ...request, from: 'Open' })
+  }
+  switch (request.move) {
+    case 'open': return moved({ ...request, from: null })
+    case 'submit': return moved({ ...request, from: 'Drafting' })
+    case 'accept':
+    case 'remove':
+    case 'sendBack': return moved({ ...request, from: 'WaitingForOwner' })
+    case 'review': {
+      const { line, input: { facts } } = request
+      const phase = project.proposals.get(line.id)?.phase
+      if (!current || authenticated._tag !== 'Review' || phase?._tag !== 'Reviewing' ||
+          phase.assignment._tag !== 'Assigned' || phase.assignment.by.id !== current.staff.id ||
+          phase.assignment.review !== authenticated.review) return Result.fail(retired())
+      const move = reviewOutcome(facts) === 'Holds' ? 'next' : 'sendBack'
+      return moved({ line, from: 'Reviewing', move, input: { session: current, review: authenticated.review, facts } })
     }
   }
 }
@@ -69,72 +120,13 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
   Effect.gen(function* () {
     const request = yield* Effect.mapError(readSubmission(input), () =>
       refuse('InvalidInput', Rationale.make('The submission does not match the checked input.')))
-    const authority = yield* Authority
-    const authenticated = yield* authority.actor
-    if (request._tag === 'SendTask') {
-      if (authenticated._tag !== 'Host' || request.project.id !== journal.id) return yield* Effect.fail(wrongActor())
-      return yield* commit(journal, authenticated.staff, request.read, () => Result.succeed({
-        line: request.project, from: 'Open', move: 'next',
-        input: { _tag: 'TaskSent', draft: request.draft, host: authenticated.id },
-      }))
-    }
-    if (request._tag === 'HumanChoice') {
-      if (authenticated._tag !== 'Human') return yield* Effect.fail(wrongActor())
-      const { choice } = request
-      if (choice._tag === 'Question' || choice._tag === 'Answer')
-        return yield* commit(journal, authenticated.actor, request.read, () => Result.succeed(questionMove(choice)))
-      if (choice._tag === 'Proposal' || choice._tag === 'SubmitProposal' || choice._tag === 'ChooseProposal')
-        return yield* commit(journal, authenticated.actor, request.read, () => Result.succeed(proposalMove(choice)))
-      const address = choice._tag === 'NewProject' ? choice.project : choice.line
-      if (address.id !== journal.id) {
-        return yield* Effect.fail(refuse('InvalidInput', Rationale.make('The choice addresses a different project.')))
-      }
-      return yield* commit(journal, authenticated.actor, request.read, () => {
-        if (choice._tag === 'Activate')
-          return Result.succeed({ line: choice.line, from: 'Onboarding', move: 'next', input: { files: choice.files } })
-        if (choice._tag === 'StartWork')
-          return Result.succeed({ line: choice.line, from: 'Active', move: 'start', input: {} })
-        if (choice._tag === 'EndProject')
-          return Result.succeed({ line: choice.line, from: 'Open', move: 'end', input: {} })
-        const { project, owner, host, pipeline, staff, roles } = choice
-        return Result.succeed({ line: project, from: null, move: 'next', input: { owner, host, pipeline, staff, roles } })
-      })
-    }
-    const report = request.report
-    if (report._tag === 'Review') {
-      if (authenticated._tag !== 'Review') return yield* Effect.fail(wrongActor())
-      const { session, review } = authenticated
-      const actor = { _tag: 'Staff', id: session.staff.id } as const
-      const { line, facts } = report
-      return yield* commit(journal, actor, request.read, (project) => {
-        const proposal = project?.proposals.get(line.id)
-        if (proposal?.phase._tag !== 'Reviewing' || proposal.phase.by?.id !== session.staff.id ||
-            proposal.phase.review !== review || !project || !liveSession(project, session.id)) return Result.fail(retired())
-        return Result.succeed(reviewOutcome(facts) === 'Holds'
-          ? { line, from: 'Reviewing', move: 'next', input: { session, review, facts } }
-          : { line, from: 'Reviewing', move: 'sendBack', input: { session, review, facts } })
-      })
-    }
-    if (authenticated._tag !== 'Staff') return yield* Effect.fail(wrongActor())
-    const { session } = authenticated
-    const actor: StoredActor = { _tag: 'Staff', id: session.staff.id }
-    return yield* commit(journal, actor, request.read, (project) => {
-      if (project?.status._tag !== 'Open') return Result.fail(retired())
-      const current = liveSession(project, session.id)
-      if (!current || current.staff.id !== session.staff.id) return Result.fail(retired())
-      if (report._tag === 'Proposal' || report._tag === 'SubmitProposal')
-        return Result.succeed(proposalMove(report))
-      if (report._tag !== 'Work') return Result.succeed(questionMove(report))
-      const { line, report: result } = report
-      if (result._tag === 'Start') return Result.succeed({
-        line, from: 'Sent', move: 'next', input: { session: current, staffing: project.staffingAt, place: 'Main' },
-      })
-      const task = project.tasks.get(line.id)
-      if (task?.phase._tag === 'Working' && task.phase.attempt.session.id !== session.id) return Result.fail(retired())
-      return Result.succeed({ line, from: 'Working', move: 'next', input: {
-        session: current.id, attempt: result.attempt, summary: result.summary, files: result.files,
-      } })
-    })
+    const authenticated = yield* (yield* Authority).actor
+    if (!maySubmit(authenticated, submissionParty(request))) return yield* Effect.fail(wrongActor())
+    if ((request.line._tag === 'Project' || request.line._tag === 'Activation') && request.line.id !== journal.id)
+      return yield* Effect.fail(refuse('InvalidInput', Rationale.make('The move addresses a different project.')))
+    const actor: StoredActor = authenticated._tag === 'Human' ? authenticated.actor
+      : { _tag: 'Staff', id: (authenticated._tag === 'Host' ? authenticated.staff : authenticated.session.staff).id }
+    return yield* commit(journal, actor, request.read, (project) => moveFor(project, request, authenticated))
   })
 
 // The provider and other engine ports record the input of a specific line move.

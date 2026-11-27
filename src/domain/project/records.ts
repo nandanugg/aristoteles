@@ -39,9 +39,11 @@ const ProjectStatus = Schema.Union([
   Schema.TaggedStruct('Ended', { at: EventNumber }),
 ])
 export const Project = Schema.Struct({
-  id: ProjectId, owner: Human, host: Role, pipeline: Role,
-  roles: recordsById(Role, RoleId), staff: recordsById(Staff, StaffId),
-  subscriptions: recordsById(Subscription, SubscriptionId), staffingAt: EventNumber,
+  id: ProjectId, owner: Human,
+  roles: Schema.Struct({ host: Role, pipeline: Role, work: recordsById(Role, RoleId) }).check(
+    Schema.makeFilter(({ host, pipeline, work }) => host.id !== pipeline.id && !work.has(host.id) && !work.has(pipeline.id)),
+  ), staff: recordsById(Staff, StaffId),
+  subscriptions: recordsById(Subscription, SubscriptionId), openedAt: EventNumber,
   staffing: Schema.NullOr(StaffingAccepted), proposals: recordsById(Proposal, ProposalId),
   sessions: recordsById(StaffSession, SessionId), tasks: recordsById(Task, TaskId), questions: recordsById(Question, QuestionId), status: ProjectStatus, activation: Activation,
   lastChange: EventNumber, read: ReadPosition,

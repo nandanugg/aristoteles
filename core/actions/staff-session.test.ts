@@ -4,7 +4,7 @@ import { waitOnProject } from '../../adapters/cli/commands/wait.ts'
 import { open, session, staff, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { begin, commandOutcomes, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { initialStaffing, launchStaff, sharedStaffing } from '../../src/store/staff-session.probe.ts'
-import {
+import { staffingAt,
   SessionCount, SessionId, SubagentCount, TaskId, capacity, type Staff, type StaffingPlan,
 } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
@@ -37,7 +37,7 @@ test('shared staff covers both roles and a stale staffing plan or a duplicate li
     expect(yield* Effect.result(launchStaff(journal, changed, 1, 2))).toMatchObject(rejected('NoCapacity'))
     expect(yield* Effect.result(launchStaff(journal, changed, 0, 2))).toMatchObject(rejected('WrongMove'))
     expect(changed.staff.get(staff.id)?.roles).toHaveLength(2)
-    expect(changed.staffingAt > readPosition(launched.state)).toBe(true)
+    expect(staffingAt(changed) > readPosition(launched.state)).toBe(true)
     expect((yield* readOpenProject(journal)).read).toBe(changed.read)
   }))),
 ))
@@ -55,7 +55,7 @@ test('pause retires authority, releases charges, and resumes the same attempt wi
     expect(yield* Effect.result(waitOnProject(journal, Effect.succeed(session.id)))).toMatchObject(rejected('RetiredSession'))
     const continued = { ...session, id: SessionId.make('session:2') }
     yield* resumeSession(journal, paused, address, {
-      id: continued.id, pane: continued.pane, staffing: paused.staffingAt,
+      id: continued.id, pane: continued.pane, staffing: staffingAt(paused),
     })
     const resumed = yield* readOpenProject(journal)
     expect(resumed.sessions.get(session.id)?._tag).toBe('Paused')
@@ -84,14 +84,14 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     expect(after.read).not.toBe(readPosition(sent.state))
     expect(after.sessions.get(session.id)?._tag).toBe('Ended')
     expect(after.tasks.get(ongoing)?.phase).toMatchObject({ _tag: 'Sent', retryCount: 0 })
-    expect(after.tasks.get(ongoing)?.attempts).toMatchObject({ _tag: 'PreviouslyWorked', last: 1 })
+    expect(after.tasks.get(ongoing)?.lastAttempt).toMatchObject({ _tag: 'Attempted', number: 1 })
     const previous = before.tasks.get(taskId)?.phase
     const released = after.tasks.get(taskId)?.phase
     if (previous?._tag !== 'Reviewing') throw new Error('The review must already be assigned')
-    expect(released).toEqual({ ...previous, by: null, review: null })
+    expect(released).toEqual({ ...previous, assignment: { _tag: 'Waiting' } })
     expect(Number(capacity(after, staff).usedSubagents)).toBe(0)
     const continued = { ...session, id: SessionId.make('session:2') }
-    yield* startSession(journal, after, { id: continued.id, staff: continued.staff.id, pane: continued.pane, staffing: after.staffingAt })
+    yield* startSession(journal, after, { id: continued.id, staff: continued.staff.id, pane: continued.pane, staffing: staffingAt(after) })
     const latest = yield* readOpenProject(journal)
     yield* startChild(journal, latest, { _tag: 'Task', id: ongoing }, continued, 'Work')
     expect((yield* readOpenProject(journal)).tasks.get(ongoing)?.phase).toMatchObject({

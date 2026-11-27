@@ -1,13 +1,11 @@
 import { Schema } from 'effect'
+import { Command, Lines, OutcomeTag, Quote } from './evidence.ts'
 import { Human, Role } from './staff.ts'
 import {
-  CommandText, ContextValue, DirectionId, ExampleText, FilePath, GitCommit, Goal, GuidanceText, LineNumber,
-  Name, QuestionText, QuoteText, RepositoryAddress, RuleId, StageId, StandardId, Summary, type Of,
+  ContextValue, DirectionId, ExampleText, FilePath, GitCommit, Goal, GuidanceText,
+  Name, QuestionText, RepositoryAddress, RuleId, StageId, StandardId, Summary, type Of,
 } from './values.ts'
 
-export const Lines = Schema.Struct({ first: LineNumber, last: LineNumber })
-  .check(Schema.makeFilter(({ first, last }) => first <= last))
-const Quote = Schema.TaggedStruct('Quote', { file: FilePath, lines: Lines, text: QuoteText })
 export const Stage = Schema.Struct({
   id: StageId, name: Name, role: Role, work: Goal,
   where: Schema.Union([
@@ -19,7 +17,6 @@ export const Stage = Schema.Struct({
 export const Fact = Schema.Struct({
   name: Schema.Literals(['system', 'field', 'language', 'repo', 'audience', 'output']), value: ContextValue,
 })
-export const Command = Schema.TaggedStruct('Command', { text: CommandText })
 const Scope = Schema.Union([
   Schema.TaggedStruct('Everywhere', {}),
   Schema.TaggedStruct('Where', {
@@ -38,7 +35,7 @@ export const Rule = Schema.TaggedStruct('Rule', {
   ]),
   examples: Schema.Array(Schema.Struct({
     example: Schema.Union([Quote, Schema.TaggedStruct('MadeUp', { text: ExampleText })]),
-    result: Schema.Literals(['Holds', 'Breaks']),
+    result: OutcomeTag,
   })),
 })
 const Standard = Schema.TaggedStruct('Standard', {

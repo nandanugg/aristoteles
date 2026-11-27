@@ -807,9 +807,9 @@ const onboard: Command = (call) =>
 
 export const commands: Commands = { onboard }
 
-import { submitProposal } from '../../../core/actions/proposal.ts'
+import { submit } from '../../../core/actions/project.ts'
 import type { Authority as ProjectAuthority } from '../../../core/actions/project.ts'
-import { Rationale, refuse as refuseProject, type Refusal as ProjectRefusal, type ReadPosition, type Of } from '../../../core/schema/project.ts'
+import { ProposalSubmission, Rationale, refuse as refuseProject, type Refusal as ProjectRefusal, type ReadPosition, type Of } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
 
 // Format 16 loads authored YAML, then uses the same proposal intake as the page.
@@ -820,10 +820,10 @@ export const projectOnboard = (
     try: () => parseYaml(yaml),
     catch: () => refuseProject('InvalidInput', Rationale.make('Load a valid YAML proposal or response.')),
   })
-  if (!input || typeof input !== 'object' || !('_tag' in input) ||
-      (input._tag !== 'Proposal' && input._tag !== 'SubmitProposal' && input._tag !== 'ChooseProposal' && input._tag !== 'Review'))
+  const checked = Schema.decodeUnknownOption(ProposalSubmission, { onExcessProperty: 'error' })(isRecord(input) ? { ...input, read } : input)
+  if (checked._tag === 'None')
     return yield* Effect.fail(refuseProject('InvalidInput', Rationale.make('Use the checked onboarding submission.')))
-  const committed = yield* submitProposal(journal, read, input)
+  const committed = yield* submit(journal, checked.value)
   if (review && committed.event.from !== null) yield* Effect.result(review)
   return committed
 })

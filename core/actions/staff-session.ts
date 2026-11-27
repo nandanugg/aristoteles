@@ -1,6 +1,6 @@
 import { Effect, Result } from 'effect'
 import {
-  Rationale, ReadPosition, refuse, liveSession, type LiveSession, type Of, type Pane, type Project, type Refusal,
+  Rationale, ReadPosition, refuse, liveSession, staffingAt, type LiveSession, type Of, type Pane, type Project, type Refusal,
   type SessionAddress, type SessionId, type StaffId, type EventNumber, type SessionEvent, type TaskAddress,
 } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
@@ -33,7 +33,7 @@ export const startSession = (
 ): Effect.Effect<Committed, Refusal> => {
   const { id, ...input } = session
   return recordObserved(journal, project.owner, project.read, {
-    line: { _tag: 'Session', id }, from: null, move: 'next', input,
+    line: { _tag: 'Session', id }, from: null, move: 'open', input,
   })
 }
 
@@ -54,8 +54,8 @@ export const startChild = (
   journal: Journal, project: Project, line: Of<typeof TaskAddress>, session: LiveSession, work: 'Work' | 'Review',
 ): Effect.Effect<Committed, Refusal> => {
   const actor = { _tag: 'Staff', id: session.staff.id } as const
-  const input = { session, staffing: project.staffingAt }
+  const input = { session, staffing: staffingAt(project) }
   return recordObserved(journal, actor, project.read, work === 'Review'
-    ? { line, from: 'Reviewing', move: 'next', input }
-    : { line, from: 'Sent', move: 'next', input: { ...input, place: 'Child' } })
+    ? { line, from: 'Reviewing', move: 'assign', input }
+    : { line, from: 'Sent', move: 'next', input: { ...input, where: 'Subagent' } })
 }

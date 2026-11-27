@@ -9,7 +9,7 @@ import { projectSnapshot } from '../../adapters/web/project.ts'
 import { create, open, owner, session, staff, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm } from '../../src/store/question.probe.ts'
 import { nextStep, questionsFor } from '../derived/project/next-step.ts'
-import { Answer, QuestionForm, ProposalId, QuestionId, ReadPosition, SessionId, StaffingId, Submission, type Of, type Project } from '../schema/project.ts'
+import { staffingAt, Answer, QuestionForm, ProposalId, QuestionId, ReadPosition, SessionId, StaffingId, Submission, type Of, type Project } from '../schema/project.ts'
 import { observeSession, readOpenProject, startSession } from './staff-session.ts'
 import { readPosition } from '../state/project.ts'
 
@@ -46,10 +46,7 @@ test('CLI and page see the same owed question, enforce the recipient, and append
     expect(page.current()).toEqual(project)
     const invalid = yield* Effect.result(cliQuestion(journal, ownerAuthority, 'answer', questionId, project.read, answerYaml('wrong')))
     expect(invalid).toMatchObject(failure('WrongActor'))
-    const wrong = yield* pageQuestion(journal, ownerAuthority, fromWire({
-      _tag: 'HumanChoice', read: project.read,
-      choice: { _tag: 'Answer', line: { _tag: 'Question', id: questionId }, answer: { _tag: 'Single', text: 'wrong' } },
-    }))
+    const wrong = yield* pageQuestion(journal, ownerAuthority, fromWire({ read: project.read, line: { _tag: 'Question', id: questionId }, move: 'answer', input: { answer: { _tag: 'Single', text: 'wrong' } } }))
     expect(wrong.status).toBe(403)
     expect(readRefusal(yield* Effect.promise(() => wrong.json())).code).toBe('WrongActor')
     expect(yield* journal.eventsAfter(project.read)).toEqual([])
@@ -85,7 +82,7 @@ test('wrong shapes and retired or stale staff sessions refuse before writing', (
     const retired = yield* readOpenProject(journal)
     const replacement = { ...session, id: SessionId.make('session:replacement') }
     yield* startSession(journal, retired, {
-      id: replacement.id, staff: staff.id, pane: replacement.pane, staffing: retired.staffingAt,
+      id: replacement.id, staff: staff.id, pane: replacement.pane, staffing: staffingAt(retired),
     })
     const current = yield* readOpenProject(journal)
     expect(yield* Effect.result(cliQuestion(journal, staffAuthorityOf(), 'answer', questionId,
@@ -115,14 +112,14 @@ test('the host consults the owner on a particular staffing draft basis', () => w
       }))
     const first = yield* consult(questionId, draft.state)
     const firstAnswer = yield* cliQuestion(journal, ownerAuthority, 'answer', questionId, first.state.read, answerYaml('Keep two slots.'))
-    const send = { _tag: 'SubmitProposal', line, value: { ...plan, _tag: 'Staffing' } }
-    expect(yield* Effect.result(cliProposal(journal, firstAnswer.state, { ...send, question: null })))
+    const send = { line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' } } }
+    expect(yield* Effect.result(cliProposal(journal, firstAnswer.state, { ...send, input: { ...send.input, question: null } })))
       .toMatchObject(failure('Stale'))
-    const sent = yield* cliProposal(journal, firstAnswer.state, { ...send, question: { _tag: 'Question', id: questionId } })
+    const sent = yield* cliProposal(journal, firstAnswer.state, { ...send, input: { ...send.input, question: { _tag: 'Question', id: questionId } } })
     const proposal = sent.state.proposals.get(line.id)
     if (!proposal) throw new Error('No staffing proposal')
     yield* assignProposalReview(journal, proposal, session, sent.state.read)
-    const returned = yield* cliProposal(journal, yield* readOpenProject(journal), { _tag: 'Review', line, facts: evidence('Breaks') },
+    const returned = yield* cliProposal(journal, yield* readOpenProject(journal), { line, move: 'review', input: { facts: evidence('Breaks') } },
       { _tag: 'Review', session, review: proposal.lastChange })
     const laterId = QuestionId.make('question:revised')
     const latest = yield* consult(laterId, returned.state)

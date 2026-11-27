@@ -1,4 +1,4 @@
-import { taskRules, TaskBriefText, type Refusal, type Task } from '../../core/schema/project.ts'
+import { taskRole, taskRules, TaskBriefText, type Refusal, type Task } from '../../core/schema/project.ts'
 // The words of the work model's told steps: the command of a step (with the basis `--on <seq>`
 // where the act has one), the plain lines above it, and the maker's brief. The steps come from
 // core/derived/c16/obligations.ts (`dos`); this file only writes them.
@@ -336,8 +336,8 @@ export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = nu
     `Task ${task.id}: ${task.name}`,
     `Goal: ${task.goal}`,
     `Direction: ${task.direction.value.name} (version ${task.direction.number})`,
-    `Role: ${task.role.name} (responsibility version ${task.role.responsibility.id.number})`,
-    ...task.role.responsibility.value.duties,
+    `Role: ${taskRole(task).name} (responsibility version ${taskRole(task).responsibility.id.number})`,
+    ...taskRole(task).responsibility.value.duties,
     ...task.stages.map((stage) => `${stage.name}: ${stage.work}`),
     ...taskRules(task).map((rule) => `${rule.name}: ${rule.text}`),
     `Phase: ${phase._tag}`,

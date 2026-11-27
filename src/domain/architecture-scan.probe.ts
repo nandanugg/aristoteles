@@ -232,19 +232,35 @@ export function scan(program: ts.Program, root: string, included = contracts,
                 if (value?.isStringLiteral()) return value.value
                 if (value && value.flags & ts.TypeFlags.Null) return null
               }
-              // A journal move is distinguished by its line, source phase and move.
-              const addresses = records.map((part) => {
-                if (!part.getProperty('input')) return
+              // Journal moves carry a source phase. Public submissions omit it and
+              // use the checked input to distinguish an empty start from a result.
+              const address = (part: ts.Type) => {
+                const input = part.getProperty('input')
                 const line = part.getProperty('line')
-                if (!line) return
+                if (!line || !input) return
                 const tag = literalAt(memberType(line, node), '_tag')
-                const from = literalAt(part, 'from')
                 const move = literalAt(part, 'move')
-                if (typeof tag === 'string' && from !== undefined && typeof move === 'string')
-                  return JSON.stringify([tag, from, move])
-              })
-              const journal = addresses.every((address) => address !== undefined) && new Set(addresses).size === records.length
-              if (!journal && records.some((part) => typeof literalAt(part, '_tag') !== 'string'))
+                if (typeof tag !== 'string' || typeof move !== 'string') return
+                return { tag, move, input: memberType(input, node) }
+              }
+              const addresses = records.map(address)
+              const phases = records.map((part) => literalAt(part, 'from'))
+              const journal = addresses.every((entry) => entry !== undefined) &&
+                phases.every((from) => from !== undefined) &&
+                new Set(addresses.map((entry, i) => JSON.stringify([entry?.tag, phases[i], entry?.move]))).size === records.length
+              const submissions = records.every((part) => part.getProperty('read') && !part.getProperty('from')) &&
+                addresses.every((entry) => entry !== undefined) &&
+                addresses.every((entry, index) => {
+                  if (!entry) return false
+                  const fields = entry.input.getProperties()
+                  return addresses.slice(0, index).every((other) => {
+                    if (!other || other.tag !== entry.tag || other.move !== entry.move) return true
+                    const previous = other.input.getProperties()
+                    return (fields.length === 0 && previous.some((field) => !(field.flags & ts.SymbolFlags.Optional))) ||
+                      (previous.length === 0 && fields.some((field) => !(field.flags & ts.SymbolFlags.Optional)))
+                  })
+                })
+              if (!journal && !submissions && records.some((part) => typeof literalAt(part, '_tag') !== 'string'))
                 finding(path, 'untagged-union')
             }
             for (const part of type.types) {

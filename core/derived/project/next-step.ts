@@ -1,6 +1,6 @@
 import {
   currentQuestion, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
-  type Human, type LiveSession, type Project, type Proposal, type Question, type ReadPosition, type Of, type Task,
+  taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type ReadPosition, type Of, type Task,
 } from '../../schema/project.ts'
 
 export type Selection =
@@ -39,9 +39,9 @@ export const nextStep = (project: Project, authority: LiveSession | Of<typeof Hu
     switch (taskLine[phase._tag].owes) {
       case 'Assignee':
         if (phase._tag === 'Working') return phase.attempt.session.id === current.id
-        return staffOf(project, task.role)?.id === current.staff.id
+        return staffOf(project, taskRole(task))?.id === current.staff.id
       case 'Reviewer':
-        return phase._tag === 'Reviewing' && phase.by?.id === current.staff.id
+        return phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.by.id === current.staff.id
       default:
         return false
     }

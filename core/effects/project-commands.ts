@@ -5,13 +5,13 @@ import {
   CommandOutcome, Rationale, refuse, taskRules, activeWork,
   type Command, type CommandOutput, type EventNumber, type Of, type Refusal, type TaskAddress, type WholeFile,
 } from '../schema/project.ts'
-import type { CommandCapture, CommandReceipt, Committed, Journal } from '../services/project.ts'
+import type { CommandCapture, CommandRecord, Committed, Journal } from '../services/project.ts'
 
 export interface TaskCommands {
   readonly files: (files: readonly WholeFile[]) => Effect.Effect<void, Refusal>
-  readonly read: (receipt: CommandReceipt) => Effect.Effect<CommandCapture, Refusal>
-  readonly reserve: (receipt: CommandReceipt) => Effect.Effect<'Reserved' | 'Exists', Refusal>
-  readonly save: (receipt: CommandReceipt, outcome: CommandOutcome) => Effect.Effect<void, Refusal>
+  readonly read: (receipt: CommandRecord) => Effect.Effect<CommandCapture, Refusal>
+  readonly reserve: (receipt: CommandRecord) => Effect.Effect<'Reserved' | 'Exists', Refusal>
+  readonly save: (receipt: CommandRecord, outcome: CommandOutcome) => Effect.Effect<void, Refusal>
   readonly run: (command: Of<typeof Command>) => Effect.Effect<Of<typeof CommandOutput>, Refusal>
 }
 
@@ -34,7 +34,7 @@ export const runTaskCommands = (
     if (command._tag !== 'Command') continue
     const receipt = { project: project.id, task: task.id, result: result.at, rule: rule.id }
     let capture = yield* commands.read(receipt)
-    if (capture._tag === 'Unstarted') {
+    if (capture._tag === 'NotStarted') {
       yield* commands.files(result.files)
       if ((yield* commands.reserve(receipt)) === 'Reserved') {
         const evidence = yield* commands.run(command)
@@ -63,7 +63,7 @@ export const taskCommandBlock = (
   for (const rule of taskRules(task)) {
     if (rule.verification._tag !== 'Command') continue
     const state = yield* commands.read({ project: project.id, task: task.id, result: at, rule: rule.id })
-    if (state._tag === 'Unconfirmed') return blocked().why
+    if (state._tag === 'Running') return blocked().why
   }
   return null
 })
@@ -80,6 +80,6 @@ export const recoverTaskCommand = (
   if (!Schema.is(CommandOutcome)(outcome) || !taskRules(task).some((rule) =>
     JSON.stringify(rule) === JSON.stringify(outcome.rule))) return yield* Effect.fail(invalid())
   const receipt = { project: project.id, task: task.id, result, rule: outcome.rule.id }
-  if ((yield* commands.read(receipt))._tag === 'Unstarted') return yield* Effect.fail(invalid())
+  if ((yield* commands.read(receipt))._tag === 'NotStarted') return yield* Effect.fail(invalid())
   yield* commands.save(receipt, outcome)
 })

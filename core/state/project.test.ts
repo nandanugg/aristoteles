@@ -57,7 +57,7 @@ test('a report refuses wrong authority, an invalid phase and a stale basis after
     const working = yield* toWorking(journal)
     const read = readPosition(working.state)
     const request = resultInput(read)
-    expectCode(yield* Effect.result(staffInput(journal, { ...request, move: 'next' })), 'InvalidInput')
+    expectCode(yield* Effect.result(staffInput(journal, { ...request, move: 'back' })), 'InvalidInput')
     expectCode(yield* Effect.result(staffInput(journal, request, { ...session, id: SessionId.make('session:other') })), 'RetiredSession')
     expectCode(yield* Effect.result(commandOutcomes(journal, read)), 'WrongMove')
     expect(yield* journal.eventsAfter(read)).toEqual([])

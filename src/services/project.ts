@@ -20,7 +20,7 @@ export interface Journal {
   readonly transact: (edit: Write) => Effect.Effect<Committed, Refusal>
 }
 
-export interface CommandReceipt {
+export interface CommandRecord {
   readonly project: Of<typeof ProjectId>
   readonly task: Of<typeof TaskId>
   readonly result: Of<typeof EventNumber>
@@ -28,6 +28,6 @@ export interface CommandReceipt {
 }
 
 export type CommandCapture =
-  | { readonly _tag: 'Unstarted' }
-  | { readonly _tag: 'Unconfirmed' }
+  | { readonly _tag: 'NotStarted' }
+  | { readonly _tag: 'Running' }
   | { readonly _tag: 'Captured'; readonly outcome: CommandOutcome }

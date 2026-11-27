@@ -1,10 +1,8 @@
 import { Schema } from 'effect'
-import { Rationale, type Of } from './values.ts'
+import { Outcome } from './evidence.ts'
+import { Staff } from './staff.ts'
+import { EventNumber, Rationale, type Of } from './values.ts'
 
-const Outcome = Schema.Union([
-  Schema.TaggedStruct('Holds', { evidence: Rationale }),
-  Schema.TaggedStruct('Breaks', { evidence: Rationale }),
-])
 export const ReviewFacts = Schema.Struct({
   outcomes: Schema.NonEmptyArray(Outcome),
   findings: Schema.Array(Rationale),
@@ -12,3 +10,10 @@ export const ReviewFacts = Schema.Struct({
 export type ReviewFacts = Of<typeof ReviewFacts>
 export const reviewOutcome = (facts: ReviewFacts): 'Holds' | 'Breaks' =>
   facts.findings.length === 0 && facts.outcomes.every((outcome) => outcome._tag === 'Holds') ? 'Holds' : 'Breaks'
+
+const Assignment = Schema.Union([
+  Schema.TaggedStruct('Waiting', {}),
+  Schema.TaggedStruct('Assigned', { by: Staff, review: EventNumber }),
+])
+export const reviewing = <const Fields extends Schema.Struct.Fields>(fields: Fields) =>
+  Schema.TaggedStruct('Reviewing', { ...fields, assignment: Assignment })

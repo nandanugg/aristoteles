@@ -1,4 +1,4 @@
-export type { Committed, Write, Journal, CommandReceipt, CommandCapture } from '../../src/services/project.ts'
+export type { Committed, Write, Journal, CommandRecord, CommandCapture } from '../../src/services/project.ts'
 export { openProjectJournal } from '../../src/store/project.ts'
 export {
   projectOriginals, readProjectLaunchFile, removeProjectLaunch, retireProjectLaunchSecret, writeProjectLaunchFile,

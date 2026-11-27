@@ -8,7 +8,7 @@ import { projectEvents, projectSnapshot } from '../../../../adapters/web/project
 import { agree, approvedText, hostId, newerText, readyActivation, startWork } from '../../../../src/store/project-activation.probe.ts'
 import { open, withJournal } from '../../../../src/store/project.probe.ts'
 import { readOpenProject } from '../../../actions/staff-session.ts'
-import { ActivationEvent, HostCredential, Rationale, ReadPosition, type Of, type Refusal, type SessionId } from '../../../schema/project.ts'
+import { HostLaunchEvent, HostCredential, Rationale, ReadPosition, type Of, type Refusal, type SessionId } from '../../../schema/project.ts'
 import { readPosition } from '../../../state/project.ts'
 import { picked } from '../../c16/replay/itf.ts'
 import { integer, readTrace, record, registeredChecks } from './driver.ts'
@@ -77,8 +77,8 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
       const events = yield* journal.eventsAfter(ReadPosition.make(0))
       const acked = new Set<number>()
       if (phase._tag !== 'Onboarding') for (const event of events) {
-        if (event.number >= phase.at && Schema.is(ActivationEvent)(event) && event.move === 'acknowledge')
-          acked.add(numberOf(event.input.id))
+        if (event.number >= phase.at && Schema.is(HostLaunchEvent)(event) && event.move === 'acknowledge')
+          acked.add(numberOf(event.line.id))
       }
       return {
         phase: phase._tag,
@@ -136,7 +136,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
           const reserved = integer(prior.reserved)
           const candidate = hostId(reserved)
           const phase = (yield* readOpenProject(journal)).activation
-          const mayCommit = phase._tag === 'Activating' && phase.launches.at(-1)?.pane != null &&
+          const mayCommit = phase._tag === 'Activating' && phase.launches.at(-1)?._tag === 'Acknowledged' &&
             f.running.has(candidate) && prior.file === 'Marked'
           if (mayCommit) yield* operations.commit
           else {

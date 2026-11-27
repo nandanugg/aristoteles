@@ -63,8 +63,9 @@ describe('the moves of the records', () => {
   })
 })
 
-// Removing legacy activation changed the declaration hashes of the surviving contracts.
-// Match each exact removal to its original source before checking the frozen identity.
+// The retained activation adapter still returns the frozen ServerHandle after the
+// legacy removal and the journal submission change. Match those exact source
+// changes to the existing contracts before checking the frozen identities.
 const activationRemovalSources = new Map(activationRemoval.map(([file, declaration, after, before]) =>
   [JSON.stringify([file, declaration, after]), before] as const))
 const originalActivationSite = (finding: Finding): Finding => {

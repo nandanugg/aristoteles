@@ -1,18 +1,18 @@
 import { Effect } from 'effect'
-import { Rationale, refuse, liveSession, activeWork, type CommandOutcome, type LiveSession, type Of, type Refusal, type Task, type TaskAddress, type TaskDraft, type WorkReport, type ReadPosition } from '../schema/project.ts'
+import { Rationale, refuse, liveSession, activeWork, taskRole, taskLine, type CommandOutcome, type LiveSession, type Of, type Refusal, type Task, type TaskAddress, type TaskDraft, type ReadPosition } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { Authority, recordObserved, submit } from './project.ts'
 import { readOpenProject } from './staff-session.ts'
 
 export const sendTask = (
-  journal: Journal, read: Of<typeof ReadPosition>, draft: Of<typeof TaskDraft>,
+  journal: Journal, line: Of<typeof TaskAddress>, read: Of<typeof ReadPosition>, input: Of<typeof TaskDraft>,
 ): Effect.Effect<Committed, Refusal, Authority> =>
-  submit(journal, { _tag: 'SendTask', read, project: { _tag: 'Project', id: journal.id }, draft })
+  submit(journal, { read, line, move: 'open', input })
 
 export const reportWork = (
-  journal: Journal, line: Of<typeof TaskAddress>, read: Of<typeof ReadPosition>, report: Of<typeof WorkReport>,
+  journal: Journal, line: Of<typeof TaskAddress>, read: Of<typeof ReadPosition>, input: Of<typeof taskLine.Sent.moves.next.submission.input | typeof taskLine.Working.moves.next.submission.input>,
 ): Effect.Effect<Committed, Refusal, Authority> =>
-  submit(journal, { _tag: 'StaffReport', read, report: { _tag: 'Work', line, report } })
+  submit(journal, { read, line, move: 'next', input })
 
 export const taskBrief = (journal: Journal, line: Of<typeof TaskAddress>): Effect.Effect<Task, Refusal, Authority> =>
   Effect.gen(function* () {
@@ -28,7 +28,7 @@ export const taskBrief = (journal: Journal, line: Of<typeof TaskAddress>): Effec
       const session = liveSession(project, actor.session.id)
       if (session?.staff.id !== actor.session.staff.id)
         return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current task session.')))
-      const servesTask = (value: LiveSession) => value.staff.roles.some(({ id }) => id === task.role.id || id === task.reviewer.id)
+      const servesTask = (value: LiveSession) => value.staff.roles.some(({ id }) => id === taskRole(task).id || id === task.reviewer.id)
       if (servesTask(session)) return task
     }
     return yield* Effect.fail(refuse('WrongActor', Rationale.make('Read the brief as the owner, host or assigned staff.')))

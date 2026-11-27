@@ -1,13 +1,9 @@
 import { Effect } from 'effect'
-import type { ActivationEvent, Of, Project, Refusal, SessionId } from '../schema/project.ts'
+import type { Of, Project, Refusal, SessionId } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { recordObserved } from './project.ts'
 
-type Input = {
-  [Event in ActivationEvent as `${Event['from']}:${Event['move']}`]:
-    Pick<Event, 'line' | 'from' | 'move' | 'input'>
-}
-type Move = Input[keyof Input]
+type Move = Extract<Parameters<typeof recordObserved>[3], { line: { _tag: 'Activation' | 'HostLaunch' } }>
 
 export const observeActivation = (
   journal: Journal, project: Project, move: Move,

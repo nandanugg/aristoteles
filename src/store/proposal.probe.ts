@@ -3,8 +3,8 @@ import { projectOnboard } from '../../adapters/cli/commands/onboard.ts'
 import { Authority, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject, startSession } from '../../core/actions/staff-session.ts'
-import {
-  Direction, ProposalId, Rationale, SessionId, type Of, type Project, type Refusal, type ReviewFacts, type StaffingPlan,
+import { staffingAt,
+  Direction, ProposalId, Quote, SessionId, type Of, type Project, type Refusal, type ReviewFacts, type StaffingPlan,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { host, owner, session, staff } from './project.probe.ts'
@@ -25,7 +25,9 @@ export const direction = Schema.decodeUnknownSync(Direction)({
   }],
 })
 export const evidence = (verdict: 'Holds' | 'Breaks'): ReviewFacts => ({
-  outcomes: [{ _tag: verdict, evidence: Rationale.make('A fresh review checked the draft.') }], findings: [],
+  outcomes: [{ _tag: verdict, evidence: Schema.decodeUnknownSync(Quote)({
+    _tag: 'Quote', file: 'AGENTS.md', lines: { first: 1, last: 1 }, text: 'A fresh review checked the draft.',
+  }) }], findings: [],
 })
 export const cliProposal = (
   journal: Journal, project: Project, input: unknown, auth: AuthenticatedActor = ownerAuthority,
@@ -35,7 +37,7 @@ export const cliProposal = (
 )
 export const proposeStaffing = (
   journal: Journal, project: Project, plan: StaffingPlan, id: Of<typeof ProposalId>,
-) => cliProposal(journal, project, { _tag: 'Proposal', id, value: { ...plan, _tag: 'Staffing' } })
+) => cliProposal(journal, project, { line: { _tag: 'Proposal', id: id }, move: 'open', input: { value: { ...plan, _tag: 'Staffing' } } })
 
 // Earlier capacity fixtures now install staffing through the same reviewed proposal flow.
 export const acceptStaffing = (journal: Journal, project: Project, plan: StaffingPlan) => Effect.gen(function* () {
@@ -43,21 +45,19 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   const proposed = yield* proposeStaffing(journal, project, plan, id)
   const existing = [...proposed.state.sessions.values()].find((item) => item._tag === 'Live' && item.staff.id === staff.id)
   const started = existing?._tag === 'Live' ? proposed.state : (yield* startSession(journal, proposed.state, {
-    id: SessionId.make('session:bootstrap-' + project.read), staff: staff.id, pane: session.pane, staffing: project.staffingAt,
+    id: SessionId.make('session:bootstrap-' + project.read), staff: staff.id, pane: session.pane, staffing: staffingAt(project),
   })).state
   const live = existing?._tag === 'Live' ? existing : [...started.sessions.values()].find((item) => item._tag === 'Live')
   if (live?._tag !== 'Live') throw new Error('Missing onboarding session')
   const line = { _tag: 'Proposal', id } as const
-  const staged = yield* cliProposal(journal, started, {
-    _tag: 'SubmitProposal', line, question: null, value: { ...plan, _tag: 'Staffing' },
-  })
+  const staged = yield* cliProposal(journal, started, { line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' }, question: null } })
   const proposal = staged.state.proposals.get(id)
   if (!proposal) throw new Error('Missing staffing proposal')
   const assigned = yield* assignProposalReview(journal, proposal, live, staged.state.read)
-  const reviewed = yield* cliProposal(journal, assigned.state, { _tag: 'Review', line, facts: evidence('Holds') }, {
+  const reviewed = yield* cliProposal(journal, assigned.state, { line, move: 'review', input: { facts: evidence('Holds') } }, {
     _tag: 'Review', session: live, review: proposal.lastChange,
   })
-  const accepted = yield* cliProposal(journal, reviewed.state, { _tag: 'ChooseProposal', line, choice: { _tag: 'accept' } })
+  const accepted = yield* cliProposal(journal, reviewed.state, { line, move: 'accept', input: {} })
   if (!existing) yield* observeSession(journal, accepted.state, { _tag: 'Session', id: live.id }, 'Ended')
   return yield* readOpenProject(journal)
 })

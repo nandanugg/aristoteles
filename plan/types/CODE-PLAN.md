@@ -70,7 +70,7 @@ Paths under **Add** are new. **Change** identifies existing files that keep a ro
 - **Change** `core/state/project.ts`, `core/derived/project/next-step.ts`, `core/actions/staff-session.ts`, `adapters/cli/commands/acts.ts`, and `adapters/words/work.ts`. Only Active work is admitted. Send a task using a nonempty stage slice of a pinned direction and responsibility version. A work report records that an attempt began or gives its result and whole touched files. `ReadyToReview` runs the applicable rule commands with the task’s basis and records the outputs, including failure or an empty set. Only then enter Reviewing. The pure fold records results without calling commands again. A provider observation that the work session crashed derives `restart`. A confirmed checkpoint resumes the same attempt.
 - **Delete** the slice’s `OpenMake`/Maker and Execute ask states, the separate ReadBrief acknowledgement, the C16 Report-to-Check routing and any default command success manufactured by the page. Preserve the old dispatcher files for deferred callers through U8. The new task can read its own pinned brief without committing an acknowledgement.
 - **Tests** Exercise concurrent begins and reports, a competing writer, duplicate report after a lost response, retry basis after returning a result, interruption before journal append, wrong attempt/session, stale reads, whole files with quotes and changed lines, and success/failure/absence of commands. Test interruption while executing commands. Reconcile exact captured results before recording them. If an effect has unknown completion, surface a recoverable blocked step instead of inferring success or issuing a second attempt automatically. Check the ReadyToReview panel and CLI status against the committed phase.
-- **Model conformance** Complete `taskReportRace`. Feed command and result observations for `reviewEvidence` and the attempt restart/resume actions for `staffReplacement` so U7 can replay both through the final phase. Capture each command under the committed result event and pinned rule. The receipt survives a journal failure, and an issued command with unconfirmed completion waits for recovered output.
+- **Model conformance** Complete `taskReportRace`. Feed command and result observations for `reviewEvidence` and the attempt restart/resume actions for `staffReplacement` so U7 can replay both through the final phase. Capture each command under the committed result event and pinned rule. The command record survives a journal failure. A running command with no captured output waits for recovery.
 
 ### U7. Task review, feedback, and Raised
 
@@ -161,11 +161,16 @@ These are the proposed spellings for the first delivery. Types and printed paths
 
 | Unit | Name | Meaning |
 | --- | --- | --- |
-| U2 | `staffingAt` | The event number of the staffing decision relied on by a launch. |
+| U1 | `Party` | The actor or engine authority that owes a move on a line. |
+| U1 | `Submission` | A read basis, line address, move and checked input. |
+| U2 | `roles` | The project's host, pipeline and work roles. |
+| U4, U6 | `Waiting`, `Assigned` | The shared state of a review assignment. Assigned records the staff and review number. |
+| U4 | `feedback` | A draft's `None`, `Review { facts }` or `Owner { why }`. |
+| U4, U6 | `Outcome`, `Evidence` | `Holds` or `Breaks`, each with a file `Quote` or a `CommandOutput`. |
 | U5 | `ApprovedFile` | A marker file and the image approved by the owner. |
 | U5 | `ApprovedFiles` | The checked manifest of distinct instruction files. |
 | U5 | `FileHash` | Digest of the image approved for a marker file. |
-| U5 | `HostLaunch` | A reserved host identity and its acknowledged pane, when available. |
+| U5 | `HostLaunch` | The launch on the shared `Reserved`, `Acknowledged`, `Bound` and `Cancelled` line. |
 | U5 | `LaunchNonce` | Private proof that the caller belongs to the launch. |
 | U5 | `HostCredential` | Private credential used by the committed host. |
 | U5 | `LaunchVerifier` | Private digest used to check the host credential after delivery retires. |
@@ -177,19 +182,27 @@ These are the proposed spellings for the first delivery. Types and printed paths
 | U6 | `WorkResult` | A work report’s attempt, summary and whole touched files. |
 | U6 | `CommandOutcome` | The holding or breaking evidence for a pinned command rule. |
 | U6 | `CommandExit`, `CommandTextOutput` | Checked exit status and captured text from a rule command. |
-| U6 | `CommandReceipt`, `CommandCapture` | The private address and capture state of a command for a committed result. |
-| U6 | `Unstarted`, `Unconfirmed`, `Captured` | Whether the private receipt has been issued and its exact output recovered. |
+| U6 | `TaskDraft` | The opening input of a task, including the stage slice that supplies its role. |
+| U6 | `where` | An attempt runs in a `Session` or a `Subagent`. |
+| U6 | `lastAttempt` | `None` before work begins, or `Attempted { number }` for numbering the next attempt. |
+| U6 | `CommandRecord`, `CommandCapture` | The private address and capture state of a command for a committed result. |
+| U6 | `NotStarted`, `Running`, `Captured` | Whether the command was issued and whether the provider recorded its output. |
 | U6 | `TaskBriefText`, `TaskPanel` | The CLI’s pinned brief and the page view of the task. |
 
-Round 81 calls the move that clears a replacement `cancel`. The owner's
-Start work choice takes the `start` move on Activation. The latest
-launch in Activating is the last entry of `launches`.
+Start work takes the `start` move on Activation. The latest launch in
+Activating is the last entry of `launches`. Active keeps the current
+replacement on the same HostLaunch line. `cancel` ends a reserved or
+acknowledged launch. After a replacement binds, reconciliation removes
+the earlier credentials and clears the replacement.
 
 Nanda's ruling on 2026-11-26 names the journal port `Journal` and its
 transaction callback `Write`. She kept `StaffingAccepted`, `Running`,
 `Unknown`, `Committed`, `PageProject`, `AuthenticatedActor` and `staffCards`.
 An unopened project is null. A stored move carries the line, source phase and
-move from the table, with the data its edge accepts. Review entry order comes
+move from the table, with the data its edge accepts. The same table generates the
+public submission schema and supplies its authority. The task opens on its own
+line. Staffing basis comes from the accepted staffing version or the opening
+event. Review entry order comes
 from the journal event that moved the task to Reviewing. The page uses
 `QuestionCard`. Opening a question takes the line's input, and its `about`
 field can refer directly to a staffing proposal and its read basis.
@@ -200,4 +213,6 @@ private storage. The journal and page carry that lifetime's identity and state.
 The U4 ruling keeps `ProposalCard` and names the views `OnboardingView`,
 `RoleCard` and `StaffingView`. The owner query selects WaitingForOwner.
 An assigned review is identified by its task or proposal and its review
-number. Reviewing holds the assigned staff and number.
+number. The `assign` move changes the shared review assignment from Waiting
+to Assigned. Proposal review identifies the child by the queued review basis
+chosen before launch.

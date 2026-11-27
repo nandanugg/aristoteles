@@ -98,10 +98,15 @@ export const projectActivationOperations = (
       return yield* Effect.flatMap(readOpenProject(journal), use)
     }))
   const line = { _tag: 'Activation', id: journal.id } as const
-  const candidate = (project: Project): HostLaunch | null =>
-    project.activation._tag === 'Activating' ? project.activation.launches.at(-1) ?? null :
-      project.activation._tag === 'Active' && project.activation.work._tag === 'NotStarted' &&
-      project.activation.replacement?.id !== project.activation.binding.id ? project.activation.replacement : null
+  const launchLine = (id: Of<typeof SessionId>) => ({ _tag: 'HostLaunch', id } as const)
+  const candidate = (project: Project) => {
+    const { activation } = project
+    const launch = activation._tag === 'Activating' ? activation.launches.at(-1)
+      : activation._tag === 'Active' && activation.work._tag === 'NotStarted' ? activation.replacement : null
+    return launch?._tag === 'Reserved' || launch?._tag === 'Acknowledged' ? launch : null
+  }
+  const cancel = (project: Project, launch: Extract<HostLaunch, { _tag: 'Reserved' | 'Acknowledged' }>) =>
+    observeActivation(journal, project, { line: launchLine(launch.id), from: launch._tag, move: 'cancel', input: {} })
   const currentPane = (id: Of<typeof SessionId>) => Effect.gen(function* () {
     if ((yield* provider.observe(id)) !== 'Running') return yield* Effect.fail(retired())
     const pane = yield* provider.pane(id)
@@ -136,15 +141,17 @@ export const projectActivationOperations = (
     reserve: (id) => locked((project) => Effect.gen(function* () {
       yield* protectedIO(() => { projectLaunch(id) })
       const phase = project.activation
-      if (phase._tag === 'Activating') {
-        const previous = phase.launches.at(-1)
-        if (previous && (yield* provider.observe(previous.id)) !== 'Ended') return yield* Effect.fail(wrong())
-        const committed = yield* observeActivation(journal, project, { line, from: 'Activating', move: 'reserve', input: { id } })
-        if (previous) yield* protectedIO(() => removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(previous.id)))
-        return committed
+      if (phase._tag !== 'Activating' && phase._tag !== 'Active') return yield* Effect.fail(wrong())
+      if (phase._tag === 'Active' && (yield* provider.observe(phase.binding.id)) !== 'Ended')
+        return yield* Effect.fail(wrong())
+      const previous = phase._tag === 'Activating' ? phase.launches.at(-1) : null
+      let state = project
+      if (previous?._tag === 'Reserved' || previous?._tag === 'Acknowledged') {
+        if (previous.id === id || (yield* provider.observe(previous.id)) !== 'Ended') return yield* Effect.fail(wrong())
+        yield* protectedIO(() => removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(previous.id)))
+        state = (yield* cancel(project, previous)).state
       }
-      if (phase._tag !== 'Active' || (yield* provider.observe(phase.binding.id)) !== 'Ended') return yield* Effect.fail(wrong())
-      return yield* observeActivation(journal, project, { line, from: 'Active', move: 'reserve', input: { id } })
+      return yield* observeActivation(journal, state, { line: launchLine(id), from: null, move: 'reserve', input: {} })
     })),
     mark: locked((project) => Effect.gen(function* () {
       const phase = project.activation
@@ -163,7 +170,7 @@ export const projectActivationOperations = (
       if (!launch || (phase._tag !== 'Activating' && phase._tag !== 'Active')) return yield* Effect.fail(wrong())
       const observed = yield* provider.observe(launch.id)
       if (observed === 'Running') return
-      if (observed !== 'Ended' || launch.pane) return yield* Effect.fail(unavailable())
+      if (observed !== 'Ended' || launch._tag !== 'Reserved') return yield* Effect.fail(unavailable())
       const nonce = yield* protectedIO(() => {
         const id = projectLaunch(launch.id)
         if (proof(phase.at, launch.id, 'nonce') !== null) throw new Error('An ended launch requires a fresh reservation')
@@ -178,22 +185,23 @@ export const projectActivationOperations = (
     })),
     acknowledge: (id, nonce) => locked((project) => Effect.gen(function* () {
       const phase = project.activation
-      if ((phase._tag !== 'Activating' && phase._tag !== 'Active') || candidate(project)?.id !== id)
+      const launch = candidate(project)
+      if ((phase._tag !== 'Activating' && phase._tag !== 'Active') || launch?._tag !== 'Reserved' || launch.id !== id)
         return yield* Effect.fail(retired())
       if (!(yield* protectedIO(() => matches(proof(phase.at, id, 'nonce'), nonce)))) return yield* Effect.fail(retired())
       const pane = yield* currentPane(id)
-      return yield* observeActivation(journal, project, { line, from: phase._tag, move: 'acknowledge', input: { id, pane } })
+      return yield* observeActivation(journal, project, { line: launchLine(id), from: 'Reserved', move: 'acknowledge', input: { pane } })
     })),
     commit: locked((project) => Effect.gen(function* () {
       const phase = project.activation
       const launch = candidate(project)
-      if (!launch || !launch.pane || (phase._tag !== 'Activating' && phase._tag !== 'Active'))
+      if (launch?._tag !== 'Acknowledged' || (phase._tag !== 'Activating' && phase._tag !== 'Active'))
         return yield* Effect.fail(retired())
       const pane = yield* currentPane(launch.id)
       yield* checkFiles(phase.files, 'Required')
-      const input = { id: launch.id, pane }
-      return yield* observeActivation(journal, project, phase._tag === 'Active'
-        ? { line, from: 'Active', move: 'bind', input } : { line, from: 'Activating', move: 'next', input })
+      return yield* observeActivation(journal, project, {
+        line: launchLine(launch.id), from: 'Acknowledged', move: 'bind', input: { pane },
+      })
     })),
     rollback: (why) => locked((project) => observeActivation(journal, project, { line, from: 'Activating', move: 'back', input: { why } })),
     restore: locked(restore),
@@ -202,27 +210,31 @@ export const projectActivationOperations = (
       if (phase._tag === 'RollingBack') {
         yield* restore(project)
         const launch = phase.launches.at(-1)
-        if (launch) {
+        let state = project
+        if (launch?._tag === 'Reserved' || launch?._tag === 'Acknowledged') {
           const { id } = launch
           yield* stop(id)
           yield* protectedIO(() => removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(id)))
+          state = (yield* cancel(project, launch)).state
         }
-        return yield* observeActivation(journal, project, { line, from: 'RollingBack', move: 'back', input: {} })
+        return yield* observeActivation(journal, state, { line, from: 'RollingBack', move: 'back', input: {} })
       }
       if (phase._tag !== 'Active' || !phase.replacement) return null
-      const { id } = phase.replacement
-      if (id !== phase.binding.id) {
+      const launch = phase.replacement
+      const { id } = launch
+      if (launch._tag === 'Reserved' || launch._tag === 'Acknowledged') {
         if (phase.work._tag === 'NotStarted' && (yield* provider.observe(id)) !== 'Ended') return null
         yield* stop(id)
         yield* protectedIO(() => removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(id)))
-      } else {
-        yield* protectedIO(() => {
-          for (const launch of phase.launches) {
-            if (launch.id !== id) removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(launch.id))
-          }
-        })
+        return yield* cancel(project, launch)
       }
-      return yield* observeActivation(journal, project, { line, from: 'Active', move: 'cancel', input: { id } })
+      if (launch._tag !== 'Bound') return null
+      yield* protectedIO(() => {
+        for (const previous of phase.launches) {
+          if (previous.id !== id) removeProjectLaunch(dir, journal.id, phase.at, projectLaunch(previous.id))
+        }
+      })
+      return yield* observeActivation(journal, project, { line, from: 'Active', move: 'clearReplacement', input: { id } })
     })),
     collect: (id, nonce) => locked((project) => Effect.gen(function* () {
       const phase = project.activation
@@ -260,7 +272,7 @@ export const resumeProjectActivation = (
   if (phase._tag === 'RollingBack') { yield* operations.reconcile; return }
   if (phase._tag === 'Onboarding') return yield* Effect.fail(wrong())
   if (phase._tag === 'Activating') yield* operations.mark
-  if (action === 'relaunch' || (phase._tag === 'Activating' && !phase.launches.length))
+  if (action === 'relaunch' || (phase._tag === 'Activating' && (!phase.launches.length || phase.launches.at(-1)?._tag === 'Cancelled')))
     yield* operations.reserve(newProjectLaunch())
   else if (phase._tag === 'Active' && (!phase.replacement || phase.work._tag !== 'NotStarted' || phase.replacement.id === phase.binding.id)) {
     yield* operations.reconcile
@@ -268,7 +280,7 @@ export const resumeProjectActivation = (
   }
   const current = (yield* readOpenProject(journal)).activation
   const launch = current._tag === 'Activating' ? current.launches.at(-1) : current._tag === 'Active' ? current.replacement : null
-  if (launch?.pane) {
+  if (launch?._tag === 'Acknowledged') {
     yield* operations.commit
     yield* operations.reconcile
   } else {

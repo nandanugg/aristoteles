@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 import {
-  AttemptNumber, RetryCount, Rationale, edge, liveSession, refuse, staffOf, subagentCapacity, taskLine, taskRules, activeWork,
+  AttemptNumber, RetryCount, Rationale, edge, liveSession, refuse, staffOf, subagentCapacity, taskLine, taskRules, activeWork, staffingAt, taskRole,
   type EventNumber, type Of, type Project, type Refusal, type Task, type TaskEvent, type TaskPhase,
 } from '../schema/project.ts'
 
@@ -15,34 +15,36 @@ export const restartTask = (task: Task, phase: Extract<TaskPhase, { _tag: 'Worki
     ? Result.succeed({ ...task, phase: { _tag: 'Sent', retryCount: phase.attempt.retryCount }, lastChange: number })
     : wrongMove()
 
-export const applyTaskMove = (project: Project, task: Task, event: TaskEvent): Result.Result<Task, Refusal> => {
+export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskEvent, { from: null }>): Result.Result<Task, Refusal> => {
   const { actor, move, number, read } = event
   if (!activeWork(project)) return wrongMove()
   if (task.lastChange > read) return stale()
   const before = task.phase
-  const entered = (phase: TaskPhase, attempts = task.attempts): Result.Result<Task, Refusal> =>
+  const entered = (phase: TaskPhase, lastAttempt = task.lastAttempt): Result.Result<Task, Refusal> =>
     edge(taskLine, before._tag, move, phase._tag) === 'Allowed'
-      ? Result.succeed({ ...task, phase, attempts, lastChange: number })
+      ? Result.succeed({ ...task, phase, lastAttempt, lastChange: number })
       : wrongMove()
   switch (event.from) {
     case 'Sent': {
       if (before._tag !== event.from) return wrongMove()
-      const { session: claimed, place, staffing } = event.input
-      if (staffing !== project.staffingAt || read < staffing) return stale()
+      const { session: claimed, where, staffing } = event.input
+      if (staffing !== staffingAt(project) || read < staffing) return stale()
       const session = liveSession(project, claimed.id)
-      const staff = staffOf(project, task.role)
+      const staff = staffOf(project, taskRole(task))
       if (!session) return retired()
       if (read < session.startedAt) return stale()
       if (!staff || actor._tag !== 'Staff' || actor.id !== session.staff.id || actor.id !== staff.id) return wrongActor()
-      if (place === 'Child' && subagentCapacity(project, staff).freeSubagents === 0) return noChild()
-      const next = task.attempts._tag === 'First' ? 1 : task.attempts.last + 1
+      if (where === 'Subagent' && subagentCapacity(project, staff).freeSubagents === 0) return noChild()
+      const next = task.lastAttempt._tag === 'None' ? 1 : task.lastAttempt.number + 1
       if (!Schema.is(AttemptNumber)(next)) return wrongMove()
-      return entered({ _tag: 'Working', attempt: { number: next, session, place, retryCount: before.retryCount } },
-        { _tag: 'PreviouslyWorked', last: next })
+      return entered({ _tag: 'Working', attempt: { number: next, session, where, retryCount: before.retryCount } },
+        { _tag: 'Attempted', number: next })
     }
     case 'Working': {
       if (before._tag !== event.from) return wrongMove()
       const { attempt } = before
+      // The review evidence path owns this decision once it is enabled.
+      if (event.move === 'raise') return wrongMove()
       if (event.move === 'restart') {
         if (actor._tag !== 'Human' || actor.id !== project.owner.id) return wrongActor()
         if (attempt.session.id !== event.input.session || project.sessions.get(event.input.session)?._tag !== 'Ended') return wrongMove()
@@ -63,28 +65,31 @@ export const applyTaskMove = (project: Project, task: Task, event: TaskEvent): R
       if (applicable.length !== outcomes.length || applicable.some((rule, index) =>
         JSON.stringify(rule) !== JSON.stringify(outcomes[index]?.rule)))
         return Result.fail(refuse('InvalidEvidence', Rationale.make('Record one outcome for each pinned command rule in order.')))
-      return entered({ _tag: 'Reviewing', result: before.result, outcomes, by: null, review: null })
+      return entered({ _tag: 'Reviewing', result: before.result, outcomes, assignment: { _tag: 'Waiting' } })
     }
     case 'Reviewing': {
       if (before._tag !== event.from) return wrongMove()
       const reviewer = staffOf(project, task.reviewer)
-      if (event.move === 'next') {
+      if (event.move === 'assign') {
         const { staffing } = event.input
-        if (staffing !== project.staffingAt || read < staffing) return stale()
-        if (before.by !== null) return wrongMove()
+        if (staffing !== staffingAt(project) || read < staffing) return stale()
+        if (before.assignment._tag !== 'Waiting') return wrongMove()
         const session = liveSession(project, event.input.session.id)
         if (!session) return retired()
         if (!reviewer || actor._tag !== 'Staff' || actor.id !== reviewer.id || actor.id !== session.staff.id) return wrongActor()
         if (subagentCapacity(project, reviewer).freeSubagents === 0) return noChild()
-        return entered({ ...before, by: session.staff, review: number })
+        return entered({ ...before, assignment: { _tag: 'Assigned', by: session.staff, review: number } })
       }
-      if (!before.by) return wrongMove()
-      if (actor._tag !== 'Staff' || actor.id !== reviewer?.id || actor.id !== before.by.id) return wrongActor()
-      if (![...project.sessions.values()].some((session) => session._tag === 'Live' && session.staff.id === before.by?.id)) return retired()
+      // The review evidence path owns this decision once it is enabled.
+      if (event.move === 'raise') return wrongMove()
+      if (before.assignment._tag !== 'Assigned') return wrongMove()
+      const { by } = before.assignment
+      if (actor._tag !== 'Staff' || actor.id !== reviewer?.id || actor.id !== by.id) return wrongActor()
+      if (![...project.sessions.values()].some((session) => session._tag === 'Live' && session.staff.id === by.id)) return retired()
       const attempt = before.result.attempt
       const working = liveSession(project, attempt.session.id)
       if (!working) return retired()
-      if (attempt.place === 'Child' && working.staff.id !== reviewer.id) {
+      if (attempt.where === 'Subagent' && working.staff.id !== reviewer.id) {
         const assigned = project.staff.get(working.staff.id)
         if (!assigned || subagentCapacity(project, assigned).freeSubagents === 0) return noChild()
       }

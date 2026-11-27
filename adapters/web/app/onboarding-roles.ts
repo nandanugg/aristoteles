@@ -134,7 +134,7 @@ export function Roles({ view, onRefresh, onStaffing }: {
 }
 
 import { Result, Schema } from 'effect'
-import { ProposalId, ProposalValue, Rationale, refuse, type Project, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
+import { ProposalId, ProposalValue, rolesOf, Rationale, refuse, type Project, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
 import type { ProposalReply } from './api.ts'
 
 const decodeProposal = Schema.decodeUnknownResult(ProposalValue, { onExcessProperty: 'error' })
@@ -146,7 +146,7 @@ export function RoleCard({ project, submit }: {
   const [failure, setFailure] = useState<ProjectRefusal | null>(null)
   const [busy, setBusy] = useState(false)
   return html`<section aria-label="Responsibilities">
-    ${[...project.roles.values()].map((role) => {
+    ${rolesOf(project).map((role) => {
       const value = role.responsibility.value
       return html`<details key=${role.id}><summary>${role.name}</summary>
         <form onSubmit=${async (event: SubmitEvent) => {
@@ -165,11 +165,11 @@ export function RoleCard({ project, submit }: {
           const id = ProposalId.make('proposal:' + crypto.randomUUID())
           setBusy(true)
           try {
-            const opened = await submit({ _tag: 'HumanChoice', read: project.read,
-              choice: { _tag: 'Proposal', id, value: proposal.success } })
+            const opened = await submit({ read: project.read, line: { _tag: 'Proposal', id },
+              move: 'open', input: { value: proposal.success } })
             if (Result.isFailure(opened)) { setFailure(opened.failure); return }
-            const sent = await submit({ _tag: 'HumanChoice', read: opened.success.read,
-              choice: { _tag: 'SubmitProposal', line: { _tag: 'Proposal', id }, value: proposal.success, question: null } })
+            const sent = await submit({ read: opened.success.read, line: { _tag: 'Proposal', id },
+              move: 'submit', input: { value: proposal.success, question: null } })
             setFailure(Result.isFailure(sent) ? sent.failure : null)
           } finally { setBusy(false) }
         }}>

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { startSession } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'
-import {
+import { staffingAt,
   Human, LiveSession, ProjectId, Role, Staff,
   type Of, type Projection, type StoredActor,
 } from '../../core/schema/project.ts'
@@ -45,14 +45,11 @@ export const staffInput = (journal: Journal, input: unknown, live = session) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Staff', session: live } as const),
   }))
-export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [], initialStaff = staff) => ownerInput(journal, {
-  _tag: 'HumanChoice', read: 0,
-  choice: { _tag: 'NewProject', project: { _tag: 'Project', id: journal.id }, owner, host, pipeline, staff: initialStaff, roles },
-})
+export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [], initialStaff = staff) => ownerInput(journal, { read: 0, line: { _tag: 'Project', id: journal.id }, move: 'open', input: { owner, host, pipeline, staff: initialStaff, roles } })
 export const startFixtureSession = (journal: Journal, state: Projection) => {
   if (state?.status._tag !== 'Open') throw new Error('Open the test project first')
   return startSession(journal, state, {
-    id: session.id, staff: staff.id, pane: session.pane, staffing: state.staffingAt,
+    id: session.id, staff: staff.id, pane: session.pane, staffing: staffingAt(state),
   })
 }
 

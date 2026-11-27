@@ -189,14 +189,14 @@ test('the retained activation routes read the journal and append only checked ac
     const line = { _tag: 'Activation', id: f.project.id } as const
     const legacy = yield* post({ action: 'start', entries: [] })
     expect(legacy.status).toBe(400)
-    const early = yield* post({ _tag: 'HumanChoice', read: f.project.read, choice: { _tag: 'StartWork', line } })
+    const early = yield* post({ read: f.project.read, line, move: 'start', input: {} })
     expect(early.status).toBe(409)
     expect(yield* f.journal.eventsAfter(f.project.read)).toEqual([])
     const approval = yield* Effect.promise(() => fetch(origin + '/api/activation/approval'))
     expect(approval.status).toBe(200)
     const files = yield* Effect.promise(() => approval.json())
     expect(files).toEqual(f.files)
-    const begun = yield* post({ _tag: 'HumanChoice', read: f.project.read, choice: { _tag: 'Activate', line, files } })
+    const begun = yield* post({ read: f.project.read, line, move: 'next', input: { files } })
     expect(begun.status).toBe(200)
     // The page starts recovery asynchronously with its own journal handle.
     let launch
@@ -215,7 +215,7 @@ test('the retained activation routes read the journal and append only checked ac
     yield* operations.acknowledge(launch.id, nonce)
     yield* operations.commit
     const active = yield* readOpenProject(f.journal)
-    const started = yield* post({ _tag: 'HumanChoice', read: active.read, choice: { _tag: 'StartWork', line } })
+    const started = yield* post({ read: active.read, line, move: 'start', input: {} })
     expect(started.status).toBe(200)
     const [event] = yield* f.journal.eventsAfter(active.read)
     expect(Schema.is(ActivationEvent)(event)).toBe(true)

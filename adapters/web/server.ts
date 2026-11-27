@@ -3,7 +3,7 @@ import { bootstrapAlive, isBootstrapSession, isBootstrapSocket } from '../live/b
 import { initState } from '../../core/state/c16/state.ts'
 import { Authority } from '../../core/actions/project.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
-import { Rationale, Submission, refuse as refuseProject } from '../../core/schema/project.ts'
+import { Rationale, ActivationSubmission, refuse as refuseProject } from '../../core/schema/project.ts'
 import { projectActivationApproval, projectSubmission } from './project.ts'
 // startServer (frozen; package P9): the page of a dir. A terminal in the browser can run any
 // command. The server listens on every interface of the machine, with no key (Nanda, 2026-11-15:
@@ -310,7 +310,7 @@ export function startServer(options: ServerOptions): ServerHandle {
           phase,
           step: activation._tag === 'Active' && activation.work._tag !== 'NotStarted' ? 'Work is open.'
             : phase === 'active' ? 'Start work under the bound host.'
-            : launch?.pane ? 'The host acknowledged its launch.'
+            : launch?._tag === 'Acknowledged' ? 'The host acknowledged its launch.'
             : launch ? 'Waiting for the host to acknowledge.'
             : 'Preparing the project.',
           next: phase === 'active' ? null : phase === 'host lost' ? 'relaunch'
@@ -906,9 +906,8 @@ export function startServer(options: ServerOptions): ServerHandle {
               yield* resumeProjectActivation(journal, operations, recovery.value.action)
               return json({ out: 'Activation updated.' })
             }
-            const checked = Schema.decodeUnknownOption(Submission, { onExcessProperty: 'error' })(input)
-            if (checked._tag === 'None' || checked.value._tag !== 'HumanChoice' ||
-                (checked.value.choice._tag !== 'Activate' && checked.value.choice._tag !== 'StartWork'))
+            const checked = Schema.decodeUnknownOption(ActivationSubmission, { onExcessProperty: 'error' })(input)
+            if (checked._tag === 'None')
               return yield* Effect.fail(refuseProject('InvalidInput', Rationale.make('Send a checked activation choice.')))
             const launch = Effect.scoped(Effect.flatMap(activationJournal(dir, 'Write'), (current) =>
               resumeProjectActivation(current, projectActivationOperations(dir, current, provider), 'resume'))).pipe(

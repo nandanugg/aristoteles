@@ -8,10 +8,10 @@ import { Effect, Schema } from 'effect'
 import { reportWork, sendTask, taskBrief } from '../../../core/actions/task.ts'
 import { runTaskCommands, taskCommandBlock, type TaskCommands } from '../../../core/effects/project-commands.ts'
 import { projectTaskWords } from '../../words/work.ts'
-import { Authority as ProjectAuthority } from '../../../core/actions/project.ts'
-import { decodeQuestionInput, submitQuestion } from '../../../core/actions/question.ts'
+import { Authority as ProjectAuthority, submit } from '../../../core/actions/project.ts'
+import { decodeQuestionInput } from '../../../core/actions/question.ts'
 import {
-  Answer as ProjectAnswer, QuestionId, Rationale, StoredActor, TaskDraft, TaskId, WorkReport, refuse as projectRefuse,
+  Answer as ProjectAnswer, QuestionId, Rationale, StoredActor, TaskDraft, TaskId, taskLine, refuse as projectRefuse,
   type Of, type ReadPosition, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
@@ -794,13 +794,15 @@ export const projectQuestionCommand = (
   if (command === 'answer') {
     const id = yield* decodeQuestionInput(QuestionId, target)
     const answer = yield* decodeQuestionInput(ProjectAnswer, raw)
-    return yield* submitQuestion(journal, read, { _tag: 'Answer', line: { _tag: 'Question', id }, answer })
+    return yield* submit(journal, { read, line: { _tag: 'Question', id }, move: 'answer', input: { answer } })
   }
   const to = yield* decodeQuestionInput(StoredActor, { _tag: target.startsWith('human:') ? 'Human' : 'Staff', id: target })
   if (!raw || typeof raw !== 'object' || Array.isArray(raw) || 'to' in raw) {
     return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Address the recipient in the command.')))
   }
-  return yield* submitQuestion(journal, read, { _tag: 'Question', question: { ...raw, to } })
+  if (!('id' in raw)) return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Name the question.')))
+  const { id, ...fields } = raw
+  return yield* submit(journal, { read, line: { _tag: 'Question', id }, move: 'open', input: { ...fields, to } })
 })
 
 const loadTaskYaml = (yaml: string) => Effect.try({
@@ -815,8 +817,8 @@ const checkedTaskInput = <S extends Schema.ConstraintDecoder<unknown>>(schema: S
 export const projectSendCommand = (
   journal: Journal, read: Of<typeof ReadPosition>, yaml: string,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
-  const draft = yield* checkedTaskInput(TaskDraft, yield* loadTaskYaml(yaml))
-  return yield* sendTask(journal, read, draft)
+  const { id, ...draft } = yield* checkedTaskInput(Schema.Struct({ id: TaskId, ...TaskDraft.fields }), yield* loadTaskYaml(yaml))
+  return yield* sendTask(journal, { _tag: 'Task', id }, read, draft)
 })
 
 export const projectReportCommand = (
@@ -825,10 +827,11 @@ export const projectReportCommand = (
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
   const id = yield* checkedTaskInput(TaskId, target)
   const line = { _tag: 'Task', id } as const
-  const report = yield* checkedTaskInput(WorkReport, yield* loadTaskYaml(yaml))
+  const report = yield* checkedTaskInput(Schema.Union([taskLine.Working.moves.next.submission.input, taskLine.Sent.moves.next.submission.input]),
+    yield* loadTaskYaml(yaml))
   const committed = yield* reportWork(journal, line, read, report)
   // A failure to run or append command evidence leaves the accepted report available for recovery.
-  if (commands && report._tag === 'Result') yield* Effect.result(runTaskCommands(journal, line, commands))
+  if (commands && 'attempt' in report) yield* Effect.result(runTaskCommands(journal, line, commands))
   return committed
 })
 

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { CommandOutcome } from '../domain/project/task.ts'
 import { Rationale, refuse, type Refusal } from '../domain/project/values.ts'
-import type { CommandCapture, CommandReceipt } from '../services/project.ts'
+import type { CommandCapture, CommandRecord } from '../services/project.ts'
 
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT'
 const exists = (error: unknown) => (error as NodeJS.ErrnoException).code === 'EEXIST'
@@ -30,7 +30,7 @@ const directoryAt = (directory: string, create: boolean): string | null => {
   }
   return directory
 }
-const keyOf = ({ project, task, result, rule }: CommandReceipt) =>
+const keyOf = ({ project, task, result, rule }: CommandRecord) =>
   createHash('sha256').update(JSON.stringify([project, task, result, rule])).digest('hex')
 
 const durable = (path: string, contents: string) => {
@@ -51,16 +51,16 @@ const read = (path: string): string | null => {
   try { return readFileSync(fd, 'utf8') } finally { closeSync(fd) }
 }
 
-export const readCommandCapture = (directory: string, receipt: CommandReceipt): Effect.Effect<CommandCapture, Refusal> => io(() => {
+export const readCommandCapture = (directory: string, receipt: CommandRecord): Effect.Effect<CommandCapture, Refusal> => io(() => {
   const area = directoryAt(directory, false)
-  if (!area) return { _tag: 'Unstarted' }
+  if (!area) return { _tag: 'NotStarted' }
   const path = join(area, keyOf(receipt))
-  if (read(path + '.issued') === null) return { _tag: 'Unstarted' }
+  if (read(path + '.issued') === null) return { _tag: 'NotStarted' }
   const result = read(path + '.captured')
-  return result === null ? { _tag: 'Unconfirmed' } : { _tag: 'Captured', outcome: decode(result) }
+  return result === null ? { _tag: 'Running' } : { _tag: 'Captured', outcome: decode(result) }
 })
 
-export const reserveCommandCapture = (directory: string, receipt: CommandReceipt): Effect.Effect<'Reserved' | 'Exists', Refusal> => io(() => {
+export const reserveCommandCapture = (directory: string, receipt: CommandRecord): Effect.Effect<'Reserved' | 'Exists', Refusal> => io(() => {
   const area = directoryAt(directory, true)!
   try { durable(join(area, keyOf(receipt) + '.issued'), '') }
   catch (error) { if (exists(error)) return 'Exists'; throw error }
@@ -68,7 +68,7 @@ export const reserveCommandCapture = (directory: string, receipt: CommandReceipt
   return 'Reserved'
 })
 
-export const saveCommandCapture = (directory: string, receipt: CommandReceipt, outcome: CommandOutcome): Effect.Effect<void, Refusal> => io(() => {
+export const saveCommandCapture = (directory: string, receipt: CommandRecord, outcome: CommandOutcome): Effect.Effect<void, Refusal> => io(() => {
   const area = directoryAt(directory, false)
   if (!area || receipt.rule !== outcome.rule.id) throw new Error('Missing command reservation')
   const path = join(area, keyOf(receipt))

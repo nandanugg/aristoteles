@@ -199,10 +199,10 @@ export function ActivationPanel({ project, submit, markerFiles }: {
   const [busy, setBusy] = useState(false)
   const { activation, read, id } = project
   useEffect(() => setFiles(null), [activation._tag])
-  const send = async (choice: Extract<Extract<Submission, { _tag: 'HumanChoice' }>['choice'], { _tag: 'Activate' | 'StartWork' }>) => {
+  const send = async (submission: Extract<Submission, { line: { _tag: 'Activation' } }>) => {
     setBusy(true)
     try {
-      const response = await submit({ _tag: 'HumanChoice', read, choice })
+      const response = await submit(submission)
       setFailure(Result.isFailure(response) ? response.failure.why : null)
     } finally { setBusy(false) }
   }
@@ -210,7 +210,7 @@ export function ActivationPanel({ project, submit, markerFiles }: {
     ${activation._tag === 'Onboarding' && approvedProposals(project)
       ? files ? html`<ul>${files.map(({ path }) => html`<li key=${path}>${path}</li>`)}</ul>
         <button class="btn primary" disabled=${busy} onClick=${() =>
-          void send({ _tag: 'Activate', line: { _tag: 'Activation', id }, files })}>Approve and activate</button>`
+          void send({ read, line: { _tag: 'Activation', id }, move: 'next', input: { files } })}>Approve and activate</button>`
         : html`<button class="btn" disabled=${busy} onClick=${async () => {
           setBusy(true)
           try {
@@ -224,7 +224,7 @@ export function ActivationPanel({ project, submit, markerFiles }: {
       : activation._tag === 'Activating' ? html`<p>Waiting for the bound host to acknowledge activation.</p>`
       : activation._tag === 'RollingBack' ? html`<p>Restoring approved files.</p>`
       : activation.work._tag === 'NotStarted' ? html`<button class="btn primary" disabled=${busy} onClick=${() =>
-        void send({ _tag: 'StartWork', line: { _tag: 'Activation', id } })}>Start work</button>`
+        void send({ read, line: { _tag: 'Activation', id }, move: 'start', input: {} })}>Start work</button>`
       : html`<p>Work is open.</p>`}
     ${failure ? html`<p role="alert">${failure}</p>` : null}
   </section>`

@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 import { acceptStaffing } from './proposal.probe.ts'
 import { readOpenProject, startSession } from '../../core/actions/staff-session.ts'
-import { SessionCount, SessionId, Staff, StaffingId, SubagentCount, type Project, type StaffingPlan } from '../../core/schema/project.ts'
+import { staffingAt, SessionCount, SessionId, Staff, StaffingId, SubagentCount, type Project, type StaffingPlan } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { create, role, session, staff } from './project.probe.ts'
 
@@ -26,5 +26,5 @@ export const sharedStaffing = (journal: Journal) => Effect.gen(function* () {
 export const launchStaff = (journal: Journal, project: Project, index: 0 | 1, lifetime: 1 | 2) =>
   startSession(journal, project, {
     id: SessionId.make('session:' + lifetime), staff: initialStaffing().staff[index]!.id,
-    staffing: project.staffingAt, pane: session.pane,
+    staffing: staffingAt(project), pane: session.pane,
   })

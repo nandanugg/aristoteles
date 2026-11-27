@@ -3,7 +3,7 @@ import {
   observeSession, readOpenProject, resumeSession, staffAuthority, startChild, startSession,
 } from '../../core/actions/staff-session.ts'
 import {
-  Rationale, refuse, sessionMayStart, staffOf, subagentCapacity, activeWork,
+  Rationale, refuse, sessionMayStart, staffOf, staffingAt, taskRole, subagentCapacity, activeWork,
   type EventNumber, type LiveSession, type Of, type Pane, type Project, type Refusal,
   type SessionAddress, type SessionId, type Staff, type StaffId, type TaskAddress,
 } from '../../core/schema/project.ts'
@@ -69,12 +69,12 @@ export const staffSessionOperations = (
     })),
     child: (id, line, work, staffing) => locked((project) => Effect.gen(function* () {
       if (!activeWork(project)) return yield* wrongMove()
-      if (staffing !== project.staffingAt) return yield* stale()
+      if (staffing !== staffingAt(project)) return yield* stale()
       const session = yield* staffAuthority(project, id)
       const task = project.tasks.get(line.id)
       if (!task || (work === 'Work' ? task.phase._tag !== 'Sent' :
-          task.phase._tag !== 'Reviewing' || task.phase.by !== null)) return yield* wrongMove()
-      const staff = staffOf(project, work === 'Work' ? task.role : task.reviewer)
+          task.phase._tag !== 'Reviewing' || task.phase.assignment._tag !== 'Waiting')) return yield* wrongMove()
+      const staff = staffOf(project, work === 'Work' ? taskRole(task) : task.reviewer)
       if (!staff || staff.id !== session.staff.id)
         return yield* Effect.fail(refuse('WrongActor', Rationale.make('This staff does not serve the assigned role.')))
       if (subagentCapacity(project, staff).freeSubagents === 0)

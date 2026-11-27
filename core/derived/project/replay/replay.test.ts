@@ -18,7 +18,7 @@ import { activateTasks, begin, commandOutcomes, resultInput, send, taskId, taskL
 import {
   answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm,
 } from '../../../../src/store/question.probe.ts'
-import { AnswerText, EventNumber, ReadPosition, Rationale, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { staffingAt, taskRole, AnswerText, EventNumber, ReadPosition, Rationale, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -107,7 +107,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
     const linked = yield* sharedStaffing(journal)
     const { state: activeWork } = yield* startWork(journal, yield* activateTasks(journal, linked))
     const opened = yield* launchStaff(journal, activeWork, 0, 1)
-    const roles = [linked.host, linked.pipeline, maker]
+    const roles = [linked.roles.host, linked.roles.pipeline, maker]
     const ids = initialStaffing().staff.map(({ id }) => id)
     // The model reuses a child tuple after release. A production begin addresses a fresh sent task.
     const drafts = roles.map((role, index) =>
@@ -120,7 +120,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const active = new Map<number, Of<typeof TaskId>>()
     const used = new Map<number, number>()
-    const versions = new Map([[1, linked.staffingAt]])
+    const versions = new Map([[1, staffingAt(linked)]])
     let pendingLifetime = 2
     const trace = readTrace(join(traces, 'staffCapacity-' + kind + '.itf.json.gz'), 'staffCapacity', kind)
     const project = () => Effect.runPromise(readOpenProject(journal))
@@ -159,13 +159,12 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         const id = active.get(role)
         if (!id) throw new Error('No started child')
         const input = resultInput(current.read)
-        if (input._tag !== 'StaffReport') throw new Error('Wrong test input')
-        await Effect.runPromise(staffInput(journal, { ...input, report: { ...input.report, line: { _tag: 'Task', id } } }))
+        await Effect.runPromise(staffInput(journal, { ...input, line: { _tag: 'Task', id } }))
         active.delete(role)
       },
       changePlan: async () => {
         await Effect.runPromise(acceptStaffing(journal, await project(), initialStaffing(1)))
-        versions.set(2, (await project()).staffingAt)
+        versions.set(2, staffingAt(await project()))
       },
       observe: async () => {
         const current = await project()
@@ -177,7 +176,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         const limit = first.capacity.sessionLimit
         if (limit._tag !== 'Limited') throw new Error('Expected a provider limit')
         const children = [...current.tasks.values()].flatMap((task) =>
-          task.phase._tag === 'Working' ? [roles.findIndex((role) => role.id === task.role.id)] : [],
+          task.phase._tag === 'Working' ? [roles.findIndex((role) => role.id === taskRole(task).id)] : [],
         ).sort()
         expect(Number(first.capacity.usedSubagents)).toBe(children.length)
         expect(Number(first.capacity.liveSessions)).toBe([...current.sessions.values()].filter((s) => s._tag === 'Live').length)
@@ -226,13 +225,12 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
       },
       replace: async (checkpoint) => {
         expectedPrior = checkpoint ? session.id : null
-        await Effect.runPromise(operations.launch(staff.id, replacement, current.staffingAt, checkpoint ? address : null))
+        await Effect.runPromise(operations.launch(staff.id, replacement, staffingAt(current), checkpoint ? address : null))
         id = replacement
       },
       begin: async () => {
         const project = await Effect.runPromise(readOpenProject(journal))
-        await Effect.runPromise(staffInput(journal, { _tag: 'StaffReport', read: project.read,
-          report: { _tag: 'Work', line: taskLine, report: { _tag: 'Start' } } }, { ...session, id }))
+        await Effect.runPromise(staffInput(journal, { read: project.read, line: taskLine, move: 'next', input: {} }, { ...session, id }))
       },
       report: async (source) => {
         const project = await Effect.runPromise(readOpenProject(journal))
@@ -250,7 +248,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
         const task = project.tasks.get(taskId)
         const phase = task?.phase
         if (phase?._tag === 'Sent') return {
-          phase: 'Sent', attempt: task?.attempts._tag === 'PreviouslyWorked' ? task.attempts.last : 0,
+          phase: 'Sent', attempt: task?.lastAttempt._tag === 'Attempted' ? task.lastAttempt.number : 0,
           lifetime: 0, retries: phase.retryCount, artifact: null,
         }
         if (phase?._tag !== 'Working' && phase?._tag !== 'ReadyToReview') throw new Error('Unexpected production work phase')
@@ -294,7 +292,7 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
           await Effect.runPromise(observeSession(journal, current, { _tag: 'Session', id: holder.id }, 'Ended'))
           const after = await project()
           await Effect.runPromise(startSession(journal, after, {
-            id: replacement.id, staff: staff.id, pane: replacement.pane, staffing: after.staffingAt,
+            id: replacement.id, staff: staff.id, pane: replacement.pane, staffing: staffingAt(after),
           }))
           holder = replacement
         },
@@ -308,10 +306,8 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
             if (outcome.failure.code === 'WrongActor' || outcome.failure.code === 'WrongMove') return outcome.failure.code
             throw new Error(outcome.failure.why)
           }
-          const reply = { _tag: 'Answer', line: address, answer: { _tag: 'Single', text: AnswerText.make(text) } } as const
-          const submission: Submission = authority._tag === 'Human'
-            ? { _tag: 'HumanChoice', read: current.read, choice: reply }
-            : { _tag: 'StaffReport', read: current.read, report: reply }
+          const reply = { line: address, move: 'answer', input: { answer: { _tag: 'Single', text: AnswerText.make(text) } } } as const
+          const submission: Submission = { ...reply, read: current.read }
           const response = await Effect.runPromise(pageQuestion(journal, authority, submission))
           if (response.ok) return 'Committed'
           const refusal = readRefusal(await response.json())
