@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Schema } from 'effect'
 import { Command, Lines, OutcomeTag, Quote } from './evidence.ts'
 import { Human, Role } from './staff.ts'
 import {
@@ -33,7 +33,7 @@ export const Rule = Schema.TaggedStruct('Rule', {
     Command,
     Schema.TaggedStruct('Prompt', { question: QuestionText, source: Quote }),
   ]),
-  knownBreaks: Schema.Array(Quote).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  knownBreaks: Schema.Array(Quote),
   examples: Schema.Array(Schema.Struct({
     example: Schema.Union([Quote, Schema.TaggedStruct('MadeUp', { text: ExampleText })]),
     result: OutcomeTag,

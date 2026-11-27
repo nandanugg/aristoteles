@@ -5,7 +5,7 @@ import { Effect } from 'effect'
 import { ReadPosition } from '../../core/schema/project.ts'
 import { readPosition } from '../../core/state/project.ts'
 import { create, open, staffInput, withJournal } from './project.probe.ts'
-import { resultInput, toWorking } from './task.probe.ts'
+import { promptDirection, resultInput, toWorking } from './task.probe.ts'
 import { PROJECT_FORMAT } from './schema.ts'
 
 const start = ReadPosition.make(0)
@@ -90,5 +90,24 @@ test.each([
       expect.objectContaining({ _tag: 'Failure', failure: expect.objectContaining({ code: 'InvalidInput' }) }),
       expect.objectContaining({ _tag: 'Failure', failure: expect.objectContaining({ code: 'InvalidInput' }) }),
     ])
+  }))),
+))
+
+test('a stored rule must carry its known breaks', () => withJournal((path) =>
+  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const journal = yield* open(path)
+    yield* toWorking(journal, promptDirection)
+    query(path, (db) => {
+      const result = db.query(`
+        UPDATE project_event
+        SET event = json_remove(event, '$.input.value.standards[0].rules[0].knownBreaks')
+        WHERE json_type(event, '$.input.value.standards[0].rules[0].knownBreaks') = 'array'
+      `).run()
+      expect(result.changes).toBeGreaterThan(0)
+    })
+    const reopened = yield* open(path, 'Read')
+    expect(yield* Effect.result(reopened.eventsAfter(start))).toMatchObject({
+      _tag: 'Failure', failure: { code: 'InvalidInput' },
+    })
   }))),
 ))
