@@ -17,9 +17,9 @@ import { projectEvents, projectSnapshot } from '../../../../adapters/web/project
 import { create, open, session, staff, staffInput, startFixtureSession, startSession, withJournal } from '../../../../src/store/project.probe.ts'
 import { activateTasks, begin, commandOutcomes, resultInput, send, taskKey, taskLine, toWorking } from '../../../../src/store/task.probe.ts'
 import {
-  answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, textForm,
+  answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, shortAnswer,
 } from '../../../../src/store/question.probe.ts'
-import { capacity, staffedIn, projectStaff, actorFor, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { capacity, staffedIn, projectStaff, actorFor, taskRole, ShortAnswer, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -227,7 +227,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
     const proposal = submitted.state.proposals.get(proposalLine.key)!
     const pending = yield* assignProposalReview(journal, proposal, session, submitted.state.read)
     const asked = yield* cliQuestion(journal, ownerAuthority, 'question', staff.key, pending.state.read, Bun.YAML.stringify({
-      key: questionKey, text: 'What is the answer?', form: textForm, owner: { _tag: 'Project' },
+      key: questionKey, text: 'What is the answer?', expects: shortAnswer, owner: { _tag: 'Project' },
     }))
     const answered = yield* cliQuestion(journal, staffAuthorityOf(), 'answer', `project/${questionKey}`, asked.state.read, answerYaml('9'))
     const current = answered.state
@@ -305,7 +305,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
         const pending = project.proposals.get(proposalLine.key)?.phase
         const question = project.questions.get(questionKey)?.state
         if (task?._tag !== 'Reviewing' || pending?._tag !== 'Reviewing' ||
-            question?._tag !== 'Answered' || question.answer._tag !== 'Single') throw new Error('A companion record was lost')
+            question?._tag !== 'Answered' || !('text' in question.answer)) throw new Error('A companion record was lost')
         const image = task.result.files[0]?.image
         return {
           review: task.assignment._tag, artifact: image?._tag === 'Present' ? Number(image.contents) : -1,
@@ -332,7 +332,7 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
       const created = yield* create(journal)
       const live = yield* startFixtureSession(journal, created.state)
       const opened = yield* cliQuestion(journal, ownerAuthority, 'question', staff.key, live.state.read, Bun.YAML.stringify({
-        key: questionKey, text: 'Confirm the output.', form: textForm, owner: { _tag: 'Project' },
+        key: questionKey, text: 'Confirm the output.', expects: shortAnswer, owner: { _tag: 'Project' },
       }))
       const response = yield* projectSnapshot(journal)
       const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => response.json()), () => {}))
@@ -361,7 +361,7 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
             if (outcome.failure.code === 'WrongActor' || outcome.failure.code === 'WrongMove') return outcome.failure.code
             throw new Error(outcome.failure.why)
           }
-          const reply = { ...address, move: 'answer', input: { answer: { _tag: 'Single', text: AnswerText.make(text) } } } as const
+          const reply = { ...address, move: 'answer', input: { answer: { _tag: 'ShortAnswer', text: ShortAnswer.make(text) } } } as const
           const submission: Submission = { ...reply, read: current.read }
           const response = await Effect.runPromise(pageQuestion(journal, authority, submission))
           if (response.ok) return 'Committed'
@@ -380,12 +380,12 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
           const accepted = events.filter((event) => event.line === 'Question' && event.move === 'answer').length
           const by = actual._tag === 'Open' ? question.to : actorFor(current, actual.by)
           const recipient = by?._tag === 'Staff' && by.key === staff.key ? 2 : 1
-          if (actual._tag === 'Answered' && actual.answer._tag !== 'Single') throw new Error('Expected a textual answer')
+          if (actual._tag === 'Answered' && !('text' in actual.answer)) throw new Error('Expected a textual answer')
           const currentSession = current.sessions.get(holder.key)
           if (currentSession?._tag !== 'Live') throw new Error('Wrong live session')
           return {
             phase: actual._tag, recipient, accepted, lifetime: holder.key === replacement.key ? 2 : 1,
-            answer: actual._tag === 'Answered' && actual.answer._tag === 'Single' ? Number(actual.answer.text) : null,
+            answer: actual._tag === 'Answered' && 'text' in actual.answer ? Number(actual.answer.text) : null,
           }
         },
       }))

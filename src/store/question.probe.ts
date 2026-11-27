@@ -9,8 +9,8 @@ import { session } from './project.probe.ts'
 export const ownerAuthority: AuthenticatedActor = { _tag: 'Human', actor: { _tag: 'Human' } }
 export const staffAuthorityOf = (live: LiveSession = session): AuthenticatedActor => ({ _tag: 'Staff', session: live })
 export const questionKey = QuestionKey.make('question:example')
-export const textForm = { _tag: 'Single', prompt: { text: 'What did you decide?', placeholder: null } } as const
-export const answerYaml = (text: string) => Bun.YAML.stringify({ _tag: 'Single', text })
+export const shortAnswer = { _tag: 'ShortAnswer' } as const
+export const answerYaml = (text: string) => Bun.YAML.stringify({ _tag: 'ShortAnswer', text })
 export const cliQuestion = (
   journal: Journal, actor: AuthenticatedActor, command: 'question' | 'answer',
   target: string, read: Of<typeof ReadPosition>, yaml: string,

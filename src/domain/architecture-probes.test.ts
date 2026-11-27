@@ -37,6 +37,10 @@ export type PublicMoves =
 export type OverlappingMoves =
   | { readonly read: Count; readonly line: 'Task'; readonly key: RoleKey; readonly move: 'next'; readonly input: { readonly attempt: Count } }
   | { readonly read: Count; readonly line: 'Task'; readonly key: RoleKey; readonly move: 'next'; readonly input: { readonly attempt: Count; readonly reason: 'Done' } }
+export type NestedTag = { expects: { _tag: 'ShortAnswer' }; answer: 'Done' }
+  | { expects: { _tag: 'OneChoice' }; answer: Count }
+export type RepeatedNestedTag = { expects: { _tag: 'ShortAnswer' }; answer: 'Done' }
+  | { expects: { _tag: 'ShortAnswer' }; answer: Count }
 export type Untagged = { a: 'a' } | { b: 'b' }
 export type BrokenTemplate = \`role:\${string}\`
 export type Conditional<T> = T extends 'a' ? string : 'b'
@@ -86,7 +90,7 @@ const rules = (file: string, declaration: string): string[] =>
   [...new Set(findings.filter((row) => row.file === file && row.declaration === declaration).map((row) => row.rule))].sort()
 
 test('checked brands, templates, tagged phases and map keys are admitted', () => {
-  for (const name of ['RoleKey', 'Count', 'Notice', 'Good', 'Assignment', 'decodeCount'])
+  for (const name of ['RoleKey', 'Count', 'Notice', 'Good', 'Assignment', 'decodeCount', 'NestedTag'])
     expect({ declaration: name, rules: rules(DOMAIN, name) }).toEqual({ declaration: name, rules: [] })
   for (const name of ['Projection', 'inferredCheckedView', 'renderCount'])
     expect(rules(BROWSER, name)).toEqual([])
@@ -101,6 +105,7 @@ test('both compiler graphs expose raw, inferred, wrapped and unsafe values', () 
   expect(rules(DOMAIN, 'Bad')).toEqual(['any', 'bare-boolean', 'bare-number', 'bare-string', 'optional', 'unknown'])
   expect(rules(DOMAIN, 'Loose')).toEqual(['bare-number', 'bare-string'])
   expect(rules(DOMAIN, 'Untagged')).toContain('untagged-union')
+  expect(rules(DOMAIN, 'RepeatedNestedTag')).toEqual(['untagged-union'])
   expect(rules(DOMAIN, 'Unbounded')).toContain('bare-string')
   expect(rules(DOMAIN, 'Conditional')).toContain('bare-string')
   expect(rules(DOMAIN, 'BrokenTemplate')).toContain('unbounded-template')

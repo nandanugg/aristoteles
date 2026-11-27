@@ -161,18 +161,45 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
     const store = (question: Question) => Result.succeed(new Map(questions).set(key, question))
     if (event.from === null) {
       if (existing) return stale()
-      const { to: recipient, text, form } = event.input
+      const { to: recipient, text, expects } = event.input
       if (recipient._tag === 'Staff' && !staffByKey(project, recipient.key)) return wrongActor()
-      return store({ key, from: event.actor, to: recipient, text, form, state: { _tag: 'Open' }, changedIn: number })
+      const question = { key, from: event.actor, to: recipient, text, state: { _tag: 'Open' }, changedIn: number } as const
+      switch (expects._tag) {
+        case 'ShortAnswer': return store({ ...question, expects })
+        case 'Markdown': return store({ ...question, expects })
+        case 'OneChoice': return store({ ...question, expects })
+        case 'ManyChoices': return store({ ...question, expects })
+        case 'Matrix': return store({ ...question, expects })
+      }
     }
     if (!existing) return wrongMove()
     if (!sameActor(existing.to, actor)) return wrongActor()
     if (existing.changedIn > read) return stale()
     if (edge(questionLine, existing.state._tag, event.move, 'Answered') !== 'Allowed') return wrongMove()
     const { answer } = event.input
-    if (!answerFor(existing.form, answer))
-      return Result.fail(refuse('InvalidInput', Rationale.make('The answer does not match this question’s form.')))
-    return store({ ...existing, state: { _tag: 'Answered', by: event.actor, answer }, changedIn: number })
+    const { expects } = existing
+    if (!answerFor(expects, answer))
+      return Result.fail(refuse('InvalidInput', Rationale.make('The answer does not match what the question expects.')))
+    const question = { ...existing, changedIn: number }
+    const state = { _tag: 'Answered', by: event.actor } as const
+    switch (expects._tag) {
+      case 'ShortAnswer':
+        if (answer._tag === 'ShortAnswer') return store({ ...question, expects, state: { ...state, answer: { text: answer.text } } })
+        break
+      case 'Markdown':
+        if (answer._tag === 'Markdown') return store({ ...question, expects, state: { ...state, answer: { text: answer.text } } })
+        break
+      case 'OneChoice':
+        if (answer._tag === 'OneChoice') return store({ ...question, expects, state: { ...state, answer: { picked: answer.picked } } })
+        break
+      case 'ManyChoices':
+        if (answer._tag === 'ManyChoices') return store({ ...question, expects, state: { ...state, answer: { picked: answer.picked } } })
+        break
+      case 'Matrix':
+        if (answer._tag === 'Matrix') return store({ ...question, expects, state: { ...state, answer: { cells: answer.cells } } })
+        break
+    }
+    return Result.fail(refuse('InvalidInput', Rationale.make('The answer kind does not match.')))
   }
   switch (owner._tag) {
     case 'Project':

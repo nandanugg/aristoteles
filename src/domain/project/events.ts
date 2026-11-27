@@ -7,10 +7,10 @@ import { line, protocol } from './lines.ts'
 import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, DirectionVersion, type TaskPhase } from './task.ts'
 import { Evidence } from './evidence.ts'
 import { Fact } from './direction.ts'
-import { Answer, Question, QuestionForm } from './question.ts'
+import { Answer, AnswerKind, QuestionRecipient } from './question.ts'
 import { Human, Pane, Role, Staff, Subscription } from './staff.ts'
 import {
-  AttemptNumber, EventNumber, Goal, Name, ProposalKey, QuestionKey, QuestionText, Rationale,
+  AttemptNumber, EventNumber, Goal, Name, ProposalKey, QuestionKey, Markdown, Rationale,
   RetryLimit, StaffSessionKey, TaskKey, type Of,
 } from './values.ts'
 
@@ -93,7 +93,7 @@ export const sessionLine = line({
 })
 
 const question = Schema.Struct({
-  to: Question.fields.to, text: QuestionText, form: QuestionForm,
+  to: QuestionRecipient, text: Markdown, expects: AnswerKind,
 })
 const answer = Schema.Struct({ answer: Answer })
 export const questionLine = line({

@@ -258,7 +258,16 @@ export function scan(program: ts.Program, root: string, included = contracts,
                       (previous.length === 0 && fields.some((field) => !(field.flags & ts.SymbolFlags.Optional)))
                   })
                 })
-              if (!journal && !submissions && records.some((part) => typeof literalAt(part, '_tag') !== 'string'))
+              // A shared record field can carry the tag, as expects does for a Question.
+              const nested = records[0]!.getProperties().some(({ name }) => {
+                const tags = records.map((part) => {
+                  const field = part.getProperty(name)
+                  return field && !(field.flags & ts.SymbolFlags.Optional)
+                    ? literalAt(memberType(field, node), '_tag') : undefined
+                })
+                return tags.every((tag) => typeof tag === 'string') && new Set(tags).size === records.length
+              })
+              if (!journal && !submissions && !nested && records.some((part) => typeof literalAt(part, '_tag') !== 'string'))
                 finding(path, 'untagged-union')
             }
             for (const part of type.types) {

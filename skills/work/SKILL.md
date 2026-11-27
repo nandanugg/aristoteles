@@ -46,6 +46,6 @@ For a proposal, give an outcome on the draft, without a `rule` field. Use the ma
 
 ## Questions
 
-The addressed recipient answers using the form and read basis printed by wait. Staff use `work answer <token> <question-address> --on=<read> --file=answer.yaml`. The full address is `project/<question-key>`, `<proposal-key>/<question-key>`, or `<task-key>/<question-key>`. The owner may answer from the page. For a single text form use `{ _tag: Single, text: ... }`.
+The addressed recipient answers using the form and read basis printed by wait. Staff use `work answer <token> <question-address> --on=<read> --file=answer.yaml`. The full address is `project/<question-key>`, `<proposal-key>/<question-key>`, or `<task-key>/<question-key>`. The owner may answer from the page. Use the advertised `_tag` in the answer YAML. `ShortAnswer` takes one line in `text` and `Markdown` takes Markdown in `text`. `OneChoice` takes a zero-based index in `picked`. `ManyChoices` takes one or more zero-based indices in `picked`. `Matrix` takes one zero-based column index per row in `cells`.
 
-When asking, set `owner` in the question YAML to the Project, Proposal, or Task line. For a task use `owner: { _tag: Task, key: task:example }`.
+When asking, provide Markdown `text` and an `expects` record such as `{ _tag: ShortAnswer }`. For a choice supply `options`. For a matrix supply `rows` and `columns`. Set `owner` in the question YAML to the Project, Proposal, or Task line. For a task use `owner: { _tag: Task, key: task:example }`.

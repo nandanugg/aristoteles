@@ -2,55 +2,63 @@ import { Schema } from 'effect'
 import type { Project } from './records.ts'
 import type { Proposal } from './proposal.ts'
 import {
-  AnswerText, EventNumber, OptionIndex, OptionText, Placeholder, QuestionKey, QuestionText, StaffKey, StoredActor,
+  EventNumber, Markdown, OptionIndex, OptionText, QuestionKey, ShortAnswer, StaffKey, StoredActor,
   type Of,
 } from './values.ts'
 
-const QuestionPrompt = Schema.Struct({ text: QuestionText, placeholder: Schema.NullOr(Placeholder) })
-export const QuestionForm = Schema.Union([
-  Schema.TaggedStruct('Single', { prompt: QuestionPrompt }),
-  Schema.TaggedStruct('Multiple', { prompts: Schema.NonEmptyArray(QuestionPrompt) }),
-  Schema.TaggedStruct('OneChoice', { options: Schema.NonEmptyArray(OptionText) }),
-  Schema.TaggedStruct('ManyChoices', { options: Schema.NonEmptyArray(OptionText) }),
-  Schema.TaggedStruct('Matrix', { rows: Schema.NonEmptyArray(OptionText), columns: Schema.NonEmptyArray(OptionText) }),
-])
-export type QuestionForm = Of<typeof QuestionForm>
+const kinds = {
+  ShortAnswer: Schema.TaggedStruct('ShortAnswer', {}),
+  Markdown: Schema.TaggedStruct('Markdown', {}),
+  OneChoice: Schema.TaggedStruct('OneChoice', { options: Schema.NonEmptyArray(OptionText) }),
+  ManyChoices: Schema.TaggedStruct('ManyChoices', { options: Schema.NonEmptyArray(OptionText) }),
+  Matrix: Schema.TaggedStruct('Matrix', { rows: Schema.NonEmptyArray(OptionText), columns: Schema.NonEmptyArray(OptionText) }),
+}
+export const AnswerKind = Schema.Union(Object.values(kinds))
+export type AnswerKind = Of<typeof AnswerKind>
 
+const answers = {
+  ShortAnswer: Schema.Struct({ text: ShortAnswer }),
+  Markdown: Schema.Struct({ text: Markdown }),
+  OneChoice: Schema.Struct({ picked: OptionIndex }),
+  ManyChoices: Schema.Struct({ picked: Schema.NonEmptyArray(OptionIndex) }),
+  Matrix: Schema.Struct({ cells: Schema.NonEmptyArray(OptionIndex) }),
+}
+export type AnswerTo<K extends AnswerKind> = Of<(typeof answers)[K['_tag']]>
+
+// A submission carries the kind while it is in transit to the addressed question.
 export const Answer = Schema.Union([
-  Schema.TaggedStruct('Single', { text: AnswerText }),
-  Schema.TaggedStruct('Multiple', { texts: Schema.NonEmptyArray(Schema.NullOr(AnswerText)) }),
-  Schema.TaggedStruct('OneChoice', { picked: OptionIndex }),
-  Schema.TaggedStruct('ManyChoices', { picked: Schema.NonEmptyArray(OptionIndex) }),
-  Schema.TaggedStruct('Matrix', { cells: Schema.NonEmptyArray(OptionIndex) }),
+  Schema.TaggedStruct('ShortAnswer', answers.ShortAnswer.fields),
+  Schema.TaggedStruct('Markdown', answers.Markdown.fields),
+  Schema.TaggedStruct('OneChoice', answers.OneChoice.fields),
+  Schema.TaggedStruct('ManyChoices', answers.ManyChoices.fields),
+  Schema.TaggedStruct('Matrix', answers.Matrix.fields),
 ])
 export type Answer = Of<typeof Answer>
 
-export const answerFor = (form: QuestionForm, value: unknown): Answer | null => {
-  if (!Schema.is(Answer)(value)) return null
-  const fits = (() => {
-    switch (form._tag) {
-      case 'Single': return value._tag === 'Single'
-      case 'Multiple': return value._tag === 'Multiple' && value.texts.length === form.prompts.length
-      case 'OneChoice': return value._tag === 'OneChoice' && value.picked < form.options.length
-      case 'ManyChoices': return value._tag === 'ManyChoices' &&
-        value.picked.every((choice, i) => choice < form.options.length && (i === 0 || choice > value.picked[i - 1]!))
-      case 'Matrix': return value._tag === 'Matrix' &&
-        value.cells.length === form.rows.length && value.cells.every((cell) => cell < form.columns.length)
-    }
-  })()
-  return fits ? value : null
+export const answerFor = (expects: AnswerKind, answer: Answer): Answer | null => {
+  switch (expects._tag) {
+    case 'ShortAnswer': return answer._tag === 'ShortAnswer' ? answer : null
+    case 'Markdown': return answer._tag === 'Markdown' ? answer : null
+    case 'OneChoice': return answer._tag === 'OneChoice' && answer.picked < expects.options.length ? answer : null
+    case 'ManyChoices':
+      return answer._tag === 'ManyChoices' && answer.picked.every((choice) => choice < expects.options.length) ? answer : null
+    case 'Matrix':
+      return answer._tag === 'Matrix' && answer.cells.length === expects.rows.length &&
+        answer.cells.every((cell) => cell < expects.columns.length) ? answer : null
+  }
 }
 
-const recipient = Schema.Union([StoredActor.members[0], Schema.TaggedStruct('Staff', { key: StaffKey })])
-const QuestionState = Schema.Union([
-  Schema.TaggedStruct('Open', {}),
-  Schema.TaggedStruct('Answered', { by: StoredActor, answer: Answer }),
-])
-export const Question = Schema.Struct({
-  key: QuestionKey, from: StoredActor, to: recipient, text: QuestionText, form: QuestionForm, state: QuestionState,
-  changedIn: EventNumber,
+export const QuestionRecipient = Schema.Union([StoredActor.members[0], Schema.TaggedStruct('Staff', { key: StaffKey })])
+const open = Schema.TaggedStruct('Open', {})
+const questionOf = <K extends keyof typeof kinds>(kind: K) => Schema.Struct({
+  key: QuestionKey, from: StoredActor, to: QuestionRecipient, text: Markdown,
+  expects: kinds[kind], changedIn: EventNumber,
+  state: Schema.Union([open, Schema.TaggedStruct('Answered', { by: StoredActor, answer: answers[kind] })]),
 })
-export type Question = Of<typeof Question>
+export const Question = Schema.Union([
+  questionOf('ShortAnswer'), questionOf('Markdown'), questionOf('OneChoice'), questionOf('ManyChoices'), questionOf('Matrix'),
+])
+export type Question<K extends AnswerKind = AnswerKind> = Extract<Of<typeof Question>, { readonly expects: K }>
 
 export const currentQuestion = (proposal: Proposal, question: Question) =>
   proposal.phase._tag === 'Drafting' && question.changedIn > proposal.changedIn ? question : undefined

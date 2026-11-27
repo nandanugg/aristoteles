@@ -7,22 +7,22 @@ import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/p
 import { answerFromForm, questionAnswerSubmission } from '../../adapters/web/app/project-question.ts'
 import { projectSnapshot } from '../../adapters/web/project.ts'
 import { startSession, create, open, owner, session, staff, staffInput, subscription, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
-import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, textForm } from '../../src/store/question.probe.ts'
+import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, shortAnswer } from '../../src/store/question.probe.ts'
 import { resultInput, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { nextStep, questionsFor } from '../derived/project/next-step.ts'
-import { staffedIn, Answer, QuestionForm, ProposalKey, QuestionKey, ReadPosition, StaffingPlan, StaffSessionKey, Submission, type Of, type QuestionSubmission, type Project } from '../schema/project.ts'
+import { staffedIn, Answer, AnswerKind, OptionIndex, ProposalKey, Question, QuestionKey, ReadPosition, StaffingPlan, StaffSessionKey, Submission, type Of, type QuestionSubmission, type Project } from '../schema/project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
 import { readPosition } from '../state/project.ts'
 
 const fromWire = Schema.decodeUnknownSync(Submission, { onExcessProperty: 'error' })
 const asAnswer = Schema.decodeUnknownSync(Answer)
-const asForm = Schema.decodeUnknownSync(QuestionForm)
+const asKind = Schema.decodeUnknownSync(AnswerKind)
 const openForStaff = (path: string) => Effect.gen(function* () {
   const journal = yield* open(path)
   const created = yield* create(journal)
   const live = yield* startFixtureSession(journal, created.state)
   const opened = yield* cliQuestion(journal, ownerAuthority, 'question', staff.key, live.state.read, Bun.YAML.stringify({
-    key: questionKey, text: 'Confirm the output.', form: textForm, owner: { _tag: 'Project' },
+    key: questionKey, text: 'Confirm the output.', expects: shortAnswer, owner: { _tag: 'Project' },
   }))
   return { journal, project: opened.state }
 })
@@ -39,6 +39,14 @@ test('CLI and page see the same owed question, enforce the recipient, and append
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const { journal, project } = yield* openForStaff(path)
     const question = needed(project)
+    const mismatch = {
+      ...question,
+      expects: { _tag: 'ShortAnswer' },
+      state: { _tag: 'Answered', by: { _tag: 'Human' }, answer: { picked: OptionIndex.make(0) } },
+    } as const
+    // @ts-expect-error A choice cannot answer a short-answer question.
+    const invalidQuestion: Question = mismatch
+    expect(Schema.is(Question)(invalidQuestion)).toBe(false)
     expect(question.state._tag).toBe('Open')
     expect(questionsFor(project, owner)).toHaveLength(0)
     const events = yield* journal.eventsAfter(ReadPosition.make(0))
@@ -48,19 +56,19 @@ test('CLI and page see the same owed question, enforce the recipient, and append
     const due = nextStep(project, session, events, introduction.read)
     if (due._tag !== 'Available' || due.subject._tag !== 'Question') throw new Error('Expected a question')
     expect(projectQuestionWords(due.subject, due.read).map(String)).toEqual([
-      question.text, `work answer "$ARISTOTELES_TOKEN" project/question:example --on=${project.read} --file=answer.yaml`,
+      question.text, 'Answer kind ShortAnswer with one line of text.', `work answer "$ARISTOTELES_TOKEN" project/question:example --on=${project.read} --file=answer.yaml`,
     ])
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     expect(page.current()).toEqual(project)
     const invalid = yield* Effect.result(cliQuestion(journal, ownerAuthority, 'answer', projectAddress, project.read, answerYaml('wrong')))
     expect(invalid).toMatchObject(failure('WrongActor'))
-    const wrong = yield* pageQuestion(journal, ownerAuthority, fromWire({ read: project.read, ...projectQuestion, move: 'answer', input: { answer: { _tag: 'Single', text: 'wrong' } } }))
+    const wrong = yield* pageQuestion(journal, ownerAuthority, fromWire({ read: project.read, ...projectQuestion, move: 'answer', input: { answer: { _tag: 'ShortAnswer', text: 'wrong' } } }))
     expect(wrong.status).toBe(403)
     expect(readRefusal(yield* Effect.promise(() => wrong.json())).code).toBe('WrongActor')
     expect(yield* journal.eventsAfter(project.read)).toEqual([])
     const response = yield* pageQuestion(journal, staffAuthorityOf(),
-      questionAnswerSubmission(projectQuestion, project.read, asAnswer({ _tag: 'Single', text: 'Accepted' })))
+      questionAnswerSubmission(projectQuestion, project.read, asAnswer({ _tag: 'ShortAnswer', text: 'Accepted' })))
     expect(response.status).toBe(200)
     const updated = Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => response.json())))
     expect(updated?.questions.get(questionKey)?.state).toMatchObject({
@@ -115,7 +123,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const line = { line: 'Proposal', key } as const
     const consult = (key: Of<typeof QuestionKey>, project: Project) =>
       cliQuestion(journal, staffAuthorityOf(), 'question', 'owner', project.read, Bun.YAML.stringify({
-        key, text: 'Which allowance should the host propose?', form: textForm,
+        key, text: 'Which allowance should the host propose?', expects: shortAnswer,
         owner: { _tag: 'Proposal', key: line.key },
       }))
     const first = yield* consult(questionKey, draft.state)
@@ -140,7 +148,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     expect(yield* Effect.result(cliQuestion(journal, ownerAuthority, 'answer', firstAddress, latest.state.read,
       answerYaml('old draft')))).toMatchObject(failure('Stale'))
     const reply = yield* pageQuestion(journal, ownerAuthority, questionAnswerSubmission(address(laterKey), latest.state.read,
-      asAnswer({ _tag: 'Single', text: 'Keep one slot.' })))
+      asAnswer({ _tag: 'ShortAnswer', text: 'Keep one slot.' })))
     expect(reply.status).toBe(200)
     const answered = yield* readOpenProject(journal)
     expect(answered.proposals.get(line.key)?.questions.get(laterKey)).toMatchObject({
@@ -159,7 +167,7 @@ test('task and project questions with the same key stay scoped through a task mo
     const taskQuestion = { line: 'Question', owner: { _tag: 'Task', key: taskLine.key }, key: questionKey } as const
     const ask = (line: Pick<Of<typeof QuestionSubmission>, 'line' | 'owner' | 'key'>, text: string, read: Of<typeof ReadPosition>) =>
       cliQuestion(journal, ownerAuthority, 'question', staff.key, read,
-        Bun.YAML.stringify({ key: line.key, owner: line.owner, text, form: textForm }))
+        Bun.YAML.stringify({ key: line.key, owner: line.owner, text, expects: shortAnswer }))
     const projectAsked = yield* ask(projectQuestion, 'Project question', working.state.read)
     const taskAsked = yield* ask(taskQuestion, 'Task question', projectAsked.state.read)
     expect(questionsFor(taskAsked.state, session).map(({ question, owner }) => ({ line: 'Question', owner, key: question.key }))).toEqual([projectQuestion, taskQuestion])
@@ -173,7 +181,7 @@ test('task and project questions with the same key stay scoped through a task mo
       reported.state.read, answerYaml('missing owner')))).toMatchObject(failure('InvalidInput'))
 
     const reply = yield* pageQuestion(journal, staffAuthorityOf(), questionAnswerSubmission(taskQuestion, reported.state.read,
-      asAnswer({ _tag: 'Single', text: 'Task answer' })))
+      asAnswer({ _tag: 'ShortAnswer', text: 'Task answer' })))
     expect(reply.status).toBe(200)
     const state = Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => reply.json())))
     expect(state?.tasks.get(taskLine.key)?.phase._tag).toBe('ReadyToReview')
@@ -191,17 +199,19 @@ test('browser controls produce the shared checked form for text, options and mat
     for (const [key, value] of fields) data.append(key, value)
     return data
   }
-  expect(answerFromForm(asForm(textForm), values([['answer-0', 'text']]))).toMatchObject({ _tag: 'Single', text: 'text' })
-  expect(answerFromForm(asForm({ _tag: 'Multiple', prompts: [textForm.prompt, textForm.prompt] }),
-    values([['answer-0', 'text']]))).toMatchObject({ _tag: 'Multiple', texts: ['text', null] })
-  const single = asForm({ _tag: 'OneChoice', options: ['A', 'B'] })
+  expect(answerFromForm(asKind(shortAnswer), values([['answer-0', 'text']]))).toMatchObject({ _tag: 'ShortAnswer', text: 'text' })
+  expect(answerFromForm(asKind(shortAnswer), values([['answer-0', 'line one\nline two']]))).toBeNull()
+  expect(answerFromForm(asKind({ _tag: 'Markdown' }), values([['answer-0', '# Title\n\nA paragraph.']])))
+    .toMatchObject({ _tag: 'Markdown', text: '# Title\n\nA paragraph.' })
+  const single = asKind({ _tag: 'OneChoice', options: ['A', 'B'] })
   expect(answerFromForm(single, values([['answer-0', '1']]))).toMatchObject({ _tag: 'OneChoice', picked: 1 })
   expect(answerFromForm(single, values([['answer-0', '2']]))).toBeNull()
-  const multiple = asForm({ _tag: 'ManyChoices', options: ['A', 'B'] })
+  const multiple = asKind({ _tag: 'ManyChoices', options: ['A', 'B'] })
   expect(answerFromForm(multiple, values([['answer-0', '1'], ['answer-0', '0']])))
     .toMatchObject({ _tag: 'ManyChoices', picked: [0, 1] })
-  expect(answerFromForm(multiple, values([['answer-0', '0'], ['answer-0', '0']]))).toBeNull()
-  const matrix = asForm({ _tag: 'Matrix', rows: ['A', 'B'], columns: ['Yes', 'No'] })
+  expect(answerFromForm(multiple, values([]))).toBeNull()
+  expect(answerFromForm(multiple, values([['answer-0', '2']]))).toBeNull()
+  const matrix = asKind({ _tag: 'Matrix', rows: ['A', 'B'], columns: ['Yes', 'No'] })
   expect(answerFromForm(matrix, values([['answer-0', '1'], ['answer-1', '0']])))
     .toMatchObject({ _tag: 'Matrix', cells: [1, 0] })
   expect(answerFromForm(matrix, values([['answer-0', '1']]))).toBeNull()

@@ -205,7 +205,7 @@ exec sleep 90
     await proposal('proposal:direction', drafted, drafted.name)
     const question = 'Which wording should the work use?'
     put('question.yaml', { key: 'question:wording', text: question, owner: { _tag: 'Project' },
-      form: { _tag: 'Single', prompt: { text: question, placeholder: null } } })
+      expects: { _tag: 'ShortAnswer' } })
     await apply(['question', 'owner', await basis(), '--file=question.yaml'], live.token, 'question')
     const card = browser.page.getByRole('form', { name: question })
     await card.getByRole('textbox').fill('Use the local wording.')

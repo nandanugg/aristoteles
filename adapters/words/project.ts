@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { acceptedDirections } from '../../core/derived/project/next-step.ts'
-import { DirectionVersion, Introduction, roleOf, staffByKey, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type QuestionText, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
+import { DirectionVersion, Introduction, Markdown, roleOf, staffByKey, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
 
 const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
   ? `${evidence.file}:${evidence.lines.first}–${evidence.lines.last} ${evidence.text}`
@@ -33,11 +33,22 @@ export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = nu
 export const questionAddressText = ({ owner, key }: Pick<QuestionEvent, 'owner' | 'key'>) =>
   `${owner._tag === 'Project' ? 'project' : owner.key}/${key}` as const
 
+const questionAnswerWords = (expects: Question['expects']) => {
+  const kind = `Answer kind ${expects._tag}`
+  switch (expects._tag) {
+    case 'ShortAnswer': return `${kind} with one line of text.`
+    case 'Markdown': return `${kind} with Markdown text.`
+    case 'OneChoice':
+    case 'ManyChoices': return `${kind} with zero-based picks. Options ${JSON.stringify(expects.options)}`
+    case 'Matrix': return `${kind} with one zero-based column per row. Rows ${JSON.stringify(expects.rows)}. Columns ${JSON.stringify(expects.columns)}`
+  }
+}
+
 export const projectQuestionWords = (
   { question, owner }: { readonly question: Question; readonly owner: QuestionEvent['owner'] },
   read: Of<typeof ReadPosition>,
-): readonly [Of<typeof QuestionText>, `work answer "$ARISTOTELES_TOKEN" ${ReturnType<typeof questionAddressText>} --on=${Of<typeof ReadPosition>} --file=answer.yaml`] =>
-  [question.text, `work answer "$ARISTOTELES_TOKEN" ${questionAddressText({ owner, key: question.key })} --on=${read} --file=answer.yaml`]
+): readonly [Of<typeof Markdown>, Of<typeof Markdown>, `work answer "$ARISTOTELES_TOKEN" ${ReturnType<typeof questionAddressText>} --on=${Of<typeof ReadPosition>} --file=answer.yaml`] =>
+  [question.text, Markdown.make(questionAnswerWords(question.expects)), `work answer "$ARISTOTELES_TOKEN" ${questionAddressText({ owner, key: question.key })} --on=${read} --file=answer.yaml`]
 
 const encodeDirection = Schema.encodeSync(DirectionVersion)
 
