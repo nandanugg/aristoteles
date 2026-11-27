@@ -5,9 +5,9 @@ description: Discover a project’s work and draft Aristoteles roles, staffing, 
 
 # Assess a project
 
-Read `AGENTS.md`, `CLAUDE.md`, existing skills and agent instructions, the README and docs, examples of the outputs, and the recent relevant Git history. Keep the sources and locations for each finding, where you looked for contrary examples, and areas you could not verify. Compare output types topic by topic. Draft shared guidance once and scope the differences. When two credible sources disagree, show both and ask the owner where the choice affects the work.
+Read `AGENTS.md`, `CLAUDE.md`, existing skills and agent instructions, the README and docs, examples of the outputs, and the recent relevant Git history. Keep the sources and locations for each finding, where you looked for contrary examples, and areas you could not verify. Compare output types topic by topic. Draft shared guidance once and scope the differences. Keep conflicting sources together with the owner’s decision or open question.
 
-Use broad roles for actual work. List what each role produces and owns in its responsibility. Put the method, standards and checks in the directions. The owner edits and accepts responsibility proposals. Use the role-fitness skill to match staffing to judgment, and name the evidence for the host’s estimate if there is one.
+Prepare drafts against the built-in proposal review direction printed by `work onboard rules`. Use the role-fitness skill to gather staffing evidence. The owner edits and accepts responsibility proposals.
 
 ## Open and draft
 
@@ -43,9 +43,9 @@ A staffing value uses `_tag: Staffing`, the single subscriptions list, and all s
 
 ## Directions and evidence
 
-A direction has a name, summary, text, source, ordered stages, and standards. Use `{ _tag: Local }` for a local source. For company directions record the repository, merged commit and folder in a Company source. Each stage carries its name, role record, work, and location (Project, File, or Passage). A standard has a scope of Everywhere or Where. Where names AllStages or NamedStages and the matching context facts. Fact names are `System`, `Field`, `Language`, `Repository`, `Audience`, and `Output`. Place a whole-output check at the stage that owns the whole output.
+A direction has a name, summary, text, source, ordered stages, and standards. Use `{ _tag: Local }` for a local source. For company directions record the repository, merged commit and folder in a Company source. Each stage carries its name, role record, work, and location (Project, File, or Passage). A standard has a scope of Everywhere or Where. Where names AllStages or NamedStages and the matching context facts. Fact names are `System`, `Field`, `Language`, `Repository`, `Audience`, and `Output`.
 
-A rule expresses one independently failing condition. Use `{ _tag: Command, text: ... }` for a deterministic test, or `{ _tag: Prompt, question: ..., source: <Quote> }` for a judgment check. An example pairs a Quote or MadeUp excerpt with Holds or Breaks. Preserve genuine examples and distinguish known pre-existing breaks from new failures. Include `knownBreaks: []` when there are none.
+Use `{ _tag: Command, text: ... }` for a deterministic test, or `{ _tag: Prompt, question: ..., source: <Quote> }` for a judgment check. The `holds` and `breaks` example lists each require a Quote or MadeUp excerpt. Put baseline failures in `knownBreaks` with their source locations. Include `knownBreaks: []` when there are none.
 
 ```yaml
 _tag: Rule
@@ -56,10 +56,10 @@ verification:
   question: Does the result explain why this change is needed?
   source: { _tag: Quote, file: docs/format.md, lines: { first: 8, last: 8 }, text: Explain why. }
 examples:
-  - example: { _tag: MadeUp, text: A shorter queue keeps requests in order. }
-    result: Holds
-  - example: { _tag: MadeUp, text: The queue changed. }
-    result: Breaks
+  holds:
+    - { _tag: MadeUp, text: A shorter queue keeps requests in order. }
+  breaks:
+    - { _tag: MadeUp, text: The queue changed. }
 knownBreaks: []
 ```
 

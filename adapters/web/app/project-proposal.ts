@@ -37,12 +37,13 @@ export function ProposalCard({ proposal, project, read, submit }: {
             html`<li>${fact.name} · ${fact.value}</li>`)}</ul>` : null}
           <ul>${standard.rules.map((rule, index) => html`<li key=${index}>
             <strong>${rule.name}</strong><p>${rule.text}</p>
-            ${rule.examples.map(({ example, result }) => html`<blockquote>${example.text}<footer>${result}</footer></blockquote>`)}
+            ${rule.examples.holds.map((example) => html`<blockquote>${example.text}<footer>Holds</footer></blockquote>`)}
+            ${rule.examples.breaks.map((example) => html`<blockquote>${example.text}<footer>Breaks</footer></blockquote>`)}
           </li>`)}</ul>
         </section>`)}`
         : html`<p>${value.summary}</p><p>${value.introduction}</p><ul>${value.duties.map((duty) => html`<li>${duty}</li>`)}</ul>`}
     ${phase._tag === 'WaitingForOwner' ? html`
-      <ul>${phase.facts.outcomes.map((outcome) => html`<li><${ReviewEvidence} evidence=${outcome.evidence} /></li>`)}</ul>
+      <ul>${phase.facts.outcomes.map((outcome) => html`<li><strong>${outcome.rule.name} · ${outcome._tag}</strong><${ReviewEvidence} evidence=${outcome.evidence} /></li>`)}</ul>
       <button class="btn primary" disabled=${busy} onClick=${() => void choose({ move: 'accept', input: {} })}>Accept</button>
       <button class="btn" disabled=${busy} onClick=${() => void choose({ move: 'remove', input: {} })}>Remove</button>
       <${ReviewInput} label="What should change?" action="Send back" onSubmit=${(why: string) =>

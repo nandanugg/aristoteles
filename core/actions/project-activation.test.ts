@@ -95,7 +95,7 @@ test('rollback is repeatable, preserves later edits and keeps accepted proposals
   }))),
 ))
 
-test('format 22 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
+test('format 23 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const f = yield* readyProject(path, { ...staff, launch: LaunchText.make('sleep 30 # {session}') }, projectDirectoryAt(dirname(path)))
     const provider = liveProjectBootstrap(f.directory, path, f.journal.directory)
@@ -146,6 +146,8 @@ test('format 22 opens a real marked tmux host and retires credential delivery on
     expect(authenticated).toMatchObject({ _tag: 'Host', session: { key } })
     expect(yield* readOpenProject(f.journal)).toEqual(started)
     expect(readProjectSessionFile(f.directory, f.journal.directory, key, 'secret')).toBeNull()
+    const verifier = readProjectSessionFile(f.directory, f.journal.directory, key, 'verifier')
+    if (!verifier) throw new Error('Expected private session verifier')
     const retired = yield* cli('collect')
     expect(retired.status).toBe(1)
     const logs = [wrongPane, ack, retired].flatMap(({ out, err }) => [...out, ...err]).join(' ')
@@ -157,7 +159,8 @@ test('format 22 opens a real marked tmux host and retires credential delivery on
       const body = yield* Effect.promise(() => response.text())
       expect(body.includes(credential)).toBe(false)
       expect(body.includes(nonce)).toBe(false)
-      expect(body.includes('verifier')).toBe(false)
+      expect(body.includes(verifier)).toBe(false)
+      expect(body.includes('"verifier":')).toBe(false)
     }
   }))),
 ))

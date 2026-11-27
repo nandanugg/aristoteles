@@ -4,7 +4,7 @@ import { Authority, type AuthenticatedActor } from '../../core/actions/project.t
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import { staffedIn,
-  Direction, ProposalKey, ReviewFacts, StaffSessionKey, type Of, type Project, StaffingPlan,
+  Direction, ProposalKey, ReviewFacts, proposalReviewRules, type ProposalValue, StaffSessionKey, type Of, type Project, StaffingPlan,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { startSession, host, session, staff } from './project.probe.ts'
@@ -20,14 +20,14 @@ export const direction = Schema.decodeUnknownSync(Direction)({
     rules: [{
       _tag: 'Rule', name: 'Tests pass', text: 'Run the tests.',
       verification: { _tag: 'Command', text: 'bun test' },
-      knownBreaks: [], examples: [{ example: { _tag: 'MadeUp', text: 'All tests pass.' }, result: 'Holds' }],
+      knownBreaks: [], examples: { holds: [{ _tag: 'MadeUp', text: 'All tests pass.' }], breaks: [{ _tag: 'MadeUp', text: 'One test fails.' }] },
     }],
   }],
 })
-export const evidence = (verdict: 'Holds' | 'Breaks'): ReviewFacts => Schema.decodeUnknownSync(ReviewFacts)({
-  outcomes: [{ _tag: verdict, evidence: {
-    _tag: 'Quote', file: 'AGENTS.md', lines: { first: 1, last: 1 }, text: 'A fresh review checked the draft.',
-  } }], findings: [],
+export const evidence = (verdict: 'Holds' | 'Breaks', kind: ProposalValue['_tag'] = 'Direction'): ReviewFacts => Schema.decodeUnknownSync(ReviewFacts)({
+  outcomes: proposalReviewRules(kind).map((rule) => ({ _tag: verdict, rule, evidence: {
+    _tag: 'Quote', file: 'proposal.json', lines: { first: 2, last: 2 }, text: JSON.stringify(kind),
+  } })), findings: [],
 })
 export const cliProposal = (
   journal: Journal, project: Project, input: unknown, auth: AuthenticatedActor = ownerAuthority,
@@ -54,7 +54,7 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   const proposal = staged.state.proposals.get(key)
   if (!proposal) throw new Error('Missing staffing proposal')
   const assigned = yield* assignProposalReview(journal, proposal, live, staged.state.read)
-  const reviewed = yield* cliProposal(journal, assigned.state, { ...line, move: 'review', input: { facts: evidence('Holds') } }, {
+  const reviewed = yield* cliProposal(journal, assigned.state, { ...line, move: 'review', input: { facts: evidence('Holds', 'Staffing') } }, {
     _tag: 'Review', session: live, ...line, queuedIn: proposal.changedIn,
   })
   const accepted = yield* cliProposal(journal, reviewed.state, { ...line, move: 'accept', input: {} })

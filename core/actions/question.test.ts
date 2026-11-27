@@ -140,7 +140,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const proposal = sent.state.proposals.get(line.key)
     if (!proposal) throw new Error('No staffing proposal')
     yield* assignProposalReview(journal, proposal, session, sent.state.read)
-    const returned = yield* cliProposal(journal, yield* readOpenProject(journal), { ...line, move: 'review', input: { facts: evidence('Breaks') } },
+    const returned = yield* cliProposal(journal, yield* readOpenProject(journal), { ...line, move: 'review', input: { facts: evidence('Breaks', 'Staffing') } },
       { _tag: 'Review', session, ...line, queuedIn: proposal.changedIn })
     const laterKey = QuestionKey.make('question:revised')
     const latest = yield* consult(laterKey, returned.state)

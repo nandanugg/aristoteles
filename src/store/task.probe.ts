@@ -92,7 +92,7 @@ export const promptDirection = Schema.decodeUnknownSync(Direction)({
     _tag: 'Rule', name: 'Readable result', text: 'Use clear wording.',
     verification: { _tag: 'Prompt', question: 'Is the result clear?',
       source: { _tag: 'Quote', file: 'artifact', lines: { first: 1, last: 1 }, text: '7' } },
-    knownBreaks: [], examples: [],
+    knownBreaks: [], examples: { holds: [{ _tag: 'MadeUp', text: 'Use a clear result.' }], breaks: [{ _tag: 'MadeUp', text: 'Done, details omitted.' }] },
   }] })),
 })
 export const artifactQuote = { _tag: 'Quote', file: 'artifact', lines: { first: 1, last: 1 }, text: '7' } as const

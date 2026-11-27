@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Command, Lines, OutcomeTag, Quote } from './evidence.ts'
+import { Command, Lines, Quote } from './evidence.ts'
 import { Role } from './staff.ts'
 import {
   ContextValue, ExampleText, FilePath, GitCommit, Goal, GuidanceText,
@@ -27,6 +27,7 @@ const Scope = Schema.Union([
     facts: Schema.Array(Fact),
   }),
 ])
+const RuleExample = Schema.Union([Quote, Schema.TaggedStruct('MadeUp', { text: ExampleText })])
 export const Rule = Schema.TaggedStruct('Rule', {
   name: Name, text: GuidanceText,
   verification: Schema.Union([
@@ -34,10 +35,10 @@ export const Rule = Schema.TaggedStruct('Rule', {
     Schema.TaggedStruct('Prompt', { question: QuestionText, source: Quote }),
   ]),
   knownBreaks: Schema.Array(Quote),
-  examples: Schema.Array(Schema.Struct({
-    example: Schema.Union([Quote, Schema.TaggedStruct('MadeUp', { text: ExampleText })]),
-    result: OutcomeTag,
-  })),
+  examples: Schema.Struct({
+    holds: Schema.NonEmptyArray(RuleExample),
+    breaks: Schema.NonEmptyArray(RuleExample),
+  }),
 })
 const Standard = Schema.TaggedStruct('Standard', {
   name: Name, text: GuidanceText, scope: Scope, rules: Schema.Array(Rule),

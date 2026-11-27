@@ -5,7 +5,7 @@ import { Authority, submit, type AuthenticatedActor } from '../../core/actions/p
 import { nextStep } from '../../core/derived/project/next-step.ts'
 import { readProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, liveSession, proposalText, refuse, staffedIn, type Of, type Project, type Submission,
+  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, liveSession, proposalReviewDirection, proposalReviewRules, proposalText, refuse, staffedIn, type Of, type Project, type Submission,
 } from '../../core/schema/project.ts'
 import { openProjectJournal, withProjectEnv } from '../../core/services/project.ts'
 import {
@@ -45,7 +45,7 @@ const parseArgs = (argv: readonly string[]) => {
 
 const help = [
   'work onboard open --file=project.yaml',
-  'work onboard status | show <proposal>',
+  'work onboard status | show <proposal> | rules',
   'work onboard submit <token> --on=<read> --file=proposal.yaml',
   'work onboard accept|send-back|remove <proposal> --on=<read>',
   'work start [--detach]',
@@ -103,6 +103,9 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
   }
   const known = (keys: readonly string[]) => parsed.flags.every(([key, value]) => keys.includes(key) && typeof value === 'string') &&
     new Set(parsed.flags.map(([key]) => key)).size === parsed.flags.length
+
+  if (command === 'onboard' && act === 'rules' && !subject && known([]))
+    return [JSON.stringify(proposalReviewDirection, null, 2)]
 
   if (open) {
     if (subject || !known(['file']) || !ownerTerminal()) return yield* Effect.fail(denied())
@@ -199,6 +202,8 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
       const proposal = project.proposals.get(by.key)
       if (!proposal) return yield* Effect.fail(invalid())
       return ['Draft for review (proposal.json)', proposalText(proposal.value),
+        proposalReviewDirection.name + ' · version ' + proposalReviewDirection.version,
+        JSON.stringify(proposalReviewRules(proposal.value._tag), null, 2),
         `work review "$ARISTOTELES_TOKEN" ${proposal.key} --on=${project.read} --file=facts.yaml`]
     }
     const selected = yield* (by._tag === 'Review'

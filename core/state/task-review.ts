@@ -1,6 +1,6 @@
-import { Result, Schema } from 'effect'
+import { Result } from 'effect'
 import {
-  PromptOutcome, Rationale, quoteIn, refuse, taskRules,
+  Rationale, quoteIn, refuse, ruleCoverage, taskRules,
   type BreakingOutcome, type Evidence, type Of, type Quote, type Refusal, type RetryLimit, type Task, type TaskPhase, type ReviewFacts,
 } from '../schema/project.ts'
 
@@ -27,16 +27,8 @@ export const reviewTask = (
 ): Result.Result<ReviewedPhase, Refusal> => {
   const { result } = phase
   const prompts = taskRules(task).filter(({ verification }) => verification._tag === 'Prompt')
-  const reviewed = facts.outcomes.filter(Schema.is(PromptOutcome))
-  const unmatched = [...reviewed]
-  if (reviewed.length !== facts.outcomes.length || reviewed.length !== prompts.length || prompts.some((rule) => {
-    const index = unmatched.findIndex((outcome) => JSON.stringify(rule) === JSON.stringify(outcome.rule))
-    if (index < 0) return true
-    unmatched.splice(index, 1)
-    return false
-  })) {
+  if (ruleCoverage(prompts, facts.outcomes) !== 'Complete')
     return Result.fail(refuse('InvalidEvidence', Rationale.make('Supply one outcome for each pinned prompt rule.')))
-  }
   const supported = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
     ? quoted(evidence, result)
     : phase.outcomes.some((outcome) => JSON.stringify(outcome.evidence) === JSON.stringify(evidence))
@@ -44,7 +36,7 @@ export const reviewTask = (
     return Result.fail(refuse('InvalidEvidence', Rationale.make('Cite a passage in the result or its captured command output.')))
   }
 
-  const outcomes = [...phase.outcomes, ...reviewed]
+  const outcomes = [...phase.outcomes, ...facts.outcomes]
   const finding = facts.findings[0]
   if (finding) return Result.succeed({ _tag: 'Raised', reason: 'NoRule', evidence: finding.evidence })
   const [first, ...rest] = outcomes.filter((outcome): outcome is BreakingOutcome => outcome._tag === 'Breaks' && !knownBreak(outcome, result))

@@ -11,9 +11,7 @@ export const CommandOutput = Schema.TaggedStruct('CommandOutput', {
 export const Evidence = Schema.Union([Quote, CommandOutput])
 const holds = 'Holds'
 const breaks = 'Breaks'
-export const OutcomeTag = Schema.Literals([holds, breaks])
 export const outcomeOf = <const Fields extends Schema.Struct.Fields>(fields: Fields) => Schema.Union([
   Schema.TaggedStruct(holds, fields),
   Schema.TaggedStruct(breaks, fields),
 ])
-export const Outcome = outcomeOf({ evidence: Evidence })

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { chromium } from 'playwright'
 import { dirname, join, resolve } from 'node:path'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { projectActivationOperations } from '../../adapters/live/activation.ts'
 import { approvedText, fakeBootstrap, hostKey } from '../../src/store/project-activation.probe.ts'
 import { Deferred, Effect, Result, Schedule, Schema } from 'effect'
@@ -13,7 +13,7 @@ import { startSession, create, open, session, staff, startFixtureSession, withJo
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
 import { cliProposal, direction, evidence } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
-import { boundHostSession, staffByKey, staffedIn, Projection, ProposalKey, ReadPosition, StaffingPlan, StaffSessionKey, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
+import { boundHostSession, FileContents, ProposalValue, Rule, proposalReviewDirection, quoteIn, staffByKey, staffedIn, Projection, ProposalKey, ReadPosition, StaffingPlan, StaffSessionKey, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
@@ -25,6 +25,20 @@ const choose = (line = first, choice: 'accept' | 'remove' = 'accept') =>
 const missing = (code: string) => ({ _tag: 'Failure', failure: { code } })
 const ask = (key = first.key) => ({ line: 'Proposal', key, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
 const send = (line = first) => ({ ...line, move: 'submit', input: { value: direction } })
+
+test('every built-in proposal rule quotes its shipped skill and requires both example outcomes', () => {
+  const { rules } = proposalReviewDirection
+  expect([rules.Direction.length, rules.Responsibility.length, rules.Staffing.length]).toEqual([9, 3, 2])
+  expect(Schema.is(ProposalValue)(proposalReviewDirection)).toBe(false)
+  for (const rule of Object.values(rules).flat()) {
+    if (rule.verification._tag !== 'Prompt') throw new Error('Expected a built-in prompt rule')
+    const { source } = rule.verification
+    const contents = FileContents.make(readFileSync(resolve(import.meta.dir, '../..', source.file), 'utf8'))
+    expect(quoteIn(source, contents)).toBe('Found')
+    expect(Schema.is(Rule)({ ...rule, examples: { ...rule.examples, holds: [] } })).toBe(false)
+    expect(Schema.is(Rule)({ ...rule, examples: { ...rule.examples, breaks: [] } })).toBe(false)
+  }
+})
 
 test('proposal queue launches the host’s fresh child and retains the reviewed version at acceptance', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
@@ -87,6 +101,17 @@ test('proposal findings have evidence from the pending draft', () => withJournal
     expect(yield* Effect.result(report(undefined))).toMatchObject(missing('InvalidInput'))
     const quote = { _tag: 'Quote', file: 'proposal.json', lines: { first: 2, last: 2 }, text: '"_tag": "Direction"' }
     expect(yield* Effect.result(report({ ...quote, text: 'missing' }))).toMatchObject(missing('InvalidEvidence'))
+    const [firstOutcome, ...otherOutcomes] = evidenceForDraft.outcomes
+    if (!firstOutcome) throw new Error('Direction has built-in rules')
+    const reportOutcomes = (outcomes: readonly object[]) => cliProposal(journal, child.state, {
+      ...first, move: 'review', input: { facts: { outcomes, findings: [] } },
+    }, actor)
+    expect(yield* Effect.result(reportOutcomes(otherOutcomes))).toMatchObject(missing('InvalidEvidence'))
+    expect(yield* Effect.result(reportOutcomes([otherOutcomes[0]!, ...otherOutcomes]))).toMatchObject(missing('InvalidEvidence'))
+    expect(yield* Effect.result(reportOutcomes(evidence('Holds', 'Staffing').outcomes))).toMatchObject(missing('InvalidEvidence'))
+    expect(yield* Effect.result(reportOutcomes([
+      { ...firstOutcome, evidence: { ...quote, text: 'not in draft' } }, ...otherOutcomes,
+    ]))).toMatchObject(missing('InvalidEvidence'))
     expect(yield* journal.eventsAfter(child.state.read)).toEqual([])
     const returned = yield* report(quote)
     expect(returned.state.proposals.get(first.key)?.phase).toMatchObject({ _tag: 'Drafting', feedback: {
@@ -145,7 +170,7 @@ test('only the owner changes a responsibility, which takes effect after review a
     if (!child) throw new Error('Missing review')
     const proposal = child.state.proposals.get(first.key)
     if (proposal?.phase._tag !== 'Reviewing' || proposal.phase.assignment._tag !== 'Assigned') throw new Error('No assigned child')
-    const reviewed = yield* cliProposal(journal, child.state, { ...first, move: 'review', input: { facts: evidence('Holds') } },
+    const reviewed = yield* cliProposal(journal, child.state, { ...first, move: 'review', input: { facts: evidence('Holds', 'Responsibility') } },
       { _tag: 'Review', session, ...first, queuedIn: proposal.phase.assignment.queuedIn })
     expect(reviewed.state.roles.host.responsibility).toEqual(previous)
     const accepted = yield* cliProposal(journal, reviewed.state, choose())
@@ -327,7 +352,7 @@ test('staffing stays effective while a replacement is reviewed, sent back, or re
       const assigned = yield* launch
       const phase = assigned?.state.proposals.get(first.key)?.phase
       if (!assigned || phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing review')
-      return yield* cliProposal(journal, assigned.state, { ...first, move: 'review', input: { facts: evidence('Holds') } },
+      return yield* cliProposal(journal, assigned.state, { ...first, move: 'review', input: { facts: evidence('Holds', 'Staffing') } },
         { _tag: 'Review', session, ...first, queuedIn: phase.assignment.queuedIn })
     })
     const reviewed = yield* review(draft.state)

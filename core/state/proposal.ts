@@ -1,7 +1,7 @@
 import { Result, Schema } from 'effect'
 import {
   ProposalValue, Rationale, actorFor, currentQuestion, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, sameActor, staffOf, subagentCapacity,
-  validateStaffing, reviewOutcome, roleOf, type Project, type Proposal, type ProposalEvent, type Refusal, type Version, proposalText, versionOf,
+  validateStaffing, reviewOutcome, ruleCoverage, proposalReviewRules, roleOf, type Project, type Proposal, type ProposalEvent, type Refusal, type Version, proposalText, versionOf,
 } from '../schema/project.ts'
 
 const wrongMove = () => Result.fail(refuse('WrongMove', Rationale.make('That move does not apply to the proposal’s phase.')))
@@ -101,10 +101,11 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     if (phase.assignment._tag !== 'Assigned' || phase.assignment.actor.key !== session.key || phase.assignment.queuedIn !== queuedIn)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the proposal’s fresh child.')))
     const draft = proposalText(stage.value)
-    if (facts.outcomes.length === 0 || facts.outcomes.some((outcome) => 'rule' in outcome) ||
-        facts.findings.some(({ evidence }) => evidence._tag !== 'Quote' || evidence.file !== 'proposal.json' ||
-          quoteIn(evidence, draft) !== 'Found'))
-      return Result.fail(refuse('InvalidEvidence', Rationale.make('Review the draft and cite any finding in proposal.json.')))
+    if (ruleCoverage(proposalReviewRules(stage.value._tag), facts.outcomes) !== 'Complete')
+      return Result.fail(refuse('InvalidEvidence', Rationale.make('Supply one outcome per built-in rule for this proposal kind.')))
+    if ([...facts.outcomes, ...facts.findings].some(({ evidence }) =>
+        evidence._tag !== 'Quote' || evidence.file !== 'proposal.json' || quoteIn(evidence, draft) !== 'Found'))
+      return Result.fail(refuse('InvalidEvidence', Rationale.make('Cite the submitted draft in proposal.json for each outcome and finding.')))
     if (reviewOutcome(facts) === 'Holds') {
       if (event.move !== 'next') return wrongMove()
       return move({ _tag: 'WaitingForOwner', queuedIn, facts })

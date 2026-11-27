@@ -30,7 +30,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=21; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=22; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -40,7 +40,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
         cwd: dir, env: { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db, WORK_NO_OPEN: '1' },
       })
       expect(result.exitCode).toBe(1)
-      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 22 project journal')
+      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 23 project journal')
       expect(readFileSync(db).equals(original)).toBe(true)
     }
     expect(existsSync(join(dir, '.work'))).toBe(false)
@@ -167,7 +167,7 @@ exec sleep 90
       standards: [{ ...direction.standards[0], rules: [
         { ...rule, verification: { _tag: 'Command', text: 'test -f sample.md' } },
         { ...rule, name: 'Clear wording',
-          verification: { _tag: 'Prompt', question: 'Is the wording clear?', source: excerpt('Local first result') }, examples: [] },
+          verification: { _tag: 'Prompt', question: 'Is the wording clear?', source: excerpt('Local first result') } },
       ] }],
     }
     const fresh = async (before) => {
@@ -192,9 +192,12 @@ exec sleep 90
         commitToDispatch: review.issued - Date.parse(commit.at),
         childStartup: review.startup,
       })
-      expect(await ok(['wait'], { token: review.token })).toContain('Draft for review (proposal.json)')
-      put('facts.yaml', { outcomes: [{ _tag: 'Holds',
-        evidence: { _tag: 'Quote', file: 'proposal.json', lines: { first: 2, last: 2 }, text: JSON.stringify(value._tag) } }], findings: [] })
+      const reviewPrompt = await ok(['wait'], { token: review.token })
+      expect(reviewPrompt).toContain('Draft for review (proposal.json)')
+      const checks = JSON.parse(await ok(['onboard', 'rules'])).rules[value._tag]
+      for (const rule of checks) expect(reviewPrompt).toContain(rule.name)
+      put('facts.yaml', { outcomes: checks.map((rule) => ({ _tag: 'Holds', rule,
+        evidence: { _tag: 'Quote', file: 'proposal.json', lines: { first: 2, last: 2 }, text: JSON.stringify(value._tag) } })), findings: [] })
       await apply(['review', key, await basis(), '--file=facts.yaml'], review.token, key + ' review')
       const start = Date.now()
       await browser.accept(title)

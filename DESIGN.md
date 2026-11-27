@@ -10,7 +10,7 @@ staff act under the session key and checks that exact lifetime during replay.
 
 ## Journal
 
-A format-22 SQLite journal stores ordered events using the same line fields as
+A format-23 SQLite journal stores ordered events using the same line fields as
 submissions. Each write reads the current projection inside a transaction, checks
 the actor and read position, and appends the event. The phase transitions fold those events into one Project projection.
 CLI and page views derive their next steps from that projection. The page loads a

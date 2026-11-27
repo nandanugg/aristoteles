@@ -42,7 +42,7 @@ findings: []
 
 Use `Breaks` for a broken rule. The engine checks the evidence and derives the next move. Review assignment uses the reviewer's own available subagent slots when their allowance is positive. When their allowance is zero, the host serves the queue in journal order.
 
-For a proposal, give an outcome on the draft, without a `rule` field. Use the material printed as `proposal.json` by wait. A finding must quote that draft at the stated lines. The owner decides whether to accept the exact reviewed version.
+For a proposal, give one outcome for each built-in rule printed by wait. Copy the complete `rule` into each outcome. Outcomes and findings quote the submitted `proposal.json` at the stated lines. The owner decides whether to accept the exact reviewed version.
 
 ## Questions
 
