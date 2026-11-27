@@ -15,7 +15,7 @@ import type { Committed, Journal } from '../services/project.ts'
 import { openProjectJournal } from './project.ts'
 
 export const role = (name: 'host' | 'pipeline' | 'maker') => Schema.decodeUnknownSync(Role)({
-  key: 'role:' + name,
+  key: 'role:' + name, _tag: name === 'host' ? 'Host' : name === 'pipeline' ? 'Pipeline' : 'Work',
   name,
   responsibility: {
     number: 1, acceptedIn: 1,
@@ -45,7 +45,7 @@ export const staffInput = (journal: Journal, input: unknown, live = session) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Staff', session: live } as const),
   }))
-export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [], initialStaff = staff) => ownerInput(journal, { read: 0, line: 'Project', move: 'open', input: { owner, host, pipeline, staff: Schema.encodeSync(Staff)(initialStaff), subscription, roles } })
+export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [], initialStaff = staff) => ownerInput(journal, { read: 0, line: 'Project', move: 'open', input: { owner, roles: [host, pipeline, ...roles], staff: Schema.encodeSync(Staff)(initialStaff), subscription } })
 export const startFixtureSession = (journal: Journal, state: Projection, live = session) => {
   if (!state || state.phase._tag === 'Ended') throw new Error('Open the test project first')
   const bound = boundHostSession(state)

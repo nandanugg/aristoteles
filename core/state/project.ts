@@ -2,7 +2,7 @@ import { applyTaskMove, restartTask } from './task.ts'
 import { applyProjectPhase } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
-import {
+import { hostRole,
   DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, versionOf,
   type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal,
 } from '../schema/project.ts'
@@ -22,9 +22,8 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     if (project) return wrongMove()
     if (read !== 0) return stale()
     const { input } = event
-    const { owner, host, pipeline, staff, subscription } = input
-    const roles = new Map([host, pipeline, ...input.roles].map((role) => [role.key, role]))
-    if (roles.size !== input.roles.length + 2 || !staff.roles.some((role) => role.key === host.key) ||
+    const { owner, roles, staff, subscription } = input
+    if (!staff.roles.some(({ key }) => roles.get(key)?._tag === 'Host') ||
         new Set(staff.roles.map((role) => role.key)).size !== staff.roles.length ||
         staff.roles.some((role) => !roles.has(role.key))) {
       return Result.fail(refuse('InvalidInput', Rationale.make('The project needs distinct roles and an assigned host.')))
@@ -33,7 +32,7 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
       return Result.fail(refuse('InvalidInput', Rationale.make('Use the listed subscription for the initial staff.')))
     if (staff.subagents === 0) return Result.fail(refuse('StaffingMinimum', Rationale.make('The onboarding host needs a subagent.')))
     return Result.succeed({
-      owner, roles: { host, pipeline, work: new Map(input.roles.map((role) => [role.key, role])) },
+      owner, roles,
       openedIn: number,
       staffing: { _tag: 'Staffing', staff: new Map([[staff.key, staff]]), subscriptions: new Map([[subscription.key, subscription]]) },
       proposals: new Map(), sessions: new Map(), tasks: new Map(), questions: new Map(),
@@ -108,7 +107,7 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
       return Result.succeed({ ...project, sessions })
     }
     const activation = project.phase
-    const host = staffOf(project, project.roles.host)
+    const host = staffOf(project, hostRole(project))
     if (activation._tag === 'RollingBack' && host?.key === staff.key) return wrongMove()
     const live: LiveSession = { _tag: 'Live', key, staff, startedIn: number, changedIn: number, pane: event.input.pane }
     sessions.set(key, live)
@@ -216,7 +215,7 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
       const proposal = project.proposals.get(owner.key)
       if (!proposal || proposal.value._tag !== 'Staffing') return wrongMove()
       if (event.from === null) {
-        if (actor._tag !== 'Staff' || actor.key !== staffOf(project, project.roles.host)?.key || event.input.to._tag !== 'Human')
+        if (actor._tag !== 'Staff' || actor.key !== staffOf(project, hostRole(project))?.key || event.input.to._tag !== 'Human')
           return wrongActor()
         if (proposal.phase._tag !== 'Drafting' || proposal.changedIn > read ||
             [...proposal.questions.values()].some((question) => currentQuestion(proposal, question))) return stale()

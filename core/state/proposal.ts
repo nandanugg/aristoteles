@@ -1,5 +1,5 @@
 import { Result, Schema } from 'effect'
-import {
+import { hostRole,
   ProposalValue, Rationale, actorFor, currentQuestion, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, sameActor, staffOf, subagentCapacity,
   validateStaffing, reviewOutcome, ruleCoverage, proposalReviewRules, roleOf, type Project, type Proposal, type ProposalEvent, type Refusal, type Version, proposalText, versionOf,
 } from '../schema/project.ts'
@@ -88,7 +88,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
   }
   if (event.from === 'Reviewing' && phase._tag === 'Reviewing') {
-    const reviewer = staffOf(project, project.roles.host)
+    const reviewer = staffOf(project, hostRole(project))
     if (!session || actor._tag !== 'Session' || !reviewer || reviewer.key !== session.staff.key)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the assigned host’s live session.')))
     if (event.move === 'assign') {
@@ -137,11 +137,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       const role = { ...value.role, responsibility: {
         number: versionNumber, value: { summary, introduction, duties }, acceptedIn: number,
       } }
-      const { roles } = project
-      const updatedRoles = roles.host.key === role.key ? { ...roles, host: role }
-        : roles.pipeline.key === role.key ? { ...roles, pipeline: role }
-        : { ...roles, work: new Map(roles.work).set(role.key, role) }
-      state = { ...project, roles: updatedRoles }
+      state = { ...project, roles: new Map(project.roles).set(role.key, role) }
     }
     return store({ ...stage, phase: { _tag: 'Accepted', version }, changedIn: number }, state)
   })

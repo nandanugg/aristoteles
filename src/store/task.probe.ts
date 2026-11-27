@@ -3,7 +3,7 @@ import { Authority, submit } from '../../core/actions/project.ts'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import { recordTaskCommands, sendTask } from '../../core/actions/task.ts'
-import { staffedIn,
+import { hostRole, staffedIn,
   ApprovedFiles, Direction, rolesOf, roleOf, ProposalKey, StaffSessionKey, Submission, TaskDraft, TaskKey, staffOf,
   type Of, type Project, type ReadPosition,
 } from '../../core/schema/project.ts'
@@ -17,7 +17,7 @@ export const taskLine = { line: 'Task', key: taskKey } as const
 export const boundHost = session.key
 
 export const acceptDirection = (journal: Journal, project: Project, value: Direction, previous?: Of<typeof TaskDraft>['direction']) => Effect.gen(function* () {
-  const assigned = staffOf(project, project.roles.host)!
+  const assigned = staffOf(project, hostRole(project))!
   const existing = [...project.sessions.values()].find((value) => value._tag === 'Live' && value.staff.key === assigned.key)
   const key = existing?.key ?? StaffSessionKey.make('session:direction-' + project.read)
   const current = existing ? project : (yield* startSession(journal, project, {
@@ -50,7 +50,7 @@ export const activateTasks = (journal: Journal, project: Project, value?: Direct
   const ready = yield* acceptDirection(journal, staffed, selected)
   const line = { line: 'Project' } as const
   const authorized = yield* ownerInput(journal, { read: ready.read, ...line, move: 'next', input: { files } })
-  const assigned = staffOf(authorized.state, authorized.state.roles.host)!
+  const assigned = staffOf(authorized.state, hostRole(authorized.state))!
   return (yield* startSession(journal, authorized.state, {
     key: boundHost, staff: assigned.key, pane: session.pane, staffedIn: staffedIn(authorized.state),
   })).state

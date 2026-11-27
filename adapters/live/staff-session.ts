@@ -3,7 +3,7 @@ import { checkTaskReview } from '../../core/actions/task-review.ts'
 import {
   acknowledgeSession, cancelSession, observeSession, readOpenProject, reserveSession, staffAuthority, startChild,
 } from '../../core/actions/staff-session.ts'
-import {
+import { hostRole,
   Rationale, refuse, sessionMayStart, latestSession, staffByKey, staffOf, staffedIn, taskRole, subagentCapacity, activeWork,
   type EventNumber, type LiveSession, type StaffSession, type Of, type Pane, type Project, type Refusal,
   type StaffSessionKey, type Staff, type StaffKey, type TaskKey,
@@ -66,7 +66,7 @@ export const staffSessionOperations = (
       const activation = project.phase
       if ((activation._tag === 'Activating' || activation._tag === 'RollingBack' ||
           activation._tag === 'Active' && activation.work._tag === 'NotStarted') &&
-          staffOf(project, project.roles.host)?.key === assigned.key) return yield* wrongMove()
+          staffOf(project, hostRole(project))?.key === assigned.key) return yield* wrongMove()
       const pending = latestSession(project, assigned)
       let state = project
       if (pending?._tag === 'Starting') {

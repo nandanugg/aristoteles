@@ -1,3 +1,4 @@
+import { hostRole } from './roles.ts'
 import { Schema } from 'effect'
 import { ProposalValue } from './proposal.ts'
 import { versionOf } from './version.ts'
@@ -39,7 +40,7 @@ export const approvedProposals = (project: Project) => {
 
 export const hostSession = (project: Project) => {
   if (project.phase._tag === 'Onboarding' || project.phase._tag === 'Ended') return undefined
-  const staff = staffOf(project, project.roles.host)
+  const staff = staffOf(project, hostRole(project))
   return staff && latestSession(project, staff)
 }
 

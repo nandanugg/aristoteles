@@ -9,7 +9,7 @@ import { projectBriefCommand, projectReportCommand, projectSendCommand } from '.
 import { liveTaskCommands } from '../../adapters/live/task-commands.ts'
 import { projectCommandStatus, projectEvents, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
 import { agree, readyActivation, startWork } from '../../src/store/project-activation.probe.ts'
-import { create, host, open, ownerInput, session, staffInput, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
+import { pipeline, create, host, open, ownerInput, session, staffInput, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { direction } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
 import { acceptDirection, activateTasks, boundHost, draftFor, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
@@ -51,7 +51,7 @@ test('the host sends a checked stage slice only after work starts and its basis 
       .toMatchObject(refused('InvalidInput'))
     const pipelineStage = [...started.proposals.values()].flatMap(({ phase }) =>
       phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' ? phase.version.value.stages : [],
-    ).find(({ role }) => role.key === started.roles.pipeline.key)!
+    ).find(({ role }) => role.key === pipeline.key)!
     expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [draft.stages[0], pipelineStage] })))
       .toMatchObject(refused('InvalidInput'))
     const sent = yield* sendDraft(journal, started)

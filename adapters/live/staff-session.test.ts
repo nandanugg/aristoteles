@@ -4,7 +4,7 @@ import { dirname } from 'node:path'
 import { Effect } from 'effect'
 import { acceptStaffing, cliProposal } from '../../src/store/proposal.probe.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
-import { staffedIn, PaneAddress, ProposalKey, Rationale, StaffSessionKey, TaskKey, refuse, type Of, type Project } from '../../core/schema/project.ts'
+import { hostRole, staffedIn, PaneAddress, ProposalKey, Rationale, StaffSessionKey, TaskKey, refuse, type Of, type Project } from '../../core/schema/project.ts'
 import { open, staff, withJournal } from '../../src/store/project.probe.ts'
 import { activateTasks, boundHost, send } from '../../src/store/task.probe.ts'
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
@@ -142,8 +142,8 @@ test('the live adapter serializes child starts across roles assigned to one staf
     const key = boundHost
     const host = { _tag: 'Task', key: TaskKey.make('task:host') } as const
     const pipeline = { _tag: 'Task', key: TaskKey.make('task:pipeline') } as const
-    yield* send(journal, (yield* readOpenProject(journal)).read, host.key, project.roles.host)
-    yield* send(journal, (yield* readOpenProject(journal)).read, pipeline.key, project.roles.pipeline)
+    yield* send(journal, (yield* readOpenProject(journal)).read, host.key, hostRole(project))
+    yield* send(journal, (yield* readOpenProject(journal)).read, pipeline.key, [...project.roles.values()].find(({ _tag }) => _tag === 'Pipeline')!)
     const outcomes = yield* Effect.all([
       Effect.result(operations.child(key, host.key, 'Work', staffedIn(project))),
       Effect.result(operations.child(key, pipeline.key, 'Work', staffedIn(project))),

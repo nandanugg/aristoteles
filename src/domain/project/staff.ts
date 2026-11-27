@@ -1,5 +1,5 @@
 import { Result, Schema } from 'effect'
-import { rolesOf, roleOf, staffedIn } from './roles.ts'
+import { roleOf, staffedIn } from './roles.ts'
 import { versionOf } from './version.ts'
 import type { Project } from './records.ts'
 import {
@@ -12,8 +12,15 @@ export const Human = Schema.TaggedStruct('Human', { name: Name })
 export const Responsibility = Schema.Struct({
   summary: Summary, introduction: Introduction, duties: Schema.NonEmptyArray(DutyText),
 })
-export const Role = Schema.Struct({ key: RoleKey, name: Name, responsibility: versionOf(Responsibility) })
+export const Role = Schema.Struct({
+  key: RoleKey, _tag: Schema.Literals(['Host', 'Pipeline', 'Work']), name: Name, responsibility: versionOf(Responsibility),
+})
 export type Role = Of<typeof Role>
+export const Roles = recordsByKey(Role, RoleKey).check(Schema.makeFilter((roles) => {
+  const all = [...roles.values()]
+  return all.filter((role) => role._tag === 'Host').length === 1 &&
+    all.filter((role) => role._tag === 'Pipeline').length === 1
+}))
 export const Subscription = Schema.Struct({
   key: SubscriptionKey,
   provider: ProviderName,
@@ -121,11 +128,11 @@ export const validateStaffing = (
     const subscription = plan.subscriptions.get(staff.subscription.key)
     if (!subscription) return invalid(Rationale.make('Use the listed subscriptions.'))
     for (const { key } of staff.roles) {
-      if (!roleOf(project, key) || assigned.has(key)) return invalid(Rationale.make('Assign each project role exactly once.'))
+      const role = roleOf(project, key)
+      if (!role || assigned.has(key)) return invalid(Rationale.make('Assign each project role exactly once.'))
+      if (role._tag !== 'Work' && staff.subagents === 0)
+        return Result.fail(refuse('StaffingMinimum', Rationale.make('Host and pipeline each need access to a subagent.')))
       assigned.add(key)
-    }
-    if (staff.subagents === 0 && staff.roles.some(({ key }) => key === project.roles.host.key || key === project.roles.pipeline.key)) {
-      return Result.fail(refuse('StaffingMinimum', Rationale.make('Host and pipeline each need access to a subagent.')))
     }
     if (move !== 'accept') continue
     const current = staffByKey(project, staff.key)
@@ -140,7 +147,7 @@ export const validateStaffing = (
       return Result.fail(refuse('NoCapacity', Rationale.make('The staffing plan would remove a subagent slot still in use.')))
     }
   }
-  if (assigned.size !== rolesOf(project).length) return invalid(Rationale.make('Cover every project role.'))
+  if (assigned.size !== project.roles.size) return invalid(Rationale.make('Cover every project role.'))
   if (move !== 'accept') return Result.succeed(plan)
   for (const prior of projectStaff(project)) {
     const session = latestSession(project, prior)

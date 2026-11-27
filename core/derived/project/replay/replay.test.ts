@@ -14,12 +14,12 @@ import { observeSession, readOpenProject, startChild } from '../../../actions/st
 import { initialStaffing, maker, sharedStaffing } from '../../../../src/store/staff-session.probe.ts'
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
-import { create, open, session, staff, staffInput, startFixtureSession, startSession, withJournal } from '../../../../src/store/project.probe.ts'
+import { pipeline, create, open, session, staff, staffInput, startFixtureSession, startSession, withJournal } from '../../../../src/store/project.probe.ts'
 import { activateTasks, begin, commandOutcomes, resultInput, send, taskKey, taskLine, toWorking } from '../../../../src/store/task.probe.ts'
 import {
   answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, shortAnswer,
 } from '../../../../src/store/question.probe.ts'
-import { capacity, staffedIn, projectStaff, actorFor, taskRole, ShortAnswer, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { hostRole, capacity, staffedIn, projectStaff, actorFor, taskRole, ShortAnswer, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -116,7 +116,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
     const journal = yield* open(path)
     const linked = yield* sharedStaffing(journal)
     const { state: activeWork } = yield* startWork(journal, yield* activateTasks(journal, linked))
-    const roles = [linked.roles.host, linked.roles.pipeline, maker]
+    const roles = [hostRole(linked), linked.roles.get(pipeline.key)!, maker]
     const ids = [...initialStaffing().staff.keys()]
     // The model reuses a child tuple after release. A production begin addresses a fresh sent task.
     const drafts = roles.map((role, index) =>

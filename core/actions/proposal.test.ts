@@ -13,7 +13,7 @@ import { startSession, create, open, session, staff, startFixtureSession, withJo
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
 import { cliProposal, direction, evidence } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
-import { boundHostSession, FileContents, ProposalValue, Rule, proposalReviewDirection, quoteIn, staffByKey, staffedIn, Projection, ProposalKey, ReadPosition, StaffingPlan, StaffSessionKey, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
+import { hostRole, boundHostSession, FileContents, ProposalValue, Rule, proposalReviewDirection, quoteIn, staffByKey, staffedIn, Projection, ProposalKey, ReadPosition, StaffingPlan, StaffSessionKey, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
@@ -160,8 +160,8 @@ test('only the owner changes a responsibility, which takes effect after review a
     const journal = yield* open(path)
     const staffed = yield* sharedStaffing(journal)
     const live = yield* startFixtureSession(journal, staffed)
-    const previous = live.state.roles.host.responsibility
-    const value = { _tag: 'Responsibility', ...previous.value, role: live.state.roles.host, summary: Summary.make('New owner wording') }
+    const previous = hostRole(live.state).responsibility
+    const value = { _tag: 'Responsibility', ...previous.value, role: hostRole(live.state), summary: Summary.make('New owner wording') }
     expect(yield* Effect.result(cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } }, staffAuthorityOf())))
       .toMatchObject(missing('WrongActor'))
     const draft = yield* cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } })
@@ -172,13 +172,13 @@ test('only the owner changes a responsibility, which takes effect after review a
     if (proposal?.phase._tag !== 'Reviewing' || proposal.phase.assignment._tag !== 'Assigned') throw new Error('No assigned child')
     const reviewed = yield* cliProposal(journal, child.state, { ...first, move: 'review', input: { facts: evidence('Holds', 'Responsibility') } },
       { _tag: 'Review', session, ...first, queuedIn: proposal.phase.assignment.queuedIn })
-    expect(reviewed.state.roles.host.responsibility).toEqual(previous)
+    expect(hostRole(reviewed.state).responsibility).toEqual(previous)
     const accepted = yield* cliProposal(journal, reviewed.state, choose())
-    expect(accepted.state.roles.host.responsibility.value.summary).toBe(value.summary)
-    expect(Number(accepted.state.roles.host.responsibility.number)).toBe(2)
+    expect(hostRole(accepted.state).responsibility.value.summary).toBe(value.summary)
+    expect(Number(hostRole(accepted.state).responsibility.number)).toBe(2)
     expect(accepted.state.staffing).toEqual(staffed.staffing)
-    expect(staffByKey(accepted.state, staff.key)?.roles).toContainEqual({ key: accepted.state.roles.host.key })
-    expect(accepted.state.sessions.get(session.key)?.staff.roles).toContainEqual({ key: live.state.roles.host.key })
+    expect(staffByKey(accepted.state, staff.key)?.roles).toContainEqual({ key: hostRole(accepted.state).key })
+    expect(accepted.state.sessions.get(session.key)?.staff.roles).toContainEqual({ key: hostRole(live.state).key })
     const projected = Schema.encodeSync(Projection)(accepted.state)
     expect(projected).not.toHaveProperty('staff')
     expect(projected).not.toHaveProperty('subscriptions')

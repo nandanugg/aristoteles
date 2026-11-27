@@ -1,3 +1,4 @@
+import { hostRole } from './roles.ts'
 import { Schema } from 'effect'
 import { Direction, Fact, Rule, Stage, sameStage } from './direction.ts'
 import { CommandOutput, Evidence, Lines, outcomeOf } from './evidence.ts'
@@ -91,5 +92,5 @@ export const taskRole = (task: Task) => task.stages[0].role
 
 export const taskReviewStaff = (project: Project, task: Task) => {
   const reviewer = staffOf(project, task.reviewer)
-  return reviewer?.subagents === 0 ? staffOf(project, project.roles.host) : reviewer
+  return reviewer?.subagents === 0 ? staffOf(project, hostRole(project)) : reviewer
 }

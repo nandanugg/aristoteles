@@ -217,7 +217,8 @@ export function scan(program: ts.Program, root: string, included = contracts,
           const reads = dependencies.get(node) ?? new Map()
           if (!reads.has(owner)) reads.set(owner, path)
           dependencies.set(node, reads)
-          typeArguments(type).forEach((arg, i) => walk(arg, `${path}<${i}>`))
+          typeArguments(type).forEach((arg, i) =>
+            walk(arg, i === 0 && (name?.name === 'Map' || name?.name === 'ReadonlyMap') ? `${path}[key]` : `${path}<${i}>`))
           return
         }
         active.add(type)

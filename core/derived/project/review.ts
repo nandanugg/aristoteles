@@ -1,4 +1,4 @@
-import { activeWork, liveSession, taskReviewStaff, type Task, latestSession, staffOf, subagentCapacity, type LiveSession, type Project, type Proposal, type StoredEvent } from '../../schema/project.ts'
+import { hostRole, activeWork, liveSession, taskReviewStaff, type Task, latestSession, staffOf, subagentCapacity, type LiveSession, type Project, type Proposal, type StoredEvent } from '../../schema/project.ts'
 
 export const hostQueue = (project: Project, events: readonly StoredEvent[]): readonly Proposal[] => {
   const entries = new Map<Proposal['key'], StoredEvent['number']>()
@@ -14,7 +14,7 @@ export const hostQueue = (project: Project, events: readonly StoredEvent[]): rea
 export const nextProposalReview = (
   project: Project, events: readonly StoredEvent[],
 ): Readonly<{ proposal: Proposal; session: LiveSession }> | null => {
-  const host = staffOf(project, project.roles.host)
+  const host = staffOf(project, hostRole(project))
   if (!host || !subagentCapacity(project, host).freeSubagents) return null
   const session = latestSession(project, host)
   if (session?._tag !== 'Live') return null

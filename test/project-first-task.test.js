@@ -34,7 +34,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
-    writeFileSync(yaml, Bun.YAML.stringify({ owner, host, pipeline, roles: [], staff }))
+    writeFileSync(yaml, Bun.YAML.stringify({ owner, roles: [host, pipeline], staff }))
     for (const args of [['status'], ['start'], ['onboard', 'open', '--file=' + yaml]]) {
       const result = Bun.spawnSync(terminal(args), {
         cwd: dir, env: { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db, WORK_NO_OPEN: '1' },
@@ -115,7 +115,7 @@ exec sleep 90
     writeFileSync(join(dir, 'aristoteles.yaml'), 'models:\n  local:\n    skills: .claude/skills\n')
     const local = { ...staff, roles: [{ key: host.key }], launch: launch + ' {session}' }
     const worker = { ...local, key: 'staff:pipeline', name: 'Pipeline staff', roles: [{ key: pipeline.key }] }
-    put('project.yaml', { owner, host, pipeline, roles: [], staff: local, subscription })
+    put('project.yaml', { owner, roles: [host, pipeline], staff: local, subscription })
     await ok(['skill', 'install'])
     expect(existsSync(join(dir, '.claude/skills/aristoteles/SKILL.md'))).toBe(true)
     await ok(['onboard', 'open', '--file=project.yaml'], ownerCall)
@@ -241,7 +241,7 @@ exec sleep 90
     const prompt = accepted.value.standards[0].rules[1]
     writeFileSync(join(dir, 'sample.md'), 'Local first result\n')
     const task = async (key, name) => {
-      put('task.yaml', { key, name, goal: 'Write the local result', reviewer: project.roles.pipeline,
+      put('task.yaml', { key, name, goal: 'Write the local result', reviewer: project.roles.find(({ _tag }) => _tag === 'Pipeline'),
         direction: accepted, stages: accepted.value.stages, facts: [] })
       await apply(['send', await basis(), '--file=task.yaml'], hostToken, name + ' open')
     }

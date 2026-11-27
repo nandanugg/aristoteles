@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { Effect } from 'effect'
 import { ReadPosition } from '../../core/schema/project.ts'
 import { readPosition } from '../../core/state/project.ts'
-import { create, open, staffInput, withJournal } from './project.probe.ts'
+import { create, host, open, owner, ownerInput, pipeline, staff, staffInput, subscription, withJournal } from './project.probe.ts'
 import { promptDirection, resultInput, toWorking } from './task.probe.ts'
 import { PROJECT_FORMAT } from './schema.ts'
 
@@ -26,6 +26,22 @@ test('a missing journal stays missing in read mode and fresh creation uses forma
   })))
   query(path, (db) => expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: PROJECT_FORMAT }))
 }))
+
+test('the project opens with one Host and one Pipeline in the role map', () => withJournal((path) =>
+  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const journal = yield* open(path)
+    for (const roles of [[host], [pipeline], [host, pipeline, host],
+      [host, pipeline, { ...pipeline, key: 'role:other-pipeline' }]]) {
+      const rejected = yield* Effect.result(ownerInput(journal, {
+        read: 0, line: 'Project', move: 'open', input: { owner, staff, subscription, roles },
+      }))
+      expect(rejected).toMatchObject({ _tag: 'Failure', failure: { code: 'InvalidInput' } })
+      expect(yield* journal.eventsAfter(start)).toEqual([])
+    }
+    const { state } = yield* create(journal)
+    expect(state.roles).toEqual(new Map([[host.key, host], [pipeline.key, pipeline]]))
+  }))),
+))
 
 test.each([
   ['old store', 'CREATE TABLE event (seq); PRAGMA user_version = 10'],
