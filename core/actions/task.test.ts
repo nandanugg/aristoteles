@@ -6,7 +6,6 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { Deferred, Effect, Fiber, Result, Schema } from 'effect'
 import { projectBriefCommand, projectReportCommand, projectSendCommand } from '../../adapters/cli/commands/project.ts'
-import { boundHostAuthority } from '../../adapters/live/activation.ts'
 import { liveTaskCommands } from '../../adapters/live/task-commands.ts'
 import { projectCommandStatus, projectEvents, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
 import { agree, readyActivation, startWork } from '../../src/store/project-activation.probe.ts'
@@ -240,24 +239,24 @@ test('the task panel marks changed lines and shows only committed command outcom
 test('the first authenticated send keeps the read basis from Start work', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const fixture = yield* readyActivation(path)
-    const { journal, operations } = fixture
+    const { journal, operations, credentials } = fixture
     yield* agree(journal, fixture.project, fixture.files)
     yield* operations.mark
     yield* operations.reserve(boundHost)
     yield* operations.spawn
     const nonce = fixture.nonces.get(boundHost)!
     const committed = yield* operations.acknowledge(boundHost, nonce)
-    const credential = yield* operations.collect(boundHost, nonce)
+    const credential = yield* credentials.collect(boundHost, nonce)
     const { state: started } = yield* startWork(journal, committed.state)
     const sent = yield* projectSendCommand(journal, started.read, Bun.YAML.stringify(draftFor(started)))
-      .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))
-    expect(sent.state.phase).toMatchObject({ work: { _tag: 'Used', startedIn: started.read } })
+      .pipe(Effect.provideService(Authority, { actor: credentials.authenticate(boundHost, credential) }))
+    expect(sent.state.phase).toMatchObject({ work: { _tag: 'Started', startedIn: started.read } })
     expect(sent.state.tasks.get(taskKey)?.phase._tag).toBe('Sent')
     const working = yield* projectReportCommand(journal, taskKey, sent.state.read, '{}')
-      .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))
+      .pipe(Effect.provideService(Authority, { actor: credentials.authenticate(boundHost, credential) }))
     expect(working.state.tasks.get(taskKey)?.phase).toMatchObject({
       _tag: 'Working', attempt: { actor: { key: boundHost } },
     })
-    expect(yield* Effect.result(operations.collect(boundHost, nonce))).toMatchObject(refused('RetiredSession'))
+    expect(yield* Effect.result(credentials.collect(boundHost, nonce))).toMatchObject(refused('RetiredSession'))
   }))),
 ))

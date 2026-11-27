@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Effect, Result, Schema } from 'effect'
 import { projectActivationOperations } from '../../../../adapters/live/activation.ts'
+import { hostSessionCredentials } from '../../../../adapters/live/host-session.ts'
+import { readProjectSessionFile } from '../../../services/project.ts'
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
 import { agree, approvedText, hostKey, newerText, readyActivation, startWork } from '../../../../src/store/project-activation.probe.ts'
@@ -21,11 +23,11 @@ const numberOf = (key?: Of<typeof StaffSessionKey>) => key === undefined ? 0 : N
 const sorted = (values: Iterable<number>) => [...values].sort((a, b) => a - b)
 const invalidCredential = HostCredential.make('host.' + '0'.repeat(64))
 const modelRecord = Schema.decodeUnknownSync(Schema.Struct({
-  phase: Schema.Literals(['Onboarding', 'Activating', 'Active', 'RollingBack']),
+  phase: Schema.Literals(['Onboarding', 'Activating', 'Active', 'RollingBack', 'Ended']),
   file: Schema.Literals(['Approved', 'Marked', 'Newer']),
   reserved: Schema.Number, alive: Schema.Array(Schema.Number), acked: Schema.Array(Schema.Number),
   binding: Schema.Number, pending: Schema.Number, top: Schema.Number,
-  delivered: Schema.Array(Schema.Number), used: Schema.Boolean,
+  delivered: Schema.Array(Schema.Number), retired: Schema.Array(Schema.Number),
 }))
 
 test('activation checks are registered and each witness set has a common model revision', () => {
@@ -42,6 +44,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
     const f = yield* readyActivation(path)
     let journal = f.journal
     let operations = f.operations
+    let credentials = f.credentials
     const delivered = new Map<number, Of<typeof HostCredential>>()
     const answers = new Map<Of<typeof StaffSessionKey>, Of<typeof LaunchNonce>>()
     const nonce = (key: Of<typeof StaffSessionKey>) => {
@@ -89,7 +92,10 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
         pending: phase._tag === 'Active' && replacement._tag === 'Starting' ? numberOf(replacement.key) : 0,
         top: phase._tag === 'Active' && phase.work._tag !== 'NotStarted' ? binding : 0,
         delivered: sorted(delivered.keys()),
-        used: phase._tag === 'Active' && phase.work._tag === 'Used',
+        // First use removes the collectible secret and keeps the verifier. Ending the session removes both.
+        retired: sorted([...delivered.keys()].filter((launch) =>
+          readProjectSessionFile(f.directory, journal.directory, hostKey(launch), 'verifier') !== null &&
+          readProjectSessionFile(f.directory, journal.directory, hostKey(launch), 'secret') === null)),
       }
     }))
     const projection = (step: (typeof trace.states)[number]) => {
@@ -157,11 +163,12 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
           if (prior.phase === 'Active') yield* refusal(operations.rollback(reason), 'WrongMove')
           else yield* operations.rollback(reason)
           break
-        case 'probeWork': yield* refusal(operations.authenticate(old, invalidCredential), 'RetiredSession'); break
+        case 'probeWork': yield* refusal(credentials.authenticate(old, invalidCredential), 'RetiredSession'); break
         case 'crashBeforeNote':
         case 'crashDuringCleanup':
           journal = yield* open(path)
           operations = projectActivationOperations(f.directory, journal, f.provider)
+          credentials = hostSessionCredentials(f.directory, journal, f.provider)
           break
         case 'restoreFile':
           yield* operations.restore
@@ -177,10 +184,10 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
         case 'collect': {
           const launch = integer(picked(step.picks.launch))
           const key = hostKey(launch)
-          if (prior.binding === launch && prior.used === false) {
-            delivered.set(launch, yield* operations.collect(key, nonce(key)))
+          if (prior.binding === launch && !previous.retired.includes(launch)) {
+            delivered.set(launch, yield* credentials.collect(key, nonce(key)))
           } else {
-            yield* refusal(operations.collect(key, nonce(key)), 'RetiredSession')
+            yield* refusal(credentials.collect(key, nonce(key)), 'RetiredSession')
             guarded = kind === 'mutant' && Array.isArray(expected.delivered) && expected.delivered.includes(launch)
           }
           break
@@ -189,7 +196,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
           const launch = integer(prior.binding)
           const credential = delivered.get(launch)
           if (!credential) throw new Error('Work must use a delivered credential')
-          yield* operations.authenticate(hostKey(launch), credential)
+          yield* credentials.authenticate(hostKey(launch), credential)
           break
         }
         default: throw new Error('Unknown activation action: ' + step.action)

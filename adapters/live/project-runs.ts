@@ -8,9 +8,10 @@ import {
   EventNumber, HostCredential, LaunchNonce, LaunchVerifier, boundHostSession, PaneAddress, ProjectCredential, ProposalKey, Rationale, StaffSessionKey, TaskKey,
   refuse, type Of, type Project, type Refusal, type Staff,
 } from '../../core/schema/project.ts'
-import { dbPath, digest, projectLock } from '../../core/services/project.ts'
+import { dbPath, digest, projectLock, removeProjectSession } from '../../core/services/project.ts'
 import type { Journal } from '../../core/services/project.ts'
-import { boundHostAuthority, liveProjectBootstrap, projectActivationOperations } from './activation.ts'
+import { liveProjectBootstrap } from './activation.ts'
+import { hostSessionCredentials } from './host-session.ts'
 import { bootstrapPane, observeBootstrap, spawnProjectRun, stopBootstrap } from './bootstrap.ts'
 import { launchNextReview, type Reviews } from './proposal.ts'
 import { staffSessionOperations, type Sessions } from './staff-session.ts'
@@ -111,6 +112,7 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
       for (const child of keys())
         if (child !== key && read(child).session.key === session.key) stop(child)
       stop(key)
+      removeProjectSession(dir, journal.directory, session.key)
     }),
     observe: (session) => perform(() => {
       const observation = observeBootstrap(dir, suffix(session.key))
@@ -140,8 +142,8 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
       const project = yield* readOpenProject(journal)
       const binding = boundHostSession(project)
       if (Schema.is(HostCredential)(token) && binding) {
-        const operations = projectActivationOperations(dir, journal, liveProjectBootstrap(dir, db, journal.directory))
-        return yield* boundHostAuthority(operations, binding.key, token)
+        const credentials = hostSessionCredentials(dir, journal, liveProjectBootstrap(dir, db, journal.directory))
+        return yield* credentials.authenticate(binding.key, token)
       }
       const key = /^run\.([a-f0-9]{32})\.[a-f0-9]{64}$/u.exec(token)?.[1]
       if (!key) return yield* Effect.fail(retired())

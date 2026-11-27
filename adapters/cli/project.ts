@@ -11,6 +11,7 @@ import { openProjectJournal, withProjectEnv } from '../../core/services/project.
 import {
   activationOwner, liveProjectBootstrap, projectActivationOperations, projectDirectoryAt, resumeProjectActivation,
 } from '../live/activation.ts'
+import { hostSessionCredentials } from '../live/host-session.ts'
 import { bootstrapPane, NONCE_ENV, PROJECT_ENV } from '../live/bootstrap.ts'
 import { installSkill } from '../live/skill-install.ts'
 import { newStaffSession, projectRuns } from '../live/project-runs.ts'
@@ -118,14 +119,15 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
   }
 
   const directory = projectDirectoryAt(io.cwd)
-  if (command === 'activation' && (act === 'ack' || act === 'collect')) {
+  if (command === 'session' && (act === 'collect' || act === 'ack' && env[PROJECT_ENV] !== undefined)) {
     if (!subject || !known([]) || !Schema.is(StaffSessionKey)(subject) || !/^session:[a-f0-9]{32}$/u.test(subject) ||
         directory.href !== env[PROJECT_ENV]) return yield* Effect.fail(denied())
     const pane = bootstrapPane(io.cwd, subject.slice(8))
     if (!pane || pane.pane !== env.TMUX_PANE || pane.socket !== env.TMUX?.split(',')[0]) return yield* Effect.fail(denied())
     const journal = yield* openProjectJournal(directory, 'Write')
-    const operations = projectActivationOperations(io.cwd, journal, liveProjectBootstrap(io.cwd, env.ARISTOTELES_DB, journal.directory))
-    if (act === 'collect') return [yield* collectProjectHost(operations, subject, env[NONCE_ENV])]
+    const provider = liveProjectBootstrap(io.cwd, env.ARISTOTELES_DB, journal.directory)
+    if (act === 'collect') return [yield* collectProjectHost(hostSessionCredentials(io.cwd, journal, provider), subject, env[NONCE_ENV])]
+    const operations = projectActivationOperations(io.cwd, journal, provider)
     const result = yield* acknowledgeProjectHost(operations, subject, env[NONCE_ENV])
     return ['Project host acknowledged.', ...startingWords(result.state, subject)]
   }

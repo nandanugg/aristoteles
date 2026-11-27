@@ -51,9 +51,9 @@ export const nextStep = (
 ): Selection => {
   if (project.phase._tag === 'Ended') return { _tag: 'Awaiting' }
   const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
-  // Starting up and opening a review can produce engine events under the session's key.
-  if (current && on !== Number(current.startedIn) && !events.some(({ actor, move, line }) =>
-    actor._tag === 'Session' && actor.key === current.key && move !== 'assign' && !(line === 'Project' && move === 'use'),
+  // Opening a review can produce an engine event under the session's key.
+  if (current && on !== Number(current.startedIn) && !events.some(({ actor, move }) =>
+    actor._tag === 'Session' && actor.key === current.key && move !== 'assign',
   )) return { _tag: 'Introduction', subject: project, read: ReadPosition.make(current.startedIn) }
   const [question] = questionsFor(project, authority)
   const owes = (task: Task): boolean => {

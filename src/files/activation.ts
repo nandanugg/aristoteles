@@ -1,4 +1,4 @@
-// Private launch materials, marker backups and the directory lock for journal activation.
+// Private session material, marker backups and the project directory lock.
 import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
@@ -6,10 +6,11 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { FilePath, HostCredential, LaunchNonce, LaunchVerifier, Rationale, Refusal, refuse, type EventNumber, type Of } from '../domain/project/values.ts'
+import { FilePath, HostCredential, LaunchNonce, LaunchVerifier, Rationale, Refusal, refuse, type EventNumber, type Of, type StaffSessionKey } from '../domain/project/values.ts'
 
 const partition = (directory: URL) => createHash('sha256').update(directory.href).digest('hex')
 const AREA = '.work/onboarding/activation'
+const SESSIONS = '.work/project-sessions'
 const activationKey = () => randomUUID().replaceAll('-', '')
 const unsafe = (message: string) =>
   refuse('Unavailable', Rationale.make(message))
@@ -18,9 +19,9 @@ const activationIO = <A>(f: () => A) => Effect.try({
   catch: (error) => Schema.is(Refusal)(error) ? error : unsafe(String(error)),
 })
 
-const activationDir = (dir: string, parts: readonly string[], create: boolean): string | null => {
+const plainDirectory = (dir: string, parts: readonly string[], create: boolean): string | null => {
   let path = dir
-  for (const part of [...AREA.split('/'), ...parts]) {
+  for (const part of parts) {
     path = join(path, part)
     try {
       if (!lstatSync(path).isDirectory()) throw unsafe(`${path} is not a plain directory`)
@@ -69,18 +70,12 @@ const writePrivate = (area: string, name: string, text: string) => {
   }
 }
 
-const launchParts = (generation: number, launch: string): readonly string[] => {
-  if (!Number.isSafeInteger(generation) || generation < 1 || !/^[a-f0-9]{32}$/u.test(launch)) {
-    throw unsafe('invalid activation generation or launch key')
-  }
-  return [String(generation), `launch-${launch}`]
-}
 // The child inherits the parent's open file description on fd 0. The kernel holds
 // its flock until the parent closes that descriptor, including on process death.
 export const activationLock = (dir: string) =>
   Effect.gen(function* () {
     const fd = yield* Effect.acquireRelease(
-      activationIO(() => openSync(join(activationDir(dir, [], true)!, 'lock'),
+      activationIO(() => openSync(join(plainDirectory(dir, AREA.split('/'), true)!, 'lock'),
         constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600)),
       (fd) => Effect.sync(() => closeSync(fd)),
     )
@@ -93,36 +88,35 @@ export const activationLock = (dir: string) =>
     }
   })
 
-const projectLaunchArea = (
-  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string, create: boolean,
-) => activationDir(dir, ['project', partition(project), ...launchParts(generation, launch)], create)
+const projectSessionArea = (dir: string, project: URL, key: Of<typeof StaffSessionKey>, create: boolean) => {
+  const suffix = key.slice('session:'.length)
+  if (!/^session:[a-f0-9]{32}$/u.test(key)) throw unsafe('Invalid session key')
+  return plainDirectory(dir, [...SESSIONS.split('/'), partition(project), suffix], create)
+}
 
-const privateLaunchFiles = { nonce: LaunchNonce, secret: HostCredential, verifier: LaunchVerifier }
-export const writeProjectLaunchFile = (
-  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string,
-  name: 'nonce' | 'secret' | 'verifier', value: Of<typeof LaunchNonce> | Of<typeof HostCredential> | Of<typeof LaunchVerifier>,
-): void => writePrivate(projectLaunchArea(dir, project, generation, launch, true)!, name, value)
+const privateSessionFiles = { nonce: LaunchNonce, secret: HostCredential, verifier: LaunchVerifier }
+export const writeProjectSessionFile = <Name extends keyof typeof privateSessionFiles>(
+  dir: string, project: URL, key: Of<typeof StaffSessionKey>, name: Name, value: Of<(typeof privateSessionFiles)[Name]>,
+): void => writePrivate(projectSessionArea(dir, project, key, true)!, name, value)
 
-export const readProjectLaunchFile = (
-  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string,
-  name: 'nonce' | 'secret' | 'verifier',
+export const readProjectSessionFile = (
+  dir: string, project: URL, key: Of<typeof StaffSessionKey>, name: keyof typeof privateSessionFiles,
 ) => {
-  const area = projectLaunchArea(dir, project, generation, launch, false)
+  const area = projectSessionArea(dir, project, key, false)
   const value = area === null ? null : readPrivate(join(area, name))
-  return value === null ? null : Schema.decodeUnknownSync(privateLaunchFiles[name])(value)
+  return value === null ? null : Schema.decodeUnknownSync(privateSessionFiles[name])(value)
 }
 
-export const retireProjectLaunchSecret = (
-  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string,
-): void => {
-  const area = projectLaunchArea(dir, project, generation, launch, false)
-  if (area !== null) rmSync(join(area, 'secret'), { force: true })
+export const retireProjectSessionSecret = (dir: string, project: URL, key: Of<typeof StaffSessionKey>): void => {
+  const area = projectSessionArea(dir, project, key, false)
+  if (area === null) return
+  rmSync(join(area, 'secret'), { force: true })
+  const fd = openSync(area, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+  try { fsyncSync(fd) } finally { closeSync(fd) }
 }
 
-export const removeProjectLaunch = (
-  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string,
-): void => {
-  const area = projectLaunchArea(dir, project, generation, launch, false)
+export const removeProjectSession = (dir: string, project: URL, key: Of<typeof StaffSessionKey>): void => {
+  const area = projectSessionArea(dir, project, key, false)
   if (area !== null) rmSync(area, { recursive: true, force: true })
 }
 

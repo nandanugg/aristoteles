@@ -52,7 +52,7 @@ module activationCommitCase {
   }
   action probeWork = all {
     state.record.phase != Active,
-    state' = { ...state, earlyWork: state.earlyWork or work(state.record, 1).used }
+    state' = { ...state, earlyWork: state.earlyWork or work(state.record, 1).retired.contains(1) }
   }
   action step = any { approve, markFile, startHost, launchHost, acknowledge, loseHost,
     tryCommit, crashBeforeNote, note, probeWork, state' = state }

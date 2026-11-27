@@ -49,7 +49,6 @@ export const projectLine = line({
   Active: { from: Schema.Literal('Active'), owes: 'None', moves: {
     end: { to: ['Ended'], input: empty, owes: 'Owner', submission: { move: 'end', input: empty } },
     start: { to: ['Active'], input: empty, owes: 'Owner', submission: { move: 'start', input: empty } },
-    use: { to: ['Active'], input: empty, owes: 'Host' },
   } },
   Ended: { from: Schema.Literal('Ended'), owes: 'None', moves: {} },
 })
@@ -130,7 +129,6 @@ export const ProjectEvent = Schema.Union([
   projectProtocol.event('RollingBack', 'back'),
   projectProtocol.event('Active', 'end'),
   projectProtocol.event('Active', 'start'),
-  projectProtocol.event('Active', 'use'),
 ])
 export type ProjectEvent = Of<typeof ProjectEvent>
 const projectRequests = [

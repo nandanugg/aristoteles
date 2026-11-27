@@ -2,6 +2,7 @@ import { dirname, join } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { Effect } from 'effect'
 import { projectActivationFiles, projectActivationOperations, type ProjectBootstrap } from '../../adapters/live/activation.ts'
+import { hostSessionCredentials } from '../../adapters/live/host-session.ts'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession } from '../../core/actions/staff-session.ts'
 import {
@@ -61,5 +62,6 @@ export const readyActivation = (path: string) => Effect.gen(function* () {
   const fixture = yield* readyProject(path)
   const bootstrap = fakeBootstrap()
   const operations = projectActivationOperations(fixture.directory, fixture.journal, bootstrap.provider)
-  return { ...fixture, ...bootstrap, operations }
+  const credentials = hostSessionCredentials(fixture.directory, fixture.journal, bootstrap.provider)
+  return { ...fixture, ...bootstrap, operations, credentials }
 })

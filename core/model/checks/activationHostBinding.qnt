@@ -39,18 +39,19 @@ module activationHostBindingCase {
   action collect = {
     nondet launch = Set(1, 2).oneOf()
     val served = canDeliver(state.record, launch, onlyBound)
+    val retired = state.record.retired.contains(launch)
     val record = deliver(state.record, launch, onlyBound)
     all {
       state.record.alive.contains(launch) and state.record.acked.contains(launch),
       state' = { ...state, record: record,
         rejectedPending: state.rejectedPending or (record == state.record and
           state.record.pending == launch and state.record.binding != launch),
-        deniedAfterUse: state.deniedAfterUse or (state.record.used and not(served)),
-        servedAfterUse: state.servedAfterUse or (state.record.used and served) }
+        deniedAfterUse: state.deniedAfterUse or (retired and not(served)),
+        servedAfterUse: state.servedAfterUse or (retired and served) }
     }
   }
   action firstWork = all {
-    not(state.record.used), work(state.record, state.record.binding) != state.record,
+    work(state.record, state.record.binding) != state.record,
     state' = { ...state, record: work(state.record, state.record.binding) }
   }
   action step = any { loseHost, startReplacement, launchReplacement, chooseBinding, crashBeforeNote,
@@ -58,9 +59,9 @@ module activationHostBindingCase {
   val Safety = not(state.servedAfterUse) and (state.record.top != 0 implies state.record.top == state.record.binding) and
     (state.record.delivered.contains(2) implies state.record.binding == 2) and
     (state.record.binding == 2 implies state.record.alive.contains(2)) and
-    (state.record.used implies state.record.delivered.contains(state.record.top))
-  val Success = state.record.used and state.record.top == 1
-  val Fault = state.rejectedPending and state.interrupted and state.record.used and
+    state.record.retired.subseteq(state.record.delivered)
+  val Success = state.record.retired.contains(state.record.top) and state.record.top == 1
+  val Fault = state.rejectedPending and state.interrupted and state.record.retired.contains(state.record.top) and
     state.record.top == 2 and state.record.pending == 0 and state.deniedAfterUse
 }
 module activationHostBinding {

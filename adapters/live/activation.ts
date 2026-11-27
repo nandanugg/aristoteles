@@ -1,20 +1,21 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Effect, Schema } from 'effect'
 import type { AuthenticatedActor } from '../../core/actions/project.ts'
-import { observeActivation, recordHostUse } from '../../core/actions/project-activation.ts'
+import { observeActivation } from '../../core/actions/project-activation.ts'
 import { acknowledgeSession, cancelSession, observeSession, readOpenProject, readProject, reserveSession } from '../../core/actions/staff-session.ts'
 import {
-  ApprovedFiles, HostCredential, LaunchNonce, LaunchVerifier, PaneAddress, Rationale, StaffSessionKey, boundHostSession, hostSession, hostReplacement, staffedIn, staffOf, refuse,
-  type ApprovedFile, type EventNumber, type Of, type Pane, type Project, type Refusal, type Staff, type LiveSession,
+  ApprovedFiles, LaunchNonce, PaneAddress, Rationale, StaffSessionKey, hostSession, hostReplacement, staffedIn, staffOf, refuse,
+  type ApprovedFile, type Of, type Pane, type Project, type Refusal, type Staff,
 } from '../../core/schema/project.ts'
-import { projectLock, digest } from '../../core/services/project.ts'
+import { projectLock } from '../../core/services/project.ts'
 import {
-  projectOriginals, readProjectLaunchFile, removeProjectLaunch, retireProjectLaunchSecret, writeProjectLaunchFile,
+  projectOriginals, removeProjectSession,
   type Committed, type Journal,
 } from '../../core/services/project.ts'
+import { openHostSession, proveHostSession } from './host-session.ts'
 import { bootstrapPane, observeBootstrap, spawnProjectBootstrap, stopBootstrap } from './bootstrap.ts'
 import { codexFallbackNames, contentOf, inventoryOf, manifestOf, markFile, preflight, restoreFile, safeEntry } from './markers.ts'
 
@@ -61,8 +62,6 @@ const original = (dir: string, file: ApprovedFile) => readFileSync(join(dir, fil
 const unavailable = () => refuse('Unavailable', Rationale.make('Confirm the launch and its approved files before continuing.'))
 const wrong = () => refuse('WrongMove', Rationale.make('That operation is unavailable in the current activation phase.'))
 const retired = () => refuse('RetiredSession', Rationale.make('Use the current bound host and its own credential.'))
-const matches = (left: string | null, right: string): boolean =>
-  left !== null && timingSafeEqual(Buffer.from(digest(left), 'hex'), Buffer.from(digest(right), 'hex'))
 
 export const projectActivationFiles = (dir: string): Effect.Effect<Of<typeof ApprovedFiles>, Refusal> =>
   protectedIO(() => {
@@ -82,8 +81,6 @@ export interface ActivationOperations {
   readonly rollback: (why: Of<typeof Rationale>) => Effect.Effect<Committed, Refusal>
   readonly restore: Effect.Effect<void, Refusal>
   readonly reconcile: Effect.Effect<Committed | null, Refusal>
-  readonly collect: (key: Of<typeof StaffSessionKey>, nonce: Of<typeof LaunchNonce>) => Effect.Effect<Of<typeof HostCredential>, Refusal>
-  readonly authenticate: (key: Of<typeof StaffSessionKey>, credential: Of<typeof HostCredential>) => Effect.Effect<Project, Refusal>
 }
 
 export const projectActivationOperations = (
@@ -105,17 +102,12 @@ export const projectActivationOperations = (
     const pane = yield* provider.pane(key)
     return pane ?? (yield* Effect.fail(retired()))
   })
-  const confirmBoundPane = (binding: LiveSession) =>
-    Effect.flatMap(currentPane(binding.key), (pane) =>
-      pane.address === binding.pane.address ? Effect.void : Effect.fail(retired()))
   const checkFiles = (files: readonly ApprovedFile[], marked: 'Required' | 'Optional') => protectedIO(() => {
     if (preflight(dir, files.map(entry), inventory(dir)).length) throw new Error('The approved files have changed')
     if (marked === 'Required' && files.some((file) =>
       safeEntry(dir, entry(file)) !== null || contentOf(original(dir, file), entry(file)) !== 'Marked'))
       throw new Error('Marks are incomplete')
   })
-  const proof = (generation: Of<typeof EventNumber>, key: Of<typeof StaffSessionKey>, kind: 'nonce' | 'secret' | 'verifier') =>
-    readProjectLaunchFile(dir, journal.directory, generation, projectLaunch(key), kind)
   const stop = (key: Of<typeof StaffSessionKey>) => Effect.gen(function* () {
     if ((yield* provider.observe(key)) !== 'Ended') yield* provider.stop(key)
     if ((yield* provider.observe(key)) !== 'Ended') return yield* Effect.fail(unavailable())
@@ -145,7 +137,7 @@ export const projectActivationOperations = (
         if (previous._tag === 'Live' && phase._tag === 'Active' && (yield* provider.observe(previous.key)) !== 'Ended')
           return yield* Effect.fail(wrong())
         yield* stop(previous.key)
-        yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(previous.key)))
+        yield* protectedIO(() => removeProjectSession(dir, journal.directory, previous.key))
         const retired = previous._tag === 'Starting'
           ? yield* cancelSession(journal, project, previous.key)
           : yield* observeSession(journal, project, previous.key, 'Ended')
@@ -171,16 +163,7 @@ export const projectActivationOperations = (
       const observed = yield* provider.observe(launch.key)
       if (observed === 'Running') return
       if (observed !== 'Ended') return yield* Effect.fail(unavailable())
-      const nonce = yield* protectedIO(() => {
-        const key = projectLaunch(launch.key)
-        if (proof(phase.approvedIn, launch.key, 'nonce') !== null) throw new Error('An ended launch requires a fresh reservation')
-        const privateNonce = LaunchNonce.make(randomBytes(32).toString('hex'))
-        const secret = HostCredential.make('host.' + randomBytes(32).toString('hex'))
-        writeProjectLaunchFile(dir, journal.directory, phase.approvedIn, key, 'nonce', privateNonce)
-        writeProjectLaunchFile(dir, journal.directory, phase.approvedIn, key, 'secret', secret)
-        writeProjectLaunchFile(dir, journal.directory, phase.approvedIn, key, 'verifier', LaunchVerifier.make(digest(secret)))
-        return privateNonce
-      })
+      const nonce = yield* openHostSession(dir, journal, launch.key)
       yield* provider.spawn(launch.key, nonce, launch.staff)
     })),
     acknowledge: (key, nonce) => locked((project) => Effect.gen(function* () {
@@ -188,7 +171,7 @@ export const projectActivationOperations = (
       const launch = candidate(project)
       if ((phase._tag !== 'Activating' && phase._tag !== 'Active') || launch?.key !== key)
         return yield* Effect.fail(retired())
-      if (!(yield* protectedIO(() => matches(proof(phase.approvedIn, key, 'nonce'), nonce)))) return yield* Effect.fail(retired())
+      yield* proveHostSession(dir, journal, key, nonce)
       const pane = yield* currentPane(key)
       yield* checkFiles(phase.files, 'Required')
       return yield* acknowledgeSession(journal, project, key, pane)
@@ -203,7 +186,7 @@ export const projectActivationOperations = (
         let state = project
         if (launch?._tag === 'Starting') {
           yield* stop(launch.key)
-          yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(launch.key)))
+          yield* protectedIO(() => removeProjectSession(dir, journal.directory, launch.key))
           state = (yield* cancelSession(journal, project, launch.key)).state
         }
         return yield* observeActivation(journal, state, { line: 'Project', from: 'RollingBack', move: 'back', input: {} })
@@ -213,36 +196,16 @@ export const projectActivationOperations = (
       if (launch._tag === 'Starting') {
         if (phase.work._tag === 'NotStarted' && (yield* provider.observe(launch.key)) !== 'Ended') return null
         yield* stop(launch.key)
-        yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(launch.key)))
+        yield* protectedIO(() => removeProjectSession(dir, journal.directory, launch.key))
         return yield* cancelSession(journal, project, launch.key)
       }
       yield* protectedIO(() => {
         for (const previous of project.sessions.values()) {
           if (previous._tag === 'Ended' && previous.staff.key === staffOf(project, project.roles.host)?.key && previous.startedIn > phase.approvedIn)
-            removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(previous.key))
+            removeProjectSession(dir, journal.directory, previous.key)
         }
       })
       return null
-    })),
-    collect: (key, nonce) => locked((project) => Effect.gen(function* () {
-      const phase = project.phase
-      const binding = boundHostSession(project)
-      if (phase._tag !== 'Active' || !binding || binding.key !== key || phase.work._tag === 'Used') return yield* Effect.fail(retired())
-      yield* confirmBoundPane(binding)
-      return yield* Effect.flatMap(protectedIO(() => matches(proof(phase.approvedIn, key, 'nonce'), nonce)
-        ? proof(phase.approvedIn, key, 'secret') : null),
-      (value) => Schema.is(HostCredential)(value) ? Effect.succeed(value) : Effect.fail(retired()))
-    })),
-    authenticate: (key, credential) => locked((project) => Effect.gen(function* () {
-      const phase = project.phase
-      const binding = boundHostSession(project)
-      if (phase._tag !== 'Active' || !binding || binding.key !== key || phase.work._tag === 'NotStarted') return yield* Effect.fail(retired())
-      yield* confirmBoundPane(binding)
-      if (!(yield* protectedIO(() => matches(proof(phase.approvedIn, key, 'verifier'), digest(credential)))))
-        return yield* Effect.fail(retired())
-      const active = phase.work._tag === 'Started' ? (yield* recordHostUse(journal, project, key)).state : project
-      yield* protectedIO(() => retireProjectLaunchSecret(dir, journal.directory, phase.approvedIn, projectLaunch(key)))
-      return active
     })),
   }
 }
@@ -271,11 +234,3 @@ export const resumeProjectActivation = (
   }
   yield* operations.spawn
 })
-
-export const boundHostAuthority = (
-  operations: ActivationOperations, launch: Of<typeof StaffSessionKey>, credential: Of<typeof HostCredential>,
-): Effect.Effect<Extract<AuthenticatedActor, { _tag: 'Host' }>, Refusal> =>
-  Effect.flatMap(operations.authenticate(launch, credential), (project) => {
-    const session = boundHostSession(project)
-    return session ? Effect.succeed({ _tag: 'Host', session } as const) : Effect.fail(retired())
-  })

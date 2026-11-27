@@ -12,11 +12,11 @@ module activation {
     pending: int,
     top: int,
     delivered: Set[int],
-    used: bool
+    retired: Set[int]
   }
   pure val initial: Record = {
     phase: Onboarding, file: Approved, reserved: 0, alive: Set(), acked: Set(),
-    binding: 0, pending: 0, top: 0, delivered: Set(), used: false
+    binding: 0, pending: 0, top: 0, delivered: Set(), retired: Set()
   }
   type ProjectMove = ActivationNext | ActivationBack | ProjectEnd
   pure val projectLine: Line[ProjectPhase, ProjectMove] = Map(
@@ -88,7 +88,7 @@ module activation {
     if (record.phase == Active and record.top == 0) { ...record, top: record.binding } else record
   pure def canDeliver(record: Record, launch: int, checkBinding: bool): bool = {
     val bound = if (record.top == 0) record.binding else record.top
-    record.phase == Active and not(record.used) and
+    record.phase == Active and not(record.retired.contains(launch)) and
       record.alive.contains(launch) and record.acked.contains(launch) and
       (launch == bound or (not(checkBinding) and launch == record.pending))
   }
@@ -98,6 +98,6 @@ module activation {
     else record
   pure def work(record: Record, launch: int): Record =
     if (record.phase == Active and record.top == launch and record.alive.contains(launch) and
-        record.delivered.contains(launch)) { ...record, used: true }
+        record.delivered.contains(launch)) { ...record, retired: record.retired.union(Set(launch)) }
     else record
 }

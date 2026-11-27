@@ -101,7 +101,6 @@ Use the name a person or agent can understand on its own. Read a state label wit
 | startedAt, Started.at | rename to startedIn | The session or project work started in this event. |
 | Result.at | rename to reportedIn | The result was reported in this event. |
 | Activation.at | rename to approvedIn | The owner approved activation in this event. |
-| Used.usedAt | rename to usedIn | The bound host first used its credential in this event. |
 | Ended.at | rename to endedIn | The project ended in this event. |
 | acceptedAt | rename to acceptedIn | The owner accepted this version in this event. |
 | staffing basis | use staffedIn | The effective staffing was established in this event. |

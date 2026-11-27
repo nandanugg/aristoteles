@@ -75,8 +75,8 @@ exec ${quote(realTmux)} "$@"
   writeFileSync(launch, `#!/bin/sh
 umask 077
 if [ -n "$ARISTOTELES_BOOTSTRAP_PROJECT" ]; then
-  ${quote(process.execPath)} ${quote(bin)} activation ack "$ARISTOTELES_BOOTSTRAP_SESSION" > ${quote(captures)}/host.intro || exit
-  ${quote(process.execPath)} ${quote(bin)} activation collect "$ARISTOTELES_BOOTSTRAP_SESSION" > ${quote(captures)}/host || exit
+  ${quote(process.execPath)} ${quote(bin)} session ack "$ARISTOTELES_BOOTSTRAP_SESSION" > ${quote(captures)}/host.intro || exit
+  ${quote(process.execPath)} ${quote(bin)} session collect "$ARISTOTELES_BOOTSTRAP_SESSION" > ${quote(captures)}/host || exit
 else
   key=$(printf '%s' "$ARISTOTELES_SESSION" | cut -c 9-)
   if [ -n "$ARISTOTELES_LAUNCH_NONCE" ]; then
