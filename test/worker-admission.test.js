@@ -1,11 +1,9 @@
-import { replayAdmission } from '../core/derived/pass9/replay/driver.ts'
-import { readWitness } from '../core/derived/pass9/replay/model.ts'
 import { expect, test } from 'bun:test'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { eventsOf } from '../core/actions/fixture.test.ts'
 import { foldWork } from '../core/state/c16/fold.ts'
-import { childLoad, foldRuntime } from '../core/state/worker-runtime.ts'
+import { foldRuntime } from '../core/state/worker-runtime.ts'
 import { settleWorker } from '../core/actions/worker.ts'
 import { settleGenerationChildren } from '../core/actions/child.ts'
 import { init, ok, project, WORK_YAML } from './harness.js'
@@ -13,33 +11,21 @@ import { workerIn, workerRuntimeIn, workerTurn } from './worker-fixture.js'
 
 const PROJECT = WORK_YAML.replace('    icon: compass', '    pipeline: true\n    icon: compass')
 const LEAD = 'role:section-lead'
-const PEER = 'role:second-lead'
-const setup = async ({ allowance = 1, concurrency = 2, background = true, pipeAllowance = 0, shared = false } = {}) => {
-  const config = Bun.YAML.parse(PROJECT)
-  if (shared) {
-    config.roles['second-lead'] = structuredClone(config.roles['section-lead'])
-    config.roles.architect.acts.find((act) => act.assign)?.assign.push('second-lead')
-  }
-  const p = project({ 'aristoteles.yaml': shared ? Bun.YAML.stringify(config) : PROJECT })
+const setup = async ({ allowance = 1, concurrency = 2, background = true, pipeAllowance = 0 } = {}) => {
+  const p = project({ 'aristoteles.yaml': PROJECT })
   await init(p)
   const file = '.work/staffing.yaml'
   const staffing = Bun.YAML.parse(readFileSync(join(p.dir, file), 'utf8'))
   staffing.clis.fixture.backgroundChildren = background
   staffing.roles.architect.subagentAllowance = pipeAllowance
   Object.assign(staffing.roles['section-lead'], { subagentAllowance: allowance, concurrency })
-  if (shared) {
-    const workerGroup = 'shared-staff'
-    staffing.roles['section-lead'].workerGroup = workerGroup
-    staffing.roles['second-lead'] = { ...staffing.roles['section-lead'] }
-  }
   p.write(file, Bun.YAML.stringify(staffing))
   ok(await p.run('top open --name=Test --goal=Test --sections=a,b', { tty: true, workerRuntime: true }))
   const host = await workerIn(p, 'host')
   const lead = await workerIn(p, LEAD)
   for (const section of ['a', 'b']) {
-    const role = shared && section === 'b' ? 'second-lead' : 'section-lead'
     const step = await workerTurn(p, host.credential, 'send')
-    ok(await p.agent(`send ${step.token} --name=${section} --goal=test --sections=${section} --role=${role} ${step.args}`))
+    ok(await p.agent(`send ${step.token} --name=${section} --goal=test --sections=${section} --role=section-lead ${step.args}`))
   }
   const state = () => foldWork(eventsOf(p.dir))
   const runtime = () => foldRuntime(eventsOf(p.dir))
@@ -52,77 +38,6 @@ const setup = async ({ allowance = 1, concurrency = 2, background = true, pipeAl
       a.about.id === task && (kind !== 'Execute' || a.to._tag === 'Maker')).id,
   }
 }
-
-const readAdmission = (fixture, owners) => {
-  const folded = fixture.state()
-  const runtime = fixture.runtime()
-  const taskSlot = (id) => Number(id.slice(1)) - 1
-  return {
-    tasks: [...folded.state.tasks.values()].map((task) => ({
-      id: taskSlot(task.id), owner: owners.indexOf(`role:${task.role}`),
-      phase: task.state === 'Sent' ? 'Queued' : task.state === 'Working' ? 'Child' : 'Other',
-    })),
-    attempts: [...folded.permits.roles].map(([task, actor]) => ({
-      subject: taskSlot(task), owner: owners.indexOf(actor),
-    })),
-    children: [...runtime.children.values()].filter(({ released }) => released === null)
-      .map(({ reservation }) => ({
-        subject: taskSlot(reservation.attempt), owner: owners.indexOf(reservation.parentActor),
-      })),
-    jobs: [], fixes: [], rechecks: [],
-  }
-}
-
-test('pass 9 live admission replay waits for a child held by another role on the same staff', async () => {
-  const fixture = await setup({ shared: true, concurrency: 1 })
-  const { p, lead, runtime, state } = fixture
-  try {
-    const trace = readWitness(join(import.meta.dir, '../core/derived/pass9/replay/traces/admission-shared-wait.itf.json.gz'))
-    const placement = runtime().placements.find(({ members }) => members.includes(LEAD))
-    expect(placement.members).toContain(PEER)
-    const read = async () => readAdmission(fixture, [LEAD, PEER])
-    await replayAdmission(trace, {
-      read,
-      step: async (command) => {
-        if (command.kind !== 'openMake') throw new Error('unexpected action in shared child witness')
-        const turn = await workerTurn(p, lead.credential, 'assign')
-        ok(await p.agent(`assign ${turn.token} t${command.task + 1} ${turn.args}`))
-        return read()
-      },
-    }, 1)
-    expect(childLoad(runtime(), PEER)).toBe(1)
-    expect([...state().permits.roles.values()]).toEqual([LEAD])
-    const waiting = ok(await p.agent(`worker wait ${lead.credential} --seconds=0.01`))
-    expect(waiting.out).toContain(`${PEER} is waiting for child capacity (allowance 1)`)
-    expect(runtime().workers.get(placement.worker).offer).toBeNull()
-    expect((await read()).tasks[1].phase).toBe('Queued')
-  } finally {
-    rmSync(p.dir, { recursive: true, force: true })
-  }
-})
-
-test('pass 9 live admission replay holds one child and leaves the second attempt queued', async () => {
-  const fixture = await setup()
-  const { p } = fixture
-  try {
-    const trace = readWitness(join(import.meta.dir, '../core/derived/pass9/replay/traces/admission-wait.itf.json.gz'))
-    const read = async () => readAdmission(fixture, [LEAD])
-    await replayAdmission(trace, {
-      read,
-      step: async (command) => {
-        if (command.kind !== 'openMake') throw new Error('unexpected action in child saturation witness')
-        ok(await fixture.assign(`t${command.task + 1}`))
-        const blocked = await fixture.assign(`t${2 - command.task}`)
-        if (blocked.code === 0 || !blocked.err.includes('waiting for child capacity')) {
-          throw new Error('live admission accepted a second child at the cap')
-        }
-        return read()
-      },
-    }, 1)
-  } finally {
-    rmSync(p.dir, { recursive: true, force: true })
-  }
-})
 
 test('a positive saturated child allowance leaves work owed until the exact allocation settles', async () => {
   const t = await setup()

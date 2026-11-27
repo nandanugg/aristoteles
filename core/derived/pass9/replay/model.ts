@@ -7,33 +7,17 @@ import { type Cmp, type MStore, canonical, modelCmp, storeOf } from '../../c16/r
 
 export type Identity = 'Host' | 'Role' | 'Pipe'
 export type Session = 'Online' | 'Parked' | 'Exited'
-export type TaskPhase = 'Queued' | 'Child' | 'Serial' | 'MakerDown' | 'Checking' | 'Finished'
 export type JobPhase = 'Owed' | 'Held' | 'AwaitPerson' | 'Closed'
 export type Phase = 'NoHelper' | 'Checkpointed' | 'ParkRequested' | 'Parked' | 'Deferred'
   | 'RecheckChild' | 'FreshSession' | 'ResumeParent' | 'ReportReady'
 export type Route = 'NoContext' | 'ChildContext' | 'FreshContext'
 
-export interface WorkerView {
-  readonly queue: ReadonlyArray<Identity>
-  readonly delivery: { readonly actor: Identity; readonly tokenActor: Identity; readonly current: boolean } | null
-  readonly session: Session
-  readonly heard: ReadonlyArray<Identity>
-  readonly yielded: boolean
-  readonly refused: boolean
-  readonly afterPark: boolean
-}
-
 export interface AdmissionView {
-  readonly tasks: Readonly<Record<number, TaskPhase>>
-  readonly owners: Readonly<Record<number, number>>
   readonly jobs: Readonly<Record<number, JobPhase>>
-  readonly children: ReadonlyArray<number>
-  readonly role: ReadonlyArray<number>
   readonly pipe: ReadonlyArray<number>
   readonly lane: ReadonlyArray<number>
   readonly deniedPipe: boolean
   readonly recheckBesideFix: boolean
-  readonly serialReviewed: boolean
 }
 
 export interface PermitsView {
@@ -75,26 +59,13 @@ export const input = (frame: Frame, key: string): Plain => {
   if (value === null) throw new Error(`${frame.action}: no ${key} pick`)
   return value
 }
-export const workerOf = (frame: Frame): WorkerView => {
-  const w = frame.values['worker'] as unknown as Omit<WorkerView, 'delivery'> & {
-    delivery: 'Empty' | { value: { owner: Identity; token: Identity; current: boolean } }
-  }
-  return {
-    session: w.session, queue: w.queue, heard: w.heard,
-    yielded: w.yielded, refused: w.refused, afterPark: w.afterPark,
-    delivery: w.delivery === 'Empty' ? null : {
-      actor: w.delivery.value.owner, tokenActor: w.delivery.value.token, current: w.delivery.value.current,
-    },
-  }
-}
 export const admissionOf = (frame: Frame): AdmissionView => {
-  const r = frame.values['runtime'] as unknown as Omit<AdmissionView, 'tasks' | 'owners' | 'jobs'> & {
-    tasks: ReadonlyMap<number, TaskPhase>; owners: ReadonlyMap<number, number>; jobs: ReadonlyMap<number, JobPhase>
+  const r = frame.values['runtime'] as unknown as Omit<AdmissionView, 'jobs'> & {
+    jobs: ReadonlyMap<number, JobPhase>
   }
   return {
-    tasks: Object.fromEntries(r.tasks), owners: Object.fromEntries(r.owners), jobs: Object.fromEntries(r.jobs),
-    children: r.children, role: r.role, pipe: r.pipe, lane: r.lane,
-    deniedPipe: r.deniedPipe, recheckBesideFix: r.recheckBesideFix, serialReviewed: r.serialReviewed,
+    jobs: Object.fromEntries(r.jobs), pipe: r.pipe, lane: r.lane,
+    deniedPipe: r.deniedPipe, recheckBesideFix: r.recheckBesideFix,
   }
 }
 
@@ -106,8 +77,7 @@ export const permitsOf = (frame: Frame): PermitsView => {
   }
   const { phase, source: route, target, scenario } = scheduler
   const online = phase !== 'Parked' && phase !== 'FreshSession' && phase !== 'ResumeParent'
-  const serial = scenario === 'SerialCase'
-  const background = scenario === 'ChildCase' || scenario === 'AdmissionCase'
+  const background = scenario === 'ChildCase'
   const slots = [...s.tasks.keys()].sort((a, b) => a - b)
   const liveMaker = (slot: number) => {
     const maker = s.tasks.get(slot)!.maker
@@ -117,9 +87,9 @@ export const permitsOf = (frame: Frame): PermitsView => {
     protocol: canonical(modelCmp(s)), phase, route, target,
     providerSlots: online || phase === 'FreshSession' ? 1 : 0,
     roleAttempts: slots.filter((slot) => ['Working', 'InReview'].includes(s.tasks.get(slot)!.state)),
-    roleChildren: serial ? [] : slots.filter(liveMaker),
+    roleChildren: slots.filter(liveMaker),
     pipeChildren: phase === 'RecheckChild' ? 1 : 0,
-    workerFree: online && !((serial || !background) &&
+    workerFree: online && !(!background &&
       slots.some((slot) => s.tasks.get(slot)!.state === 'Working' && liveMaker(slot))),
   }
 }

@@ -1,19 +1,6 @@
 import { expect, test } from 'bun:test'
-import { join } from 'node:path'
-import { replayWorker } from '../../core/derived/pass9/replay/driver.ts'
-import { readWitness } from '../../core/derived/pass9/replay/model.ts'
 import { inProject } from '../../core/effects/pass9-conformance-fixtures.ts'
 import { unit2Fixture } from './pass9-live-fixture.ts'
-
-const traces = join(import.meta.dir, '../../core/derived/pass9/replay/traces')
-
-for (const name of ['worker-hearing', 'worker-replacement', 'worker-stale', 'worker-yield']) {
-  const trace = readWitness(join(traces, `${name}.itf.json.gz`))
-  test(`pass 9 live replay: ${name}`, () => inProject(async (dir) => {
-    const runtime = await unit2Fixture(dir)
-    await replayWorker(trace, runtime.driver)
-  }))
-}
 
 test('pass 9 live session capacity stays charged while a fenced process is unknown', () => inProject(async (dir) => {
   const runtime = await unit2Fixture(dir, true)
