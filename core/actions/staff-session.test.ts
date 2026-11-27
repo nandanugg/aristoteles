@@ -11,7 +11,7 @@ import { readPosition } from '../state/project.ts'
 import { acceptStaffing } from '../../src/store/proposal.probe.ts'
 import { observeSession, readOpenProject, startChild } from './staff-session.ts'
 
-const address = { _tag: 'Session', key: session.key } as const
+const address = session.key
 const rejected = (code: string) => ({ _tag: 'Failure', failure: { code } })
 
 test('shared staff covers both roles and a stale staffing plan or a duplicate lifetime refuses', () => withJournal((path) =>
@@ -73,10 +73,10 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     const result = yield* staffInput(journal, resultInput(readPosition(working.state)))
     yield* commandOutcomes(journal, readPosition(result.state))
     const project = yield* readOpenProject(journal)
-    yield* startChild(journal, project, taskLine, session, 'Review')
+    yield* startChild(journal, project, taskLine.key, session, 'Review')
     const ongoing = TaskKey.make('task:ongoing')
     const sent = yield* send(journal, (yield* readOpenProject(journal)).read, ongoing)
-    yield* startChild(journal, yield* readOpenProject(journal), { _tag: 'Task', key: ongoing }, session, 'Work')
+    yield* startChild(journal, yield* readOpenProject(journal), ongoing, session, 'Work')
     const before = yield* readOpenProject(journal)
     expect(Number(capacity(before, staff).usedSubagents)).toBe(2)
     yield* observeSession(journal, before, address, 'Ended')
@@ -93,7 +93,7 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     const continued = { ...session, key: StaffSessionKey.make('session:2') }
     yield* startSession(journal, after, { key: continued.key, staff: continued.staff.key, pane: continued.pane, staffing: staffingAt(after) })
     const latest = yield* readOpenProject(journal)
-    yield* startChild(journal, latest, { _tag: 'Task', key: ongoing }, continued, 'Work')
+    yield* startChild(journal, latest, ongoing, continued, 'Work')
     expect((yield* readOpenProject(journal)).tasks.get(ongoing)?.phase).toMatchObject({
       _tag: 'Working', attempt: { number: 2, retryCount: 0, session: { key: continued.key } },
     })

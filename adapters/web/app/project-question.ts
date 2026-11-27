@@ -2,7 +2,7 @@ import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
 import {
   Rationale, answerFor, refuse, type Answer as ProjectAnswer, type QuestionForm as ProjectForm,
-  type Of, type Question as ProjectQuestion, type QuestionAddress, type ReadPosition, type Refusal, type Submission,
+  type Of, type Question as ProjectQuestion, type QuestionEvent, type ReadPosition, type Refusal, type Submission,
 } from '../../../core/schema/project.ts'
 
 export const answerFromForm = (form: ProjectForm, data: FormData): ProjectAnswer | null => {
@@ -44,16 +44,16 @@ const fieldsFor = (form: ProjectForm) => {
 }
 
 export const questionAnswerSubmission = (
-  line: Of<typeof QuestionAddress>, read: Of<typeof ReadPosition>, answer: ProjectAnswer,
+  { owner, key }: Pick<QuestionEvent, 'owner' | 'key'>, read: Of<typeof ReadPosition>, answer: ProjectAnswer,
 ): Submission => ({
-  read, line, move: 'answer', input: { answer },
+  read, line: 'Question', owner, key, move: 'answer', input: { answer },
 })
 
 export function QuestionCard({
-  question, line, read, submit,
+  question, owner, read, submit,
 }: {
   readonly question: ProjectQuestion
-  readonly line: Of<typeof QuestionAddress>
+  readonly owner: QuestionEvent['owner']
   readonly read: Of<typeof ReadPosition>
   readonly submit: (submission: Submission) => Promise<Refusal | null>
 }): ReturnType<typeof html> | null {
@@ -71,14 +71,14 @@ export function QuestionCard({
     }
     setBusy(true)
     try {
-      setFailure(await submit(questionAnswerSubmission(line, read, answer)))
+      setFailure(await submit(questionAnswerSubmission({ owner, key: question.key }, read, answer)))
     } catch {
       setFailure(refuse('Unavailable', Rationale.make('The page could not send the answer.')))
     } finally {
       setBusy(false)
     }
   }}>
-    ${line.owner._tag === 'Project' ? null : html`<p>${line.owner._tag} ${line.owner.key}</p>`}
+    ${owner._tag === 'Project' ? null : html`<p>${owner._tag} ${owner.key}</p>`}
     <fieldset disabled=${busy}><legend>${question.text}</legend>${fieldsFor(question.form)}</fieldset>
     <button class="btn primary" type="submit" disabled=${busy}>Answer</button>
     ${failure ? html`<p class="error" role="alert">${failure.why}</p>` : null}

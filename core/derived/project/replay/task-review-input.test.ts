@@ -53,7 +53,7 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
         const observation = record(picked(step.picks.outcome)!)
         expect(integer(observation.rule)).toBe(1)
         const commands = liveTaskCommands(directory)
-        const committed = yield* runTaskCommands(journal, taskLine, {
+        const committed = yield* runTaskCommands(journal, taskLine.key, {
           ...commands, run: (command) => Effect.succeed(Schema.decodeUnknownSync(CommandOutput)({
             _tag: 'CommandOutput', command, exit: observation.breaks ? 1 : 0, stdout: 'test output', stderr: '',
           })),
@@ -64,7 +64,7 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
         })
         captured = true
       } else if (step.action === 'assignReview') {
-        state = (yield* startChild(journal, state, taskLine, session, 'Review')).state
+        state = (yield* startChild(journal, state, taskLine.key, session, 'Review')).state
       } else if (step.action === 'report') {
         const reports = picked(step.picks.reports)
         if (!Array.isArray(reports)) throw new Error('Expected review outcomes')

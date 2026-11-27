@@ -36,12 +36,12 @@ test('concurrent launches use one lifetime, and unknown observations leave it li
     ], { concurrency: 'unbounded' })
     expect(outcomes.map(({ _tag }) => _tag).sort()).toEqual(['Failure', 'Success'])
     expect(launched).toHaveLength(1)
-    const address = { _tag: 'Session', key: launched[0]! } as const
+    const address = launched[0]!
     expect(yield* first.observe(address)).toBeNull()
-    expect((yield* readOpenProject(journal)).sessions.get(address.key)?._tag).toBe('Live')
+    expect((yield* readOpenProject(journal)).sessions.get(address)?._tag).toBe('Live')
     observed = 'Ended'
     yield* first.observe(address)
-    expect((yield* readOpenProject(journal)).sessions.get(address.key)?._tag).toBe('Ended')
+    expect((yield* readOpenProject(journal)).sessions.get(address)?._tag).toBe('Ended')
   }))),
 ))
 
@@ -97,8 +97,8 @@ test('the live adapter serializes child starts across roles assigned to one staf
     yield* send(journal, (yield* readOpenProject(journal)).read, host.key, project.roles.host)
     yield* send(journal, (yield* readOpenProject(journal)).read, pipeline.key, project.roles.pipeline)
     const outcomes = yield* Effect.all([
-      Effect.result(operations.child(key, host, 'Work', staffingAt(project))),
-      Effect.result(operations.child(key, pipeline, 'Work', staffingAt(project))),
+      Effect.result(operations.child(key, host.key, 'Work', staffingAt(project))),
+      Effect.result(operations.child(key, pipeline.key, 'Work', staffingAt(project))),
     ], { concurrency: 'unbounded' })
     expect(outcomes.map(({ _tag }) => _tag).sort()).toEqual(['Failure', 'Success'])
     expect(started).toBe(1)
@@ -136,12 +136,12 @@ test('a child launched against a replaced plan is reconciled and can try again o
     const operations = staffSessionOperations(dirname(path), journal, provider)
     const key = boundHost
     yield* send(journal, (yield* readOpenProject(journal)).read, task.key)
-    expect(yield* Effect.result(operations.child(key, task, 'Work', staffingAt(project))))
+    expect(yield* Effect.result(operations.child(key, task.key, 'Work', staffingAt(project))))
       .toMatchObject({ _tag: 'Failure', failure: { code: 'Stale' } })
     expect(stopped).toBe(1)
     const current = yield* readOpenProject(journal)
     expect(current.tasks.get(task.key)?.phase._tag).toBe('Sent')
-    yield* operations.child(key, task, 'Work', staffingAt(current))
+    yield* operations.child(key, task.key, 'Work', staffingAt(current))
     expect((yield* readOpenProject(journal)).tasks.get(task.key)?.phase._tag).toBe('Working')
     expect(stopped).toBe(1)
   }))),

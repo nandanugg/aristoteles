@@ -5,7 +5,7 @@ import { projectEvents, projectSnapshot } from '../../adapters/web/project.ts'
 import { create, open, session, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { commandOutcomes, promptDirection, reportReview, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { startChild } from '../actions/staff-session.ts'
-import { EventNumber, Projection, ReadPosition, StaffSessionKey, StoredEvent, Submission, TaskKey } from '../schema/project.ts'
+import { EventNumber, ProposalKey, Projection, ReadPosition, StaffSessionKey, StoredEvent, Submission, TaskKey } from '../schema/project.ts'
 import { applyEvent, fold, readPosition } from './project.ts'
 
 const initial = ReadPosition.make(0)
@@ -22,12 +22,40 @@ test('stored rows round-trip and the codec enforces line, move and read position
     const { event } = yield* create(journal)
     const row = encode(event)
     expect(decode(JSON.parse(JSON.stringify(row)))).toEqual(event)
-    expect(() => decode({ ...row, line: taskLine })).toThrow()
+    expect(() => decode({ ...row, ...taskLine })).toThrow()
     expect(() => decode({ ...row, move: 'back' })).toThrow()
     expect(() => decode({ ...row, from: 'Sent' })).toThrow()
     expect(() => decode({ ...row, read: 1 })).toThrow()
     expect(() => decode({ ...row, destination: 'Open' })).toThrow()
     expectCode(applyEvent(null, { ...event, number: EventNumber.make(2) }), 'InvalidInput')
+  }))),
+))
+
+test('a Task line requires its own key and move input on both wires', () => withJournal((path) =>
+  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const journal = yield* open(path)
+    const working = yield* toWorking(journal)
+    const request = resultInput(working.state.read)
+    if (request.line !== 'Task' || request.move !== 'next') throw new Error('Expected a Task report')
+    const key = ProposalKey.make('proposal:foreign')
+    const input = { value: promptDirection }
+    const read = Schema.decodeUnknownSync(Submission, { onExcessProperty: 'error' })
+    // @ts-expect-error Task submissions require a TaskKey.
+    const wrongRequestKey: Submission = { ...request, key }
+    // @ts-expect-error Task reports cannot submit a Proposal's input.
+    const wrongRequestInput: Submission = { ...request, input }
+    expect(() => read(wrongRequestKey)).toThrow()
+    expect(() => read(wrongRequestInput)).toThrow()
+    expect(() => read({ ...request, line: { _tag: 'Task', key: taskKey } })).toThrow()
+
+    const { event } = yield* staffInput(journal, request)
+    if (event.line !== 'Task' || event.from !== 'Working' || event.move !== 'next') throw new Error('Expected a stored Task report')
+    // @ts-expect-error Task events require a TaskKey.
+    const wrongEventKey: StoredEvent = { ...event, key }
+    // @ts-expect-error A Working Task cannot store a Proposal's input.
+    const wrongEventInput: StoredEvent = { ...event, input }
+    expect(() => decode(wrongEventKey)).toThrow()
+    expect(() => decode(wrongEventInput)).toThrow()
   }))),
 ))
 
@@ -62,7 +90,7 @@ test('a report refuses wrong authority, an invalid phase and a stale basis after
     expect(yield* journal.eventsAfter(read)).toEqual([])
     const result = yield* staffInput(journal, request)
     const review = yield* commandOutcomes(journal, readPosition(result.state))
-    const assigned = yield* startChild(journal, review.state, taskLine, session, 'Review')
+    const assigned = yield* startChild(journal, review.state, taskLine.key, session, 'Review')
     const back = yield* reportReview(journal, assigned.state, 'Breaks')
     expect(back.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, retryCount: 1 } })
     expectCode(yield* Effect.result(staffInput(journal, request)), 'Stale')

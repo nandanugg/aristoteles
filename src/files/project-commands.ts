@@ -6,8 +6,6 @@ import { CommandOutcome } from '../domain/project/task.ts'
 import { Rationale, refuse, type Refusal } from '../domain/project/values.ts'
 import type { CommandCapture, CommandRecord } from '../services/project.ts'
 
-const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT'
-const exists = (error: unknown) => (error as NodeJS.ErrnoException).code === 'EEXIST'
 const io = <A>(operation: () => A): Effect.Effect<A, Refusal> => Effect.try({
   try: operation,
   catch: () => refuse('Unavailable', Rationale.make('The command receipt could not be confirmed.')),
@@ -19,12 +17,12 @@ const directoryAt = (directory: string, create: boolean): string | null => {
   for (const part of ['.work', 'command-receipts']) {
     directory = join(directory, part)
     if (create) {
-      try { mkdirSync(directory, { mode: 0o700 }) } catch (error) { if (!exists(error)) throw error }
+      try { mkdirSync(directory, { mode: 0o700 }) } catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error }
     }
     try {
       if (!lstatSync(directory).isDirectory()) throw new Error('Expected plain receipt directory')
     } catch (error) {
-      if (!create && missing(error)) return null
+      if (!create && error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
       throw error
     }
   }
@@ -47,7 +45,7 @@ const syncDirectory = (path: string) => {
 const read = (path: string): string | null => {
   let fd
   try { fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK) }
-  catch (error) { if (missing(error)) return null; throw error }
+  catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null; throw error }
   try { return readFileSync(fd, 'utf8') } finally { closeSync(fd) }
 }
 
@@ -63,7 +61,7 @@ export const readCommandCapture = (directory: string, receipt: CommandRecord): E
 export const reserveCommandCapture = (directory: string, receipt: CommandRecord): Effect.Effect<'Reserved' | 'Exists', Refusal> => io(() => {
   const area = directoryAt(directory, true)!
   try { durable(join(area, keyOf(receipt) + '.issued'), '') }
-  catch (error) { if (exists(error)) return 'Exists'; throw error }
+  catch (error) { if (error instanceof Error && 'code' in error && error.code === 'EEXIST') return 'Exists'; throw error }
   syncDirectory(area)
   return 'Reserved'
 })
@@ -78,7 +76,7 @@ export const saveCommandCapture = (directory: string, receipt: CommandRecord, ou
   try {
     durable(staging, result)
     try { linkSync(staging, path + '.captured') }
-    catch (error) { if (!exists(error) || read(path + '.captured') !== result) throw error }
+    catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST') || read(path + '.captured') !== result) throw error }
     syncDirectory(area)
   } finally { rmSync(staging, { force: true }) }
 })

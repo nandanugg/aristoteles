@@ -26,7 +26,7 @@ const queuedStaff = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:queu
 const ownKey = StaffSessionKey.make('session:own')
 const firstHost = { ...session, staff: hostStaff }
 const ownSession = { ...session, key: ownKey, staff: ownStaff }
-const lines = [1, 2, 3, 4].map((key) => ({ _tag: 'Task', key: TaskKey.make('task:slot-' + key) } as const))
+const lines = [1, 2, 3, 4].map((key) => ({ line: 'Task', key: TaskKey.make('task:slot-' + key) } as const))
 const direction = Schema.decodeUnknownSync(Direction)({
   ...promptDirection,
   stages: [promptDirection.stages[0], { ...promptDirection.stages[0], role: pipeline }],
@@ -58,20 +58,20 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
       stop: () => Effect.void,
       launch: () => Effect.succeed(session.pane),
       observe: () => Effect.succeed('Running'),
-      child: (live, line, child) => Effect.sync(() => {
+      child: (live, taskKey, child) => Effect.sync(() => {
         if (child._tag !== 'Review') return
-        opened.set(lines.findIndex(({ key }) => line.key === key) + 1, { _tag: 'Review', session: live, line, review: child.review })
+        opened.set(lines.findIndex(({ key }) => taskKey === key) + 1, { _tag: 'Review', session: live, line: 'Task', key: taskKey, review: child.review })
       }),
     })
     for (const [i, line] of lines.slice(0, 3).entries()) {
       const sent = yield* send(journal, state.read, line.key, host, i === 2 ? pipeline : workRole)
-      const working = yield* staffInput(journal, { read: sent.state.read, line, move: 'next', input: {} }, hostSession)
-      const result = yield* staffInput(journal, { ...resultInput(working.state.read), line }, hostSession)
-      state = (yield* recordTaskCommands(journal, line, result.state.read, [])).state
+      const working = yield* staffInput(journal, { read: sent.state.read, ...line, move: 'next', input: {} }, hostSession)
+      const result = yield* staffInput(journal, { ...resultInput(working.state.read), ...line }, hostSession)
+      state = (yield* recordTaskCommands(journal, line.key, result.state.read, [])).state
     }
     const busy = lines[3]!
     const sent = yield* send(journal, state.read, busy.key, pipeline)
-    state = (yield* operations.child(ownKey, busy, 'Work', staffingAt(sent.state))).state
+    state = (yield* operations.child(ownKey, busy.key, 'Work', staffingAt(sent.state))).state
 
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
@@ -103,14 +103,14 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
       switch (step.action) {
         case '': break
         case 'freeOwn':
-          state = (yield* staffInput(journal, { ...resultInput(state.read), line: busy }, ownSession)).state
+          state = (yield* staffInput(journal, { ...resultInput(state.read), ...busy }, ownSession)).state
           break
         case 'editOlder':
           if (startedTasks.length === 0) {
             // An interrupted assignment touches the older task after the newer one, preserving its entry event.
             const oldest = lines[0]!
-            const assigned = yield* operations.child(hostSession.key, oldest, 'Review', staffingAt(state))
-            const retired = yield* observeSession(journal, assigned.state, { _tag: 'Session', key: hostSession.key }, 'Ended')
+            const assigned = yield* operations.child(hostSession.key, oldest.key, 'Review', staffingAt(state))
+            const retired = yield* observeSession(journal, assigned.state, hostSession.key, 'Ended')
             hostSession = { ...firstHost, key: StaffSessionKey.make('session:review-replacement') }
             state = (yield* startSession(journal, retired.state, {
               key: hostSession.key, staff: hostStaff.key, pane: session.pane, staffing: staffingAt(retired.state),
@@ -122,7 +122,7 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
         case 'assignReview': {
           const key = integer(record(picked(step.picks.subject)!).id)
           const live = key === 3 ? ownSession : hostSession
-          const result = yield* Effect.result(operations.child(live.key, lines[key - 1]!, 'Review', staffingAt(state)))
+          const result = yield* Effect.result(operations.child(live.key, lines[key - 1]!.key, 'Review', staffingAt(state)))
           if (Result.isSuccess(result)) {
             state = result.success.state
             const auth = opened.get(key)

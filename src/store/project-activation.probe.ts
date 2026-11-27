@@ -15,9 +15,9 @@ export const approvedText = 'Read the approved project instructions.\n'
 export const newerText = 'The owner edited the instructions.\n'
 export const hostKey = (number: number) => StaffSessionKey.make('session:' + number.toString(16).padStart(32, '0'))
 
-export const agree = (journal: Journal, project: Project, files: Of<typeof ApprovedFiles>) => ownerInput(journal, { read: project.read, line: { _tag: 'Activation' }, move: 'next', input: { files } })
+export const agree = (journal: Journal, project: Project, files: Of<typeof ApprovedFiles>) => ownerInput(journal, { read: project.read, line: 'Activation', move: 'next', input: { files } })
 
-export const startWork = (journal: Journal, project: Project) => ownerInput(journal, { read: project.read, line: { _tag: 'Activation' }, move: 'start', input: {} })
+export const startWork = (journal: Journal, project: Project) => ownerInput(journal, { read: project.read, line: 'Activation', move: 'start', input: {} })
 
 export const readyProject = (path: string, host = staff, projectDirectory?: Journal['directory']) => Effect.gen(function* () {
   const directory = dirname(path)
@@ -31,16 +31,16 @@ export const readyProject = (path: string, host = staff, projectDirectory?: Jour
   const onboarding = { ...session, key: StaffSessionKey.make('session:onboarding') }
   const live = yield* startFixtureSession(journal, staffed, onboarding)
   const proposalKey = ProposalKey.make('proposal:activation-direction')
-  const line = { _tag: 'Proposal', key: proposalKey } as const
-  const drafted = yield* cliProposal(journal, live.state, { line: { _tag: 'Proposal', key: proposalKey }, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
-  const submitted = yield* cliProposal(journal, drafted.state, { line, move: 'submit', input: { value: direction } })
+  const line = { line: 'Proposal', key: proposalKey } as const
+  const drafted = yield* cliProposal(journal, live.state, { line: 'Proposal', key: proposalKey, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
+  const submitted = yield* cliProposal(journal, drafted.state, { ...line, move: 'submit', input: { value: direction } })
   const proposal = submitted.state.proposals.get(proposalKey)
   if (!proposal) throw new Error('Missing activation direction')
   const reviewing = yield* assignProposalReview(journal, proposal, onboarding, submitted.state.read)
-  const reviewed = yield* cliProposal(journal, reviewing.state, { line, move: 'review', input: { facts: evidence('Holds') } },
-    { _tag: 'Review', session: onboarding, line, review: proposal.lastChange })
-  const accepted = yield* cliProposal(journal, reviewed.state, { line, move: 'accept', input: {} })
-  const ready = yield* observeSession(journal, accepted.state, { _tag: 'Session', key: onboarding.key }, 'Ended')
+  const reviewed = yield* cliProposal(journal, reviewing.state, { ...line, move: 'review', input: { facts: evidence('Holds') } },
+    { _tag: 'Review', session: onboarding, ...line, review: proposal.lastChange })
+  const accepted = yield* cliProposal(journal, reviewed.state, { ...line, move: 'accept', input: {} })
+  const ready = yield* observeSession(journal, accepted.state, onboarding.key, 'Ended')
   const files = yield* projectActivationFiles(directory)
   return { journal, project: ready.state, files, file, directory }
 })

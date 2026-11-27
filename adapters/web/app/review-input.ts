@@ -5,7 +5,7 @@ export function ReviewInput({ label, action, onSubmit, compact = false }: {
   label: string
   action: string
   compact?: boolean
-  onSubmit: (words: string) => Promise<unknown>
+  onSubmit: (words: string) => Promise<void>
 }) {
   const [words, setWords] = useState('')
   const [saving, setSaving] = useState(false)

@@ -56,7 +56,7 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
     const project = yield* readOpenProject(journal)
     const operations = projectRuns(dir, db, journal)
     for (const session of project.sessions.values()) {
-      if (session._tag === 'Live' || session._tag === 'Starting') yield* Effect.result(operations.sessions.observe({ _tag: 'Session', key: session.key }))
+      if (session._tag === 'Live' || session._tag === 'Starting') yield* Effect.result(operations.sessions.observe(session.key))
     }
     yield* Effect.result(operations.review)
   })
@@ -91,13 +91,13 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
           case '/api/project/activation-files': return yield* projectActivationApproval(journal, dir).pipe(provide)
           case '/api/project/command-status': {
             const key = url.searchParams.get('task')
-            return Schema.is(TaskKey)(key) ? yield* projectCommandStatus(journal, { _tag: 'Task', key }, commands).pipe(provide) : invalid()
+            return Schema.is(TaskKey)(key) ? yield* projectCommandStatus(journal, key, commands).pipe(provide) : invalid()
           }
           case '/api/project/submissions':
             if (!write) return invalid()
             return yield* projectSubmission(journal, request,
               reviews.pipe(provideEnv), launch.pipe(provideEnv),
-              (line) => Effect.scoped(Effect.flatMap(openProjectJournal(key, 'Write'), (current) => runTaskCommands(current, line, commands)))
+              (taskKey) => Effect.scoped(Effect.flatMap(openProjectJournal(key, 'Write'), (current) => runTaskCommands(current, taskKey, commands)))
                 .pipe(provideEnv)).pipe(provide)
           default: return new Response(null, { status: 404 })
         }

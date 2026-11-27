@@ -4,7 +4,7 @@ import { Effect, Exit, Schema } from 'effect'
 import { Authority, submit, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, refuse, staffingAt,
+  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, refuse, staffingAt, type Submission,
 } from '../../core/schema/project.ts'
 import { openProjectJournal, withProjectEnv } from '../../core/services/project.ts'
 import {
@@ -103,7 +103,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (owner.name !== (yield* ownerName())) return yield* Effect.fail(denied())
     const journal = yield* openProjectJournal(projectDirectoryAt(io.cwd), 'Create')
     const actor = { _tag: 'Human', actor: { _tag: 'Human' } } as const
-    const result = yield* submit(journal, { read: 0, line: { _tag: 'Project' }, move: 'open', input }).pipe(
+    const result = yield* submit(journal, { read: 0, line: 'Project', move: 'open', input }).pipe(
       Effect.provideService(Authority, { actor: Effect.succeed(actor) }),
     )
     return [words(result.event)]
@@ -165,7 +165,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     }
     if (act === 'observe') {
       const key = yield* decode(StaffSessionKey, subject)
-      const result = yield* runs.sessions.observe({ _tag: 'Session', key })
+      const result = yield* runs.sessions.observe(key)
       return [result ? words(result.event) : 'The session is still live or its status is unknown.']
     }
     return yield* Effect.fail(invalid())
@@ -179,8 +179,8 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
   if (command === 'wait' && !act && !subject && known([])) {
     const by = yield* actor
     if (by._tag === 'Human') return ['Open the Project page to see what needs your attention.']
-    if (by._tag === 'Review' && by.line._tag === 'Proposal') {
-      const proposal = project.proposals.get(by.line.key)
+    if (by._tag === 'Review' && by.line === 'Proposal') {
+      const proposal = project.proposals.get(by.key)
       if (!proposal) return yield* Effect.fail(invalid())
       return ['Draft for review (proposal.json)', JSON.stringify(proposal.value, null, 2),
         `work review "$ARISTOTELES_TOKEN" ${proposal.key} --on=${project.read} --file=facts.yaml`]
@@ -195,7 +195,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (target._tag !== 'Task') return ['Read ' + read + '. Proposal ' + target.proposal.key + ' is due.']
     const task = target.task
     if ((by._tag === 'Staff' || by._tag === 'Host') && selected.for === 'Assign') {
-      const committed = yield* runs.sessions.child(by.session.key, { _tag: 'Task', key: task.key }, 'Review', staffingAt(project))
+      const committed = yield* runs.sessions.child(by.session.key, task.key, 'Review', staffingAt(project))
       return ['Opened a fresh task review.', words(committed.event)]
     }
     if (by._tag === 'Review') return [
@@ -211,9 +211,9 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
 
   if (!known(['on', 'file', 'why'])) return yield* Effect.fail(invalid())
   const basis = yield* read()
-  const write = (input: unknown) => submit(journal, input).pipe(asActor)
+  const write = (input: Submission) => submit(journal, input).pipe(asActor)
   if (command === 'project' && act === 'start' && !subject && known(['on']))
-    return [words((yield* write({ read: basis, line: { _tag: 'Activation' }, move: 'start', input: {} })).event)]
+    return [words((yield* write({ read: basis, line: 'Activation', move: 'start', input: {} })).event)]
   if (command === 'onboard' && act === 'submit' && !subject && known(['on', 'file'])) {
     const result = yield* projectOnboard(journal, basis, yield* file(), runs.review).pipe(asActor)
     return [words(result.event)]
@@ -221,9 +221,11 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
   if (command === 'onboard' && (act === 'accept' || act === 'remove' || act === 'send-back') &&
       known(act === 'send-back' ? ['on', 'why'] : ['on'])) {
     const key = yield* decode(ProposalKey, subject)
-    return [words((yield* write({ read: basis, line: { _tag: 'Proposal', key },
-      move: act === 'send-back' ? 'sendBack' : act, input: act === 'send-back' ? { why: parsed.one('why') } : {},
-    })).event)]
+    const proposal = { read: basis, line: 'Proposal', key } as const
+    const request: Submission = act === 'send-back'
+      ? { ...proposal, move: 'sendBack', input: { why: yield* decode(Rationale, parsed.one('why')) } }
+      : { ...proposal, move: act, input: {} }
+    return [words((yield* write(request)).event)]
   }
   if (!known(['on', 'file'])) return yield* Effect.fail(invalid())
   if (command === 'send' && !act && !subject)
@@ -234,7 +236,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     const content = yield* file()
     if (Schema.is(ProposalKey)(act)) {
       const facts = yield* decode(ReviewFacts, yield* yaml(content))
-      const result = yield* write({ read: basis, line: { _tag: 'Proposal', key: act }, move: 'review', input: { facts } })
+      const result = yield* write({ read: basis, line: 'Proposal', key: act, move: 'review', input: { facts } })
       yield* Effect.result(runs.review)
       return [words(result.event)]
     }

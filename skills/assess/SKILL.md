@@ -29,10 +29,11 @@ host: &host
 
 Use the same role shape for the pipeline and work roles. The initial staff has `_tag: Staff`, `key`, `name`, its list of assigned `roles`, `subagents`, `model`, `launch`, `why`, and `subscription`. The subscription has a key, provider, account, plan, usage window, a session limit or Unlimited, and an estimate or NoEstimate. The owner launches the staff session with `work session launch <staff-key>`. The launched staff follows the pane prompt to run `work session ack <session-key>` before using its credential.
 
-Keep authored drafts in a local folder such as `.work/drafts/`. Submit each through `work onboard submit "$ARISTOTELES_TOKEN" --on=<read> --file=<draft.yaml>`. The file uses the proposal address and a move input. Open with `move: open` and `input: { value: ..., previous: { _tag: None } }`. For a new version of an accepted direction, give `previous: { _tag: Version, version: ... }` with the complete accepted version. Then use `move: submit` with the exact reviewed candidate in `input.value`.
+Keep authored drafts in a local folder such as `.work/drafts/`. Submit each through `work onboard submit "$ARISTOTELES_TOKEN" --on=<read> --file=<draft.yaml>`. The file gives the line, proposal key, move, and input. Open with `move: open` and `input: { value: ..., previous: { _tag: None } }`. For a new version of an accepted direction, give `previous: { _tag: Version, version: ... }` with the complete accepted version. Then use `move: submit` with the exact reviewed candidate in `input.value`.
 
 ```yaml
-line: { _tag: Proposal, key: proposal:document }
+line: Proposal
+key: proposal:document
 move: submit
 input:
   value: <the complete direction>

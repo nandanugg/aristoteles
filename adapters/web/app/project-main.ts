@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 import { h, render } from 'preact'
-import { Rationale, type Of, type Projection, type Submission, type TaskKey } from '../../../core/schema/project.ts'
+import { ApprovedFiles, Rationale, type Of, type Projection, type Submission, type TaskKey } from '../../../core/schema/project.ts'
 import { readPosition } from '../../../core/state/project.ts'
 import { postProjectSubmission } from './project-api.ts'
 import { OnboardingView } from './project-onboarding.ts'
@@ -27,7 +27,9 @@ if (!response.ok) {
     status.textContent = project ? '' : 'Open the project with work onboard open.'
     render(project ? h(OnboardingView, {
       project, submit, commandBlock,
-      markerFiles: async () => (await fetch(url('activation-files'))).json(),
+      markerFiles: async () => Schema.decodeUnknownSync(ApprovedFiles, { onExcessProperty: 'error' })(
+        await (await fetch(url('activation-files'))).json(),
+      ),
     }) : null, root)
   }
   const page = Result.getOrThrow(openPageProject(initial, draw))

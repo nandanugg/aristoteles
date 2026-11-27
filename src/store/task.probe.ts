@@ -13,7 +13,7 @@ import { startSession, create, host, ownerInput, pipeline, session, staff, staff
 import { acceptStaffing, cliProposal, direction, evidence } from './proposal.probe.ts'
 
 export const taskKey = TaskKey.make('task:sample')
-export const taskLine = { _tag: 'Task', key: taskKey } as const
+export const taskLine = { line: 'Task', key: taskKey } as const
 export const boundHost = session.key
 
 export const acceptDirection = (journal: Journal, project: Project, value: Direction, previous?: Of<typeof TaskDraft>['direction']) => Effect.gen(function* () {
@@ -26,16 +26,16 @@ export const acceptDirection = (journal: Journal, project: Project, value: Direc
   const active = current.sessions.get(key)
   if (active?._tag !== 'Live') throw new Error('Missing direction review session')
   const proposalKey = ProposalKey.make('proposal:direction-' + project.read)
-  const line = { _tag: 'Proposal', key: proposalKey } as const
-  const drafted = yield* cliProposal(journal, current, { line: { _tag: 'Proposal', key: proposalKey }, move: 'open', input: { value, previous: previous ? { _tag: 'Version', version: previous } : { _tag: 'None' } } })
-  const submitted = yield* cliProposal(journal, drafted.state, { line, move: 'submit', input: { value } })
+  const line = { line: 'Proposal', key: proposalKey } as const
+  const drafted = yield* cliProposal(journal, current, { line: 'Proposal', key: proposalKey, move: 'open', input: { value, previous: previous ? { _tag: 'Version', version: previous } : { _tag: 'None' } } })
+  const submitted = yield* cliProposal(journal, drafted.state, { ...line, move: 'submit', input: { value } })
   const proposal = submitted.state.proposals.get(proposalKey)
   if (!proposal) throw new Error('Missing direction to approve')
   const reviewing = yield* assignProposalReview(journal, proposal, active, submitted.state.read)
-  const reviewed = yield* cliProposal(journal, reviewing.state, { line, move: 'review', input: { facts: evidence('Holds') } },
-    { _tag: 'Review', session: active, line, review: proposal.lastChange })
-  const accepted = yield* cliProposal(journal, reviewed.state, { line, move: 'accept', input: {} })
-  return existing ? accepted.state : (yield* observeSession(journal, accepted.state, { _tag: 'Session', key }, 'Ended')).state
+  const reviewed = yield* cliProposal(journal, reviewing.state, { ...line, move: 'review', input: { facts: evidence('Holds') } },
+    { _tag: 'Review', session: active, ...line, review: proposal.lastChange })
+  const accepted = yield* cliProposal(journal, reviewed.state, { ...line, move: 'accept', input: {} })
+  return existing ? accepted.state : (yield* observeSession(journal, accepted.state, key, 'Ended')).state
 })
 
 const files = Schema.decodeUnknownSync(ApprovedFiles)([{ path: 'AGENTS.md', hash: 'a'.repeat(64), before: 'Unmarked' }])
@@ -48,8 +48,8 @@ export const activateTasks = (journal: Journal, project: Project, value?: Direct
     })),
   })
   const ready = yield* acceptDirection(journal, staffed, selected)
-  const line = { _tag: 'Activation' } as const
-  const authorized = yield* ownerInput(journal, { read: ready.read, line, move: 'next', input: { files } })
+  const line = { line: 'Activation' } as const
+  const authorized = yield* ownerInput(journal, { read: ready.read, ...line, move: 'next', input: { files } })
   const assigned = staffOf(authorized.state, authorized.state.roles.host)!
   return (yield* startSession(journal, authorized.state, {
     key: boundHost, staff: assigned.key, pane: session.pane, staffing: staffingAt(authorized.state),
@@ -69,14 +69,14 @@ export const draftFor = (project: Project, key = taskKey, role = host, reviewer 
 export const send = (journal: Journal, read: Of<typeof ReadPosition>, key = taskKey, role = host, reviewer = pipeline) => Effect.gen(function* () {
   const project = yield* readOpenProject(journal)
   const { key: task, ...draft } = draftFor(project, key, role, reviewer)
-  return yield* sendTask(journal, { _tag: 'Task', key: task }, read, draft).pipe(Effect.provideService(Authority, {
+  return yield* sendTask(journal, task, read, draft).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Host', session } as const),
   }))
 })
-export const begin = (journal: Journal, read: Of<typeof ReadPosition>) => staffInput(journal, { read, line: taskLine, move: 'next', input: {} })
+export const begin = (journal: Journal, read: Of<typeof ReadPosition>) => staffInput(journal, { read, ...taskLine, move: 'next', input: {} })
 export const resultInput = (read: Of<typeof ReadPosition>, artifact = 7, attempt = 1): Submission =>
-  Schema.decodeUnknownSync(Submission, { onExcessProperty: 'error' })({ read, line: taskLine, move: 'next', input: { attempt, summary: 'Result', files: [{ path: 'artifact', image: { _tag: 'Present', contents: String(artifact) }, changed: [{ first: 1, last: 1 }] }] } })
-export const commandOutcomes = (journal: Journal, read: Of<typeof ReadPosition>) => recordTaskCommands(journal, taskLine, read, [])
+  Schema.decodeUnknownSync(Submission, { onExcessProperty: 'error' })({ read, ...taskLine, move: 'next', input: { attempt, summary: 'Result', files: [{ path: 'artifact', image: { _tag: 'Present', contents: String(artifact) }, changed: [{ first: 1, last: 1 }] }] } })
+export const commandOutcomes = (journal: Journal, read: Of<typeof ReadPosition>) => recordTaskCommands(journal, taskLine.key, read, [])
 
 export const toWorking = (journal: Journal, value?: Direction) => Effect.gen(function* () {
   const opened = yield* create(journal)
@@ -100,11 +100,11 @@ export const artifactQuote = { _tag: 'Quote', file: 'artifact', lines: { first: 
 export const reviewAs = (project: Project, line = taskLine, live = session) => {
   const phase = project.tasks.get(line.key)?.phase
   if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing task review assignment')
-  return { _tag: 'Review', line, session: live, review: phase.assignment.review } as const
+  return { _tag: 'Review', ...line, session: live, review: phase.assignment.review } as const
 }
 
 export const reportReview = (
   journal: Journal, project: Project, holds: 'Holds' | 'Breaks', line = taskLine, actor = reviewAs(project, line),
-) => submit(journal, { read: project.read, line, move: 'review', input: { facts: {
+) => submit(journal, { read: project.read, ...line, move: 'review', input: { facts: {
   outcomes: [{ _tag: holds, rule: promptDirection.standards[0]!.rules[0]!, evidence: artifactQuote }], findings: [],
 } } }).pipe(Effect.provideService(Authority, { actor: Effect.succeed(actor) }))

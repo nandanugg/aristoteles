@@ -77,7 +77,7 @@ for (const kind of kinds) test('task report race append seam — ' + kind, () =>
         return 'Committed'
       },
       commands: async () => {
-        current = (await Effect.runPromise(runTaskCommands(journal, taskLine, liveTaskCommands(dirname(path))))).state
+        current = (await Effect.runPromise(runTaskCommands(journal, taskLine.key, liveTaskCommands(dirname(path))))).state
       },
       observe: async () => {
         const response = await Effect.runPromise(projectEvents(journal, readPosition(page.current())))
@@ -152,7 +152,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         const copy = used.get(role) ?? 0
         const key = drafts[role]![copy]!.key
         const result = await Effect.runPromise(Effect.result(startChild(
-          journal, current, { _tag: 'Task', key }, session, 'Work',
+          journal, current, key, session, 'Work',
         )))
         if (Result.isFailure(result)) {
           expect(result.failure.code).toBe('NoCapacity')
@@ -168,7 +168,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         const key = active.get(role)
         if (!key) throw new Error('No started child')
         const input = resultInput(current.read)
-        await Effect.runPromise(staffInput(journal, { ...input, line: { _tag: 'Task', key } }))
+        await Effect.runPromise(staffInput(journal, { ...input, line: 'Task', key }))
         active.delete(role)
       },
       changePlan: async () => {
@@ -209,21 +209,21 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
     const working = yield* toWorking(journal, promptDirection)
     const reported = yield* staffInput(journal, resultInput(working.state.read))
     const commands = yield* commandOutcomes(journal, reported.state.read)
-    const assigned = yield* startChild(journal, commands.state, taskLine, session, 'Review')
+    const assigned = yield* startChild(journal, commands.state, taskLine.key, session, 'Review')
     const returned = yield* reportReview(journal, assigned.state, 'Breaks')
-    const reviewLine = { _tag: 'Task', key: TaskKey.make('task:retained-review') } as const
+    const reviewLine = { line: 'Task', key: TaskKey.make('task:retained-review') } as const
     const rules = yield* acceptDirection(journal, returned.state, direction)
     const sent = yield* send(journal, rules.read, reviewLine.key)
-    const began = yield* staffInput(journal, { read: sent.state.read, line: reviewLine, move: 'next', input: {} })
-    const result = yield* staffInput(journal, { ...resultInput(began.state.read), line: reviewLine })
+    const began = yield* staffInput(journal, { read: sent.state.read, ...reviewLine, move: 'next', input: {} })
+    const result = yield* staffInput(journal, { ...resultInput(began.state.read), ...reviewLine })
     const rule = direction.standards[0]!.rules[0]!
     const outcome = Schema.decodeUnknownSync(CommandOutcome)({ _tag: 'Holds', rule,
       evidence: { _tag: 'CommandOutput', command: rule.verification, exit: 0, stdout: '7', stderr: '' } })
-    const entered = yield* recordTaskCommands(journal, reviewLine, result.state.read, [outcome])
-    const reviewed = yield* startChild(journal, entered.state, reviewLine, session, 'Review')
-    const proposalLine = { _tag: 'Proposal', key: ProposalKey.make('proposal:retained-review') } as const
-    const draft = yield* cliProposal(journal, reviewed.state, { line: proposalLine, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
-    const submitted = yield* cliProposal(journal, draft.state, { line: proposalLine, move: 'submit', input: { value: direction } })
+    const entered = yield* recordTaskCommands(journal, reviewLine.key, result.state.read, [outcome])
+    const reviewed = yield* startChild(journal, entered.state, reviewLine.key, session, 'Review')
+    const proposalLine = { line: 'Proposal', key: ProposalKey.make('proposal:retained-review') } as const
+    const draft = yield* cliProposal(journal, reviewed.state, { ...proposalLine, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
+    const submitted = yield* cliProposal(journal, draft.state, { ...proposalLine, move: 'submit', input: { value: direction } })
     const proposal = submitted.state.proposals.get(proposalLine.key)!
     const pending = yield* assignProposalReview(journal, proposal, session, submitted.state.read)
     const asked = yield* cliQuestion(journal, ownerAuthority, 'question', staff.key, pending.state.read, Bun.YAML.stringify({
@@ -233,7 +233,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
     const current = answered.state
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
-    const address = { _tag: 'Session', key: session.key } as const
+    const address = session.key
     const replacement = StaffSessionKey.make('session:2')
     let expectedPrior: Of<typeof StaffSessionKey> | null = null
     let observation: 'Paused' | 'Ended' = 'Ended'
@@ -262,7 +262,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
       },
       begin: async () => {
         const project = await Effect.runPromise(readOpenProject(journal))
-        await Effect.runPromise(staffInput(journal, { read: project.read, line: taskLine, move: 'next', input: {} }, { ...session, key }))
+        await Effect.runPromise(staffInput(journal, { read: project.read, ...taskLine, move: 'next', input: {} }, { ...session, key }))
       },
       report: async (source) => {
         const project = await Effect.runPromise(readOpenProject(journal))
@@ -335,12 +335,12 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
       const trace = readTrace(join(traces, 'questionAnswer-' + kind + '.itf.json.gz'), 'questionAnswer', kind)
       let holder = session
       const replacement = { ...session, key: StaffSessionKey.make('session:2') }
-      const address = { _tag: 'Question', owner: { _tag: 'Project' }, key: questionKey } as const
+      const address = { line: 'Question', owner: { _tag: 'Project' }, key: questionKey } as const
       const project = () => Effect.runPromise(readOpenProject(journal))
       yield* Effect.promise(() => replayQuestionAnswer(trace, kind, {
         replace: async () => {
           const current = await project()
-          await Effect.runPromise(observeSession(journal, current, { _tag: 'Session', key: holder.key }, 'Ended'))
+          await Effect.runPromise(observeSession(journal, current, holder.key, 'Ended'))
           const after = await project()
           await Effect.runPromise(startSession(journal, after, {
             key: replacement.key, staff: staff.key, pane: replacement.pane, staffing: staffingAt(after),
@@ -357,7 +357,7 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
             if (outcome.failure.code === 'WrongActor' || outcome.failure.code === 'WrongMove') return outcome.failure.code
             throw new Error(outcome.failure.why)
           }
-          const reply = { line: address, move: 'answer', input: { answer: { _tag: 'Single', text: AnswerText.make(text) } } } as const
+          const reply = { ...address, move: 'answer', input: { answer: { _tag: 'Single', text: AnswerText.make(text) } } } as const
           const submission: Submission = { ...reply, read: current.read }
           const response = await Effect.runPromise(pageQuestion(journal, authority, submission))
           if (response.ok) return 'Committed'
@@ -373,7 +373,7 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
           if (!question) throw new Error('Question is absent')
           const actual = question.state
           const events = await Effect.runPromise(journal.eventsAfter(opened.state.read))
-          const accepted = events.filter((event) => event.line._tag === 'Question' && event.move === 'answer').length
+          const accepted = events.filter((event) => event.line === 'Question' && event.move === 'answer').length
           const by = actual._tag === 'Open' ? question.to : actual.by
           const recipient = by._tag === 'Staff' && by.key === staff.key ? 2 : 1
           if (actual._tag === 'Answered' && actual.answer._tag !== 'Single') throw new Error('Expected a textual answer')

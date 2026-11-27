@@ -14,7 +14,7 @@ const query = (path: string, action: (db: Database) => void) => {
   try { action(db) } finally { db.close() }
 }
 
-test('a missing journal stays missing in read mode and fresh creation uses format 18', () => withJournal(async (path) => {
+test('a missing journal stays missing in read mode and fresh creation uses format 19', () => withJournal(async (path) => {
   expect(await Effect.runPromise(Effect.scoped(Effect.result(open(path, 'Read'))))).toMatchObject({
     _tag: 'Failure', failure: { code: 'InvalidInput' },
   })
@@ -29,9 +29,9 @@ test('a missing journal stays missing in read mode and fresh creation uses forma
 
 test.each([
   ['old store', 'CREATE TABLE event (seq); PRAGMA user_version = 10'],
-  ['previous project format', 'PRAGMA user_version = 17'],
+  ['previous project format', 'PRAGMA user_version = 18'],
   ['foreign SQLite database', 'CREATE TABLE unrelated (row)'],
-  ['foreign matching version', 'CREATE TABLE project_event (row); PRAGMA user_version = 18'],
+  ['foreign matching version', 'CREATE TABLE project_event (row); PRAGMA user_version = 19'],
   ['regular file', ''],
 ])('refuses a foreign or old journal before modifying it: %s', (_name, sql) => withJournal(async (path) => {
   if (sql) query(path, (db) => db.exec(sql))
@@ -77,7 +77,7 @@ test.each([
   ['invalid JSON', "UPDATE project_event SET event = 'bad json' WHERE number = 2"],
   ['missing number', 'DELETE FROM project_event WHERE number = 2'],
   ['row and envelope disagree', "UPDATE project_event SET event = json_set(event, '$.number', 4) WHERE number = 3"],
-  ['obsolete singleton address', "UPDATE project_event SET event = json_set(event, '$.line.id', 'project:first') WHERE number = 1"],
+  ['singleton carries a key', "UPDATE project_event SET event = json_set(event, '$.key', 'project:first') WHERE number = 1"],
 ])('refuses corruption on read and before a later write: %s', (_name, sql) => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)

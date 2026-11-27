@@ -10,7 +10,7 @@ import { startSession, create, open, owner, session, staff, staffInput, startFix
 import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, textForm } from '../../src/store/question.probe.ts'
 import { resultInput, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { nextStep, questionsFor } from '../derived/project/next-step.ts'
-import { staffingAt, Answer, QuestionForm, ProposalKey, QuestionKey, ReadPosition, StaffSessionKey, Submission, type Of, type QuestionAddress, type Project } from '../schema/project.ts'
+import { staffingAt, Answer, QuestionForm, ProposalKey, QuestionKey, ReadPosition, StaffSessionKey, Submission, type Of, type QuestionSubmission, type Project } from '../schema/project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
 import { readPosition } from '../state/project.ts'
 
@@ -26,7 +26,7 @@ const openForStaff = (path: string) => Effect.gen(function* () {
   }))
   return { journal, project: opened.state }
 })
-const projectQuestion = { _tag: 'Question', owner: { _tag: 'Project' }, key: questionKey } as const
+const projectQuestion = { line: 'Question', owner: { _tag: 'Project' }, key: questionKey } as const
 const projectAddress = questionAddressText(projectQuestion)
 const needed = (project: Project) => {
   const question = project.questions.get(questionKey)
@@ -51,7 +51,7 @@ test('CLI and page see the same owed question, enforce the recipient, and append
     expect(page.current()).toEqual(project)
     const invalid = yield* Effect.result(cliQuestion(journal, ownerAuthority, 'answer', projectAddress, project.read, answerYaml('wrong')))
     expect(invalid).toMatchObject(failure('WrongActor'))
-    const wrong = yield* pageQuestion(journal, ownerAuthority, fromWire({ read: project.read, line: projectQuestion, move: 'answer', input: { answer: { _tag: 'Single', text: 'wrong' } } }))
+    const wrong = yield* pageQuestion(journal, ownerAuthority, fromWire({ read: project.read, ...projectQuestion, move: 'answer', input: { answer: { _tag: 'Single', text: 'wrong' } } }))
     expect(wrong.status).toBe(403)
     expect(readRefusal(yield* Effect.promise(() => wrong.json())).code).toBe('WrongActor')
     expect(yield* journal.eventsAfter(project.read)).toEqual([])
@@ -81,7 +81,7 @@ test('wrong shapes and retired or stale staff sessions refuse before writing', (
     expect(cli).toMatchObject(failure('InvalidInput'))
     expect(readRefusal(yield* Effect.promise(() => page.json())).code).toBe('InvalidInput')
     expect(yield* journal.eventsAfter(project.read)).toEqual([])
-    const address = { _tag: 'Session', key: session.key } as const
+    const address = session.key
     yield* observeSession(journal, project, address, 'Ended')
     const retired = yield* readOpenProject(journal)
     const replacement = { ...session, key: StaffSessionKey.make('session:replacement') }
@@ -108,19 +108,19 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const plan = { staff: [staff], subscriptions: [staff.subscription] } as const
     const key = ProposalKey.make('proposal:staffing')
     const draft = yield* proposeStaffing(journal, live.state, plan, key)
-    const line = { _tag: 'Proposal', key } as const
+    const line = { line: 'Proposal', key } as const
     const consult = (key: Of<typeof QuestionKey>, project: Project) =>
       cliQuestion(journal, staffAuthorityOf(), 'question', 'owner', project.read, Bun.YAML.stringify({
         key, text: 'Which allowance should the host propose?', form: textForm,
-        owner: line,
+        owner: { _tag: 'Proposal', key: line.key },
       }))
     const first = yield* consult(questionKey, draft.state)
-    const address = (question: Of<typeof QuestionKey>): Of<typeof QuestionAddress> =>
-      ({ _tag: 'Question', owner: line, key: question })
+    const address = (question: Of<typeof QuestionKey>): Pick<Of<typeof QuestionSubmission>, 'line' | 'owner' | 'key'> =>
+      ({ line: 'Question', owner: { _tag: 'Proposal', key }, key: question })
     const firstAddress = questionAddressText(address(questionKey))
     expect(first.state.questions.size).toBe(0)
     expect(first.state.proposals.get(line.key)?.questions.get(questionKey)?.state._tag).toBe('Open')
-    const send = { line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' } } }
+    const send = { ...line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' } } }
     expect(yield* Effect.result(cliProposal(journal, first.state, send))).toMatchObject(failure('Stale'))
     const firstAnswer = yield* cliQuestion(journal, ownerAuthority, 'answer', firstAddress, first.state.read, answerYaml('Keep two slots.'))
     expect(yield* Effect.result(cliProposal(journal, first.state, send))).toMatchObject(failure('Stale'))
@@ -128,11 +128,11 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const proposal = sent.state.proposals.get(line.key)
     if (!proposal) throw new Error('No staffing proposal')
     yield* assignProposalReview(journal, proposal, session, sent.state.read)
-    const returned = yield* cliProposal(journal, yield* readOpenProject(journal), { line, move: 'review', input: { facts: evidence('Breaks') } },
-      { _tag: 'Review', session, line, review: proposal.lastChange })
+    const returned = yield* cliProposal(journal, yield* readOpenProject(journal), { ...line, move: 'review', input: { facts: evidence('Breaks') } },
+      { _tag: 'Review', session, ...line, review: proposal.lastChange })
     const laterKey = QuestionKey.make('question:revised')
     const latest = yield* consult(laterKey, returned.state)
-    expect(questionsFor(latest.state, owner).map(({ line }) => line)).toEqual([address(laterKey)])
+    expect(questionsFor(latest.state, owner).map(({ question, owner }) => ({ line: 'Question', owner, key: question.key }))).toEqual([address(laterKey)])
     expect(yield* Effect.result(cliQuestion(journal, ownerAuthority, 'answer', firstAddress, latest.state.read,
       answerYaml('old draft')))).toMatchObject(failure('Stale'))
     const reply = yield* pageQuestion(journal, ownerAuthority, questionAnswerSubmission(address(laterKey), latest.state.read,
@@ -152,13 +152,13 @@ test('task and project questions with the same key stay scoped through a task mo
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
     const working = yield* toWorking(journal)
-    const taskQuestion = { _tag: 'Question', owner: taskLine, key: questionKey } as const
-    const ask = (line: Of<typeof QuestionAddress>, text: string, read: Of<typeof ReadPosition>) =>
+    const taskQuestion = { line: 'Question', owner: { _tag: 'Task', key: taskLine.key }, key: questionKey } as const
+    const ask = (line: Pick<Of<typeof QuestionSubmission>, 'line' | 'owner' | 'key'>, text: string, read: Of<typeof ReadPosition>) =>
       cliQuestion(journal, ownerAuthority, 'question', staff.key, read,
         Bun.YAML.stringify({ key: line.key, owner: line.owner, text, form: textForm }))
     const projectAsked = yield* ask(projectQuestion, 'Project question', working.state.read)
     const taskAsked = yield* ask(taskQuestion, 'Task question', projectAsked.state.read)
-    expect(questionsFor(taskAsked.state, session).map(({ line }) => line)).toEqual([projectQuestion, taskQuestion])
+    expect(questionsFor(taskAsked.state, session).map(({ question, owner }) => ({ line: 'Question', owner, key: question.key }))).toEqual([projectQuestion, taskQuestion])
     expect(yield* Effect.result(ask(taskQuestion, 'Duplicate task question', taskAsked.state.read))).toMatchObject(failure('Stale'))
 
     const reported = yield* staffInput(journal, resultInput(taskAsked.state.read))

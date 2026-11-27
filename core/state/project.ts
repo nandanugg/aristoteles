@@ -3,8 +3,8 @@ import { applyActivationMove } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
-  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, ActivationEvent, approvedProposals, roleOf, ProjectEvent, ProposalEvent, QuestionEvent, SessionEvent, StoredEvent, TaskEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffOf, subagentCapacity,
-  type LiveSession, type Project, type Projection, type Question, type StoredActor, type Refusal, type StaffSession,
+  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, approvedProposals, roleOf, StoredEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffOf, subagentCapacity,
+  type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type StoredActor, type Refusal, type StaffSession,
 } from '../schema/project.ts'
 
 export const readPosition = (state: Projection): typeof ReadPosition.Type =>
@@ -53,12 +53,12 @@ const sameRole = Schema.toEquivalence(Role)
 const equalStage = Schema.toEquivalence(Stage)
 
 const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): Result.Result<Project, Refusal> => {
-  const { line, actor, number, read, input: draft } = event
+  const { key, actor, number, read, input: draft } = event
   const activation = activeWork(project)
   if (!activation) return wrongMove()
   if (activation.work.at > read) return stale()
   if (actor._tag !== 'Staff' || actor.key !== activation.staff.key) return retired()
-  if (project.tasks.has(line.key)) return stale()
+  if (project.tasks.has(key)) return stale()
   const role = roleOf(project, draft.stages[0].role.key)
   const reviewer = roleOf(project, draft.reviewer.key)
   if (!role || !reviewer) return wrongActor()
@@ -78,8 +78,8 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   if (!first || [first, ...rest].some((stage) => stage.role.key !== role.key))
     return Result.fail(refuse('InvalidInput', Rationale.make('Use a contiguous stage slice assigned to the role.')))
   const tasks = new Map(project.tasks)
-  tasks.set(line.key, {
-    key: line.key, name: draft.name, goal: draft.goal, reviewer, direction,
+  tasks.set(key, {
+    key, name: draft.name, goal: draft.goal, reviewer, direction,
     stages: [{ ...first, role }, ...rest.map((stage) => ({ ...stage, role }))], facts: draft.facts, questions: new Map(),
     phase: { _tag: 'Sent', retryCount: RetryCount.make(0), feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, lastChange: number,
   })
@@ -88,20 +88,20 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
 
 // A session retirement changes each affected task in the same journal event.
 const applySessionMove = (project: Project, event: SessionEvent): Result.Result<Project, Refusal> => {
-  const { line, number, read, actor } = event
+  const { key, number, read, actor } = event
   if (actor._tag !== 'Human') return wrongActor()
   const sessions = new Map(project.sessions)
   if (event.from === null) {
     const { staff, staffing, previous } = event.input
-    if (read < staffing || sessions.has(line.key)) return stale()
-    const paused = previous._tag === 'Session' ? sessions.get(previous.key) : null
-    if (previous._tag === 'Session' && paused?._tag !== 'Paused') return retired()
+    if (read < staffing || sessions.has(key)) return stale()
+    const paused = typeof previous === 'string' ? sessions.get(previous) : null
+    if (typeof previous === 'string' && paused?._tag !== 'Paused') return retired()
     return Result.map(sessionMayStart(project, staff.key, staffing, paused ?? null), (assigned) => {
-      sessions.set(line.key, { _tag: 'Starting', key: line.key, staff: assigned, startedAt: number, previous: paused?._tag === 'Paused' ? paused : { _tag: 'None' } })
+      sessions.set(key, { _tag: 'Starting', key, staff: assigned, startedAt: number, previous: paused?._tag === 'Paused' ? paused : { _tag: 'None' } })
       return { ...project, sessions }
     })
   }
-  const previous = sessions.get(line.key)
+  const previous = sessions.get(key)
   if (!previous) return retired()
   if (read < previous.startedAt) return stale()
   if (previous._tag !== event.from) return wrongMove()
@@ -163,7 +163,7 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
   }
   const observed = event.from === 'Paused' ? 'Ended' : event.input.observed
   if (edge(sessionLine, previous._tag, 'next', observed) !== 'Allowed') return wrongMove()
-  const { key, staff, startedAt } = previous
+  const { staff, startedAt } = previous
   return Result.succeed(move({ _tag: observed, key, staff, startedAt }))
 }
 
@@ -171,7 +171,7 @@ const actorFor = (project: Project, actor: StoredActor): Question['from'] | unde
   actor._tag === 'Human' ? project.owner : project.staff.get(actor.key)
 
 const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Result<Project, Refusal> => {
-  const { line, number, read } = event
+  const { owner, key, number, read } = event
   const actor = actorFor(project, event.actor)
   if (!actor) return wrongActor()
   if (actor._tag === 'Staff') {
@@ -179,7 +179,6 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
     if (!live) return retired()
     if (read < live.startedAt) return stale()
   }
-  const { owner, key } = line
   const move = (questions: Project['questions']) => {
     const existing = questions.get(key)
     const store = (question: Question) => Result.succeed(new Map(questions).set(key, question))
@@ -236,15 +235,14 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   if (state?.status._tag === 'Ended') {
     return Result.fail(refuse('ProjectEnded', Rationale.make('This project has ended.')))
   }
-  const updated = Schema.is(ProjectEvent)(event) ? applyProjectMove(state, event) : ((): Result.Result<Project, Refusal> => {
+  const updated = event.line === 'Project' ? applyProjectMove(state, event) : ((): Result.Result<Project, Refusal> => {
     if (!state) return wrongMove()
-    if (Schema.is(ActivationEvent)(event)) return applyActivationMove(state, event)
-    if (Schema.is(SessionEvent)(event)) return applySessionMove(state, event)
-    if (Schema.is(ProposalEvent)(event)) return applyProposalMove(state, event)
-    if (Schema.is(QuestionEvent)(event)) return applyQuestionMove(state, event)
-    if (!Schema.is(TaskEvent)(event)) return wrongMove()
+    if (event.line === 'Activation') return applyActivationMove(state, event)
+    if (event.line === 'Session') return applySessionMove(state, event)
+    if (event.line === 'Proposal') return applyProposalMove(state, event)
+    if (event.line === 'Question') return applyQuestionMove(state, event)
     if (event.from === null) return openTask(state, event)
-    const task = state.tasks.get(event.line.key)
+    const task = state.tasks.get(event.key)
     if (!task) return wrongMove()
     return Result.map(applyTaskMove(state, task, event), (changed) => {
       const tasks = new Map(state.tasks)

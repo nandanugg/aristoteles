@@ -17,7 +17,7 @@ export const liveTaskCommands = (directory: string): TaskCommands => ({
           throw new Error('Unsafe result path')
         let contents: string | null
         try { contents = readFileSync(join(directory, path), 'utf8') }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; contents = null }
+        catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error; contents = null }
         if (image._tag === 'Present' ? contents !== image.contents : contents !== null) throw new Error('Result changed')
       }
     },

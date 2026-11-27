@@ -126,8 +126,8 @@ const pathProblem = (dir: string, p: string): string | null => {
     try {
       st = lstatSync(at)
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
-      return `${relative(dir, at)}: ${(e as Error).message}`
+      if (e instanceof Error && 'code' in e && e.code === 'ENOENT') return null
+      return `${relative(dir, at)}: ${e instanceof Error ? e.message : String(e)}`
     }
     if (st.isSymbolicLink()) return `${relative(dir, at)} is a link`
     const last = i === parts.length - 1
@@ -317,7 +317,7 @@ const keptFolder = (dir: string, kept: string, create: boolean): string | null =
       try {
         st = lstatSync(at)
       } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e
+        if (!(e instanceof Error && 'code' in e && e.code === 'ENOENT')) throw e
         if (!create) return 'missing'
         mkdirSync(at, { mode: i === parts.length - 1 ? 0o700 : 0o755 })
         st = lstatSync(at)
@@ -327,7 +327,7 @@ const keptFolder = (dir: string, kept: string, create: boolean): string | null =
     }
     return null
   } catch (e) {
-    return `${relative(dir, at)}: ${(e as Error).message}`
+    return `${relative(dir, at)}: ${e instanceof Error ? e.message : String(e)}`
   }
 }
 // The kept original's text, null when there is none; a problem when it is not a plain file of
@@ -342,8 +342,8 @@ const keptText = (
   try {
     st = lstatSync(path)
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { text: null, problem: null }
-    return { text: null, problem: `${path}: ${(e as Error).message}` }
+    if (e instanceof Error && 'code' in e && e.code === 'ENOENT') return { text: null, problem: null }
+    return { text: null, problem: `${path}: ${e instanceof Error ? e.message : String(e)}` }
   }
   if (st.isSymbolicLink() || !st.isFile()) return { text: null, problem: `${path} is not a plain file` }
   const text = bytesOf(path)

@@ -94,8 +94,6 @@ export const projectActivationOperations = (
       yield* Effect.mapError(projectLock(dir), unavailable)
       return yield* Effect.flatMap(readOpenProject(journal), use)
     }))
-  const line = { _tag: 'Activation' } as const
-  const address = (key: Of<typeof StaffSessionKey>) => ({ _tag: 'Session', key }) as const
   const candidate = (project: Project) => {
     const phase = project.activation
     const session = hostSession(project)
@@ -147,11 +145,11 @@ export const projectActivationOperations = (
         yield* stop(previous.key)
         yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.at, projectLaunch(previous.key)))
         const retired = previous._tag === 'Starting'
-          ? yield* cancelSession(journal, project, address(previous.key))
-          : yield* observeSession(journal, project, address(previous.key), 'Ended')
+          ? yield* cancelSession(journal, project, previous.key)
+          : yield* observeSession(journal, project, previous.key, 'Ended')
         state = retired.state
       }
-      return yield* reserveSession(journal, state, address(key), phase.staff, staffingAt(state))
+      return yield* reserveSession(journal, state, key, phase.staff, staffingAt(state))
     })),
     mark: locked((project) => Effect.gen(function* () {
       const phase = project.activation
@@ -191,9 +189,9 @@ export const projectActivationOperations = (
       if (!(yield* protectedIO(() => matches(proof(phase.at, key, 'nonce'), nonce)))) return yield* Effect.fail(retired())
       const pane = yield* currentPane(key)
       yield* checkFiles(phase.files, 'Required')
-      return yield* acknowledgeSession(journal, project, address(key), pane)
+      return yield* acknowledgeSession(journal, project, key, pane)
     })),
-    rollback: (why) => locked((project) => observeActivation(journal, project, { line, from: 'Activating', move: 'back', input: { why } })),
+    rollback: (why) => locked((project) => observeActivation(journal, project, { line: 'Activation', from: 'Activating', move: 'back', input: { why } })),
     restore: locked(restore),
     reconcile: locked((project) => Effect.gen(function* () {
       const phase = project.activation
@@ -204,9 +202,9 @@ export const projectActivationOperations = (
         if (launch?._tag === 'Starting') {
           yield* stop(launch.key)
           yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.at, projectLaunch(launch.key)))
-          state = (yield* cancelSession(journal, project, address(launch.key))).state
+          state = (yield* cancelSession(journal, project, launch.key)).state
         }
-        return yield* observeActivation(journal, state, { line, from: 'RollingBack', move: 'back', input: {} })
+        return yield* observeActivation(journal, state, { line: 'Activation', from: 'RollingBack', move: 'back', input: {} })
       }
       if (phase._tag !== 'Active') return null
       const launch = hostReplacement(project)
@@ -214,7 +212,7 @@ export const projectActivationOperations = (
         if (phase.work._tag === 'NotStarted' && (yield* provider.observe(launch.key)) !== 'Ended') return null
         yield* stop(launch.key)
         yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.at, projectLaunch(launch.key)))
-        return yield* cancelSession(journal, project, address(launch.key))
+        return yield* cancelSession(journal, project, launch.key)
       }
       yield* protectedIO(() => {
         for (const previous of project.sessions.values()) {

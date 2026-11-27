@@ -55,7 +55,7 @@ test('the host sends a checked stage slice only after work starts and its basis 
     expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [draft.stages[0], pipelineStage] })))
       .toMatchObject(refused('InvalidInput'))
     const sent = yield* sendDraft(journal, started)
-    expect(sent.event).toMatchObject({ line: { _tag: 'Task', key: draft.key }, from: null, move: 'open' })
+    expect(sent.event).toMatchObject({ line: 'Task', key: draft.key, from: null, move: 'open' })
     expect(sent.event.input).not.toHaveProperty('role')
     const task = sent.state.tasks.get(draft.key)!
     expect(task.direction.acceptedAt).toBe(draft.direction.acceptedAt)
@@ -112,11 +112,11 @@ test('a lost command append reuses the exact captured output from disk', () => w
     const db = new Database(path)
     try {
       db.exec("CREATE TRIGGER interrupted BEFORE INSERT ON project_event BEGIN SELECT RAISE(ABORT, 'lost write'); END")
-      expect(yield* Effect.result(runTaskCommands(journal, taskLine, liveTaskCommands(directory)))).toMatchObject(refused('Unavailable'))
+      expect(yield* Effect.result(runTaskCommands(journal, taskLine.key, liveTaskCommands(directory)))).toMatchObject(refused('Unavailable'))
       expect((yield* readOpenProject(journal)).tasks.get(taskKey)?.phase._tag).toBe('ReadyToReview')
       db.exec('DROP TRIGGER interrupted')
       const reopened = yield* open(path)
-      const reviewing = yield* runTaskCommands(reopened, taskLine, liveTaskCommands(directory))
+      const reviewing = yield* runTaskCommands(reopened, taskLine.key, liveTaskCommands(directory))
       expect(reviewing.state.tasks.get(taskKey)?.phase).toMatchObject({
         _tag: 'Reviewing', outcomes: [{ _tag: 'Breaks', evidence: { exit: 4, stdout: 'quote: "yes"', stderr: 'broken' } }],
       })
@@ -137,13 +137,13 @@ test('interrupted execution stays blocked until the provider recovers its observ
     const commands = liveTaskCommands(directory)
     const running = yield* Deferred.make<void>()
     const fake = { ...commands, run: () => Effect.andThen(Deferred.succeed(running, undefined), Effect.never) }
-    const fiber = yield* Effect.forkScoped(runTaskCommands(journal, taskLine, fake))
+    const fiber = yield* Effect.forkScoped(runTaskCommands(journal, taskLine.key, fake))
     yield* Deferred.await(running)
-    const contender = yield* Effect.result(runTaskCommands(journal, taskLine, commands))
+    const contender = yield* Effect.result(runTaskCommands(journal, taskLine.key, commands))
     expect(contender).toMatchObject(refused('Unavailable'))
     yield* Fiber.interrupt(fiber)
-    expect(yield* taskCommandBlock(journal, taskLine, commands)).toContain('unconfirmed')
-    const status = yield* projectCommandStatus(journal, taskLine, commands).pipe(auth(hostAuth))
+    expect(yield* taskCommandBlock(journal, taskLine.key, commands)).toContain('unconfirmed')
+    const status = yield* projectCommandStatus(journal, taskLine.key, commands).pipe(auth(hostAuth))
     expect(yield* Effect.promise(() => status.json())).toContain('unconfirmed')
     expect(yield* projectBriefCommand(journal, taskKey, commands).pipe(auth(hostAuth))).toContain('unconfirmed')
     expect(yield* journal.eventsAfter(ready.state.read)).toEqual([])
@@ -155,10 +155,10 @@ test('interrupted execution stays blocked until the provider recovers its observ
       },
     })
     if (task.phase._tag !== 'ReadyToReview') throw new Error('Missing result')
-    expect(yield* Effect.result(recoverTaskCommand(journal, taskLine, EventNumber.make(1), outcome, commands)))
+    expect(yield* Effect.result(recoverTaskCommand(journal, taskLine.key, EventNumber.make(1), outcome, commands)))
       .toMatchObject(refused('Stale'))
-    yield* recoverTaskCommand(journal, taskLine, task.phase.result.at, outcome, commands)
-    const review = yield* runTaskCommands(journal, taskLine, commands)
+    yield* recoverTaskCommand(journal, taskLine.key, task.phase.result.at, outcome, commands)
+    const review = yield* runTaskCommands(journal, taskLine.key, commands)
     expect(review.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Reviewing', outcomes: [outcome] })
   }))),
 ))
@@ -170,7 +170,7 @@ test('HTTP records a result before running its pinned command and journals a suc
     const journal = yield* open(path)
     const working = yield* toWorking(journal, withCommand('cat artifact'))
     const appended = yield* Deferred.make<void>()
-    const run = () => runTaskCommands(journal, taskLine, liveTaskCommands(directory)).pipe(
+    const run = () => runTaskCommands(journal, taskLine.key, liveTaskCommands(directory)).pipe(
       Effect.tap(() => Deferred.succeed(appended, undefined)),
     )
     const response = yield* projectSubmission(journal, body(resultInput(working.state.read)), undefined, undefined, run)
@@ -182,7 +182,7 @@ test('HTTP records a result before running its pinned command and journals a suc
     expect(project.tasks.get(taskKey)?.phase).toMatchObject({
       _tag: 'Reviewing', outcomes: [{ _tag: 'Holds', evidence: { exit: 0, stdout: '7' } }],
     })
-    expect(yield* Effect.result(ownerInput(journal, { read: project.read, line: { _tag: 'Activation' }, move: 'start', input: {} }))).toMatchObject(refused('WrongMove'))
+    expect(yield* Effect.result(ownerInput(journal, { read: project.read, line: 'Activation', move: 'start', input: {} }))).toMatchObject(refused('WrongMove'))
   }))),
 ))
 
@@ -214,7 +214,7 @@ test('the task panel marks changed lines and shows only committed command outcom
           case '/events': return Effect.runPromise(projectEvents(journal, ReadPosition.make(Number(url.searchParams.get('after')))))
           case '/command-block': {
             if (url.searchParams.get('task') !== taskKey) return new Response(null, { status: 404 })
-            return Effect.runPromise(projectCommandStatus(journal, taskLine, commands).pipe(auth(ownerAuthority)))
+            return Effect.runPromise(projectCommandStatus(journal, taskLine.key, commands).pipe(auth(ownerAuthority)))
           }
           default: return new Response(null, { status: 404 })
         }
@@ -228,7 +228,7 @@ test('the task panel marks changed lines and shows only committed command outcom
     expect(yield* Effect.promise(() => card.getByText('Tests pass · Holds', { exact: false }).count())).toBe(0)
     yield* Effect.promise(() => card.getByText('notes.md').click())
     expect(yield* Effect.promise(() => card.locator('mark').textContent())).toBe('She said "hello".\n')
-    yield* runTaskCommands(journal, taskLine, commands)
+    yield* runTaskCommands(journal, taskLine.key, commands)
     yield* Effect.promise(() => card.getByText('Tests pass · Holds · exit 0').waitFor())
   }))),
 ), 30_000)

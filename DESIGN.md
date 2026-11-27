@@ -2,15 +2,16 @@
 
 The `work` CLI and the Project page use checked schemas from
 [`core/schema/project.ts`](core/schema/project.ts). Commands and page submissions
-supply a line address, a move, checked input, and a read position. The engine
-establishes actor authority from the owner terminal, the bound host session, or a
-live staff session and review assignment.
+supply a line, a move, checked input, and a read position. Task, Proposal, and
+Question submissions carry a key directly, and a Question also carries its owner.
+The engine establishes actor authority from the owner terminal, the bound host
+session, or a live staff session and review assignment.
 
 ## Journal
 
-A format-18 SQLite journal stores ordered events. Each write reads the current
-projection inside a transaction, checks the actor and read position, and appends
-the event. The phase transitions fold those events into one Project projection.
+A format-19 SQLite journal stores ordered events using the same line fields as
+submissions. Each write reads the current projection inside a transaction, checks
+the actor and read position, and appends the event. The phase transitions fold those events into one Project projection.
 CLI and page views derive their next steps from that projection. The page loads a
 snapshot and reads later events by position to stay current through reconnects.
 

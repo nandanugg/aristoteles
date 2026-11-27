@@ -25,7 +25,7 @@ const assigned = (journal: Parameters<typeof toWorking>[0]) => Effect.gen(functi
   const working = yield* toWorking(journal, promptDirection)
   const result = yield* staffInput(journal, resultInput(working.state.read))
   const entered = yield* commandOutcomes(journal, result.state.read)
-  return yield* startChild(journal, entered.state, taskLine, session, 'Review')
+  return yield* startChild(journal, entered.state, taskLine.key, session, 'Review')
 })
 
 test('review intake takes only facts from the current fresh child and gives feedback for the same attempt', () =>
@@ -53,7 +53,7 @@ test('review intake takes only facts from the current fresh child and gives feed
     expect(yield* waitOnProject(journal, Effect.succeed(session.key))).toMatchObject({ _tag: 'Available', for: 'Report' })
     const result = yield* staffInput(journal, resultInput(back.state.read))
     const again = yield* commandOutcomes(journal, result.state.read)
-    const second = (yield* startChild(journal, again.state, taskLine, session, 'Review')).state
+    const second = (yield* startChild(journal, again.state, taskLine.key, session, 'Review')).state
     expect(yield* Effect.result(reportReview(journal, second, 'Holds', taskLine, child)))
       .toMatchObject(refused('RetiredSession'))
     expect(yield* journal.eventsAfter(second.read)).toEqual([])
@@ -75,8 +75,8 @@ test('a recorded command failure still returns work when every prompt holds', ()
     })
     const working = yield* toWorking(journal, direction)
     const result = yield* staffInput(journal, resultInput(working.state.read))
-    const entered = yield* recordTaskCommands(journal, taskLine, result.state.read, [commandRule])
-    const child = yield* startChild(journal, entered.state, taskLine, session, 'Review')
+    const entered = yield* recordTaskCommands(journal, taskLine.key, result.state.read, [commandRule])
+    const child = yield* startChild(journal, entered.state, taskLine.key, session, 'Review')
     const back = yield* reportReview(journal, child.state, 'Holds')
     expect(back.state.tasks.get(taskKey)?.phase).toMatchObject({
       _tag: 'Working', attempt: { feedback: { _tag: 'Review', breaks: [commandRule] } },
@@ -93,14 +93,14 @@ for (const sample of ['known', 'changed', 'new'] as const) test('breaks in the r
       ...promptDirection, standards: promptDirection.standards.map((standard) => ({ ...standard, rules: [pinned] })),
     })
     const working = yield* toWorking(journal, direction)
-    const result = yield* staffInput(journal, { read: working.state.read, line: taskLine, move: 'next', input: {
+    const result = yield* staffInput(journal, { read: working.state.read, ...taskLine, move: 'next', input: {
       attempt: 1, summary: 'Result', files: [{
         path: 'artifact', image: { _tag: 'Present', contents: '7\n8' },
         changed: [{ first: sample === 'changed' ? 1 : 2, last: sample === 'changed' ? 1 : 2 }],
       }],
     } })
     const entered = yield* commandOutcomes(journal, result.state.read)
-    const child = (yield* startChild(journal, entered.state, taskLine, session, 'Review')).state
+    const child = (yield* startChild(journal, entered.state, taskLine.key, session, 'Review')).state
     const facts = { outcomes: [{ _tag: 'Breaks', rule: pinned, evidence: artifactQuote }], findings: [] }
     const final = yield* projectReviewCommand(journal, taskKey, child.read, Bun.YAML.stringify(facts)).pipe(auth(reviewAs(child)))
     const phase = final.state.tasks.get(taskKey)?.phase
@@ -136,7 +136,7 @@ for (const reason of ['WrongTask', 'TooBig'] as const) test('work raises ' + rea
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const response = yield* projectSubmission(journal, new Request('http://localhost/project/submissions', {
-      method: 'POST', body: JSON.stringify({ read: start.read, line: taskLine, move: 'raise',
+      method: 'POST', body: JSON.stringify({ read: start.read, ...taskLine, move: 'raise',
         input: { attempt: 1, reason, evidence: artifactQuote } }),
     })).pipe(auth(staffAuthorityOf()))
     expect(response.status).toBe(200)
@@ -170,7 +170,7 @@ test('two schedulers open only one fresh child and the waiting phase survives a 
       }),
     }
     const tryChild = (store: typeof journal) => staffSessionOperations(dirname(path), store, provider)
-      .child(session.key, taskLine, 'Review', staffingAt(entered))
+      .child(session.key, taskLine.key, 'Review', staffingAt(entered))
     expect(yield* Effect.result(tryChild(journal))).toMatchObject(refused('Unavailable'))
     expect(cleaned).toBe(true)
     expect(yield* journal.eventsAfter(entered.read)).toEqual([])

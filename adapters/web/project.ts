@@ -4,8 +4,8 @@ import { Effect, Result, Schema } from 'effect'
 import { projectActivationFiles } from '../live/activation.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'
-import { ApprovedFiles, approvedProposals, Projection, ReadPosition, Refusal, Rationale, StoredEvents, TaskEvent, refuse, type Of, type TaskAddress } from '../../core/schema/project.ts'
-import type { Journal } from '../../core/services/project.ts'
+import { ApprovedFiles, approvedProposals, Projection, ReadPosition, Refusal, Rationale, StoredEvents, refuse, type Of, type TaskKey } from '../../core/schema/project.ts'
+import type { Committed, Journal } from '../../core/services/project.ts'
 import { fold } from '../../core/state/project.ts'
 
 const encodeProjection = Schema.encodeSync(Projection)
@@ -25,8 +25,8 @@ export const projectEvents = (
 
 // The server supplies the journal and authenticates the actor before responding to the page.
 export const projectSubmission = (
-  journal: Journal, request: Request, review?: Effect.Effect<unknown, Refusal>, activate?: Effect.Effect<unknown, Refusal>,
-  commands?: (line: Of<typeof TaskAddress>) => Effect.Effect<unknown, Refusal>,
+  journal: Journal, request: Request, review?: Effect.Effect<Committed | null, Refusal>, activate?: Effect.Effect<void, Refusal>,
+  commands?: (key: Of<typeof TaskKey>) => Effect.Effect<Committed, Refusal>,
 ): Effect.Effect<Response, never, Authority> => {
   const input = Effect.tryPromise({
     try: async (): Promise<unknown> => request.json(),
@@ -34,12 +34,12 @@ export const projectSubmission = (
   })
   return Effect.matchEffect(Effect.flatMap(input, (body) => submit(journal, body)), {
     onSuccess: ({ event }) => Effect.gen(function* () {
-      if (review && event.line._tag === 'Proposal' && event.from !== null)
+      if (review && event.line === 'Proposal' && event.from !== null)
         yield* Effect.forkDetach(Effect.result(review))
-      if (activate && event.line._tag === 'Activation' && event.from === 'Onboarding')
+      if (activate && event.line === 'Activation' && event.from === 'Onboarding')
         yield* Effect.forkDetach(Effect.result(activate))
-      if (commands && Schema.is(TaskEvent)(event) && event.from === 'Working' && event.move === 'next')
-        yield* Effect.forkDetach(Effect.result(commands(event.line)))
+      if (commands && event.line === 'Task' && event.from === 'Working' && event.move === 'next')
+        yield* Effect.forkDetach(Effect.result(commands(event.key)))
       return Response.json(encodeEvents([event]))
     }),
     onFailure: (failure) => Effect.succeed(Response.json(Schema.encodeSync(Refusal)(failure), {
@@ -61,7 +61,7 @@ export const projectActivationApproval = (journal: Journal, directory: string): 
     return Response.json(Schema.encodeSync(ApprovedFiles)(files))
   })
 
-export const projectCommandStatus = (journal: Journal, line: Of<typeof TaskAddress>, commands: TaskCommands) =>
-  Effect.flatMap(taskBrief(journal, line), () =>
-    Effect.map(taskCommandBlock(journal, line, commands), (why) =>
+export const projectCommandStatus = (journal: Journal, key: Of<typeof TaskKey>, commands: TaskCommands) =>
+  Effect.flatMap(taskBrief(journal, key), () =>
+    Effect.map(taskCommandBlock(journal, key, commands), (why) =>
       Response.json(Schema.encodeSync(Schema.NullOr(Rationale))(why))))

@@ -5,7 +5,7 @@ import { Effect, Schema } from 'effect'
 import type { AuthenticatedActor } from '../../core/actions/project.ts'
 import { acknowledgeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, HostCredential, LaunchNonce, LaunchVerifier, boundHostSession, PaneAddress, ProjectCredential, ProposalAddress, Rationale, SessionAddress, StaffSessionKey, TaskAddress,
+  EventNumber, HostCredential, LaunchNonce, LaunchVerifier, boundHostSession, PaneAddress, ProjectCredential, ProposalKey, Rationale, StaffSessionKey, TaskKey,
   liveSession, refuse, type Of, type Project, type Refusal, type Staff,
 } from '../../core/schema/project.ts'
 import { dbPath, digest, projectLock } from '../../core/services/project.ts'
@@ -15,11 +15,12 @@ import { bootstrapPane, observeBootstrap, spawnProjectRun, stopBootstrap } from 
 import { launchNextReview, type Reviews } from './proposal.ts'
 import { staffSessionOperations, type Sessions } from './staff-session.ts'
 
+const sessionFields = Schema.TaggedStruct('Session', { key: StaffSessionKey })
 const Run = Schema.Union([
-  Schema.TaggedStruct('Staff', { session: SessionAddress, verifier: LaunchVerifier, proof: LaunchVerifier }),
+  Schema.TaggedStruct('Staff', { session: sessionFields, verifier: LaunchVerifier, proof: LaunchVerifier }),
   Schema.TaggedStruct('Review', {
-    session: SessionAddress, verifier: LaunchVerifier,
-    line: Schema.Union([TaskAddress, ProposalAddress]), review: EventNumber,
+    session: sessionFields, verifier: LaunchVerifier, review: EventNumber,
+    line: Schema.Union([Schema.TaggedStruct('Task', { key: TaskKey }), Schema.TaggedStruct('Proposal', { key: ProposalKey })]),
   }),
 ])
 const decode = Schema.decodeUnknownSync(Run, { onExcessProperty: 'error' })
@@ -27,7 +28,7 @@ const encode = Schema.encodeSync(Run)
 const newKey = () => randomBytes(16).toString('hex')
 const suffix = (key: Of<typeof StaffSessionKey>) => {
   const suffix = key.slice('session:'.length)
-  if (!/^[a-f0-9]{32}$/u.test(suffix)) throw new Error('Invalid project session address')
+  if (!/^[a-f0-9]{32}$/u.test(suffix)) throw new Error('Invalid project session key')
   return suffix
 }
 const retired = () => refuse('RetiredSession', Rationale.make('Use the current project session or fresh review credential.'))
@@ -40,10 +41,11 @@ const current = (project: Project, run: Of<typeof Run>): AuthenticatedActor | nu
   if (!session) return null
   if (run._tag === 'Staff') return { _tag: 'Staff', session }
   const { line, review } = run
-  const phase = line._tag === 'Proposal' ? project.proposals.get(line.key)?.phase : project.tasks.get(line.key)?.phase
-  return phase?._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' &&
-    phase.assignment.by.key === session.staff.key && phase.assignment.review === review
-    ? { _tag: 'Review', line, review, session } : null
+  const phase = (line._tag === 'Proposal' ? project.proposals.get(line.key) : project.tasks.get(line.key))?.phase
+  if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned' ||
+      phase.assignment.by.key !== session.staff.key || phase.assignment.review !== review) return null
+  const actor = { _tag: 'Review', review, session } as const
+  return line._tag === 'Task' ? { ...actor, line: 'Task', key: line.key } : { ...actor, line: 'Proposal', key: line.key }
 }
 
 export const newStaffSession = () => StaffSessionKey.make('session:' + newKey())
@@ -80,7 +82,7 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
     }
   })
   const child = (session: Extract<AuthenticatedActor, { _tag: 'Staff' }>['session'],
-    line: Of<typeof TaskAddress | typeof ProposalAddress>, review: Of<typeof EventNumber>) => perform(() => {
+    line: Extract<Of<typeof Run>, { _tag: 'Review' }>['line'], review: Of<typeof EventNumber>) => perform(() => {
     launch(newKey(), { _tag: 'Review', session: { _tag: 'Session', key: session.key }, line, review }, session.staff,
       'You have a fresh review. Run work wait with the credential in ARISTOTELES_TOKEN and report facts with evidence.')
   })
@@ -106,7 +108,7 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
       const observation = observeBootstrap(dir, suffix(session.key))
       return observation === 'live' ? 'Running' : observation === 'ended' ? 'Ended' : 'Unknown'
     }),
-    child: (session, line, assignment) => assignment._tag === 'Review' ? child(session, line, assignment.review)
+    child: (session, key, assignment) => assignment._tag === 'Review' ? child(session, { _tag: 'Task', key }, assignment.review)
       : Effect.fail(refuse('Unavailable', Rationale.make('Use the assigned staff session to begin task work.'))),
   }
   return {
@@ -124,7 +126,7 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
         return bootstrapPane(dir, suffix(key))
       }), retired)
       if (!pane) return yield* Effect.fail(retired())
-      return yield* acknowledgeSession(journal, project, { _tag: 'Session', key }, { address: PaneAddress.make(pane.pane) })
+      return yield* acknowledgeSession(journal, project, key, { address: PaneAddress.make(pane.pane) })
     })),
     authenticate: (token: Of<typeof ProjectCredential>): Effect.Effect<AuthenticatedActor, Refusal> => Effect.gen(function* () {
       const project = yield* readOpenProject(journal)

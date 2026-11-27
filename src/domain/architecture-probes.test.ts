@@ -31,12 +31,12 @@ export const Unchecked = Schema.String.pipe(Schema.brand('ProbeUnchecked'))
 export const EmptyCheck = Schema.String.check().pipe(Schema.brand('ProbeEmptyCheck'))
 export type Bad = { raw: string; count: number; ready: boolean; value?: 'yes'; hidden: unknown; bypass: any }
 export type PublicMoves =
-  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly key: RoleKey }; readonly move: 'next'; readonly input: {} }
-  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly key: RoleKey }; readonly move: 'next'; readonly input: { readonly attempt: Count } }
-  | { readonly read: Count; readonly line: { readonly _tag: 'Question'; readonly key: RoleKey }; readonly move: 'answer'; readonly input: { readonly answer: 'Yes' } }
+  | { readonly read: Count; readonly line: 'Task'; readonly key: RoleKey; readonly move: 'next'; readonly input: {} }
+  | { readonly read: Count; readonly line: 'Task'; readonly key: RoleKey; readonly move: 'next'; readonly input: { readonly attempt: Count } }
+  | { readonly read: Count; readonly line: 'Question'; readonly key: RoleKey; readonly move: 'answer'; readonly input: { readonly answer: 'Yes' } }
 export type OverlappingMoves =
-  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly key: RoleKey }; readonly move: 'next'; readonly input: { readonly attempt: Count } }
-  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly key: RoleKey }; readonly move: 'next'; readonly input: { readonly attempt: Count; readonly reason: 'Done' } }
+  | { readonly read: Count; readonly line: 'Task'; readonly key: RoleKey; readonly move: 'next'; readonly input: { readonly attempt: Count } }
+  | { readonly read: Count; readonly line: 'Task'; readonly key: RoleKey; readonly move: 'next'; readonly input: { readonly attempt: Count; readonly reason: 'Done' } }
 export type Untagged = { a: 'a' } | { b: 'b' }
 export type BrokenTemplate = \`role:\${string}\`
 export type Conditional<T> = T extends 'a' ? string : 'b'
@@ -92,7 +92,7 @@ test('checked brands, templates, tagged phases and map keys are admitted', () =>
     expect(rules(BROWSER, name)).toEqual([])
 })
 
-test('public submissions are identified by their address, move and disjoint input', () => {
+test('public submissions are identified by their line, move and disjoint input', () => {
   expect(rules(DOMAIN, 'PublicMoves')).toEqual([])
   expect(rules(DOMAIN, 'OverlappingMoves')).toEqual(['untagged-union'])
 })

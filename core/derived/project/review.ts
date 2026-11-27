@@ -3,8 +3,8 @@ import { activeWork, liveSession, taskReviewStaff, type Task, latestSession, sta
 export const hostQueue = (project: Project, events: readonly StoredEvent[]): readonly Proposal[] => {
   const entries = new Map<Proposal['key'], StoredEvent['number']>()
   for (const event of events) {
-    if (event.line._tag === 'Proposal' && event.from === 'Drafting' && event.move === 'submit')
-      entries.set(event.line.key, event.number)
+    if (event.line === 'Proposal' && event.from === 'Drafting' && event.move === 'submit')
+      entries.set(event.key, event.number)
   }
   return [...project.proposals.values()].filter(({ phase, reviewer }) => phase._tag === 'Reviewing' &&
     phase.assignment._tag === 'Waiting' && reviewer.key === project.roles.host.key && project.status._tag === 'Open')
@@ -31,8 +31,8 @@ const waiting = (task: Task) => task.phase._tag === 'Reviewing' && task.phase.as
 export const hostTaskQueue = (project: Project, events: readonly StoredEvent[]): readonly Task[] => {
   const entries = new Map<Task['key'], Task>()
   for (const event of events) {
-    if (event.line._tag !== 'Task' || event.from !== 'ReadyToReview' || event.move !== 'next') continue
-    const task = project.tasks.get(event.line.key)
+    if (event.line !== 'Task' || event.from !== 'ReadyToReview' || event.move !== 'next') continue
+    const task = project.tasks.get(event.key)
     if (!task || !waiting(task) || staffOf(project, task.reviewer)?.subagents !== 0) continue
     // Reinserting moves a later review of this task behind entries already waiting.
     entries.delete(task.key)

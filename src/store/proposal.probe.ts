@@ -4,7 +4,7 @@ import { Authority, type AuthenticatedActor } from '../../core/actions/project.t
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import { staffingAt,
-  Direction, ProposalKey, ReviewFacts, StaffSessionKey, type Of, type Project, type Refusal, type StaffingPlan,
+  Direction, ProposalKey, ReviewFacts, StaffSessionKey, type Of, type Project, type StaffingPlan,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { startSession, host, owner, session, staff } from './project.probe.ts'
@@ -31,13 +31,13 @@ export const evidence = (verdict: 'Holds' | 'Breaks'): ReviewFacts => Schema.dec
 })
 export const cliProposal = (
   journal: Journal, project: Project, input: unknown, auth: AuthenticatedActor = ownerAuthority,
-  review?: Effect.Effect<unknown, Refusal>,
+  review?: Parameters<typeof projectOnboard>[3],
 ) => projectOnboard(journal, project.read, Bun.YAML.stringify(input), review).pipe(
   Effect.provideService(Authority, { actor: Effect.succeed(auth) }),
 )
 export const proposeStaffing = (
   journal: Journal, project: Project, plan: StaffingPlan, key: Of<typeof ProposalKey>,
-) => cliProposal(journal, project, { line: { _tag: 'Proposal', key: key }, move: 'open', input: { previous: { _tag: 'None' }, value: { ...plan, _tag: 'Staffing' } } })
+) => cliProposal(journal, project, { line: 'Proposal', key, move: 'open', input: { previous: { _tag: 'None' }, value: { ...plan, _tag: 'Staffing' } } })
 
 // Earlier capacity fixtures now install staffing through the same reviewed proposal flow.
 export const acceptStaffing = (journal: Journal, project: Project, plan: StaffingPlan) => Effect.gen(function* () {
@@ -49,15 +49,15 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   })).state
   const live = existing?._tag === 'Live' ? existing : [...started.sessions.values()].find((item) => item._tag === 'Live')
   if (live?._tag !== 'Live') throw new Error('Missing onboarding session')
-  const line = { _tag: 'Proposal', key } as const
-  const staged = yield* cliProposal(journal, started, { line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' } } })
+  const line = { line: 'Proposal', key } as const
+  const staged = yield* cliProposal(journal, started, { ...line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' } } })
   const proposal = staged.state.proposals.get(key)
   if (!proposal) throw new Error('Missing staffing proposal')
   const assigned = yield* assignProposalReview(journal, proposal, live, staged.state.read)
-  const reviewed = yield* cliProposal(journal, assigned.state, { line, move: 'review', input: { facts: evidence('Holds') } }, {
-    _tag: 'Review', session: live, line, review: proposal.lastChange,
+  const reviewed = yield* cliProposal(journal, assigned.state, { ...line, move: 'review', input: { facts: evidence('Holds') } }, {
+    _tag: 'Review', session: live, ...line, review: proposal.lastChange,
   })
-  const accepted = yield* cliProposal(journal, reviewed.state, { line, move: 'accept', input: {} })
-  if (!existing) yield* observeSession(journal, accepted.state, { _tag: 'Session', key: live.key }, 'Ended')
+  const accepted = yield* cliProposal(journal, reviewed.state, { ...line, move: 'accept', input: {} })
+  if (!existing) yield* observeSession(journal, accepted.state, live.key, 'Ended')
   return yield* readOpenProject(journal)
 })

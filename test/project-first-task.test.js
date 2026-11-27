@@ -30,7 +30,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=17; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=18; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -40,7 +40,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
         cwd: dir, env: { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db, WORK_NO_OPEN: '1' },
       })
       expect(result.exitCode).toBe(1)
-      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 18 project journal')
+      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 19 project journal')
       expect(readFileSync(db).equals(original)).toBe(true)
     }
     expect(existsSync(join(dir, '.work'))).toBe(false)
@@ -168,10 +168,10 @@ exec sleep 90
     }
     const reviewStarts = []
     const proposal = async (key, value, title) => {
-      const line = { _tag: 'Proposal', key }
-      put('draft.yaml', { line, move: 'open', input: { previous: { _tag: 'None' }, value } })
+      const line = { line: 'Proposal', key }
+      put('draft.yaml', { ...line, move: 'open', input: { previous: { _tag: 'None' }, value } })
       await apply(['onboard', 'submit', await basis(), '--file=draft.yaml'], live.token, key + ' open')
-      put('draft.yaml', { line, move: 'submit', input: { value } })
+      put('draft.yaml', { ...line, move: 'submit', input: { value } })
       const before = new Set(readdirSync(captures))
       const submitted = await apply(['onboard', 'submit', await basis(), '--file=draft.yaml'], live.token, key + ' submit')
       const review = await fresh(before)
@@ -253,7 +253,7 @@ exec sleep 90
 
     Bun.spawnSync([realTmux, '-L', bootstrapSocket(dir), 'kill-session', '-t', '=boot-' + live.key.slice(8)])
     await browser.phase(name, pipeline.name, 'Sent')
-    const oldReport = await submit({ read: beforeCrash.number, line: { _tag: 'Task', key }, move: 'next', input: {} })
+    const oldReport = await submit({ read: beforeCrash.number, line: 'Task', key, move: 'next', input: {} })
     expect(oldReport.status).toBe(403)
     expect((await oldReport.json()).code).toBe('WrongActor')
     for (const route of ['api/onboarding', 'api/activation', 'api/staffing', 'api/act'])
@@ -286,7 +286,7 @@ exec sleep 90
     const committed = await events()
     expect(committed.map(({ number }) => number)).toEqual(committed.map((_, index) => index + 1))
     expect((await state()).read).toBe(beforeRestart)
-    const stale = await submit({ read: 1, line: { _tag: 'Activation' }, move: 'start', input: {} })
+    const stale = await submit({ read: 1, line: 'Activation', move: 'start', input: {} })
     expect(stale.status).toBe(409)
     expect((await stale.json()).code).toBe('Stale')
     for (const secret of [hostToken, live.token, child]) {

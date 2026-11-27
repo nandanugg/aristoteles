@@ -4,6 +4,7 @@ import { EventNumber, ReadPosition, StoredActor, Timestamp } from './values.ts'
 export type Party = 'Actor' | 'Assignee' | 'Reviewer' | 'Owner' | 'Recipient' | 'Proposer' | 'Engine' | 'Host' | 'None'
 type Edges<Table> = {
   readonly [Phase in keyof Table]: {
+    readonly from: Schema.Top
     readonly owes: Party
     readonly moves: {
       readonly [Move in keyof (Table[Phase] extends { readonly moves: infer M } ? M : never)]:
@@ -11,12 +12,14 @@ type Edges<Table> = {
           readonly to: readonly (keyof Table)[]
           readonly input: Schema.Top
           readonly owes?: Party
-          readonly submission?: { readonly input: Schema.Top; readonly move?: string }
+          readonly submission?: { readonly input: Schema.Top; readonly move: string }
         }
     }
   }
 }
-export const line = <const Table extends Edges<Table>>(states: Table) => states
+export const line = <const Table extends Edges<Table>>(states: Table & {
+  readonly [Phase in keyof Table]: { readonly from: Phase extends 'null' ? typeof Schema.Null : Schema.Literal<Phase & string> }
+}): Table => states
 
 type MoveOf<Table extends Edges<Table>> = {
   [Phase in keyof Table]: keyof Table[Phase]['moves']
@@ -30,52 +33,31 @@ export const edge = <Table extends Edges<Table>>(
   return 'Blocked'
 }
 
-const entry = { number: EventNumber, actor: StoredActor, read: ReadPosition, at: Timestamp }
-export const protocol = <A extends Schema.Top, const T extends Edges<T>>(address: A, states: T) => {
-  type EventSchema<F, M, I extends Schema.Top> = Schema.Struct<typeof entry & {
-    line: A; from: F extends 'null' ? typeof Schema.Null : Schema.Literal<F & string>; move: Schema.Literal<M & string>; input: I
-  }>
-  type SubmissionSchema<M, I extends Schema.Top> = Schema.Struct<{
-    read: typeof ReadPosition; line: A; move: Schema.Literal<M & string>; input: I
-  }>
-  type EventOf<Table extends Edges<Table>> = {
-    [F in keyof Table]: { [M in keyof Table[F]['moves']]: EventSchema<F, M, Table[F]['moves'][M]['input']> }[keyof Table[F]['moves']]
-  }[keyof Table]
-  type SubmissionOf<Table extends Edges<Table>> = {
-    [F in keyof Table]: { [M in keyof Table[F]['moves']]: Table[F]['moves'][M] extends {
-      readonly submission: { readonly input: infer I extends Schema.Top; readonly move: infer Alias }
-    } ? SubmissionSchema<Alias, I> : Table[F]['moves'][M] extends {
-      readonly submission: { readonly input: infer I extends Schema.Top }
-    } ? SubmissionSchema<M, I> : never }[keyof Table[F]['moves']]
-  }[keyof Table]
-  // Defer the schema calculation until the caller supplies a concrete table.
-  type Events<Table extends Edges<Table>> = Table extends unknown ? EventOf<Table> : never
-  type Submissions<Table extends Edges<Table>> = Table extends unknown ? SubmissionOf<Table> : never
+type Submitted<Table extends Edges<Table>, Phase extends keyof Table> = {
+  [Move in keyof Table[Phase]['moves']]: Table[Phase]['moves'][Move] extends { readonly submission: object } ? Move : never
+}[keyof Table[Phase]['moves']]
 
-  const events = []
-  const submissions = []
-  const authorities: { readonly matches: (value: unknown) => boolean; readonly party: Party }[] = []
-  type Table = Edges<Record<string, { readonly moves: Record<string, object> }>>
-  for (const [from, state] of Object.entries(states) as readonly (readonly [string, Table[string]])[]) {
-    for (const [move, definition] of Object.entries(state.moves)) {
-      events.push(Schema.Struct({
-        ...entry, line: address, from: from === 'null' ? Schema.Null : Schema.Literal(from),
-        move: Schema.Literal(move), input: definition.input,
-      }))
-      if (!definition.submission) continue
-      const request = Schema.Struct({
-        read: ReadPosition, line: address, move: Schema.Literal(definition.submission.move ?? move),
-        input: definition.submission.input,
-      })
-      submissions.push(request)
-      authorities.push({ matches: Schema.is(request), party: definition.owes ?? state.owes })
-    }
+const entry = { number: EventNumber, actor: StoredActor, read: ReadPosition, at: Timestamp }
+export const protocol = <const Fields extends Schema.Struct.Fields, const Table extends Edges<Table>>(
+  fields: Fields, states: Table,
+) => {
+  const checkedRequest = <Input extends { readonly input: Schema.Top; readonly move: string }>(submission: Input, party: Party) => {
+    const input: Input['input'] = submission.input
+    const name: Input['move'] = submission.move
+    return { schema: Schema.Struct({ read: ReadPosition, ...fields, move: Schema.Literal(name), input }), party }
   }
-  // Object.entries erases literal keys. The mapped types above preserve their pairing with each input.
-  const submission = Schema.Union(submissions as unknown as readonly Submissions<T>[])
   return {
-    event: Schema.Union(events as unknown as readonly Events<T>[]),
-    submission,
-    party: (request: typeof submission.Type) => authorities.find(({ matches }) => matches(request))?.party,
+    event<Phase extends keyof Table, Move extends keyof Table[Phase]['moves'] & string>(phase: Phase, move: Move) {
+      const from: Table[Phase]['from'] = states[phase].from
+      const moves: Table[Phase]['moves'] = states[phase].moves
+      const input: Table[Phase]['moves'][Move]['input'] = moves[move].input
+      return Schema.Struct({ ...entry, ...fields, from, move: Schema.Literal(move), input })
+    },
+    request<Phase extends keyof Table, Move extends Submitted<Table, Phase>>(phase: Phase, move: Move) {
+      const moves: Table[Phase]['moves'] = states[phase].moves
+      const submission: Table[Phase]['moves'][Move]['submission'] = moves[move].submission
+      if (!submission) throw new Error('The move has no submission')
+      return checkedRequest(submission, moves[move].owes ?? states[phase].owes)
+    },
   }
 }

@@ -1,7 +1,7 @@
 import { Effect, Result } from 'effect'
 import {
   Rationale, ReadPosition, refuse, liveSession, staffingAt, type LiveSession, type Of, type Pane, type Project, type Refusal, type Staff,
-  type SessionAddress, type StaffSessionKey, type EventNumber, type TaskAddress,
+  type StaffSessionKey, type EventNumber, type TaskKey,
 } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { fold } from '../state/project.ts'
@@ -27,35 +27,35 @@ export const staffAuthority = (
 }
 
 export const reserveSession = (
-  journal: Journal, project: Project, address: Of<typeof SessionAddress>, staff: Staff,
-  staffing: Of<typeof EventNumber>, previous?: Of<typeof SessionAddress>,
+  journal: Journal, project: Project, key: Of<typeof StaffSessionKey>, staff: Staff,
+  staffing: Of<typeof EventNumber>, previous?: Of<typeof StaffSessionKey>,
 ): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Human' }, project.read, {
-  line: address, from: null, move: 'open', input: { staff, staffing, previous: previous ?? { _tag: 'None' } },
+  line: 'Session', key, from: null, move: 'open', input: { staff, staffing, previous: previous ?? { _tag: 'None' } },
 })
 
 export const acknowledgeSession = (
-  journal: Journal, project: Project, address: Of<typeof SessionAddress>, pane: Of<typeof Pane>,
+  journal: Journal, project: Project, key: Of<typeof StaffSessionKey>, pane: Of<typeof Pane>,
 ): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Human' }, project.read, {
-  line: address, from: 'Starting', move: 'next', input: { pane },
+  line: 'Session', key, from: 'Starting', move: 'next', input: { pane },
 })
 
 export const cancelSession = (
-  journal: Journal, project: Project, address: Of<typeof SessionAddress>,
+  journal: Journal, project: Project, key: Of<typeof StaffSessionKey>,
 ): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Human' }, project.read, {
-  line: address, from: 'Starting', move: 'cancel', input: {},
+  line: 'Session', key, from: 'Starting', move: 'cancel', input: {},
 })
 
 export const observeSession = (
-  journal: Journal, project: Project, address: Of<typeof SessionAddress>, observed: 'Paused' | 'Ended',
+  journal: Journal, project: Project, key: Of<typeof StaffSessionKey>, observed: 'Paused' | 'Ended',
 ): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Human' }, project.read, {
-  line: address, from: 'Live', move: 'next', input: { observed },
+  line: 'Session', key, from: 'Live', move: 'next', input: { observed },
 })
 
 export const startChild = (
-  journal: Journal, project: Project, line: Of<typeof TaskAddress>, session: LiveSession, work: 'Work' | 'Review',
+  journal: Journal, project: Project, key: Of<typeof TaskKey>, session: LiveSession, work: 'Work' | 'Review',
 ): Effect.Effect<Committed, Refusal> => {
   const actor = { _tag: 'Staff', key: session.staff.key } as const
   const input = { session, staffing: staffingAt(project) }
-  return work === 'Review' ? assignTaskReview(journal, project, line, session)
-    : recordObserved(journal, actor, project.read, { line, from: 'Sent', move: 'next', input: { ...input, where: 'Subagent' } })
+  return work === 'Review' ? assignTaskReview(journal, project, key, session)
+    : recordObserved(journal, actor, project.read, { line: 'Task', key, from: 'Sent', move: 'next', input: { ...input, where: 'Subagent' } })
 }

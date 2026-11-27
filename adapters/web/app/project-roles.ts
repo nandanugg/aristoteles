@@ -32,10 +32,10 @@ export function RoleCard({ project, submit }: {
           const key = ProposalKey.make('proposal:' + crypto.randomUUID())
           setBusy(true)
           try {
-            const opened = await submit({ read: project.read, line: { _tag: 'Proposal', key },
+            const opened = await submit({ read: project.read, line: 'Proposal', key,
               move: 'open', input: { previous: { _tag: 'None' }, value: proposal.success } })
             if (Result.isFailure(opened)) { setFailure(opened.failure); return }
-            const sent = await submit({ read: opened.success.read, line: { _tag: 'Proposal', key },
+            const sent = await submit({ read: opened.success.read, line: 'Proposal', key,
               move: 'submit', input: { value: proposal.success } })
             setFailure(Result.isFailure(sent) ? sent.failure : null)
           } finally { setBusy(false) }

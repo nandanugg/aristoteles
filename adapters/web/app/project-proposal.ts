@@ -16,12 +16,12 @@ export function ProposalCard({ proposal, read, submit }: {
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<ProjectRefusal | null>(null)
   if (phase._tag !== 'WaitingForOwner' && phase._tag !== 'Accepted') return null
-  type OwnerMove = Extract<Submission, { line: { _tag: 'Proposal' }; move: 'accept' | 'remove' | 'sendBack' }>
+  type OwnerMove = Extract<Submission, { line: 'Proposal'; move: 'accept' | 'remove' | 'sendBack' }>
   type Choice<M> = M extends OwnerMove ? Pick<M, 'move' | 'input'> : never
   const choose = async (choice: Choice<OwnerMove>) => {
     if (busy) return
     setBusy(true)
-    const result = await submit({ ...choice, read, line: { _tag: 'Proposal', key: proposal.key } })
+    const result = await submit({ ...choice, read, line: 'Proposal', key: proposal.key })
     setFailure(Result.isFailure(result) ? result.failure : null)
     setBusy(false)
   }

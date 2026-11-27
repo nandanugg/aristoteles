@@ -18,7 +18,6 @@ const activationIO = <A>(f: () => A) => Effect.try({
   catch: (error) => Schema.is(Refusal)(error) ? error : unsafe(String(error)),
 })
 
-const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT'
 const activationDir = (dir: string, parts: readonly string[], create: boolean): string | null => {
   let path = dir
   for (const part of [...AREA.split('/'), ...parts]) {
@@ -26,12 +25,12 @@ const activationDir = (dir: string, parts: readonly string[], create: boolean): 
     try {
       if (!lstatSync(path).isDirectory()) throw unsafe(`${path} is not a plain directory`)
     } catch (error) {
-      if (!missing(error)) throw error
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
       if (!create) return null
       try {
         mkdirSync(path, { mode: 0o700 })
       } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
+        if (!(e instanceof Error && 'code' in e && e.code === 'EEXIST')) throw e
       }
       if (!lstatSync(path).isDirectory()) throw unsafe(`${path} is not a plain directory`)
     }
@@ -43,7 +42,7 @@ const readPrivate = (path: string): string | null => {
   try {
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   } catch (error) {
-    if (missing(error)) return null
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
     throw error
   }
   try {

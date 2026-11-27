@@ -3,7 +3,7 @@ import { readOpenProject } from '../actions/staff-session.ts'
 import { recordTaskCommands } from '../actions/task.ts'
 import {
   CommandOutcome, OptionIndex, Rationale, refuse, taskRules, activeWork,
-  type Command, type CommandOutput, type EventNumber, type Of, type Refusal, type TaskAddress, type WholeFile,
+  type Command, type CommandOutput, type EventNumber, type Of, type Refusal, type TaskKey, type WholeFile,
 } from '../schema/project.ts'
 import type { CommandCapture, CommandRecord, Committed, Journal } from '../services/project.ts'
 
@@ -21,10 +21,10 @@ const blocked = () => refuse('Unavailable', Rationale.make(
 const invalid = () => refuse('InvalidEvidence', Rationale.make('The captured result must match the pinned command rule.'))
 
 export const runTaskCommands = (
-  journal: Journal, line: Of<typeof TaskAddress>, commands: TaskCommands,
+  journal: Journal, key: Of<typeof TaskKey>, commands: TaskCommands,
 ): Effect.Effect<Committed, Refusal> => Effect.gen(function* () {
   const project = yield* readOpenProject(journal)
-  const task = project.tasks.get(line.key)
+  const task = project.tasks.get(key)
   if (!activeWork(project) || task?.phase._tag !== 'ReadyToReview')
     return yield* Effect.fail(refuse('WrongMove', Rationale.make('Run commands for a committed result awaiting review.')))
   const { result } = task.phase
@@ -50,14 +50,14 @@ export const runTaskCommands = (
       return yield* Effect.fail(invalid())
     outcomes.push(capture.outcome)
   }
-  return yield* recordTaskCommands(journal, line, project.read, outcomes)
+  return yield* recordTaskCommands(journal, key, project.read, outcomes)
 })
 
 export const taskCommandBlock = (
-  journal: Journal, line: Of<typeof TaskAddress>, commands: TaskCommands,
+  journal: Journal, key: Of<typeof TaskKey>, commands: TaskCommands,
 ): Effect.Effect<Refusal['why'] | null, Refusal> => Effect.gen(function* () {
   const project = yield* readOpenProject(journal)
-  const task = project.tasks.get(line.key)
+  const task = project.tasks.get(key)
   if (task?.phase._tag !== 'ReadyToReview') return null
   const { at } = task.phase.result
   for (const [index, rule] of taskRules(task).entries()) {
@@ -70,11 +70,11 @@ export const taskCommandBlock = (
 
 // A provider can recover an exact capture after losing the response to an issued command.
 export const recoverTaskCommand = (
-  journal: Journal, line: Of<typeof TaskAddress>, result: Of<typeof EventNumber>,
+  journal: Journal, key: Of<typeof TaskKey>, result: Of<typeof EventNumber>,
   outcome: CommandOutcome, commands: TaskCommands,
 ): Effect.Effect<void, Refusal> => Effect.gen(function* () {
   const project = yield* readOpenProject(journal)
-  const task = project.tasks.get(line.key)
+  const task = project.tasks.get(key)
   if (task?.phase._tag !== 'ReadyToReview' || task.phase.result.at !== result)
     return yield* Effect.fail(refuse('Stale', Rationale.make('The committed work result has changed.')))
   if (!Schema.is(CommandOutcome)(outcome)) return yield* Effect.fail(invalid())

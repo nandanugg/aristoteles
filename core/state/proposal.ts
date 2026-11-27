@@ -39,11 +39,11 @@ const validateValue = (project: Project, value: ProposalValue): Result.Result<Pr
 }
 
 export const applyProposalMove = (project: Project, event: ProposalEvent): Result.Result<Project, Refusal> => {
-  const { line, actor, read, number } = event
-  const stage = project.proposals.get(line.key)
+  const { key, actor, read, number } = event
+  const stage = project.proposals.get(key)
   const store = (proposal: Proposal, state = project): Result.Result<Project, Refusal> => {
     const proposals = new Map(state.proposals)
-    proposals.set(line.key, proposal)
+    proposals.set(key, proposal)
     return Result.succeed({ ...state, proposals })
   }
   if (event.from === null) {
@@ -61,7 +61,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       const version = previous ?? effectiveVersion(project, value)
       if (version && version.acceptedAt > read) return stale()
       return store({
-        key: line.key, value, basis: version ? { _tag: 'Version', version } : { _tag: 'None' }, questions: new Map(),
+        key, value, basis: version ? { _tag: 'Version', version } : { _tag: 'None' }, questions: new Map(),
         proposer, owner: project.owner, reviewer: project.roles.host, retryCount: RetryCount.make(0),
         phase: { _tag: 'Drafting', feedback: { _tag: 'None' } }, lastChange: number,
       })

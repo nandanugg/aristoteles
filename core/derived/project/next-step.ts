@@ -1,6 +1,6 @@
 import {
   currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
-  taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionAddress, type ReadPosition, type Of, type Task, type StoredEvent,
+  taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type ReadPosition, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
 import { mayAssignTaskReview } from './review.ts'
 
@@ -8,7 +8,7 @@ export type Selection =
   | { readonly _tag: 'Awaiting' }
   | {
       readonly _tag: 'Available'
-      readonly subject: { readonly _tag: 'Task'; readonly task: Task } | { readonly _tag: 'Question'; readonly question: Question; readonly line: Of<typeof QuestionAddress> }
+      readonly subject: { readonly _tag: 'Task'; readonly task: Task } | { readonly _tag: 'Question'; readonly question: Question; readonly owner: QuestionEvent['owner'] }
         | { readonly _tag: 'Proposal'; readonly proposal: Proposal }
       readonly for: 'Report' | 'Answer' | 'Choose' | 'Assign' | 'Review'
       readonly read: Of<typeof ReadPosition>
@@ -23,10 +23,10 @@ export const questionsFor = (project: Project, authority: LiveSession | Of<typeo
   if (project.status._tag === 'Ended') return []
   const actor = authority._tag === 'Human' ? project.owner : currentSession(project, authority)?.staff
   if (!actor) return []
-  const due = (owner: Of<typeof QuestionAddress>['owner'], questions: Iterable<Question>) =>
+  const due = (owner: QuestionEvent['owner'], questions: Iterable<Question>) =>
     [...questions].filter((question) =>
       questionLine[question.state._tag].owes === 'Recipient' && sameActor(question.to, actor),
-    ).map((question) => ({ question, line: { _tag: 'Question', owner, key: question.key } as const }))
+    ).map((question) => ({ question, owner }))
   return [
     ...due({ _tag: 'Project' }, project.questions.values()),
     ...[...project.proposals.values()].flatMap((proposal) => due({ _tag: 'Proposal', key: proposal.key },

@@ -234,27 +234,25 @@ export function scan(program: ts.Program, root: string, included = contracts,
               }
               // Journal moves carry a source phase. Public submissions omit it and
               // use the checked input to distinguish an empty start from a result.
-              const address = (part: ts.Type) => {
+              const lineMove = (part: ts.Type) => {
                 const input = part.getProperty('input')
-                const line = part.getProperty('line')
-                if (!line || !input) return
-                const tag = literalAt(memberType(line, node), '_tag')
+                const line = literalAt(part, 'line')
                 const move = literalAt(part, 'move')
-                if (typeof tag !== 'string' || typeof move !== 'string') return
-                return { tag, move, input: memberType(input, node) }
+                if (!input || typeof line !== 'string' || typeof move !== 'string') return
+                return { line, move, input: memberType(input, node) }
               }
-              const addresses = records.map(address)
+              const moves = records.map(lineMove)
               const phases = records.map((part) => literalAt(part, 'from'))
-              const journal = addresses.every((entry) => entry !== undefined) &&
+              const journal = moves.every((entry) => entry !== undefined) &&
                 phases.every((from) => from !== undefined) &&
-                new Set(addresses.map((entry, i) => JSON.stringify([entry?.tag, phases[i], entry?.move]))).size === records.length
+                new Set(moves.map((entry, i) => JSON.stringify([entry?.line, phases[i], entry?.move]))).size === records.length
               const submissions = records.every((part) => part.getProperty('read') && !part.getProperty('from')) &&
-                addresses.every((entry) => entry !== undefined) &&
-                addresses.every((entry, index) => {
+                moves.every((entry) => entry !== undefined) &&
+                moves.every((entry, index) => {
                   if (!entry) return false
                   const fields = entry.input.getProperties()
-                  return addresses.slice(0, index).every((other) => {
-                    if (!other || other.tag !== entry.tag || other.move !== entry.move) return true
+                  return moves.slice(0, index).every((other) => {
+                    if (!other || other.line !== entry.line || other.move !== entry.move) return true
                     const previous = other.input.getProperties()
                     return (fields.length === 0 && previous.some((field) => !(field.flags & ts.SymbolFlags.Optional))) ||
                       (previous.length === 0 && fields.some((field) => !(field.flags & ts.SymbolFlags.Optional)))
@@ -296,6 +294,8 @@ export function scan(program: ts.Program, root: string, included = contracts,
             }
           }
           for (const index of checker.getIndexInfosOfType(type)) {
+            // An index with no possible values only accepts an empty record.
+            if (index.type.flags & ts.TypeFlags.Never) continue
             walk(index.keyType, `${path}[key]`)
             walk(index.type, `${path}[value]`)
           }

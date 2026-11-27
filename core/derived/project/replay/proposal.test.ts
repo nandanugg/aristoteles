@@ -18,7 +18,7 @@ const check = 'onboardingReview'
 const kinds = ['success', 'fault', 'mutant'] as const
 const fixtures = join(import.meta.dir, 'traces')
 const key = ProposalKey.make('proposal:document')
-const line = { _tag: 'Proposal', key } as const
+const line = { line: 'Proposal', key } as const
 const second = { ...session, key: StaffSessionKey.make('session:2') }
 
 test('onboarding review is registered with all three witness fixtures', () => {
@@ -31,7 +31,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
     const journal = yield* open(path)
     const opened = yield* create(journal)
     const live = yield* startFixtureSession(journal, opened.state)
-    yield* cliProposal(journal, live.state, { line: { _tag: 'Proposal', key: key }, move: 'open', input: { previous: { _tag: 'None' }, value: direction } }, staffAuthorityOf())
+    yield* cliProposal(journal, live.state, { line: 'Proposal', key, move: 'open', input: { previous: { _tag: 'None' }, value: direction } }, staffAuthorityOf())
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const trace = readTrace(join(fixtures, check + '-' + kind + '.itf.json.gz'), check, kind)
@@ -44,7 +44,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
     yield* Effect.promise(() => replayOnboardingReview(trace, kind, {
       submit: async () => {
         const view = await project()
-        await Effect.runPromise(cliProposal(journal, view, { line, move: 'submit', input: { value: direction } },
+        await Effect.runPromise(cliProposal(journal, view, { ...line, move: 'submit', input: { value: direction } },
           staffAuthorityOf(lifetime === 1 ? session : second)))
       },
       launch: async (expected) => {
@@ -57,7 +57,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
         observed.set(phase.assignment.review, expected + 1)
       },
       exit: async () => {
-        await Effect.runPromise(observeSession(journal, await project(), { _tag: 'Session', key: session.key }, 'Ended'))
+        await Effect.runPromise(observeSession(journal, await project(), session.key, 'Ended'))
       },
       recover: async () => {
         const view = await project()
@@ -67,7 +67,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
       report: async (source, child, holds) => {
         const view = await project()
         const entry = runs.get(child) ?? { session: source === 1 ? session : second, review: EventNumber.make(1) }
-        const outcome = await Effect.runPromise(Effect.result(cliProposal(journal, view, { line, move: 'review', input: { facts: evidence(holds ? 'Holds' : 'Breaks') } }, { _tag: 'Review', line, ...entry })))
+        const outcome = await Effect.runPromise(Effect.result(cliProposal(journal, view, { ...line, move: 'review', input: { facts: evidence(holds ? 'Holds' : 'Breaks') } }, { _tag: 'Review', ...line, ...entry })))
         if (Result.isSuccess(outcome)) return 'Committed'
         expect(outcome.failure.code).toBe('RetiredSession')
         expect((await project()).read).toBe(view.read)
@@ -75,7 +75,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
       },
       accept: async (actor) => {
         const view = await project()
-        const outcome = await Effect.runPromise(Effect.result(cliProposal(journal, view, { line, move: 'accept', input: {} }, actor === 9 ? ownerAuthority : staffAuthorityOf(lifetime === 1 ? session : second))))
+        const outcome = await Effect.runPromise(Effect.result(cliProposal(journal, view, { ...line, move: 'accept', input: {} }, actor === 9 ? ownerAuthority : staffAuthorityOf(lifetime === 1 ? session : second))))
         if (Result.isFailure(outcome)) {
           expect(['WrongActor', 'WrongMove']).toContain(outcome.failure.code)
           expect((await project()).read).toBe(view.read)
