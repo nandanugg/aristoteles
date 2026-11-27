@@ -265,7 +265,7 @@ exec sleep 90
     const child = await finish(1, 'Local first result', 'Breaks')
     await browser.phase(name, pipeline.name, 'Working')
     await browser.page.getByRole('heading', { name: 'Review feedback' }).waitFor()
-    expect((await state()).tasks.find((task) => task.key === key).phase.attempt.retryCount).toBe(1)
+    expect((await state()).tasks.find((task) => task.key === key).retryCount).toBe(1)
     expect((await call(['wait'], { token: child })).code).toBe(1)
 
     Bun.spawnSync([realTmux, '-L', bootstrapSocket(dir), 'kill-session', '-t', '=boot-' + live.key.slice(8)])

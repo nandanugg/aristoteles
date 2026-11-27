@@ -9,7 +9,7 @@ import { projectEvents, projectSnapshot, projectSubmission } from '../../adapter
 import { open, session, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
 import { artifactQuote, commandOutcomes, promptDirection, reportReview, resultInput, reviewAs, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
-import { CommandOutcome, Direction, Rationale, RetryLimit as RetryLimitValue, refuse, StaffSessionKey, staffedIn } from '../schema/project.ts'
+import { CommandOutcome, Direction, Rationale, RetryCount, RetryLimit as RetryLimitValue, refuse, StaffSessionKey, staffedIn } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
 import { Authority, RetryLimit, type AuthenticatedActor } from './project.ts'
 import { readOpenProject, startChild } from './staff-session.ts'
@@ -47,9 +47,10 @@ test('review intake takes only facts from the current fresh child and gives feed
     const back = yield* intake(child)
     expect(back.event.move).toBe('back')
     expect(back.state.tasks.get(taskKey)?.phase).toMatchObject({
-      _tag: 'Working', attempt: { number: 1, retryCount: 1, feedback: { _tag: 'Review', breaks: [{ evidence: artifactQuote }] } },
+      _tag: 'Working', attempt: { number: 1, feedback: { _tag: 'Review', breaks: [{ evidence: artifactQuote }] } },
     })
     expect(yield* projectBriefCommand(journal, taskKey).pipe(auth(staffAuthorityOf()))).toContain('Review feedback for Readable result')
+    expect((yield* readOpenProject(journal)).tasks.get(taskKey)?.retryCount).toBe(RetryCount.make(1))
     expect(yield* waitOnProject(journal, Effect.succeed(session.key))).toMatchObject({ _tag: 'Available', for: 'Report' })
     const result = yield* staffInput(journal, resultInput(back.state.read))
     const again = yield* commandOutcomes(journal, result.state.read)

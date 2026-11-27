@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 import {
-  PromptOutcome, Rationale, RetryCount, quoteIn, refuse, taskRules,
+  PromptOutcome, Rationale, quoteIn, refuse, taskRules,
   type BreakingOutcome, type Evidence, type Of, type Quote, type Refusal, type RetryLimit, type Task, type TaskPhase, type ReviewFacts,
 } from '../schema/project.ts'
 
@@ -53,13 +53,11 @@ export const reviewTask = (
   const history = attempt.feedback._tag === 'Review' ? attempt.feedback.breaks : []
   const repeated = [first, ...rest].find((now) => history.some((was) => JSON.stringify(was.rule) === JSON.stringify(now.rule)))
   if (repeated) return Result.succeed({ _tag: 'Raised', reason: 'Misses', evidence: repeated.evidence })
-  if (attempt.retryCount >= limit) {
+  if (task.retryCount >= limit) {
     return Result.succeed({ _tag: 'Raised', reason: 'Tries', evidence: first.evidence })
   }
-  const retryCount = attempt.retryCount + 1
-  if (!Schema.is(RetryCount)(retryCount)) return Result.fail(refuse('InvalidInput', Rationale.make('The retry count exceeds its limit.')))
   return Result.succeed({
-    _tag: 'Working', attempt: { ...attempt, retryCount, feedback: { _tag: 'Review', breaks: [first, ...rest, ...history] } },
+    _tag: 'Working', attempt: { ...attempt, feedback: { _tag: 'Review', breaks: [first, ...rest, ...history] } },
   })
 }
 

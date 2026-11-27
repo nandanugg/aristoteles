@@ -1,7 +1,7 @@
 import { Result, Schema } from 'effect'
 import { reviewMove, reviewTask } from './task-review.ts'
 import {
-  AttemptNumber, Rationale, edge, liveSession, refuse, staffByKey, staffOf, subagentCapacity, taskLine, taskRules, activeWork, staffedIn, taskRole, taskReviewStaff,
+  AttemptNumber, Rationale, RetryCount, edge, liveSession, refuse, staffByKey, staffOf, subagentCapacity, taskLine, taskRules, activeWork, staffedIn, taskRole, taskReviewStaff,
   type EventNumber, type Of, type Project, type Refusal, type Task, type TaskEvent, type TaskPhase,
 } from '../schema/project.ts'
 
@@ -13,7 +13,7 @@ const stale = () => Result.fail(refuse('Stale', Rationale.make('The task changed
 
 export const restartTask = (task: Task, phase: Extract<TaskPhase, { _tag: 'Working' }>, number: Of<typeof EventNumber>): Result.Result<Task, Refusal> =>
   edge(taskLine, phase._tag, 'restart', 'Sent') === 'Allowed'
-    ? Result.succeed({ ...task, phase: { _tag: 'Sent', retryCount: phase.attempt.retryCount, feedback: phase.attempt.feedback }, changedIn: number })
+    ? Result.succeed({ ...task, phase: { _tag: 'Sent', feedback: phase.attempt.feedback }, changedIn: number })
     : wrongMove()
 
 export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskEvent, { from: null }>): Result.Result<Task, Refusal> => {
@@ -38,7 +38,7 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
       if (where === 'Subagent' && subagentCapacity(project, staff).freeSubagents === 0) return noChild()
       const next = task.lastAttempt._tag === 'None' ? 1 : task.lastAttempt.number + 1
       if (!Schema.is(AttemptNumber)(next)) return wrongMove()
-      return entered({ _tag: 'Working', attempt: { number: next, actor, where, retryCount: before.retryCount, feedback: before.feedback } },
+      return entered({ _tag: 'Working', attempt: { number: next, actor, where, feedback: before.feedback } },
         { _tag: 'Attempted', number: next })
     }
     case 'Working': {
@@ -93,6 +93,7 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
           if (!staff) return retired()
           if (attempt.where === 'Subagent' && staff.key !== session.staff.key &&
               subagentCapacity(project, staff).freeSubagents === 0) return noChild()
+          return Result.map(entered(phase), (task) => ({ ...task, retryCount: RetryCount.make(task.retryCount + 1) }))
         }
         return entered(phase)
       })

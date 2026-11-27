@@ -98,7 +98,7 @@ for (const kind of kinds) test('task report race append seam — ' + kind, () =>
         return {
           phase: phase._tag,
           attempt: attempt?.number ?? 0,
-          retryCount: phase._tag === 'Sent' ? phase.retryCount : phase._tag === 'Working' ? phase.attempt.retryCount : phase.result.attempt.retryCount,
+          retryCount: task.retryCount,
           writes,
         }
       },
@@ -281,19 +281,20 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
       work: async () => {
         const project = await Effect.runPromise(readOpenProject(journal))
         const task = project.tasks.get(taskKey)
-        const phase = task?.phase
+        if (!task) throw new Error('Expected the replacement task')
+        const phase = task.phase
         const count = (feedback: Extract<NonNullable<typeof phase>, { _tag: 'Sent' }>['feedback']) =>
           feedback._tag === 'Review' ? feedback.breaks.length : 0
         if (phase?._tag === 'Sent') return {
-          phase: 'Sent', attempt: task?.lastAttempt._tag === 'Attempted' ? task.lastAttempt.number : 0,
-          lifetime: 0, retries: phase.retryCount, artifact: null, pointedOut: count(phase.feedback),
+          phase: 'Sent', attempt: task.lastAttempt._tag === 'Attempted' ? task.lastAttempt.number : 0,
+          lifetime: 0, retries: task.retryCount, artifact: null, pointedOut: count(phase.feedback),
         }
         if (phase?._tag !== 'Working' && phase?._tag !== 'ReadyToReview') throw new Error('Unexpected production work phase')
         const attempt = phase._tag === 'Working' ? phase.attempt : phase.result.attempt
         const image = phase._tag === 'ReadyToReview' ? phase.result.files[0]?.image : null
         return {
           phase: phase._tag, attempt: attempt.number, lifetime: attempt.actor.key === replacement ? 2 : 1,
-          retries: attempt.retryCount, pointedOut: count(attempt.feedback), artifact: image?._tag === 'Present' ? Number(image.contents) : null,
+          retries: task.retryCount, pointedOut: count(attempt.feedback), artifact: image?._tag === 'Present' ? Number(image.contents) : null,
         }
       },
       companions: async () => {

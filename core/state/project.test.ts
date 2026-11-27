@@ -92,7 +92,7 @@ test('a report refuses wrong authority, an invalid phase and a stale basis after
     const review = yield* commandOutcomes(journal, readPosition(result.state))
     const assigned = yield* startChild(journal, review.state, taskLine.key, session, 'Review')
     const back = yield* reportReview(journal, assigned.state, 'Breaks')
-    expect(back.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, retryCount: 1 } })
+    expect(back.state.tasks.get(taskKey)).toMatchObject({ retryCount: 1, phase: { _tag: 'Working', attempt: { number: 1 } } })
     expectCode(yield* Effect.result(staffInput(journal, request)), 'Stale')
     expect(yield* journal.eventsAfter(readPosition(back.state))).toEqual([])
     expect((yield* staffInput(journal, resultInput(readPosition(back.state)))).state.status._tag).toBe('Open')

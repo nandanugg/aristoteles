@@ -90,14 +90,15 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
         }
       } else if (step.action !== '') throw new Error('Unexpected work evidence action: ' + step.action)
 
-      const actual = state.tasks.get(taskKey)?.phase
+      const task = state.tasks.get(taskKey)
+      const actual = task?.phase
       const { tag, value } = record(step.state.task!)
       if (!blockedMutant) expect<unknown>(actual?._tag).toBe(tag)
       if (!blockedMutant && actual?._tag === 'Reviewing') {
         expect(actual.assignment._tag).toBe(record(value!).review === 'Waiting' ? 'Waiting' : 'Assigned')
       }
       if (!blockedMutant && actual?._tag === 'Working') {
-        expect(Number(actual.attempt.retryCount)).toBe(integer(record(value!).retries))
+        expect(Number(task?.retryCount)).toBe(integer(record(value!).retries))
       }
       if (!blockedMutant && actual?._tag === 'Done') {
         expect(actual.outcomes.map(({ rule, _tag }) => [rule.name, _tag]))

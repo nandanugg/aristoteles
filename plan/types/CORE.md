@@ -108,7 +108,7 @@ Use the name a person or agent can understand on its own. Read a state label wit
 | review basis | use queuedIn | The task or proposal entered its current waiting place in this event. |
 | StoredEvent.at | keep | Wall time of the event. |
 | Epoch | rename to AuthorityGeneration | A generation distinguishes current authority to act from authority that has been replaced. |
-| tries | rename to RetryCount | The count increases when the same attempt returns to work with review points. |
+| tries | rename to RetryCount | Task and Proposal each own one count. A review that sends the record back increments it. |
 | Worker generation | keep | It identifies which lifetime of a worker a turn or allocation belongs to. |
 | Usage window | keep | A usage window is the period over which a subscription counts use. |
 

@@ -90,7 +90,7 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     const after = yield* readOpenProject(journal)
     expect(after.read).not.toBe(readPosition(sent.state))
     expect(after.sessions.get(session.key)?._tag).toBe('Ended')
-    expect(after.tasks.get(ongoing)?.phase).toMatchObject({ _tag: 'Sent', retryCount: 0 })
+    expect(after.tasks.get(ongoing)).toMatchObject({ retryCount: 0, phase: { _tag: 'Sent' } })
     expect(after.tasks.get(ongoing)?.lastAttempt).toMatchObject({ _tag: 'Attempted', number: 1 })
     const previous = before.tasks.get(taskKey)?.phase
     const released = after.tasks.get(taskKey)?.phase
@@ -101,8 +101,8 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     yield* startSession(journal, after, { key: continued.key, staff: continued.staff.key, pane: continued.pane, staffedIn: staffedIn(after) })
     const latest = yield* readOpenProject(journal)
     yield* startChild(journal, latest, ongoing, continued, 'Work')
-    expect((yield* readOpenProject(journal)).tasks.get(ongoing)?.phase).toMatchObject({
-      _tag: 'Working', attempt: { number: 2, retryCount: 0, actor: { key: continued.key } },
+    expect((yield* readOpenProject(journal)).tasks.get(ongoing)).toMatchObject({
+      retryCount: 0, phase: { _tag: 'Working', attempt: { number: 2, actor: { key: continued.key } } },
     })
     expect(yield* Effect.result(begin(journal, latest.read))).toMatchObject(rejected('RetiredSession'))
   }))),
