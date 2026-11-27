@@ -17,7 +17,7 @@ export const reviewOutcome = (facts: ReviewFacts): 'Holds' | 'Breaks' =>
 
 const Assignment = Schema.Union([
   Schema.TaggedStruct('Waiting', {}),
-  Schema.TaggedStruct('Assigned', { actor: StoredActor.members[1], review: EventNumber }),
+  Schema.TaggedStruct('Assigned', { actor: StoredActor.members[1], queuedIn: EventNumber }),
 ])
 export const reviewing = <const Fields extends Schema.Struct.Fields>(fields: Fields) =>
   Schema.TaggedStruct('Reviewing', { ...fields, assignment: Assignment })

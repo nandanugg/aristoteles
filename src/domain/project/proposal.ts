@@ -28,11 +28,11 @@ const proposalOf = <S extends Schema.Top>(value: S) => Schema.Struct({
       Schema.TaggedStruct('Owner', { why: Rationale }),
     ]) }),
     reviewing({}),
-    Schema.TaggedStruct('WaitingForOwner', { review: EventNumber, facts: ReviewFacts }),
+    Schema.TaggedStruct('WaitingForOwner', { queuedIn: EventNumber, facts: ReviewFacts }),
     Schema.TaggedStruct('Accepted', { version: versionOf(value) }),
     Schema.TaggedStruct('Removed', {}),
   ]),
-  lastChange: EventNumber,
+  changedIn: EventNumber,
 })
 
 export const Proposal = proposalOf(ProposalValue)

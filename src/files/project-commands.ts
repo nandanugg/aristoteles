@@ -28,8 +28,8 @@ const directoryAt = (directory: string, create: boolean): string | null => {
   }
   return directory
 }
-const keyOf = ({ directory, database, result, slot }: CommandRecord) =>
-  createHash('sha256').update(JSON.stringify([directory.href, database.href, result, slot])).digest('hex')
+const keyOf = ({ directory, database, reportedIn, slot }: CommandRecord) =>
+  createHash('sha256').update(JSON.stringify([directory.href, database.href, reportedIn, slot])).digest('hex')
 
 const durable = (path: string, contents: string) => {
   const fd = openSync(path, 'wx', 0o600)

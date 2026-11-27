@@ -5,7 +5,7 @@ import { Authority, submit, type AuthenticatedActor } from '../../core/actions/p
 import { nextStep } from '../../core/derived/project/next-step.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, liveSession, proposalText, refuse, staffingAt, type Of, type Project, type Submission,
+  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, liveSession, proposalText, refuse, staffedIn, type Of, type Project, type Submission,
 } from '../../core/schema/project.ts'
 import { openProjectJournal, withProjectEnv } from '../../core/services/project.ts'
 import {
@@ -168,7 +168,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (act === 'launch') {
       const staff = yield* decode(StaffKey, subject)
       const key = newStaffSession()
-      const result = yield* runs.sessions.launch(staff, key, staffingAt(project))
+      const result = yield* runs.sessions.launch(staff, key, staffedIn(project))
       return ['Staff session ' + key, words(result.event), ...startingWords(result.state, key)]
     }
     if (act === 'end') {
@@ -210,7 +210,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (target._tag !== 'Task') return ['Read ' + basis + '. Proposal ' + target.proposal.key + ' is due.']
     const task = target.task
     if ((by._tag === 'Staff' || by._tag === 'Host') && selected.for === 'Assign') {
-      const committed = yield* runs.sessions.child(by.session.key, task.key, 'Review', staffingAt(project))
+      const committed = yield* runs.sessions.child(by.session.key, task.key, 'Review', staffedIn(project))
       return ['Opened a fresh task review.', words(committed.event)]
     }
     if (by._tag === 'Review') return [

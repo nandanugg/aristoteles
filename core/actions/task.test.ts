@@ -59,7 +59,7 @@ test('the host sends a checked stage slice only after work starts and its basis 
     expect(sent.event).toMatchObject({ line: 'Task', key: draft.key, from: null, move: 'open' })
     expect(sent.event.input).not.toHaveProperty('role')
     const task = sent.state.tasks.get(draft.key)!
-    expect(task.direction.acceptedAt).toBe(draft.direction.acceptedAt)
+    expect(task.direction.acceptedIn).toBe(draft.direction.acceptedIn)
     expect(taskRole(task).responsibility).toEqual(host.responsibility)
     const revised = yield* acceptDirection(journal, sent.state, {
       ...task.direction.value,
@@ -67,7 +67,7 @@ test('the host sends a checked stage slice only after work starts and its basis 
     }, task.direction)
     expect(revised.tasks.get(draft.key)).toEqual(task)
     const directions = acceptedDirections(revised)
-    expect(directions.map(({ acceptedAt }) => acceptedAt)).not.toContain(task.direction.acceptedAt)
+    expect(directions.map(({ acceptedIn }) => acceptedIn)).not.toContain(task.direction.acceptedIn)
     expect(directions.flatMap(({ value }) => value.stages.map(({ work }) => work))).toContain(Goal.make('A changed assignment.'))
     expect(yield* Effect.result(sendDraft(journal, revised, { ...draft, key: TaskKey.make('task:new') })))
       .toMatchObject(refused('Stale'))
@@ -161,7 +161,7 @@ test('interrupted execution stays blocked until the provider recovers its observ
     if (task.phase._tag !== 'ReadyToReview') throw new Error('Missing result')
     expect(yield* Effect.result(recoverTaskCommand(journal, taskLine.key, EventNumber.make(1), outcome, commands)))
       .toMatchObject(refused('Stale'))
-    yield* recoverTaskCommand(journal, taskLine.key, task.phase.result.at, outcome, commands)
+    yield* recoverTaskCommand(journal, taskLine.key, task.phase.result.reportedIn, outcome, commands)
     const review = yield* runTaskCommands(journal, taskLine.key, commands)
     expect(review.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Reviewing', outcomes: [outcome] })
   }))),
@@ -251,7 +251,7 @@ test('the first authenticated send keeps the read basis from Start work', () => 
     const { state: started } = yield* startWork(journal, committed.state)
     const sent = yield* projectSendCommand(journal, started.read, Bun.YAML.stringify(draftFor(started)))
       .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))
-    expect(sent.state.activation).toMatchObject({ work: { _tag: 'Used', at: started.read } })
+    expect(sent.state.activation).toMatchObject({ work: { _tag: 'Used', startedIn: started.read } })
     expect(sent.state.tasks.get(taskKey)?.phase._tag).toBe('Sent')
     const working = yield* projectReportCommand(journal, taskKey, sent.state.read, '{}')
       .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))

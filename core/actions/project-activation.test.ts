@@ -72,7 +72,7 @@ test('rollback is repeatable, preserves later edits and keeps accepted proposals
   }))),
 ))
 
-test('format 20 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
+test('format 21 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const f = yield* readyProject(path, { ...staff, launch: LaunchText.make('sleep 30 # {session}') }, projectDirectoryAt(dirname(path)))
     const provider = liveProjectBootstrap(f.directory, path, f.journal.directory)
@@ -85,7 +85,7 @@ test('format 20 opens a real marked tmux host and retires credential delivery on
     expect(yield* provider.observe(key)).toBe('Running')
     const current = yield* readOpenProject(f.journal)
     if (current.activation._tag !== 'Activating') throw new Error('Expected prepared launch')
-    const nonce = readFileSync(join(f.directory, '.work/onboarding/activation/project', digest(f.journal.directory.href), String(current.activation.at),
+    const nonce = readFileSync(join(f.directory, '.work/onboarding/activation/project', digest(f.journal.directory.href), String(current.activation.approvedIn),
       'launch-' + key.slice(8), 'nonce'), 'utf8')
     const pane = bootstrapPane(f.directory, key.slice(8))
     if (!pane) throw new Error('Expected running tmux pane')
@@ -118,7 +118,7 @@ test('format 20 opens a real marked tmux host and retires credential delivery on
     expect(yield* Effect.result(operations.authenticate(key, Schema.decodeUnknownSync(HostCredential)(credential)))).toMatchObject(refused('RetiredSession'))
     yield* startWork(f.journal, active)
     const used = yield* operations.authenticate(key, Schema.decodeUnknownSync(HostCredential)(credential))
-    expect(used.activation).toMatchObject({ _tag: 'Active', work: { _tag: 'Used', at: expect.any(Number), usedAt: expect.any(Number) } })
+    expect(used.activation).toMatchObject({ _tag: 'Active', work: { _tag: 'Used', startedIn: expect.any(Number), usedIn: expect.any(Number) } })
     const retired = yield* cli('collect')
     expect(retired.status).toBe(1)
     const logs = [wrongPane, ack, retired].flatMap(({ out, err }) => [...out, ...err]).join(' ')

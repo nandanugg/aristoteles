@@ -48,7 +48,7 @@ export const ReviewFeedback = Schema.Union([
 export const Attempt = Schema.Struct({
   number: AttemptNumber, retryCount: RetryCount, actor: StoredActor.members[1], where: Schema.Literals(['Session', 'Subagent']), feedback: ReviewFeedback,
 })
-const Result = Schema.Struct({ ...WorkResult.fields, attempt: Attempt, at: EventNumber })
+const Result = Schema.Struct({ ...WorkResult.fields, attempt: Attempt, reportedIn: EventNumber })
 export const RaiseReason = Schema.Literals(['Tries', 'Misses', 'NoRule', 'TooBig', 'WrongTask', 'ContractWrong', 'RejectedByHuman'])
 export const TaskPhase = Schema.Union([
   Schema.TaggedStruct('Sent', { retryCount: RetryCount, feedback: ReviewFeedback }),
@@ -65,7 +65,7 @@ export const Task = Schema.Struct({
   key: TaskKey, name: Name, goal: Goal, reviewer: Role, direction: DirectionVersion,
   stages: TaskStages, facts: Schema.Array(Fact),
   questions: recordsByKey(Question, QuestionKey),
-  phase: TaskPhase, lastChange: EventNumber,
+  phase: TaskPhase, changedIn: EventNumber,
   lastAttempt: Schema.Union([
     Schema.TaggedStruct('None', {}),
     Schema.TaggedStruct('Attempted', { number: AttemptNumber }),

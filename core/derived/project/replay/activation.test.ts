@@ -77,7 +77,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
       const contents = readFileSync(f.file, 'utf8')
       const session = hostSession(project)
       const replacement = hostReplacement(project)
-      const reserved = phase._tag === 'Activating' || phase._tag === 'RollingBack' ? numberOf(session && session.startedAt > phase.at ? session.key : undefined) : 0
+      const reserved = phase._tag === 'Activating' || phase._tag === 'RollingBack' ? numberOf(session && session.startedIn > phase.approvedIn ? session.key : undefined) : 0
       const binding = numberOf(boundHostSession(project)?.key)
       return {
         phase: phase._tag,

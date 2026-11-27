@@ -4,7 +4,7 @@ import { waitOnProject } from '../../adapters/cli/commands/project.ts'
 import { startSession, open, session, staff, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { begin, commandOutcomes, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { initialStaffing, launchStaff, sharedStaffing } from '../../src/store/staff-session.probe.ts'
-import { staffingAt,
+import { staffedIn,
   ReadPosition, SessionCount, StaffSessionKey, SubagentCount, TaskKey, capacity, staffByKey, type Staff, type StaffingPlan,
 } from '../schema/project.ts'
 import { applyEvent, readPosition } from '../state/project.ts'
@@ -38,7 +38,7 @@ test('shared staff covers both roles and a stale staffing plan or a duplicate li
     expect(yield* Effect.result(launchStaff(journal, changed, 1, 2))).toMatchObject(rejected('NoCapacity'))
     expect(yield* Effect.result(launchStaff(journal, changed, 0, 2))).toMatchObject(rejected('WrongMove'))
     expect(staffByKey(changed, staff.key)?.roles).toHaveLength(2)
-    expect(staffingAt(changed) > readPosition(launched.state)).toBe(true)
+    expect(staffedIn(changed) > readPosition(launched.state)).toBe(true)
     expect((yield* readOpenProject(journal)).read).toBe(changed.read)
   }))),
 ))
@@ -98,7 +98,7 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     expect(released).toEqual({ ...previous, assignment: { _tag: 'Waiting' } })
     expect(Number(capacity(after, staff)?.usedSubagents)).toBe(0)
     const continued = { ...session, key: StaffSessionKey.make('session:2') }
-    yield* startSession(journal, after, { key: continued.key, staff: continued.staff.key, pane: continued.pane, staffing: staffingAt(after) })
+    yield* startSession(journal, after, { key: continued.key, staff: continued.staff.key, pane: continued.pane, staffedIn: staffedIn(after) })
     const latest = yield* readOpenProject(journal)
     yield* startChild(journal, latest, ongoing, continued, 'Work')
     expect((yield* readOpenProject(journal)).tasks.get(ongoing)?.phase).toMatchObject({

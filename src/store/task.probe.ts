@@ -3,7 +3,7 @@ import { Authority, submit } from '../../core/actions/project.ts'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import { recordTaskCommands, sendTask } from '../../core/actions/task.ts'
-import { staffingAt,
+import { staffedIn,
   ApprovedFiles, Direction, rolesOf, roleOf, ProposalKey, StaffSessionKey, Submission, TaskDraft, TaskKey, staffOf,
   type Of, type Project, type ReadPosition,
 } from '../../core/schema/project.ts'
@@ -21,7 +21,7 @@ export const acceptDirection = (journal: Journal, project: Project, value: Direc
   const existing = [...project.sessions.values()].find((value) => value._tag === 'Live' && value.staff.key === assigned.key)
   const key = existing?.key ?? StaffSessionKey.make('session:direction-' + project.read)
   const current = existing ? project : (yield* startSession(journal, project, {
-    key, staff: assigned.key, pane: session.pane, staffing: staffingAt(project),
+    key, staff: assigned.key, pane: session.pane, staffedIn: staffedIn(project),
   })).state
   const active = current.sessions.get(key)
   if (active?._tag !== 'Live') throw new Error('Missing direction review session')
@@ -33,7 +33,7 @@ export const acceptDirection = (journal: Journal, project: Project, value: Direc
   if (!proposal) throw new Error('Missing direction to approve')
   const reviewing = yield* assignProposalReview(journal, proposal, active, submitted.state.read)
   const reviewed = yield* cliProposal(journal, reviewing.state, { ...line, move: 'review', input: { facts: evidence('Holds') } },
-    { _tag: 'Review', session: active, ...line, review: proposal.lastChange })
+    { _tag: 'Review', session: active, ...line, queuedIn: proposal.changedIn })
   const accepted = yield* cliProposal(journal, reviewed.state, { ...line, move: 'accept', input: {} })
   return existing ? accepted.state : (yield* observeSession(journal, accepted.state, key, 'Ended')).state
 })
@@ -52,7 +52,7 @@ export const activateTasks = (journal: Journal, project: Project, value?: Direct
   const authorized = yield* ownerInput(journal, { read: ready.read, ...line, move: 'next', input: { files } })
   const assigned = staffOf(authorized.state, authorized.state.roles.host)!
   return (yield* startSession(journal, authorized.state, {
-    key: boundHost, staff: assigned.key, pane: session.pane, staffing: staffingAt(authorized.state),
+    key: boundHost, staff: assigned.key, pane: session.pane, staffedIn: staffedIn(authorized.state),
   })).state
 })
 
@@ -100,7 +100,7 @@ export const artifactQuote = { _tag: 'Quote', file: 'artifact', lines: { first: 
 export const reviewAs = (project: Project, line = taskLine, live = session) => {
   const phase = project.tasks.get(line.key)?.phase
   if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing task review assignment')
-  return { _tag: 'Review', ...line, session: live, review: phase.assignment.review } as const
+  return { _tag: 'Review', ...line, session: live, queuedIn: phase.assignment.queuedIn } as const
 }
 
 export const reportReview = (

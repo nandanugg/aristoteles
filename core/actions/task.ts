@@ -32,7 +32,7 @@ export const taskBrief = (journal: Journal, key: Of<typeof TaskKey>): Effect.Eff
         const phase = task.phase
         if (actor.line === 'Task' && actor.key === key && phase._tag === 'Reviewing' &&
             phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === session.key &&
-            phase.assignment.review === actor.review) return task
+            phase.assignment.queuedIn === actor.queuedIn) return task
         return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current fresh review.')))
       }
       const staff = staffByKey(project, session.staff.key)

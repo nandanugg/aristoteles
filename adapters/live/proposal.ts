@@ -9,7 +9,7 @@ import type { Committed, Journal } from '../../core/services/project.ts'
 export interface Reviews {
   readonly reconcile: (project: Project) => Effect.Effect<void, Refusal>
   // The provider privately binds the child's credential to this run and the assignment event.
-  readonly open: (proposal: Proposal, session: LiveSession, review: Of<typeof EventNumber>) => Effect.Effect<void, Refusal>
+  readonly open: (proposal: Proposal, session: LiveSession, queuedIn: Of<typeof EventNumber>) => Effect.Effect<void, Refusal>
 }
 
 export const launchNextReview = (
@@ -22,7 +22,7 @@ export const launchNextReview = (
   const events = yield* journal.eventsAfter(ReadPosition.make(0))
   const next = nextProposalReview(project, events)
   if (!next) return null
-  const start = Effect.andThen(provider.open(next.proposal, next.session, next.proposal.lastChange),
+  const start = Effect.andThen(provider.open(next.proposal, next.session, next.proposal.changedIn),
     assignProposalReview(journal, next.proposal, next.session, project.read))
   return yield* Effect.uninterruptible(Effect.catch(start, (failure) =>
     Effect.andThen(Effect.flatMap(readOpenProject(journal), provider.reconcile), Effect.fail(failure)),

@@ -4,7 +4,7 @@ import { dirname } from 'node:path'
 import { Effect } from 'effect'
 import { acceptStaffing, cliProposal } from '../../src/store/proposal.probe.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
-import { staffingAt, PaneAddress, ProposalKey, Rationale, StaffSessionKey, TaskKey, refuse, type Of, type Project } from '../../core/schema/project.ts'
+import { staffedIn, PaneAddress, ProposalKey, Rationale, StaffSessionKey, TaskKey, refuse, type Of, type Project } from '../../core/schema/project.ts'
 import { open, staff, withJournal } from '../../src/store/project.probe.ts'
 import { activateTasks, boundHost, send } from '../../src/store/task.probe.ts'
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
@@ -31,8 +31,8 @@ test('concurrent launches use one lifetime, and unknown observations leave it li
     const key = StaffSessionKey.make('session:actual')
     const second = StaffSessionKey.make('session:duplicate')
     const outcomes = yield* Effect.all([
-      Effect.result(first.launch(staff.key, key, staffingAt(project))),
-      Effect.result(other.launch(staff.key, second, staffingAt(project))),
+      Effect.result(first.launch(staff.key, key, staffedIn(project))),
+      Effect.result(other.launch(staff.key, second, staffedIn(project))),
     ], { concurrency: 'unbounded' })
     expect(outcomes.map(({ _tag }) => _tag).sort()).toEqual(['Failure', 'Success'])
     expect(launched).toHaveLength(1)
@@ -64,13 +64,13 @@ test('a failed spawn keeps its reservation until retirement is confirmed', () =>
       child: () => Effect.void,
     }
     const operations = staffSessionOperations(dirname(path), journal, provider)
-    expect(yield* Effect.result(operations.launch(staff.key, failed, staffingAt(project))))
+    expect(yield* Effect.result(operations.launch(staff.key, failed, staffedIn(project))))
       .toMatchObject({ _tag: 'Failure', failure: { code: 'Unavailable' } })
     expect((yield* readOpenProject(journal)).sessions.get(failed)?._tag).toBe('Starting')
-    expect(yield* Effect.result(operations.launch(staff.key, replacement, staffingAt(project))))
+    expect(yield* Effect.result(operations.launch(staff.key, replacement, staffedIn(project))))
       .toMatchObject({ _tag: 'Failure', failure: { code: 'Unavailable' } })
     canStop = true
-    yield* operations.launch(staff.key, replacement, staffingAt(project))
+    yield* operations.launch(staff.key, replacement, staffedIn(project))
     const current = yield* readOpenProject(journal)
     expect(current.sessions.get(failed)?._tag).toBe('Ended')
     expect(current.sessions.get(replacement)?._tag).toBe('Live')
@@ -97,7 +97,7 @@ test('a paused assignment can move only after the owner confirms the old process
       observe: () => Effect.sync(() => observation),
       child: () => Effect.void,
     })
-    const live = yield* operations.launch(host.key, key, staffingAt(project))
+    const live = yield* operations.launch(host.key, key, staffedIn(project))
     const adopted = yield* acceptStaffing(journal, live.state, expanded)
     // Review the move while the host can still supply its reviewer.
     expect(yield* Effect.result(acceptStaffing(journal, adopted, plan)))
@@ -145,8 +145,8 @@ test('the live adapter serializes child starts across roles assigned to one staf
     yield* send(journal, (yield* readOpenProject(journal)).read, host.key, project.roles.host)
     yield* send(journal, (yield* readOpenProject(journal)).read, pipeline.key, project.roles.pipeline)
     const outcomes = yield* Effect.all([
-      Effect.result(operations.child(key, host.key, 'Work', staffingAt(project))),
-      Effect.result(operations.child(key, pipeline.key, 'Work', staffingAt(project))),
+      Effect.result(operations.child(key, host.key, 'Work', staffedIn(project))),
+      Effect.result(operations.child(key, pipeline.key, 'Work', staffedIn(project))),
     ], { concurrency: 'unbounded' })
     expect(outcomes.map(({ _tag }) => _tag).sort()).toEqual(['Failure', 'Success'])
     expect(started).toBe(1)
@@ -184,12 +184,12 @@ test('a child launched against a replaced plan is reconciled and can try again o
     const operations = staffSessionOperations(dirname(path), journal, provider)
     const key = boundHost
     yield* send(journal, (yield* readOpenProject(journal)).read, task.key)
-    expect(yield* Effect.result(operations.child(key, task.key, 'Work', staffingAt(project))))
+    expect(yield* Effect.result(operations.child(key, task.key, 'Work', staffedIn(project))))
       .toMatchObject({ _tag: 'Failure', failure: { code: 'Stale' } })
     expect(stopped).toBe(1)
     const current = yield* readOpenProject(journal)
     expect(current.tasks.get(task.key)?.phase._tag).toBe('Sent')
-    yield* operations.child(key, task.key, 'Work', staffingAt(current))
+    yield* operations.child(key, task.key, 'Work', staffedIn(current))
     expect((yield* readOpenProject(journal)).tasks.get(task.key)?.phase._tag).toBe('Working')
     expect(stopped).toBe(1)
   }))),

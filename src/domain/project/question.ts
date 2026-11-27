@@ -48,12 +48,12 @@ const QuestionState = Schema.Union([
 ])
 export const Question = Schema.Struct({
   key: QuestionKey, from: StoredActor, to: recipient, text: QuestionText, form: QuestionForm, state: QuestionState,
-  lastChange: EventNumber,
+  changedIn: EventNumber,
 })
 export type Question = Of<typeof Question>
 
 export const currentQuestion = (proposal: Proposal, question: Question) =>
-  proposal.phase._tag === 'Drafting' && question.lastChange > proposal.lastChange ? question : undefined
+  proposal.phase._tag === 'Drafting' && question.changedIn > proposal.changedIn ? question : undefined
 
 export const actorFor = (project: Project, actor: StoredActor): Question['to'] | undefined => {
   if (actor._tag === 'Human') return actor

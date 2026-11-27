@@ -9,7 +9,7 @@ import { projectEvents, projectSnapshot, projectSubmission } from '../../adapter
 import { open, session, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
 import { artifactQuote, commandOutcomes, promptDirection, reportReview, resultInput, reviewAs, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
-import { CommandOutcome, Direction, Rationale, RetryLimit as RetryLimitValue, refuse, StaffSessionKey, staffingAt } from '../schema/project.ts'
+import { CommandOutcome, Direction, Rationale, RetryLimit as RetryLimitValue, refuse, StaffSessionKey, staffedIn } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
 import { Authority, RetryLimit, type AuthenticatedActor } from './project.ts'
 import { readOpenProject, startChild } from './staff-session.ts'
@@ -170,7 +170,7 @@ test('two schedulers open only one fresh child and the waiting phase survives a 
       }),
     }
     const tryChild = (store: typeof journal) => staffSessionOperations(dirname(path), store, provider)
-      .child(session.key, taskLine.key, 'Review', staffingAt(entered))
+      .child(session.key, taskLine.key, 'Review', staffedIn(entered))
     expect(yield* Effect.result(tryChild(journal))).toMatchObject(refused('Unavailable'))
     expect(cleaned).toBe(true)
     expect(yield* journal.eventsAfter(entered.read)).toEqual([])

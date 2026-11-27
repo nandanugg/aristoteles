@@ -34,19 +34,19 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     if (staff.subagents === 0) return Result.fail(refuse('StaffingMinimum', Rationale.make('The onboarding host needs a subagent.')))
     return Result.succeed({
       owner, roles: { host, pipeline, work: new Map(input.roles.map((role) => [role.key, role])) },
-      openedAt: number,
+      openedIn: number,
       staffing: { _tag: 'Staffing', staff: new Map([[staff.key, staff]]), subscriptions: new Map([[subscription.key, subscription]]) },
       proposals: new Map(), sessions: new Map(), tasks: new Map(), questions: new Map(),
-      status: { _tag: 'Open' }, activation: { _tag: 'Onboarding' }, lastChange: number,
+      status: { _tag: 'Open' }, activation: { _tag: 'Onboarding' }, changedIn: number,
       read: ReadPosition.make(number),
     })
   }
   if (project?.status._tag !== event.from) return wrongMove()
   if (actor._tag !== 'Human') return wrongActor()
-  if (project.lastChange > read) return stale()
+  if (project.changedIn > read) return stale()
   if (edge(projectLine, event.from, event.move, 'Ended') !== 'Allowed' ||
       [...project.sessions.values()].some((session) => session._tag !== 'Ended')) return wrongMove()
-  return Result.succeed({ ...project, status: { _tag: 'Ended', at: number }, lastChange: number })
+  return Result.succeed({ ...project, status: { _tag: 'Ended', endedIn: number }, changedIn: number })
 }
 
 const sameApprovedProposals = Schema.toEquivalence(Schema.NonEmptyArray(versionOf(ProposalValue)))
@@ -58,21 +58,21 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   const { key, actor, number, read, input: draft } = event
   const activation = activeWork(project)
   if (!activation) return wrongMove()
-  if (activation.work.at > read) return stale()
+  if (activation.work.startedIn > read) return stale()
   if (actor._tag !== 'Session' || actor.key !== boundHostSession(project)?.key) return retired()
   if (project.tasks.has(key)) return stale()
   const role = roleOf(project, draft.stages[0].role.key)
   const reviewer = roleOf(project, draft.reviewer.key)
   if (!role || !reviewer) return wrongActor()
-  if (role.responsibility.acceptedAt > read || reviewer.responsibility.acceptedAt > read ||
+  if (role.responsibility.acceptedIn > read || reviewer.responsibility.acceptedIn > read ||
       !sameRole(reviewer, draft.reviewer)) return stale()
   const direction = draft.direction
   const proposals = [...project.proposals.values()]
-  if (direction.acceptedAt > read || !proposals.some(({ phase }) =>
+  if (direction.acceptedIn > read || !proposals.some(({ phase }) =>
     phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' &&
     sameDirection({ ...phase.version, value: phase.version.value }, direction)) ||
     proposals.some(({ phase, basis }) => phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' &&
-      basis._tag === 'Version' && basis.version.acceptedAt === direction.acceptedAt)) return stale()
+      basis._tag === 'Version' && basis.version.acceptedIn === direction.acceptedIn)) return stale()
   const source = direction.value.stages
   const offset = source.findIndex((_, index) => draft.stages.every((stage, delta) =>
     source[index + delta] !== undefined && equalStage(source[index + delta]!, stage)))
@@ -83,7 +83,7 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   tasks.set(key, {
     key, name: draft.name, goal: draft.goal, reviewer, direction,
     stages: [{ ...first, role }, ...rest.map((stage) => ({ ...stage, role }))], facts: draft.facts, questions: new Map(),
-    phase: { _tag: 'Sent', retryCount: RetryCount.make(0), feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, lastChange: number,
+    phase: { _tag: 'Sent', retryCount: RetryCount.make(0), feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, changedIn: number,
   })
   return Result.succeed({ ...project, tasks })
 }
@@ -94,28 +94,28 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
   if (actor._tag !== 'Human') return wrongActor()
   const sessions = new Map(project.sessions)
   if (event.from === null) {
-    const { staff, staffing } = event.input
-    if (read < staffing || sessions.has(key)) return stale()
-    return Result.map(sessionMayStart(project, staff.key, staffing), (assigned) => {
-      sessions.set(key, { _tag: 'Starting', key, staff: assigned, startedAt: number, lastChange: number })
+    const { staff, staffedIn } = event.input
+    if (read < staffedIn || sessions.has(key)) return stale()
+    return Result.map(sessionMayStart(project, staff.key, staffedIn), (assigned) => {
+      sessions.set(key, { _tag: 'Starting', key, staff: assigned, startedIn: number, changedIn: number })
       return { ...project, sessions }
     })
   }
   const previous = sessions.get(key)
   if (!previous) return retired()
-  if (read < previous.lastChange) return stale()
+  if (read < previous.changedIn) return stale()
   if (previous._tag !== event.from) return wrongMove()
   if (event.from === 'Starting') {
     if (previous._tag !== 'Starting') return wrongMove()
-    const { key, staff, startedAt } = previous
+    const { key, staff, startedIn } = previous
     if (event.move === 'cancel') {
-      sessions.set(key, { _tag: 'Ended', key, staff, startedAt, lastChange: number })
+      sessions.set(key, { _tag: 'Ended', key, staff, startedIn, changedIn: number })
       return Result.succeed({ ...project, sessions })
     }
     const activation = project.activation
     const host = staffOf(project, project.roles.host)
     if (activation._tag === 'RollingBack' && host?.key === staff.key) return wrongMove()
-    const live: LiveSession = { _tag: 'Live', key, staff, startedAt: number, lastChange: number, pane: event.input.pane }
+    const live: LiveSession = { _tag: 'Live', key, staff, startedIn: number, changedIn: number, pane: event.input.pane }
     sessions.set(key, live)
     let next = activation
     if (activation._tag === 'Activating' && host?.key === staff.key) {
@@ -124,19 +124,19 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
       next = { ...activation, _tag: 'Active', work: { _tag: 'NotStarted' } }
     }
     if (activation._tag === 'Active' && host?.key === staff.key && activation.work._tag !== 'NotStarted' &&
-        startedAt < activation.work.at) return wrongMove()
+        startedIn < activation.work.startedIn) return wrongMove()
     return Result.succeed({ ...project, sessions, activation: next,
-      lastChange: next !== activation ? number : project.lastChange })
+      changedIn: next !== activation ? number : project.changedIn })
   }
   const { observed } = event.input
   if (edge(sessionLine, previous._tag, event.move, observed) !== 'Allowed' ||
       (previous._tag !== 'Live' && previous._tag !== 'Paused')) return wrongMove()
   if (observed !== 'Ended') {
-    sessions.set(key, { ...previous, _tag: observed, lastChange: number })
+    sessions.set(key, { ...previous, _tag: observed, changedIn: number })
     return Result.succeed({ ...project, sessions })
   }
-  const { staff, startedAt } = previous
-  sessions.set(key, { _tag: 'Ended', key, staff, startedAt, lastChange: number })
+  const { staff, startedIn } = previous
+  sessions.set(key, { _tag: 'Ended', key, staff, startedIn, changedIn: number })
   const tasks = new Map(project.tasks)
   const proposals = new Map(project.proposals)
   for (const [key, task] of tasks) {
@@ -146,13 +146,13 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
       if (Result.isSuccess(restarted)) tasks.set(key, restarted.success)
     }
     if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key) {
-      tasks.set(key, { ...task, phase: { ...phase, assignment: { _tag: 'Waiting' } }, lastChange: number })
+      tasks.set(key, { ...task, phase: { ...phase, assignment: { _tag: 'Waiting' } }, changedIn: number })
     }
   }
   for (const [key, proposal] of proposals) {
     const phase = proposal.phase
     if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key)
-      proposals.set(key, { ...proposal, phase: { _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, lastChange: number })
+      proposals.set(key, { ...proposal, phase: { _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, changedIn: number })
   }
   return Result.succeed({ ...project, sessions, tasks, proposals })
 }
@@ -168,16 +168,16 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
       if (existing) return stale()
       const { to: recipient, text, form } = event.input
       if (recipient._tag === 'Staff' && !staffByKey(project, recipient.key)) return wrongActor()
-      return store({ key, from: event.actor, to: recipient, text, form, state: { _tag: 'Open' }, lastChange: number })
+      return store({ key, from: event.actor, to: recipient, text, form, state: { _tag: 'Open' }, changedIn: number })
     }
     if (!existing) return wrongMove()
     if (!sameActor(existing.to, actor)) return wrongActor()
-    if (existing.lastChange > read) return stale()
+    if (existing.changedIn > read) return stale()
     if (edge(questionLine, existing.state._tag, event.move, 'Answered') !== 'Allowed') return wrongMove()
     const { answer } = event.input
     if (!answerFor(existing.form, answer))
       return Result.fail(refuse('InvalidInput', Rationale.make('The answer does not match this question’s form.')))
-    return store({ ...existing, state: { _tag: 'Answered', by: event.actor, answer }, lastChange: number })
+    return store({ ...existing, state: { _tag: 'Answered', by: event.actor, answer }, changedIn: number })
   }
   switch (owner._tag) {
     case 'Project':
@@ -185,7 +185,7 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
     case 'Task': {
       const task = project.tasks.get(owner.key)
       if (!task) return wrongMove()
-      if (event.from === null && task.lastChange > read) return stale()
+      if (event.from === null && task.changedIn > read) return stale()
       return Result.map(move(task.questions), (questions) => ({
         ...project, tasks: new Map(project.tasks).set(owner.key, { ...task, questions }),
       }))
@@ -196,7 +196,7 @@ const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Resul
       if (event.from === null) {
         if (actor._tag !== 'Staff' || actor.key !== staffOf(project, project.roles.host)?.key || event.input.to._tag !== 'Human')
           return wrongActor()
-        if (proposal.phase._tag !== 'Drafting' || proposal.lastChange > read ||
+        if (proposal.phase._tag !== 'Drafting' || proposal.changedIn > read ||
             [...proposal.questions.values()].some((question) => currentQuestion(proposal, question))) return stale()
       } else {
         const existing = proposal.questions.get(key)
@@ -219,7 +219,7 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   if (event.actor._tag === 'Session') {
     const session = state && liveSession(state, event.actor.key)
     if (!session) return retired()
-    if (session.lastChange > event.read)
+    if (session.changedIn > event.read)
       return Result.fail(refuse('Stale', Rationale.make('The session changed. Run work wait before trying again.')))
   }
   const updated = event.line === 'Project' ? applyProjectMove(state, event) : ((): Result.Result<Project, Refusal> => {

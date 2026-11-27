@@ -32,7 +32,7 @@ export const runTaskCommands = (
   for (const [index, rule] of taskRules(task).entries()) {
     const command = rule.verification
     if (command._tag !== 'Command') continue
-    const receipt = { directory: journal.directory, database: journal.database, result: result.at, slot: OptionIndex.make(index), rule }
+    const receipt = { directory: journal.directory, database: journal.database, reportedIn: result.reportedIn, slot: OptionIndex.make(index), rule }
     let capture = yield* commands.read(receipt)
     if (capture._tag === 'NotStarted') {
       yield* commands.files(result.files)
@@ -59,10 +59,10 @@ export const taskCommandBlock = (
   const project = yield* readOpenProject(journal)
   const task = project.tasks.get(key)
   if (task?.phase._tag !== 'ReadyToReview') return null
-  const { at } = task.phase.result
+  const { reportedIn } = task.phase.result
   for (const [index, rule] of taskRules(task).entries()) {
     if (rule.verification._tag !== 'Command') continue
-    const state = yield* commands.read({ directory: journal.directory, database: journal.database, result: at, slot: OptionIndex.make(index), rule })
+    const state = yield* commands.read({ directory: journal.directory, database: journal.database, reportedIn, slot: OptionIndex.make(index), rule })
     if (state._tag === 'Running') return blocked().why
   }
   return null
@@ -70,16 +70,16 @@ export const taskCommandBlock = (
 
 // A provider can recover an exact capture after losing the response to an issued command.
 export const recoverTaskCommand = (
-  journal: Journal, key: Of<typeof TaskKey>, result: Of<typeof EventNumber>,
+  journal: Journal, key: Of<typeof TaskKey>, reportedIn: Of<typeof EventNumber>,
   outcome: CommandOutcome, commands: TaskCommands,
 ): Effect.Effect<void, Refusal> => Effect.gen(function* () {
   const project = yield* readOpenProject(journal)
   const task = project.tasks.get(key)
-  if (task?.phase._tag !== 'ReadyToReview' || task.phase.result.at !== result)
+  if (task?.phase._tag !== 'ReadyToReview' || task.phase.result.reportedIn !== reportedIn)
     return yield* Effect.fail(refuse('Stale', Rationale.make('The committed work result has changed.')))
   if (!Schema.is(CommandOutcome)(outcome)) return yield* Effect.fail(invalid())
   const matches = taskRules(task).flatMap((rule, index) => JSON.stringify(rule) === JSON.stringify(outcome.rule)
-    ? [{ directory: journal.directory, database: journal.database, result, slot: OptionIndex.make(index), rule: outcome.rule }] : [])
+    ? [{ directory: journal.directory, database: journal.database, reportedIn, slot: OptionIndex.make(index), rule: outcome.rule }] : [])
   const running: CommandRecord[] = []
   for (const receipt of matches) {
     if ((yield* commands.read(receipt))._tag === 'Running') running.push(receipt)

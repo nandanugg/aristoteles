@@ -34,7 +34,7 @@ export const questionsFor = (project: Project, authority: LiveSession | Of<typeo
     ...[...project.proposals.values()].flatMap((proposal) => due({ _tag: 'Proposal', key: proposal.key },
       [...proposal.questions.values()].filter((question) => currentQuestion(proposal, question)))),
     ...[...project.tasks.values()].flatMap((task) => due({ _tag: 'Task', key: task.key }, task.questions.values())),
-  ].sort((a, b) => a.question.lastChange - b.question.lastChange)
+  ].sort((a, b) => a.question.changedIn - b.question.changedIn)
 }
 
 export const acceptedDirections = (project: Project) => {
@@ -42,8 +42,8 @@ export const acceptedDirections = (project: Project) => {
     phase._tag === 'Accepted' && phase.version.value._tag === 'Direction'
       ? [{ version: { ...phase.version, value: phase.version.value }, basis }] : [],
   )
-  const superseded = new Set(accepted.flatMap(({ basis }) => basis._tag === 'Version' ? [basis.version.acceptedAt] : []))
-  return accepted.map(({ version }) => version).filter(({ acceptedAt }) => !superseded.has(acceptedAt))
+  const superseded = new Set(accepted.flatMap(({ basis }) => basis._tag === 'Version' ? [basis.version.acceptedIn] : []))
+  return accepted.map(({ version }) => version).filter(({ acceptedIn }) => !superseded.has(acceptedIn))
 }
 
 export const nextStep = (
@@ -52,9 +52,9 @@ export const nextStep = (
   if (project.status._tag === 'Ended') return { _tag: 'Awaiting' }
   const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
   // Starting up and opening a review can produce engine events under the session's key.
-  if (current && on !== Number(current.startedAt) && !events.some(({ actor, move, line }) =>
+  if (current && on !== Number(current.startedIn) && !events.some(({ actor, move, line }) =>
     actor._tag === 'Session' && actor.key === current.key && move !== 'assign' && !(line === 'Activation' && move === 'use'),
-  )) return { _tag: 'Introduction', subject: project, read: ReadPosition.make(current.startedAt) }
+  )) return { _tag: 'Introduction', subject: project, read: ReadPosition.make(current.startedIn) }
   const [question] = questionsFor(project, authority)
   const owes = (task: Task): boolean => {
     if (!current || !activeWork(project)) return false
@@ -85,6 +85,6 @@ export const nextStep = (
       for: actor?._tag === 'Human' ? 'Choose' : 'Report', read: project.read })
   }
   const since = ({ subject }: typeof due[number]) =>
-    (subject._tag === 'Task' ? subject.task : subject._tag === 'Question' ? subject.question : subject.proposal).lastChange
+    (subject._tag === 'Task' ? subject.task : subject._tag === 'Question' ? subject.question : subject.proposal).changedIn
   return due.sort((left, right) => since(left) - since(right))[0] ?? { _tag: 'Awaiting' }
 }

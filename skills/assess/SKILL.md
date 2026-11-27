@@ -20,7 +20,7 @@ host: &host
   name: Host
   responsibility:
     number: 1
-    acceptedAt: 1
+    acceptedIn: 1
     value:
       summary: Send scoped work
       introduction: Read the project and establish the scope.

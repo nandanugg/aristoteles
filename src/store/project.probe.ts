@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { Effect, Schema } from 'effect'
 import { acknowledgeSession, reserveSession } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'
-import { boundHostSession, staffingAt,
+import { boundHostSession, staffedIn,
   Human, LiveSession, ReadPosition, Role, Staff, Subscription, Rationale, refuse,
   type EventNumber, type Pane, type Refusal, type Project, type StaffKey, type StaffSessionKey,
   staffByKey, type Of, type Projection, type StoredActor,
@@ -18,7 +18,7 @@ export const role = (name: 'host' | 'pipeline' | 'maker') => Schema.decodeUnknow
   key: 'role:' + name,
   name,
   responsibility: {
-    number: 1, acceptedAt: 1,
+    number: 1, acceptedIn: 1,
     value: { summary: 'Review work', introduction: 'Start with the evidence', duties: ['Check output'] },
   },
 })
@@ -35,7 +35,7 @@ export const staff = Schema.decodeUnknownSync(Staff)({
   model: 'test-model', launch: 'agent', why: 'Read the evidence', subscription: { key: subscription.key },
 })
 export const session = Schema.decodeUnknownSync(LiveSession)({
-  _tag: 'Live', key: 'session:' + '1'.repeat(32), staff, startedAt: 1, lastChange: 1, pane: { address: '%2' },
+  _tag: 'Live', key: 'session:' + '1'.repeat(32), staff, startedIn: 1, changedIn: 1, pane: { address: '%2' },
 })
 export const ownerInput = (journal: Journal, input: unknown) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
@@ -54,7 +54,7 @@ export const startFixtureSession = (journal: Journal, state: Projection, live = 
       event.key === live.key && event.from === 'Starting' && event.move === 'next')!,
   }))
   return startSession(journal, state, {
-    key: live.key, staff: live.staff.key, pane: live.pane, staffing: staffingAt(state),
+    key: live.key, staff: live.staff.key, pane: live.pane, staffedIn: staffedIn(state),
   })
 }
 
@@ -72,12 +72,12 @@ export const open = (path: string, mode: 'Read' | 'Create' = 'Create', directory
 export const startSession = (
   journal: Journal, project: Project, session: {
     readonly key: Of<typeof StaffSessionKey>; readonly staff: Of<typeof StaffKey>
-    readonly pane: Of<typeof Pane>; readonly staffing: Of<typeof EventNumber>
+    readonly pane: Of<typeof Pane>; readonly staffedIn: Of<typeof EventNumber>
   },
 ): Effect.Effect<Committed, Refusal> => Effect.gen(function* () {
   const staff = staffByKey(project, session.staff)
   if (!staff) return yield* Effect.fail(refuse('WrongActor', Rationale.make('Staffing does not include that staff.')))
   const address = session.key
-  const reserved = yield* reserveSession(journal, project, address, staff, session.staffing)
+  const reserved = yield* reserveSession(journal, project, address, staff, session.staffedIn)
   return yield* acknowledgeSession(journal, reserved.state, address, session.pane)
 })

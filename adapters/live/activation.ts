@@ -7,7 +7,7 @@ import type { AuthenticatedActor } from '../../core/actions/project.ts'
 import { observeActivation, recordHostUse } from '../../core/actions/project-activation.ts'
 import { acknowledgeSession, cancelSession, observeSession, readOpenProject, reserveSession } from '../../core/actions/staff-session.ts'
 import {
-  ApprovedFiles, HostCredential, LaunchNonce, LaunchVerifier, PaneAddress, Rationale, StaffSessionKey, boundHostSession, hostSession, hostReplacement, staffingAt, staffOf, refuse,
+  ApprovedFiles, HostCredential, LaunchNonce, LaunchVerifier, PaneAddress, Rationale, StaffSessionKey, boundHostSession, hostSession, hostReplacement, staffedIn, staffOf, refuse,
   type ApprovedFile, type EventNumber, type Of, type Pane, type Project, type Refusal, type Staff, type LiveSession,
 } from '../../core/schema/project.ts'
 import { projectLock, digest } from '../../core/services/project.ts'
@@ -125,7 +125,7 @@ export const projectActivationOperations = (
     if (phase._tag !== 'RollingBack') return yield* Effect.fail(wrong())
     yield* protectedIO(() => {
       for (const file of phase.files) {
-        const outcome = restoreFile(dir, projectOriginals(journal.directory, phase.at), entry(file))
+        const outcome = restoreFile(dir, projectOriginals(journal.directory, phase.approvedIn), entry(file))
         if (outcome._tag === 'Unsafe' || outcome._tag === 'NoOriginal') throw new Error('Cannot restore the approved image')
       }
     })
@@ -145,13 +145,13 @@ export const projectActivationOperations = (
         if (previous._tag === 'Live' && phase._tag === 'Active' && (yield* provider.observe(previous.key)) !== 'Ended')
           return yield* Effect.fail(wrong())
         yield* stop(previous.key)
-        yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.at, projectLaunch(previous.key)))
+        yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(previous.key)))
         const retired = previous._tag === 'Starting'
           ? yield* cancelSession(journal, project, previous.key)
           : yield* observeSession(journal, project, previous.key, 'Ended')
         state = retired.state
       }
-      return yield* reserveSession(journal, state, key, staff, staffingAt(state))
+      return yield* reserveSession(journal, state, key, staff, staffedIn(state))
     })),
     mark: locked((project) => Effect.gen(function* () {
       const phase = project.activation
@@ -159,7 +159,7 @@ export const projectActivationOperations = (
       yield* checkFiles(phase.files, 'Optional')
       yield* protectedIO(() => {
         for (const file of phase.files) {
-          const outcome = markFile(dir, projectOriginals(journal.directory, phase.at), entry(file))
+          const outcome = markFile(dir, projectOriginals(journal.directory, phase.approvedIn), entry(file))
           if (outcome._tag !== 'Written' && outcome._tag !== 'Done') throw new Error('Marking was interrupted')
         }
       })
@@ -173,12 +173,12 @@ export const projectActivationOperations = (
       if (observed !== 'Ended') return yield* Effect.fail(unavailable())
       const nonce = yield* protectedIO(() => {
         const key = projectLaunch(launch.key)
-        if (proof(phase.at, launch.key, 'nonce') !== null) throw new Error('An ended launch requires a fresh reservation')
+        if (proof(phase.approvedIn, launch.key, 'nonce') !== null) throw new Error('An ended launch requires a fresh reservation')
         const privateNonce = LaunchNonce.make(randomBytes(32).toString('hex'))
         const secret = HostCredential.make('host.' + randomBytes(32).toString('hex'))
-        writeProjectLaunchFile(dir, journal.directory, phase.at, key, 'nonce', privateNonce)
-        writeProjectLaunchFile(dir, journal.directory, phase.at, key, 'secret', secret)
-        writeProjectLaunchFile(dir, journal.directory, phase.at, key, 'verifier', LaunchVerifier.make(digest(secret)))
+        writeProjectLaunchFile(dir, journal.directory, phase.approvedIn, key, 'nonce', privateNonce)
+        writeProjectLaunchFile(dir, journal.directory, phase.approvedIn, key, 'secret', secret)
+        writeProjectLaunchFile(dir, journal.directory, phase.approvedIn, key, 'verifier', LaunchVerifier.make(digest(secret)))
         return privateNonce
       })
       yield* provider.spawn(launch.key, nonce, launch.staff)
@@ -188,7 +188,7 @@ export const projectActivationOperations = (
       const launch = candidate(project)
       if ((phase._tag !== 'Activating' && phase._tag !== 'Active') || launch?.key !== key)
         return yield* Effect.fail(retired())
-      if (!(yield* protectedIO(() => matches(proof(phase.at, key, 'nonce'), nonce)))) return yield* Effect.fail(retired())
+      if (!(yield* protectedIO(() => matches(proof(phase.approvedIn, key, 'nonce'), nonce)))) return yield* Effect.fail(retired())
       const pane = yield* currentPane(key)
       yield* checkFiles(phase.files, 'Required')
       return yield* acknowledgeSession(journal, project, key, pane)
@@ -203,7 +203,7 @@ export const projectActivationOperations = (
         let state = project
         if (launch?._tag === 'Starting') {
           yield* stop(launch.key)
-          yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.at, projectLaunch(launch.key)))
+          yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(launch.key)))
           state = (yield* cancelSession(journal, project, launch.key)).state
         }
         return yield* observeActivation(journal, state, { line: 'Activation', from: 'RollingBack', move: 'back', input: {} })
@@ -213,13 +213,13 @@ export const projectActivationOperations = (
       if (launch._tag === 'Starting') {
         if (phase.work._tag === 'NotStarted' && (yield* provider.observe(launch.key)) !== 'Ended') return null
         yield* stop(launch.key)
-        yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.at, projectLaunch(launch.key)))
+        yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(launch.key)))
         return yield* cancelSession(journal, project, launch.key)
       }
       yield* protectedIO(() => {
         for (const previous of project.sessions.values()) {
-          if (previous._tag === 'Ended' && previous.staff.key === staffOf(project, project.roles.host)?.key && previous.startedAt > phase.at)
-            removeProjectLaunch(dir, journal.directory, phase.at, projectLaunch(previous.key))
+          if (previous._tag === 'Ended' && previous.staff.key === staffOf(project, project.roles.host)?.key && previous.startedIn > phase.approvedIn)
+            removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(previous.key))
         }
       })
       return null
@@ -229,8 +229,8 @@ export const projectActivationOperations = (
       const binding = boundHostSession(project)
       if (phase._tag !== 'Active' || !binding || binding.key !== key || phase.work._tag === 'Used') return yield* Effect.fail(retired())
       yield* confirmBoundPane(binding)
-      return yield* Effect.flatMap(protectedIO(() => matches(proof(phase.at, key, 'nonce'), nonce)
-        ? proof(phase.at, key, 'secret') : null),
+      return yield* Effect.flatMap(protectedIO(() => matches(proof(phase.approvedIn, key, 'nonce'), nonce)
+        ? proof(phase.approvedIn, key, 'secret') : null),
       (value) => Schema.is(HostCredential)(value) ? Effect.succeed(value) : Effect.fail(retired()))
     })),
     authenticate: (key, credential) => locked((project) => Effect.gen(function* () {
@@ -238,10 +238,10 @@ export const projectActivationOperations = (
       const binding = boundHostSession(project)
       if (phase._tag !== 'Active' || !binding || binding.key !== key || phase.work._tag === 'NotStarted') return yield* Effect.fail(retired())
       yield* confirmBoundPane(binding)
-      if (!(yield* protectedIO(() => matches(proof(phase.at, key, 'verifier'), digest(credential)))))
+      if (!(yield* protectedIO(() => matches(proof(phase.approvedIn, key, 'verifier'), digest(credential)))))
         return yield* Effect.fail(retired())
       const active = phase.work._tag === 'Started' ? (yield* recordHostUse(journal, project, key)).state : project
-      yield* protectedIO(() => retireProjectLaunchSecret(dir, journal.directory, phase.at, projectLaunch(key)))
+      yield* protectedIO(() => retireProjectLaunchSecret(dir, journal.directory, phase.approvedIn, projectLaunch(key)))
       return active
     })),
   }

@@ -94,7 +94,17 @@ Use the name a person or agent can understand on its own. Read a state label wit
 | Time | rename to Timestamp | It marks the instant an act happened. |
 | Seq | rename to EventNumber | The number gives the stored event’s place in journal order. |
 | Cursor, journal basis, --on | rename to ReadPosition | It names the journal position the actor saw before acting. |
-| changed | rename to LastChangeNumber | The number marks the most recent journal event that changed the record. |
+| lastChange | rename to changedIn | The number marks the latest event that changed the record. |
+| openedAt | rename to openedIn | The project opened in this event. |
+| startedAt, Started.at | rename to startedIn | The session or project work started in this event. |
+| Result.at | rename to reportedIn | The result was reported in this event. |
+| Activation.at | rename to approvedIn | The owner approved activation in this event. |
+| Used.usedAt | rename to usedIn | The bound host first used its credential in this event. |
+| Ended.at | rename to endedIn | The project ended in this event. |
+| acceptedAt | rename to acceptedIn | The owner accepted this version in this event. |
+| staffing basis | use staffedIn | The effective staffing was established in this event. |
+| review basis | use queuedIn | The task or proposal entered its current waiting place in this event. |
+| StoredEvent.at | keep | Wall time of the event. |
 | Epoch | rename to AuthorityGeneration | A generation distinguishes current authority to act from authority that has been replaced. |
 | tries | rename to RetryCount | The count increases when the same attempt returns to work with review points. |
 | Worker generation | keep | It identifies which lifetime of a worker a turn or allocation belongs to. |

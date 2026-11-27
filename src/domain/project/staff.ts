@@ -1,5 +1,5 @@
 import { Result, Schema } from 'effect'
-import { rolesOf, roleOf, staffingAt } from './roles.ts'
+import { rolesOf, roleOf, staffedIn } from './roles.ts'
 import { versionOf } from './version.ts'
 import type { Project } from './records.ts'
 import {
@@ -33,7 +33,7 @@ export const Staff = Schema.TaggedStruct('Staff', {
 export type Staff = Of<typeof Staff>
 export type Subscription = Of<typeof Subscription>
 export const Pane = Schema.Struct({ address: PaneAddress })
-const sessionFields = { key: StaffSessionKey, staff: Staff, startedAt: EventNumber, lastChange: EventNumber }
+const sessionFields = { key: StaffSessionKey, staff: Staff, startedIn: EventNumber, changedIn: EventNumber }
 const Paused = Schema.TaggedStruct('Paused', { ...sessionFields, pane: Pane })
 export const Starting = Schema.TaggedStruct('Starting', sessionFields)
 export const LiveSession = Schema.TaggedStruct('Live', { ...sessionFields, pane: Pane })
@@ -74,7 +74,7 @@ export const liveSession = (project: Project, key: Of<typeof StaffSessionKey>): 
 export const latestSession = (project: Project, staff: Staff): StaffSession | undefined => {
   let latest: StaffSession | undefined
   for (const session of project.sessions.values()) {
-    if (session.staff.key === staff.key && (!latest || session.startedAt > latest.startedAt)) latest = session
+    if (session.staff.key === staff.key && (!latest || session.startedIn > latest.startedIn)) latest = session
   }
   return latest
 }
@@ -157,9 +157,9 @@ export const validateStaffing = (
 }
 
 export const sessionMayStart = (
-  project: Project, key: Of<typeof StaffKey>, staffing: Of<typeof EventNumber>,
+  project: Project, key: Of<typeof StaffKey>, basis: Of<typeof EventNumber>,
 ): Result.Result<Staff, Refusal> => {
-  if (staffing !== staffingAt(project)) return Result.fail(refuse('Stale', Rationale.make('Staffing changed before launch.')))
+  if (staffedIn(project) !== basis) return Result.fail(refuse('Stale', Rationale.make('Staffing changed before launch.')))
   const staff = staffByKey(project, key)
   if (!staff) return Result.fail(refuse('WrongActor', Rationale.make('Staffing does not include that staff.')))
   const latest = latestSession(project, staff)

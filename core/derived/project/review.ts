@@ -8,7 +8,7 @@ export const hostQueue = (project: Project, events: readonly StoredEvent[]): rea
   }
   return [...project.proposals.values()].filter(({ phase }) => phase._tag === 'Reviewing' &&
     phase.assignment._tag === 'Waiting' && project.status._tag === 'Open')
-    .sort((a, b) => (entries.get(a.key) ?? a.lastChange) - (entries.get(b.key) ?? b.lastChange))
+    .sort((a, b) => (entries.get(a.key) ?? a.changedIn) - (entries.get(b.key) ?? b.changedIn))
 }
 
 export const nextProposalReview = (

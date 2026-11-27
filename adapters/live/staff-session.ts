@@ -4,7 +4,7 @@ import {
   acknowledgeSession, cancelSession, observeSession, readOpenProject, reserveSession, staffAuthority, startChild,
 } from '../../core/actions/staff-session.ts'
 import {
-  Rationale, refuse, sessionMayStart, latestSession, staffByKey, staffOf, staffingAt, taskRole, subagentCapacity, activeWork,
+  Rationale, refuse, sessionMayStart, latestSession, staffByKey, staffOf, staffedIn, taskRole, subagentCapacity, activeWork,
   type EventNumber, type LiveSession, type StaffSession, type Of, type Pane, type Project, type Refusal,
   type StaffSessionKey, type Staff, type StaffKey, type TaskKey,
 } from '../../core/schema/project.ts'
@@ -19,17 +19,17 @@ export interface Sessions {
   readonly stop: (session: Exclude<StaffSession, { _tag: 'Ended' }>) => Effect.Effect<void, Refusal>
   readonly observe: (session: Exclude<StaffSession, { _tag: 'Ended' }>) => Effect.Effect<'Running' | 'Unknown' | 'Paused' | 'Ended', Refusal>
   readonly child: (session: LiveSession, taskKey: Of<typeof TaskKey>,
-    work: { readonly _tag: 'Work' } | { readonly _tag: 'Review'; readonly review: Of<typeof EventNumber> }) => Effect.Effect<void, Refusal>
+    work: { readonly _tag: 'Work' } | { readonly _tag: 'Review'; readonly queuedIn: Of<typeof EventNumber> }) => Effect.Effect<void, Refusal>
 }
 
 export interface StaffSessionOperations {
   readonly launch: (
-    staff: Of<typeof StaffKey>, key: Of<typeof StaffSessionKey>, staffing: Of<typeof EventNumber>,
+    staff: Of<typeof StaffKey>, key: Of<typeof StaffSessionKey>, staffedIn: Of<typeof EventNumber>,
   ) => Effect.Effect<Committed, Refusal>
   readonly end: (session: Of<typeof StaffSessionKey>) => Effect.Effect<Committed | null, Refusal>
   readonly observe: (session: Of<typeof StaffSessionKey>) => Effect.Effect<Committed | null, Refusal>
   readonly child: (
-    session: Of<typeof StaffSessionKey>, taskKey: Of<typeof TaskKey>, work: 'Work' | 'Review', staffing: Of<typeof EventNumber>,
+    session: Of<typeof StaffSessionKey>, taskKey: Of<typeof TaskKey>, work: 'Work' | 'Review', staffedIn: Of<typeof EventNumber>,
   ) => Effect.Effect<Committed, Refusal>
 }
 
@@ -59,7 +59,7 @@ export const staffSessionOperations = (
       : yield* observeSession(journal, project, session.key, 'Ended')
   })
   return {
-    launch: (staff, key, staffing) => locked((project) => Effect.gen(function* () {
+    launch: (staff, key, basis) => locked((project) => Effect.gen(function* () {
       if (project.sessions.has(key)) return yield* stale()
       const assigned = staffByKey(project, staff)
       if (!assigned) return yield* wrongMove()
@@ -72,9 +72,9 @@ export const staffSessionOperations = (
       if (pending?._tag === 'Starting') {
         state = (yield* end(state, pending)).state
       }
-      const eligible = sessionMayStart(state, staff, staffing)
+      const eligible = sessionMayStart(state, staff, basis)
       if (Result.isFailure(eligible)) return yield* Effect.fail(eligible.failure)
-      const reserved = yield* reserveSession(journal, state, key, eligible.success, staffing)
+      const reserved = yield* reserveSession(journal, state, key, eligible.success, basis)
       const started = yield* Effect.result(provider.launch(eligible.success, key))
       if (Result.isFailure(started)) {
         const pending = reserved.state.sessions.get(key)
@@ -97,16 +97,16 @@ export const staffSessionOperations = (
       if (session._tag === 'Paused' && fact === 'Running') return yield* observeSession(journal, project, key, 'Live')
       return null
     })),
-    child: (key, taskKey, work, staffing) => locked((project) => Effect.gen(function* () {
+    child: (key, taskKey, work, basis) => locked((project) => Effect.gen(function* () {
       if (!activeWork(project)) return yield* wrongMove()
-      if (staffing !== staffingAt(project)) return yield* stale()
+      if (basis !== staffedIn(project)) return yield* stale()
       const session = yield* staffAuthority(project, key)
       const task = project.tasks.get(taskKey)
       const open = (child: Parameters<Sessions['child']>[2]) =>
         changed(Effect.andThen(provider.child(session, taskKey, child), startChild(journal, project, taskKey, session, work)))
       if (work === 'Review') {
-        const review = yield* checkTaskReview(journal, project, taskKey, session)
-        return yield* open({ _tag: 'Review', review })
+        const queuedIn = yield* checkTaskReview(journal, project, taskKey, session)
+        return yield* open({ _tag: 'Review', queuedIn })
       }
       if (task?.phase._tag !== 'Sent') return yield* wrongMove()
       const staff = staffOf(project, taskRole(task))

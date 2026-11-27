@@ -32,7 +32,7 @@ export function TaskPanel({ task, commandBlock }: {
     update()
     const timer = setInterval(update, 1000)
     return () => { current = false; clearInterval(timer) }
-  }, [task.key, task.lastChange, phase._tag, commandBlock])
+  }, [task.key, task.changedIn, phase._tag, commandBlock])
   const result = phase._tag === 'ReadyToReview' || phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.result : null
   const feedback = phase._tag === 'Working' ? phase.attempt.feedback : phase._tag === 'Sent' ? phase.feedback : null
   const outcomes = phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.outcomes : null

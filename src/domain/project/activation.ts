@@ -15,11 +15,11 @@ export const ApprovedFiles = Schema.NonEmptyArray(ApprovedFile).check(
 )
 const work = Schema.Union([
   Schema.TaggedStruct('NotStarted', {}),
-  Schema.TaggedStruct('Started', { at: EventNumber }),
-  Schema.TaggedStruct('Used', { at: EventNumber, usedAt: EventNumber }),
+  Schema.TaggedStruct('Started', { startedIn: EventNumber }),
+  Schema.TaggedStruct('Used', { startedIn: EventNumber, usedIn: EventNumber }),
 ])
 const approved = {
-  at: EventNumber, files: ApprovedFiles, proposals: Schema.NonEmptyArray(versionOf(ProposalValue)),
+  approvedIn: EventNumber, files: ApprovedFiles, proposals: Schema.NonEmptyArray(versionOf(ProposalValue)),
 }
 export const Activation = Schema.Union([
   Schema.TaggedStruct('Onboarding', {}),

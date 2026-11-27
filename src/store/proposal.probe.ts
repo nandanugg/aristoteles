@@ -3,7 +3,7 @@ import { projectOnboard } from '../../adapters/cli/commands/project.ts'
 import { Authority, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject } from '../../core/actions/staff-session.ts'
-import { staffingAt,
+import { staffedIn,
   Direction, ProposalKey, ReviewFacts, StaffSessionKey, type Of, type Project, StaffingPlan,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
@@ -45,7 +45,7 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   const proposed = yield* proposeStaffing(journal, project, plan, key)
   const existing = [...proposed.state.sessions.values()].find((item) => item._tag === 'Live' && item.staff.key === staff.key)
   const started = existing?._tag === 'Live' ? proposed.state : (yield* startSession(journal, proposed.state, {
-    key: StaffSessionKey.make('session:bootstrap-' + project.read), staff: staff.key, pane: session.pane, staffing: staffingAt(project),
+    key: StaffSessionKey.make('session:bootstrap-' + project.read), staff: staff.key, pane: session.pane, staffedIn: staffedIn(project),
   })).state
   const live = existing?._tag === 'Live' ? existing : [...started.sessions.values()].find((item) => item._tag === 'Live')
   if (live?._tag !== 'Live') throw new Error('Missing onboarding session')
@@ -55,7 +55,7 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   if (!proposal) throw new Error('Missing staffing proposal')
   const assigned = yield* assignProposalReview(journal, proposal, live, staged.state.read)
   const reviewed = yield* cliProposal(journal, assigned.state, { ...line, move: 'review', input: { facts: evidence('Holds') } }, {
-    _tag: 'Review', session: live, ...line, review: proposal.lastChange,
+    _tag: 'Review', session: live, ...line, queuedIn: proposal.changedIn,
   })
   const accepted = yield* cliProposal(journal, reviewed.state, { ...line, move: 'accept', input: {} })
   if (!existing) yield* observeSession(journal, accepted.state, live.key, 'Ended')

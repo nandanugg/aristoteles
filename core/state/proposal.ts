@@ -21,7 +21,7 @@ const sameVersion = Schema.toEquivalence(versionOf(ProposalValue))
 const latestDirectionVersion = (project: Project, previous: Version<ProposalValue>) => {
   const current = [...project.proposals.values()].some(({ phase, basis }) =>
     phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' &&
-    basis._tag === 'Version' && basis.version.acceptedAt === previous.acceptedAt)
+    basis._tag === 'Version' && basis.version.acceptedIn === previous.acceptedIn)
   return !current && [...project.proposals.values()].some(({ phase }) =>
     phase._tag === 'Accepted' && sameVersion(phase.version, previous))
 }
@@ -53,26 +53,26 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     if (!acting || (event.input.value._tag === 'Responsibility' && actor._tag !== 'Human')) return wrongActor()
     const previous = event.input.previous._tag === 'Version' ? event.input.previous.version : undefined
     if (previous && (event.input.value._tag !== 'Direction' || previous.value._tag !== 'Direction' ||
-        previous.acceptedAt > read || !latestDirectionVersion(project, previous))) return stale()
+        previous.acceptedIn > read || !latestDirectionVersion(project, previous))) return stale()
     if (event.input.value._tag === 'Responsibility' &&
         JSON.stringify(roleOf(project, event.input.value.role.key)) !== JSON.stringify(event.input.value.role)) return stale()
     return Result.flatMap(validateValue(project, event.input.value, event.move), (value) => {
       const version = previous ?? effectiveVersion(project, value)
-      if (version && version.acceptedAt > read) return stale()
+      if (version && version.acceptedIn > read) return stale()
       return store({
         key, value, basis: version ? { _tag: 'Version', version } : { _tag: 'None' }, questions: new Map(),
         proposer: actor, owner: project.owner, retryCount: RetryCount.make(0),
-        phase: { _tag: 'Drafting', feedback: { _tag: 'None' } }, lastChange: number,
+        phase: { _tag: 'Drafting', feedback: { _tag: 'None' } }, changedIn: number,
       })
     })
   }
   if (!stage) return wrongMove()
-  if (stage.lastChange > read) return stale()
+  if (stage.changedIn > read) return stale()
   const { phase } = stage
   if (phase._tag !== event.from) return wrongMove()
   const move = (phase: Proposal['phase'], fields: Partial<Pick<Proposal, 'value' | 'retryCount'>> = {}) =>
     edge(proposalLine, event.from, event.move, phase._tag) === 'Allowed'
-      ? store({ ...stage, ...fields, phase, lastChange: number }) : wrongMove()
+      ? store({ ...stage, ...fields, phase, changedIn: number }) : wrongMove()
 
   if (event.from === 'Drafting') {
     const proposer = actorFor(project, stage.proposer)
@@ -82,7 +82,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
         (value._tag !== 'Responsibility' || JSON.stringify(stage.value.role) !== JSON.stringify(value.role)))) return wrongMove()
     for (const question of stage.questions.values()) {
       if (currentQuestion(stage, question) &&
-          (question.state._tag !== 'Answered' || question.lastChange > read)) return stale()
+          (question.state._tag !== 'Answered' || question.changedIn > read)) return stale()
     }
     return Result.flatMap(validateValue(project, value, event.move), (checked) =>
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
@@ -95,10 +95,10 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       if (phase.assignment._tag !== 'Waiting') return wrongMove()
       if (!subagentCapacity(project, reviewer).freeSubagents)
         return Result.fail(refuse('NoCapacity', Rationale.make('The onboarding host has no free subagent slot.')))
-      return move({ _tag: 'Reviewing', assignment: { _tag: 'Assigned', actor, review: stage.lastChange } })
+      return move({ _tag: 'Reviewing', assignment: { _tag: 'Assigned', actor, queuedIn: stage.changedIn } })
     }
-    const { review, facts } = event.input
-    if (phase.assignment._tag !== 'Assigned' || phase.assignment.actor.key !== session.key || phase.assignment.review !== review)
+    const { queuedIn, facts } = event.input
+    if (phase.assignment._tag !== 'Assigned' || phase.assignment.actor.key !== session.key || phase.assignment.queuedIn !== queuedIn)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the proposal’s fresh child.')))
     const draft = proposalText(stage.value)
     if (facts.outcomes.length === 0 || facts.outcomes.some((outcome) => 'rule' in outcome) ||
@@ -107,7 +107,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       return Result.fail(refuse('InvalidEvidence', Rationale.make('Review the draft and cite any finding in proposal.json.')))
     if (reviewOutcome(facts) === 'Holds') {
       if (event.move !== 'next') return wrongMove()
-      return move({ _tag: 'WaitingForOwner', review, facts })
+      return move({ _tag: 'WaitingForOwner', queuedIn, facts })
     }
     if (event.move !== 'sendBack') return wrongMove()
     const retries = stage.retryCount + 1
@@ -119,12 +119,12 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
   if (event.move === 'sendBack') return move({ _tag: 'Drafting', feedback: { _tag: 'Owner', why: event.input.why } })
   const previous = stage.basis._tag === 'Version' ? stage.basis.version : undefined
   if (stage.value._tag === 'Direction' ? previous && !latestDirectionVersion(project, previous)
-    : effectiveVersion(project, stage.value)?.acceptedAt !== previous?.acceptedAt) return stale()
+    : effectiveVersion(project, stage.value)?.acceptedIn !== previous?.acceptedIn) return stale()
   const versionNumber = (previous?.number ?? 0) + 1
   if (!Schema.is(VersionNumber)(versionNumber)) return wrongMove()
   return Result.flatMap(validateValue(project, stage.value, event.move), (value) => {
     // Keep the exact reviewed payload in the version. Derived runtime assignments use checked records.
-    const version = { number: versionNumber, value: stage.value, acceptedAt: number }
+    const version = { number: versionNumber, value: stage.value, acceptedIn: number }
     let state = project
     if (value._tag === 'Staffing' && stage.value._tag === 'Staffing') {
       state = {
@@ -134,7 +134,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     } else if (value._tag === 'Responsibility') {
       const { summary, introduction, duties } = value
       const role = { ...value.role, responsibility: {
-        number: versionNumber, value: { summary, introduction, duties }, acceptedAt: number,
+        number: versionNumber, value: { summary, introduction, duties }, acceptedIn: number,
       } }
       const { roles } = project
       const updatedRoles = roles.host.key === role.key ? { ...roles, host: role }
@@ -142,6 +142,6 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
         : { ...roles, work: new Map(roles.work).set(role.key, role) }
       state = { ...project, roles: updatedRoles }
     }
-    return store({ ...stage, phase: { _tag: 'Accepted', version }, lastChange: number }, state)
+    return store({ ...stage, phase: { _tag: 'Accepted', version }, changedIn: number }, state)
   })
 }

@@ -12,17 +12,17 @@ import { Question } from './question.ts'
 
 const ProjectStatus = Schema.Union([
   Schema.TaggedStruct('Open', {}),
-  Schema.TaggedStruct('Ended', { at: EventNumber }),
+  Schema.TaggedStruct('Ended', { endedIn: EventNumber }),
 ])
 export const Project = Schema.Struct({
   owner: Human,
   roles: Schema.Struct({ host: Role, pipeline: Role, work: recordsByKey(Role, RoleKey) }).check(
     Schema.makeFilter(({ host, pipeline, work }) => host.key !== pipeline.key && !work.has(host.key) && !work.has(pipeline.key)),
   ),
-  openedAt: EventNumber,
+  openedIn: EventNumber,
   staffing: Schema.Union([staffing, StaffingAccepted]), proposals: recordsByKey(Proposal, ProposalKey),
   sessions: recordsByKey(StaffSession, StaffSessionKey), tasks: recordsByKey(Task, TaskKey), questions: recordsByKey(Question, QuestionKey), status: ProjectStatus, activation: Activation,
-  lastChange: EventNumber, read: ReadPosition,
+  changedIn: EventNumber, read: ReadPosition,
 })
 export type Project = Of<typeof Project>
 export const Projection = Schema.NullOr(Project)

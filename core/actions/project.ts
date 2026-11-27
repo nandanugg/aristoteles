@@ -1,6 +1,6 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
-  ReadPosition, Rationale, RetryLimit as RetryLimitValue, staffingAt, submissionParty, taskLine, StoredEvent, Submission, liveSession, boundHostSession, refuse, reviewOutcome,
+  ReadPosition, Rationale, RetryLimit as RetryLimitValue, staffedIn, submissionParty, taskLine, StoredEvent, Submission, liveSession, boundHostSession, refuse, reviewOutcome,
   type EventNumber, type ProposalKey, type TaskKey, type LiveSession, type Of, type Projection, type Refusal, type StoredActor, type Party,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
@@ -11,7 +11,7 @@ export type AuthenticatedActor =
   | { readonly _tag: 'Human'; readonly actor: Extract<StoredActor, { _tag: 'Human' }> }
   | { readonly _tag: 'Staff'; readonly session: LiveSession }
   | { readonly _tag: 'Host'; readonly session: LiveSession }
-  | { readonly _tag: 'Review'; readonly session: LiveSession; readonly review: Of<typeof EventNumber> } & (
+  | { readonly _tag: 'Review'; readonly session: LiveSession; readonly queuedIn: Of<typeof EventNumber> } & (
       | { readonly line: 'Task'; readonly key: Of<typeof TaskKey> }
       | { readonly line: 'Proposal'; readonly key: Of<typeof ProposalKey> }
     )
@@ -91,9 +91,9 @@ const moveFor = (
       if (!task || task.phase._tag !== 'Reviewing' || authenticated._tag !== 'Review' ||
           authenticated.line !== line || authenticated.key !== key ||
           task.phase.assignment._tag !== 'Assigned' || task.phase.assignment.actor.key !== current.key ||
-          task.phase.assignment.review !== authenticated.review) return Result.fail(retired())
+          task.phase.assignment.queuedIn !== authenticated.queuedIn) return Result.fail(retired())
       const { facts } = request.input
-      const report = { review: authenticated.review, facts, limit }
+      const report = { queuedIn: authenticated.queuedIn, facts, limit }
       const from = 'Reviewing' as const
       return Result.flatMap(reviewTask(task, task.phase, facts, limit), (phase) => {
         switch (phase._tag) {
@@ -109,7 +109,7 @@ const moveFor = (
     const { input } = request
     if (Schema.is(taskLine.Working.moves.next.submission.input)(input))
       return moved({ line, key, from: 'Working', move: 'next', input })
-    return moved({ line, key, from: 'Sent', move: 'next', input: { staffing: staffingAt(project), where: 'Session' } })
+    return moved({ line, key, from: 'Sent', move: 'next', input: { staffedIn: staffedIn(project), where: 'Session' } })
   }
   if (request.line === 'Activation') {
     if (request.move === 'next') return moved({ ...request, from: 'Onboarding' })
@@ -131,8 +131,8 @@ const moveFor = (
       if (!current || authenticated._tag !== 'Review' || phase?._tag !== 'Reviewing' ||
           authenticated.line !== line || authenticated.key !== key ||
           phase.assignment._tag !== 'Assigned' || phase.assignment.actor.key !== current.key ||
-          phase.assignment.review !== authenticated.review) return Result.fail(retired())
-      const input = { review: authenticated.review, facts }
+          phase.assignment.queuedIn !== authenticated.queuedIn) return Result.fail(retired())
+      const input = { queuedIn: authenticated.queuedIn, facts }
       return reviewOutcome(facts) === 'Holds'
         ? moved({ line, key, from: 'Reviewing', move: 'next', input })
         : moved({ line, key, from: 'Reviewing', move: 'sendBack', input })

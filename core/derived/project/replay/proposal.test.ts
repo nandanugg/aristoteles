@@ -9,7 +9,7 @@ import { cliProposal, direction, evidence } from '../../../../src/store/proposal
 import { ownerAuthority, staffAuthorityOf } from '../../../../src/store/question.probe.ts'
 import { observeSession, readOpenProject } from '../../../actions/staff-session.ts'
 import { ownerProposals } from '../review.ts'
-import { staffingAt, EventNumber, ProposalKey, StaffSessionKey, type Of, type LiveSession } from '../../../schema/project.ts'
+import { staffedIn, EventNumber, ProposalKey, StaffSessionKey, type Of, type LiveSession } from '../../../schema/project.ts'
 import { readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks } from './driver.ts'
 import { replayOnboardingReview } from './proposal.ts'
@@ -35,7 +35,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const trace = readTrace(join(fixtures, check + '-' + kind + '.itf.json.gz'), check, kind)
-    const runs = new Map<number, { session: LiveSession; review: Of<typeof EventNumber> }>()
+    const runs = new Map<number, { session: LiveSession; queuedIn: Of<typeof EventNumber> }>()
     const observed = new Map<Of<typeof EventNumber>, number>()
     let lifetime = 1
     const project = () => Effect.runPromise(readOpenProject(journal))
@@ -53,20 +53,20 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
         if (!assigned || phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing fresh review')
         const current = assigned.state.sessions.get(expected === 1 ? session.key : second.key)
         if (current?._tag !== 'Live') throw new Error('Missing live review session')
-        runs.set(expected + 1, { session: current, review: phase.assignment.review })
-        observed.set(phase.assignment.review, expected + 1)
+        runs.set(expected + 1, { session: current, queuedIn: phase.assignment.queuedIn })
+        observed.set(phase.assignment.queuedIn, expected + 1)
       },
       exit: async () => {
         await Effect.runPromise(observeSession(journal, await project(), session.key, 'Ended'))
       },
       recover: async () => {
         const view = await project()
-        await Effect.runPromise(startSession(journal, view, { key: second.key, staff: staff.key, pane: second.pane, staffing: staffingAt(view) }))
+        await Effect.runPromise(startSession(journal, view, { key: second.key, staff: staff.key, pane: second.pane, staffedIn: staffedIn(view) }))
         lifetime = 2
       },
       report: async (source, child, holds) => {
         const view = await project()
-        const entry = runs.get(child) ?? { session: source === 1 ? session : second, review: EventNumber.make(1) }
+        const entry = runs.get(child) ?? { session: source === 1 ? session : second, queuedIn: EventNumber.make(1) }
         const outcome = await Effect.runPromise(Effect.result(cliProposal(journal, view, { ...line, move: 'review', input: { facts: evidence(holds ? 'Holds' : 'Breaks') } }, { _tag: 'Review', ...line, ...entry })))
         if (Result.isSuccess(outcome)) return 'Committed'
         expect(outcome.failure.code).toBe('RetiredSession')
@@ -91,7 +91,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
         if (sessionPhase !== 'Live' && sessionPhase !== 'Ended') throw new Error('Missing replay lifetime')
         return {
           phase: phase._tag, lifetime, session: sessionPhase,
-          child: phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' ? observed.get(phase.assignment.review)! : 0,
+          child: phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' ? observed.get(phase.assignment.queuedIn)! : 0,
           visible: phase._tag === 'Accepted' || ownerProposals(view).some((proposal) => proposal.key === key),
         }
       },

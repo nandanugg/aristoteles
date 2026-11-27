@@ -27,13 +27,13 @@ export const TaskDraft = Schema.Struct({
   facts: Schema.Array(Fact).check(Schema.makeFilter((facts) => new Set(facts.map(({ name }) => name)).size === facts.length)),
 })
 const empty = Schema.Record(Schema.String, Schema.Never)
-const staffing = Schema.Struct({ staffing: EventNumber })
+const staffing = Schema.Struct({ staffedIn: EventNumber })
 const why = Schema.Struct({ why: Rationale })
 const files = Schema.Struct({ files: ApprovedFiles })
 const value = Schema.Struct({ value: ProposalValue, previous: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]) })
 const proposalDraft = Schema.Struct({ value: ProposalValue })
 const reviewFacts = Schema.Struct({ facts: ReviewFacts })
-const reviewReport = Schema.Struct({ ...reviewFacts.fields, review: EventNumber })
+const reviewReport = Schema.Struct({ ...reviewFacts.fields, queuedIn: EventNumber })
 const workProblem = Schema.Struct({
   attempt: AttemptNumber, reason: Schema.Literals(['TooBig', 'WrongTask']), evidence: Evidence,
 })
@@ -71,7 +71,7 @@ export const taskLine = line({
 }) satisfies Readonly<Record<TaskPhase['_tag'], object>>
 export const sessionLine = line({
   null: { from: Schema.Null, owes: 'Engine', moves: { open: {
-    to: ['Starting'], input: Schema.Struct({ staff: Staff, staffing: EventNumber }),
+    to: ['Starting'], input: Schema.Struct({ staff: Staff, staffedIn: EventNumber }),
   } } },
   Starting: { from: Schema.Literal('Starting'), owes: 'Engine', moves: {
     next: { to: ['Live'], input: Schema.Struct({ pane: Pane }) },

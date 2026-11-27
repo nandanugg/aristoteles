@@ -15,13 +15,13 @@ export const applyActivationMove = (project: Project, event: ActivationEvent): R
   if (phase._tag !== from) return wrong()
   if (move !== 'use' && (actor._tag !== 'Human')) return wrongActor()
   const commit = (activation: Activation) => edge(activationLine, from, move, activation._tag) === 'Allowed'
-    ? Result.succeed({ ...project, activation, lastChange: number }) : wrong()
+    ? Result.succeed({ ...project, activation, changedIn: number }) : wrong()
   if (phase._tag === 'Onboarding' && from === 'Onboarding') {
     const proposals = approvedProposals(project)
     const staff = staffOf(project, project.roles.host)
     if (!proposals || !staff) return wrong()
-    if (project.lastChange > read || proposals.some(({ acceptedAt }) => acceptedAt > read)) return stale()
-    return commit({ _tag: 'Activating', at: number, files: event.input.files, proposals })
+    if (project.changedIn > read || proposals.some(({ acceptedIn }) => acceptedIn > read)) return stale()
+    return commit({ _tag: 'Activating', approvedIn: number, files: event.input.files, proposals })
   }
   if (phase._tag === 'Activating' && from === 'Activating')
     return commit({ ...phase, _tag: 'RollingBack', why: event.input.why })
@@ -29,10 +29,10 @@ export const applyActivationMove = (project: Project, event: ActivationEvent): R
   if (phase._tag !== 'Active' || from !== 'Active') return wrong()
   if (event.move === 'use') {
     return actor._tag === 'Session' && actor.key === boundHostSession(project)?.key &&
-      phase.work._tag === 'Started' ? commit({ ...phase, work: { _tag: 'Used', at: phase.work.at, usedAt: number } }) : retired()
+      phase.work._tag === 'Started' ? commit({ ...phase, work: { _tag: 'Used', startedIn: phase.work.startedIn, usedIn: number } }) : retired()
   }
-  if (project.lastChange > read) return stale()
+  if (project.changedIn > read) return stale()
   const host = staffOf(project, project.roles.host)
   return phase.work._tag === 'NotStarted' && (boundHostSession(project) || [...project.sessions.values()].some((session) =>
-    session.staff.key === host?.key && session._tag === 'Ended' && session.startedAt > phase.at)) ? commit({ ...phase, work: { _tag: 'Started', at: number } }) : wrong()
+    session.staff.key === host?.key && session._tag === 'Ended' && session.startedIn > phase.approvedIn)) ? commit({ ...phase, work: { _tag: 'Started', startedIn: number } }) : wrong()
 }

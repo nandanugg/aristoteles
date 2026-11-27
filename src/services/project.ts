@@ -24,7 +24,7 @@ export interface Journal {
 export interface CommandRecord {
   readonly directory: URL
   readonly database: URL
-  readonly result: Of<typeof EventNumber>
+  readonly reportedIn: Of<typeof EventNumber>
   readonly slot: Of<typeof OptionIndex>
   readonly rule: CommandOutcome['rule']
 }

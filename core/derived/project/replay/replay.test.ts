@@ -19,7 +19,7 @@ import { activateTasks, begin, commandOutcomes, resultInput, send, taskKey, task
 import {
   answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, textForm,
 } from '../../../../src/store/question.probe.ts'
-import { capacity, staffingAt, projectStaff, actorFor, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { capacity, staffedIn, projectStaff, actorFor, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -129,7 +129,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const active = new Map<number, Of<typeof TaskKey>>()
     const used = new Map<number, number>()
-    const versions = new Map([[1, staffingAt(linked)]])
+    const versions = new Map([[1, staffedIn(linked)]])
     let pendingLifetime = 2
     const trace = readTrace(join(traces, 'staffCapacity-' + kind + '.itf.json.gz'), 'staffCapacity', kind)
     const project = () => Effect.runPromise(readOpenProject(journal))
@@ -139,7 +139,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         const current = await project()
         const result = await Effect.runPromise(Effect.result(startSession(journal, current, {
           key: StaffSessionKey.make('session:' + pendingLifetime++), staff: ids[staff]!, pane: session.pane,
-          staffing: versions.get(version) ?? EventNumber.make(current.read + 1),
+          staffedIn: versions.get(version) ?? EventNumber.make(current.read + 1),
         })))
         if (Result.isSuccess(result)) return 'Committed'
         await assertUnchanged(current.read)
@@ -173,7 +173,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
       },
       changePlan: async () => {
         await Effect.runPromise(acceptStaffing(journal, await project(), initialStaffing(1)))
-        versions.set(2, staffingAt(await project()))
+        versions.set(2, staffedIn(await project()))
       },
       observe: async () => {
         const current = await project()
@@ -260,7 +260,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
         await Effect.runPromise(operations.observe(address))
       },
       replace: async () => {
-        await Effect.runPromise(operations.launch(staff.key, replacement, staffingAt(current)))
+        await Effect.runPromise(operations.launch(staff.key, replacement, staffedIn(current)))
         key = replacement
       },
       begin: async () => {
@@ -346,7 +346,7 @@ for (const surface of ['CLI', 'page'] as const) for (const kind of kinds) {
           await Effect.runPromise(observeSession(journal, current, holder.key, 'Ended'))
           const after = await project()
           await Effect.runPromise(startSession(journal, after, {
-            key: replacement.key, staff: staff.key, pane: replacement.pane, staffing: staffingAt(after),
+            key: replacement.key, staff: staff.key, pane: replacement.pane, staffedIn: staffedIn(after),
           }))
           holder = replacement
         },

@@ -10,7 +10,7 @@ import { startSession, create, open, owner, session, staff, staffInput, subscrip
 import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, textForm } from '../../src/store/question.probe.ts'
 import { resultInput, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { nextStep, questionsFor } from '../derived/project/next-step.ts'
-import { staffingAt, Answer, QuestionForm, ProposalKey, QuestionKey, ReadPosition, StaffingPlan, StaffSessionKey, Submission, type Of, type QuestionSubmission, type Project } from '../schema/project.ts'
+import { staffedIn, Answer, QuestionForm, ProposalKey, QuestionKey, ReadPosition, StaffingPlan, StaffSessionKey, Submission, type Of, type QuestionSubmission, type Project } from '../schema/project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
 import { readPosition } from '../state/project.ts'
 
@@ -44,7 +44,7 @@ test('CLI and page see the same owed question, enforce the recipient, and append
     const events = yield* journal.eventsAfter(ReadPosition.make(0))
     const introduction = nextStep(project, session, events)
     if (introduction._tag !== 'Introduction') throw new Error('Expected the session introduction first')
-    expect(introduction.read).toBe(ReadPosition.make(project.sessions.get(session.key)!.startedAt))
+    expect(introduction.read).toBe(ReadPosition.make(project.sessions.get(session.key)!.startedIn))
     const due = nextStep(project, session, events, introduction.read)
     if (due._tag !== 'Available' || due.subject._tag !== 'Question') throw new Error('Expected a question')
     expect(projectQuestionWords(due.subject, due.read).map(String)).toEqual([
@@ -90,7 +90,7 @@ test('wrong shapes and retired or stale staff sessions refuse before writing', (
     const retired = yield* readOpenProject(journal)
     const replacement = { ...session, key: StaffSessionKey.make('session:replacement') }
     yield* startSession(journal, retired, {
-      key: replacement.key, staff: staff.key, pane: replacement.pane, staffing: staffingAt(retired),
+      key: replacement.key, staff: staff.key, pane: replacement.pane, staffedIn: staffedIn(retired),
     })
     const current = yield* readOpenProject(journal)
     expect(yield* Effect.result(cliQuestion(journal, staffAuthorityOf(), 'answer', projectAddress,
@@ -133,7 +133,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     if (!proposal) throw new Error('No staffing proposal')
     yield* assignProposalReview(journal, proposal, session, sent.state.read)
     const returned = yield* cliProposal(journal, yield* readOpenProject(journal), { ...line, move: 'review', input: { facts: evidence('Breaks') } },
-      { _tag: 'Review', session, ...line, review: proposal.lastChange })
+      { _tag: 'Review', session, ...line, queuedIn: proposal.changedIn })
     const laterKey = QuestionKey.make('question:revised')
     const latest = yield* consult(laterKey, returned.state)
     expect(questionsFor(latest.state, owner).map(({ question, owner }) => ({ line: 'Question', owner, key: question.key }))).toEqual([address(laterKey)])

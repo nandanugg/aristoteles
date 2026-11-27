@@ -122,7 +122,7 @@ export const waitOnTaskReview = (
     const task = project.tasks.get(actor.key)
     if (task?.phase._tag === 'Reviewing' && task.phase.assignment._tag === 'Assigned' &&
         task.phase.assignment.actor.key === session.key && actor.session.staff.key === session.staff.key &&
-        task.phase.assignment.review === actor.review) {
+        task.phase.assignment.queuedIn === actor.queuedIn) {
       return { _tag: 'Available', subject: { _tag: 'Task', task }, for: 'Review', read: project.read }
     }
   }

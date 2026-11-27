@@ -19,7 +19,7 @@ const sessionFields = Schema.TaggedStruct('Session', { key: StaffSessionKey })
 const Run = Schema.Union([
   Schema.TaggedStruct('Staff', { session: sessionFields, verifier: LaunchVerifier, proof: LaunchVerifier }),
   Schema.TaggedStruct('Review', {
-    session: sessionFields, verifier: LaunchVerifier, review: EventNumber,
+    session: sessionFields, verifier: LaunchVerifier, queuedIn: EventNumber,
     line: Schema.Union([Schema.TaggedStruct('Task', { key: TaskKey }), Schema.TaggedStruct('Proposal', { key: ProposalKey })]),
   }),
 ])
@@ -37,10 +37,10 @@ const perform = <A>(run: () => A): Effect.Effect<A, Refusal> => Effect.try({
 })
 
 const assigned = (project: Project, run: Extract<Of<typeof Run>, { _tag: 'Review' }>) => {
-  const { line, review } = run
+  const { line, queuedIn } = run
   const phase = (line._tag === 'Proposal' ? project.proposals.get(line.key) : project.tasks.get(line.key))?.phase
   return phase?._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' &&
-    phase.assignment.actor.key === run.session.key && phase.assignment.review === review
+    phase.assignment.actor.key === run.session.key && phase.assignment.queuedIn === queuedIn
 }
 
 const current = (project: Project, run: Of<typeof Run>): AuthenticatedActor | null => {
@@ -48,8 +48,8 @@ const current = (project: Project, run: Of<typeof Run>): AuthenticatedActor | nu
   if (session?._tag !== 'Live') return null
   if (run._tag === 'Staff') return { _tag: 'Staff', session }
   if (!assigned(project, run)) return null
-  const { line, review } = run
-  const actor = { _tag: 'Review', review, session } as const
+  const { line, queuedIn } = run
+  const actor = { _tag: 'Review', queuedIn, session } as const
   return line._tag === 'Task' ? { ...actor, line: 'Task', key: line.key } : { ...actor, line: 'Proposal', key: line.key }
 }
 
@@ -90,8 +90,8 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
     }
   })
   const child = (session: Extract<AuthenticatedActor, { _tag: 'Staff' }>['session'],
-    line: Extract<Of<typeof Run>, { _tag: 'Review' }>['line'], review: Of<typeof EventNumber>) => perform(() => {
-    launch(newKey(), { _tag: 'Review', session: { _tag: 'Session', key: session.key }, line, review }, session.staff,
+    line: Extract<Of<typeof Run>, { _tag: 'Review' }>['line'], queuedIn: Of<typeof EventNumber>) => perform(() => {
+    launch(newKey(), { _tag: 'Review', session: { _tag: 'Session', key: session.key }, line, queuedIn }, session.staff,
       'You have a fresh review. Run work wait with the credential in ARISTOTELES_TOKEN and report facts with evidence.')
   })
   const reviews: Reviews = {
@@ -116,7 +116,7 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
       const observation = observeBootstrap(dir, suffix(session.key))
       return observation === 'live' ? 'Running' : observation === 'ended' ? 'Ended' : 'Unknown'
     }),
-    child: (session, key, assignment) => assignment._tag === 'Review' ? child(session, { _tag: 'Task', key }, assignment.review)
+    child: (session, key, assignment) => assignment._tag === 'Review' ? child(session, { _tag: 'Task', key }, assignment.queuedIn)
       : Effect.fail(refuse('Unavailable', Rationale.make('Use the assigned staff session to begin task work.'))),
   }
   return {
