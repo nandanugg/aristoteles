@@ -14,7 +14,7 @@ import {
   Direction, EventNumber, ReadPosition, SessionId, Staff, StaffingId, TaskId, staffingAt, subagentCapacity,
   type LiveSession, type Project,
 } from '../../../schema/project.ts'
-import { picked } from '../../c16/replay/itf.ts'
+import { picked } from './itf.probe.ts'
 import { integer, readTrace, record, registeredChecks } from './driver.ts'
 
 const check = 'reviewSlot'

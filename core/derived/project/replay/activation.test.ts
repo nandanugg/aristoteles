@@ -10,7 +10,7 @@ import { open, withJournal } from '../../../../src/store/project.probe.ts'
 import { readOpenProject } from '../../../actions/staff-session.ts'
 import { HostLaunchEvent, HostCredential, Rationale, ReadPosition, type Of, type Refusal, type SessionId } from '../../../schema/project.ts'
 import { readPosition } from '../../../state/project.ts'
-import { picked } from '../../c16/replay/itf.ts'
+import { picked } from './itf.probe.ts'
 import { integer, readTrace, record, registeredChecks } from './driver.ts'
 
 const checks = ['activationCommit', 'activationRollback', 'activationHostBinding'] as const

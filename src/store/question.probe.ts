@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect'
-import { projectQuestionCommand } from '../../adapters/cli/commands/acts.ts'
+import { projectQuestionCommand } from '../../adapters/cli/commands/project.ts'
 import { projectSubmission } from '../../adapters/web/project.ts'
 import { Authority, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { QuestionId, Refusal, type LiveSession, type Of, type ReadPosition, type Submission } from '../../core/schema/project.ts'

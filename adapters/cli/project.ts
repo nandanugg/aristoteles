@@ -6,9 +6,7 @@ import { readOpenProject } from '../../core/actions/staff-session.ts'
 import {
   EventNumber, Human, ProjectCredential, Projection, ProposalId, Rationale, ReadPosition, Refusal, ReviewFacts, SessionId, StaffId, refuse, staffingAt,
 } from '../../core/schema/project.ts'
-import type { WorkIo } from '../../core/services/index.ts'
-import { withProjectEnv } from '../../core/services/project.ts'
-import { openProjectJournal } from '../../core/services/project.ts'
+import { openProjectJournal, withProjectEnv } from '../../core/services/project.ts'
 import {
   activationOwner, liveProjectBootstrap, projectActivationOperations, projectIdAt, resumeProjectActivation,
 } from '../live/activation.ts'
@@ -16,12 +14,32 @@ import { bootstrapPane, NONCE_ENV, PROJECT_ENV } from '../live/bootstrap.ts'
 import { installSkill } from '../live/skill-install.ts'
 import { newStaffSession, projectRuns } from '../live/project-runs.ts'
 import { liveTaskCommands } from '../live/task-commands.ts'
-import { parseArgs, textOf } from './args.ts'
 import {
   projectBriefCommand, projectOnboard, projectQuestionCommand, projectReportCommand, projectReviewCommand,
   projectSendCommand, waitOnProject, waitOnTaskReview,
 } from './commands/project.ts'
 import { acknowledgeProjectHost, collectProjectHost } from './commands/project-activation.ts'
+import { projectQuestionWords } from '../words/project.ts'
+
+// Raw argv stays at the CLI boundary. Each command checks its flags before decoding input.
+const parseArgs = (argv: readonly string[]) => {
+  const positional: string[] = []
+  const flags: Array<readonly [key: string, value: string | true]> = []
+  let malformed = false
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!
+    const match = /^--([a-z-]+)(?:=(.*))?$/su.exec(arg)
+    if (arg === '--on' && /^\d+$/u.test(argv[i + 1] ?? '')) flags.push(['on', argv[++i]!])
+    else if (match) flags.push([match[1]!, match[2] ?? true])
+    else if (arg.startsWith('--')) malformed = true
+    else positional.push(arg)
+  }
+  const one = (key: string) => {
+    const value = flags.findLast(([name]) => name === key)?.[1]
+    return typeof value === 'string' && value.trim() !== '' ? value : undefined
+  }
+  return { positional, flags, malformed, one }
+}
 
 const help = [
   'work onboard open --file=project.yaml',
@@ -51,13 +69,13 @@ const yaml = (text: string) => Effect.try({ try: (): unknown => Bun.YAML.parse(t
 const words = (event: { readonly number: typeof EventNumber.Type }) =>
   'Committed event ' + event.number + '.'
 
-const projectCommand = (argv: readonly string[], io: WorkIo) => Effect.gen(function* () {
-  const env = io.env ?? {}
+const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjectCli>[1]) => Effect.gen(function* () {
+  const env = io.env
   const parsed = parseArgs(argv)
   const explicit = parsed.positional.filter((word) => word.startsWith('run.') || word.startsWith('host.'))
   const token = explicit[0] ?? env.ARISTOTELES_TOKEN
   const [command, act, subject, ...extra] = parsed.positional.filter((word) => !explicit.includes(word))
-  if (parsed.broken.length || explicit.length > 1 || extra.length) return yield* Effect.fail(invalid())
+  if (parsed.malformed || explicit.length > 1 || extra.length) return yield* Effect.fail(invalid())
   if (!command || command === 'help') return help
   if (command === 'skill' && act === 'install' && !subject && !parsed.flags.length)
     return yield* Effect.sync(() => installSkill(io.cwd))
@@ -66,11 +84,11 @@ const projectCommand = (argv: readonly string[], io: WorkIo) => Effect.gen(funct
   const ownerTerminal = () => !token && !env.ARISTOTELES_SESSION && !Object.keys(env).some((key) => key.startsWith('GIT_CONFIG')) && io.isTTY
   const open = command === 'onboard' && act === 'open'
   const file = () => {
-    const name = textOf(parsed.one('file'))
+    const name = parsed.one('file')
     return name ? load(resolve(io.cwd, name)) : Effect.fail(invalid())
   }
   const read = () => {
-    const value = textOf(parsed.one('on'))
+    const value = parsed.one('on')
     return decode(ReadPosition, value !== undefined && /^\d+$/u.test(value) ? Number(value) : undefined)
   }
   const known = (keys: readonly string[]) => parsed.flags.every(([key, value]) => keys.includes(key) && typeof value === 'string') &&
@@ -161,8 +179,7 @@ const projectCommand = (argv: readonly string[], io: WorkIo) => Effect.gen(funct
       : waitOnProject(journal, Effect.succeed(by.session.id)))
     if (selected._tag !== 'Available') return ['Nothing is due.']
     const { subject: target, read } = selected
-    if (target._tag === 'Question') return [target.question.text,
-      `work answer "$ARISTOTELES_TOKEN" ${target.question.id} --on=${read} --file=answer.yaml`]
+    if (target._tag === 'Question') return projectQuestionWords(target.question, read)
     if (target._tag !== 'Task') return ['Read ' + read + '. Proposal ' + target.proposal.id + ' is due.']
     const task = target.task
     if (by._tag === 'Staff' && selected.for === 'Assign') {
@@ -193,7 +210,7 @@ const projectCommand = (argv: readonly string[], io: WorkIo) => Effect.gen(funct
       known(act === 'send-back' ? ['on', 'why'] : ['on'])) {
     const id = yield* decode(ProposalId, subject)
     return [words((yield* write({ read: basis, line: { _tag: 'Proposal', id },
-      move: act === 'send-back' ? 'sendBack' : act, input: act === 'send-back' ? { why: textOf(parsed.one('why')) } : {},
+      move: act === 'send-back' ? 'sendBack' : act, input: act === 'send-back' ? { why: parsed.one('why') } : {},
     })).event)]
   }
   if (!known(['on', 'file'])) return yield* Effect.fail(invalid())
@@ -216,9 +233,16 @@ const projectCommand = (argv: readonly string[], io: WorkIo) => Effect.gen(funct
   return yield* Effect.fail(invalid())
 })
 
-export const runProjectCli = async (argv: readonly string[], io: WorkIo): Promise<0 | 1 | 3> => {
+export const runProjectCli = async (argv: readonly string[], io: {
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly out: (line: string) => void
+  readonly err: (line: string) => void
+  readonly isTTY: boolean
+  readonly gitUser: () => string
+}): Promise<0 | 1 | 3> => {
   const result = await Effect.runPromiseExit(Effect.scoped(projectCommand(argv, io)).pipe(
-    withProjectEnv(io.env ?? {}),
+    withProjectEnv(io.env),
     Effect.catch((failure) => Effect.sync(() => { io.err(`${failure.code} · ${failure.why}`); return null })),
   ))
   if (Exit.isFailure(result)) { io.err('The project command failed.'); return 3 }

@@ -2,9 +2,9 @@ import { expect, test } from 'bun:test'
 import { Effect, Result, Schema } from 'effect'
 import { cliProposal, evidence, proposeStaffing } from '../../src/store/proposal.probe.ts'
 import { assignProposalReview } from './proposal.ts'
-import { projectQuestionWords } from '../../adapters/words/work.ts'
+import { projectQuestionWords } from '../../adapters/words/project.ts'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
-import { answerFromForm, questionAnswerSubmission } from '../../adapters/web/app/questions.ts'
+import { answerFromForm, questionAnswerSubmission } from '../../adapters/web/app/project-question.ts'
 import { projectSnapshot } from '../../adapters/web/project.ts'
 import { create, open, owner, session, staff, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm } from '../../src/store/question.probe.ts'
@@ -38,9 +38,11 @@ test('CLI and page see the same owed question, enforce the recipient, and append
     const question = needed(project)
     expect(question.state._tag).toBe('Open')
     expect(questionsFor(project, owner)).toHaveLength(0)
-    const words = projectQuestionWords(nextStep(project, session))
-    expect(words?.text).toBe(question.text)
-    expect(String(words?.command)).toBe('work answer <token> question:example --file=<answer.yaml>')
+    const due = nextStep(project, session)
+    if (due._tag !== 'Available' || due.subject._tag !== 'Question') throw new Error('Expected a question')
+    expect(projectQuestionWords(due.subject.question, due.read).map(String)).toEqual([
+      question.text, `work answer "$ARISTOTELES_TOKEN" question:example --on=${project.read} --file=answer.yaml`,
+    ])
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     expect(page.current()).toEqual(project)

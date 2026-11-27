@@ -289,7 +289,7 @@ exec sleep 90
       await browser.noSecret(secret)
       expect(readFileSync(webRecord + '.log', 'utf8')).not.toContain(secret)
     }
-    console.log('U8 local feedback ms', JSON.stringify({ moves: measures, reviewStarts }))
+    console.log('Project feedback ms', JSON.stringify({ moves: measures, reviewStarts }))
     expect(Math.max(...measures.filter(([label]) => label !== 'activation to binding').map(([, ms]) => ms))).toBeLessThan(1000)
     expect(Math.max(...reviewStarts.map(({ fromSubmit }) => fromSubmit))).toBeLessThan(1000)
   } finally {

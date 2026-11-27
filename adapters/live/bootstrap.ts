@@ -1,6 +1,5 @@
 // A bootstrap host has its own managed tmux session, located by the reserved launch ID.
 import { digest, providerSessionId } from '../../core/services/project.ts'
-import { basename } from 'node:path'
 import { launchOpening } from './markers.ts'
 import type { Of, ProjectId, Staff as ProjectStaff } from '../../core/schema/project.ts'
 
@@ -8,14 +7,12 @@ export const NONCE_ENV = 'ARISTOTELES_LAUNCH_NONCE'
 export const PROJECT_ENV = 'ARISTOTELES_BOOTSTRAP_PROJECT'
 const SESSION_ENV = 'ARISTOTELES_BOOTSTRAP_SESSION'
 export const bootstrapSocket = (dir: string) => `ar-bootstrap-${digest(dir).slice(0, 20)}`
-export const isBootstrapSocket = (dir: string, path: string): boolean => basename(path) === bootstrapSocket(dir)
 const tmux = (dir: string, args: readonly string[]) => {
   const env = { ...process.env }
   for (const name of ['TMUX', 'TMUX_PANE', 'TMUX_SOCKET', NONCE_ENV, PROJECT_ENV, SESSION_ENV]) delete env[name]
   return Bun.spawnSync(['tmux', '-f', '/dev/null', '-L', bootstrapSocket(dir), ...args], { env })
 }
-export const bootstrapSession = (launch: string): string => `boot-${launch}`
-export const isBootstrapSession = (session: string): boolean => /^boot-[a-f0-9]{32}$/.test(session)
+const bootstrapSession = (launch: string): string => `boot-${launch}`
 export const bootstrapPane = (dir: string, launch: string) => {
   const result = tmux(dir, [
     'list-panes', '-t', `=${bootstrapSession(launch)}`, '-F', '#{pane_dead} #{pane_id} #{socket_path}',
@@ -24,7 +21,7 @@ export const bootstrapPane = (dir: string, launch: string) => {
   const match = /^0 (%\d+) (.+)$/m.exec(result.stdout.toString())
   return match ? { pane: match[1]!, socket: match[2]! } : null
 }
-export const bootstrapAlive = (dir: string, launch: string): boolean =>
+const bootstrapAlive = (dir: string, launch: string): boolean =>
   bootstrapPane(dir, launch) !== null
 export const observeBootstrap = (dir: string, launch: string): 'live' | 'ended' | 'unknown' => {
   try {

@@ -1,7 +1,4 @@
-// The files of work that belong to this machine only: the worktrees and logs in .work/, and the
-// links to the aristoteles skills (Nanda, 2026-11-13). They go into the exclude file of the dir's
-// git (.git/info/exclude), which git reads and never commits, so the dir's own .gitignore stays
-// as it is.
+// Project-local runtime files and skill links use .git/info/exclude.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, relative, resolve } from 'node:path'
 

@@ -70,7 +70,6 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
         case '/': return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
         case '/app.js': return new Response(script, { headers: { 'content-type': 'text/javascript; charset=utf-8' } })
         case '/style.css':
-        case '/onboarding.css':
           return new Response(Bun.file(join(import.meta.dir, 'app', url.pathname.slice(1))), { headers: { 'content-type': 'text/css' } })
       }
       if (!url.pathname.startsWith('/api/project/')) return new Response(null, { status: 404 })

@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect'
-import { projectOnboard } from '../../adapters/cli/commands/onboard.ts'
+import { projectOnboard } from '../../adapters/cli/commands/project.ts'
 import { Authority, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject, startSession } from '../../core/actions/staff-session.ts'

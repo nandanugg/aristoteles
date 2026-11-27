@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { Effect } from 'effect'
-import { waitOnProject } from '../../adapters/cli/commands/wait.ts'
+import { waitOnProject } from '../../adapters/cli/commands/project.ts'
 import { open, session, staff, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { begin, commandOutcomes, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { initialStaffing, launchStaff, sharedStaffing } from '../../src/store/staff-session.probe.ts'

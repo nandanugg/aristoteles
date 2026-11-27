@@ -11,16 +11,13 @@ import {
 } from '../../core/schema/project.ts'
 import { projectLock, digest } from '../../core/services/project.ts'
 import {
-  openProjectJournal, projectOriginals, readProjectLaunchFile, removeProjectLaunch, retireProjectLaunchSecret, writeProjectLaunchFile,
+  projectOriginals, readProjectLaunchFile, removeProjectLaunch, retireProjectLaunchSecret, writeProjectLaunchFile,
   type Committed, type Journal,
 } from '../../core/services/project.ts'
 import { bootstrapPane, observeBootstrap, spawnProjectBootstrap, stopBootstrap } from './bootstrap.ts'
 import { codexFallbackNames, contentOf, inventoryOf, manifestOf, markFile, preflight, restoreFile, safeEntry } from './markers.ts'
 
 export const projectIdAt = (directory: string) => ProjectId.make('project:' + digest(resolve(directory)))
-
-export const activationJournal = (directory: string, mode: 'Read' | 'Write') =>
-  openProjectJournal(projectIdAt(directory), mode)
 
 export const activationOwner = (journal: Journal, name: string): Effect.Effect<AuthenticatedActor, Refusal> =>
   Effect.flatMap(readOpenProject(journal), (project) =>

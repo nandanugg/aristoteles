@@ -21,10 +21,7 @@ const run = async (argv: readonly string[], dir: string) => {
     out: (line) => process.stdout.write(line + '\n'),
     err: (line) => process.stderr.write(line + '\n'),
     isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-    readLine: (prompt) => globalThis.prompt(prompt),
-    now: () => new Date().toISOString(),
     gitUser: () => Bun.spawnSync(['git', 'config', 'user.name'], { cwd: dir }).stdout.toString().trim(),
-    random: () => crypto.randomUUID(),
   })
 }
 

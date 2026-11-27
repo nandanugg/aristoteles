@@ -11,6 +11,8 @@
 // Assumption (stated for pass 6): no other writer renames over an instruction file in the instant
 // between the last check and the publishing rename; an edit before that check is seen and kept.
 // Bytes are handled as latin1 strings, which keep every byte as it is (the line is ASCII).
+import { Schema } from 'effect'
+import { Rationale, type Of } from '../../core/schema/project.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   chmodSync,
@@ -30,8 +32,7 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
 
-// The words every aristoteles first prompt begins with: the host's, a role's (launchWords) and a
-// maker's (makerWords, adapters/words/work.ts), before and after the actor's name.
+// The host bootstrap starts with the phrase recognized by the marker.
 export const LAUNCH_OPENING = 'You are'
 export const LAUNCH_PROJECT = 'of an Aristoteles project.'
 export const launchOpening = (actor: string): string => `${LAUNCH_OPENING} ${actor} ${LAUNCH_PROJECT}`
@@ -55,8 +56,9 @@ const isRule = (rel: string): boolean => rel.endsWith('.md') && `${sep}${rel}`.i
 
 // Codex's configured fallback names (project_doc_fallback_filenames in config.toml under
 // CODEX_HOME, else ~/.codex). A form this reader does not parse (or profiles that may set it) is
-// UNRESOLVED: pass 4/6 shows it, never guesses.
-export type Fallbacks = { readonly names: ReadonlyArray<string>; readonly unresolved: string | null }
+// reported in the approved file inventory.
+const FallbackName = Schema.String.check(Schema.isMinLength(1)).pipe(Schema.brand('FallbackName'))
+type Fallbacks = { readonly names: readonly Of<typeof FallbackName>[]; readonly unresolved: Of<typeof Rationale> | null }
 export const codexFallbackNames = (
   home: string = homedir(),
   codexHome: string = process.env.CODEX_HOME ?? join(home, '.codex'),
@@ -66,10 +68,10 @@ export const codexFallbackNames = (
   const text = readFileSync(file, 'utf8')
   const m = /^\s*project_doc_fallback_filenames\s*=\s*\[([^\]\n]*)\]\s*$/m.exec(text)
   const named = /project_doc_fallback_filenames/.test(text)
-  const quoted = m?.[1] === undefined ? [] : [...m[1].matchAll(/"([^"\\]+)"/g)].map((x) => x[1] ?? '')
+  const quoted = m?.[1] === undefined ? [] : [...m[1].matchAll(/"([^"\\]+)"/g)].map((x) => FallbackName.make(x[1]!))
   const items = m?.[1] === undefined ? [] : m[1].split(',').map((x) => x.trim()).filter((x) => x)
   if (named && (m === null || quoted.length !== items.length || /^\s*\[profiles/m.test(text))) {
-    return { names: quoted, unresolved: `${file}: project_doc_fallback_filenames not fully read` }
+    return { names: quoted, unresolved: Rationale.make(`${file}: project_doc_fallback_filenames not fully read`) }
   }
   return { names: quoted, unresolved: null }
 }

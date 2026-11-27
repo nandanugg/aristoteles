@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { Schema } from 'effect'
-import { decode, picked, type Plain } from '../../c16/replay/itf.ts'
+import { decode, picked, type Plain } from './itf.probe.ts'
 
 const registry = 'core/model/checks/registry.tsv'
 

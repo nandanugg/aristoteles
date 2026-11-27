@@ -2,16 +2,14 @@ import { expect, test } from 'bun:test'
 import { dirname, join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { Effect, Schema } from 'effect'
-import { authenticateProjectHost, projectActivationCommand } from '../../adapters/cli/commands/activation.ts'
-import { main } from '../../adapters/cli/main.ts'
+import { runProjectCli } from '../../adapters/cli/project.ts'
 import { bootstrapPane, NONCE_ENV, PROJECT_ENV } from '../../adapters/live/bootstrap.ts'
-import { liveProjectBootstrap, projectActivationFiles, projectActivationOperations, projectIdAt } from '../../adapters/live/activation.ts'
-import { startServer } from '../../adapters/web/server.ts'
+import { liveProjectBootstrap, projectActivationFiles, projectActivationOperations, projectIdAt, resumeProjectActivation } from '../../adapters/live/activation.ts'
 import { projectActivationApproval, projectEvents, projectSnapshot } from '../../adapters/web/project.ts'
 import { agree, approvedText, hostId, newerText, readyActivation, readyProject, startWork } from '../../src/store/project-activation.probe.ts'
 import { create, open, staff, withJournal } from '../../src/store/project.probe.ts'
 import { ownerAuthority } from '../../src/store/question.probe.ts'
-import { ActivationEvent, ApprovedFiles, LaunchNonce, LaunchText, Rationale, ReadPosition } from '../schema/project.ts'
+import { ApprovedFiles, HostCredential, LaunchNonce, LaunchText, Rationale, ReadPosition } from '../schema/project.ts'
 import { Authority } from './project.ts'
 import { readOpenProject } from './staff-session.ts'
 
@@ -77,14 +75,14 @@ test('rollback is repeatable, preserves later edits and keeps accepted proposals
 
 test('format 16 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const f = yield* readyProject(path, { ...staff, launch: LaunchText.make('sleep 30 # {session}') })
+    const f = yield* readyProject(path, { ...staff, launch: LaunchText.make('sleep 30 # {session}') }, projectIdAt(dirname(path)))
     const provider = liveProjectBootstrap(f.directory, path, f.journal.id)
     const operations = projectActivationOperations(f.directory, f.journal, provider)
     yield* agree(f.journal, f.project, f.files)
     const id = hostId(1)
     yield* operations.reserve(id)
     yield* Effect.acquireRelease(Effect.void, () => Effect.asVoid(Effect.result(provider.stop(id))))
-    yield* projectActivationCommand(f.journal, operations, 'resume').pipe(auth)
+    yield* resumeProjectActivation(f.journal, operations, 'resume')
     expect(yield* provider.observe(id)).toBe('Running')
     const current = yield* readOpenProject(f.journal)
     if (current.activation._tag !== 'Activating') throw new Error('Expected prepared launch')
@@ -95,9 +93,9 @@ test('format 16 opens a real marked tmux host and retires credential delivery on
     const cli = (action: 'ack' | 'collect', from = pane.pane) => Effect.promise(async () => {
       const out: string[] = []
       const err: string[] = []
-      const status = await main(['activation', action, id], {
+      const status = await runProjectCli(['activation', action, id], {
         cwd: f.directory, isTTY: false, out: (text) => { out.push(text) }, err: (text) => { err.push(text) },
-        readLine: () => null, now: () => new Date().toISOString(), gitUser: () => '', random: () => '',
+        gitUser: () => '',
         env: {
           ARISTOTELES_DB: path, [PROJECT_ENV]: f.journal.id, [NONCE_ENV]: nonce,
           TMUX_PANE: from, TMUX: pane.socket + ',0,0',
@@ -115,9 +113,9 @@ test('format 16 opens a real marked tmux host and retires credential delivery on
     expect(collected.status).toBe(0)
     const credential = collected.out[0]!
     expect(credential).toMatch(/^host\.[a-f0-9]{64}$/)
-    expect(yield* Effect.result(authenticateProjectHost(operations, id, credential))).toMatchObject(refused('RetiredSession'))
+    expect(yield* Effect.result(operations.authenticate(id, Schema.decodeUnknownSync(HostCredential)(credential)))).toMatchObject(refused('RetiredSession'))
     yield* startWork(f.journal, active)
-    const used = yield* authenticateProjectHost(operations, id, credential)
+    const used = yield* operations.authenticate(id, Schema.decodeUnknownSync(HostCredential)(credential))
     expect(used.activation).toMatchObject({ _tag: 'Active', work: { _tag: 'Used', at: expect.any(Number), usedAt: expect.any(Number) } })
     const retired = yield* cli('collect')
     expect(retired.status).toBe(1)
@@ -160,67 +158,5 @@ test('first work pins the old bound launch when it beats the replacement commit'
     const cleaned = yield* f.operations.reconcile
     expect(cleaned?.state.activation).toMatchObject({ _tag: 'Active', binding: { id: old }, replacement: null })
     expect(f.running.has(replacement)).toBe(false)
-  }))),
-))
-
-test('the retained activation routes read the journal and append only checked activation choices', () => withJournal((path) =>
-  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const directory = dirname(path)
-    const git = (...args: string[]) => Bun.spawnSync(['git', '-C', directory, ...args]).exitCode
-    expect(git('init', '-q')).toBe(0)
-    expect(git('config', 'user.name', 'Owner')).toBe(0)
-    const f = yield* readyProject(path, { ...staff, launch: LaunchText.make('sleep 30 # {session}') }, projectIdAt(directory))
-    const provider = liveProjectBootstrap(directory, path, f.journal.id)
-    yield* Effect.acquireRelease(Effect.void, () => Effect.ignore(Effect.gen(function* () {
-      const current = yield* readOpenProject(f.journal)
-      const phase = current.activation
-      const launch = phase._tag === 'Active' ? phase.binding
-        : phase._tag === 'Activating' ? phase.launches.at(-1) : null
-      if (launch) yield* provider.stop(launch.id)
-    })))
-    const server = yield* Effect.acquireRelease(
-      Effect.sync(() => startServer({ dir: directory, env: { ARISTOTELES_DB: path } })),
-      (server) => Effect.sync(server.stop),
-    )
-    const origin = new URL(server.url).origin
-    const post = (body: unknown) => Effect.promise(() => fetch(origin + '/api/activation', {
-      method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify(body),
-    }))
-    const line = { _tag: 'Activation', id: f.project.id } as const
-    const legacy = yield* post({ action: 'start', entries: [] })
-    expect(legacy.status).toBe(400)
-    const early = yield* post({ read: f.project.read, line, move: 'start', input: {} })
-    expect(early.status).toBe(409)
-    expect(yield* f.journal.eventsAfter(f.project.read)).toEqual([])
-    const approval = yield* Effect.promise(() => fetch(origin + '/api/activation/approval'))
-    expect(approval.status).toBe(200)
-    const files = yield* Effect.promise(() => approval.json())
-    expect(files).toEqual(f.files)
-    const begun = yield* post({ read: f.project.read, line, move: 'next', input: { files } })
-    expect(begun.status).toBe(200)
-    // The page starts recovery asynchronously with its own journal handle.
-    let launch
-    for (let i = 0; i < 50; ++i) {
-      const phase = (yield* readOpenProject(f.journal)).activation
-      launch = phase._tag === 'Activating' ? phase.launches.at(-1) : undefined
-      if (launch && (yield* provider.observe(launch.id)) === 'Running') break
-      yield* Effect.sleep(20)
-    }
-    if (!launch || (yield* provider.observe(launch.id)) !== 'Running') throw new Error('The retained route did not launch the host')
-    const activating = (yield* readOpenProject(f.journal)).activation
-    if (activating._tag !== 'Activating') throw new Error('Missing launch basis')
-    const nonce = LaunchNonce.make(readFileSync(join(directory, '.work/onboarding/activation/project',
-      f.journal.id, String(activating.at), 'launch-' + launch.id.slice(8), 'nonce'), 'utf8'))
-    const operations = projectActivationOperations(directory, f.journal, provider)
-    yield* operations.acknowledge(launch.id, nonce)
-    yield* operations.commit
-    const active = yield* readOpenProject(f.journal)
-    const started = yield* post({ read: active.read, line, move: 'start', input: {} })
-    expect(started.status).toBe(200)
-    const [event] = yield* f.journal.eventsAfter(active.read)
-    expect(Schema.is(ActivationEvent)(event)).toBe(true)
-    expect(event).toMatchObject({ from: 'Active', move: 'start', input: {} })
-    const dash = yield* Effect.promise(() => fetch(origin + '/api/dash').then((r) => r.json()))
-    expect(dash).toMatchObject({ activation: { phase: 'active', step: 'Work is open.' } })
   }))),
 ))

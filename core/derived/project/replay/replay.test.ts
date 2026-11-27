@@ -7,7 +7,6 @@ import { Effect, Result, Schema } from 'effect'
 import { staffSessionOperations, type Sessions } from '../../../../adapters/live/staff-session.ts'
 import { liveTaskCommands } from '../../../../adapters/live/task-commands.ts'
 import { runTaskCommands } from '../../../effects/project-commands.ts'
-import { staffCards } from '../../../../adapters/web/app/staff-session.ts'
 import { acceptStaffing, cliProposal, direction } from '../../../../src/store/proposal.probe.ts'
 import { assignProposalReview } from '../../../actions/proposal.ts'
 import { recordTaskCommands } from '../../../actions/task.ts'
@@ -20,7 +19,7 @@ import { activateTasks, begin, commandOutcomes, resultInput, send, taskId, taskL
 import {
   answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm,
 } from '../../../../src/store/question.probe.ts'
-import { staffingAt, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalId, ReadPosition, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { capacity, staffingAt, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalId, ReadPosition, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -181,7 +180,9 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         const current = await project()
         const response = await Effect.runPromise(projectEvents(journal, readPosition(page.current())))
         expect(Result.getOrThrow(receiveProjectPayload(page, await response.json()))).toEqual(current)
-        const cards = staffCards(page.current())
+        const projected = page.current()
+        if (!projected) throw new Error('Expected the page projection')
+        const cards = [...projected.staff.values()].map((staff) => ({ staff, capacity: capacity(projected, staff) }))
         const first = cards[0]
         if (!first) throw new Error('Expected the shared staff card')
         const limit = first.capacity.sessionLimit

@@ -6,17 +6,16 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { Refused } from '../domain/errors.ts'
-import { FilePath, HostCredential, LaunchNonce, LaunchVerifier, type EventNumber, type Of, type ProjectId } from '../domain/project/values.ts'
+import { FilePath, HostCredential, LaunchNonce, LaunchVerifier, Rationale, Refusal, refuse, type EventNumber, type Of, type ProjectId } from '../domain/project/values.ts'
 
 const AREA = '.work/onboarding/activation'
 const id = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{32}$/)))
-export const activationId = () => randomUUID().replaceAll('-', '')
+const activationId = () => randomUUID().replaceAll('-', '')
 const unsafe = (message: string) =>
-  new Refused({ message, next: 'check the activation folder, then resume activation' })
+  refuse('Unavailable', Rationale.make(message))
 const activationIO = <A>(f: () => A) => Effect.try({
   try: f,
-  catch: (error) => error instanceof Refused ? error : unsafe(String(error)),
+  catch: (error) => Schema.is(Refusal)(error) ? error : unsafe(String(error)),
 })
 
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT'

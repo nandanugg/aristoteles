@@ -51,7 +51,7 @@ const keyOf = () => {
 }
 
 // In one bundle each file would read the bundle's folder as its import.meta.dir; the files that
-// read guides/, skills/ and the page files from there get their own folder written in.
+// read skills/ and the page files from there get their own folder written in.
 const ownFolders = {
   name: 'own folders',
   setup(build) {

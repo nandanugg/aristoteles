@@ -4,16 +4,16 @@ import { dirname, join, resolve } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { projectActivationOperations } from '../../adapters/live/activation.ts'
 import { approvedText, fakeBootstrap, hostId } from '../../src/store/project-activation.probe.ts'
-import { Effect, Result, Schema, Stream } from 'effect'
+import { Deferred, Effect, Result, Schedule } from 'effect'
 import { launchNextReview, type Reviews } from '../../adapters/live/proposal.ts'
-import { projectActivationApproval, projectEvents, projectEventStream, projectOnboarding, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
+import { projectActivationApproval, projectEvents, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
-import { proposalsForOwner } from '../../adapters/words/project.ts'
+import { ownerProposals } from '../derived/project/review.ts'
 import { create, open, session, staff, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
 import { cliProposal, direction, evidence } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
-import { staffingAt, Proposal, ProposalId, ReadPosition, SessionId, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
+import { staffingAt, ProposalId, ReadPosition, SessionId, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
 import { observeSession, readOpenProject, startSession } from './staff-session.ts'
@@ -23,7 +23,6 @@ const auth = (actor: AuthenticatedActor) => Effect.provideService(Authority, { a
 const choose = (line = first, choice: 'accept' | 'remove' = 'accept') =>
   ({ line, move: choice, input: {} })
 const missing = (code: string) => ({ _tag: 'Failure', failure: { code } })
-const ownerJson = Schema.decodeUnknownSync(Schema.Array(Proposal), { onExcessProperty: 'error' })
 const ask = (id = first.id) => ({ line: { _tag: 'Proposal', id: id }, move: 'open', input: { value: direction } })
 const send = (line = first) => ({ line, move: 'submit', input: { value: direction, question: null } })
 
@@ -37,8 +36,7 @@ test('proposal queue launches the host’s fresh child and retains the reviewed 
     const other = { _tag: 'Proposal', id: ProposalId.make('proposal:other') } as const
     const otherDraft = yield* cliProposal(journal, submitted.state, ask(other.id), staffAuthorityOf())
     const queued = yield* cliProposal(journal, otherDraft.state, send(other), staffAuthorityOf())
-    const hidden = yield* projectOnboarding(journal).pipe(auth(ownerAuthority))
-    expect(ownerJson(yield* Effect.promise(() => hidden.json()))).toEqual([])
+    expect(ownerProposals(queued.state)).toEqual([])
     expect(yield* Effect.result(cliProposal(journal, queued.state, choose()))).toMatchObject(missing('WrongMove'))
     const launched: Extract<AuthenticatedActor, { _tag: 'Review' }>[] = []
     const provider: Reviews = {
@@ -56,9 +54,7 @@ test('proposal queue launches the host’s fresh child and retains the reviewed 
     const report = { line: first, move: 'review', input: { facts: evidence('Holds') } }
     expect(yield* Effect.result(cliProposal(journal, assignment.state, report, staffAuthorityOf()))).toMatchObject(missing('WrongActor'))
     const reviewed = yield* cliProposal(journal, assignment.state, report, run)
-    expect(proposalsForOwner(reviewed.state).map(({ id }) => id)).toEqual([first.id])
-    const visible = yield* projectOnboarding(journal).pipe(auth(ownerAuthority))
-    expect(ownerJson(yield* Effect.promise(() => visible.json()))).toEqual(proposalsForOwner(reviewed.state))
+    expect(ownerProposals(reviewed.state).map(({ id }) => id)).toEqual([first.id])
     expect(yield* Effect.result(cliProposal(journal, submitted.state, choose()))).toMatchObject(missing('Stale'))
     const committed = yield* cliProposal(journal, reviewed.state, choose())
     expect(committed.state.proposals.get(first.id)?.phase).toMatchObject({
@@ -130,7 +126,7 @@ test('departure retires the old child and releases the first proposal back into 
     const revised = { ...direction, summary: Summary.make('Show the revised evidence') }
     const resubmitted = yield* cliProposal(journal, returned.state, { ...send(), input: { value: revised, question: null } })
     expect(resubmitted.state.proposals.get(first.id)?.value).toEqual(revised)
-    expect(proposalsForOwner(resubmitted.state)).toEqual([])
+    expect(ownerProposals(resubmitted.state)).toEqual([])
   }))),
 ))
 
@@ -158,7 +154,7 @@ test('only the owner changes a responsibility, which takes effect after review a
   }))),
 ))
 
-test('U4 measures submission to page visibility and review dispatch separately from child startup', () => withJournal((path) =>
+test('the page receives the committed review assignment dispatched by a submission', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
     const snapshot = yield* projectSnapshot(journal)
@@ -168,12 +164,14 @@ test('U4 measures submission to page visibility and review dispatch separately f
     let ready = 0
     let submitted = 0
     let committed = 0
+    const childReady = yield* Deferred.make<void>()
     const token = 'provider-private-token'
     const provider: Reviews = { reconcile: () => Effect.void, open: () => Effect.gen(function* () {
       launching = performance.now()
       yield* Effect.sleep('25 millis')
       void token
       ready = performance.now()
+      yield* Deferred.succeed(childReady, undefined)
     }) }
     const launch = launchNextReview(dirname(path), journal, provider)
     const catchUp = () => Effect.gen(function* () {
@@ -204,9 +202,14 @@ test('U4 measures submission to page visibility and review dispatch separately f
     expect(response.status).toBe(200)
     Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => response.json())))
     timings.push(performance.now() - submitted)
-    const assignedRows = yield* Stream.runCollect(Stream.take(projectEventStream(journal, readPosition(page.current())), 1))
-    expect([...assignedRows]).toHaveLength(1)
-    const assigned = yield* seen(ready)
+    yield* Deferred.await(childReady).pipe(Effect.timeout('1 second'))
+    const assigned = yield* Effect.gen(function* () {
+      const current = yield* catchUp()
+      const phase = current?.proposals.get(first.id)?.phase
+      return phase?._tag === 'Reviewing' && phase.assignment._tag === 'Assigned'
+        ? current : yield* Effect.fail('AssignmentPending' as const)
+    }).pipe(Effect.retry({ times: 50, schedule: Schedule.spaced('10 millis') }))
+    timings.push(performance.now() - ready)
     const proposal = assigned?.proposals.get(first.id)
     if (!assigned || proposal?.phase._tag !== 'Reviewing' || proposal.phase.assignment._tag !== 'Assigned') throw new Error('Missing assignment')
     const reportStart = performance.now()
@@ -223,7 +226,7 @@ test('U4 measures submission to page visibility and review dispatch separately f
     expect(dispatch).toBeGreaterThanOrEqual(0)
     expect(dispatch).toBeLessThan(100)
     expect(startup).toBeGreaterThanOrEqual(20)
-    console.log(`U4 feedback: max page ${max.toFixed(1)} ms, submit-to-launch ${(launching - submitted).toFixed(1)} ms, commit-to-launch ${dispatch.toFixed(1)} ms, test child startup ${startup.toFixed(1)} ms`)
+    console.log(`Proposal feedback: max page ${max.toFixed(1)} ms, submit-to-launch ${(launching - submitted).toFixed(1)} ms, commit-to-launch ${dispatch.toFixed(1)} ms, test child startup ${startup.toFixed(1)} ms`)
   }))),
 ))
 
@@ -291,7 +294,7 @@ test('the browser moves from the reviewed direction to work under its bound host
     const timeToAccept = performance.now() - acceptStart
     expect(timeToReveal).toBeLessThan(1000)
     expect(timeToAccept).toBeLessThan(1000)
-    console.log(`U4 browser: review-to-card ${timeToReveal.toFixed(1)} ms, click-to-accepted ${timeToAccept.toFixed(1)} ms`)
+    console.log(`Project browser: review-to-card ${timeToReveal.toFixed(1)} ms, click-to-accepted ${timeToAccept.toFixed(1)} ms`)
     yield* Effect.promise(() => page.getByRole('button', { name: 'Review activation files' }).click())
     yield* Effect.promise(() => page.getByText('AGENTS.md', { exact: true }).waitFor())
     yield* Effect.promise(() => page.getByRole('button', { name: 'Approve and activate' }).click())

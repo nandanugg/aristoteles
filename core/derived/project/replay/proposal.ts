@@ -1,4 +1,4 @@
-import { picked } from '../../c16/replay/itf.ts'
+import { picked } from './itf.probe.ts'
 import { integer, record, type readTrace } from './driver.ts'
 
 type Trace = ReturnType<typeof readTrace>

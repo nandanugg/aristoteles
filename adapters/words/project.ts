@@ -1,7 +1,4 @@
-import { ownerProposals } from '../../core/derived/project/review.ts'
-import { taskRole, taskRules, TaskBriefText, type Evidence, type Of, type Project, type Refusal, type Task } from '../../core/schema/project.ts'
-
-export const proposalsForOwner = (project: Project) => ownerProposals(project)
+import { taskRole, taskRules, TaskBriefText, type Evidence, type Of, type Question, type QuestionText, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
 
 const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
   ? `${evidence.file}:${evidence.lines.first}–${evidence.lines.last} ${evidence.text}`
@@ -30,3 +27,8 @@ export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = nu
       `${outcome.rule.name}: ${outcome._tag} · ${taskEvidenceWords(outcome.evidence)}`) : []),
   ].join('\n'))
 }
+
+export const projectQuestionWords = (
+  { id, text }: Of<typeof Question>, read: Of<typeof ReadPosition>,
+): readonly [Of<typeof QuestionText>, `work answer "$ARISTOTELES_TOKEN" ${Of<typeof Question>['id']} --on=${Of<typeof ReadPosition>} --file=answer.yaml`] =>
+  [text, `work answer "$ARISTOTELES_TOKEN" ${id} --on=${read} --file=answer.yaml`]

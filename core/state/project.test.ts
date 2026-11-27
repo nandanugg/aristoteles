@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
-import { Effect, Result, Schema, Stream } from 'effect'
+import { Effect, Result, Schema } from 'effect'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
-import { projectEvents, projectEventStream, projectSnapshot } from '../../adapters/web/project.ts'
+import { projectEvents, projectSnapshot } from '../../adapters/web/project.ts'
 import { create, open, projectId, session, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { commandOutcomes, promptDirection, reportReview, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { startChild } from '../actions/staff-session.ts'
@@ -99,8 +99,6 @@ test('the page deduplicates notifications and catches up via the canonical snaps
     expect(Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => response.json())))).toEqual(review.state)
     page.receive([result.event, review.event])
     expect(changes).toEqual([review.state])
-    const streamed = yield* Stream.runCollect(Stream.take(projectEventStream(reopened, after), 2))
-    expect([...streamed].map((event) => encode(event))).toEqual([result.event, review.event].map((event) => encode(event)))
     const all = yield* reopened.eventsAfter(initial)
     expect(Result.getOrThrow(fold(all))).toEqual(page.current())
     const saved = Schema.encodeSync(Projection)(page.current())
