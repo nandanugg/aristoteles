@@ -1,9 +1,9 @@
 import { applyTaskMove, restartTask } from './task.ts'
-import { applyActivationMove } from './project-activation.ts'
+import { applyProjectPhase } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
-  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, versionOf,
+  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, versionOf,
   type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal,
 } from '../schema/project.ts'
 
@@ -37,16 +37,11 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
       openedIn: number,
       staffing: { _tag: 'Staffing', staff: new Map([[staff.key, staff]]), subscriptions: new Map([[subscription.key, subscription]]) },
       proposals: new Map(), sessions: new Map(), tasks: new Map(), questions: new Map(),
-      status: { _tag: 'Open' }, activation: { _tag: 'Onboarding' }, changedIn: number,
+      phase: { _tag: 'Onboarding' }, changedIn: number,
       read: ReadPosition.make(number),
     })
   }
-  if (project?.status._tag !== event.from) return wrongMove()
-  if (actor._tag !== 'Human') return wrongActor()
-  if (project.changedIn > read) return stale()
-  if (edge(projectLine, event.from, event.move, 'Ended') !== 'Allowed' ||
-      [...project.sessions.values()].some((session) => session._tag !== 'Ended')) return wrongMove()
-  return Result.succeed({ ...project, status: { _tag: 'Ended', endedIn: number }, changedIn: number })
+  return project ? applyProjectPhase(project, event) : wrongMove()
 }
 
 const sameApprovedProposals = Schema.toEquivalence(Schema.NonEmptyArray(versionOf(ProposalValue)))
@@ -112,7 +107,7 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
       sessions.set(key, { _tag: 'Ended', key, staff, startedIn, changedIn: number })
       return Result.succeed({ ...project, sessions })
     }
-    const activation = project.activation
+    const activation = project.phase
     const host = staffOf(project, project.roles.host)
     if (activation._tag === 'RollingBack' && host?.key === staff.key) return wrongMove()
     const live: LiveSession = { _tag: 'Live', key, staff, startedIn: number, changedIn: number, pane: event.input.pane }
@@ -125,7 +120,7 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
     }
     if (activation._tag === 'Active' && host?.key === staff.key && activation.work._tag !== 'NotStarted' &&
         startedIn < activation.work.startedIn) return wrongMove()
-    return Result.succeed({ ...project, sessions, activation: next,
+    return Result.succeed({ ...project, sessions, phase: next,
       changedIn: next !== activation ? number : project.changedIn })
   }
   const { observed } = event.input
@@ -213,7 +208,7 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   if (!Schema.is(StoredEvent)(event) || event.number !== readPosition(state) + 1) {
     return Result.fail(refuse('InvalidInput', Rationale.make('Apply stored events once and in journal order.')))
   }
-  if (state?.status._tag === 'Ended') {
+  if (state?.phase._tag === 'Ended') {
     return Result.fail(refuse('ProjectEnded', Rationale.make('This project has ended.')))
   }
   if (event.actor._tag === 'Session') {
@@ -224,7 +219,6 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   }
   const updated = event.line === 'Project' ? applyProjectMove(state, event) : ((): Result.Result<Project, Refusal> => {
     if (!state) return wrongMove()
-    if (event.line === 'Activation') return applyActivationMove(state, event)
     if (event.line === 'Session') return applySessionMove(state, event)
     if (event.line === 'Proposal') return applyProposalMove(state, event)
     if (event.line === 'Question') return applyQuestionMove(state, event)

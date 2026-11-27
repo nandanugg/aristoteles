@@ -1,9 +1,9 @@
 module activation {
   import lines.* from "./lines"
-  type Activation = Onboarding | Activating | Active | RollingBack
+  type ProjectPhase = Onboarding | Activating | Active | RollingBack | Ended
   type Mark = Approved | Marked | Newer
   type Record = {
-    phase: Activation,
+    phase: ProjectPhase,
     file: Mark,
     reserved: int,
     alive: Set[int],
@@ -18,16 +18,19 @@ module activation {
     phase: Onboarding, file: Approved, reserved: 0, alive: Set(), acked: Set(),
     binding: 0, pending: 0, top: 0, delivered: Set(), used: false
   }
-  type ActivationMove = ActivationNext | ActivationBack
-  pure val activationLine: Line[Activation, ActivationMove] = Map(
+  type ProjectMove = ActivationNext | ActivationBack | ProjectEnd
+  pure val projectLine: Line[ProjectPhase, ProjectMove] = Map(
     Onboarding -> { owes: Owner, moves: Set((ActivationNext, Activating)) },
     Activating -> { owes: Engine, moves: Set((ActivationNext, Active), (ActivationBack, RollingBack)) },
     RollingBack -> { owes: Engine, moves: Set((ActivationBack, Onboarding)) },
-    Active -> { owes: NoDuty, moves: Set() }
+    Active -> { owes: Owner, moves: Set((ProjectEnd, Ended)) },
+    Ended -> { owes: NoDuty, moves: Set() }
   )
-  pure def move(record: Record, label: ActivationMove, nextPhase: Activation): Record =
-    if (allows(activationLine, record.phase, label, nextPhase)) { ...record, phase: nextPhase }
+  pure def move(record: Record, label: ProjectMove, nextPhase: ProjectPhase): Record =
+    if (allows(projectLine, record.phase, label, nextPhase)) { ...record, phase: nextPhase }
     else record
+  pure def endProject(record: Record): Record =
+    if (record.alive == Set()) move(record, ProjectEnd, Ended) else record
   pure def authorize(record: Record, approved: bool): Record =
     if (approved and record.file == Approved) move(record, ActivationNext, Activating) else record
   pure def mark(record: Record): Record =

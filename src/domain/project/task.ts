@@ -74,10 +74,10 @@ export const Task = Schema.Struct({
 export type Task = Of<typeof Task>
 export type WholeFile = Of<typeof WholeFile>
 
-export const activeWork = ({ status, activation }: Project) => {
-  if (status._tag !== 'Open' || activation._tag !== 'Active') return null
-  const { work } = activation
-  return work._tag === 'NotStarted' ? null : { ...activation, work }
+export const activeWork = ({ phase }: Project) => {
+  if (phase._tag !== 'Active') return null
+  const { work } = phase
+  return work._tag === 'NotStarted' ? null : { ...phase, work }
 }
 
 export const taskRules = (task: Task): readonly Of<typeof Rule>[] =>

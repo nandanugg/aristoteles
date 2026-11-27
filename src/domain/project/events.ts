@@ -42,8 +42,15 @@ const taskReviewReport = Schema.Struct({
 })
 
 export const projectLine = line({
-  null: { from: Schema.Null, owes: 'Owner', moves: { open: { to: ['Open'], input: configuration, submission: { move: 'open', input: configuration } } } },
-  Open: { from: Schema.Literal('Open'), owes: 'Owner', moves: { end: { to: ['Ended'], input: empty, submission: { move: 'end', input: empty } } } },
+  null: { from: Schema.Null, owes: 'Owner', moves: { open: { to: ['Onboarding'], input: configuration, submission: { move: 'open', input: configuration } } } },
+  Onboarding: { from: Schema.Literal('Onboarding'), owes: 'Owner', moves: { next: { to: ['Activating'], input: files, submission: { move: 'next', input: files } } } },
+  Activating: { from: Schema.Literal('Activating'), owes: 'Engine', moves: { back: { to: ['RollingBack'], input: why } } },
+  RollingBack: { from: Schema.Literal('RollingBack'), owes: 'Engine', moves: { back: { to: ['Onboarding'], input: empty } } },
+  Active: { from: Schema.Literal('Active'), owes: 'None', moves: {
+    end: { to: ['Ended'], input: empty, owes: 'Owner', submission: { move: 'end', input: empty } },
+    start: { to: ['Active'], input: empty, owes: 'Owner', submission: { move: 'start', input: empty } },
+    use: { to: ['Active'], input: empty, owes: 'Host' },
+  } },
   Ended: { from: Schema.Literal('Ended'), owes: 'None', moves: {} },
 })
 export const taskLine = line({
@@ -115,24 +122,22 @@ export const proposalLine = line({
   Removed: { from: Schema.Literal('Removed'), owes: 'None', moves: {} },
 })
 
-export const activationLine = line({
-  Onboarding: { from: Schema.Literal('Onboarding'), owes: 'Owner', moves: { next: { to: ['Activating'], input: files, submission: { move: 'next', input: files } } } },
-  Activating: { from: Schema.Literal('Activating'), owes: 'Engine', moves: { back: { to: ['RollingBack'], input: why } } },
-  RollingBack: { from: Schema.Literal('RollingBack'), owes: 'Engine', moves: { back: { to: ['Onboarding'], input: empty } } },
-  Active: { from: Schema.Literal('Active'), owes: 'None', moves: {
-    start: { to: ['Active'], input: empty, owes: 'Owner', submission: { move: 'start', input: empty } },
-    use: { to: ['Active'], input: empty, owes: 'Host' },
-  } },
-})
 const projectProtocol = protocol({ line: Schema.Literal('Project') }, projectLine)
 export const ProjectEvent = Schema.Union([
   projectProtocol.event('null', 'open'),
-  projectProtocol.event('Open', 'end'),
+  projectProtocol.event('Onboarding', 'next'),
+  projectProtocol.event('Activating', 'back'),
+  projectProtocol.event('RollingBack', 'back'),
+  projectProtocol.event('Active', 'end'),
+  projectProtocol.event('Active', 'start'),
+  projectProtocol.event('Active', 'use'),
 ])
 export type ProjectEvent = Of<typeof ProjectEvent>
 const projectRequests = [
   projectProtocol.request('null', projectLine.null.moves.open),
-  projectProtocol.request('Open', projectLine.Open.moves.end),
+  projectProtocol.request('Onboarding', projectLine.Onboarding.moves.next),
+  projectProtocol.request('Active', projectLine.Active.moves.end),
+  projectProtocol.request('Active', projectLine.Active.moves.start),
 ]
 const taskProtocol = protocol({ line: Schema.Literal('Task'), key: TaskKey }, taskLine)
 export const TaskEvent = Schema.Union([
@@ -194,31 +199,17 @@ const proposalRequests = [
   proposalProtocol.request('WaitingForOwner', proposalLine.WaitingForOwner.moves.accept),
   proposalProtocol.request('WaitingForOwner', proposalLine.WaitingForOwner.moves.remove),
 ]
-const activationProtocol = protocol({ line: Schema.Literal('Activation') }, activationLine)
-export const ActivationEvent = Schema.Union([
-  activationProtocol.event('Onboarding', 'next'),
-  activationProtocol.event('Activating', 'back'),
-  activationProtocol.event('RollingBack', 'back'),
-  activationProtocol.event('Active', 'start'),
-  activationProtocol.event('Active', 'use'),
-])
-export type ActivationEvent = Of<typeof ActivationEvent>
-const activationRequests = [
-  activationProtocol.request('Onboarding', activationLine.Onboarding.moves.next),
-  activationProtocol.request('Active', activationLine.Active.moves.start),
-]
-export const StoredEvent = Schema.Union([ProjectEvent, TaskEvent, SessionEvent, QuestionEvent, ProposalEvent, ActivationEvent])
+export const StoredEvent = Schema.Union([ProjectEvent, TaskEvent, SessionEvent, QuestionEvent, ProposalEvent])
   .check(Schema.makeFilter((event) => event.read < event.number))
 export type StoredEvent = Of<typeof StoredEvent>
 export const StoredEvents = Schema.Array(StoredEvent)
 
-const ProjectSubmission = Schema.Union(projectRequests.map(({ schema }) => schema))
+export const ProjectSubmission = Schema.Union(projectRequests.map(({ schema }) => schema))
 export const TaskSubmission = Schema.Union(taskRequests.map(({ schema }) => schema))
 export const ProposalSubmission = Schema.Union(proposalRequests.map(({ schema }) => schema))
 export const QuestionSubmission = Schema.Union(questionRequests.map(({ schema }) => schema))
-export const ActivationSubmission = Schema.Union(activationRequests.map(({ schema }) => schema))
-export const Submission = Schema.Union([ProjectSubmission, TaskSubmission, QuestionSubmission, ProposalSubmission, ActivationSubmission])
+export const Submission = Schema.Union([ProjectSubmission, TaskSubmission, QuestionSubmission, ProposalSubmission])
 export type Submission = Of<typeof Submission>
-const requests = [...projectRequests, ...taskRequests, ...questionRequests, ...proposalRequests, ...activationRequests]
+const requests = [...projectRequests, ...taskRequests, ...questionRequests, ...proposalRequests]
 export const submissionParty = (request: Submission) =>
   requests.find(({ schema }) => Schema.is(schema)(request))?.party

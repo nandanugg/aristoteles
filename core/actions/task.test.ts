@@ -186,7 +186,7 @@ test('HTTP records a result before running its pinned command and journals a suc
     expect(project.tasks.get(taskKey)?.phase).toMatchObject({
       _tag: 'Reviewing', outcomes: [{ _tag: 'Holds', evidence: { exit: 0, stdout: '7' } }],
     })
-    expect(yield* Effect.result(ownerInput(journal, { read: project.read, line: 'Activation', move: 'start', input: {} }))).toMatchObject(refused('WrongMove'))
+    expect(yield* Effect.result(ownerInput(journal, { read: project.read, line: 'Project', move: 'start', input: {} }))).toMatchObject(refused('WrongMove'))
   }))),
 ))
 
@@ -251,7 +251,7 @@ test('the first authenticated send keeps the read basis from Start work', () => 
     const { state: started } = yield* startWork(journal, committed.state)
     const sent = yield* projectSendCommand(journal, started.read, Bun.YAML.stringify(draftFor(started)))
       .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))
-    expect(sent.state.activation).toMatchObject({ work: { _tag: 'Used', startedIn: started.read } })
+    expect(sent.state.phase).toMatchObject({ work: { _tag: 'Used', startedIn: started.read } })
     expect(sent.state.tasks.get(taskKey)?.phase._tag).toBe('Sent')
     const working = yield* projectReportCommand(journal, taskKey, sent.state.read, '{}')
       .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))

@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { Effect, Schema } from 'effect'
 import type { AuthenticatedActor } from '../../core/actions/project.ts'
 import { observeActivation, recordHostUse } from '../../core/actions/project-activation.ts'
-import { acknowledgeSession, cancelSession, observeSession, readOpenProject, reserveSession } from '../../core/actions/staff-session.ts'
+import { acknowledgeSession, cancelSession, observeSession, readOpenProject, readProject, reserveSession } from '../../core/actions/staff-session.ts'
 import {
   ApprovedFiles, HostCredential, LaunchNonce, LaunchVerifier, PaneAddress, Rationale, StaffSessionKey, boundHostSession, hostSession, hostReplacement, staffedIn, staffOf, refuse,
   type ApprovedFile, type EventNumber, type Of, type Pane, type Project, type Refusal, type Staff, type LiveSession,
@@ -21,10 +21,10 @@ import { codexFallbackNames, contentOf, inventoryOf, manifestOf, markFile, prefl
 export const projectDirectoryAt = (directory: string) => pathToFileURL(resolve(directory))
 
 export const activationOwner = (journal: Journal, name: string): Effect.Effect<AuthenticatedActor, Refusal> =>
-  Effect.flatMap(readOpenProject(journal), (project) =>
+  Effect.flatMap(readProject(journal), (project) =>
     project.owner.name === name
       ? Effect.succeed({ _tag: 'Human', actor: project.owner } as const)
-      : Effect.fail(refuse('WrongActor', Rationale.make('Only the project owner can change activation.'))))
+      : Effect.fail(refuse('WrongActor', Rationale.make('Use the project owner’s authority.'))))
 
 const protectedIO = <A>(operation: () => A): Effect.Effect<A, Refusal> =>
   Effect.try({ try: operation, catch: () => refuse('Unavailable', Rationale.make('The activation operation could not be confirmed.')) })
@@ -95,7 +95,7 @@ export const projectActivationOperations = (
       return yield* Effect.flatMap(readOpenProject(journal), use)
     }))
   const candidate = (project: Project) => {
-    const phase = project.activation
+    const phase = project.phase
     const session = hostSession(project)
     return session?._tag === 'Starting' &&
       (phase._tag === 'Activating' || phase._tag === 'Active' && phase.work._tag === 'NotStarted') ? session : null
@@ -121,7 +121,7 @@ export const projectActivationOperations = (
     if ((yield* provider.observe(key)) !== 'Ended') return yield* Effect.fail(unavailable())
   })
   const restore = (project: Project) => Effect.gen(function* () {
-    const phase = project.activation
+    const phase = project.phase
     if (phase._tag !== 'RollingBack') return yield* Effect.fail(wrong())
     yield* protectedIO(() => {
       for (const file of phase.files) {
@@ -133,7 +133,7 @@ export const projectActivationOperations = (
   return {
     reserve: (key) => locked((project) => Effect.gen(function* () {
       yield* protectedIO(() => { projectLaunch(key) })
-      const phase = project.activation
+      const phase = project.phase
       if (phase._tag !== 'Activating' && phase._tag !== 'Active') return yield* Effect.fail(wrong())
       if (phase._tag === 'Active' && phase.work._tag !== 'NotStarted') return yield* Effect.fail(wrong())
       const staff = staffOf(project, project.roles.host)
@@ -154,7 +154,7 @@ export const projectActivationOperations = (
       return yield* reserveSession(journal, state, key, staff, staffedIn(state))
     })),
     mark: locked((project) => Effect.gen(function* () {
-      const phase = project.activation
+      const phase = project.phase
       if (phase._tag !== 'Activating') return yield* Effect.fail(wrong())
       yield* checkFiles(phase.files, 'Optional')
       yield* protectedIO(() => {
@@ -165,7 +165,7 @@ export const projectActivationOperations = (
       })
     })),
     spawn: locked((project) => Effect.gen(function* () {
-      const phase = project.activation
+      const phase = project.phase
       const launch = candidate(project)
       if (!launch || (phase._tag !== 'Activating' && phase._tag !== 'Active')) return yield* Effect.fail(wrong())
       const observed = yield* provider.observe(launch.key)
@@ -184,7 +184,7 @@ export const projectActivationOperations = (
       yield* provider.spawn(launch.key, nonce, launch.staff)
     })),
     acknowledge: (key, nonce) => locked((project) => Effect.gen(function* () {
-      const phase = project.activation
+      const phase = project.phase
       const launch = candidate(project)
       if ((phase._tag !== 'Activating' && phase._tag !== 'Active') || launch?.key !== key)
         return yield* Effect.fail(retired())
@@ -193,10 +193,10 @@ export const projectActivationOperations = (
       yield* checkFiles(phase.files, 'Required')
       return yield* acknowledgeSession(journal, project, key, pane)
     })),
-    rollback: (why) => locked((project) => observeActivation(journal, project, { line: 'Activation', from: 'Activating', move: 'back', input: { why } })),
+    rollback: (why) => locked((project) => observeActivation(journal, project, { line: 'Project', from: 'Activating', move: 'back', input: { why } })),
     restore: locked(restore),
     reconcile: locked((project) => Effect.gen(function* () {
-      const phase = project.activation
+      const phase = project.phase
       if (phase._tag === 'RollingBack') {
         yield* restore(project)
         const launch = hostSession(project)
@@ -206,7 +206,7 @@ export const projectActivationOperations = (
           yield* protectedIO(() => removeProjectLaunch(dir, journal.directory, phase.approvedIn, projectLaunch(launch.key)))
           state = (yield* cancelSession(journal, project, launch.key)).state
         }
-        return yield* observeActivation(journal, state, { line: 'Activation', from: 'RollingBack', move: 'back', input: {} })
+        return yield* observeActivation(journal, state, { line: 'Project', from: 'RollingBack', move: 'back', input: {} })
       }
       if (phase._tag !== 'Active') return null
       const launch = hostReplacement(project)
@@ -225,7 +225,7 @@ export const projectActivationOperations = (
       return null
     })),
     collect: (key, nonce) => locked((project) => Effect.gen(function* () {
-      const phase = project.activation
+      const phase = project.phase
       const binding = boundHostSession(project)
       if (phase._tag !== 'Active' || !binding || binding.key !== key || phase.work._tag === 'Used') return yield* Effect.fail(retired())
       yield* confirmBoundPane(binding)
@@ -234,7 +234,7 @@ export const projectActivationOperations = (
       (value) => Schema.is(HostCredential)(value) ? Effect.succeed(value) : Effect.fail(retired()))
     })),
     authenticate: (key, credential) => locked((project) => Effect.gen(function* () {
-      const phase = project.activation
+      const phase = project.phase
       const binding = boundHostSession(project)
       if (phase._tag !== 'Active' || !binding || binding.key !== key || phase.work._tag === 'NotStarted') return yield* Effect.fail(retired())
       yield* confirmBoundPane(binding)
@@ -253,7 +253,7 @@ export const resumeProjectActivation = (
   journal: Journal, operations: ActivationOperations, action: 'resume' | 'relaunch' | 'rollback',
 ): Effect.Effect<void, Refusal> => Effect.gen(function* () {
   const project = yield* readOpenProject(journal)
-  const phase = project.activation
+  const phase = project.phase
   if (action === 'rollback') {
     if (phase._tag !== 'RollingBack') yield* operations.rollback(Rationale.make('The owner canceled activation.'))
     yield* operations.reconcile

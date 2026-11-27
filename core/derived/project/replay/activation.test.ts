@@ -73,7 +73,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
       const response = yield* projectEvents(journal, readPosition(page.current()))
       expect(Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => response.json())))).toEqual(project)
       expect(project.proposals).toEqual(f.project.proposals)
-      const phase = project.activation
+      const phase = project.phase
       const contents = readFileSync(f.file, 'utf8')
       const session = hostSession(project)
       const replacement = hostReplacement(project)

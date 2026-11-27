@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Activation } from './activation.ts'
+import { ProjectPhase } from './activation.ts'
 import { Proposal, StaffingAccepted, staffing } from './proposal.ts'
 import { Human, Role, StaffSession } from './staff.ts'
 import {
@@ -10,10 +10,6 @@ import {
 import { Task } from './task.ts'
 import { Question } from './question.ts'
 
-const ProjectStatus = Schema.Union([
-  Schema.TaggedStruct('Open', {}),
-  Schema.TaggedStruct('Ended', { endedIn: EventNumber }),
-])
 export const Project = Schema.Struct({
   owner: Human,
   roles: Schema.Struct({ host: Role, pipeline: Role, work: recordsByKey(Role, RoleKey) }).check(
@@ -21,7 +17,7 @@ export const Project = Schema.Struct({
   ),
   openedIn: EventNumber,
   staffing: Schema.Union([staffing, StaffingAccepted]), proposals: recordsByKey(Proposal, ProposalKey),
-  sessions: recordsByKey(StaffSession, StaffSessionKey), tasks: recordsByKey(Task, TaskKey), questions: recordsByKey(Question, QuestionKey), status: ProjectStatus, activation: Activation,
+  sessions: recordsByKey(StaffSession, StaffSessionKey), tasks: recordsByKey(Task, TaskKey), questions: recordsByKey(Question, QuestionKey), phase: ProjectPhase,
   changedIn: EventNumber, read: ReadPosition,
 })
 export type Project = Of<typeof Project>

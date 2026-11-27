@@ -63,7 +63,7 @@ export const staffSessionOperations = (
       if (project.sessions.has(key)) return yield* stale()
       const assigned = staffByKey(project, staff)
       if (!assigned) return yield* wrongMove()
-      const activation = project.activation
+      const activation = project.phase
       if ((activation._tag === 'Activating' || activation._tag === 'RollingBack' ||
           activation._tag === 'Active' && activation.work._tag === 'NotStarted') &&
           staffOf(project, project.roles.host)?.key === assigned.key) return yield* wrongMove()

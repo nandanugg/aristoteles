@@ -306,7 +306,7 @@ test('the browser moves from the reviewed direction to work under its bound host
     yield* Effect.promise(() => page.getByRole('button', { name: 'Start work' }).click())
     yield* Effect.promise(() => page.getByText('Work is open.').waitFor())
     const afterWork = yield* readOpenProject(journal)
-    expect(afterWork.activation).toMatchObject({ _tag: 'Active', work: { _tag: 'Started', startedIn: expect.any(Number) } })
+    expect(afterWork.phase).toMatchObject({ _tag: 'Active', work: { _tag: 'Started', startedIn: expect.any(Number) } })
     expect(boundHostSession(afterWork)?.key).toBe(host)
   }))),
 ), 30_000)

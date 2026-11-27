@@ -69,7 +69,8 @@ const moveFor = (
   const moved = (input: MoveInput) => Result.succeed(input)
   if (request.line === 'Project') {
     if (request.move === 'open') return moved({ ...request, from: null })
-    return moved({ ...request, from: 'Open' })
+    if (request.move === 'next') return moved({ ...request, from: 'Onboarding' })
+    return moved({ ...request, from: 'Active' })
   }
   if (!project) return Result.fail(refuse('WrongMove', Rationale.make('Open the project first.')))
   const current = authenticated._tag === 'Staff' || authenticated._tag === 'Review'
@@ -78,7 +79,7 @@ const moveFor = (
       current?.staff.key !== authenticated.session.staff.key) return Result.fail(retired())
   if (request.line === 'Task') {
     if (request.move === 'open') {
-      const activation = project.activation
+      const activation = project.phase
       if (authenticated._tag !== 'Host' || activation._tag !== 'Active' ||
           authenticated.session.key !== boundHostSession(project)?.key)
         return Result.fail(retired())
@@ -110,10 +111,6 @@ const moveFor = (
     if (Schema.is(taskLine.Working.moves.next.submission.input)(input))
       return moved({ line, key, from: 'Working', move: 'next', input })
     return moved({ line, key, from: 'Sent', move: 'next', input: { staffedIn: staffedIn(project), where: 'Session' } })
-  }
-  if (request.line === 'Activation') {
-    if (request.move === 'next') return moved({ ...request, from: 'Onboarding' })
-    return moved({ ...request, from: 'Active' })
   }
   if (request.line === 'Question') {
     if (request.move === 'open') return moved({ ...request, from: null })

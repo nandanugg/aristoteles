@@ -10,7 +10,7 @@ staff act under the session key and checks that exact lifetime during replay.
 
 ## Journal
 
-A format-21 SQLite journal stores ordered events using the same line fields as
+A format-22 SQLite journal stores ordered events using the same line fields as
 submissions. Each write reads the current projection inside a transaction, checks
 the actor and read position, and appends the event. The phase transitions fold those events into one Project projection.
 CLI and page views derive their next steps from that projection. The page loads a
@@ -36,7 +36,9 @@ staffing plan. Sessions keep the assignments they started with.
   recorded yet. Paused sessions hold their work and slots through a reset. Ended
   sessions release both after the provider confirms the process has stopped. To
   move a paused staff assignment, the owner first runs `work session end <session>`.
-- Activation pins the approved instruction inventory and binds one acknowledged
+- The Project moves through Onboarding, Activating, Active, and Ended. A rollback
+  returns it to Onboarding. The owner ends an Active project after its sessions
+  have ended. Activation pins the approved instruction inventory and binds one acknowledged
   host. The host binding comes from the live staff session. The owner starts
   work on the activation line. Recovery reconciles launch
   material and file markers against the journal.

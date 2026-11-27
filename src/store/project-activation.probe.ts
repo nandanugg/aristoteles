@@ -15,9 +15,9 @@ export const approvedText = 'Read the approved project instructions.\n'
 export const newerText = 'The owner edited the instructions.\n'
 export const hostKey = (number: number) => StaffSessionKey.make('session:' + number.toString(16).padStart(32, '0'))
 
-export const agree = (journal: Journal, project: Project, files: Of<typeof ApprovedFiles>) => ownerInput(journal, { read: project.read, line: 'Activation', move: 'next', input: { files } })
+export const agree = (journal: Journal, project: Project, files: Of<typeof ApprovedFiles>) => ownerInput(journal, { read: project.read, line: 'Project', move: 'next', input: { files } })
 
-export const startWork = (journal: Journal, project: Project) => ownerInput(journal, { read: project.read, line: 'Activation', move: 'start', input: {} })
+export const startWork = (journal: Journal, project: Project) => ownerInput(journal, { read: project.read, line: 'Project', move: 'start', input: {} })
 
 export const readyProject = (path: string, host = staff, projectDirectory?: Journal['directory']) => Effect.gen(function* () {
   const directory = dirname(path)

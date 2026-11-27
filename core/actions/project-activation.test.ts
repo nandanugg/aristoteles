@@ -8,11 +8,11 @@ import { bootstrapPane, NONCE_ENV, PROJECT_ENV } from '../../adapters/live/boots
 import { liveProjectBootstrap, projectActivationFiles, projectActivationOperations, projectDirectoryAt, resumeProjectActivation } from '../../adapters/live/activation.ts'
 import { projectActivationApproval, projectEvents, projectSnapshot } from '../../adapters/web/project.ts'
 import { agree, approvedText, hostKey, newerText, readyActivation, readyProject, startWork } from '../../src/store/project-activation.probe.ts'
-import { create, open, staff, withJournal } from '../../src/store/project.probe.ts'
+import { create, open, ownerInput, staff, withJournal } from '../../src/store/project.probe.ts'
 import { ownerAuthority } from '../../src/store/question.probe.ts'
 import { ApprovedFiles, HostCredential, LaunchNonce, LaunchText, Rationale, ReadPosition } from '../schema/project.ts'
 import { Authority } from './project.ts'
-import { readOpenProject } from './staff-session.ts'
+import { observeSession, readOpenProject } from './staff-session.ts'
 
 const auth = Effect.provideService(Authority, { actor: Effect.succeed(ownerAuthority) })
 const reason = Rationale.make('The owner asked to restore the original.')
@@ -27,6 +27,28 @@ test('activation requires accepted proposals and pins a checked inventory of fil
     expect(yield* Effect.result(agree(journal, state, files))).toMatchObject(refused('WrongMove'))
     expect(yield* Effect.result(startWork(journal, state))).toMatchObject(refused('WrongMove'))
     expect(yield* journal.eventsAfter(state.read)).toEqual([])
+  }))),
+))
+
+test('the project line can end only from Active after all sessions end', () => withJournal((path) =>
+  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const f = yield* readyActivation(path)
+    const end = (read: typeof f.project.read) => ownerInput(f.journal, { read, line: 'Project', move: 'end', input: {} })
+    expect(yield* Effect.result(end(f.project.read))).toMatchObject(refused('WrongMove'))
+    const approving = yield* agree(f.journal, f.project, f.files)
+    expect(yield* Effect.result(end(approving.state.read))).toMatchObject(refused('WrongMove'))
+    expect(yield* f.journal.eventsAfter(approving.state.read)).toEqual([])
+    const key = hostKey(1)
+    yield* f.operations.reserve(key)
+    yield* f.operations.mark
+    yield* f.operations.spawn
+    const live = yield* f.operations.acknowledge(key, f.nonces.get(key)!)
+    expect(yield* Effect.result(end(live.state.read))).toMatchObject(refused('WrongMove'))
+    yield* f.provider.stop(key)
+    const stopped = yield* observeSession(f.journal, live.state, key, 'Ended')
+    const ended = yield* end(stopped.state.read)
+    expect(ended.state.phase).toEqual({ _tag: 'Ended', endedIn: ended.event.number })
+    expect(yield* Effect.result(end(ended.state.read))).toMatchObject(refused('ProjectEnded'))
   }))),
 ))
 
@@ -65,14 +87,14 @@ test('rollback is repeatable, preserves later edits and keeps accepted proposals
     yield* f.operations.rollback(reason)
     yield* f.operations.restore
     const rolled = yield* f.operations.reconcile
-    expect(rolled?.state.activation._tag).toBe('Onboarding')
+    expect(rolled?.state.phase._tag).toBe('Onboarding')
     expect(rolled?.state.proposals).toEqual(f.project.proposals)
     expect(readFileSync(f.file, 'utf8')).toBe(newerText)
     expect(f.running.size).toBe(0)
   }))),
 ))
 
-test('format 21 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
+test('format 22 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const f = yield* readyProject(path, { ...staff, launch: LaunchText.make('sleep 30 # {session}') }, projectDirectoryAt(dirname(path)))
     const provider = liveProjectBootstrap(f.directory, path, f.journal.directory)
@@ -84,8 +106,8 @@ test('format 21 opens a real marked tmux host and retires credential delivery on
     yield* resumeProjectActivation(f.journal, operations, 'resume')
     expect(yield* provider.observe(key)).toBe('Running')
     const current = yield* readOpenProject(f.journal)
-    if (current.activation._tag !== 'Activating') throw new Error('Expected prepared launch')
-    const nonce = readFileSync(join(f.directory, '.work/onboarding/activation/project', digest(f.journal.directory.href), String(current.activation.approvedIn),
+    if (current.phase._tag !== 'Activating') throw new Error('Expected prepared launch')
+    const nonce = readFileSync(join(f.directory, '.work/onboarding/activation/project', digest(f.journal.directory.href), String(current.phase.approvedIn),
       'launch-' + key.slice(8), 'nonce'), 'utf8')
     const pane = bootstrapPane(f.directory, key.slice(8))
     if (!pane) throw new Error('Expected running tmux pane')
@@ -110,7 +132,7 @@ test('format 21 opens a real marked tmux host and retires credential delivery on
     expect(ack.out[0]).toContain('Session introduction for ' + staff.name)
     expect(ack.out[0]).toContain('Accepted direction ')
     const active = yield* readOpenProject(f.journal)
-    expect(active.activation._tag).toBe('Active')
+    expect(active.phase._tag).toBe('Active')
     const collected = yield* cli('collect')
     expect(collected.status).toBe(0)
     const credential = collected.out[0]!
@@ -118,7 +140,7 @@ test('format 21 opens a real marked tmux host and retires credential delivery on
     expect(yield* Effect.result(operations.authenticate(key, Schema.decodeUnknownSync(HostCredential)(credential)))).toMatchObject(refused('RetiredSession'))
     yield* startWork(f.journal, active)
     const used = yield* operations.authenticate(key, Schema.decodeUnknownSync(HostCredential)(credential))
-    expect(used.activation).toMatchObject({ _tag: 'Active', work: { _tag: 'Used', startedIn: expect.any(Number), usedIn: expect.any(Number) } })
+    expect(used.phase).toMatchObject({ _tag: 'Active', work: { _tag: 'Used', startedIn: expect.any(Number), usedIn: expect.any(Number) } })
     const retired = yield* cli('collect')
     expect(retired.status).toBe(1)
     const logs = [wrongPane, ack, retired].flatMap(({ out, err }) => [...out, ...err]).join(' ')
@@ -157,7 +179,7 @@ test('first work pins the old bound launch when it beats the replacement commit'
     expect(yield* Effect.result(f.operations.authenticate(old, credential))).toMatchObject(refused('RetiredSession'))
     expect(yield* f.journal.eventsAfter(state.read)).toEqual([])
     const cleaned = yield* f.operations.reconcile
-    expect(cleaned?.state.activation).toMatchObject({ _tag: 'Active' })
+    expect(cleaned?.state.phase).toMatchObject({ _tag: 'Active' })
     expect(cleaned?.state.sessions.get(replacement)?._tag).toBe('Ended')
     expect(f.running.has(replacement)).toBe(false)
   }))),

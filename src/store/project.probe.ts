@@ -47,7 +47,7 @@ export const staffInput = (journal: Journal, input: unknown, live = session) =>
   }))
 export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [], initialStaff = staff) => ownerInput(journal, { read: 0, line: 'Project', move: 'open', input: { owner, host, pipeline, staff: Schema.encodeSync(Staff)(initialStaff), subscription, roles } })
 export const startFixtureSession = (journal: Journal, state: Projection, live = session) => {
-  if (state?.status._tag !== 'Open') throw new Error('Open the test project first')
+  if (!state || state.phase._tag === 'Ended') throw new Error('Open the test project first')
   const bound = boundHostSession(state)
   if (bound?.key === live.key) return Effect.map(journal.eventsAfter(ReadPosition.make(0)), (events) => ({
     state, event: events.findLast((event) => event.line === 'Session' &&

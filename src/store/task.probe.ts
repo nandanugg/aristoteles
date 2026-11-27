@@ -48,7 +48,7 @@ export const activateTasks = (journal: Journal, project: Project, value?: Direct
     })),
   })
   const ready = yield* acceptDirection(journal, staffed, selected)
-  const line = { line: 'Activation' } as const
+  const line = { line: 'Project' } as const
   const authorized = yield* ownerInput(journal, { read: ready.read, ...line, move: 'next', input: { files } })
   const assigned = staffOf(authorized.state, authorized.state.roles.host)!
   return (yield* startSession(journal, authorized.state, {

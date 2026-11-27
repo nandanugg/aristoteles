@@ -56,7 +56,7 @@ module activationCommitCase {
   }
   action step = any { approve, markFile, startHost, launchHost, acknowledge, loseHost,
     tryCommit, crashBeforeNote, note, probeWork, state' = state }
-  val Safety = not(state.earlyWork) and
+  val Safety = not(state.earlyWork) and (state.record.phase != Active implies endProject(state.record) == state.record) and
     (state.record.binding > 0 implies state.record.file == Marked and
       state.record.alive.contains(state.record.binding) and state.record.acked.contains(state.record.binding)) and
     (state.record.phase == Active implies state.record.binding > 0) and

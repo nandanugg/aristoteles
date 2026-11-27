@@ -8,15 +8,16 @@ import { fold } from '../state/project.ts'
 import { assignTaskReview } from './task-review.ts'
 import { recordObserved } from './project.ts'
 
-export const readOpenProject = (journal: Journal): Effect.Effect<Project, Refusal> =>
+export const readProject = (journal: Journal): Effect.Effect<Project, Refusal> =>
   Effect.flatMap(journal.eventsAfter(ReadPosition.make(0)), (events) => {
     const state = fold(events)
     if (Result.isFailure(state)) return Effect.fail(state.failure)
-    if (state.success?.status._tag === 'Open') return Effect.succeed(state.success)
-    return Effect.fail(state.success
-      ? refuse('ProjectEnded', Rationale.make('This project has ended.'))
-      : refuse('WrongMove', Rationale.make('Open the project first.')))
+    return state.success ? Effect.succeed(state.success) : Effect.fail(refuse('WrongMove', Rationale.make('Open the project first.')))
   })
+
+export const readOpenProject = (journal: Journal): Effect.Effect<Project, Refusal> =>
+  Effect.flatMap(readProject(journal), (project) => project.phase._tag === 'Ended'
+    ? Effect.fail(refuse('ProjectEnded', Rationale.make('This project has ended.'))) : Effect.succeed(project))
 
 export const staffAuthority = (
   project: Project, key: Of<typeof StaffSessionKey>,

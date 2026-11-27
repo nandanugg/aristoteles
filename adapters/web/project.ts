@@ -36,7 +36,7 @@ export const projectSubmission = (
     onSuccess: ({ event }) => Effect.gen(function* () {
       if (review && event.line === 'Proposal' && event.from !== null)
         yield* Effect.forkDetach(Effect.result(review))
-      if (activate && event.line === 'Activation' && event.from === 'Onboarding')
+      if (activate && event.line === 'Project' && event.from === 'Onboarding')
         yield* Effect.forkDetach(Effect.result(activate))
       if (commands && event.line === 'Task' && event.from === 'Working' && event.move === 'next')
         yield* Effect.forkDetach(Effect.result(commands(event.key)))
@@ -55,7 +55,7 @@ export const projectActivationApproval = (journal: Journal, directory: string): 
     const project = yield* readOpenProject(journal)
     if (actor._tag !== 'Human')
       return yield* Effect.fail(refuse('WrongActor', Rationale.make('Only the owner approves the activation files.')))
-    if (project.activation._tag !== 'Onboarding' || !approvedProposals(project))
+    if (project.phase._tag !== 'Onboarding' || !approvedProposals(project))
       return yield* Effect.fail(refuse('WrongMove', Rationale.make('Accept the onboarding proposals before activation.')))
     const files = yield* projectActivationFiles(directory)
     return Response.json(Schema.encodeSync(ApprovedFiles)(files))

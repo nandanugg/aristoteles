@@ -21,15 +21,14 @@ const work = Schema.Union([
 const approved = {
   approvedIn: EventNumber, files: ApprovedFiles, proposals: Schema.NonEmptyArray(versionOf(ProposalValue)),
 }
-export const Activation = Schema.Union([
+export const ProjectPhase = Schema.Union([
   Schema.TaggedStruct('Onboarding', {}),
   Schema.TaggedStruct('Activating', approved),
   Schema.TaggedStruct('RollingBack', { ...approved, why: Rationale }),
-  Schema.TaggedStruct('Active', {
-    ...approved, work,
-  }),
+  Schema.TaggedStruct('Active', { ...approved, work }),
+  Schema.TaggedStruct('Ended', { endedIn: EventNumber }),
 ])
-export type Activation = Of<typeof Activation>
+export type ProjectPhase = Of<typeof ProjectPhase>
 
 export const approvedProposals = (project: Project) => {
   const proposals = [...project.proposals.values()].filter(({ phase }) => phase._tag !== 'Removed')
@@ -40,14 +39,14 @@ export const approvedProposals = (project: Project) => {
 }
 
 export const hostSession = (project: Project) => {
-  if (project.activation._tag === 'Onboarding') return undefined
+  if (project.phase._tag === 'Onboarding' || project.phase._tag === 'Ended') return undefined
   const staff = staffOf(project, project.roles.host)
   return staff && latestSession(project, staff)
 }
 
 export const boundHostSession = (project: Project) => {
   const session = hostSession(project)
-  return project.activation._tag === 'Active' && session?._tag === 'Live' ? session : undefined
+  return project.phase._tag === 'Active' && session?._tag === 'Live' ? session : undefined
 }
 
 export const hostReplacement = (project: Project) => {

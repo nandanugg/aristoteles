@@ -23,7 +23,7 @@ file and the proposal shapes. Use the owner’s interactive terminal for project
 opening. The owner name in the file must match the project’s Git user name.
 
 Open the printed loopback URL to inspect the Project page. The journal uses format
-21 and lives at `~/.aristoteles/aristoteles.db` by default. Set `ARISTOTELES_DB`
+22 and lives at `~/.aristoteles/aristoteles.db` by default. Set `ARISTOTELES_DB`
 before opening the project to use a separate file. Keep the CLI, page, and local
 sessions on that same journal.
 

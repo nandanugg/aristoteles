@@ -30,7 +30,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=20; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=21; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -40,7 +40,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
         cwd: dir, env: { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db, WORK_NO_OPEN: '1' },
       })
       expect(result.exitCode).toBe(1)
-      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 21 project journal')
+      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 22 project journal')
       expect(readFileSync(db).equals(original)).toBe(true)
     }
     expect(existsSync(join(dir, '.work'))).toBe(false)
@@ -312,7 +312,7 @@ exec sleep 90
     const committed = await events()
     expect(committed.map(({ number }) => number)).toEqual(committed.map((_, index) => index + 1))
     expect((await state()).read).toBe(beforeRestart)
-    const stale = await submit({ read: 1, line: 'Activation', move: 'start', input: {} })
+    const stale = await submit({ read: 1, line: 'Project', move: 'start', input: {} })
     expect(stale.status).toBe(409)
     expect((await stale.json()).code).toBe('Stale')
     for (const secret of [hostToken, live.token, child]) {

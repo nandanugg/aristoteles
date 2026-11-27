@@ -43,10 +43,10 @@ export function ActivationPanel({ project, submit, markerFiles }: {
   const [files, setFiles] = useState<Of<typeof ApprovedFiles> | null>(null)
   const [failure, setFailure] = useState<Refusal['why'] | null>(null)
   const [busy, setBusy] = useState(false)
-  const { activation, read } = project
+  const { phase: activation, read } = project
   const binding = boundHostSession(project)
   useEffect(() => setFiles(null), [activation._tag])
-  const send = async (submission: Extract<Submission, { line: 'Activation' }>) => {
+  const send = async (submission: Extract<Submission, { line: 'Project' }>) => {
     setBusy(true)
     try {
       const response = await submit(submission)
@@ -54,10 +54,10 @@ export function ActivationPanel({ project, submit, markerFiles }: {
     } finally { setBusy(false) }
   }
   return html`<section aria-label="Activation" class="review-stage">
-    ${activation._tag === 'Onboarding' && approvedProposals(project)
+    ${activation._tag === 'Ended' ? html`<p>Project ended.</p>` : activation._tag === 'Onboarding' && approvedProposals(project)
       ? files ? html`<ul>${files.map(({ path }) => html`<li key=${path}>${path}</li>`)}</ul>
         <button class="btn primary" disabled=${busy} onClick=${() =>
-          void send({ read, line: 'Activation', move: 'next', input: { files } })}>Approve and activate</button>`
+          void send({ read, line: 'Project', move: 'next', input: { files } })}>Approve and activate</button>`
         : html`<button class="btn" disabled=${busy} onClick=${async () => {
           setBusy(true)
           try {
@@ -71,7 +71,7 @@ export function ActivationPanel({ project, submit, markerFiles }: {
       : activation._tag === 'Activating' ? html`<p>Waiting for the host to acknowledge activation.</p>`
       : activation._tag === 'RollingBack' ? html`<p>Restoring approved files.</p>`
       : activation.work._tag === 'NotStarted' && binding ? html`<button class="btn primary" disabled=${busy} onClick=${() =>
-        void send({ read, line: 'Activation', move: 'start', input: {} })}>Start work</button>`
+        void send({ read, line: 'Project', move: 'start', input: {} })}>Start work</button>`
       : activation.work._tag === 'NotStarted' ? html`<p>Waiting for a live host session.</p>`
       : html`<p>Work is open.</p>`}
     ${failure ? html`<p role="alert">${failure}</p>` : null}

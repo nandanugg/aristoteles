@@ -85,7 +85,7 @@ for (const kind of kinds) test('task report race append seam — ' + kind, () =>
         const committed = await Effect.runPromise(journal.eventsAfter(origin))
         const state = Result.getOrThrow(fold(committed))
         expect(state).toEqual(current)
-        if (state?.status._tag !== 'Open') throw new Error('The replay has no opened project')
+        if (!state || state.phase._tag === 'Ended') throw new Error('The replay has no opened project')
         const task = state.tasks.get(taskKey)
         if (!task) throw new Error('The replay has no sent task')
         const phase = task.phase

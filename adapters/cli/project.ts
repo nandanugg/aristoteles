@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { Effect, Exit, Schema } from 'effect'
 import { Authority, submit, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { nextStep } from '../../core/derived/project/next-step.ts'
-import { readOpenProject } from '../../core/actions/staff-session.ts'
+import { readProject } from '../../core/actions/staff-session.ts'
 import {
   EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, liveSession, proposalText, refuse, staffedIn, type Of, type Project, type Submission,
 } from '../../core/schema/project.ts'
@@ -49,7 +49,7 @@ const help = [
   'work onboard accept|send-back|remove <proposal> --on=<read>',
   'work start [--detach]',
   'work activation resume|relaunch|rollback',
-  'work project start --on=<read>',
+  'work project start|end --on=<read>',
   'work session launch <staff> | observe <session> | end <session>',
   'work wait <token> [--on=<session-start>]',
   'work send <token> --on=<read> --file=task.yaml',
@@ -149,7 +149,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     : ownerTerminal() ? Effect.flatMap(ownerName(), (name) => activationOwner(journal, name)) : Effect.fail(denied())
   const asActor = Effect.provideService(Authority, { actor })
   const requireOwner = Effect.flatMap(actor, (by) => by._tag === 'Human' ? Effect.void : Effect.fail(denied()))
-  const project = yield* readOpenProject(journal)
+  const project = yield* readProject(journal)
   const projectCommands = liveTaskCommands(io.cwd)
 
   if ((command === 'status' || (command === 'onboard' && act === 'status')) && !subject && known([])) {
@@ -227,8 +227,8 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
   if (!known(['on', 'file', 'why'])) return yield* Effect.fail(invalid())
   const basis = yield* read()
   const write = (input: Submission) => submit(journal, input).pipe(asActor)
-  if (command === 'project' && act === 'start' && !subject && known(['on']))
-    return [words((yield* write({ read: basis, line: 'Activation', move: 'start', input: {} })).event)]
+  if (command === 'project' && (act === 'start' || act === 'end') && !subject && known(['on']))
+    return [words((yield* write({ read: basis, line: 'Project', move: act, input: {} })).event)]
   if (command === 'onboard' && act === 'submit' && !subject && known(['on', 'file'])) {
     const result = yield* projectOnboard(journal, basis, yield* file(), runs.review).pipe(asActor)
     return [words(result.event)]

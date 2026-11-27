@@ -7,7 +7,7 @@ export const hostQueue = (project: Project, events: readonly StoredEvent[]): rea
       entries.set(event.key, event.number)
   }
   return [...project.proposals.values()].filter(({ phase }) => phase._tag === 'Reviewing' &&
-    phase.assignment._tag === 'Waiting' && project.status._tag === 'Open')
+    phase.assignment._tag === 'Waiting' && project.phase._tag !== 'Ended')
     .sort((a, b) => (entries.get(a.key) ?? a.changedIn) - (entries.get(b.key) ?? b.changedIn))
 }
 

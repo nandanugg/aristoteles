@@ -21,7 +21,7 @@ const currentSession = (project: Project, authority: LiveSession): LiveSession |
 }
 
 export const questionsFor = (project: Project, authority: LiveSession | Of<typeof Human>) => {
-  if (project.status._tag === 'Ended') return []
+  if (project.phase._tag === 'Ended') return []
   const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
   const actor = authority._tag === 'Human' ? { _tag: 'Human' } as const : current && actorFor(project, { _tag: 'Session', key: current.key })
   if (!actor) return []
@@ -49,11 +49,11 @@ export const acceptedDirections = (project: Project) => {
 export const nextStep = (
   project: Project, authority: LiveSession | Of<typeof Human>, events: readonly StoredEvent[], on?: Of<typeof ReadPosition>,
 ): Selection => {
-  if (project.status._tag === 'Ended') return { _tag: 'Awaiting' }
+  if (project.phase._tag === 'Ended') return { _tag: 'Awaiting' }
   const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
   // Starting up and opening a review can produce engine events under the session's key.
   if (current && on !== Number(current.startedIn) && !events.some(({ actor, move, line }) =>
-    actor._tag === 'Session' && actor.key === current.key && move !== 'assign' && !(line === 'Activation' && move === 'use'),
+    actor._tag === 'Session' && actor.key === current.key && move !== 'assign' && !(line === 'Project' && move === 'use'),
   )) return { _tag: 'Introduction', subject: project, read: ReadPosition.make(current.startedIn) }
   const [question] = questionsFor(project, authority)
   const owes = (task: Task): boolean => {

@@ -3,7 +3,7 @@ import type { Of, Project, Refusal, StaffSessionKey } from '../schema/project.ts
 import type { Committed, Journal } from '../services/project.ts'
 import { recordObserved } from './project.ts'
 
-type Move = Extract<Parameters<typeof recordObserved>[3], { line: 'Activation' }>
+type Move = Extract<Parameters<typeof recordObserved>[3], { line: 'Project'; move: 'back' }>
 
 export const observeActivation = (
   journal: Journal, project: Project, move: Move,
@@ -13,5 +13,5 @@ export const recordHostUse = (
   journal: Journal, project: Project, key: Of<typeof StaffSessionKey>,
 ): Effect.Effect<Committed, Refusal> => recordObserved(
   journal, { _tag: 'Session', key }, project.read,
-  { line: 'Activation', from: 'Active', move: 'use', input: {} },
+  { line: 'Project', from: 'Active', move: 'use', input: {} },
 )

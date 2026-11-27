@@ -22,7 +22,7 @@ export const taskBrief = (journal: Journal, key: Of<typeof TaskKey>): Effect.Eff
     if (!task || !activeWork(project))
       return yield* Effect.fail(refuse('WrongMove', Rationale.make('This task is unavailable.')))
     if (actor._tag === 'Human') return task
-    if (actor._tag === 'Host' && project.activation._tag === 'Active' &&
+    if (actor._tag === 'Host' && project.phase._tag === 'Active' &&
       actor.session.key === boundHostSession(project)?.key) return task
     if (actor._tag === 'Staff' || actor._tag === 'Review') {
       const session = liveSession(project, actor.session.key)
