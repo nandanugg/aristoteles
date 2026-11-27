@@ -4,11 +4,11 @@ import { Effect, Exit, Schema } from 'effect'
 import { Authority, submit, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, Human, ProjectCredential, Projection, ProposalId, Rationale, ReadPosition, Refusal, ReviewFacts, SessionId, StaffId, refuse, staffingAt,
+  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, refuse, staffingAt,
 } from '../../core/schema/project.ts'
 import { openProjectJournal, withProjectEnv } from '../../core/services/project.ts'
 import {
-  activationOwner, liveProjectBootstrap, projectActivationOperations, projectIdAt, resumeProjectActivation,
+  activationOwner, liveProjectBootstrap, projectActivationOperations, projectDirectoryAt, resumeProjectActivation,
 } from '../live/activation.ts'
 import { bootstrapPane, NONCE_ENV, PROJECT_ENV } from '../live/bootstrap.ts'
 import { installSkill } from '../live/skill-install.ts'
@@ -100,30 +100,41 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (input === null || typeof input !== 'object' || !('owner' in input)) return yield* Effect.fail(invalid())
     const owner = yield* decode(Human, input.owner)
     if (owner.name !== (yield* ownerName())) return yield* Effect.fail(denied())
-    const journal = yield* openProjectJournal(projectIdAt(io.cwd), 'Create')
-    const actor = { _tag: 'Human', actor: { _tag: 'Human', id: owner.id } } as const
-    const result = yield* submit(journal, { read: 0, line: { _tag: 'Project', id: journal.id }, move: 'open', input }).pipe(
+    const journal = yield* openProjectJournal(projectDirectoryAt(io.cwd), 'Create')
+    const actor = { _tag: 'Human', actor: { _tag: 'Human' } } as const
+    const result = yield* submit(journal, { read: 0, line: { _tag: 'Project' }, move: 'open', input }).pipe(
       Effect.provideService(Authority, { actor: Effect.succeed(actor) }),
     )
     return [words(result.event)]
   }
 
-  const projectId = projectIdAt(io.cwd)
+  const directory = projectDirectoryAt(io.cwd)
   if (command === 'activation' && (act === 'ack' || act === 'collect')) {
-    if (!subject || !known([]) || !Schema.is(SessionId)(subject) || !/^session:[a-f0-9]{32}$/u.test(subject) ||
-        projectId !== env[PROJECT_ENV]) return yield* Effect.fail(denied())
+    if (!subject || !known([]) || !Schema.is(StaffSessionKey)(subject) || !/^session:[a-f0-9]{32}$/u.test(subject) ||
+        directory.href !== env[PROJECT_ENV]) return yield* Effect.fail(denied())
     const pane = bootstrapPane(io.cwd, subject.slice(8))
     if (!pane || pane.pane !== env.TMUX_PANE || pane.socket !== env.TMUX?.split(',')[0]) return yield* Effect.fail(denied())
-    const journal = yield* openProjectJournal(projectId, 'Write')
-    const operations = projectActivationOperations(io.cwd, journal, liveProjectBootstrap(io.cwd, env.ARISTOTELES_DB, journal.id))
+    const journal = yield* openProjectJournal(directory, 'Write')
+    const operations = projectActivationOperations(io.cwd, journal, liveProjectBootstrap(io.cwd, env.ARISTOTELES_DB, journal.directory))
     if (act === 'collect') return [yield* collectProjectHost(operations, subject, env[NONCE_ENV])]
     yield* acknowledgeProjectHost(operations, subject, env[NONCE_ENV])
     return ['Project host acknowledged.']
   }
 
+  if (command === 'session' && act === 'ack') {
+    if (!subject || !known([]) || !Schema.is(StaffSessionKey)(subject) || !/^session:[a-f0-9]{32}$/u.test(subject) ||
+        env.ARISTOTELES_SESSION !== subject) return yield* Effect.fail(denied())
+    const pane = bootstrapPane(io.cwd, subject.slice(8))
+    if (!pane || pane.pane !== env.TMUX_PANE || pane.socket !== env.TMUX?.split(',')[0]) return yield* Effect.fail(denied())
+    const journal = yield* openProjectJournal(directory, 'Write')
+    const nonce = yield* decode(LaunchNonce, env[NONCE_ENV])
+    const result = yield* projectRuns(io.cwd, env.ARISTOTELES_DB, journal).acknowledge(subject, nonce)
+    return [words(result.event)]
+  }
+
   const allowed = ['onboard', 'status', 'project', 'activation', 'session', 'wait', 'send', 'brief', 'report', 'review', 'question', 'answer']
   if (!allowed.includes(command)) return yield* Effect.fail(invalid())
-  const journal = yield* openProjectJournal(projectId, 'Write')
+  const journal = yield* openProjectJournal(directory, 'Write')
   const runs = projectRuns(io.cwd, env.ARISTOTELES_DB, journal)
   const actor: Effect.Effect<AuthenticatedActor, Refusal> = token ? Effect.flatMap(decode(ProjectCredential, token), runs.authenticate)
     : ownerTerminal() ? Effect.flatMap(ownerName(), (name) => activationOwner(journal, name)) : Effect.fail(denied())
@@ -138,22 +149,22 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
   }
   if (command === 'onboard' && act === 'show' && known([])) {
     yield* actor
-    const id = yield* decode(ProposalId, subject)
-    const proposal = project.proposals.get(id)
+    const key = yield* decode(ProposalKey, subject)
+    const proposal = project.proposals.get(key)
     if (!proposal) return yield* Effect.fail(invalid())
     return ['Read ' + project.read, JSON.stringify(proposal, null, 2)]
   }
   if (command === 'session' && known([])) {
     yield* requireOwner
     if (act === 'launch') {
-      const staff = yield* decode(StaffId, subject)
-      const id = newStaffSession()
-      const result = yield* runs.sessions.launch(staff, id, staffingAt(project), null)
-      return ['Staff session ' + id, words(result.event)]
+      const staff = yield* decode(StaffKey, subject)
+      const key = newStaffSession()
+      const result = yield* runs.sessions.launch(staff, key, staffingAt(project), null)
+      return ['Staff session ' + key, words(result.event)]
     }
     if (act === 'observe') {
-      const id = yield* decode(SessionId, subject)
-      const result = yield* runs.sessions.observe({ _tag: 'Session', id })
+      const key = yield* decode(StaffSessionKey, subject)
+      const result = yield* runs.sessions.observe({ _tag: 'Session', key })
       return [result ? words(result.event) : 'The session is still live or its status is unknown.']
     }
     return yield* Effect.fail(invalid())
@@ -161,38 +172,38 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
   if (command === 'activation' && known([]) && !subject && (act === 'resume' || act === 'relaunch' || act === 'rollback')) {
     yield* requireOwner
     yield* resumeProjectActivation(journal,
-      projectActivationOperations(io.cwd, journal, liveProjectBootstrap(io.cwd, env.ARISTOTELES_DB, project.id)), act)
+      projectActivationOperations(io.cwd, journal, liveProjectBootstrap(io.cwd, env.ARISTOTELES_DB, journal.directory)), act)
     return ['Activation updated.']
   }
   if (command === 'wait' && !act && !subject && known([])) {
     const by = yield* actor
-    if (by._tag === 'Host') return ['The bound host can send a task. Read ' + project.read + '.']
     if (by._tag === 'Human') return ['Open the Project page to see what needs your attention.']
     if (by._tag === 'Review' && by.line._tag === 'Proposal') {
-      const proposal = project.proposals.get(by.line.id)
+      const proposal = project.proposals.get(by.line.key)
       if (!proposal) return yield* Effect.fail(invalid())
       return ['Draft for review (proposal.json)', JSON.stringify(proposal.value, null, 2),
-        `work review "$ARISTOTELES_TOKEN" ${proposal.id} --on=${project.read} --file=facts.yaml`]
+        `work review "$ARISTOTELES_TOKEN" ${proposal.key} --on=${project.read} --file=facts.yaml`]
     }
     const selected = yield* (by._tag === 'Review'
       ? waitOnTaskReview(journal, Effect.succeed(by))
-      : waitOnProject(journal, Effect.succeed(by.session.id)))
-    if (selected._tag !== 'Available') return ['Nothing is due.']
+      : waitOnProject(journal, Effect.succeed(by.session.key)))
+    if (selected._tag !== 'Available') return [by._tag === 'Host'
+      ? 'The bound host can send a task. Read ' + project.read + '.' : 'Nothing is due.']
     const { subject: target, read } = selected
     if (target._tag === 'Question') return projectQuestionWords(target.question, read)
-    if (target._tag !== 'Task') return ['Read ' + read + '. Proposal ' + target.proposal.id + ' is due.']
+    if (target._tag !== 'Task') return ['Read ' + read + '. Proposal ' + target.proposal.key + ' is due.']
     const task = target.task
-    if (by._tag === 'Staff' && selected.for === 'Assign') {
-      const committed = yield* runs.sessions.child(by.session.id, { _tag: 'Task', id: task.id }, 'Review', staffingAt(project))
+    if ((by._tag === 'Staff' || by._tag === 'Host') && selected.for === 'Assign') {
+      const committed = yield* runs.sessions.child(by.session.key, { _tag: 'Task', key: task.key }, 'Review', staffingAt(project))
       return ['Opened a fresh task review.', words(committed.event)]
     }
     if (by._tag === 'Review') return [
-      yield* projectBriefCommand(journal, task.id, projectCommands).pipe(asActor),
+      yield* projectBriefCommand(journal, task.key, projectCommands).pipe(asActor),
       JSON.stringify(task.phase, null, 2),
-      `work review "$ARISTOTELES_TOKEN" ${task.id} --on=${read} --file=facts.yaml`,
+      `work review "$ARISTOTELES_TOKEN" ${task.key} --on=${read} --file=facts.yaml`,
     ]
-    return [yield* projectBriefCommand(journal, task.id, projectCommands).pipe(asActor),
-      `work report "$ARISTOTELES_TOKEN" ${task.id} --on=${read} --file=report.yaml`]
+    return [yield* projectBriefCommand(journal, task.key, projectCommands).pipe(asActor),
+      `work report "$ARISTOTELES_TOKEN" ${task.key} --on=${read} --file=report.yaml`]
   }
   if (command === 'brief' && act && !subject && known([]))
     return [yield* projectBriefCommand(journal, act, projectCommands).pipe(asActor)]
@@ -201,15 +212,15 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
   const basis = yield* read()
   const write = (input: unknown) => submit(journal, input).pipe(asActor)
   if (command === 'project' && act === 'start' && !subject && known(['on']))
-    return [words((yield* write({ read: basis, line: { _tag: 'Activation', id: project.id }, move: 'start', input: {} })).event)]
+    return [words((yield* write({ read: basis, line: { _tag: 'Activation' }, move: 'start', input: {} })).event)]
   if (command === 'onboard' && act === 'submit' && !subject && known(['on', 'file'])) {
     const result = yield* projectOnboard(journal, basis, yield* file(), runs.review).pipe(asActor)
     return [words(result.event)]
   }
   if (command === 'onboard' && (act === 'accept' || act === 'remove' || act === 'send-back') &&
       known(act === 'send-back' ? ['on', 'why'] : ['on'])) {
-    const id = yield* decode(ProposalId, subject)
-    return [words((yield* write({ read: basis, line: { _tag: 'Proposal', id },
+    const key = yield* decode(ProposalKey, subject)
+    return [words((yield* write({ read: basis, line: { _tag: 'Proposal', key },
       move: act === 'send-back' ? 'sendBack' : act, input: act === 'send-back' ? { why: parsed.one('why') } : {},
     })).event)]
   }
@@ -220,9 +231,9 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     return [words((yield* projectReportCommand(journal, act, basis, yield* file(), projectCommands).pipe(asActor)).event)]
   if (command === 'review' && act && !subject) {
     const content = yield* file()
-    if (Schema.is(ProposalId)(act)) {
+    if (Schema.is(ProposalKey)(act)) {
       const facts = yield* decode(ReviewFacts, yield* yaml(content))
-      const result = yield* write({ read: basis, line: { _tag: 'Proposal', id: act }, move: 'review', input: { facts } })
+      const result = yield* write({ read: basis, line: { _tag: 'Proposal', key: act }, move: 'review', input: { facts } })
       yield* Effect.result(runs.review)
       return [words(result.event)]
     }

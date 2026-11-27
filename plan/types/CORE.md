@@ -8,7 +8,7 @@ Use the name a person or agent can understand on its own. Read a state label wit
 
 | Name now | Decision | Why |
 | --- | --- | --- |
-| Human | rename to Person | A person owns work, answers questions, and acts through the CLI or page. |
+| Human | keep | The journal has one human owner who answers questions and acts through the CLI or page. |
 | Author, By, Drafter, Writer, WrittenBy, RecordedBy, AuthorTag | rename to Author | Author names who supplied the words or acted in the journal. |
 | Role words | rename to Responsibility | Responsibility states the work a role is accountable for, with its summary, introduction, and duties. |
 | Helper | rename to RecheckAgent | The agent carries out a recheck and submits its findings. |
@@ -46,9 +46,13 @@ Use the name a person or agent can understand on its own. Read a state label wit
 | DashWorker | rename to WorkerCard | The card shows a worker’s activity, assigned identities, and available capacity. |
 | DashEscalation | rename to EscalationCard | The card shows raised work that calls for the person’s response. |
 | DashChange, DraftChange | rename to Direction diff | The view shows which part of the direction changes. |
-| StaffingConsult, Consult | rename to StaffingConsultation | The record holds the host’s staffing proposal and the person’s reply. |
+| Staffing consultation | owned by Proposal | A draft’s Question closes when the draft advances. |
 | Fresh check job | rename to JudgmentJob | The job calls for judgment from a fresh point of view. |
-| MakerId | removed | A run’s identity comes from its task and attempt. |
+| `TaskKey`, `ProposalKey`, `QuestionKey`, `StaffSessionKey`, `StaffKey`, `RoleKey`, `SubscriptionKey` | keep | The key belongs to the same named record type in a Project map and addresses its journal moves. |
+| Project, Human | singleton lines and owner | Each journal has one project and one owner. The directory separates journals in storage. |
+| Responsibility, Direction, Stage, Standard, Rule, StaffingPlan | by value | Drafts, scopes, and outcomes carry the checked value. Versions carry the accepted value and its event number. |
+| HostLaunch | removed | StaffSession.Starting reserves the lifetime before spawn. The pane’s answer makes it Live, and cancellation or failure ends it. |
+| Maker key | removed | A run belongs to its task and attempt. |
 | Makers map | removed | Each task holds the attempt for its current phase. |
 | Task.caught | removed | The result holds the outcomes produced by its verification commands. |
 | Act | keep | An act is something a person or agent did that can be recorded. |
@@ -268,7 +272,7 @@ This section follows the [settled design and all three reassessment passes](DESI
 
 ### 2.1 Values, authority, and versions
 
-A record owns its identity. References in a running project carry records, including the actual value in `Version<T>`. A journal event may address a record by identity. Maps and page selection use identities as keys. Role identity and staff identity are separate. A staff can serve both the host and the pipeline, and each of those roles still has its own responsibility.
+A record carries its own key. References in the project carry records, including the actual value in `Version<T>`. Journal events and submissions use keys for entry addresses. Maps index entries by those keys. Roles and staff use separate key types. A staff can serve both the host and the pipeline, and each of those roles still has its own responsibility.
 
 A live `StaffSession` is one lifetime of a staff’s session in a pane. Pausing preserves a checkpoint on that lifetime. Resuming creates a new lifetime and retires authority from the old one. A task attempt belongs to its task, is numbered within it, and records its live session and whether the work runs in the main session or a child. The authority adapter checks the actual run when it authenticates a review.
 

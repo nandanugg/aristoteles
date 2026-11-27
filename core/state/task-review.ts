@@ -28,9 +28,13 @@ export const reviewTask = (
   const { result } = phase
   const prompts = taskRules(task).filter(({ verification }) => verification._tag === 'Prompt')
   const reviewed = facts.outcomes.filter(Schema.is(PromptOutcome))
-  const reports = new Map(reviewed.map((outcome) => [outcome.rule.id, outcome]))
-  if (reviewed.length !== facts.outcomes.length || reports.size !== prompts.length || facts.outcomes.length !== prompts.length || prompts.some((rule) =>
-    JSON.stringify(rule) !== JSON.stringify(reports.get(rule.id)?.rule))) {
+  const unmatched = [...reviewed]
+  if (reviewed.length !== facts.outcomes.length || reviewed.length !== prompts.length || prompts.some((rule) => {
+    const index = unmatched.findIndex((outcome) => JSON.stringify(rule) === JSON.stringify(outcome.rule))
+    if (index < 0) return true
+    unmatched.splice(index, 1)
+    return false
+  })) {
     return Result.fail(refuse('InvalidEvidence', Rationale.make('Supply one outcome for each pinned prompt rule.')))
   }
   const supported = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
@@ -47,7 +51,7 @@ export const reviewTask = (
   if (!first) return Result.succeed({ _tag: 'Done', result, outcomes })
   const attempt = result.attempt
   const history = attempt.feedback._tag === 'Review' ? attempt.feedback.breaks : []
-  const repeated = [first, ...rest].find((now) => history.some((was) => was.rule.id === now.rule.id))
+  const repeated = [first, ...rest].find((now) => history.some((was) => JSON.stringify(was.rule) === JSON.stringify(now.rule)))
   if (repeated) return Result.succeed({ _tag: 'Raised', reason: 'Misses', evidence: repeated.evidence })
   if (attempt.retryCount >= limit) {
     return Result.succeed({ _tag: 'Raised', reason: 'Tries', evidence: first.evidence })

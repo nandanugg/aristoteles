@@ -5,7 +5,7 @@ import { projectActivationFiles, projectActivationOperations, type ProjectBootst
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession } from '../../core/actions/staff-session.ts'
 import {
-  ApprovedFiles, PaneAddress, ProposalId, SessionId, StaffingId, type LaunchNonce, type Of, type Project,
+  ApprovedFiles, PaneAddress, ProposalKey, StaffSessionKey, type LaunchNonce, type Of, type Project,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { create, open, ownerInput, session, staff, startFixtureSession } from './project.probe.ts'
@@ -13,45 +13,46 @@ import { acceptStaffing, cliProposal, direction, evidence } from './proposal.pro
 
 export const approvedText = 'Read the approved project instructions.\n'
 export const newerText = 'The owner edited the instructions.\n'
-export const hostId = (number: number) => SessionId.make('session:' + number.toString(16).padStart(32, '0'))
+export const hostKey = (number: number) => StaffSessionKey.make('session:' + number.toString(16).padStart(32, '0'))
 
-export const agree = (journal: Journal, project: Project, files: Of<typeof ApprovedFiles>) => ownerInput(journal, { read: project.read, line: { _tag: 'Activation', id: project.id }, move: 'next', input: { files } })
+export const agree = (journal: Journal, project: Project, files: Of<typeof ApprovedFiles>) => ownerInput(journal, { read: project.read, line: { _tag: 'Activation' }, move: 'next', input: { files } })
 
-export const startWork = (journal: Journal, project: Project) => ownerInput(journal, { read: project.read, line: { _tag: 'Activation', id: project.id }, move: 'start', input: {} })
+export const startWork = (journal: Journal, project: Project) => ownerInput(journal, { read: project.read, line: { _tag: 'Activation' }, move: 'start', input: {} })
 
-export const readyProject = (path: string, host = staff, projectId?: Journal['id']) => Effect.gen(function* () {
+export const readyProject = (path: string, host = staff, projectDirectory?: Journal['directory']) => Effect.gen(function* () {
   const directory = dirname(path)
   const file = join(directory, 'AGENTS.md')
   writeFileSync(file, approvedText)
-  const journal = yield* open(path, 'Create', projectId)
+  const journal = yield* open(path, 'Create', projectDirectory)
   const project = (yield* create(journal, [], host)).state
   const staffed = yield* acceptStaffing(journal, project, {
-    id: StaffingId.make('staffing:activation'), staff: [host], subscriptions: [host.subscription],
+    staff: [host], subscriptions: [host.subscription],
   })
-  const live = yield* startFixtureSession(journal, staffed)
-  const proposalId = ProposalId.make('proposal:activation-direction')
-  const line = { _tag: 'Proposal', id: proposalId } as const
-  const drafted = yield* cliProposal(journal, live.state, { line: { _tag: 'Proposal', id: proposalId }, move: 'open', input: { value: direction } })
+  const onboarding = { ...session, key: StaffSessionKey.make('session:onboarding') }
+  const live = yield* startFixtureSession(journal, staffed, onboarding)
+  const proposalKey = ProposalKey.make('proposal:activation-direction')
+  const line = { _tag: 'Proposal', key: proposalKey } as const
+  const drafted = yield* cliProposal(journal, live.state, { line: { _tag: 'Proposal', key: proposalKey }, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
   const submitted = yield* cliProposal(journal, drafted.state, { line, move: 'submit', input: { value: direction, question: null } })
-  const proposal = submitted.state.proposals.get(proposalId)
+  const proposal = submitted.state.proposals.get(proposalKey)
   if (!proposal) throw new Error('Missing activation direction')
-  const reviewing = yield* assignProposalReview(journal, proposal, session, submitted.state.read)
+  const reviewing = yield* assignProposalReview(journal, proposal, onboarding, submitted.state.read)
   const reviewed = yield* cliProposal(journal, reviewing.state, { line, move: 'review', input: { facts: evidence('Holds') } },
-    { _tag: 'Review', session, line, review: proposal.lastChange })
+    { _tag: 'Review', session: onboarding, line, review: proposal.lastChange })
   const accepted = yield* cliProposal(journal, reviewed.state, { line, move: 'accept', input: {} })
-  const ready = yield* observeSession(journal, accepted.state, { _tag: 'Session', id: session.id }, 'Ended')
+  const ready = yield* observeSession(journal, accepted.state, { _tag: 'Session', key: onboarding.key }, 'Ended')
   const files = yield* projectActivationFiles(directory)
   return { journal, project: ready.state, files, file, directory }
 })
 
 export const fakeBootstrap = () => {
-  const running = new Set<Of<typeof SessionId>>()
-  const nonces = new Map<Of<typeof SessionId>, Of<typeof LaunchNonce>>()
+  const running = new Set<Of<typeof StaffSessionKey>>()
+  const nonces = new Map<Of<typeof StaffSessionKey>, Of<typeof LaunchNonce>>()
   const provider: ProjectBootstrap = {
-    observe: (id) => Effect.sync(() => running.has(id) ? 'Running' : 'Ended'),
-    pane: (id) => Effect.sync(() => running.has(id) ? { address: PaneAddress.make('%' + Number.parseInt(id.slice(8), 16)) } : null),
-    spawn: (id, nonce) => Effect.sync(() => { nonces.set(id, nonce); running.add(id) }),
-    stop: (id) => Effect.sync(() => { running.delete(id) }),
+    observe: (key) => Effect.sync(() => running.has(key) ? 'Running' : 'Ended'),
+    pane: (key) => Effect.sync(() => running.has(key) ? { address: PaneAddress.make('%' + Number.parseInt(key.slice(8), 16)) } : null),
+    spawn: (key, nonce) => Effect.sync(() => { nonces.set(key, nonce); running.add(key) }),
+    stop: (key) => Effect.sync(() => { running.delete(key) }),
   }
   return { provider, running, nonces }
 }

@@ -53,7 +53,7 @@ export const projectActivationApproval = (journal: Journal, directory: string): 
   Effect.gen(function* () {
     const actor = yield* (yield* Authority).actor
     const project = yield* readOpenProject(journal)
-    if (actor._tag !== 'Human' || actor.actor.id !== project.owner.id)
+    if (actor._tag !== 'Human')
       return yield* Effect.fail(refuse('WrongActor', Rationale.make('Only the owner approves the activation files.')))
     if (project.activation._tag !== 'Onboarding' || !approvedProposals(project))
       return yield* Effect.fail(refuse('WrongMove', Rationale.make('Accept the onboarding proposals before activation.')))

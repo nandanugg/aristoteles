@@ -9,18 +9,18 @@ import { boundHostAuthority } from '../../adapters/live/activation.ts'
 import { liveTaskCommands } from '../../adapters/live/task-commands.ts'
 import { projectCommandStatus, projectEvents, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
 import { agree, readyActivation, startWork } from '../../src/store/project-activation.probe.ts'
-import { create, host, open, ownerInput, session, staff, staffInput, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
+import { create, host, open, ownerInput, session, staffInput, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { direction } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
-import { acceptDirection, activateTasks, boundHost, draftFor, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
+import { acceptDirection, activateTasks, boundHost, draftFor, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { recoverTaskCommand, runTaskCommands, taskCommandBlock } from '../effects/project-commands.ts'
-import { Command, CommandOutcome, CommandText, Direction, EventNumber, Goal, ReadPosition, SessionId, StageId, TaskId, taskRole, taskRules } from '../schema/project.ts'
+import { Command, CommandOutcome, CommandText, Direction, EventNumber, Goal, ReadPosition, StaffSessionKey, TaskKey, taskRole, taskRules } from '../schema/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
 import { readOpenProject } from './staff-session.ts'
 
 const auth = (actor: AuthenticatedActor) => Effect.provideService(Authority, { actor: Effect.succeed(actor) })
 const refused = (code: string) => ({ _tag: 'Failure', failure: { code } })
-const hostAuth = { _tag: 'Host', staff, id: boundHost } as const
+const hostAuth = { _tag: 'Host', session } as const
 const sendDraft = (journal: Parameters<typeof projectSendCommand>[0], project: Parameters<typeof draftFor>[0], draft = draftFor(project)) =>
   projectSendCommand(journal, project.read, Bun.YAML.stringify(draft)).pipe(auth(hostAuth))
 const withCommand = (text: string): Direction => Schema.decodeUnknownSync(Direction)({
@@ -43,32 +43,32 @@ test('the host sends a checked stage slice only after work starts and its basis 
     expect(yield* Effect.result(projectSendCommand(journal, started.read, Bun.YAML.stringify(draft)).pipe(auth(ownerAuthority))))
       .toMatchObject(refused('WrongActor'))
     expect(yield* Effect.result(projectSendCommand(journal, started.read, Bun.YAML.stringify(draft)).pipe(auth({
-      ...hostAuth, id: SessionId.make('session:previous-host'),
+      ...hostAuth, session: { ...session, key: StaffSessionKey.make('session:previous-host') },
     })))).toMatchObject(refused('RetiredSession'))
-    expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [{ ...draft.stages[0], id: StageId.make('stage:missing') }] })))
+    expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [{ ...draft.stages[0], work: Goal.make('Different work') }] })))
       .toMatchObject(refused('InvalidInput'))
     expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [draft.stages[0], ...draft.stages] })))
       .toMatchObject(refused('InvalidInput'))
     const pipelineStage = [...started.proposals.values()].flatMap(({ phase }) =>
       phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' ? phase.version.value.stages : [],
-    ).find(({ role }) => role.id === started.roles.pipeline.id)!
+    ).find(({ role }) => role.key === started.roles.pipeline.key)!
     expect(yield* Effect.result(sendDraft(journal, started, { ...draft, stages: [draft.stages[0], pipelineStage] })))
       .toMatchObject(refused('InvalidInput'))
     const sent = yield* sendDraft(journal, started)
-    expect(sent.event).toMatchObject({ line: { _tag: 'Task', id: draft.id }, from: null, move: 'open' })
+    expect(sent.event).toMatchObject({ line: { _tag: 'Task', key: draft.key }, from: null, move: 'open' })
     expect(sent.event.input).not.toHaveProperty('role')
-    const task = sent.state.tasks.get(draft.id)!
+    const task = sent.state.tasks.get(draft.key)!
     expect(task.direction.acceptedAt).toBe(draft.direction.acceptedAt)
     expect(taskRole(task).responsibility).toEqual(host.responsibility)
     const revised = yield* acceptDirection(journal, sent.state, {
       ...task.direction.value,
       stages: [{ ...task.stages[0], work: Goal.make('A changed assignment.') }],
-    })
-    expect(revised.tasks.get(draft.id)).toEqual(task)
-    expect(yield* Effect.result(sendDraft(journal, revised, { ...draft, id: TaskId.make('task:new') })))
+    }, task.direction)
+    expect(revised.tasks.get(draft.key)).toEqual(task)
+    expect(yield* Effect.result(sendDraft(journal, revised, { ...draft, key: TaskKey.make('task:new') })))
       .toMatchObject(refused('Stale'))
     const before = yield* readOpenProject(journal)
-    const words = yield* projectBriefCommand(journal, taskId).pipe(auth(hostAuth))
+    const words = yield* projectBriefCommand(journal, taskKey).pipe(auth(hostAuth))
     expect(words).toContain('Phase: Sent')
     expect(words).not.toContain('A changed assignment.')
     expect((yield* readOpenProject(journal)).read).toBe(before.read)
@@ -83,7 +83,7 @@ test('competing starts admit one attempt and a whole-file report uses the checke
     const { state: started } = yield* startWork(journal, yield* activateTasks(journal, created.state))
     const live = yield* startFixtureSession(journal, started)
     const sent = yield* send(journal, live.state.read)
-    const begin = (target: typeof journal) => projectReportCommand(target, taskId, sent.state.read, '{}')
+    const begin = (target: typeof journal) => projectReportCommand(target, taskKey, sent.state.read, '{}')
       .pipe(auth(staffAuthorityOf()))
     const began = yield* Effect.all([Effect.result(begin(journal)), Effect.result(begin(other))], { concurrency: 'unbounded' })
     expect(began.filter(Result.isSuccess)).toHaveLength(1)
@@ -94,11 +94,11 @@ test('competing starts admit one attempt and a whole-file report uses the checke
     const work = { summary: 'Finished', attempt: 1,
       files: [{ path: 'notes.md', image: { _tag: 'Present', contents }, changed: [{ first: 2, last: 2 }] }] }
     const invalid = { ...work, files: [{ ...work.files[0], changed: [{ first: 2, last: 3 }] }] }
-    expect(yield* Effect.result(projectReportCommand(other, taskId, project.read, Bun.YAML.stringify(invalid))
+    expect(yield* Effect.result(projectReportCommand(other, taskKey, project.read, Bun.YAML.stringify(invalid))
       .pipe(auth(staffAuthorityOf())))).toMatchObject(refused('InvalidInput'))
-    const recorded = yield* projectReportCommand(other, taskId, project.read, Bun.YAML.stringify(work)).pipe(auth(staffAuthorityOf()))
-    expect(recorded.state.tasks.get(taskId)?.phase).toMatchObject({ _tag: 'ReadyToReview', result: { files: work.files } })
-    expect(yield* projectBriefCommand(other, taskId).pipe(auth(hostAuth))).toContain('Phase: ReadyToReview')
+    const recorded = yield* projectReportCommand(other, taskKey, project.read, Bun.YAML.stringify(work)).pipe(auth(staffAuthorityOf()))
+    expect(recorded.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'ReadyToReview', result: { files: work.files } })
+    expect(yield* projectBriefCommand(other, taskKey).pipe(auth(hostAuth))).toContain('Phase: ReadyToReview')
   }))),
 ))
 
@@ -113,11 +113,11 @@ test('a lost command append reuses the exact captured output from disk', () => w
     try {
       db.exec("CREATE TRIGGER interrupted BEFORE INSERT ON project_event BEGIN SELECT RAISE(ABORT, 'lost write'); END")
       expect(yield* Effect.result(runTaskCommands(journal, taskLine, liveTaskCommands(directory)))).toMatchObject(refused('Unavailable'))
-      expect((yield* readOpenProject(journal)).tasks.get(taskId)?.phase._tag).toBe('ReadyToReview')
+      expect((yield* readOpenProject(journal)).tasks.get(taskKey)?.phase._tag).toBe('ReadyToReview')
       db.exec('DROP TRIGGER interrupted')
       const reopened = yield* open(path)
       const reviewing = yield* runTaskCommands(reopened, taskLine, liveTaskCommands(directory))
-      expect(reviewing.state.tasks.get(taskId)?.phase).toMatchObject({
+      expect(reviewing.state.tasks.get(taskKey)?.phase).toMatchObject({
         _tag: 'Reviewing', outcomes: [{ _tag: 'Breaks', evidence: { exit: 4, stdout: 'quote: "yes"', stderr: 'broken' } }],
       })
       expect(yield* journal.eventsAfter(ready.state.read)).toHaveLength(1)
@@ -133,7 +133,7 @@ test('interrupted execution stays blocked until the provider recovers its observ
     const journal = yield* open(path)
     const working = yield* toWorking(journal, withCommand('printf observed'))
     const ready = yield* staffInput(journal, resultInput(working.state.read))
-    const task = ready.state.tasks.get(taskId)!
+    const task = ready.state.tasks.get(taskKey)!
     const commands = liveTaskCommands(directory)
     const running = yield* Deferred.make<void>()
     const fake = { ...commands, run: () => Effect.andThen(Deferred.succeed(running, undefined), Effect.never) }
@@ -145,7 +145,7 @@ test('interrupted execution stays blocked until the provider recovers its observ
     expect(yield* taskCommandBlock(journal, taskLine, commands)).toContain('unconfirmed')
     const status = yield* projectCommandStatus(journal, taskLine, commands).pipe(auth(hostAuth))
     expect(yield* Effect.promise(() => status.json())).toContain('unconfirmed')
-    expect(yield* projectBriefCommand(journal, taskId, commands).pipe(auth(hostAuth))).toContain('unconfirmed')
+    expect(yield* projectBriefCommand(journal, taskKey, commands).pipe(auth(hostAuth))).toContain('unconfirmed')
     expect(yield* journal.eventsAfter(ready.state.read)).toEqual([])
     const rule = taskRules(task)[0]!
     const outcome = Schema.decodeUnknownSync(CommandOutcome)({
@@ -159,7 +159,7 @@ test('interrupted execution stays blocked until the provider recovers its observ
       .toMatchObject(refused('Stale'))
     yield* recoverTaskCommand(journal, taskLine, task.phase.result.at, outcome, commands)
     const review = yield* runTaskCommands(journal, taskLine, commands)
-    expect(review.state.tasks.get(taskId)?.phase).toMatchObject({ _tag: 'Reviewing', outcomes: [outcome] })
+    expect(review.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Reviewing', outcomes: [outcome] })
   }))),
 ))
 
@@ -179,10 +179,10 @@ test('HTTP records a result before running its pinned command and journals a suc
     expect(yield* Effect.promise(() => response.json())).toEqual([expect.objectContaining({ from: 'Working', move: 'next' })])
     yield* Deferred.await(appended).pipe(Effect.timeout('5 seconds'))
     const project = yield* readOpenProject(journal)
-    expect(project.tasks.get(taskId)?.phase).toMatchObject({
+    expect(project.tasks.get(taskKey)?.phase).toMatchObject({
       _tag: 'Reviewing', outcomes: [{ _tag: 'Holds', evidence: { exit: 0, stdout: '7' } }],
     })
-    expect(yield* Effect.result(ownerInput(journal, { read: project.read, line: { _tag: 'Activation', id: journal.id }, move: 'start', input: {} }))).toMatchObject(refused('WrongMove'))
+    expect(yield* Effect.result(ownerInput(journal, { read: project.read, line: { _tag: 'Activation' }, move: 'start', input: {} }))).toMatchObject(refused('WrongMove'))
   }))),
 ))
 
@@ -195,7 +195,7 @@ test('the task panel marks changed lines and shows only committed command outcom
     const working = yield* toWorking(journal, withCommand('printf tested'))
     const result = { summary: 'Recorded the notes', attempt: 1,
       files: [{ path: 'notes.md', image: { _tag: 'Present', contents }, changed: [{ first: 2, last: 2 }] }] }
-    yield* projectReportCommand(journal, taskId, working.state.read, Bun.YAML.stringify(result)).pipe(auth(staffAuthorityOf()))
+    yield* projectReportCommand(journal, taskKey, working.state.read, Bun.YAML.stringify(result)).pipe(auth(staffAuthorityOf()))
     const commands = liveTaskCommands(directory)
     const built = yield* Effect.promise(() => Bun.build({
       entrypoints: [resolve(import.meta.dir, '../../test/browser/project-onboarding.page.ts')], target: 'browser',
@@ -213,7 +213,7 @@ test('the task panel marks changed lines and shows only committed command outcom
           case '/snapshot': return Effect.runPromise(projectSnapshot(journal))
           case '/events': return Effect.runPromise(projectEvents(journal, ReadPosition.make(Number(url.searchParams.get('after')))))
           case '/command-block': {
-            if (url.searchParams.get('task') !== taskId) return new Response(null, { status: 404 })
+            if (url.searchParams.get('task') !== taskKey) return new Response(null, { status: 404 })
             return Effect.runPromise(projectCommandStatus(journal, taskLine, commands).pipe(auth(ownerAuthority)))
           }
           default: return new Response(null, { status: 404 })
@@ -242,14 +242,18 @@ test('the first authenticated send keeps the read basis from Start work', () => 
     yield* operations.reserve(boundHost)
     yield* operations.spawn
     const nonce = fixture.nonces.get(boundHost)!
-    yield* operations.acknowledge(boundHost, nonce)
-    const committed = yield* operations.commit
+    const committed = yield* operations.acknowledge(boundHost, nonce)
     const credential = yield* operations.collect(boundHost, nonce)
     const { state: started } = yield* startWork(journal, committed.state)
     const sent = yield* projectSendCommand(journal, started.read, Bun.YAML.stringify(draftFor(started)))
       .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))
     expect(sent.state.activation).toMatchObject({ work: { _tag: 'Used', at: started.read } })
-    expect(sent.state.tasks.get(taskId)?.phase._tag).toBe('Sent')
+    expect(sent.state.tasks.get(taskKey)?.phase._tag).toBe('Sent')
+    const working = yield* projectReportCommand(journal, taskKey, sent.state.read, '{}')
+      .pipe(Effect.provideService(Authority, { actor: boundHostAuthority(operations, boundHost, credential) }))
+    expect(working.state.tasks.get(taskKey)?.phase).toMatchObject({
+      _tag: 'Working', attempt: { session: { key: boundHost } },
+    })
     expect(yield* Effect.result(operations.collect(boundHost, nonce))).toMatchObject(refused('RetiredSession'))
   }))),
 ))

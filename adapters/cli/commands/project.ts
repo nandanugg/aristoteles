@@ -8,7 +8,7 @@ import { Authority as ProjectAuthority, submit, type AuthenticatedActor } from '
 import { reportTaskReview } from '../../../core/actions/task-review.ts'
 import { decodeQuestionInput } from '../../../core/actions/question.ts'
 import {
-  Answer as ProjectAnswer, ProposalSubmission, QuestionId, ReadPosition, SessionId, Rationale, StoredActor, TaskDraft, TaskId, ReviewFacts, taskLine, refuse as projectRefuse,
+  Answer as ProjectAnswer, ProposalSubmission, QuestionKey, ReadPosition, StaffSessionKey, Rationale, StoredActor, TaskDraft, TaskKey, ReviewFacts, taskLine, refuse as projectRefuse,
   type Of, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
@@ -16,7 +16,7 @@ import type { Committed, Journal } from '../../../core/services/project.ts'
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-// Format 16 question and answer commands bind the addressed recipient or question before intake.
+// Format 17 question and answer commands bind the addressed recipient or question before intake.
 export const projectQuestionCommand = (
   journal: Journal, command: 'question' | 'answer', target: string, read: Of<typeof ReadPosition>, yaml: string,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
@@ -25,17 +25,17 @@ export const projectQuestionCommand = (
     catch: () => projectRefuse('InvalidInput', Rationale.make('Load a valid YAML question or answer.')),
   })
   if (command === 'answer') {
-    const id = yield* decodeQuestionInput(QuestionId, target)
+    const key = yield* decodeQuestionInput(QuestionKey, target)
     const answer = yield* decodeQuestionInput(ProjectAnswer, raw)
-    return yield* submit(journal, { read, line: { _tag: 'Question', id }, move: 'answer', input: { answer } })
+    return yield* submit(journal, { read, line: { _tag: 'Question', key }, move: 'answer', input: { answer } })
   }
-  const to = yield* decodeQuestionInput(StoredActor, { _tag: target.startsWith('human:') ? 'Human' : 'Staff', id: target })
+  const to = yield* decodeQuestionInput(StoredActor, target === 'owner' ? { _tag: 'Human' } : { _tag: 'Staff', key: target })
   if (!raw || typeof raw !== 'object' || Array.isArray(raw) || 'to' in raw) {
     return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Address the recipient in the command.')))
   }
-  if (!('id' in raw)) return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Name the question.')))
-  const { id, ...fields } = raw
-  return yield* submit(journal, { read, line: { _tag: 'Question', id }, move: 'open', input: { ...fields, to } })
+  if (!('key' in raw)) return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Name the question.')))
+  const { key, ...fields } = raw
+  return yield* submit(journal, { read, line: { _tag: 'Question', key }, move: 'open', input: { ...fields, to } })
 })
 
 const loadTaskYaml = (yaml: string) => Effect.try({
@@ -50,16 +50,16 @@ const checkedTaskInput = <S extends Schema.ConstraintDecoder<unknown>>(schema: S
 export const projectSendCommand = (
   journal: Journal, read: Of<typeof ReadPosition>, yaml: string,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
-  const { id, ...draft } = yield* checkedTaskInput(Schema.Struct({ id: TaskId, ...TaskDraft.fields }), yield* loadTaskYaml(yaml))
-  return yield* sendTask(journal, { _tag: 'Task', id }, read, draft)
+  const { key, ...draft } = yield* checkedTaskInput(Schema.Struct({ key: TaskKey, ...TaskDraft.fields }), yield* loadTaskYaml(yaml))
+  return yield* sendTask(journal, { _tag: 'Task', key }, read, draft)
 })
 
 export const projectReportCommand = (
   journal: Journal, target: unknown, read: Of<typeof ReadPosition>, yaml: string,
   commands?: TaskCommands,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
-  const id = yield* checkedTaskInput(TaskId, target)
-  const line = { _tag: 'Task', id } as const
+  const key = yield* checkedTaskInput(TaskKey, target)
+  const line = { _tag: 'Task', key } as const
   const report = yield* checkedTaskInput(Schema.Union([taskLine.Working.moves.next.submission.input, taskLine.Working.moves.raise.submission.input, taskLine.Sent.moves.next.submission.input]),
     yield* loadTaskYaml(yaml))
   const committed = yield* reportWork(journal, line, read, report)
@@ -71,20 +71,20 @@ export const projectReportCommand = (
 export const projectReviewCommand = (
   journal: Journal, target: unknown, read: Of<typeof ReadPosition>, yaml: string,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
-  const id = yield* checkedTaskInput(TaskId, target)
+  const key = yield* checkedTaskInput(TaskKey, target)
   const facts = yield* checkedTaskInput(ReviewFacts, yield* loadTaskYaml(yaml))
-  return yield* reportTaskReview(journal, { _tag: 'Task', id }, read, facts)
+  return yield* reportTaskReview(journal, { _tag: 'Task', key }, read, facts)
 })
 
 export const projectBriefCommand = (journal: Journal, target: unknown, commands?: TaskCommands) => Effect.gen(function* () {
-  const id = yield* checkedTaskInput(TaskId, target)
-  const line = { _tag: 'Task', id } as const
+  const key = yield* checkedTaskInput(TaskKey, target)
+  const line = { _tag: 'Task', key } as const
   const task = yield* taskBrief(journal, line)
   const blocked = commands && task.phase._tag === 'ReadyToReview' ? yield* taskCommandBlock(journal, line, commands) : null
   return projectTaskWords(task, blocked)
 })
 
-// Format 16 loads authored YAML, then uses the same proposal intake as the page.
+// Format 17 loads authored YAML, then uses the same proposal intake as the page.
 export const projectOnboard = (
   journal: Journal, read: Of<typeof ReadPosition>, yaml: string, review?: Effect.Effect<unknown, ProjectRefusal>,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
@@ -102,11 +102,11 @@ export const projectOnboard = (
 
 // The credential adapter resolves a token to its lifetime before using the shared selection.
 export const waitOnProject = (
-  journal: Journal, authenticate: Effect.Effect<Of<typeof SessionId>, ProjectRefusal>,
+  journal: Journal, authenticate: Effect.Effect<Of<typeof StaffSessionKey>, ProjectRefusal>,
 ): Effect.Effect<Selection, ProjectRefusal> => Effect.gen(function* () {
-  const id = yield* authenticate
+  const key = yield* authenticate
   const project = yield* readOpenProject(journal)
-  const session = yield* staffAuthority(project, id)
+  const session = yield* staffAuthority(project, key)
   const events = yield* journal.eventsAfter(ReadPosition.make(0))
   return nextStep(project, session, events.filter((event) => event.number <= project.read))
 })
@@ -117,10 +117,10 @@ export const waitOnTaskReview = (
   const actor = yield* authenticate
   const project = yield* readOpenProject(journal)
   if (actor._tag === 'Review' && actor.line._tag === 'Task') {
-    const session = yield* staffAuthority(project, actor.session.id)
-    const task = project.tasks.get(actor.line.id)
+    const session = yield* staffAuthority(project, actor.session.key)
+    const task = project.tasks.get(actor.line.key)
     if (task?.phase._tag === 'Reviewing' && task.phase.assignment._tag === 'Assigned' &&
-        task.phase.assignment.by.id === session.staff.id && actor.session.staff.id === session.staff.id &&
+        task.phase.assignment.by.key === session.staff.key && actor.session.staff.key === session.staff.key &&
         task.phase.assignment.review === actor.review) {
       return { _tag: 'Available', subject: { _tag: 'Task', task }, for: 'Review', read: project.read }
     }

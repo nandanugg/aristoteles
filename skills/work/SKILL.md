@@ -5,13 +5,13 @@ description: Take the next step of an Aristoteles task, answer a Question, or re
 
 # Work in an Aristoteles Project
 
-Run `work wait "$ARISTOTELES_TOKEN"` in the staff or review session. Use the read basis and address from that response. Your credential is private to its session or review. A refusal for a retired session or review calls for a new assignment.
+In a new staff pane, follow its launch prompt to acknowledge the session. Then run `work wait "$ARISTOTELES_TOKEN"` in the staff or review session. Use the read basis and address from that response. Your credential is private to its session or review. A refusal for a retired session or review calls for a new assignment.
 
 ## Task brief and result
 
-`work brief <token> <task-id>` shows the goal, accepted direction and responsibility versions, stage slice, rule guidance, phase, and feedback. The host sends a task using `work send <token> --on=<read> --file=task.yaml`. The file carries `id`, `name`, `goal`, `reviewer` (a role ID), the accepted `direction: { id, acceptedAt }`, the nonempty `stages` copied from that direction, and the attached `facts`.
+`work brief <token> <task-key>` shows the goal, accepted direction and responsibility versions, stage slice, rule guidance, phase, and feedback. The host sends a task using `work send <token> --on=<read> --file=task.yaml`. The file carries `key`, `name`, `goal`, `reviewer` (the complete current role record), the complete accepted `direction: { number, value, acceptedAt }`, the nonempty `stages` copied from that direction, and the attached `facts`.
 
-When you begin, submit `{}` with `work report <token> <task-id> --on=<read> --file=report.yaml`. Follow the brief and report the whole images of touched files. Paths are relative to the project. Changed ranges are inclusive, one-based, ordered, and nonoverlapping. For a deletion use `image: { _tag: Deleted, previousContents: ... }`.
+When you begin, submit `{}` with `work report <token> <task-key> --on=<read> --file=report.yaml`. Follow the brief and report the whole images of touched files. Paths are relative to the project. Changed ranges are inclusive, one-based, ordered, and nonoverlapping. For a deletion use `image: { _tag: Deleted, previousContents: ... }`.
 
 ```yaml
 attempt: 1
@@ -44,4 +44,4 @@ For a proposal, give an outcome on the draft, without a `rule` field. Use the ma
 
 ## Questions
 
-The addressed recipient answers using the form and read basis printed by wait. Staff use `work answer <token> <question-id> --on=<read> --file=answer.yaml`. The owner may answer from the page. For a single text form use `{ _tag: Single, text: ... }`.
+The addressed recipient answers using the form and read basis printed by wait. Staff use `work answer <token> <question-key> --on=<read> --file=answer.yaml`. The owner may answer from the page. For a single text form use `{ _tag: Single, text: ... }`.

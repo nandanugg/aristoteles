@@ -7,10 +7,10 @@ const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === '
 export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = null): Of<typeof TaskBriefText> => {
   const { phase } = task
   return TaskBriefText.make([
-    `Task ${task.id}: ${task.name}`,
+    `Task ${task.key}: ${task.name}`,
     `Goal: ${task.goal}`,
     `Direction: ${task.direction.value.name} (version ${task.direction.number})`,
-    `Role: ${taskRole(task).name} (responsibility version ${taskRole(task).responsibility.id.number})`,
+    `Role: ${taskRole(task).name} (responsibility version ${taskRole(task).responsibility.number})`,
     ...taskRole(task).responsibility.value.duties,
     ...task.stages.map((stage) => `${stage.name}: ${stage.work}`),
     ...taskRules(task).map((rule) => `${rule.name}: ${rule.text}`),
@@ -29,6 +29,6 @@ export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = nu
 }
 
 export const projectQuestionWords = (
-  { id, text }: Of<typeof Question>, read: Of<typeof ReadPosition>,
-): readonly [Of<typeof QuestionText>, `work answer "$ARISTOTELES_TOKEN" ${Of<typeof Question>['id']} --on=${Of<typeof ReadPosition>} --file=answer.yaml`] =>
-  [text, `work answer "$ARISTOTELES_TOKEN" ${id} --on=${read} --file=answer.yaml`]
+  { key, text }: Of<typeof Question>, read: Of<typeof ReadPosition>,
+): readonly [Of<typeof QuestionText>, `work answer "$ARISTOTELES_TOKEN" ${Of<typeof Question>['key']} --on=${Of<typeof ReadPosition>} --file=answer.yaml`] =>
+  [text, `work answer "$ARISTOTELES_TOKEN" ${key} --on=${read} --file=answer.yaml`]

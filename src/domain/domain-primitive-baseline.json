@@ -20,7 +20,6 @@
   {"file":"adapters/live/skill-install.ts","declaration":"At","path":"$<Link>.to","rule":"bare-string","source":"e2f21bdcc0dfd46ee6060527f7d59a709fc3558692a92f19cc863d526528b074"},
   {"file":"adapters/live/skill-install.ts","declaration":"installSkill","path":"$()<0>","rule":"bare-string","source":"263eedec6317a98954c2d66e4844e1fd13daacf9f171ed86d586142dd0ee8822"},
   {"file":"adapters/live/skill-install.ts","declaration":"SKILL_FILE","path":"$","rule":"bare-string","source":"eb430faa779a64917376c9e566e2649e484515fb8cb82f46beb72a38e4f9ac21"},
-  {"file":"src/files/activation.ts","declaration":"id","path":"$","rule":"bare-string","source":"9fb68f29939f491d275531d29983f22e80fb54d3a21a2d4989de98b493e06d47"},
   {"file":"src/services/io.ts","declaration":"Env","path":"$.Service.vars[key]","rule":"bare-string","source":"92061a9c6fe44b67ef916b5da7825c9a908abe046e869f7a2c63417c07b3d51f"},
   {"file":"src/services/io.ts","declaration":"Env","path":"$.Service.vars[value]","rule":"bare-string","source":"92061a9c6fe44b67ef916b5da7825c9a908abe046e869f7a2c63417c07b3d51f"}
 ]

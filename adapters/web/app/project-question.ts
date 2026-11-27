@@ -46,7 +46,7 @@ const fieldsFor = (form: ProjectForm) => {
 export const questionAnswerSubmission = (
   question: ProjectQuestion, read: Of<typeof ReadPosition>, answer: ProjectAnswer,
 ): Submission => ({
-  read, line: { _tag: 'Question', id: question.id }, move: 'answer', input: { answer },
+  read, line: { _tag: 'Question', key: question.key }, move: 'answer', input: { answer },
 })
 
 export function QuestionCard({

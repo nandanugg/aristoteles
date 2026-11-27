@@ -8,7 +8,7 @@ import { openPageProject, receiveProjectPayload } from '../../../../adapters/web
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
 import { open, staffInput, withJournal } from '../../../../src/store/project.probe.ts'
 import { direction } from '../../../../src/store/proposal.probe.ts'
-import { artifactQuote, reviewAs, resultInput, taskId, taskLine, toWorking } from '../../../../src/store/task.probe.ts'
+import { artifactQuote, reviewAs, resultInput, taskKey, taskLine, toWorking } from '../../../../src/store/task.probe.ts'
 import { Authority } from '../../../actions/project.ts'
 import { startChild } from '../../../actions/staff-session.ts'
 import { session } from '../../../../src/store/project.probe.ts'
@@ -23,10 +23,10 @@ const kinds = ['success', 'fault', 'mutant'] as const
 const standard = direction.standards[0]!
 const reviewDirection = Schema.decodeUnknownSync(Direction)({
   ...direction, standards: [{ ...standard, rules: [...standard.rules, {
-    _tag: 'Rule', id: 'rule:readable', name: 'Readable result', text: 'Review the result for clarity.',
+    _tag: 'Rule', name: 'Readable result', text: 'Review the result for clarity.',
     verification: { _tag: 'Prompt', question: 'Is the result clear?',
       source: { _tag: 'Quote', file: 'artifact', lines: { first: 1, last: 1 }, text: '7' } },
-    examples: [],
+    knownBreaks: [], examples: [],
   }] }],
 })
 
@@ -42,9 +42,9 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
     let captured = false
     let blockedMutant = false
     let committedReviews = 0
-    const rule = (id: number) => {
+    const rule = (key: number) => {
       const rules = reviewDirection.standards[0]!.rules
-      return id === 3 ? { ...rules[1], text: 'A different version' } : rules[id - 1]
+      return key === 3 ? { ...rules[1], text: 'A different version' } : rules[key - 1]
     }
     for (const step of trace.states.slice(1)) {
       const prior = state
@@ -59,8 +59,8 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
           })),
         })
         state = committed.state
-        expect(state.tasks.get(taskId)?.phase).toMatchObject({
-          _tag: 'Reviewing', outcomes: [{ _tag: observation.breaks ? 'Breaks' : 'Holds', rule: { id: rule(1)?.id } }],
+        expect(state.tasks.get(taskKey)?.phase).toMatchObject({
+          _tag: 'Reviewing', outcomes: [{ _tag: observation.breaks ? 'Breaks' : 'Holds', rule: rule(1) }],
         })
         captured = true
       } else if (step.action === 'assignReview') {
@@ -70,13 +70,13 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
         if (!Array.isArray(reports)) throw new Error('Expected review outcomes')
         const facts = {
           outcomes: reports.map((raw) => {
-            const { rule: id, breaks, evidence } = record(raw)
-            return { rule: rule(integer(id)), _tag: breaks ? 'Breaks' : 'Holds',
+            const { rule: key, breaks, evidence } = record(raw)
+            return { rule: rule(integer(key)), _tag: breaks ? 'Breaks' : 'Holds',
               evidence: evidence ? artifactQuote : { ...artifactQuote, text: 'absent' } }
           }),
           findings: picked(step.picks.finding) ? [{ text: 'Uncovered problem', evidence: artifactQuote }] : [],
         }
-        const outcome = yield* Effect.result(projectReviewCommand(journal, taskId, state.read, Bun.YAML.stringify(facts)).pipe(
+        const outcome = yield* Effect.result(projectReviewCommand(journal, taskKey, state.read, Bun.YAML.stringify(facts)).pipe(
           Effect.provideService(Authority, { actor: Effect.succeed(reviewAs(state)) }),
         ))
         if (Result.isSuccess(outcome)) {
@@ -90,7 +90,7 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
         }
       } else if (step.action !== '') throw new Error('Unexpected work evidence action: ' + step.action)
 
-      const actual = state.tasks.get(taskId)?.phase
+      const actual = state.tasks.get(taskKey)?.phase
       const { tag, value } = record(step.state.task!)
       if (!blockedMutant) expect<unknown>(actual?._tag).toBe(tag)
       if (!blockedMutant && actual?._tag === 'Reviewing') {
@@ -100,8 +100,8 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
         expect(Number(actual.attempt.retryCount)).toBe(integer(record(value!).retries))
       }
       if (!blockedMutant && actual?._tag === 'Done') {
-        expect(actual.outcomes.map(({ rule, _tag }) => [rule.id, _tag]))
-          .toEqual(reviewDirection.standards[0]!.rules.map(({ id }) => [id, 'Holds']))
+        expect(actual.outcomes.map(({ rule, _tag }) => [rule.name, _tag]))
+          .toEqual(reviewDirection.standards[0]!.rules.map(({ name }) => [name, 'Holds']))
       }
       if (!blockedMutant && actual?._tag === 'Raised') {
         expect<unknown>(actual.reason).toBe(typeof value === 'string' ? value : record(value!).tag)

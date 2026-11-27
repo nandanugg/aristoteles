@@ -3,10 +3,10 @@ import { Effect, Exit, Schema } from 'effect'
 import { Authority } from '../../core/actions/project.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { runTaskCommands } from '../../core/effects/project-commands.ts'
-import { ReadPosition, Refusal, Rationale, TaskId, refuse } from '../../core/schema/project.ts'
+import { ReadPosition, Refusal, Rationale, TaskKey, refuse } from '../../core/schema/project.ts'
 import { withProjectEnv } from '../../core/services/project.ts'
-import { openProjectJournal } from '../../core/services/project.ts'
-import { activationOwner, liveProjectBootstrap, projectActivationOperations, projectIdAt, resumeProjectActivation } from '../live/activation.ts'
+import { openProjectJournal, PROJECT_FORMAT } from '../../core/services/project.ts'
+import { activationOwner, liveProjectBootstrap, projectActivationOperations, projectDirectoryAt, resumeProjectActivation } from '../live/activation.ts'
 import { projectRuns } from '../live/project-runs.ts'
 import { liveTaskCommands } from '../live/task-commands.ts'
 import { projectActivationApproval, projectCommandStatus, projectEvents, projectSnapshot, projectSubmission } from './project.ts'
@@ -30,13 +30,13 @@ const ownerName = (dir: string) => Effect.sync(() => {
 })
 
 export const startProjectServer = async (dir: string, vars: Readonly<Record<string, string | undefined>>, port: number) => {
-  const id = projectIdAt(dir)
+  const key = projectDirectoryAt(dir)
   const provideEnv = withProjectEnv(vars)
   const run = <A, E>(effect: Effect.Effect<A, E, Effect.Services<ReturnType<typeof openProjectJournal>>>) =>
     Effect.runPromiseExit(Effect.scoped(provideEnv(effect)))
-  const entry = await run(Effect.flatMap(openProjectJournal(id, 'Read'), readOpenProject))
+  const entry = await run(Effect.flatMap(openProjectJournal(key, 'Read'), readOpenProject))
   if (Exit.isFailure(entry)) {
-    const options = await Effect.runPromise(Effect.scoped(openProjectJournal(id, 'Read').pipe(
+    const options = await Effect.runPromise(Effect.scoped(openProjectJournal(key, 'Read').pipe(
       provideEnv, Effect.result,
     )))
     throw new Error(options._tag === 'Failure' ? options.failure.why : 'Open the project first with work onboard open.')
@@ -47,16 +47,16 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
   const db = vars.ARISTOTELES_DB
   const commands = liveTaskCommands(dir)
   const launch = Effect.scoped(Effect.gen(function* () {
-    const journal = yield* openProjectJournal(id, 'Write')
-    yield* resumeProjectActivation(journal, projectActivationOperations(dir, journal, liveProjectBootstrap(dir, db, id)), 'resume')
+    const journal = yield* openProjectJournal(key, 'Write')
+    yield* resumeProjectActivation(journal, projectActivationOperations(dir, journal, liveProjectBootstrap(dir, db, key)), 'resume')
   }))
-  const reviews = Effect.scoped(Effect.flatMap(openProjectJournal(id, 'Write'), (journal) => projectRuns(dir, db, journal).review))
+  const reviews = Effect.scoped(Effect.flatMap(openProjectJournal(key, 'Write'), (journal) => projectRuns(dir, db, journal).review))
   const watched = Effect.gen(function* () {
-    const journal = yield* openProjectJournal(id, 'Write')
+    const journal = yield* openProjectJournal(key, 'Write')
     const project = yield* readOpenProject(journal)
     const operations = projectRuns(dir, db, journal)
     for (const session of project.sessions.values()) {
-      if (session._tag === 'Live') yield* Effect.result(operations.sessions.observe({ _tag: 'Session', id: session.id }))
+      if (session._tag === 'Live' || session._tag === 'Starting') yield* Effect.result(operations.sessions.observe({ _tag: 'Session', key: session.key }))
     }
     yield* Effect.result(operations.review)
   })
@@ -66,7 +66,7 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
       const url = new URL(request.url)
       if (url.origin !== serving.url.origin) return invalid()
       switch (url.pathname) {
-        case '/health': return Response.json({ dir, format: 16 })
+        case '/health': return Response.json({ dir, format: PROJECT_FORMAT })
         case '/': return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
         case '/app.js': return new Response(script, { headers: { 'content-type': 'text/javascript; charset=utf-8' } })
         case '/style.css':
@@ -76,7 +76,7 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
       const write = request.method === 'POST' && url.pathname === '/api/project/submissions'
       if (write ? request.headers.get('origin') !== serving.url.origin : request.method !== 'GET') return invalid()
       const task = Effect.gen(function* () {
-        const journal = yield* openProjectJournal(id, write ? 'Write' : 'Read')
+        const journal = yield* openProjectJournal(key, write ? 'Write' : 'Read')
         const actor = Effect.flatMap(ownerName(dir), (name) => activationOwner(journal, name))
         const provide = Effect.provideService(Authority, { actor })
         yield* actor
@@ -90,14 +90,14 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
           }
           case '/api/project/activation-files': return yield* projectActivationApproval(journal, dir).pipe(provide)
           case '/api/project/command-status': {
-            const id = url.searchParams.get('task')
-            return Schema.is(TaskId)(id) ? yield* projectCommandStatus(journal, { _tag: 'Task', id }, commands).pipe(provide) : invalid()
+            const key = url.searchParams.get('task')
+            return Schema.is(TaskKey)(key) ? yield* projectCommandStatus(journal, { _tag: 'Task', key }, commands).pipe(provide) : invalid()
           }
           case '/api/project/submissions':
             if (!write) return invalid()
             return yield* projectSubmission(journal, request,
               reviews.pipe(provideEnv), launch.pipe(provideEnv),
-              (line) => Effect.scoped(Effect.flatMap(openProjectJournal(id, 'Write'), (current) => runTaskCommands(current, line, commands)))
+              (line) => Effect.scoped(Effect.flatMap(openProjectJournal(key, 'Write'), (current) => runTaskCommands(current, line, commands)))
                 .pipe(provideEnv)).pipe(provide)
           default: return new Response(null, { status: 404 })
         }

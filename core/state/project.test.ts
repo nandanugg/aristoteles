@@ -2,10 +2,10 @@ import { expect, test } from 'bun:test'
 import { Effect, Result, Schema } from 'effect'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../adapters/web/project.ts'
-import { create, open, projectId, session, staffInput, withJournal } from '../../src/store/project.probe.ts'
-import { commandOutcomes, promptDirection, reportReview, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
+import { create, open, session, staffInput, withJournal } from '../../src/store/project.probe.ts'
+import { commandOutcomes, promptDirection, reportReview, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { startChild } from '../actions/staff-session.ts'
-import { EventNumber, Projection, ReadPosition, SessionId, StoredEvent, Submission, TaskId } from '../schema/project.ts'
+import { EventNumber, Projection, ReadPosition, StaffSessionKey, StoredEvent, Submission, TaskKey } from '../schema/project.ts'
 import { applyEvent, fold, readPosition } from './project.ts'
 
 const initial = ReadPosition.make(0)
@@ -57,14 +57,14 @@ test('a report refuses wrong authority, an invalid phase and a stale basis after
     const read = readPosition(working.state)
     const request = resultInput(read)
     expectCode(yield* Effect.result(staffInput(journal, { ...request, move: 'back' })), 'InvalidInput')
-    expectCode(yield* Effect.result(staffInput(journal, request, { ...session, id: SessionId.make('session:other') })), 'RetiredSession')
+    expectCode(yield* Effect.result(staffInput(journal, request, { ...session, key: StaffSessionKey.make('session:other') })), 'RetiredSession')
     expectCode(yield* Effect.result(commandOutcomes(journal, read)), 'WrongMove')
     expect(yield* journal.eventsAfter(read)).toEqual([])
     const result = yield* staffInput(journal, request)
     const review = yield* commandOutcomes(journal, readPosition(result.state))
     const assigned = yield* startChild(journal, review.state, taskLine, session, 'Review')
     const back = yield* reportReview(journal, assigned.state, 'Breaks')
-    expect(back.state.tasks.get(taskId)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, retryCount: 1 } })
+    expect(back.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, retryCount: 1 } })
     expectCode(yield* Effect.result(staffInput(journal, request)), 'Stale')
     expect(yield* journal.eventsAfter(readPosition(back.state))).toEqual([])
     expect((yield* staffInput(journal, resultInput(readPosition(back.state)))).state.status._tag).toBe('Open')
@@ -76,7 +76,7 @@ test('an unrelated record changing after the basis does not invalidate the addre
     const journal = yield* open(path)
     const working = yield* toWorking(journal)
     const read = readPosition(working.state)
-    yield* send(journal, read, TaskId.make('task:unrelated'))
+    yield* send(journal, read, TaskKey.make('task:unrelated'))
     const result = yield* staffInput(journal, resultInput(read))
     expect(Number(result.event.number)).toBe(read + 2)
   }))),
@@ -94,7 +94,7 @@ test('the page deduplicates notifications and catches up via the canonical snaps
     const review = yield* commandOutcomes(journal, readPosition(result.state))
     expectCode(page.receive([review.event]), 'InvalidInput')
     expect(page.current()).toEqual(working.state)
-    const reopened = yield* open(path, 'Read', projectId)
+    const reopened = yield* open(path, 'Read')
     const response = yield* projectEvents(reopened, after)
     expect(Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => response.json())))).toEqual(review.state)
     page.receive([result.event, review.event])
@@ -104,7 +104,7 @@ test('the page deduplicates notifications and catches up via the canonical snaps
     const saved = Schema.encodeSync(Projection)(page.current())
     expect(Result.getOrThrow(openPageProject(saved, () => {})).current()).toEqual(review.state)
     expect(() => Schema.decodeUnknownSync(Submission, { onExcessProperty: 'error' })({
-      ...(resultInput(after)), actor: { _tag: 'Staff', id: 'staff:worker' },
+      ...(resultInput(after)), actor: { _tag: 'Staff', key: 'staff:worker' },
     })).toThrow()
   }))),
 ))

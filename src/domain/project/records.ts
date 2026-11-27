@@ -4,34 +4,19 @@ import { Proposal, StaffingAccepted } from './proposal.ts'
 import { Human, Role, Staff, StaffSession, Subscription } from './staff.ts'
 import {
   EventNumber,
-  ProjectId, ProposalId, QuestionId, ReadPosition, QuestionText, RoleId, SessionId, StaffId,
-  SubscriptionId, TaskId, type Of,
+  ProposalKey, QuestionKey, ReadPosition, RoleKey, StaffSessionKey, StaffKey,
+  SubscriptionKey, TaskKey, type Of,
 } from './values.ts'
 import { Task } from './task.ts'
-import { Answer, QuestionForm, questionAbout } from './question.ts'
+import { Question } from './question.ts'
 
-const Actor = Schema.Union([Human, Staff])
-const QuestionState = Schema.Union([
-  Schema.TaggedStruct('Open', {}),
-  Schema.TaggedStruct('Answered', { by: Actor, answer: Answer }),
-])
-export const Question = Schema.Struct({
-  id: QuestionId, from: Actor, to: Actor, text: QuestionText, form: QuestionForm, state: QuestionState,
-  about: Schema.Union([
-    ...questionAbout,
-    Schema.TaggedStruct('Task', { task: Task }),
-  ]),
-  lastChange: EventNumber,
-})
-export type Question = Of<typeof Question>
-
-const recordsById = <S extends Schema.Top, K extends Schema.Top>(
-  value: S & { readonly Type: { readonly id: K['Type'] }; readonly DecodingServices: never; readonly EncodingServices: never },
+const recordsByKey = <S extends Schema.Top, K extends Schema.Top>(
+  value: S & { readonly Type: { readonly key: K['Type'] }; readonly DecodingServices: never; readonly EncodingServices: never },
   key: K,
 ) => Schema.Array(value)
-  .check(Schema.makeFilter((entries) => new Set(entries.map((item) => item.id)).size === entries.length))
+  .check(Schema.makeFilter((entries) => new Set(entries.map((item) => item.key)).size === entries.length))
   .pipe(Schema.decodeTo(Schema.ReadonlyMap(Schema.toType(key), Schema.toType(value)), {
-    decode: SchemaGetter.transform((entries) => new Map(entries.map((item) => [item.id, item]))),
+    decode: SchemaGetter.transform((entries) => new Map(entries.map((item) => [item.key, item]))),
     encode: SchemaGetter.transform((map) => [...map.values()]),
   }))
 const ProjectStatus = Schema.Union([
@@ -39,13 +24,13 @@ const ProjectStatus = Schema.Union([
   Schema.TaggedStruct('Ended', { at: EventNumber }),
 ])
 export const Project = Schema.Struct({
-  id: ProjectId, owner: Human,
-  roles: Schema.Struct({ host: Role, pipeline: Role, work: recordsById(Role, RoleId) }).check(
-    Schema.makeFilter(({ host, pipeline, work }) => host.id !== pipeline.id && !work.has(host.id) && !work.has(pipeline.id)),
-  ), staff: recordsById(Staff, StaffId),
-  subscriptions: recordsById(Subscription, SubscriptionId), openedAt: EventNumber,
-  staffing: Schema.NullOr(StaffingAccepted), proposals: recordsById(Proposal, ProposalId),
-  sessions: recordsById(StaffSession, SessionId), tasks: recordsById(Task, TaskId), questions: recordsById(Question, QuestionId), status: ProjectStatus, activation: Activation,
+  owner: Human,
+  roles: Schema.Struct({ host: Role, pipeline: Role, work: recordsByKey(Role, RoleKey) }).check(
+    Schema.makeFilter(({ host, pipeline, work }) => host.key !== pipeline.key && !work.has(host.key) && !work.has(pipeline.key)),
+  ), staff: recordsByKey(Staff, StaffKey),
+  subscriptions: recordsByKey(Subscription, SubscriptionKey), openedAt: EventNumber,
+  staffing: Schema.NullOr(StaffingAccepted), proposals: recordsByKey(Proposal, ProposalKey),
+  sessions: recordsByKey(StaffSession, StaffSessionKey), tasks: recordsByKey(Task, TaskKey), questions: recordsByKey(Question, QuestionKey), status: ProjectStatus, activation: Activation,
   lastChange: EventNumber, read: ReadPosition,
 })
 export type Project = Of<typeof Project>

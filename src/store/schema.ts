@@ -1,5 +1,5 @@
-export const PROJECT_FORMAT = 16
-export const PROJECT_APPLICATION_ID = 0x41524953
+export const PROJECT_FORMAT = 17
+export const PROJECT_APPLICATION = 0x41524953
 
 export const PROJECT_EVENTS = `
 CREATE TABLE project_event (

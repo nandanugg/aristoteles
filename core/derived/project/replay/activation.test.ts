@@ -5,10 +5,10 @@ import { Effect, Result, Schema } from 'effect'
 import { projectActivationOperations } from '../../../../adapters/live/activation.ts'
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
-import { agree, approvedText, hostId, newerText, readyActivation, startWork } from '../../../../src/store/project-activation.probe.ts'
+import { agree, approvedText, hostKey, newerText, readyActivation, startWork } from '../../../../src/store/project-activation.probe.ts'
 import { open, withJournal } from '../../../../src/store/project.probe.ts'
 import { readOpenProject } from '../../../actions/staff-session.ts'
-import { HostLaunchEvent, HostCredential, Rationale, ReadPosition, type Of, type Refusal, type SessionId } from '../../../schema/project.ts'
+import { HostCredential, LaunchNonce, boundHostSession, hostSession, hostReplacement, Rationale, type Of, type Refusal, type StaffSessionKey } from '../../../schema/project.ts'
 import { readPosition } from '../../../state/project.ts'
 import { picked } from './itf.probe.ts'
 import { integer, readTrace, record, registeredChecks } from './driver.ts'
@@ -17,7 +17,7 @@ const checks = ['activationCommit', 'activationRollback', 'activationHostBinding
 const kinds = ['success', 'fault', 'mutant'] as const
 const reason = Rationale.make('The owner canceled activation.')
 const fixture = (check: string, kind: string) => join(import.meta.dir, 'traces', check + '-' + kind + '.itf.json.gz')
-const numberOf = (id?: Of<typeof SessionId>) => id === undefined ? 0 : Number.parseInt(id.slice(8), 16)
+const numberOf = (key?: Of<typeof StaffSessionKey>) => key === undefined ? 0 : Number.parseInt(key.slice(8), 16)
 const sorted = (values: Iterable<number>) => [...values].sort((a, b) => a - b)
 const invalidCredential = HostCredential.make('host.' + '0'.repeat(64))
 const modelRecord = Schema.decodeUnknownSync(Schema.Struct({
@@ -43,24 +43,27 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
     let journal = f.journal
     let operations = f.operations
     const delivered = new Map<number, Of<typeof HostCredential>>()
-    const nonce = (id: Of<typeof SessionId>) => {
-      const value = f.nonces.get(id)
+    const answers = new Map<Of<typeof StaffSessionKey>, Of<typeof LaunchNonce>>()
+    const nonce = (key: Of<typeof StaffSessionKey>) => {
+      const value = f.nonces.get(key)
       if (value === undefined) throw new Error('The replay has no nonce for this launch')
       return value
     }
-    const old = hostId(1)
-    const replacement = hostId(2)
-    const spawnAndAcknowledge = (id: Of<typeof SessionId>) => Effect.gen(function* () {
+    const old = hostKey(1)
+    const replacement = hostKey(2)
+    const spawnAndAcknowledge = (key: Of<typeof StaffSessionKey>) => Effect.gen(function* () {
       yield* operations.spawn
-      yield* operations.acknowledge(id, nonce(id))
+      answers.set(key, nonce(key))
     })
+    const acknowledge = (key: Of<typeof StaffSessionKey>) =>
+      operations.acknowledge(key, answers.get(key) ?? LaunchNonce.make('0'.repeat(64)))
 
     if (check !== 'activationCommit') yield* agree(journal, f.project, f.files)
     if (check === 'activationHostBinding') {
       yield* operations.mark
       yield* operations.reserve(old)
       yield* spawnAndAcknowledge(old)
-      yield* operations.commit
+      yield* acknowledge(old)
     }
 
     const snapshot = yield* projectSnapshot(journal)
@@ -72,22 +75,18 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
       expect(project.proposals).toEqual(f.project.proposals)
       const phase = project.activation
       const contents = readFileSync(f.file, 'utf8')
-      const reserved = phase._tag === 'Activating' || phase._tag === 'RollingBack' ? numberOf(phase.launches.at(-1)?.id) : 0
-      const binding = phase._tag === 'Active' ? numberOf(phase.binding.id) : 0
-      const events = yield* journal.eventsAfter(ReadPosition.make(0))
-      const acked = new Set<number>()
-      if (phase._tag !== 'Onboarding') for (const event of events) {
-        if (event.number >= phase.at && Schema.is(HostLaunchEvent)(event) && event.move === 'acknowledge')
-          acked.add(numberOf(event.line.id))
-      }
+      const session = hostSession(project)
+      const replacement = hostReplacement(project)
+      const reserved = phase._tag === 'Activating' || phase._tag === 'RollingBack' ? numberOf(session && session.startedAt > phase.at ? session.key : undefined) : 0
+      const binding = numberOf(boundHostSession(project)?.key)
       return {
         phase: phase._tag,
         file: contents === approvedText ? 'Approved' : contents === newerText ? 'Newer' : 'Marked',
         reserved,
         alive: sorted([...f.running].map(numberOf)),
-        acked: sorted(acked),
+        acked: phase._tag === 'Onboarding' ? [] : sorted([...answers.keys()].map(numberOf)),
         binding,
-        pending: phase._tag === 'Active' ? numberOf(phase.replacement?.id) : 0,
+        pending: phase._tag === 'Active' && replacement._tag === 'Starting' ? numberOf(replacement.key) : 0,
         top: phase._tag === 'Active' && phase.work._tag !== 'NotStarted' ? binding : 0,
         delivered: sorted(delivered.keys()),
         used: phase._tag === 'Active' && phase.work._tag === 'Used',
@@ -97,7 +96,11 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
       const state = modelRecord(step.state.record)
       const active = state.binding !== 0
       // The journal exposes a committed binding immediately, including after a lost IO note.
-      return { ...state, phase: active ? 'Active' as const : state.phase, reserved: active ? 0 : state.reserved }
+      return {
+        ...state, phase: active ? 'Active' as const : state.phase, reserved: active ? 0 : state.reserved,
+        binding: state.pending && state.pending !== state.binding ? 0 : state.binding,
+        pending: state.pending === state.binding ? 0 : state.pending,
+      }
     }
 
     const refusal = <A>(operation: Effect.Effect<A, Refusal>, ...codes: Refusal['code'][]) => Effect.gen(function* () {
@@ -119,7 +122,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
         case 'approve': yield* agree(journal, f.project, f.files); break
         case 'markFile': yield* operations.mark; break
         case 'editFile': writeFileSync(f.file, newerText); break
-        case 'startHost': yield* operations.reserve(hostId(integer(picked(step.picks.launch)))); break
+        case 'startHost': yield* operations.reserve(hostKey(integer(picked(step.picks.launch)))); break
         case 'launchHost':
           if (check === 'activationRollback') {
             yield* operations.reserve(old)
@@ -127,20 +130,18 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
           } else yield* operations.spawn
           break
         case 'acknowledge': {
-          const id = hostId(integer(prior.reserved))
-          yield* operations.acknowledge(id, nonce(id))
+          const key = hostKey(integer(prior.reserved))
+          answers.set(key, nonce(key))
           break
         }
         case 'loseHost': f.running.delete(old); break
         case 'tryCommit': {
           const reserved = integer(prior.reserved)
-          const candidate = hostId(reserved)
-          const phase = (yield* readOpenProject(journal)).activation
-          const mayCommit = phase._tag === 'Activating' && phase.launches.at(-1)?._tag === 'Acknowledged' &&
-            f.running.has(candidate) && prior.file === 'Marked'
-          if (mayCommit) yield* operations.commit
+          const candidate = hostKey(reserved)
+          const mayCommit = answers.has(candidate) && f.running.has(candidate) && prior.file === 'Marked'
+          if (mayCommit) yield* acknowledge(candidate)
           else {
-            yield* refusal(operations.commit, 'RetiredSession', 'Unavailable')
+            yield* refusal(acknowledge(candidate), 'RetiredSession', 'Unavailable')
             guarded = kind === 'mutant' && expected.binding !== previous.binding
           }
           break
@@ -150,7 +151,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
             yield* operations.reserve(old)
             yield* spawnAndAcknowledge(old)
           }
-          yield* operations.commit
+          yield* acknowledge(old)
           break
         case 'cancel':
           if (prior.phase === 'Active') yield* refusal(operations.rollback(reason), 'WrongMove')
@@ -171,15 +172,15 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
         case 'reconcile': yield* operations.reconcile; break
         case 'startReplacement': yield* operations.reserve(replacement); break
         case 'launchReplacement': yield* spawnAndAcknowledge(replacement); break
-        case 'chooseBinding': yield* operations.commit; break
+        case 'chooseBinding': yield* acknowledge(replacement); break
         case 'openProject': yield* startWork(journal, yield* readOpenProject(journal)); break
         case 'collect': {
           const launch = integer(picked(step.picks.launch))
-          const id = hostId(launch)
+          const key = hostKey(launch)
           if (prior.binding === launch && prior.used === false) {
-            delivered.set(launch, yield* operations.collect(id, nonce(id)))
+            delivered.set(launch, yield* operations.collect(key, nonce(key)))
           } else {
-            yield* refusal(operations.collect(id, nonce(id)), 'RetiredSession')
+            yield* refusal(operations.collect(key, nonce(key)), 'RetiredSession')
             guarded = kind === 'mutant' && Array.isArray(expected.delivered) && expected.delivered.includes(launch)
           }
           break
@@ -188,7 +189,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
           const launch = integer(prior.binding)
           const credential = delivered.get(launch)
           if (!credential) throw new Error('Work must use a delivered credential')
-          yield* operations.authenticate(hostId(launch), credential)
+          yield* operations.authenticate(hostKey(launch), credential)
           break
         }
         default: throw new Error('Unknown activation action: ' + step.action)

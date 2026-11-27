@@ -30,8 +30,8 @@ const directoryAt = (directory: string, create: boolean): string | null => {
   }
   return directory
 }
-const keyOf = ({ project, task, result, rule }: CommandRecord) =>
-  createHash('sha256').update(JSON.stringify([project, task, result, rule])).digest('hex')
+const keyOf = ({ directory, database, result, slot }: CommandRecord) =>
+  createHash('sha256').update(JSON.stringify([directory.href, database.href, result, slot])).digest('hex')
 
 const durable = (path: string, contents: string) => {
   const fd = openSync(path, 'wx', 0o600)
@@ -70,7 +70,7 @@ export const reserveCommandCapture = (directory: string, receipt: CommandRecord)
 
 export const saveCommandCapture = (directory: string, receipt: CommandRecord, outcome: CommandOutcome): Effect.Effect<void, Refusal> => io(() => {
   const area = directoryAt(directory, false)
-  if (!area || receipt.rule !== outcome.rule.id) throw new Error('Missing command reservation')
+  if (!area || JSON.stringify(receipt.rule) !== JSON.stringify(outcome.rule)) throw new Error('Missing command reservation')
   const path = join(area, keyOf(receipt))
   if (read(path + '.issued') === null) throw new Error('Missing command reservation')
   const result = encode(outcome)

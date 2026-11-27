@@ -137,7 +137,7 @@ const pathProblem = (dir: string, p: string): string | null => {
   return null
 }
 // The identity of the folders on the path (device and inode), to see one replaced meanwhile.
-const folderIds = (dir: string, p: string): string => {
+const folderKeys = (dir: string, p: string): string => {
   const parts = p.split(sep).slice(0, -1)
   let at = dir
   const ids = [lstatSync(dir)]
@@ -265,7 +265,7 @@ const publish = (
   before: () => void,
 ): Outcome => {
   const path = join(dir, rel)
-  const folders = folderIds(dir, rel)
+  const folders = folderKeys(dir, rel)
   const mode = lstatSync(path).mode & 0o7777
   const tmp = join(dirname(path), `.${basename(path)}.aristoteles-${randomUUID()}`)
   let published = false
@@ -274,7 +274,7 @@ const publish = (
     before()
     const problem = existsSync(path) ? pathProblem(dir, rel) : 'missing'
     if (problem !== null) return problem === 'missing' ? { _tag: 'Changed' } : { _tag: 'Unsafe', why: problem }
-    if (folderIds(dir, rel) !== folders) {
+    if (folderKeys(dir, rel) !== folders) {
       return {
         _tag: 'Unsafe',
         why: `a folder on the path was replaced (a temporary ${basename(tmp)} may remain in the moved folder)`,

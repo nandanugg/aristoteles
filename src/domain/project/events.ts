@@ -1,30 +1,29 @@
 import { Schema } from 'effect'
 import { ApprovedFiles } from './activation.ts'
 import { ProposalValue } from './proposal.ts'
+import { versionOf } from './version.ts'
 import { ReviewFacts } from './review.ts'
 import { line, protocol } from './lines.ts'
-import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, type TaskPhase } from './task.ts'
+import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, DirectionVersion, type TaskPhase } from './task.ts'
 import { Evidence } from './evidence.ts'
 import { Fact } from './direction.ts'
-import { Answer, QuestionForm, questionAbout } from './question.ts'
+import { Answer, QuestionForm } from './question.ts'
 import { Human, LiveSession, Pane, Role, Staff } from './staff.ts'
 import {
-  AttemptNumber, DirectionId, EventNumber, Goal, Name, ProjectId, ProposalId, QuestionId, QuestionText, Rationale,
-  RetryLimit, RoleId, SessionId, StaffId, StoredActor, TaskId, type Of,
+  AttemptNumber, EventNumber, Goal, Name, ProposalKey, QuestionKey, QuestionText, Rationale,
+  RetryLimit, StaffSessionKey, StoredActor, TaskKey, type Of,
 } from './values.ts'
 
-export const ProjectAddress = Schema.TaggedStruct('Project', { id: ProjectId })
-export const TaskAddress = Schema.TaggedStruct('Task', { id: TaskId })
-export const SessionAddress = Schema.TaggedStruct('Session', { id: SessionId })
-export const ActivationAddress = Schema.TaggedStruct('Activation', { id: ProjectId })
-export const HostLaunchAddress = Schema.TaggedStruct('HostLaunch', { id: SessionId })
-export const ProposalAddress = Schema.TaggedStruct('Proposal', { id: ProposalId })
-export const QuestionAddress = Schema.TaggedStruct('Question', { id: QuestionId })
+export const ProjectAddress = Schema.TaggedStruct('Project', {})
+export const TaskAddress = Schema.TaggedStruct('Task', { key: TaskKey })
+export const SessionAddress = Schema.TaggedStruct('Session', { key: StaffSessionKey })
+export const ActivationAddress = Schema.TaggedStruct('Activation', {})
+export const ProposalAddress = Schema.TaggedStruct('Proposal', { key: ProposalKey })
+export const QuestionAddress = Schema.TaggedStruct('Question', { key: QuestionKey })
 
 const configuration = Schema.Struct({ owner: Human, host: Role, pipeline: Role, staff: Staff, roles: Schema.Array(Role) })
 export const TaskDraft = Schema.Struct({
-  name: Name, goal: Goal, reviewer: RoleId,
-  direction: Schema.Struct({ id: DirectionId, acceptedAt: EventNumber }),
+  name: Name, goal: Goal, reviewer: Role, direction: DirectionVersion,
   stages: TaskStages,
   facts: Schema.Array(Fact).check(Schema.makeFilter((facts) => new Set(facts.map(({ name }) => name)).size === facts.length)),
 })
@@ -32,7 +31,7 @@ const empty = Schema.Struct({}).check(Schema.makeFilter((input) => Object.keys(i
 const session = Schema.Struct({ session: LiveSession, staffing: EventNumber })
 const why = Schema.Struct({ why: Rationale })
 const files = Schema.Struct({ files: ApprovedFiles })
-const value = Schema.Struct({ value: ProposalValue })
+const value = Schema.Struct({ value: ProposalValue, previous: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]) })
 const proposalDraft = Schema.Struct({ value: ProposalValue, question: Schema.NullOr(QuestionAddress) })
 const reviewFacts = Schema.Struct({ facts: ReviewFacts })
 const reviewReport = Schema.Struct({ ...reviewFacts.fields, session: LiveSession, review: EventNumber })
@@ -40,7 +39,7 @@ const workProblem = Schema.Struct({
   attempt: AttemptNumber, reason: Schema.Literals(['TooBig', 'WrongTask']), evidence: Evidence,
 })
 const taskReviewReport = Schema.Struct({
-  ...reviewFacts.fields, session: SessionId, review: EventNumber, limit: RetryLimit,
+  ...reviewFacts.fields, session: StaffSessionKey, review: EventNumber, limit: RetryLimit,
 })
 
 export const projectLine = line({
@@ -55,9 +54,9 @@ export const taskLine = line({
     submission: { input: empty },
   } } },
   Working: { owes: 'Assignee', moves: {
-    next: { to: ['ReadyToReview'], input: Schema.Struct({ ...WorkResult.fields, session: SessionId }), submission: { input: WorkResult } },
-    restart: { to: ['Sent'], input: Schema.Struct({ session: SessionId }), owes: 'Engine' },
-    raise: { to: ['Raised'], input: Schema.Struct({ ...workProblem.fields, session: SessionId }), submission: { input: workProblem } },
+    next: { to: ['ReadyToReview'], input: Schema.Struct({ ...WorkResult.fields, session: StaffSessionKey }), submission: { input: WorkResult } },
+    restart: { to: ['Sent'], input: Schema.Struct({ session: StaffSessionKey }), owes: 'Engine' },
+    raise: { to: ['Raised'], input: Schema.Struct({ ...workProblem.fields, session: StaffSessionKey }), submission: { input: workProblem } },
   } },
   ReadyToReview: { owes: 'Engine', moves: {
     next: { to: ['Reviewing'], input: Schema.Struct({ outcomes: CommandOutcomes }) },
@@ -73,20 +72,28 @@ export const taskLine = line({
 }) satisfies Readonly<Record<TaskPhase['_tag'], object>>
 export const sessionLine = line({
   null: { owes: 'Engine', moves: { open: {
-    to: ['Live'], input: Schema.Struct({ staff: StaffId, pane: Pane, staffing: EventNumber }),
+    to: ['Starting'], input: Schema.Struct({ staff: Staff, staffing: EventNumber, previous: Schema.Union([Schema.TaggedStruct('None', {}), SessionAddress]) }),
   } } },
+  Starting: { owes: 'Engine', moves: {
+    next: { to: ['Live'], input: Schema.Struct({ pane: Pane }) },
+    cancel: { to: ['Ended'], input: empty },
+  } },
   Live: { owes: 'Engine', moves: {
     next: { to: ['Paused', 'Ended'], input: Schema.Struct({ observed: Schema.Literals(['Paused', 'Ended']) }) },
   } },
   Paused: { owes: 'Engine', moves: {
-    next: { to: ['Live'], input: Schema.Struct({ id: SessionId, pane: Pane, staffing: EventNumber }) },
+    next: { to: ['Ended'], input: empty },
   } },
   Ended: { owes: 'None', moves: {} },
 })
 
 const question = Schema.Struct({
   to: StoredActor, text: QuestionText, form: QuestionForm,
-  about: Schema.Union([...questionAbout, Schema.TaggedStruct('Task', { task: TaskId })]),
+  about: Schema.Union([
+    Schema.TaggedStruct('Project', {}),
+    Schema.TaggedStruct('Staffing', { proposal: ProposalAddress }),
+    Schema.TaggedStruct('Task', { task: TaskKey }),
+  ]),
 })
 const answer = Schema.Struct({ answer: Answer })
 export const questionLine = line({
@@ -119,33 +126,16 @@ export const activationLine = line({
   Activating: { owes: 'Engine', moves: { back: { to: ['RollingBack'], input: why } } },
   RollingBack: { owes: 'Engine', moves: { back: { to: ['Onboarding'], input: empty } } },
   Active: { owes: 'None', moves: {
-    clearReplacement: { to: ['Active'], input: Schema.Struct({ id: SessionId }), owes: 'Engine' },
     start: { to: ['Active'], input: empty, owes: 'Owner', submission: { input: empty } },
-    use: { to: ['Active'], input: Schema.Struct({ id: SessionId }), owes: 'Host' },
+    use: { to: ['Active'], input: Schema.Struct({ session: SessionAddress }), owes: 'Host' },
   } },
 })
-const launchPane = Schema.Struct({ pane: Pane })
-export const hostLaunchLine = line({
-  null: { owes: 'Engine', moves: { reserve: { to: ['Reserved'], input: empty } } },
-  Reserved: { owes: 'Engine', moves: {
-    acknowledge: { to: ['Acknowledged'], input: launchPane },
-    cancel: { to: ['Cancelled'], input: empty },
-  } },
-  Acknowledged: { owes: 'Engine', moves: {
-    bind: { to: ['Bound'], input: launchPane },
-    cancel: { to: ['Cancelled'], input: empty },
-  } },
-  Bound: { owes: 'None', moves: {} },
-  Cancelled: { owes: 'None', moves: {} },
-})
-
 const project = protocol(ProjectAddress, projectLine)
 const task = protocol(TaskAddress, taskLine)
 const sessions = protocol(SessionAddress, sessionLine)
 const questions = protocol(QuestionAddress, questionLine)
 const proposals = protocol(ProposalAddress, proposalLine)
 const activation = protocol(ActivationAddress, activationLine)
-const hostLaunch = protocol(HostLaunchAddress, hostLaunchLine)
 
 export const ProjectEvent = project.event
 export type ProjectEvent = Of<typeof ProjectEvent>
@@ -159,9 +149,7 @@ export const ProposalEvent = proposals.event
 export type ProposalEvent = Of<typeof ProposalEvent>
 export const ActivationEvent = activation.event
 export type ActivationEvent = Of<typeof ActivationEvent>
-export const HostLaunchEvent = hostLaunch.event
-export type HostLaunchEvent = Of<typeof HostLaunchEvent>
-export const StoredEvent = Schema.Union([ProjectEvent, TaskEvent, SessionEvent, QuestionEvent, ProposalEvent, ActivationEvent, HostLaunchEvent])
+export const StoredEvent = Schema.Union([ProjectEvent, TaskEvent, SessionEvent, QuestionEvent, ProposalEvent, ActivationEvent])
   .check(Schema.makeFilter((event) => event.read < event.number))
 export type StoredEvent = Of<typeof StoredEvent>
 export const StoredEvents = Schema.Array(StoredEvent)

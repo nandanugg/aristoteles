@@ -147,6 +147,29 @@ describe('the import layers', () => {
   })
 })
 
+test('every Project record key has a map of its own record type', () => {
+  const domain = 'src/domain/project/'
+  const declared = sourceOf(domain + 'values.ts').statements.flatMap((statement) => {
+    if (!ts.isVariableStatement(statement) || !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword))
+      return []
+    return statement.declarationList.declarations.flatMap(({ name }) =>
+      ts.isIdentifier(name) && name.text.endsWith('Key') ? [name.text] : [])
+  })
+  const paired: string[] = []
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'recordsByKey') {
+      const [value, key] = node.arguments
+      if (!value || !ts.isIdentifier(value) || !key || !ts.isIdentifier(key))
+        throw new Error('A Project map must name its record and its key schema')
+      expect(key.text).toBe(value.text + 'Key')
+      paired.push(key.text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceOf(domain + 'records.ts'))
+  expect(declared.sort()).toEqual([...new Set(paired)].sort())
+})
+
 describe('the shared project boundary', () => {
   test('the browser is checked without the server runtime', () => {
     expect(graphs.browser.getCompilerOptions().types).toEqual([])

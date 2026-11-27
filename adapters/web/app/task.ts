@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import { html } from 'htm/preact'
 import { ReviewEvidence } from './project-evidence.ts'
-import { taskRole, taskRules, type Refusal, type Task, type TaskId, type Of, type WholeFile } from '../../../core/schema/project.ts'
+import { taskRole, taskRules, type Refusal, type Task, type TaskKey, type Of, type WholeFile } from '../../../core/schema/project.ts'
 
 function FileResult({ file }: { readonly file: WholeFile }) {
   const { image } = file
@@ -20,7 +20,7 @@ function FileResult({ file }: { readonly file: WholeFile }) {
 
 export function TaskPanel({ task, commandBlock }: {
   readonly task: Task
-  readonly commandBlock?: (id: Of<typeof TaskId>) => Promise<Refusal['why'] | null>
+  readonly commandBlock?: (key: Of<typeof TaskKey>) => Promise<Refusal['why'] | null>
 }) {
   const { phase } = task
   const [blocked, setBlocked] = useState<Refusal['why'] | null>(null)
@@ -28,11 +28,11 @@ export function TaskPanel({ task, commandBlock }: {
     setBlocked(null)
     if (!commandBlock || phase._tag !== 'ReadyToReview') return
     let current = true
-    const update = () => { void commandBlock(task.id).then((why) => { if (current) setBlocked(why) }, () => {}) }
+    const update = () => { void commandBlock(task.key).then((why) => { if (current) setBlocked(why) }, () => {}) }
     update()
     const timer = setInterval(update, 1000)
     return () => { current = false; clearInterval(timer) }
-  }, [task.id, task.lastChange, phase._tag, commandBlock])
+  }, [task.key, task.lastChange, phase._tag, commandBlock])
   const result = phase._tag === 'ReadyToReview' || phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.result : null
   const feedback = phase._tag === 'Working' ? phase.attempt.feedback : phase._tag === 'Sent' ? phase.feedback : null
   const outcomes = phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.outcomes : null
@@ -42,20 +42,20 @@ export function TaskPanel({ task, commandBlock }: {
     <details>
       <summary>Task brief</summary>
       <p>${task.direction.value.name} · version ${task.direction.number}</p>
-      ${task.stages.map((stage) => html`<p key=${stage.id}>${stage.name} · ${stage.work}</p>`)}
-      ${taskRules(task).map((rule) => html`<p key=${rule.id}>${rule.name} · ${rule.text}</p>`)}
+      ${task.stages.map((stage, index) => html`<p key=${index}>${stage.name} · ${stage.work}</p>`)}
+      ${taskRules(task).map((rule, index) => html`<p key=${index}>${rule.name} · ${rule.text}</p>`)}
     </details>
     ${phase._tag === 'Working' ? html`<p>Attempt ${phase.attempt.number}</p>` : null}
     ${result ? html`<p>${result.summary}</p>
       ${result.files.map((file) => html`<${FileResult} key=${file.path} file=${file} />`)}` : null}
     ${phase._tag === 'ReadyToReview' ? html`<p role="status">${blocked ?? 'Waiting for committed command outcomes.'}</p>` : null}
-    ${outcomes?.map(({ rule, evidence, _tag }) => html`<details key=${rule.id}>
+    ${outcomes?.map(({ rule, evidence, _tag }, index) => html`<details key=${index}>
       <summary>${rule.name} · ${_tag}${evidence._tag === 'CommandOutput' ? ' · exit ' + evidence.exit : ''}</summary>
       <${ReviewEvidence} evidence=${evidence} />
     </details>`)}
     ${feedback?._tag === 'Review' ? html`<section aria-label="Review feedback">
       <h4>Review feedback</h4>
-      ${feedback.breaks.map(({ rule, evidence }) => html`<div key=${rule.id}><p>${rule.name}</p><${ReviewEvidence} evidence=${evidence} /></div>`)}
+      ${feedback.breaks.map(({ rule, evidence }, index) => html`<div key=${index}><p>${rule.name}</p><${ReviewEvidence} evidence=${evidence} /></div>`)}
     </section>` : null}
     ${phase._tag === 'Raised' ? html`<p>${phase.reason}</p><${ReviewEvidence} evidence=${phase.evidence} />` : null}
   </article>`

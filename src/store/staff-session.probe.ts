@@ -1,18 +1,17 @@
 import { Effect, Schema } from 'effect'
 import { acceptStaffing } from './proposal.probe.ts'
-import { readOpenProject, startSession } from '../../core/actions/staff-session.ts'
-import { staffingAt, SessionCount, SessionId, Staff, StaffingId, SubagentCount, type Project, type StaffingPlan } from '../../core/schema/project.ts'
+import { readOpenProject } from '../../core/actions/staff-session.ts'
+import { staffingAt, SessionCount, StaffSessionKey, Staff, SubagentCount, type Project, type StaffingPlan } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
-import { create, role, session, staff } from './project.probe.ts'
+import { startSession, create, role, session, staff } from './project.probe.ts'
 
 export const maker = role('maker')
 export const initialStaffing = (limit: 1 | 2 = 2): StaffingPlan => {
   const subscription = { ...staff.subscription, sessions: { _tag: 'Limited', max: SessionCount.make(limit) } } as const
   return {
-    id: StaffingId.make('staffing:initial'),
     staff: [
       { ...staff, subscription, subagents: SubagentCount.make(1) },
-      Schema.decodeUnknownSync(Staff)({ ...staff, id: 'staff:other', roles: [maker], subscription, subagents: 1 }),
+      Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:other', roles: [maker], subscription, subagents: 1 }),
     ],
     subscriptions: [subscription],
   }
@@ -25,6 +24,6 @@ export const sharedStaffing = (journal: Journal) => Effect.gen(function* () {
 })
 export const launchStaff = (journal: Journal, project: Project, index: 0 | 1, lifetime: 1 | 2) =>
   startSession(journal, project, {
-    id: SessionId.make('session:' + lifetime), staff: initialStaffing().staff[index]!.id,
+    key: StaffSessionKey.make('session:' + lifetime), staff: initialStaffing().staff[index]!.key,
     staffing: staffingAt(project), pane: session.pane,
   })

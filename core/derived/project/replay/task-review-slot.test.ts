@@ -5,13 +5,13 @@ import { staffSessionOperations } from '../../../../adapters/live/staff-session.
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
 import { startWork } from '../../../../src/store/project-activation.probe.ts'
-import { create, host, open, pipeline, role, session, staff, staffInput, startFixtureSession, withJournal } from '../../../../src/store/project.probe.ts'
+import { create, host, open, pipeline, role, session, staff, staffInput, startFixtureSession, startSession, withJournal } from '../../../../src/store/project.probe.ts'
 import { acceptStaffing } from '../../../../src/store/proposal.probe.ts'
 import { activateTasks, promptDirection, reportReview, resultInput, reviewAs, send } from '../../../../src/store/task.probe.ts'
-import { observeSession, startSession } from '../../../actions/staff-session.ts'
+import { observeSession } from '../../../actions/staff-session.ts'
 import { recordTaskCommands } from '../../../actions/task.ts'
 import {
-  Direction, EventNumber, ReadPosition, SessionId, Staff, StaffingId, TaskId, staffingAt, subagentCapacity,
+  Direction, EventNumber, ReadPosition, StaffSessionKey, Staff, TaskKey, staffingAt, subagentCapacity,
   type LiveSession, type Project,
 } from '../../../schema/project.ts'
 import { picked } from './itf.probe.ts'
@@ -21,15 +21,15 @@ const check = 'reviewSlot'
 const kinds = ['success', 'fault', 'mutant'] as const
 const workRole = role('maker')
 const hostStaff = Staff.make({ ...staff, roles: [host], subagents: Schema.decodeUnknownSync(Staff.fields.subagents)(1) })
-const ownStaff = Schema.decodeUnknownSync(Staff)({ ...staff, id: 'staff:own', roles: [pipeline], subagents: 1 })
-const queuedStaff = Schema.decodeUnknownSync(Staff)({ ...staff, id: 'staff:queue', roles: [workRole], subagents: 0 })
-const ownId = SessionId.make('session:own')
+const ownStaff = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:own', roles: [pipeline], subagents: 1 })
+const queuedStaff = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:queue', roles: [workRole], subagents: 0 })
+const ownKey = StaffSessionKey.make('session:own')
 const firstHost = { ...session, staff: hostStaff }
-const ownSession = { ...session, id: ownId, staff: ownStaff }
-const lines = [1, 2, 3, 4].map((id) => ({ _tag: 'Task', id: TaskId.make('task:slot-' + id) } as const))
+const ownSession = { ...session, key: ownKey, staff: ownStaff }
+const lines = [1, 2, 3, 4].map((key) => ({ _tag: 'Task', key: TaskKey.make('task:slot-' + key) } as const))
 const direction = Schema.decodeUnknownSync(Direction)({
   ...promptDirection,
-  stages: [promptDirection.stages[0], { ...promptDirection.stages[0], id: 'stage:own', role: pipeline }],
+  stages: [promptDirection.stages[0], { ...promptDirection.stages[0], role: pipeline }],
 })
 const fixture = (kind: typeof kinds[number]) => join(import.meta.dir, 'traces', check + '-' + kind + '.itf.json.gz')
 
@@ -43,34 +43,35 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
     const journal = yield* open(path)
     const created = yield* create(journal, [workRole], hostStaff)
     const staffed = yield* acceptStaffing(journal, created.state, {
-      id: StaffingId.make('staffing:review-slot'), staff: [hostStaff, ownStaff, queuedStaff], subscriptions: [staff.subscription],
+      staff: [hostStaff, ownStaff, queuedStaff], subscriptions: [staff.subscription],
     })
     const active = yield* activateTasks(journal, staffed, direction)
     const started = yield* startWork(journal, active)
     const live = yield* startFixtureSession(journal, started.state)
     let state = (yield* startSession(journal, live.state, {
-      id: ownId, staff: ownStaff.id, pane: session.pane, staffing: staffingAt(live.state),
+      key: ownKey, staff: ownStaff.key, pane: session.pane, staffing: staffingAt(live.state),
     })).state
     let hostSession: LiveSession = firstHost
     const opened = new Map<number, ReturnType<typeof reviewAs>>()
     const operations = staffSessionOperations(dirname(path), journal, {
       reconcile: () => Effect.void,
+      stop: () => Effect.void,
       launch: () => Effect.succeed(session.pane),
       observe: () => Effect.succeed('Running'),
       child: (live, line, child) => Effect.sync(() => {
         if (child._tag !== 'Review') return
-        opened.set(lines.findIndex(({ id }) => line.id === id) + 1, { _tag: 'Review', session: live, line, review: child.review })
+        opened.set(lines.findIndex(({ key }) => line.key === key) + 1, { _tag: 'Review', session: live, line, review: child.review })
       }),
     })
     for (const [i, line] of lines.slice(0, 3).entries()) {
-      const sent = yield* send(journal, state.read, line.id, host, i === 2 ? pipeline : workRole)
+      const sent = yield* send(journal, state.read, line.key, host, i === 2 ? pipeline : workRole)
       const working = yield* staffInput(journal, { read: sent.state.read, line, move: 'next', input: {} }, hostSession)
       const result = yield* staffInput(journal, { ...resultInput(working.state.read), line }, hostSession)
       state = (yield* recordTaskCommands(journal, line, result.state.read, [])).state
     }
     const busy = lines[3]!
-    const sent = yield* send(journal, state.read, busy.id, pipeline)
-    state = (yield* operations.child(ownId, busy, 'Work', staffingAt(sent.state))).state
+    const sent = yield* send(journal, state.read, busy.key, pipeline)
+    state = (yield* operations.child(ownKey, busy, 'Work', staffingAt(sent.state))).state
 
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
@@ -83,11 +84,11 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
       expect(startedTasks).toEqual(expected.started as number[])
       for (const [index, line] of lines.slice(0, 3).entries()) {
         const modeled = queue.get(index + 1)
-        const phase = project.tasks.get(line.id)?.phase
+        const phase = project.tasks.get(line.key)?.phase
         if (modeled === undefined) expect(phase?._tag).toBe('Done')
         else if (modeled === 'Waiting') expect(phase).toMatchObject({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
         else expect(phase).toMatchObject({ _tag: 'Reviewing', assignment: {
-          _tag: 'Assigned', by: { id: record(modeled).value === 0 ? hostStaff.id : ownStaff.id },
+          _tag: 'Assigned', by: { key: record(modeled).value === 0 ? hostStaff.key : ownStaff.key },
         } })
       }
       const occupied = [hostStaff, ownStaff].map((by, i) => subagentCapacity(project, by).freeSubagents ? null : [0, 2][i])
@@ -108,25 +109,25 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
           if (startedTasks.length === 0) {
             // An interrupted assignment touches the older task after the newer one, preserving its entry event.
             const oldest = lines[0]!
-            const assigned = yield* operations.child(hostSession.id, oldest, 'Review', staffingAt(state))
-            const retired = yield* observeSession(journal, assigned.state, { _tag: 'Session', id: hostSession.id }, 'Ended')
-            hostSession = { ...firstHost, id: SessionId.make('session:review-replacement') }
+            const assigned = yield* operations.child(hostSession.key, oldest, 'Review', staffingAt(state))
+            const retired = yield* observeSession(journal, assigned.state, { _tag: 'Session', key: hostSession.key }, 'Ended')
+            hostSession = { ...firstHost, key: StaffSessionKey.make('session:review-replacement') }
             state = (yield* startSession(journal, retired.state, {
-              id: hostSession.id, staff: hostStaff.id, pane: session.pane, staffing: staffingAt(retired.state),
+              key: hostSession.key, staff: hostStaff.key, pane: session.pane, staffing: staffingAt(retired.state),
             })).state
-            expect(state.tasks.get(oldest.id)!.lastChange).toBeGreaterThan(state.tasks.get(lines[1]!.id)!.lastChange)
+            expect(state.tasks.get(oldest.key)!.lastChange).toBeGreaterThan(state.tasks.get(lines[1]!.key)!.lastChange)
             opened.delete(1)
           }
           break
         case 'assignReview': {
-          const id = integer(record(picked(step.picks.subject)!).id)
-          const live = id === 3 ? ownSession : hostSession
-          const result = yield* Effect.result(operations.child(live.id, lines[id - 1]!, 'Review', staffingAt(state)))
+          const key = integer(record(picked(step.picks.subject)!).id)
+          const live = key === 3 ? ownSession : hostSession
+          const result = yield* Effect.result(operations.child(live.key, lines[key - 1]!, 'Review', staffingAt(state)))
           if (Result.isSuccess(result)) {
             state = result.success.state
-            const auth = opened.get(id)
-            expect(auth?.review).toEqual(reviewAs(state, lines[id - 1]!, live).review)
-            startedTasks.push(id)
+            const auth = opened.get(key)
+            expect(auth?.review).toEqual(reviewAs(state, lines[key - 1]!, live).review)
+            startedTasks.push(key)
           } else {
             expect(result.failure.code).toBe('NoCapacity')
             expect(yield* journal.eventsAfter(before.read)).toEqual([])
@@ -135,15 +136,15 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
           break
         }
         case 'finish': {
-          const id = integer(record(picked(step.picks.subject)!).id)
+          const key = integer(record(picked(step.picks.subject)!).id)
           const childRun = integer(picked(step.picks.childRun))
-          const current = opened.get(id)!
-          const actor = id === 3 || childRun === id ? current
+          const current = opened.get(key)!
+          const actor = key === 3 || childRun === key ? current
             : oldHost ?? { ...current, review: EventNumber.make(1) }
-          const result = yield* Effect.result(reportReview(journal, state, 'Holds', lines[id - 1]!, actor))
+          const result = yield* Effect.result(reportReview(journal, state, 'Holds', lines[key - 1]!, actor))
           if (Result.isSuccess(result)) {
             state = result.success.state
-            if (id !== 3) oldHost = current
+            if (key !== 3) oldHost = current
           } else {
             expect(result.failure.code).toBe('RetiredSession')
             expect(yield* journal.eventsAfter(before.read)).toEqual([])

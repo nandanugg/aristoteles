@@ -2,32 +2,23 @@ import { Schema } from 'effect'
 
 export type Of<S> = S extends { readonly Type: infer Value } ? Value : never
 
-const Identity = Schema.String.check(
+type Prefix = 'staff' | 'task' | 'session' | 'role' | 'subscription' | 'question' | 'proposal'
+const keyWithPrefix = (prefix: Prefix) => Schema.String.check(
   Schema.isPattern(/^[a-z][a-z0-9]*:[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u),
-).pipe(Schema.brand('Identity'))
-type Prefix = 'project' | 'human' | 'staff' | 'task' | 'session' | 'role' | 'responsibility' | 'subscription' | 'staffing' | 'question' | 'proposal' | 'direction' | 'standard' | 'rule' | 'stage'
-const idWithPrefix = (prefix: Prefix) =>
-  Identity.check(Schema.makeFilter((id) => id.startsWith(prefix + ':')))
+  Schema.makeFilter((value) => value.startsWith(prefix + ':')),
+)
 
-export const ProjectId = idWithPrefix('project').pipe(Schema.brand('ProjectId'))
-export const HumanId = idWithPrefix('human').pipe(Schema.brand('HumanId'))
-export const StaffId = idWithPrefix('staff').pipe(Schema.brand('StaffId'))
-export const DirectionId = idWithPrefix('direction').pipe(Schema.brand('DirectionId'))
-export const StageId = idWithPrefix('stage').pipe(Schema.brand('StageId'))
-export const StandardId = idWithPrefix('standard').pipe(Schema.brand('StandardId'))
-export const RuleId = idWithPrefix('rule').pipe(Schema.brand('RuleId'))
-export const QuestionId = idWithPrefix('question').pipe(Schema.brand('QuestionId'))
-export const ProposalId = idWithPrefix('proposal').pipe(Schema.brand('ProposalId'))
-export const TaskId = idWithPrefix('task').pipe(Schema.brand('TaskId'))
-export const SessionId = idWithPrefix('session').pipe(Schema.brand('SessionId'))
-export const RoleId = idWithPrefix('role').pipe(Schema.brand('RoleId'))
-export const ResponsibilityId = idWithPrefix('responsibility').pipe(Schema.brand('ResponsibilityId'))
-export const StaffingId = idWithPrefix('staffing').pipe(Schema.brand('StaffingId'))
-export const SubscriptionId = idWithPrefix('subscription').pipe(Schema.brand('SubscriptionId'))
+export const StaffKey = keyWithPrefix('staff').pipe(Schema.brand('StaffKey'))
+export const QuestionKey = keyWithPrefix('question').pipe(Schema.brand('QuestionKey'))
+export const ProposalKey = keyWithPrefix('proposal').pipe(Schema.brand('ProposalKey'))
+export const TaskKey = keyWithPrefix('task').pipe(Schema.brand('TaskKey'))
+export const StaffSessionKey = keyWithPrefix('session').pipe(Schema.brand('StaffSessionKey'))
+export const RoleKey = keyWithPrefix('role').pipe(Schema.brand('RoleKey'))
+export const SubscriptionKey = keyWithPrefix('subscription').pipe(Schema.brand('SubscriptionKey'))
 
 export const StoredActor = Schema.Union([
-  Schema.TaggedStruct('Human', { id: HumanId }),
-  Schema.TaggedStruct('Staff', { id: StaffId }),
+  Schema.TaggedStruct('Human', {}),
+  Schema.TaggedStruct('Staff', { key: StaffKey }),
 ])
 export type StoredActor = Of<typeof StoredActor>
 

@@ -1,17 +1,17 @@
 import { Effect } from 'effect'
-import type { Of, Project, Refusal, SessionId } from '../schema/project.ts'
+import type { Of, Project, Refusal, StaffSessionKey } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { recordObserved } from './project.ts'
 
-type Move = Extract<Parameters<typeof recordObserved>[3], { line: { _tag: 'Activation' | 'HostLaunch' } }>
+type Move = Extract<Parameters<typeof recordObserved>[3], { line: { _tag: 'Activation' } }>
 
 export const observeActivation = (
   journal: Journal, project: Project, move: Move,
-): Effect.Effect<Committed, Refusal> => recordObserved(journal, project.owner, project.read, move)
+): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Human' }, project.read, move)
 
 export const recordHostUse = (
-  journal: Journal, project: Project, id: Of<typeof SessionId>,
+  journal: Journal, project: Project, key: Of<typeof StaffSessionKey>,
 ): Effect.Effect<Committed, Refusal> => recordObserved(
-  journal, project.activation._tag === 'Active' ? project.activation.staff : project.owner, project.read,
-  { line: { _tag: 'Activation', id: project.id }, from: 'Active', move: 'use', input: { id } },
+  journal, project.activation._tag === 'Active' ? { _tag: 'Staff', key: project.activation.staff.key } : { _tag: 'Human' }, project.read,
+  { line: { _tag: 'Activation' }, from: 'Active', move: 'use', input: { session: { _tag: 'Session', key } } },
 )

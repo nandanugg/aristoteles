@@ -1,7 +1,7 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
-  ReadPosition, Rationale, RetryLimit as RetryLimitValue, staffingAt, submissionParty, StoredEvent, Submission, liveSession, refuse, reviewOutcome,
-  type EventNumber, type ProposalAddress, type TaskAddress, type LiveSession, type Of, type Projection, type Refusal, type SessionId, type Staff, type StoredActor, type Party,
+  ReadPosition, Rationale, RetryLimit as RetryLimitValue, staffingAt, submissionParty, StoredEvent, Submission, liveSession, boundHostSession, refuse, reviewOutcome,
+  type EventNumber, type ProposalAddress, type TaskAddress, type LiveSession, type Of, type Projection, type Refusal, type StoredActor, type Party,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
 import { reviewTask } from '../state/task-review.ts'
@@ -10,7 +10,7 @@ import { applyEvent, fold, readPosition } from '../state/project.ts'
 export type AuthenticatedActor =
   | { readonly _tag: 'Human'; readonly actor: Extract<StoredActor, { _tag: 'Human' }> }
   | { readonly _tag: 'Staff'; readonly session: LiveSession }
-  | { readonly _tag: 'Host'; readonly id: Of<typeof SessionId>; readonly staff: Staff }
+  | { readonly _tag: 'Host'; readonly session: LiveSession }
   | { readonly _tag: 'Review'; readonly line: Of<typeof TaskAddress | typeof ProposalAddress>; readonly session: LiveSession; readonly review: Of<typeof EventNumber> }
 export class Authority extends Context.Service<Authority, {
   readonly actor: Effect.Effect<AuthenticatedActor, Refusal>
@@ -75,27 +75,27 @@ const moveFor = (
   }
   if (!project) return Result.fail(refuse('WrongMove', Rationale.make('Open the project first.')))
   const current = authenticated._tag === 'Staff' || authenticated._tag === 'Review'
-    ? liveSession(project, authenticated.session.id) : null
+    ? liveSession(project, authenticated.session.key) : null
   if ((authenticated._tag === 'Staff' || authenticated._tag === 'Review') &&
-      current?.staff.id !== authenticated.session.staff.id) return Result.fail(retired())
+      current?.staff.key !== authenticated.session.staff.key) return Result.fail(retired())
   if (onLine(request, 'Task')) {
     if (request.move === 'open') {
       const activation = project.activation
       if (authenticated._tag !== 'Host' || activation._tag !== 'Active' ||
-          authenticated.id !== activation.binding.id || authenticated.staff.id !== activation.staff.id)
+          authenticated.session.key !== boundHostSession(project)?.key || authenticated.session.staff.key !== activation.staff.key)
         return Result.fail(retired())
       return moved({ ...request, from: null })
     }
     if (!current) return Result.fail(retired())
     const { line } = request
-    const task = project.tasks.get(line.id)
+    const task = project.tasks.get(line.key)
     if (request.move === 'review') {
       if (!task || task.phase._tag !== 'Reviewing' || authenticated._tag !== 'Review' ||
-          authenticated.line._tag !== line._tag || authenticated.line.id !== line.id ||
-          task.phase.assignment._tag !== 'Assigned' || task.phase.assignment.by.id !== current.staff.id ||
+          authenticated.line._tag !== line._tag || authenticated.line.key !== line.key ||
+          task.phase.assignment._tag !== 'Assigned' || task.phase.assignment.by.key !== current.staff.key ||
           task.phase.assignment.review !== authenticated.review) return Result.fail(retired())
       const { facts } = request.input
-      const report = { session: current.id, review: authenticated.review, facts, limit }
+      const report = { session: current.key, review: authenticated.review, facts, limit }
       const from = 'Reviewing' as const
       return Result.flatMap(reviewTask(task, task.phase, facts, limit), (phase) => {
         switch (phase._tag) {
@@ -105,12 +105,12 @@ const moveFor = (
         }
       })
     }
-    if (task?.phase._tag === 'Working' && task.phase.attempt.session.id !== current.id) return Result.fail(retired())
+    if (task?.phase._tag === 'Working' && task.phase.attempt.session.key !== current.key) return Result.fail(retired())
     if (request.move === 'raise')
-      return moved({ line, from: 'Working', move: 'raise', input: { ...request.input, session: current.id } })
+      return moved({ line, from: 'Working', move: 'raise', input: { ...request.input, session: current.key } })
     const { input } = request
     if ('attempt' in input)
-      return moved({ line, from: 'Working', move: 'next', input: { ...input, session: current.id } })
+      return moved({ line, from: 'Working', move: 'next', input: { ...input, session: current.key } })
     return moved({ line, from: 'Sent', move: 'next', input: { session: current, staffing: staffingAt(project), where: 'Session' } })
   }
   if (onLine(request, 'Activation')) {
@@ -129,10 +129,10 @@ const moveFor = (
     case 'sendBack': return moved({ ...request, from: 'WaitingForOwner' })
     case 'review': {
       const { line, input: { facts } } = request
-      const phase = project.proposals.get(line.id)?.phase
+      const phase = project.proposals.get(line.key)?.phase
       if (!current || authenticated._tag !== 'Review' || phase?._tag !== 'Reviewing' ||
-          authenticated.line._tag !== line._tag || authenticated.line.id !== line.id ||
-          phase.assignment._tag !== 'Assigned' || phase.assignment.by.id !== current.staff.id ||
+          authenticated.line._tag !== line._tag || authenticated.line.key !== line.key ||
+          phase.assignment._tag !== 'Assigned' || phase.assignment.by.key !== current.staff.key ||
           phase.assignment.review !== authenticated.review) return Result.fail(retired())
       const input = { session: current, review: authenticated.review, facts }
       return reviewOutcome(facts) === 'Holds'
@@ -145,13 +145,15 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
   Effect.gen(function* () {
     const request = yield* Effect.mapError(readSubmission(input), () =>
       refuse('InvalidInput', Rationale.make('The submission does not match the checked input.')))
-    const authenticated = yield* (yield* Authority).actor
-    if (!maySubmit(authenticated, submissionParty(request))) return yield* Effect.fail(wrongActor())
-    if ((request.line._tag === 'Project' || request.line._tag === 'Activation') && request.line.id !== journal.id)
-      return yield* Effect.fail(refuse('InvalidInput', Rationale.make('The move addresses a different project.')))
+    const authority = yield* (yield* Authority).actor
+    const party = submissionParty(request)
+    // The bound host's pane also serves the work roles assigned to its staff.
+    const authenticated: AuthenticatedActor = authority._tag === 'Host' && party !== 'Host'
+      ? { _tag: 'Staff', session: authority.session } : authority
+    if (!maySubmit(authenticated, party)) return yield* Effect.fail(wrongActor())
     const limit = yield* RetryLimit
     const actor: StoredActor = authenticated._tag === 'Human' ? authenticated.actor
-      : { _tag: 'Staff', id: (authenticated._tag === 'Host' ? authenticated.staff : authenticated.session.staff).id }
+      : { _tag: 'Staff', key: authenticated.session.staff.key }
     return yield* commitProjectMove(journal, actor, request.read, (project) => moveFor(project, request, authenticated, limit))
   })
 

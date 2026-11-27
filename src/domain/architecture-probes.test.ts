@@ -14,16 +14,16 @@ const sources = {
   [DOMAIN]: `
 import { Context, Effect, Schema } from 'effect'
 const key = (pattern: RegExp) => Schema.String.check(Schema.isPattern(pattern))
-export const RoleId = key(/^role:[a-z]+$/).pipe(Schema.brand('ProbeRoleId'))
-export type RoleId = typeof RoleId.Type
+export const RoleKey = key(/^role:[a-z]+$/).pipe(Schema.brand('ProbeRoleKey'))
+export type RoleKey = typeof RoleKey.Type
 export const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(Schema.brand('ProbeCount'))
 export type Count = typeof Count.Type
-export const Notice = Schema.TaggedStruct('Notice', { id: RoleId, count: Count })
+export const Notice = Schema.TaggedStruct('Notice', { key: RoleKey, count: Count })
 export type Notice = typeof Notice.Type
-export type Good = { readonly _tag: 'First'; readonly id: RoleId; readonly count: Count; readonly key: \`role:\${RoleId}\` }
+export type Good = { readonly _tag: 'First'; readonly key: RoleKey; readonly count: Count; readonly key: \`role:\${RoleKey}\` }
   | { readonly _tag: 'Second'; readonly choice: 'a' | 'b' }
-export type Assignment = { readonly id: RoleId; readonly counts: ReadonlyMap<RoleId, Count> }
-export type EmbeddedId = { readonly reviewer: RoleId }
+export type Assignment = { readonly key: RoleKey; readonly counts: ReadonlyMap<RoleKey, Count> }
+export type EmbeddedKey = { readonly reviewer: RoleKey }
 export type Task = { phase: { _tag: 'Sent' } | { _tag: 'Done' } }
 export const decodeCount = (input: unknown) => Schema.decodeUnknownSync(Count)(input)
 export const Loose = Schema.Struct({ count: Schema.Number, label: Schema.String })
@@ -31,21 +31,21 @@ export const Unchecked = Schema.String.pipe(Schema.brand('ProbeUnchecked'))
 export const EmptyCheck = Schema.String.check().pipe(Schema.brand('ProbeEmptyCheck'))
 export type Bad = { raw: string; count: number; ready: boolean; value?: 'yes'; hidden: unknown; bypass: any }
 export type PublicMoves =
-  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly id: RoleId }; readonly move: 'next'; readonly input: {} }
-  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly id: RoleId }; readonly move: 'next'; readonly input: { readonly attempt: Count } }
-  | { readonly read: Count; readonly line: { readonly _tag: 'Question'; readonly id: RoleId }; readonly move: 'answer'; readonly input: { readonly answer: 'Yes' } }
+  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly key: RoleKey }; readonly move: 'next'; readonly input: {} }
+  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly key: RoleKey }; readonly move: 'next'; readonly input: { readonly attempt: Count } }
+  | { readonly read: Count; readonly line: { readonly _tag: 'Question'; readonly key: RoleKey }; readonly move: 'answer'; readonly input: { readonly answer: 'Yes' } }
 export type OverlappingMoves =
-  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly id: RoleId }; readonly move: 'next'; readonly input: { readonly attempt: Count } }
-  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly id: RoleId }; readonly move: 'next'; readonly input: { readonly attempt: Count; readonly reason: 'Done' } }
+  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly key: RoleKey }; readonly move: 'next'; readonly input: { readonly attempt: Count } }
+  | { readonly read: Count; readonly line: { readonly _tag: 'Task'; readonly key: RoleKey }; readonly move: 'next'; readonly input: { readonly attempt: Count; readonly reason: 'Done' } }
 export type Untagged = { a: 'a' } | { b: 'b' }
 export type BrokenTemplate = \`role:\${string}\`
 export type Conditional<T> = T extends 'a' ? string : 'b'
 export type Unbounded<T extends string = string> = ReadonlyArray<T>
 export class RawService extends Context.Service<RawService, { read(): Effect.Effect<string> }>()('probe/RawService') {}
-export const castId = (input: string) => input as RoleId
+export const castKey = (input: string) => input as RoleKey
 `,
   [LEGACY]: "export type Legacy = { name: string }",
-  'core/schema/project.ts': "export { Notice, RoleId, Count } from '../../src/domain/project/architecture-record.ts'",
+  'core/schema/project.ts': "export { Notice, RoleKey, Count } from '../../src/domain/project/architecture-record.ts'",
   [MOVES]: `
 import type { Task } from '../../src/domain/project/architecture-record.ts'
 export const move = (task: Task): Task => ({ ...task, phase: { _tag: 'Done' } })
@@ -54,11 +54,11 @@ export const move = (task: Task): Task => ({ ...task, phase: { _tag: 'Done' } })
 import type { Legacy } from '../../../src/domain/architecture-legacy.ts'
 import type { Task } from '../../../src/domain/project/architecture-record.ts'
 import { Schema } from 'effect'
-import { Notice as SharedNotice, RoleId, Count } from '../../../core/schema/project.ts'
+import { Notice as SharedNotice, RoleKey, Count } from '../../../core/schema/project.ts'
 export { SharedNotice }
 export type { Legacy as ReExportedLegacy }
-export const Notice = Schema.TaggedStruct('Notice', { id: Schema.String, count: Count })
-export type RenamedCopy = { readonly _tag: 'Notice'; readonly id: RoleId; readonly count: Count }
+export const Notice = Schema.TaggedStruct('Notice', { key: Schema.String, count: Count })
+export type RenamedCopy = { readonly _tag: 'Notice'; readonly key: RoleKey; readonly count: Count }
 export type Projection = { readonly count: Count }
 export type ThroughAlias = { readonly legacy: Legacy }
 export type BrowserPrimitive = { label: string }
@@ -86,7 +86,7 @@ const rules = (file: string, declaration: string): string[] =>
   [...new Set(findings.filter((row) => row.file === file && row.declaration === declaration).map((row) => row.rule))].sort()
 
 test('checked brands, templates, tagged phases and map keys are admitted', () => {
-  for (const name of ['RoleId', 'Count', 'Notice', 'Good', 'Assignment', 'decodeCount'])
+  for (const name of ['RoleKey', 'Count', 'Notice', 'Good', 'Assignment', 'decodeCount'])
     expect({ declaration: name, rules: rules(DOMAIN, name) }).toEqual({ declaration: name, rules: [] })
   for (const name of ['Projection', 'inferredCheckedView', 'renderCount'])
     expect(rules(BROWSER, name)).toEqual([])
@@ -107,8 +107,8 @@ test('both compiler graphs expose raw, inferred, wrapped and unsafe values', () 
   expect(rules(DOMAIN, 'Unchecked')).toContain('unrefined-brand')
   expect(rules(DOMAIN, 'EmptyCheck')).toContain('unrefined-brand')
   expect(rules(DOMAIN, 'RawService')).toContain('bare-string')
-  expect(rules(DOMAIN, 'EmbeddedId')).toContain('record-id-reference')
-  expect(rules(DOMAIN, 'castId')).toContain('brand-cast')
+  expect(rules(DOMAIN, 'EmbeddedKey')).toContain('record-key-reference')
+  expect(rules(DOMAIN, 'castKey')).toContain('brand-cast')
   expect(rules(BROWSER, 'BrowserPrimitive')).toEqual(['bare-string'])
   expect(rules(BROWSER, 'inferredRawView')).toEqual(['bare-number', 'bare-string'])
   expect(rules(BROWSER, 'ThroughAlias')).toContain('unchecked-contract')

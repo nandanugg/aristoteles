@@ -23,13 +23,14 @@ file and the proposal shapes. Use the owner’s interactive terminal for project
 opening. The owner name in the file must match the project’s Git user name.
 
 Open the printed loopback URL to inspect the Project page. The journal uses format
-16 and lives at `~/.aristoteles/aristoteles.db` by default. Set `ARISTOTELES_DB`
+17 and lives at `~/.aristoteles/aristoteles.db` by default. Set `ARISTOTELES_DB`
 before opening the project to use a separate file. Keep the CLI, page, and local
 sessions on that same journal.
 
 ## Onboard and send work
 
-1. Launch the initial staff with `work session launch <staff-id>`. The host
+1. Launch the initial staff with `work session launch <staff-key>`. The launched
+   staff acknowledges from its pane. The host
    submits direction, staffing, and responsibility proposals at the current read
    position. A fresh review records facts before the owner can accept a proposal.
 2. Approve the instruction-file inventory on the page. The host acknowledges the

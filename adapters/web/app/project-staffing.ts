@@ -3,12 +3,12 @@ import type { StaffingPlan as ProjectStaffing } from '../../../core/schema/proje
 
 function renderStaffing({ plan }: { readonly plan: ProjectStaffing }): ReturnType<typeof html> {
   return html`<section aria-label="Staffing arrangement">
-    <ul>${plan.staff.map((staff) => html`<li key=${staff.id}>
+    <ul>${plan.staff.map((staff) => html`<li key=${staff.key}>
       <strong>${staff.name}</strong> · ${staff.model} · ${staff.subagents} subagents
-      <ul>${staff.roles.map((role) => html`<li key=${role.id}>${role.name}</li>`)}</ul>
+      <ul>${staff.roles.map((role) => html`<li key=${role.key}>${role.name}</li>`)}</ul>
     </li>`)}</ul>
     <h4>Subscriptions</h4>
-    <ul>${plan.subscriptions.map((sub) => html`<li key=${sub.id}>
+    <ul>${plan.subscriptions.map((sub) => html`<li key=${sub.key}>
       ${sub.provider} · ${sub.account} · ${sub.plan}
       ${sub.estimate._tag === 'Estimated' ? html`<p>${sub.estimate.share * 100}% · ${sub.estimate.why}</p>` : ' · No estimate'}
     </li>`)}</ul>

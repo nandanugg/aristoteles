@@ -1,7 +1,7 @@
-// A bootstrap host has its own managed tmux session, located by the reserved launch ID.
-import { digest, providerSessionId } from '../../core/services/project.ts'
+// A bootstrap host has its own managed tmux session, located by the reserved launch key.
+import { digest, providerSessionUuid } from '../../core/services/project.ts'
 import { launchOpening } from './markers.ts'
-import type { Of, ProjectId, Staff as ProjectStaff } from '../../core/schema/project.ts'
+import type { Staff as ProjectStaff } from '../../core/schema/project.ts'
 
 export const NONCE_ENV = 'ARISTOTELES_LAUNCH_NONCE'
 export const PROJECT_ENV = 'ARISTOTELES_BOOTSTRAP_PROJECT'
@@ -43,14 +43,14 @@ export const stopBootstrap = (dir: string, launch: string): void => {
 }
 const shellWord = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'"
 const commandFor = (staff: ProjectStaff, launch: string, prompt: string) => {
-  const values = { session: providerSessionId(launch), model: shellWord(staff.model), prompt: shellWord(prompt) }
+  const values = { session: providerSessionUuid(launch), model: shellWord(staff.model), prompt: shellWord(prompt) }
   const command = staff.launch.replace(/\{(session|model|prompt)\}/gu, (_, key: keyof typeof values) => values[key])
   return staff.launch.includes('{prompt}') ? command : command + ' ' + values.prompt
 }
 
-// The format 16 bootstrap uses the journal's launch identity and the approved staff template.
+// The format 17 bootstrap uses the journal's launch identity and the approved staff template.
 export const spawnProjectBootstrap = (
-  dir: string, launch: string, nonce: string, db: string | undefined, staff: ProjectStaff, project: Of<typeof ProjectId>,
+  dir: string, launch: string, nonce: string, db: string | undefined, staff: ProjectStaff, project: URL,
 ): void => {
   const prompt = [
     launchOpening('host'),
@@ -59,7 +59,7 @@ export const spawnProjectBootstrap = (
   ].join(' ')
   const args = [
     'new-session', '-d', '-s', bootstrapSession(launch), '-c', dir, '-e', `${NONCE_ENV}=${nonce}`,
-    '-e', `${PROJECT_ENV}=${project}`, '-e', `${SESSION_ENV}=session:${launch}`, '-e', `WORK_DIR=${dir}`,
+    '-e', `${PROJECT_ENV}=${project.href}`, '-e', `${SESSION_ENV}=session:${launch}`, '-e', `WORK_DIR=${dir}`,
     ...(db === undefined ? [] : ['-e', `ARISTOTELES_DB=${db}`]),
     '--', 'sh', '-c', commandFor(staff, launch, prompt),
   ]
@@ -68,11 +68,12 @@ export const spawnProjectBootstrap = (
 
 // Staff sessions and fresh reviews use the same private tmux socket as the host.
 export const spawnProjectRun = (
-  dir: string, launch: string, db: string | undefined, staff: ProjectStaff, token: string, prompt: string,
+  dir: string, launch: string, db: string | undefined, staff: ProjectStaff, token: string, prompt: string, nonce?: string,
 ): void => {
   const args = [
     'new-session', '-d', '-s', bootstrapSession(launch), '-c', dir,
     '-e', `ARISTOTELES_TOKEN=${token}`, '-e', `ARISTOTELES_SESSION=session:${launch}`, '-e', `WORK_DIR=${dir}`,
+    ...(nonce ? ['-e', `${NONCE_ENV}=${nonce}`] : []),
     ...(db === undefined ? [] : ['-e', `ARISTOTELES_DB=${db}`]),
     '--', 'sh', '-c', commandFor(staff, launch, prompt),
   ]

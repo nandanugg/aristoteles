@@ -1,4 +1,4 @@
-# Format 16 local rehearsal
+# Format 17 local rehearsal
 
 `bun test test/project-first-task.test.js` runs the shipped `work` CLI and
 Project page in a scratch Git checkout. It uses a fresh SQLite journal,

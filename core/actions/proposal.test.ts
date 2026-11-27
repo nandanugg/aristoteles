@@ -3,27 +3,27 @@ import { chromium } from 'playwright'
 import { dirname, join, resolve } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { projectActivationOperations } from '../../adapters/live/activation.ts'
-import { approvedText, fakeBootstrap, hostId } from '../../src/store/project-activation.probe.ts'
+import { approvedText, fakeBootstrap, hostKey } from '../../src/store/project-activation.probe.ts'
 import { Deferred, Effect, Result, Schedule } from 'effect'
 import { launchNextReview, type Reviews } from '../../adapters/live/proposal.ts'
 import { projectActivationApproval, projectEvents, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
 import { ownerProposals } from '../derived/project/review.ts'
-import { create, open, session, staff, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
+import { startSession, create, open, session, staff, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
 import { cliProposal, direction, evidence } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
-import { staffingAt, ProposalId, ReadPosition, SessionId, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
+import { boundHostSession, staffingAt, ProposalKey, ReadPosition, StaffSessionKey, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
-import { observeSession, readOpenProject, startSession } from './staff-session.ts'
+import { observeSession, readOpenProject } from './staff-session.ts'
 
-const first = { _tag: 'Proposal', id: ProposalId.make('proposal:first') } as const
+const first = { _tag: 'Proposal', key: ProposalKey.make('proposal:first') } as const
 const auth = (actor: AuthenticatedActor) => Effect.provideService(Authority, { actor: Effect.succeed(actor) })
 const choose = (line = first, choice: 'accept' | 'remove' = 'accept') =>
   ({ line, move: choice, input: {} })
 const missing = (code: string) => ({ _tag: 'Failure', failure: { code } })
-const ask = (id = first.id) => ({ line: { _tag: 'Proposal', id: id }, move: 'open', input: { value: direction } })
+const ask = (key = first.key) => ({ line: { _tag: 'Proposal', key: key }, move: 'open', input: { previous: { _tag: 'None' }, value: direction } })
 const send = (line = first) => ({ line, move: 'submit', input: { value: direction, question: null } })
 
 test('proposal queue launches the host’s fresh child and retains the reviewed version at acceptance', () => withJournal((path) =>
@@ -33,36 +33,36 @@ test('proposal queue launches the host’s fresh child and retains the reviewed 
     const live = yield* startFixtureSession(journal, opened.state)
     const drafted = yield* cliProposal(journal, live.state, ask(), staffAuthorityOf())
     const submitted = yield* cliProposal(journal, drafted.state, send(), staffAuthorityOf())
-    const other = { _tag: 'Proposal', id: ProposalId.make('proposal:other') } as const
-    const otherDraft = yield* cliProposal(journal, submitted.state, ask(other.id), staffAuthorityOf())
+    const other = { _tag: 'Proposal', key: ProposalKey.make('proposal:other') } as const
+    const otherDraft = yield* cliProposal(journal, submitted.state, ask(other.key), staffAuthorityOf())
     const queued = yield* cliProposal(journal, otherDraft.state, send(other), staffAuthorityOf())
     expect(ownerProposals(queued.state)).toEqual([])
     expect(yield* Effect.result(cliProposal(journal, queued.state, choose()))).toMatchObject(missing('WrongMove'))
     const launched: Extract<AuthenticatedActor, { _tag: 'Review' }>[] = []
     const provider: Reviews = {
       reconcile: () => Effect.void,
-      open: (proposal, session, review) => Effect.sync(() => { launched.push({ _tag: 'Review', session, line: { _tag: 'Proposal', id: proposal.id }, review }) }),
+      open: (proposal, session, review) => Effect.sync(() => { launched.push({ _tag: 'Review', session, line: { _tag: 'Proposal', key: proposal.key }, review }) }),
     }
     const launch = launchNextReview(dirname(path), journal, provider)
     const assignment = yield* launch
     if (!assignment) throw new Error('Review was not started')
-    expect(assignment.event.line.id).toBe(first.id)
-    expect(launched[0]?.session.staff.id).toBe(staff.id)
+    expect(assignment.event.line).toEqual(first)
+    expect(launched[0]?.session.staff.key).toBe(staff.key)
     expect(yield* launch).toBeNull()
     expect(launched).toHaveLength(1)
     const run = launched[0]!
     const report = { line: first, move: 'review', input: { facts: evidence('Holds') } }
     expect(yield* Effect.result(cliProposal(journal, assignment.state, report, staffAuthorityOf()))).toMatchObject(missing('WrongActor'))
     const reviewed = yield* cliProposal(journal, assignment.state, report, run)
-    expect(ownerProposals(reviewed.state).map(({ id }) => id)).toEqual([first.id])
+    expect(ownerProposals(reviewed.state).map(({ key }) => key)).toEqual([first.key])
     expect(yield* Effect.result(cliProposal(journal, submitted.state, choose()))).toMatchObject(missing('Stale'))
     const committed = yield* cliProposal(journal, reviewed.state, choose())
-    expect(committed.state.proposals.get(first.id)?.phase).toMatchObject({
+    expect(committed.state.proposals.get(first.key)?.phase).toMatchObject({
       _tag: 'Accepted', version: { value: direction, number: 1 },
     })
     const reopened = yield* open(path, 'Read')
-    expect((yield* readOpenProject(reopened)).proposals.get(first.id)).toEqual(committed.state.proposals.get(first.id))
-    expect((yield* launch)?.event.line.id).toBe(other.id)
+    expect((yield* readOpenProject(reopened)).proposals.get(first.key)).toEqual(committed.state.proposals.get(first.key))
+    expect((yield* launch)?.event.line).toEqual(other)
   }))),
 ))
 
@@ -75,7 +75,7 @@ test('proposal findings have evidence from the pending draft', () => withJournal
     const submitted = yield* cliProposal(journal, drafted.state, send())
     const child = yield* launchNextReview(dirname(path), journal, { reconcile: () => Effect.void, open: () => Effect.void })
     if (!child) throw new Error('Missing assignment')
-    const phase = child.state.proposals.get(first.id)?.phase
+    const phase = child.state.proposals.get(first.key)?.phase
     if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing fresh child')
     const actor = { _tag: 'Review', session, line: first, review: phase.assignment.review } as const
     const report = (evidence: unknown) => cliProposal(journal, child.state, {
@@ -89,7 +89,7 @@ test('proposal findings have evidence from the pending draft', () => withJournal
     expect(yield* Effect.result(report({ ...quote, text: 'missing' }))).toMatchObject(missing('InvalidEvidence'))
     expect(yield* journal.eventsAfter(child.state.read)).toEqual([])
     const returned = yield* report(quote)
-    expect(returned.state.proposals.get(first.id)?.phase).toMatchObject({ _tag: 'Drafting', feedback: {
+    expect(returned.state.proposals.get(first.key)?.phase).toMatchObject({ _tag: 'Drafting', feedback: {
       _tag: 'Review', facts: { findings: [{ evidence: quote }] },
     } })
     expect(submitted.event.move).toBe('submit')
@@ -104,15 +104,15 @@ test('departure retires the old child and releases the first proposal back into 
     const drafted = yield* cliProposal(journal, live.state, ask())
     yield* cliProposal(journal, drafted.state, send())
     let child: Extract<AuthenticatedActor, { _tag: 'Review' }> | null = null
-    const provider: Reviews = { reconcile: () => Effect.void, open: (proposal, session, review) => Effect.sync(() => { child = { _tag: 'Review', session, line: { _tag: 'Proposal', id: proposal.id }, review } }) }
+    const provider: Reviews = { reconcile: () => Effect.void, open: (proposal, session, review) => Effect.sync(() => { child = { _tag: 'Review', session, line: { _tag: 'Proposal', key: proposal.key }, review } }) }
     const launch = launchNextReview(dirname(path), journal, provider)
     const old = yield* launch
     const oldRun = child as Extract<AuthenticatedActor, { _tag: 'Review' }> | null
     if (!old || !oldRun) throw new Error('Missing first review')
-    const ended = yield* observeSession(journal, old.state, { _tag: 'Session', id: session.id }, 'Ended')
-    expect(ended.state.proposals.get(first.id)?.phase).toMatchObject({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
-    const nextId = SessionId.make('session:replacement')
-    yield* startSession(journal, ended.state, { id: nextId, staff: staff.id, pane: session.pane, staffing: staffingAt(ended.state) })
+    const ended = yield* observeSession(journal, old.state, { _tag: 'Session', key: session.key }, 'Ended')
+    expect(ended.state.proposals.get(first.key)?.phase).toMatchObject({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
+    const nextKey = StaffSessionKey.make('session:replacement')
+    yield* startSession(journal, ended.state, { key: nextKey, staff: staff.key, pane: session.pane, staffing: staffingAt(ended.state) })
     const replacement = yield* launch
     const run = child as Extract<AuthenticatedActor, { _tag: 'Review' }> | null
     if (!replacement || !run) throw new Error('Missing replacement review')
@@ -122,10 +122,10 @@ test('departure retires the old child and releases the first proposal back into 
       .toMatchObject(missing('RetiredSession'))
     const returned = yield* cliProposal(journal, replacement.state, { ...facts, input: { facts: evidence('Breaks') } },
       run)
-    expect(returned.state.proposals.get(first.id)?.phase._tag).toBe('Drafting')
+    expect(returned.state.proposals.get(first.key)?.phase._tag).toBe('Drafting')
     const revised = { ...direction, summary: Summary.make('Show the revised evidence') }
     const resubmitted = yield* cliProposal(journal, returned.state, { ...send(), input: { value: revised, question: null } })
-    expect(resubmitted.state.proposals.get(first.id)?.value).toEqual(revised)
+    expect(resubmitted.state.proposals.get(first.key)?.value).toEqual(revised)
     expect(ownerProposals(resubmitted.state)).toEqual([])
   }))),
 ))
@@ -137,20 +137,20 @@ test('only the owner changes a responsibility, which takes effect after review a
     const live = yield* startFixtureSession(journal, opened.state)
     const previous = live.state.roles.host.responsibility
     const value = { _tag: 'Responsibility', ...previous.value, role: live.state.roles.host, summary: Summary.make('New owner wording') }
-    expect(yield* Effect.result(cliProposal(journal, live.state, { ...ask(), input: { value } }, staffAuthorityOf())))
+    expect(yield* Effect.result(cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } }, staffAuthorityOf())))
       .toMatchObject(missing('WrongActor'))
-    const draft = yield* cliProposal(journal, live.state, { ...ask(), input: { value } })
+    const draft = yield* cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } })
     yield* cliProposal(journal, draft.state, { ...send(), input: { value, question: null } })
     const child = yield* launchNextReview(dirname(path), journal, { reconcile: () => Effect.void, open: () => Effect.void })
     if (!child) throw new Error('Missing review')
-    const proposal = child.state.proposals.get(first.id)
+    const proposal = child.state.proposals.get(first.key)
     if (proposal?.phase._tag !== 'Reviewing' || proposal.phase.assignment._tag !== 'Assigned') throw new Error('No assigned child')
     const reviewed = yield* cliProposal(journal, child.state, { line: first, move: 'review', input: { facts: evidence('Holds') } },
       { _tag: 'Review', session, line: first, review: proposal.phase.assignment.review })
     expect(reviewed.state.roles.host.responsibility).toEqual(previous)
     const accepted = yield* cliProposal(journal, reviewed.state, choose())
     expect(accepted.state.roles.host.responsibility.value.summary).toBe(value.summary)
-    expect(Number(accepted.state.roles.host.responsibility.id.number)).toBe(2)
+    expect(Number(accepted.state.roles.host.responsibility.number)).toBe(2)
   }))),
 ))
 
@@ -205,12 +205,12 @@ test('the page receives the committed review assignment dispatched by a submissi
     yield* Deferred.await(childReady).pipe(Effect.timeout('1 second'))
     const assigned = yield* Effect.gen(function* () {
       const current = yield* catchUp()
-      const phase = current?.proposals.get(first.id)?.phase
+      const phase = current?.proposals.get(first.key)?.phase
       return phase?._tag === 'Reviewing' && phase.assignment._tag === 'Assigned'
         ? current : yield* Effect.fail('AssignmentPending' as const)
     }).pipe(Effect.retry({ times: 50, schedule: Schedule.spaced('10 millis') }))
     timings.push(performance.now() - ready)
-    const proposal = assigned?.proposals.get(first.id)
+    const proposal = assigned?.proposals.get(first.key)
     if (!assigned || proposal?.phase._tag !== 'Reviewing' || proposal.phase.assignment._tag !== 'Assigned') throw new Error('Missing assignment')
     const reportStart = performance.now()
     const reviewed = yield* cliProposal(journal, assigned, { line: first, move: 'review', input: { facts: evidence('Holds') } },
@@ -239,20 +239,19 @@ test('the browser moves from the reviewed direction to work under its bound host
     const live = yield* startFixtureSession(journal, staffed)
     const bootstrap = fakeBootstrap()
     const activate = projectActivationOperations(directory, journal, bootstrap.provider)
-    const host = hostId(1)
+    const host = hostKey(1)
     const runActivation = Effect.gen(function* () {
       yield* activate.mark
       yield* activate.reserve(host)
       yield* activate.spawn
       yield* activate.acknowledge(host, bootstrap.nonces.get(host)!)
-      yield* activate.commit
-    })
+      })
     const drafted = yield* cliProposal(journal, live.state, ask(), staffAuthorityOf())
     yield* cliProposal(journal, drafted.state, send(), staffAuthorityOf())
     const provider: Reviews = { reconcile: () => Effect.void, open: () => Effect.void }
     const launch = launchNextReview(dirname(path), journal, provider)
     const assigned = yield* launch
-    const phase = assigned?.state.proposals.get(first.id)?.phase
+    const phase = assigned?.state.proposals.get(first.key)?.phase
     if (!assigned || phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing review')
     const built = yield* Effect.promise(() => Bun.build({
       entrypoints: [resolve(import.meta.dir, '../../test/browser/project-onboarding.page.ts')], target: 'browser',
@@ -300,8 +299,9 @@ test('the browser moves from the reviewed direction to work under its bound host
     yield* Effect.promise(() => page.getByRole('button', { name: 'Approve and activate' }).click())
     yield* Effect.promise(() => page.getByRole('button', { name: 'Start work' }).click())
     yield* Effect.promise(() => page.getByText('Work is open.').waitFor())
-    const phaseAfterWork = (yield* readOpenProject(journal)).activation
-    expect(phaseAfterWork).toMatchObject({ _tag: 'Active', binding: { id: host }, work: { _tag: 'Started', at: expect.any(Number) } })
+    const afterWork = yield* readOpenProject(journal)
+    expect(afterWork.activation).toMatchObject({ _tag: 'Active', work: { _tag: 'Started', at: expect.any(Number) } })
+    expect(boundHostSession(afterWork)?.key).toBe(host)
   }))),
 ), 30_000)
 
@@ -313,13 +313,13 @@ test('staffing stays effective while a replacement is reviewed, sent back, or re
     const prior = live.state.staffing
     if (!prior) throw new Error('No effective staffing')
     const value = { ...initialStaffing(1), _tag: 'Staffing' }
-    const draft = yield* cliProposal(journal, live.state, { ...ask(), input: { value } })
+    const draft = yield* cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } })
     expect(draft.state.staffing).toEqual(prior)
     const launch = launchNextReview(dirname(path), journal, { reconcile: () => Effect.void, open: () => Effect.void })
     const review = (draft: Project) => Effect.gen(function* () {
       yield* cliProposal(journal, draft, { ...send(), input: { value, question: null } })
       const assigned = yield* launch
-      const phase = assigned?.state.proposals.get(first.id)?.phase
+      const phase = assigned?.state.proposals.get(first.key)?.phase
       if (!assigned || phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing review')
       return yield* cliProposal(journal, assigned.state, { line: first, move: 'review', input: { facts: evidence('Holds') } },
         { _tag: 'Review', session, line: first, review: phase.assignment.review })
@@ -327,11 +327,11 @@ test('staffing stays effective while a replacement is reviewed, sent back, or re
     const reviewed = yield* review(draft.state)
     expect(reviewed.state.staffing).toEqual(prior)
     const back = yield* cliProposal(journal, reviewed.state, { line: first, move: 'sendBack', input: { why: 'Explain the lower provider limit.' } })
-    expect(back.state.proposals.get(first.id)?.phase._tag).toBe('Drafting')
+    expect(back.state.proposals.get(first.key)?.phase._tag).toBe('Drafting')
     const again = yield* review(back.state)
     expect(yield* Effect.result(cliProposal(journal, reviewed.state, choose()))).toMatchObject(missing('Stale'))
     const removed = yield* cliProposal(journal, again.state, choose(first, 'remove'))
-    expect(removed.state.proposals.get(first.id)?.phase._tag).toBe('Removed')
+    expect(removed.state.proposals.get(first.key)?.phase._tag).toBe('Removed')
     expect(removed.state.staffing).toEqual(prior)
   }))),
 ))

@@ -1,5 +1,5 @@
 import {
-  currentQuestion, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
+  projectQuestions, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
   taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type ReadPosition, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
 import { mayAssignTaskReview } from './review.ts'
@@ -15,18 +15,17 @@ export type Selection =
     }
 
 const currentSession = (project: Project, authority: LiveSession): LiveSession | undefined => {
-  const session = liveSession(project, authority.id)
-  return session?.staff.id === authority.staff.id ? session : undefined
+  const session = liveSession(project, authority.key)
+  return session?.staff.key === authority.staff.key ? session : undefined
 }
 
 export const questionsFor = (project: Project, authority: LiveSession | Of<typeof Human>): readonly Question[] => {
   if (project.status._tag === 'Ended') return []
-  const actor = authority._tag === 'Human' ? (project.owner.id === authority.id ? project.owner : undefined)
+  const actor = authority._tag === 'Human' ? project.owner
     : currentSession(project, authority)?.staff
   if (!actor) return []
-  return [...project.questions.values()].filter((question) =>
-    questionLine[question.state._tag].owes === 'Recipient' && currentQuestion(project, question) !== null &&
-    question.to._tag === actor._tag && question.to.id === actor.id,
+  return projectQuestions(project).filter((question) =>
+    questionLine[question.state._tag].owes === 'Recipient' && sameActor(question.to, actor),
   ).sort((a, b) => a.lastChange - b.lastChange)
 }
 
@@ -39,8 +38,8 @@ export const nextStep = (project: Project, authority: LiveSession | Of<typeof Hu
     const { phase } = task
     switch (taskLine[phase._tag].owes) {
       case 'Assignee':
-        if (phase._tag === 'Working') return phase.attempt.session.id === current.id
-        return staffOf(project, taskRole(task))?.id === current.staff.id
+        if (phase._tag === 'Working') return phase.attempt.session.key === current.key
+        return staffOf(project, taskRole(task))?.key === current.staff.key
       default:
         return false
     }
@@ -56,8 +55,8 @@ export const nextStep = (project: Project, authority: LiveSession | Of<typeof Hu
   const actor = authority._tag === 'Human' ? authority : current?.staff
   for (const proposal of project.proposals.values()) {
     const duty = proposalLine[proposal.phase._tag].owes
-    const owner = duty === 'Owner' && actor?._tag === 'Human' && proposal.owner.id === actor.id
-    const proposer = duty === 'Proposer' && proposal.proposer._tag === actor?._tag && proposal.proposer.id === actor.id
+    const owner = duty === 'Owner' && actor?._tag === 'Human'
+    const proposer = duty === 'Proposer' && actor && sameActor(proposal.proposer, actor)
     if (owner || proposer) due.push({ _tag: 'Available', subject: { _tag: 'Proposal', proposal },
       for: actor?._tag === 'Human' ? 'Choose' : 'Report', read: project.read })
   }

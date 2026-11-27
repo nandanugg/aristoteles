@@ -1,7 +1,7 @@
 import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
 import { Result, Schema } from 'effect'
-import { ProposalId, ProposalValue, rolesOf, Rationale, refuse, type Project, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
+import { ProposalKey, ProposalValue, rolesOf, Rationale, refuse, type Project, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
 import type { ProposalReply } from './project-api.ts'
 
 const decodeProposal = Schema.decodeUnknownResult(ProposalValue, { onExcessProperty: 'error' })
@@ -15,27 +15,27 @@ export function RoleCard({ project, submit }: {
   return html`<section aria-label="Responsibilities">
     ${rolesOf(project).map((role) => {
       const value = role.responsibility.value
-      return html`<details key=${role.id}><summary>${role.name}</summary>
+      return html`<details key=${role.key}><summary>${role.name}</summary>
         <form onSubmit=${async (event: SubmitEvent) => {
           event.preventDefault()
           const form = event.currentTarget
           if (!(form instanceof HTMLFormElement) || busy) return
           const fields = new FormData(form)
           const proposal = decodeProposal({
-            _tag: 'Responsibility', id: value.id, role, summary: fields.get('summary'),
+            _tag: 'Responsibility', role, summary: fields.get('summary'),
             introduction: fields.get('introduction'), duties: String(fields.get('duties') ?? '').split('\n').map((duty) => duty.trim()).filter(Boolean),
           })
           if (Result.isFailure(proposal)) {
             setFailure(refuse('InvalidInput', Rationale.make('Supply a summary, introduction and at least one duty.')))
             return
           }
-          const id = ProposalId.make('proposal:' + crypto.randomUUID())
+          const key = ProposalKey.make('proposal:' + crypto.randomUUID())
           setBusy(true)
           try {
-            const opened = await submit({ read: project.read, line: { _tag: 'Proposal', id },
-              move: 'open', input: { value: proposal.success } })
+            const opened = await submit({ read: project.read, line: { _tag: 'Proposal', key },
+              move: 'open', input: { previous: { _tag: 'None' }, value: proposal.success } })
             if (Result.isFailure(opened)) { setFailure(opened.failure); return }
-            const sent = await submit({ read: opened.success.read, line: { _tag: 'Proposal', id },
+            const sent = await submit({ read: opened.success.read, line: { _tag: 'Proposal', key },
               move: 'submit', input: { value: proposal.success, question: null } })
             setFailure(Result.isFailure(sent) ? sent.failure : null)
           } finally { setBusy(false) }

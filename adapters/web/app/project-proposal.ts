@@ -21,7 +21,7 @@ export function ProposalCard({ proposal, read, submit }: {
   const choose = async (choice: Choice<OwnerMove>) => {
     if (busy) return
     setBusy(true)
-    const result = await submit({ ...choice, read, line: { _tag: 'Proposal', id: proposal.id } })
+    const result = await submit({ ...choice, read, line: { _tag: 'Proposal', key: proposal.key } })
     setFailure(Result.isFailure(result) ? result.failure : null)
     setBusy(false)
   }
@@ -30,11 +30,11 @@ export function ProposalCard({ proposal, read, submit }: {
     ${value._tag === 'Staffing' ? html`<${StaffingView} plan=${value} />` :
       value._tag === 'Direction' ? html`<p>${value.summary}</p><p>${value.text}</p>
         ${value.source._tag === 'Company' ? html`<p>${value.source.repository} · ${value.source.commit}</p>` : null}
-        <ol>${value.stages.map((stage) => html`<li key=${stage.id}>${stage.name} · ${stage.role.name} · ${stage.work}</li>`)}</ol>
-        ${value.standards.map((standard) => html`<section key=${standard.id}><h4>${standard.name}</h4><p>${standard.text}</p>
+        <ol>${value.stages.map((stage, index) => html`<li key=${index}>${stage.name} · ${stage.role.name} · ${stage.work}</li>`)}</ol>
+        ${value.standards.map((standard, index) => html`<section key=${index}><h4>${standard.name}</h4><p>${standard.text}</p>
           ${standard.scope._tag === 'Where' ? html`<ul>${standard.scope.facts.map((fact) =>
             html`<li>${fact.name} · ${fact.value}</li>`)}</ul>` : null}
-          <ul>${standard.rules.map((rule) => html`<li key=${rule.id}>
+          <ul>${standard.rules.map((rule, index) => html`<li key=${index}>
             <strong>${rule.name}</strong><p>${rule.text}</p>
             ${rule.examples.map(({ example, result }) => html`<blockquote>${example.text}<footer>${result}</footer></blockquote>`)}
           </li>`)}</ul>

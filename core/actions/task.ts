@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Rationale, refuse, liveSession, activeWork, taskRole, taskLine, type CommandOutcome, type LiveSession, type Of, type Refusal, type Task, type TaskAddress, type TaskDraft, type ReadPosition } from '../schema/project.ts'
+import { Rationale, refuse, liveSession, activeWork, boundHostSession, taskRole, taskLine, type CommandOutcome, type LiveSession, type Of, type Refusal, type Task, type TaskAddress, type TaskDraft, type ReadPosition } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { Authority, recordObserved, submit } from './project.ts'
 import { readOpenProject } from './staff-session.ts'
@@ -18,24 +18,24 @@ export const taskBrief = (journal: Journal, line: Of<typeof TaskAddress>): Effec
   Effect.gen(function* () {
     const actor = yield* (yield* Authority).actor
     const project = yield* readOpenProject(journal)
-    const task = project.tasks.get(line.id)
+    const task = project.tasks.get(line.key)
     if (!task || !activeWork(project))
       return yield* Effect.fail(refuse('WrongMove', Rationale.make('This task is unavailable.')))
-    if (actor._tag === 'Human' && actor.actor.id === project.owner.id) return task
+    if (actor._tag === 'Human') return task
     if (actor._tag === 'Host' && project.activation._tag === 'Active' &&
-      actor.id === project.activation.binding.id && actor.staff.id === project.activation.staff.id) return task
+      actor.session.key === boundHostSession(project)?.key && actor.session.staff.key === project.activation.staff.key) return task
     if (actor._tag === 'Staff' || actor._tag === 'Review') {
-      const session = liveSession(project, actor.session.id)
-      if (session?.staff.id !== actor.session.staff.id)
+      const session = liveSession(project, actor.session.key)
+      if (session?.staff.key !== actor.session.staff.key)
         return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current task session.')))
       if (actor._tag === 'Review') {
         const phase = task.phase
-        if (actor.line._tag === 'Task' && actor.line.id === line.id && phase._tag === 'Reviewing' &&
-            phase.assignment._tag === 'Assigned' && phase.assignment.by.id === session.staff.id &&
+        if (actor.line._tag === 'Task' && actor.line.key === line.key && phase._tag === 'Reviewing' &&
+            phase.assignment._tag === 'Assigned' && phase.assignment.by.key === session.staff.key &&
             phase.assignment.review === actor.review) return task
         return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current fresh review.')))
       }
-      const servesTask = (value: LiveSession) => value.staff.roles.some(({ id }) => id === taskRole(task).id || id === task.reviewer.id)
+      const servesTask = (value: LiveSession) => value.staff.roles.some(({ key }) => key === taskRole(task).key || key === task.reviewer.key)
       if (servesTask(session)) return task
     }
     return yield* Effect.fail(refuse('WrongActor', Rationale.make('Read the brief as the owner, host or assigned staff.')))

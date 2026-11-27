@@ -8,7 +8,7 @@ import ceiling from './domain-primitive-baseline-u0.json' with { type: 'json' }
 const ROOT = resolve(import.meta.dir, '../..')
 
 test('the surviving U0 findings are frozen and unique', () => {
-  expect(ceilingDigest(ceiling)).toBe('df80b952e789daf7b8981ba0396db7369b096dc82c29b776302686bbeba3063f')
+  expect(ceilingDigest(ceiling)).toBe('aa758d9a1260ec31dffe11b4a7f814871c33c4fa9d38eea1f704d0a3daf50733')
   expect(new Set(ceiling).size).toBe(ceiling.length)
 })
 

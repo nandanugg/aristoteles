@@ -2,9 +2,9 @@ import { Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { Effect } from 'effect'
-import { ProjectId, ReadPosition } from '../../core/schema/project.ts'
+import { ReadPosition } from '../../core/schema/project.ts'
 import { readPosition } from '../../core/state/project.ts'
-import { create, open, projectId, staffInput, withJournal } from './project.probe.ts'
+import { create, open, staffInput, withJournal } from './project.probe.ts'
 import { resultInput, toWorking } from './task.probe.ts'
 import { PROJECT_FORMAT } from './schema.ts'
 
@@ -14,7 +14,7 @@ const query = (path: string, action: (db: Database) => void) => {
   try { action(db) } finally { db.close() }
 }
 
-test('a missing journal stays missing in read mode and fresh creation uses format 16', () => withJournal(async (path) => {
+test('a missing journal stays missing in read mode and fresh creation uses format 17', () => withJournal(async (path) => {
   expect(await Effect.runPromise(Effect.scoped(Effect.result(open(path, 'Read'))))).toMatchObject({
     _tag: 'Failure', failure: { code: 'InvalidInput' },
   })
@@ -29,9 +29,9 @@ test('a missing journal stays missing in read mode and fresh creation uses forma
 
 test.each([
   ['old store', 'CREATE TABLE event (seq); PRAGMA user_version = 10'],
-  ['previous branch format', 'PRAGMA user_version = 15'],
+  ['previous project format', 'PRAGMA user_version = 16'],
   ['foreign SQLite database', 'CREATE TABLE unrelated (row)'],
-  ['foreign matching version', 'CREATE TABLE project_event (row); PRAGMA user_version = 16'],
+  ['foreign matching version', 'CREATE TABLE project_event (row); PRAGMA user_version = 17'],
   ['regular file', ''],
 ])('refuses a foreign or old journal before modifying it: %s', (_name, sql) => withJournal(async (path) => {
   if (sql) query(path, (db) => db.exec(sql))
@@ -45,7 +45,7 @@ test.each([
 test('write allocation is per project even with interleaved commits in one file', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const first = yield* open(path)
-    const other = yield* open(path, 'Create', ProjectId.make('project:other'))
+    const other = yield* open(path, 'Create', new URL('other/', first.directory.href + '/'))
     const working = yield* toWorking(first)
     const second = yield* create(other)
     const report = yield* staffInput(first, resultInput(readPosition(working.state)))
@@ -77,13 +77,13 @@ test.each([
   ['invalid JSON', "UPDATE project_event SET event = 'bad json' WHERE number = 2"],
   ['missing number', 'DELETE FROM project_event WHERE number = 2'],
   ['row and envelope disagree', "UPDATE project_event SET event = json_set(event, '$.number', 4) WHERE number = 3"],
-  ['row belongs to another project', "UPDATE project_event SET event = replace(event, 'project:first', 'project:other') WHERE number = 1"],
+  ['obsolete singleton address', "UPDATE project_event SET event = json_set(event, '$.line.id', 'project:first') WHERE number = 1"],
 ])('refuses corruption on read and before a later write: %s', (_name, sql) => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
     const working = yield* toWorking(journal)
     query(path, (db) => db.exec(sql))
-    const reopened = yield* open(path, 'Read', projectId)
+    const reopened = yield* open(path, 'Read')
     const read = yield* Effect.result(reopened.eventsAfter(start))
     const write = yield* Effect.result(staffInput(journal, resultInput(readPosition(working.state))))
     expect([read, write]).toEqual([

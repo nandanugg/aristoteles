@@ -1,16 +1,16 @@
 // Private launch materials, marker backups and the directory lock for journal activation.
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
   renameSync, rmSync, writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { Effect, Schema } from 'effect'
-import { FilePath, HostCredential, LaunchNonce, LaunchVerifier, Rationale, Refusal, refuse, type EventNumber, type Of, type ProjectId } from '../domain/project/values.ts'
+import { FilePath, HostCredential, LaunchNonce, LaunchVerifier, Rationale, Refusal, refuse, type EventNumber, type Of } from '../domain/project/values.ts'
 
+const partition = (directory: URL) => createHash('sha256').update(directory.href).digest('hex')
 const AREA = '.work/onboarding/activation'
-const id = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{32}$/)))
-const activationId = () => randomUUID().replaceAll('-', '')
+const activationKey = () => randomUUID().replaceAll('-', '')
 const unsafe = (message: string) =>
   refuse('Unavailable', Rationale.make(message))
 const activationIO = <A>(f: () => A) => Effect.try({
@@ -55,7 +55,7 @@ const readPrivate = (path: string): string | null => {
   }
 }
 const writePrivate = (area: string, name: string, text: string) => {
-  const tmp = join(area, `.stage-${activationId()}`)
+  const tmp = join(area, `.stage-${activationKey()}`)
   const fd = openSync(tmp, 'wx', 0o600)
   try {
     try {
@@ -71,8 +71,8 @@ const writePrivate = (area: string, name: string, text: string) => {
 }
 
 const launchParts = (generation: number, launch: string): readonly string[] => {
-  if (!Number.isSafeInteger(generation) || generation < 1 || !Schema.is(id)(launch)) {
-    throw unsafe('invalid activation generation or launch ID')
+  if (!Number.isSafeInteger(generation) || generation < 1 || !/^[a-f0-9]{32}$/u.test(launch)) {
+    throw unsafe('invalid activation generation or launch key')
   }
   return [String(generation), `launch-${launch}`]
 }
@@ -95,17 +95,17 @@ export const activationLock = (dir: string) =>
   })
 
 const projectLaunchArea = (
-  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string, create: boolean,
-) => activationDir(dir, ['project', project, ...launchParts(generation, launch)], create)
+  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string, create: boolean,
+) => activationDir(dir, ['project', partition(project), ...launchParts(generation, launch)], create)
 
 const privateLaunchFiles = { nonce: LaunchNonce, secret: HostCredential, verifier: LaunchVerifier }
 export const writeProjectLaunchFile = (
-  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string,
+  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string,
   name: 'nonce' | 'secret' | 'verifier', value: Of<typeof LaunchNonce> | Of<typeof HostCredential> | Of<typeof LaunchVerifier>,
 ): void => writePrivate(projectLaunchArea(dir, project, generation, launch, true)!, name, value)
 
 export const readProjectLaunchFile = (
-  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string,
+  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string,
   name: 'nonce' | 'secret' | 'verifier',
 ) => {
   const area = projectLaunchArea(dir, project, generation, launch, false)
@@ -114,18 +114,18 @@ export const readProjectLaunchFile = (
 }
 
 export const retireProjectLaunchSecret = (
-  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string,
+  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string,
 ): void => {
   const area = projectLaunchArea(dir, project, generation, launch, false)
   if (area !== null) rmSync(join(area, 'secret'), { force: true })
 }
 
 export const removeProjectLaunch = (
-  dir: string, project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>, launch: string,
+  dir: string, project: URL, generation: Of<typeof EventNumber>, launch: string,
 ): void => {
   const area = projectLaunchArea(dir, project, generation, launch, false)
   if (area !== null) rmSync(area, { recursive: true, force: true })
 }
 
-export const projectOriginals = (project: Of<typeof ProjectId>, generation: Of<typeof EventNumber>) =>
-  FilePath.make(`${AREA}/project/${project}/${generation}/originals`)
+export const projectOriginals = (project: URL, generation: Of<typeof EventNumber>) =>
+  FilePath.make(`${AREA}/project/${partition(project)}/${generation}/originals`)

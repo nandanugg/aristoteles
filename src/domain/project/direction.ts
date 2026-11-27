@@ -2,12 +2,12 @@ import { Effect, Schema } from 'effect'
 import { Command, Lines, OutcomeTag, Quote } from './evidence.ts'
 import { Human, Role } from './staff.ts'
 import {
-  ContextValue, DirectionId, ExampleText, FilePath, GitCommit, Goal, GuidanceText,
-  Name, QuestionText, RepositoryAddress, RuleId, StageId, StandardId, Summary, type Of,
+  ContextValue, ExampleText, FilePath, GitCommit, Goal, GuidanceText,
+  Name, QuestionText, RepositoryAddress, Summary, type Of,
 } from './values.ts'
 
 export const Stage = Schema.Struct({
-  id: StageId, name: Name, role: Role, work: Goal,
+  name: Name, role: Role, work: Goal,
   where: Schema.Union([
     Schema.TaggedStruct('Project', {}),
     Schema.TaggedStruct('File', { file: FilePath }),
@@ -28,7 +28,7 @@ const Scope = Schema.Union([
   }),
 ])
 export const Rule = Schema.TaggedStruct('Rule', {
-  id: RuleId, name: Name, text: GuidanceText,
+  name: Name, text: GuidanceText,
   verification: Schema.Union([
     Command,
     Schema.TaggedStruct('Prompt', { question: QuestionText, source: Quote }),
@@ -40,23 +40,22 @@ export const Rule = Schema.TaggedStruct('Rule', {
   })),
 })
 const Standard = Schema.TaggedStruct('Standard', {
-  id: StandardId, name: Name, text: GuidanceText, scope: Scope, rules: Schema.Array(Rule),
+  name: Name, text: GuidanceText, scope: Scope, rules: Schema.Array(Rule),
 })
 export const Direction = Schema.TaggedStruct('Direction', {
-  id: DirectionId, owner: Human,
+  owner: Human,
   source: Schema.Union([
     Schema.TaggedStruct('Local', {}),
     Schema.TaggedStruct('Company', { repository: RepositoryAddress, commit: GitCommit, folder: FilePath }),
   ]),
   name: Name, summary: Summary, text: GuidanceText, stages: Schema.NonEmptyArray(Stage), standards: Schema.Array(Standard),
-}).check(Schema.makeFilter((direction) => {
-  const stageIds = new Set(direction.stages.map(({ id }) => id))
-  const standards = new Set(direction.standards.map(({ id }) => id))
-  const rules = direction.standards.flatMap(({ rules }) => rules.map(({ id }) => id))
-  return stageIds.size === direction.stages.length && standards.size === direction.standards.length &&
-    new Set(rules).size === rules.length && direction.standards.every(({ scope }) =>
-      scope._tag !== 'Where' || scope.stages._tag !== 'NamedStages' ||
-      scope.stages.stages.every(({ id }) => stageIds.has(id)),
-    )
-}))
+}).check(Schema.makeFilter((direction) => direction.standards.every(({ scope }) =>
+  scope._tag !== 'Where' || scope.stages._tag !== 'NamedStages' ||
+  scope.stages.stages.every((named) => direction.stages.some((stage) => JSON.stringify(stage) === JSON.stringify(named))),
+)))
 export type Direction = Of<typeof Direction>
+
+// Match the stage's work in its direction. A sent task pins the current responsibility.
+export const sameStage = (left: Of<typeof Stage>, right: Of<typeof Stage>) =>
+  left.name === right.name && left.work === right.work && left.role.key === right.role.key &&
+  JSON.stringify(left.where) === JSON.stringify(right.where) ? left : undefined

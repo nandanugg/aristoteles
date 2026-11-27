@@ -34,7 +34,7 @@ export const openPageProject = (
   return Result.succeed({
     current: () => state, receive,
     replace: (fresh) => {
-      if (!fresh || (state && state.id !== fresh.id)) return Result.fail(invalidPayload())
+      if (!fresh || (state && fresh.read < state.read)) return Result.fail(invalidPayload())
       if (!state || fresh.read > state.read) {
         state = fresh
         changed(state)

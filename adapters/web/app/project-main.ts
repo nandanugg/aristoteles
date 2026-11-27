@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 import { h, render } from 'preact'
-import { Rationale, type Of, type Projection, type Submission, type TaskId } from '../../../core/schema/project.ts'
+import { Rationale, type Of, type Projection, type Submission, type TaskKey } from '../../../core/schema/project.ts'
 import { readPosition } from '../../../core/state/project.ts'
 import { postProjectSubmission } from './project-api.ts'
 import { OnboardingView } from './project-onboarding.ts'
@@ -16,9 +16,9 @@ if (!response.ok) {
 } else {
   const initial: unknown = await response.json()
   const submit = (input: Submission) => postProjectSubmission(url('submissions'), snapshot, page, input)
-  const commandBlock = async (id: Of<typeof TaskId>) => {
+  const commandBlock = async (key: Of<typeof TaskKey>) => {
     const endpoint = url('command-status')
-    endpoint.searchParams.set('task', id)
+    endpoint.searchParams.set('task', key)
     const reply = await fetch(endpoint)
     return reply.ok ? Schema.decodeUnknownSync(Schema.NullOr(Rationale))(await reply.json()) : null
   }

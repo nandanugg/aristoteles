@@ -5,6 +5,6 @@ import { recordObserved } from './project.ts'
 
 export const assignProposalReview = (
   journal: Journal, proposal: Proposal, session: LiveSession, read: Of<typeof ReadPosition>,
-): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Staff', id: session.staff.id }, read, {
-  line: { _tag: 'Proposal', id: proposal.id }, from: 'Reviewing', move: 'assign', input: { session },
+): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Staff', key: session.staff.key }, read, {
+  line: { _tag: 'Proposal', key: proposal.key }, from: 'Reviewing', move: 'assign', input: { session },
 })

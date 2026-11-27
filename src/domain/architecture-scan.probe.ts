@@ -182,8 +182,8 @@ export function scan(program: ts.Program, root: string, included = contracts,
           if (keys.some((key) => !refined.has(key) || unchecked.has(key))) finding(path, 'unrefined-brand')
           const record = /^src\/domain\/project\/(?!events\.ts$)/.test(fileName)
           if (record && /^\$[.<]/.test(path) && !path.startsWith('$<') && !path.includes('()') &&
-              keys.some((key) => /(?:Id|Identity)$/.test(key)) && !/\.id(?:[.<\[]|$)|\[key\]/.test(path))
-            finding(path, 'record-id-reference')
+              keys.some((key) => /Key$/.test(key)) && !/\.key(?:[.<\[]|$)|\[key\]/.test(path))
+            finding(path, 'record-key-reference')
           return
         }
         if (flags & ts.TypeFlags.String) return finding(path, 'bare-string')

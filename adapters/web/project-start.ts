@@ -4,8 +4,8 @@ import { dirname, join, resolve } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { dbPath, digest, projectLock, withProjectEnv } from '../../core/services/project.ts'
-import { openProjectJournal } from '../../core/services/project.ts'
-import { projectIdAt } from '../live/activation.ts'
+import { openProjectJournal, PROJECT_FORMAT } from '../../core/services/project.ts'
+import { projectDirectoryAt } from '../live/activation.ts'
 import { excludeFromGit } from '../live/git-exclude.ts'
 import { startProjectServer } from './project-server.ts'
 import { linkProjectSkills } from './project-skills.ts'
@@ -21,7 +21,7 @@ export const startProjectCommand = async (
     process.stderr.write('Start the Project page from the owner’s terminal.\n')
     return 1
   }
-  const ready = await Effect.runPromise(Effect.scoped(openProjectJournal(projectIdAt(dir), 'Read').pipe(
+  const ready = await Effect.runPromise(Effect.scoped(openProjectJournal(projectDirectoryAt(dir), 'Read').pipe(
     Effect.flatMap(readOpenProject),
     withProjectEnv(env),
     Effect.result,
@@ -38,7 +38,7 @@ export const startProjectCommand = async (
       process.kill(saved.pid, 0)
       const url = new URL(`http://127.0.0.1:${saved.port}/`)
       const response = await fetch(new URL('health', url), { signal: AbortSignal.timeout(500) })
-      const health = Schema.decodeUnknownSync(Schema.Struct({ dir: Schema.String, format: Schema.Literal(16) }))(await response.json())
+      const health = Schema.decodeUnknownSync(Schema.Struct({ dir: Schema.String, format: Schema.Literal(PROJECT_FORMAT) }))(await response.json())
       return response.ok && health.dir === dir ? url : null
     } catch { return null }
   }

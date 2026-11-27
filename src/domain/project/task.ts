@@ -1,13 +1,13 @@
 import { Schema } from 'effect'
-import { Direction, Fact, Rule, Stage } from './direction.ts'
+import { Direction, Fact, Rule, Stage, sameStage } from './direction.ts'
 import { CommandOutput, Evidence, Lines, outcomeOf } from './evidence.ts'
 import { PromptOutcome, reviewing } from './review.ts'
-import { versionOf } from './proposal.ts'
+import { versionOf } from './version.ts'
 import type { Project } from './records.ts'
 import { LiveSession, Role, staffOf } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  ResultSummary, RetryCount, TaskId, type Of,
+  ResultSummary, RetryCount, TaskKey, type Of,
 } from './values.ts'
 
 export const DirectionVersion = versionOf(Direction)
@@ -32,9 +32,7 @@ export const CommandOutcome = outcomeOf({ rule: Rule, evidence: CommandOutput })
   (outcome._tag === 'Holds') === (outcome.evidence.exit === 0) &&
   outcome.rule.verification._tag === 'Command' && outcome.rule.verification.text === outcome.evidence.command.text))
 export type CommandOutcome = Of<typeof CommandOutcome>
-export const CommandOutcomes = Schema.Array(CommandOutcome).check(
-  Schema.makeFilter((values) => new Set(values.map(({ rule }) => rule.id)).size === values.length),
-)
+export const CommandOutcomes = Schema.Array(CommandOutcome)
 
 const RuleOutcome = Schema.Union([CommandOutcome, PromptOutcome])
 export type RuleOutcome = Of<typeof RuleOutcome>
@@ -61,9 +59,9 @@ export const TaskPhase = Schema.Union([
 ])
 export type TaskPhase = Of<typeof TaskPhase>
 export const TaskStages = Schema.NonEmptyArray(Stage)
-  .check(Schema.makeFilter((stages) => stages.every(({ role }) => role.id === stages[0].role.id)))
+  .check(Schema.makeFilter((stages) => stages.every(({ role }) => role.key === stages[0].role.key)))
 export const Task = Schema.Struct({
-  id: TaskId, name: Name, goal: Goal, reviewer: Role, direction: DirectionVersion,
+  key: TaskKey, name: Name, goal: Goal, reviewer: Role, direction: DirectionVersion,
   stages: TaskStages, facts: Schema.Array(Fact),
   phase: TaskPhase, lastChange: EventNumber,
   lastAttempt: Schema.Union([
@@ -83,7 +81,7 @@ export const activeWork = ({ status, activation }: Project) => {
 export const taskRules = (task: Task): readonly Of<typeof Rule>[] =>
   task.direction.value.standards.filter(({ scope }) =>
     scope._tag === 'Everywhere' ||
-    (scope.stages._tag === 'AllStages' || scope.stages.stages.some(({ id }) => task.stages.some((stage) => stage.id === id))) &&
+    (scope.stages._tag === 'AllStages' || scope.stages.stages.some((named) => task.stages.some((stage) => sameStage(stage, named)))) &&
     scope.facts.every((required) => task.facts.some((fact) => fact.name === required.name && fact.value === required.value)),
   ).flatMap(({ rules }) => rules)
 

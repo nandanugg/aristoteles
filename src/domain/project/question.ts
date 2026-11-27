@@ -1,7 +1,10 @@
 import { Schema } from 'effect'
-import type { Project, Question } from './records.ts'
+import type { Project } from './records.ts'
+import { Human, Staff } from './staff.ts'
+import { Task } from './task.ts'
+import type { Proposal } from './proposal.ts'
 import {
-  AnswerText, EventNumber, OptionIndex, OptionText, Placeholder, ProposalId, QuestionText,
+  AnswerText, EventNumber, OptionIndex, OptionText, Placeholder, QuestionKey, QuestionText,
   type Of,
 } from './values.ts'
 
@@ -40,16 +43,31 @@ export const answerFor = (form: QuestionForm, value: unknown): Answer | null => 
   return fits ? value : null
 }
 
-export const questionAbout = [
-  Schema.TaggedStruct('Project', {}),
-  Schema.TaggedStruct('Staffing', { proposal: Schema.Struct({ id: ProposalId, basis: EventNumber }) }),
-] as const
+const Actor = Schema.Union([Human, Staff])
+const QuestionState = Schema.Union([
+  Schema.TaggedStruct('Open', {}),
+  Schema.TaggedStruct('Answered', { by: Actor, answer: Answer }),
+])
+export const Question = Schema.Struct({
+  key: QuestionKey, from: Actor, to: Actor, text: QuestionText, form: QuestionForm, state: QuestionState,
+  about: Schema.Union([
+    Schema.TaggedStruct('Project', {}),
+    Schema.TaggedStruct('Staffing', {}),
+    Schema.TaggedStruct('Task', { task: Task }),
+  ]),
+  lastChange: EventNumber,
+})
+export type Question = Of<typeof Question>
 
-// An older staffing question stays in history when another draft asks for input.
-export const currentQuestion = (project: Project, question: Question): Question | null => {
-  if (question.about._tag !== 'Staffing') return question
-  const { proposal } = question.about
-  const current = project.proposals.get(proposal.id)
-  return current?.phase._tag === 'Drafting' && current.value._tag === 'Staffing' && current.lastChange === proposal.basis
-    ? question : null
-}
+
+export const currentQuestion = (proposal: Proposal, question: Question) =>
+  proposal.phase._tag === 'Drafting' && question.lastChange > proposal.lastChange ? question : undefined
+
+export const sameActor = (left: Question['from'], right: Question['from']) =>
+  (left._tag === 'Human' ? right._tag === 'Human' : right._tag === 'Staff' && left.key === right.key) ? left : undefined
+
+export const projectQuestions = (project: Project) => [
+  ...project.questions.values(),
+  ...[...project.proposals.values()].flatMap((proposal) => proposal.questions.filter((question) =>
+    currentQuestion(proposal, question))),
+]

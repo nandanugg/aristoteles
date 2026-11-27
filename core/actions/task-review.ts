@@ -7,7 +7,7 @@ import { Authority, commitProjectMove, submit } from './project.ts'
 export const checkTaskReview = (
   journal: Journal, project: Project, line: Of<typeof TaskAddress>, session: LiveSession,
 ) => Effect.flatMap(journal.eventsAfter(ReadPosition.make(0)), (events) => {
-  const task = project.tasks.get(line.id)
+  const task = project.tasks.get(line.key)
   if (!task) return Effect.fail(refuse('WrongMove', Rationale.make('That task is unavailable.')))
   const allowed = mayAssignTaskReview(project, events.filter((event) => event.number <= project.read), task, session)
   return allowed === 'Allowed' ? Effect.succeed(task.lastChange)
@@ -17,7 +17,7 @@ export const checkTaskReview = (
 export const assignTaskReview = (
   journal: Journal, project: Project, line: Of<typeof TaskAddress>, session: LiveSession,
 ): Effect.Effect<Committed, Refusal> => commitProjectMove(journal, session.staff, project.read, (current, events) => {
-  const task = current?.tasks.get(line.id)
+  const task = current?.tasks.get(line.key)
   if (!current || !task) return Result.fail(refuse('WrongMove', Rationale.make('That task is unavailable.')))
   if (task.lastChange > project.read || staffingAt(project) !== staffingAt(current))
     return Result.fail(refuse('Stale', Rationale.make('The task or staffing changed before the review opened.')))
