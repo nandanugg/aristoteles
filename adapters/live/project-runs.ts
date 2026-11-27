@@ -6,7 +6,7 @@ import type { AuthenticatedActor } from '../../core/actions/project.ts'
 import { acknowledgeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import {
   EventNumber, HostCredential, LaunchNonce, LaunchVerifier, boundHostSession, PaneAddress, ProjectCredential, ProposalKey, Rationale, StaffSessionKey, TaskKey,
-  liveSession, refuse, type Of, type Project, type Refusal, type Staff,
+  refuse, type Of, type Project, type Refusal, type Staff,
 } from '../../core/schema/project.ts'
 import { dbPath, digest, projectLock } from '../../core/services/project.ts'
 import type { Journal } from '../../core/services/project.ts'
@@ -36,14 +36,19 @@ const perform = <A>(run: () => A): Effect.Effect<A, Refusal> => Effect.try({
   try: run, catch: () => refuse('Unavailable', Rationale.make('The project session provider could not complete that operation.')),
 })
 
-const current = (project: Project, run: Of<typeof Run>): AuthenticatedActor | null => {
-  const session = liveSession(project, run.session.key)
-  if (!session) return null
-  if (run._tag === 'Staff') return { _tag: 'Staff', session }
+const assigned = (project: Project, run: Extract<Of<typeof Run>, { _tag: 'Review' }>) => {
   const { line, review } = run
   const phase = (line._tag === 'Proposal' ? project.proposals.get(line.key) : project.tasks.get(line.key))?.phase
-  if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned' ||
-      phase.assignment.actor.key !== session.key || phase.assignment.review !== review) return null
+  return phase?._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' &&
+    phase.assignment.actor.key === run.session.key && phase.assignment.review === review
+}
+
+const current = (project: Project, run: Of<typeof Run>): AuthenticatedActor | null => {
+  const session = project.sessions.get(run.session.key)
+  if (session?._tag !== 'Live') return null
+  if (run._tag === 'Staff') return { _tag: 'Staff', session }
+  if (!assigned(project, run)) return null
+  const { line, review } = run
   const actor = { _tag: 'Review', review, session } as const
   return line._tag === 'Task' ? { ...actor, line: 'Task', key: line.key } : { ...actor, line: 'Proposal', key: line.key }
 }
@@ -67,18 +72,21 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
     if (!pane) throw new Error('Missing launched pane')
     return { address: PaneAddress.make(pane.pane) }
   }
+  const keys = () => existsSync(area)
+    ? readdirSync(area).flatMap((name) => /^([a-f0-9]{32})\.json$/u.exec(name)?.[1] ?? [])
+    : []
+  const stop = (key: string) => {
+    stopBootstrap(dir, key)
+    if (observeBootstrap(dir, key) !== 'ended') throw new Error('Could not confirm session retirement')
+    if (existsSync(file(key))) unlinkSync(file(key))
+  }
   const reconcile = (project: Project) => perform(() => {
-    if (!existsSync(area)) return
-    for (const name of readdirSync(area)) {
-      const match = /^([a-f0-9]{32})\.json$/u.exec(name)
-      if (!match) continue
-      const key = match[1]!
+    for (const key of keys()) {
       const run = read(key)
-      if ((current(project, run) || run._tag === 'Staff' && project.sessions.get(run.session.key)?._tag === 'Starting') &&
-          observeBootstrap(dir, key) !== 'ended') continue
-      stopBootstrap(dir, key)
-      if (observeBootstrap(dir, key) !== 'ended') throw new Error('Could not confirm session retirement')
-      unlinkSync(file(key))
+      const session = project.sessions.get(run.session.key)
+      const held = session && session._tag !== 'Ended' && (run._tag === 'Staff' || assigned(project, run))
+      if (held && observeBootstrap(dir, key) !== 'ended') continue
+      stop(key)
     }
   })
   const child = (session: Extract<AuthenticatedActor, { _tag: 'Staff' }>['session'],
@@ -92,8 +100,7 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
   }
   const sessions: Sessions = {
     reconcile,
-    launch: (staff, key, previous) => previous ? Effect.fail(refuse('Unavailable', Rationale.make('This provider has no saved checkpoint.')))
-      : perform(() => {
+    launch: (staff, key) => perform(() => {
         const nonce = LaunchNonce.make(randomBytes(32).toString('hex'))
         launch(suffix(key), { _tag: 'Staff', session: { _tag: 'Session', key }, proof: digest(nonce) }, staff,
           `Run work session ack ${key} in this pane to read your introduction. Follow its work wait command with ARISTOTELES_TOKEN.`, nonce)
@@ -101,8 +108,9 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
       }),
     stop: (session) => perform(() => {
       const key = suffix(session.key)
-      stopBootstrap(dir, key)
-      if (existsSync(file(key))) unlinkSync(file(key))
+      for (const child of keys())
+        if (child !== key && read(child).session.key === session.key) stop(child)
+      stop(key)
     }),
     observe: (session) => perform(() => {
       const observation = observeBootstrap(dir, suffix(session.key))

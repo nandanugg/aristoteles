@@ -5,19 +5,19 @@ import {
 } from '../../core/actions/staff-session.ts'
 import {
   Rationale, refuse, sessionMayStart, latestSession, staffByKey, staffOf, staffingAt, taskRole, subagentCapacity, activeWork,
-  type EventNumber, type LiveSession, type Starting, type Of, type Pane, type Project, type Refusal,
+  type EventNumber, type LiveSession, type StaffSession, type Of, type Pane, type Project, type Refusal,
   type StaffSessionKey, type Staff, type StaffKey, type TaskKey,
 } from '../../core/schema/project.ts'
 import { projectLock } from '../../core/services/project.ts'
 import type { Committed, Journal } from '../../core/services/project.ts'
 
 export interface Sessions {
-  // The provider keeps its launch intent, credentials and the checkpoint by lifetime in private storage.
+  // The provider keeps its launch intent, credentials by lifetime in private storage.
   // Reconciliation adopts the committed launches and confirms that every losing launch is stopped.
   readonly reconcile: (project: Project) => Effect.Effect<void, Refusal>
-  readonly launch: (staff: Staff, key: Of<typeof StaffSessionKey>, previous: Of<typeof StaffSessionKey> | null) => Effect.Effect<Of<typeof Pane> | null, Refusal>
-  readonly stop: (session: Of<typeof Starting>) => Effect.Effect<void, Refusal>
-  readonly observe: (session: LiveSession | Of<typeof Starting>) => Effect.Effect<'Running' | 'Unknown' | 'Paused' | 'Ended', Refusal>
+  readonly launch: (staff: Staff, key: Of<typeof StaffSessionKey>) => Effect.Effect<Of<typeof Pane> | null, Refusal>
+  readonly stop: (session: Exclude<StaffSession, { _tag: 'Ended' }>) => Effect.Effect<void, Refusal>
+  readonly observe: (session: Exclude<StaffSession, { _tag: 'Ended' }>) => Effect.Effect<'Running' | 'Unknown' | 'Paused' | 'Ended', Refusal>
   readonly child: (session: LiveSession, taskKey: Of<typeof TaskKey>,
     work: { readonly _tag: 'Work' } | { readonly _tag: 'Review'; readonly review: Of<typeof EventNumber> }) => Effect.Effect<void, Refusal>
 }
@@ -25,8 +25,8 @@ export interface Sessions {
 export interface StaffSessionOperations {
   readonly launch: (
     staff: Of<typeof StaffKey>, key: Of<typeof StaffSessionKey>, staffing: Of<typeof EventNumber>,
-    previous: Of<typeof StaffSessionKey> | null,
   ) => Effect.Effect<Committed, Refusal>
+  readonly end: (session: Of<typeof StaffSessionKey>) => Effect.Effect<Committed | null, Refusal>
   readonly observe: (session: Of<typeof StaffSessionKey>) => Effect.Effect<Committed | null, Refusal>
   readonly child: (
     session: Of<typeof StaffSessionKey>, taskKey: Of<typeof TaskKey>, work: 'Work' | 'Review', staffing: Of<typeof EventNumber>,
@@ -50,11 +50,17 @@ export const staffSessionOperations = (
     ))
   const stale = () => Effect.fail(refuse('Stale', Rationale.make('Staffing or the addressed session has changed.')))
   const wrongMove = () => Effect.fail(refuse('WrongMove', Rationale.make('The addressed task or session cannot take that move.')))
+  const end = (project: Project, session: Exclude<StaffSession, { _tag: 'Ended' }>) => Effect.gen(function* () {
+    yield* provider.stop(session)
+    if ((yield* provider.observe(session)) !== 'Ended')
+      return yield* Effect.fail(refuse('Unavailable', Rationale.make('Could not confirm the session process stopped.')))
+    return session._tag === 'Starting'
+      ? yield* cancelSession(journal, project, session.key)
+      : yield* observeSession(journal, project, session.key, 'Ended')
+  })
   return {
-    launch: (staff, key, staffing, previous) => locked((project) => Effect.gen(function* () {
+    launch: (staff, key, staffing) => locked((project) => Effect.gen(function* () {
       if (project.sessions.has(key)) return yield* stale()
-      const from = previous && project.sessions.get(previous)
-      if (previous && (!from || from._tag !== 'Paused' || from.staff.key !== staff)) return yield* wrongMove()
       const assigned = staffByKey(project, staff)
       if (!assigned) return yield* wrongMove()
       const activation = project.activation
@@ -64,31 +70,32 @@ export const staffSessionOperations = (
       const pending = latestSession(project, assigned)
       let state = project
       if (pending?._tag === 'Starting') {
-        yield* provider.stop(pending)
-        state = (yield* cancelSession(journal, state, pending.key)).state
+        state = (yield* end(state, pending)).state
       }
-      const eligible = sessionMayStart(state, staff, staffing, from || null)
+      const eligible = sessionMayStart(state, staff, staffing)
       if (Result.isFailure(eligible)) return yield* Effect.fail(eligible.failure)
-      const reserved = yield* reserveSession(journal, state, key, eligible.success, staffing, previous ?? undefined)
-      const started = yield* Effect.result(provider.launch(eligible.success, key, previous))
+      const reserved = yield* reserveSession(journal, state, key, eligible.success, staffing)
+      const started = yield* Effect.result(provider.launch(eligible.success, key))
       if (Result.isFailure(started)) {
         const pending = reserved.state.sessions.get(key)
-        if (pending?._tag === 'Starting') {
-          yield* provider.stop(pending)
-          yield* cancelSession(journal, reserved.state, key)
-        }
+        if (pending?._tag === 'Starting') yield* end(reserved.state, pending)
         return yield* Effect.fail(started.failure)
       }
       return started.success ? yield* acknowledgeSession(journal, reserved.state, key, started.success) : reserved
     })).pipe(Effect.tap(() => review ? Effect.asVoid(Effect.result(review)) : Effect.void)),
+    end: (key) => locked((project) => {
+      const session = project.sessions.get(key)
+      if (!session) return wrongMove()
+      return session._tag === 'Ended' ? Effect.succeed(null) : end(project, session)
+    }),
     observe: (key) => locked((project) => Effect.gen(function* () {
       const session = project.sessions.get(key)
-      if (session?._tag !== 'Starting' && session?._tag !== 'Live') return null
+      if (!session || session._tag === 'Ended') return null
       const fact = yield* provider.observe(session)
-      if (fact === 'Unknown' || fact === 'Running') return null
-      return session._tag === 'Starting'
-        ? yield* cancelSession(journal, project, key)
-        : yield* observeSession(journal, project, key, fact)
+      if (fact === 'Ended') return yield* end(project, session)
+      if (session._tag === 'Live' && fact === 'Paused') return yield* observeSession(journal, project, key, 'Paused')
+      if (session._tag === 'Paused' && fact === 'Running') return yield* observeSession(journal, project, key, 'Live')
+      return null
     })),
     child: (key, taskKey, work, staffing) => locked((project) => Effect.gen(function* () {
       if (!activeWork(project)) return yield* wrongMove()

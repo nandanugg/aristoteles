@@ -35,7 +35,7 @@ export const staff = Schema.decodeUnknownSync(Staff)({
   },
 })
 export const session = Schema.decodeUnknownSync(LiveSession)({
-  _tag: 'Live', key: 'session:' + '1'.repeat(32), staff, startedAt: 1, pane: { address: '%2' },
+  _tag: 'Live', key: 'session:' + '1'.repeat(32), staff, startedAt: 1, lastChange: 1, pane: { address: '%2' },
 })
 export const ownerInput = (journal: Journal, input: unknown) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
@@ -80,14 +80,4 @@ export const startSession = (
   const address = session.key
   const reserved = yield* reserveSession(journal, project, address, staff, session.staffing)
   return yield* acknowledgeSession(journal, reserved.state, address, session.pane)
-})
-
-export const resumeSession = (
-  journal: Journal, project: Project, key: Of<typeof StaffSessionKey>,
-  input: { readonly key: Of<typeof StaffSessionKey>; readonly pane: Of<typeof Pane>; readonly staffing: Of<typeof EventNumber> },
-): Effect.Effect<Committed, Refusal> => Effect.gen(function* () {
-  const paused = project.sessions.get(key)
-  if (paused?._tag !== 'Paused') return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Resume a paused session.')))
-  const reserved = yield* reserveSession(journal, project, input.key, paused.staff, input.staffing, key)
-  return yield* acknowledgeSession(journal, reserved.state, input.key, input.pane)
 })

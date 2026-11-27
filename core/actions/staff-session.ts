@@ -23,14 +23,14 @@ export const staffAuthority = (
 ): Effect.Effect<LiveSession, Refusal> => {
   const session = liveSession(project, key)
   return session ? Effect.succeed(session)
-    : Effect.fail(refuse('RetiredSession', Rationale.make('This staff session is retired.')))
+    : Effect.fail(refuse('RetiredSession', Rationale.make('This staff session is unavailable. Run work wait when the session is live.')))
 }
 
 export const reserveSession = (
   journal: Journal, project: Project, key: Of<typeof StaffSessionKey>, staff: Staff,
-  staffing: Of<typeof EventNumber>, previous?: Of<typeof StaffSessionKey>,
+  staffing: Of<typeof EventNumber>,
 ): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Human' }, project.read, {
-  line: 'Session', key, from: null, move: 'open', input: { staff, staffing, previous: previous ?? { _tag: 'None' } },
+  line: 'Session', key, from: null, move: 'open', input: { staff, staffing },
 })
 
 export const acknowledgeSession = (
@@ -46,10 +46,16 @@ export const cancelSession = (
 })
 
 export const observeSession = (
-  journal: Journal, project: Project, key: Of<typeof StaffSessionKey>, observed: 'Paused' | 'Ended',
-): Effect.Effect<Committed, Refusal> => recordObserved(journal, { _tag: 'Human' }, project.read, {
-  line: 'Session', key, from: 'Live', move: 'next', input: { observed },
-})
+  journal: Journal, project: Project, key: Of<typeof StaffSessionKey>, observed: 'Live' | 'Paused' | 'Ended',
+): Effect.Effect<Committed, Refusal> => {
+  const session = project.sessions.get(key)
+  const actor = { _tag: 'Human' } as const
+  if (session?._tag === 'Live' && observed !== 'Live')
+    return recordObserved(journal, actor, project.read, { line: 'Session', key, from: 'Live', move: 'next', input: { observed } })
+  if (session?._tag === 'Paused' && observed !== 'Paused')
+    return recordObserved(journal, actor, project.read, { line: 'Session', key, from: 'Paused', move: 'next', input: { observed } })
+  return Effect.fail(refuse('WrongMove', Rationale.make('The observation does not change this session.')))
+}
 
 export const startChild = (
   journal: Journal, project: Project, key: Of<typeof TaskKey>, session: LiveSession, work: 'Work' | 'Review',

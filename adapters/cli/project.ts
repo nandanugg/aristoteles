@@ -50,7 +50,7 @@ const help = [
   'work start [--detach]',
   'work activation resume|relaunch|rollback',
   'work project start --on=<read>',
-  'work session launch <staff> | observe <session>',
+  'work session launch <staff> | observe <session> | end <session>',
   'work wait <token> [--on=<session-start>]',
   'work send <token> --on=<read> --file=task.yaml',
   'work brief <token> <task>',
@@ -168,8 +168,13 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (act === 'launch') {
       const staff = yield* decode(StaffKey, subject)
       const key = newStaffSession()
-      const result = yield* runs.sessions.launch(staff, key, staffingAt(project), null)
+      const result = yield* runs.sessions.launch(staff, key, staffingAt(project))
       return ['Staff session ' + key, words(result.event), ...startingWords(result.state, key)]
+    }
+    if (act === 'end') {
+      const key = yield* decode(StaffSessionKey, subject)
+      const result = yield* runs.sessions.end(key)
+      return [result ? words(result.event) : 'The session is already ended.']
     }
     if (act === 'observe') {
       const key = yield* decode(StaffSessionKey, subject)

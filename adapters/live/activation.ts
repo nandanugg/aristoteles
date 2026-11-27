@@ -141,7 +141,7 @@ export const projectActivationOperations = (
       const previous = hostSession(project)
       let state = project
       if (previous && previous._tag !== 'Ended') {
-        if (previous.key === key || previous._tag === 'Paused') return yield* Effect.fail(wrong())
+        if (previous.key === key) return yield* Effect.fail(wrong())
         if (previous._tag === 'Live' && phase._tag === 'Active' && (yield* provider.observe(previous.key)) !== 'Ended')
           return yield* Effect.fail(wrong())
         yield* stop(previous.key)

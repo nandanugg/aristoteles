@@ -33,11 +33,9 @@ export const Staff = Schema.TaggedStruct('Staff', {
 export type Staff = Of<typeof Staff>
 export type Subscription = Of<typeof Subscription>
 export const Pane = Schema.Struct({ address: PaneAddress })
-const sessionFields = { key: StaffSessionKey, staff: Staff, startedAt: EventNumber }
-const Paused = Schema.TaggedStruct('Paused', sessionFields)
-export const Starting = Schema.TaggedStruct('Starting', {
-  ...sessionFields, previous: Schema.Union([Schema.TaggedStruct('None', {}), Paused]),
-})
+const sessionFields = { key: StaffSessionKey, staff: Staff, startedAt: EventNumber, lastChange: EventNumber }
+const Paused = Schema.TaggedStruct('Paused', { ...sessionFields, pane: Pane })
+export const Starting = Schema.TaggedStruct('Starting', sessionFields)
 export const LiveSession = Schema.TaggedStruct('Live', { ...sessionFields, pane: Pane })
 export type LiveSession = Of<typeof LiveSession>
 export const StaffSession = Schema.Union([
@@ -95,7 +93,7 @@ export const providerCapacity = (project: Project, subscription: Subscription) =
 
 const occupiedProviderSlots = (project: Project, subscription: Subscription) => SubagentCount.make(
   [...project.sessions.values()].filter((session) =>
-    (session._tag === 'Live' || session._tag === 'Starting') && session.staff.subscription.key === subscription.key,
+    session._tag !== 'Ended' && session.staff.subscription.key === subscription.key,
   ).length,
 )
 
@@ -103,7 +101,7 @@ export const subagentCapacity = (project: Project, staff: Staff) => {
   const used = [...project.tasks.values()].filter(({ phase }) => {
     if (phase._tag === 'Working') {
       const { attempt } = phase
-      return attempt.where === 'Subagent' && liveSession(project, attempt.actor.key)?.staff.key === staff.key
+      return attempt.where === 'Subagent' && project.sessions.get(attempt.actor.key)?.staff.key === staff.key
     }
     return phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && project.sessions.get(phase.assignment.actor.key)?.staff.key === staff.key
   }).length
@@ -167,14 +165,14 @@ export const validateStaffing = (project: Project, plan: StaffingPlan): Result.R
 }
 
 export const sessionMayStart = (
-  project: Project, key: Of<typeof StaffKey>, staffing: Of<typeof EventNumber>, previous: StaffSession | null,
+  project: Project, key: Of<typeof StaffKey>, staffing: Of<typeof EventNumber>,
 ): Result.Result<Staff, Refusal> => {
   if (staffing !== staffingAt(project)) return Result.fail(refuse('Stale', Rationale.make('Staffing changed before launch.')))
   const staff = staffByKey(project, key)
   if (!staff) return Result.fail(refuse('WrongActor', Rationale.make('Staffing does not include that staff.')))
   const latest = latestSession(project, staff)
-  if (previous ? latest?.key !== previous.key || latest._tag !== 'Paused' : latest && latest._tag !== 'Ended')
-    return Result.fail(refuse('WrongMove', Rationale.make('Finish or resume the current staff session before launching another.')))
+  if (latest && latest._tag !== 'Ended')
+    return Result.fail(refuse('WrongMove', Rationale.make('End the current staff session before launching another.')))
   const { sessions: limit } = staff.subscription
   if (limit._tag === 'Limited' && occupiedProviderSlots(project, staff.subscription) >= limit.max)
     return Result.fail(refuse('NoCapacity', Rationale.make('The subscription has no free provider slot.')))

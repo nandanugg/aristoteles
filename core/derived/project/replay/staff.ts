@@ -100,10 +100,13 @@ type WorkObservation = {
   readonly pointedOut: number
 }
 export interface StaffReplacementPort {
-  readonly retire: (checkpoint: boolean) => Promise<void>
-  readonly replace: (checkpoint: boolean) => Promise<void>
+  readonly limited: () => Promise<void>
+  readonly reset: () => Promise<void>
+  readonly stop: () => void
+  readonly retire: () => Promise<void>
+  readonly replace: () => Promise<void>
   readonly begin: () => Promise<void>
-  readonly report: (lifetime: number) => Promise<boolean>
+  readonly report: (lifetime: number, freshRead: boolean) => Promise<boolean>
   readonly observe: () => Promise<readonly [phase: 'Live' | 'Paused' | 'Ended', lifetime: number]>
   readonly work: () => Promise<WorkObservation>
   readonly companions: () => Promise<{
@@ -156,27 +159,24 @@ export const replayStaffReplacementObservations = async (
   let previous = replacementWork(trace.states[0]!.state.work!)
   await compareWork(previous)
   await compareCompanions(trace.states[0]!.state)
+  let previousState = trace.states[0]!.state
   for (const step of trace.states.slice(1)) {
     switch (step.action) {
       case '': break
-      case 'retire': {
-        const checkpoint = picked(step.picks.withCheckpoint)
-        if (typeof checkpoint !== 'boolean') throw new Error('Expected a checkpoint observation')
-        await port.retire(checkpoint)
-        break
-      }
-      case 'replace': await port.replace(false); break
-      case 'resumeCheckpoint': await port.replace(true); break
+      case 'limited': await port.limited(); break
+      case 'reset': await port.reset(); break
+      case 'crash':
+      case 'intervene': port.stop(); break
+      case 'retire': await port.retire(); break
+      case 'replace': await port.replace(); break
       case 'startAgain': await port.begin(); break
       case 'finishWork': {
         const source = integer(picked(step.picks.lifetime))
-        const committed = await port.report(source)
-        if (committed !== (source === previous.lifetime)) throw new Error('A stale replacement report changed the work')
-        if (kind === 'mutant' && step.state.staleApplied === true) {
-          await compareWork(previous)
-          await compareCompanions(step.state)
-          return
-        }
+        const freshRead = picked(step.picks.freshRead)
+        if (typeof freshRead !== 'boolean') throw new Error('Expected a read observation')
+        const committed = await port.report(source, freshRead)
+        if (committed !== (record(step.state.work!).tag === 'ReadyToReview'))
+          throw new Error('Replacement report differs from the model')
         break
       }
       default: throw new Error('Unknown replacement action: ' + step.action)
@@ -185,10 +185,16 @@ export const replayStaffReplacementObservations = async (
     const lifetime = session.tag === 'Ended' ? integer(session.value) : integer(record(session.value!).lifetime)
     const [actualPhase, actualLifetime] = await port.observe()
     if (actualPhase !== session.tag || actualLifetime !== lifetime) throw new Error('Session observation differs')
+    if (kind === 'mutant' && step.action === 'limited') {
+      await compareWork(previous)
+      await compareCompanions(previousState)
+      return
+    }
     const expected = replacementWork(step.state.work!)
     await compareWork(expected)
     await compareCompanions(step.state)
     previous = expected
+    previousState = step.state
   }
-  if (kind === 'mutant') throw new Error('The mutant never offered a stale report')
+  if (kind === 'mutant') throw new Error('The mutant never freed paused work')
 }

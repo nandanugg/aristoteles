@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test'
 import { Effect } from 'effect'
 import { waitOnProject } from '../../adapters/cli/commands/project.ts'
-import { resumeSession, startSession, open, session, staff, staffInput, withJournal } from '../../src/store/project.probe.ts'
+import { startSession, open, session, staff, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { begin, commandOutcomes, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { initialStaffing, launchStaff, sharedStaffing } from '../../src/store/staff-session.probe.ts'
 import { staffingAt,
-  SessionCount, StaffSessionKey, SubagentCount, TaskKey, capacity, staffByKey, type Staff, type StaffingPlan,
+  ReadPosition, SessionCount, StaffSessionKey, SubagentCount, TaskKey, capacity, staffByKey, type Staff, type StaffingPlan,
 } from '../schema/project.ts'
 import { applyEvent, readPosition } from '../state/project.ts'
 import { acceptStaffing } from '../../src/store/proposal.probe.ts'
@@ -43,10 +43,13 @@ test('shared staff covers both roles and a stale staffing plan or a duplicate li
   }))),
 ))
 
-test('pause retires authority, releases charges, and resumes the same attempt with a new session', () => withJournal((path) =>
+test('pause holds the attempt and its slot, and reset requires a fresh read on the same session', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
     const working = yield* toWorking(journal)
+    const second = TaskKey.make('task:held-child')
+    yield* send(journal, working.state.read, second)
+    yield* startChild(journal, yield* readOpenProject(journal), second, session, 'Work')
     const project = yield* readOpenProject(journal)
     expect(yield* waitOnProject(journal, Effect.succeed(session.key))).toMatchObject({ _tag: 'Available' })
     yield* observeSession(journal, project, address, 'Paused')
@@ -54,20 +57,18 @@ test('pause retires authority, releases charges, and resumes the same attempt wi
     expect(paused.sessions.get(session.key)?._tag).toBe('Paused')
     expect(Number(capacity(paused, staff).liveSessions)).toBe(0)
     expect(yield* Effect.result(waitOnProject(journal, Effect.succeed(session.key)))).toMatchObject(rejected('RetiredSession'))
-    const continued = { ...session, key: StaffSessionKey.make('session:2') }
-    yield* resumeSession(journal, paused, address, {
-      key: continued.key, pane: continued.pane, staffing: staffingAt(paused),
+    expect(capacity(paused, staff).usedSubagents).toBe(SubagentCount.make(1))
+    expect(paused.tasks.get(second)).toEqual(project.tasks.get(second))
+    expect(yield* Effect.result(staffInput(journal, resultInput(paused.read), session))).toMatchObject(rejected('RetiredSession'))
+    const { state: resumed } = yield* observeSession(journal, paused, address, 'Live')
+    expect(resumed.sessions.get(session.key)).toMatchObject({ _tag: 'Live', pane: session.pane })
+    expect(resumed.tasks.get(taskKey)).toEqual(working.state.tasks.get(taskKey))
+    expect(yield* Effect.result(staffInput(journal, resultInput(project.read), session))).toMatchObject({
+      _tag: 'Failure', failure: { code: 'Stale', why: expect.stringContaining('Run work wait') },
     })
-    const resumed = yield* readOpenProject(journal)
-    expect(resumed.sessions.get(session.key)?._tag).toBe('Paused')
-    expect(resumed.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, actor: { key: continued.key } } })
-    expect(yield* Effect.result(staffInput(journal, resultInput(resumed.read), session))).toMatchObject(rejected('RetiredSession'))
-    expect(yield* Effect.result(staffInput(journal, resultInput(readPosition(working.state)), continued))).toMatchObject(rejected('Stale'))
-    const reported = yield* staffInput(journal, resultInput(resumed.read), continued)
-    expect(reported.event.actor).toEqual({ _tag: 'Session', key: continued.key })
-    expect(applyEvent(resumed, {
-      ...reported.event, actor: { _tag: 'Session', key: session.key },
-    })).toMatchObject(rejected('RetiredSession'))
+    const reported = yield* staffInput(journal, resultInput(resumed.read), session)
+    expect(reported.event.actor).toEqual({ _tag: 'Session', key: session.key })
+    expect(applyEvent(resumed, { ...reported.event, read: ReadPosition.make(project.read) })).toMatchObject(rejected('Stale'))
     expect((yield* readOpenProject(journal)).read).toBe(reported.state.read)
   }))),
 ))

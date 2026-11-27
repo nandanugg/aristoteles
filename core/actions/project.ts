@@ -47,7 +47,7 @@ const wrongActor = () => refuse('WrongActor', Rationale.make('Use the input for 
 export const RetryLimit = Context.Reference<Of<typeof RetryLimitValue>>('project/RetryLimit', {
   defaultValue: () => RetryLimitValue.make(1),
 })
-const retired = () => refuse('RetiredSession', Rationale.make('Report from the attempt’s live session.'))
+const retired = () => refuse('RetiredSession', Rationale.make('Use the current live session. Run work wait to see what is due.'))
 const readSubmission = Schema.decodeUnknownEffect(Submission, { onExcessProperty: 'error' })
 
 const maySubmit = (actor: AuthenticatedActor, party: Party | undefined) => {

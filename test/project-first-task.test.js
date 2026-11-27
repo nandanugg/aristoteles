@@ -296,6 +296,10 @@ exec sleep 90
     await report('task:raise', { attempt: 1, reason: 'WrongTask', evidence: excerpt('Local second result') }, 'raise')
     await browser.phase('Wrong cut', pipeline.name, 'Raised')
     expect(await ok(['brief', 'task:raise'], ownerCall)).toContain('Reason: WrongTask')
+    await apply(['session', 'end', live.key], undefined, 'owner ends staff')
+    expect((await state()).sessions.find(({ key }) => key === live.key)._tag).toBe('Ended')
+    const stopped = Bun.spawnSync([realTmux, '-L', bootstrapSocket(dir), 'has-session', '-t', '=boot-' + live.key.slice(8)])
+    expect(stopped.exitCode).not.toBe(0)
     const beforeRestart = (await state()).read
     process.kill(webPid)
     await until(() => !existsSync(webRecord), 'server shutdown')

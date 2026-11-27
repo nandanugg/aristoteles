@@ -71,7 +71,7 @@ export const taskLine = line({
 }) satisfies Readonly<Record<TaskPhase['_tag'], object>>
 export const sessionLine = line({
   null: { from: Schema.Null, owes: 'Engine', moves: { open: {
-    to: ['Starting'], input: Schema.Struct({ staff: Staff, staffing: EventNumber, previous: Schema.Union([Schema.TaggedStruct('None', {}), StaffSessionKey]) }),
+    to: ['Starting'], input: Schema.Struct({ staff: Staff, staffing: EventNumber }),
   } } },
   Starting: { from: Schema.Literal('Starting'), owes: 'Engine', moves: {
     next: { to: ['Live'], input: Schema.Struct({ pane: Pane }) },
@@ -81,7 +81,7 @@ export const sessionLine = line({
     next: { to: ['Paused', 'Ended'], input: Schema.Struct({ observed: Schema.Literals(['Paused', 'Ended']) }) },
   } },
   Paused: { from: Schema.Literal('Paused'), owes: 'Engine', moves: {
-    next: { to: ['Ended'], input: empty },
+    next: { to: ['Live', 'Ended'], input: Schema.Struct({ observed: Schema.Literals(['Live', 'Ended']) }) },
   } },
   Ended: { from: Schema.Literal('Ended'), owes: 'None', moves: {} },
 })

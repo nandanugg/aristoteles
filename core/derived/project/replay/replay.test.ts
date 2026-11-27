@@ -235,43 +235,46 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const address = session.key
     const replacement = StaffSessionKey.make('session:2')
-    let expectedPrior: Of<typeof StaffSessionKey> | null = null
-    let observation: 'Paused' | 'Ended' = 'Ended'
+    let observation: 'Running' | 'Paused' | 'Ended' = 'Running'
     let key = session.key
     const provider: Sessions = {
-      stop: () => Effect.void,
+      stop: () => Effect.sync(() => { observation = 'Ended' }),
       reconcile: () => Effect.void,
-      launch: (_staff, _id, previous) => Effect.sync(() => {
-        expect(previous).toBe(expectedPrior)
-        return session.pane
-      }),
+      launch: () => Effect.sync(() => { observation = 'Running'; return session.pane }),
       observe: () => Effect.sync(() => observation),
       child: () => Effect.void,
     }
     const operations = staffSessionOperations(dirname(path), journal, provider)
     const trace = readTrace(join(traces, 'staffReplacement-' + kind + '.itf.json.gz'), 'staffReplacement', kind)
     yield* Effect.promise(() => replayStaffReplacementObservations(trace, kind, {
-      retire: async (checkpoint) => {
-        observation = checkpoint ? 'Paused' : 'Ended'
+      limited: async () => {
+        observation = 'Paused'
         await Effect.runPromise(operations.observe(address))
       },
-      replace: async (checkpoint) => {
-        expectedPrior = checkpoint ? session.key : null
-        await Effect.runPromise(operations.launch(staff.key, replacement, staffingAt(current), checkpoint ? address : null))
+      reset: async () => {
+        observation = 'Running'
+        await Effect.runPromise(operations.observe(address))
+      },
+      stop: () => { observation = 'Ended' },
+      retire: async () => {
+        await Effect.runPromise(operations.observe(address))
+      },
+      replace: async () => {
+        await Effect.runPromise(operations.launch(staff.key, replacement, staffingAt(current)))
         key = replacement
       },
       begin: async () => {
         const project = await Effect.runPromise(readOpenProject(journal))
         await Effect.runPromise(staffInput(journal, { read: project.read, ...taskLine, move: 'next', input: {} }, { ...session, key }))
       },
-      report: async (source) => {
+      report: async (source, freshRead) => {
         const project = await Effect.runPromise(readOpenProject(journal))
         const phase = project.tasks.get(taskKey)?.phase
         if (phase?._tag !== 'Working') throw new Error('The model reported after the attempt closed')
         const result = await Effect.runPromise(Effect.result(staffInput(journal,
-          resultInput(project.read, 11, phase.attempt.number), { ...session, key: source === 1 ? session.key : replacement })))
+          resultInput(freshRead ? project.read : working.state.read, 11, phase.attempt.number), { ...session, key: source === 1 ? session.key : replacement })))
         if (Result.isSuccess(result)) return true
-        expect(result.failure.code).toBe('RetiredSession')
+        expect(['RetiredSession', 'Stale']).toContain(result.failure.code)
         expect((await Effect.runPromise(readOpenProject(journal))).read).toBe(project.read)
         return false
       },
@@ -313,7 +316,7 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
         const project = await Effect.runPromise(readOpenProject(journal))
         const actual = project.sessions.get(key)
         if (!actual) throw new Error('Expected a session participant')
-        if (key === replacement) expect(project.sessions.get(session.key)?._tag).toBe(observation)
+        if (key === replacement) expect(project.sessions.get(session.key)?._tag).toBe('Ended')
         if (actual._tag === 'Starting') throw new Error('The fixture acknowledged this session')
         return [actual._tag, key === replacement ? 2 : 1]
       },

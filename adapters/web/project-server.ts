@@ -56,7 +56,7 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
     const project = yield* readOpenProject(journal)
     const operations = projectRuns(dir, db, journal)
     for (const session of project.sessions.values()) {
-      if (session._tag === 'Live' || session._tag === 'Starting') yield* Effect.result(operations.sessions.observe(session.key))
+      if (session._tag !== 'Ended') yield* Effect.result(operations.sessions.observe(session.key))
     }
     yield* Effect.result(operations.review)
   })

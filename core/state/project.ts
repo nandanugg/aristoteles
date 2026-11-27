@@ -3,8 +3,8 @@ import { applyActivationMove } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
-  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, subagentCapacity, versionOf,
-  type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal, type StaffSession,
+  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, versionOf,
+  type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal,
 } from '../schema/project.ts'
 
 export const readPosition = (state: Projection): typeof ReadPosition.Type =>
@@ -12,8 +12,7 @@ export const readPosition = (state: Projection): typeof ReadPosition.Type =>
 
 const wrongMove = () => Result.fail(refuse('WrongMove', Rationale.make('That move does not follow the current phase.')))
 const wrongActor = () => Result.fail(refuse('WrongActor', Rationale.make('The event has the wrong actor for the addressed work.')))
-const retired = () => Result.fail(refuse('RetiredSession', Rationale.make('Use the current live staff session.')))
-const noChild = () => Result.fail(refuse('NoCapacity', Rationale.make('The staff has no free subagent slot.')))
+const retired = () => Result.fail(refuse('RetiredSession', Rationale.make('Use the current live staff session. Run work wait to see what is due.')))
 const stale = () => Result.fail(refuse('Stale', Rationale.make('The addressed record changed after it was read.')))
 
 const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Result<Project, Refusal> => {
@@ -45,7 +44,7 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
   if (actor._tag !== 'Human') return wrongActor()
   if (project.lastChange > read) return stale()
   if (edge(projectLine, event.from, event.move, 'Ended') !== 'Allowed' ||
-      [...project.sessions.values()].some((session) => session._tag === 'Live' || session._tag === 'Starting')) return wrongMove()
+      [...project.sessions.values()].some((session) => session._tag !== 'Ended')) return wrongMove()
   return Result.succeed({ ...project, status: { _tag: 'Ended', at: number }, lastChange: number })
 }
 
@@ -94,30 +93,28 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
   if (actor._tag !== 'Human') return wrongActor()
   const sessions = new Map(project.sessions)
   if (event.from === null) {
-    const { staff, staffing, previous } = event.input
+    const { staff, staffing } = event.input
     if (read < staffing || sessions.has(key)) return stale()
-    const paused = typeof previous === 'string' ? sessions.get(previous) : null
-    if (typeof previous === 'string' && paused?._tag !== 'Paused') return retired()
-    return Result.map(sessionMayStart(project, staff.key, staffing, paused ?? null), (assigned) => {
-      sessions.set(key, { _tag: 'Starting', key, staff: assigned, startedAt: number, previous: paused?._tag === 'Paused' ? paused : { _tag: 'None' } })
+    return Result.map(sessionMayStart(project, staff.key, staffing), (assigned) => {
+      sessions.set(key, { _tag: 'Starting', key, staff: assigned, startedAt: number, lastChange: number })
       return { ...project, sessions }
     })
   }
   const previous = sessions.get(key)
   if (!previous) return retired()
-  if (read < previous.startedAt) return stale()
+  if (read < previous.lastChange) return stale()
   if (previous._tag !== event.from) return wrongMove()
   if (event.from === 'Starting') {
     if (previous._tag !== 'Starting') return wrongMove()
     const { key, staff, startedAt } = previous
     if (event.move === 'cancel') {
-      sessions.set(key, { _tag: 'Ended', key, staff, startedAt })
+      sessions.set(key, { _tag: 'Ended', key, staff, startedAt, lastChange: number })
       return Result.succeed({ ...project, sessions })
     }
     const activation = project.activation
     const host = staffOf(project, project.roles.host)
     if (activation._tag === 'RollingBack' && host?.key === staff.key) return wrongMove()
-    const live: LiveSession = { _tag: 'Live', key, staff, startedAt: number, pane: event.input.pane }
+    const live: LiveSession = { _tag: 'Live', key, staff, startedAt: number, lastChange: number, pane: event.input.pane }
     sessions.set(key, live)
     let next = activation
     if (activation._tag === 'Activating' && host?.key === staff.key) {
@@ -127,47 +124,36 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
     }
     if (activation._tag === 'Active' && host?.key === staff.key && activation.work._tag !== 'NotStarted' &&
         startedAt < activation.work.at) return wrongMove()
-    const tasks = new Map(project.tasks)
-    const paused = previous.previous
-    if (paused._tag === 'Paused') {
-      const continuing = [...tasks.values()].filter(({ phase }) => phase._tag === 'Working' &&
-        phase.attempt.actor.key === paused.key)
-      const children = continuing.filter(({ phase }) => phase._tag === 'Working' && phase.attempt.where === 'Subagent')
-      if (children.length > subagentCapacity(project, staff).freeSubagents) return noChild()
-      for (const task of continuing) {
-        const phase = task.phase
-        if (phase._tag === 'Working')
-          tasks.set(task.key, { ...task, phase: { ...phase, attempt: { ...phase.attempt, actor: { _tag: 'Session', key } } }, lastChange: number })
-      }
-    }
-    return Result.succeed({ ...project, sessions, tasks, activation: next,
+    return Result.succeed({ ...project, sessions, activation: next,
       lastChange: next !== activation ? number : project.lastChange })
   }
-  const tasks = new Map(project.tasks)
-  const move = (session: StaffSession) => {
-    sessions.set(session.key, session)
-    for (const [key, task] of tasks) {
-      const phase = task.phase
-      if (session._tag === 'Ended' && phase._tag === 'Working' && phase.attempt.actor.key === previous.key) {
-        const restarted = restartTask(task, phase, number)
-        if (Result.isSuccess(restarted)) tasks.set(key, restarted.success)
-      }
-      if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key) {
-        tasks.set(key, { ...task, phase: { ...phase, assignment: { _tag: 'Waiting' } }, lastChange: number })
-      }
-    }
-    const proposals = new Map(project.proposals)
-    for (const [key, proposal] of proposals) {
-      const phase = proposal.phase
-      if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key)
-        proposals.set(key, { ...proposal, phase: { _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, lastChange: number })
-    }
-    return { ...project, sessions, tasks, proposals }
+  const { observed } = event.input
+  if (edge(sessionLine, previous._tag, event.move, observed) !== 'Allowed' ||
+      (previous._tag !== 'Live' && previous._tag !== 'Paused')) return wrongMove()
+  if (observed !== 'Ended') {
+    sessions.set(key, { ...previous, _tag: observed, lastChange: number })
+    return Result.succeed({ ...project, sessions })
   }
-  const observed = event.from === 'Paused' ? 'Ended' : event.input.observed
-  if (edge(sessionLine, previous._tag, 'next', observed) !== 'Allowed') return wrongMove()
   const { staff, startedAt } = previous
-  return Result.succeed(move({ _tag: observed, key, staff, startedAt }))
+  sessions.set(key, { _tag: 'Ended', key, staff, startedAt, lastChange: number })
+  const tasks = new Map(project.tasks)
+  const proposals = new Map(project.proposals)
+  for (const [key, task] of tasks) {
+    const phase = task.phase
+    if (phase._tag === 'Working' && phase.attempt.actor.key === previous.key) {
+      const restarted = restartTask(task, phase, number)
+      if (Result.isSuccess(restarted)) tasks.set(key, restarted.success)
+    }
+    if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key) {
+      tasks.set(key, { ...task, phase: { ...phase, assignment: { _tag: 'Waiting' } }, lastChange: number })
+    }
+  }
+  for (const [key, proposal] of proposals) {
+    const phase = proposal.phase
+    if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key)
+      proposals.set(key, { ...proposal, phase: { _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, lastChange: number })
+  }
+  return Result.succeed({ ...project, sessions, tasks, proposals })
 }
 
 const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Result<Project, Refusal> => {
@@ -232,7 +218,8 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   if (event.actor._tag === 'Session') {
     const session = state && liveSession(state, event.actor.key)
     if (!session) return retired()
-    if (session.startedAt > event.read) return stale()
+    if (session.lastChange > event.read)
+      return Result.fail(refuse('Stale', Rationale.make('The session changed. Run work wait before trying again.')))
   }
   const updated = event.line === 'Project' ? applyProjectMove(state, event) : ((): Result.Result<Project, Refusal> => {
     if (!state) return wrongMove()

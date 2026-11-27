@@ -31,8 +31,8 @@ test('concurrent launches use one lifetime, and unknown observations leave it li
     const key = StaffSessionKey.make('session:actual')
     const second = StaffSessionKey.make('session:duplicate')
     const outcomes = yield* Effect.all([
-      Effect.result(first.launch(staff.key, key, staffingAt(project), null)),
-      Effect.result(other.launch(staff.key, second, staffingAt(project), null)),
+      Effect.result(first.launch(staff.key, key, staffingAt(project))),
+      Effect.result(other.launch(staff.key, second, staffingAt(project))),
     ], { concurrency: 'unbounded' })
     expect(outcomes.map(({ _tag }) => _tag).sort()).toEqual(['Failure', 'Success'])
     expect(launched).toHaveLength(1)
@@ -60,20 +60,58 @@ test('a failed spawn keeps its reservation until retirement is confirmed', () =>
         if (key === failed) return yield* Effect.fail(missing)
         return pane
       }),
-      observe: () => Effect.succeed('Running'),
+      observe: () => Effect.sync(() => canStop ? 'Ended' : 'Running'),
       child: () => Effect.void,
     }
     const operations = staffSessionOperations(dirname(path), journal, provider)
-    expect(yield* Effect.result(operations.launch(staff.key, failed, staffingAt(project), null)))
+    expect(yield* Effect.result(operations.launch(staff.key, failed, staffingAt(project))))
       .toMatchObject({ _tag: 'Failure', failure: { code: 'Unavailable' } })
     expect((yield* readOpenProject(journal)).sessions.get(failed)?._tag).toBe('Starting')
-    expect(yield* Effect.result(operations.launch(staff.key, replacement, staffingAt(project), null)))
+    expect(yield* Effect.result(operations.launch(staff.key, replacement, staffingAt(project))))
       .toMatchObject({ _tag: 'Failure', failure: { code: 'Unavailable' } })
     canStop = true
-    yield* operations.launch(staff.key, replacement, staffingAt(project), null)
+    yield* operations.launch(staff.key, replacement, staffingAt(project))
     const current = yield* readOpenProject(journal)
     expect(current.sessions.get(failed)?._tag).toBe('Ended')
     expect(current.sessions.get(replacement)?._tag).toBe('Live')
+  }))),
+))
+
+test('a paused assignment can move only after the owner confirms the old process stopped', () => withJournal((path) =>
+  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const journal = yield* open(path)
+    const project = yield* sharedStaffing(journal)
+    const plan = initialStaffing()
+    const [host, other] = [...plan.staff.values()]
+    if (!host || !other) throw new Error('Expected two staff assignments')
+    const moved: typeof plan = { ...plan, staff: new Map([
+      [host.key, { ...host, roles: [host.roles[0], ...host.roles.slice(1), ...other.roles] }],
+    ]) }
+    const key = StaffSessionKey.make('session:limited')
+    let observation: 'Paused' | 'Ended' = 'Paused'
+    let stops = 0
+    const operations = staffSessionOperations(dirname(path), journal, {
+      reconcile: () => Effect.void,
+      launch: () => Effect.succeed(pane),
+      stop: () => Effect.sync(() => { stops += 1 }),
+      observe: () => Effect.sync(() => observation),
+      child: () => Effect.void,
+    })
+    yield* operations.launch(other.key, key, staffingAt(project))
+    const paused = yield* operations.observe(key)
+    if (!paused) throw new Error('Expected a Paused observation')
+    expect(yield* Effect.result(acceptStaffing(journal, paused.state, moved)))
+      .toMatchObject({ _tag: 'Failure', failure: { code: 'InvalidInput' } })
+    expect(yield* Effect.result(operations.end(key)))
+      .toMatchObject({ _tag: 'Failure', failure: { code: 'Unavailable' } })
+    expect((yield* readOpenProject(journal)).sessions.get(key)?._tag).toBe('Paused')
+    observation = 'Ended'
+    const ended = yield* operations.end(key)
+    if (!ended) throw new Error('Expected a confirmed stop')
+    expect(ended.state.sessions.get(key)?._tag).toBe('Ended')
+    expect(stops).toBe(2)
+    const changed = yield* acceptStaffing(journal, ended.state, moved)
+    expect(changed.staffing._tag).toBe('StaffingAccepted')
   }))),
 ))
 
