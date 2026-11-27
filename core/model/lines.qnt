@@ -19,7 +19,7 @@ module lines {
     ReviewInput, { result: Result, outcomes: List[Outcome] }, RaiseReason]
   type TaskKey = TaskPhase[PhaseKey, PhaseKey, PhaseKey, PhaseKey, PhaseKey, PhaseKey]
 
-  type TaskMove = Next | Back | Raise(RaiseReason) | Restart
+  type TaskMove = Next | Back | Raise(RaiseReason) | Restart | ReleaseTaskReview
   pure val raises: Set[(TaskMove, TaskKey)] =
     Set(Tries, Misses, NoRule, TooBig, WrongTask, ContractWrong, RejectedByHuman).map(reason => (Raise(reason), Raised(NoPayload)))
   pure val taskLine: Line[TaskKey, TaskMove] = Map(
@@ -28,7 +28,7 @@ module lines {
       moves: Set((Next, ReadyToReview(NoPayload)), (Restart, Sent(NoPayload))).union(raises) },
     ReadyToReview(NoPayload) -> { owes: Engine, moves: Set((Next, Reviewing(NoPayload))) },
     Reviewing(NoPayload) -> { owes: Reviewer,
-      moves: Set((Next, Reviewing(NoPayload)), (Next, Done(NoPayload)), (Back, Working(NoPayload))).union(raises) },
+      moves: Set((Next, Reviewing(NoPayload)), (ReleaseTaskReview, Reviewing(NoPayload)), (Next, Done(NoPayload)), (Back, Working(NoPayload))).union(raises) },
     Done(NoPayload) -> { owes: NoDuty, moves: Set() },
     Raised(NoPayload) -> { owes: NoDuty, moves: Set() }
   )
@@ -103,18 +103,22 @@ module lines {
             }))
           | Raise(reason) => taskMove(task, derived, Raised(reason))
           | Restart => task
+          | ReleaseTaskReview => task
         }
       }
     | _ => task
   }
-  pure def crashTask(task: Task, staff: int, session: int): Task = match task {
+  pure def restartTask(task: Task, session: int): Task = match task {
     | Working(attempt) => if (attempt.session == session)
         taskMove(task, Restart, Sent({
           last: attempt.number, retries: attempt.retries, pointedOut: attempt.pointedOut
         }))
       else task
+    | _ => task
+  }
+  pure def releaseTaskReview(task: Task, staff: int): Task = match task {
     | Reviewing(input) => if (input.review == By(staff))
-        Reviewing({ ...input, review: Waiting })
+        taskMove(task, ReleaseTaskReview, Reviewing({ ...input, review: Waiting }))
       else task
     | _ => task
   }
@@ -122,10 +126,10 @@ module lines {
     Drafting(draft) | ProposalReview(review) | WaitingForOwner(draft) | Accepted(draft) | Removed
   type Proposal = ProposalPhase[int, { draft: int, review: Review }]
   type ProposalKey = ProposalPhase[PhaseKey, PhaseKey]
-  type ProposalMove = ProposalNext | Submit | SendBack | Accept | Remove
+  type ProposalMove = ProposalNext | Submit | SendBack | Accept | Remove | ReleaseProposalReview
   pure val proposalLine: Line[ProposalKey, ProposalMove] = Map(
     Drafting(NoPayload) -> { owes: Proposer, moves: Set((Submit, ProposalReview(NoPayload))) },
-    ProposalReview(NoPayload) -> { owes: Reviewer, moves: Set((ProposalNext, ProposalReview(NoPayload)),
+    ProposalReview(NoPayload) -> { owes: Reviewer, moves: Set((ProposalNext, ProposalReview(NoPayload)), (ReleaseProposalReview, ProposalReview(NoPayload)),
       (ProposalNext, WaitingForOwner(NoPayload)), (SendBack, Drafting(NoPayload))) },
     WaitingForOwner(NoPayload) -> { owes: Owner, moves: Set((SendBack, Drafting(NoPayload)),
       (Accept, Accepted(NoPayload)), (Remove, Removed)) },
@@ -166,9 +170,9 @@ module lines {
       | SendBack => proposalMove(proposal, choice, Drafting(draft + 1))
       | _ => proposal
     }
-  pure def crashProposal(proposal: Proposal, staff: int): Proposal = match proposal {
+  pure def releaseProposalReview(proposal: Proposal, staff: int): Proposal = match proposal {
     | ProposalReview(input) => if (input.review == By(staff))
-        ProposalReview({ ...input, review: Waiting })
+        proposalMove(proposal, ReleaseProposalReview, ProposalReview({ ...input, review: Waiting }))
       else proposal
     | _ => proposal
   }

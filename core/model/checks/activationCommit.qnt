@@ -42,24 +42,20 @@ module activationCommitCase {
       state' = { ...state, record: record, offeredStale: state.offeredStale or stale }
     }
   }
-  action crashBeforeNote = all {
-    state.record.binding > 0, state.record.phase == Activating, not(state.interrupted),
+  action crashAfterCommit = all {
+    state.record.binding > 0, state.record.phase == Active, not(state.interrupted),
     state' = { ...state, interrupted: true }
-  }
-  action note = all {
-    observeActive(state.record) != state.record,
-    state' = { ...state, record: observeActive(state.record) }
   }
   action probeWork = all {
     state.record.phase != Active,
     state' = { ...state, earlyWork: state.earlyWork or work(state.record, 1).retired.contains(1) }
   }
   action step = any { approve, markFile, startHost, launchHost, acknowledge, loseHost,
-    tryCommit, crashBeforeNote, note, probeWork, state' = state }
+    tryCommit, crashAfterCommit, probeWork, state' = state }
   val Safety = not(state.earlyWork) and (state.record.phase != Active implies endProject(state.record) == state.record) and
     (state.record.binding > 0 implies state.record.file == Marked and
       state.record.alive.contains(state.record.binding) and state.record.acked.contains(state.record.binding)) and
-    (state.record.phase == Active implies state.record.binding > 0) and
+    ((state.record.phase == Active) == (state.record.binding > 0)) and
     state.record.alive.subseteq(Set(state.record.reserved))
   val Success = state.record.phase == Active and state.record.binding == 1
   val Fault = state.offeredStale and state.interrupted and state.record.phase == Active and state.record.binding == 2

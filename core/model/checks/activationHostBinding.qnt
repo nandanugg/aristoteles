@@ -2,7 +2,7 @@ module activationHostBindingCase {
   import activation.* from "../activation"
   const onlyBound: bool
   pure val marked = mark(authorize(initial, true))
-  pure val started = observeActive(commit(ack(spawn(reserve(marked, 1), 1), 1), true))
+  pure val started = commit(ack(spawn(reserve(marked, 1), 1), 1), true)
   var state: { record: Record, rejectedPending: bool, interrupted: bool, deniedAfterUse: bool, servedAfterUse: bool }
   action init = state' = { record: started, rejectedPending: false, interrupted: false, deniedAfterUse: false, servedAfterUse: false }
   action loseHost = all {

@@ -22,7 +22,7 @@ module activationRollbackCase {
   }
   action activate = {
     val withHost = ack(spawn(reserve(state.record, 1), 1), 1)
-    val record = observeActive(commit(withHost, true))
+    val record = commit(withHost, true)
     all {
       state.record.phase == Activating, state.record.file == Marked,
       record.phase == Active,

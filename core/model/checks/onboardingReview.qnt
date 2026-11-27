@@ -29,7 +29,7 @@ module onboardingReviewCase {
   }
   action exit = all {
     current(state.session, 1, 1), state.child == 2,
-    state' = { ...state, session: end(state.session), proposal: crashProposal(state.proposal, 1), child: 0 }
+    state' = { ...state, session: end(state.session), proposal: releaseProposalReview(state.proposal, 1), child: 0 }
   }
   action recover = all {
     state.session == Ended(1),

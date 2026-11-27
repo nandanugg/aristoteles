@@ -52,11 +52,10 @@ module activation {
     val launch = record.reserved
     if (record.phase == Activating and record.binding == 0 and record.file == Marked and
         record.alive.contains(launch) and (if (checkAck) record.acked.contains(launch) else record.acked != Set()))
-      { ...record, binding: launch }
+      // The host session and the Project move are committed in one append.
+      move({ ...record, binding: launch }, ActivationNext, Active)
     else record
   }
-  pure def observeActive(record: Record): Record =
-    if (record.binding != 0) move(record, ActivationNext, Active) else record
   pure def rollback(record: Record): Record =
     if (record.binding == 0) move(record, ActivationBack, RollingBack) else record
   pure def restore(record: Record, checkFile: bool): Record =

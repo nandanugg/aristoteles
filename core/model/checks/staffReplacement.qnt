@@ -18,9 +18,9 @@ module staffReplacementCase {
   action limited = all {
     current(state.session, 1, 1), not(state.stopped), state.work == Working(attempt),
     state' = { ...state, session: pause(state.session),
-      work: if (retainOnPause) state.work else crashTask(state.work, 1, 1),
-      review: if (retainOnPause) state.review else waiting,
-      proposal: if (retainOnPause) state.proposal else pending }
+      work: if (retainOnPause) state.work else restartTask(state.work, 1),
+      review: if (retainOnPause) state.review else releaseTaskReview(state.review, 1),
+      proposal: if (retainOnPause) state.proposal else releaseProposalReview(state.proposal, 1) }
   }
   action reset = match state.session {
     | Paused(_) => all { not(state.stopped), state' = { ...state, session: resume(state.session), resumed: true } }
@@ -36,7 +36,8 @@ module staffReplacementCase {
   }
   action retire = all {
     state.stopped, state.work == Working(attempt),
-    state' = { ...state, session: end(state.session), work: crashTask(state.work, 1, 1), review: waiting, proposal: pending }
+    state' = { ...state, session: end(state.session), work: restartTask(state.work, 1),
+      review: releaseTaskReview(state.review, 1), proposal: releaseProposalReview(state.proposal, 1) }
   }
   action replace = all {
     state.session == Ended(1), state' = { ...state, session: live(1, 1, 2) }
