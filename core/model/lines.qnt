@@ -7,7 +7,7 @@ module lines {
     line.get(from).moves.contains((move, destination))
   pure def owed(line: Line[s, m], phase: s): Duty = line.get(phase).owes
 
-  type RaiseReason = Tries | Misses | NoRule | TooBig | ContractWrong | RejectedByHuman
+  type RaiseReason = Tries | Misses | NoRule | TooBig | WrongTask | ContractWrong | RejectedByHuman
   type Review = Waiting | By(int)
   type Attempt = { number: int, session: int, retries: int, pointedOut: Set[int] }
   type Outcome = { rule: int, breaks: bool, evidence: bool }
@@ -21,7 +21,7 @@ module lines {
 
   type TaskMove = Next | Back | Raise(RaiseReason) | Restart
   pure val raises: Set[(TaskMove, TaskKey)] =
-    Set(Tries, Misses, NoRule, TooBig, ContractWrong, RejectedByHuman).map(reason => (Raise(reason), Raised(NoPayload)))
+    Set(Tries, Misses, NoRule, TooBig, WrongTask, ContractWrong, RejectedByHuman).map(reason => (Raise(reason), Raised(NoPayload)))
   pure val taskLine: Line[TaskKey, TaskMove] = Map(
     Sent(NoPayload) -> { owes: Assignee, moves: Set((Next, Working(NoPayload))) },
     Working(NoPayload) -> { owes: Assignee,
