@@ -36,7 +36,10 @@ module taskReportRaceCase {
     state' = { ...state, task: enterReview(state.task, []) }
   }
   action step = any { begin, prepare, interrupt, commitResult, testCommands, state' = state }
-  val Safety = state.writes.length() <= 1 and
+  pure val raiseFromWork = Set(TooBig, WrongTask).forall(reason =>
+    taskMove(beginWork(newTask, 1), Raise(reason), Raised(reason)) == Raised(reason)
+  )
+  val Safety = raiseFromWork and state.writes.length() <= 1 and
     (state.writes.length() == 1) == Set(ReadyToReview(NoPayload), Reviewing(NoPayload)).contains(taskPhase(state.task))
   val Success = taskPhase(state.task) == Reviewing(NoPayload) and state.writes.length() == 1
   val Fault = state.interrupted and state.copies == Set() and state.writes.length() == 1
