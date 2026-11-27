@@ -4,7 +4,7 @@ import { Effect, Exit, Schema } from 'effect'
 import { Authority, submit, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, refuse, staffingAt, type Submission,
+  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, proposalText, refuse, staffingAt, type Submission,
 } from '../../core/schema/project.ts'
 import { openProjectJournal, withProjectEnv } from '../../core/services/project.ts'
 import {
@@ -182,7 +182,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (by._tag === 'Review' && by.line === 'Proposal') {
       const proposal = project.proposals.get(by.key)
       if (!proposal) return yield* Effect.fail(invalid())
-      return ['Draft for review (proposal.json)', JSON.stringify(proposal.value, null, 2),
+      return ['Draft for review (proposal.json)', proposalText(proposal.value),
         `work review "$ARISTOTELES_TOKEN" ${proposal.key} --on=${project.read} --file=facts.yaml`]
     }
     const selected = yield* (by._tag === 'Review'

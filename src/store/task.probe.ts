@@ -40,8 +40,8 @@ export const acceptDirection = (journal: Journal, project: Project, value: Direc
 
 const files = Schema.decodeUnknownSync(ApprovedFiles)([{ path: 'AGENTS.md', hash: 'a'.repeat(64), before: 'Unmarked' }])
 export const activateTasks = (journal: Journal, project: Project, value?: Direction) => Effect.gen(function* () {
-  const staffed = project.staffing ? project : yield* acceptStaffing(journal, project,
-    { staff: [staff], subscriptions: [staff.subscription] })
+  const staffed = project.staffing._tag === 'StaffingAccepted' ? project : yield* acceptStaffing(journal, project,
+    { staff: new Map([[staff.key, staff]]), subscriptions: [staff.subscription] })
   const selected = value ?? Schema.decodeUnknownSync(Direction)({
     ...direction, standards: [], stages: rolesOf(staffed).map((role) => ({
       ...direction.stages[0], role,

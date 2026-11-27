@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { projectActivationOperations } from '../../adapters/live/activation.ts'
 import { approvedText, fakeBootstrap, hostKey } from '../../src/store/project-activation.probe.ts'
-import { Deferred, Effect, Result, Schedule } from 'effect'
+import { Deferred, Effect, Result, Schedule, Schema } from 'effect'
 import { launchNextReview, type Reviews } from '../../adapters/live/proposal.ts'
 import { projectActivationApproval, projectEvents, projectSnapshot, projectSubmission } from '../../adapters/web/project.ts'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
@@ -13,7 +13,7 @@ import { startSession, create, open, session, staff, startFixtureSession, withJo
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
 import { cliProposal, direction, evidence } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
-import { boundHostSession, staffingAt, ProposalKey, ReadPosition, StaffSessionKey, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
+import { boundHostSession, staffByKey, staffingAt, Projection, ProposalKey, ReadPosition, StaffingPlan, StaffSessionKey, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
@@ -133,8 +133,8 @@ test('departure retires the old child and releases the first proposal back into 
 test('only the owner changes a responsibility, which takes effect after review and acceptance', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
-    const opened = yield* create(journal)
-    const live = yield* startFixtureSession(journal, opened.state)
+    const staffed = yield* sharedStaffing(journal)
+    const live = yield* startFixtureSession(journal, staffed)
     const previous = live.state.roles.host.responsibility
     const value = { _tag: 'Responsibility', ...previous.value, role: live.state.roles.host, summary: Summary.make('New owner wording') }
     expect(yield* Effect.result(cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } }, staffAuthorityOf())))
@@ -151,6 +151,10 @@ test('only the owner changes a responsibility, which takes effect after review a
     const accepted = yield* cliProposal(journal, reviewed.state, choose())
     expect(accepted.state.roles.host.responsibility.value.summary).toBe(value.summary)
     expect(Number(accepted.state.roles.host.responsibility.number)).toBe(2)
+    expect(accepted.state.staffing).toEqual(staffed.staffing)
+    expect(staffByKey(accepted.state, staff.key)?.roles).toContainEqual(accepted.state.roles.host)
+    expect(accepted.state.sessions.get(session.key)?.staff.roles).toContainEqual(live.state.roles.host)
+    expect(Schema.encodeSync(Projection)(accepted.state)).not.toHaveProperty('staff')
   }))),
 ))
 
@@ -311,8 +315,8 @@ test('staffing stays effective while a replacement is reviewed, sent back, or re
     const project = yield* sharedStaffing(journal)
     const live = yield* startFixtureSession(journal, project)
     const prior = live.state.staffing
-    if (!prior) throw new Error('No effective staffing')
-    const value = { ...initialStaffing(1), _tag: 'Staffing' }
+    if (prior._tag !== 'StaffingAccepted') throw new Error('No effective staffing')
+    const value = { ...Schema.encodeSync(StaffingPlan)(initialStaffing(1)), _tag: 'Staffing' }
     const draft = yield* cliProposal(journal, live.state, { ...ask(), input: { value, previous: { _tag: 'None' } } })
     expect(draft.state.staffing).toEqual(prior)
     const launch = launchNextReview(dirname(path), journal, { reconcile: () => Effect.void, open: () => Effect.void })

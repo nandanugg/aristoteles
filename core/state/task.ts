@@ -21,6 +21,7 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
   if (!activeWork(project)) return wrongMove()
   if (task.lastChange > read) return stale()
   const before = task.phase
+  const session = actor._tag === 'Session' ? liveSession(project, actor.key) : undefined
   const entered = (phase: TaskPhase, lastAttempt = task.lastAttempt): Result.Result<Task, Refusal> =>
     edge(taskLine, before._tag, move, phase._tag) === 'Allowed'
       ? Result.succeed({ ...task, phase, lastAttempt, lastChange: number })
@@ -28,13 +29,12 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
   switch (event.from) {
     case 'Sent': {
       if (before._tag !== event.from) return wrongMove()
-      const { session: claimed, where, staffing } = event.input
+      const { where, staffing } = event.input
       if (staffing !== staffingAt(project) || read < staffing) return stale()
-      const session = liveSession(project, claimed.key)
       const staff = staffOf(project, taskRole(task))
       if (!session) return retired()
       if (read < session.startedAt) return stale()
-      if (!staff || actor._tag !== 'Staff' || actor.key !== session.staff.key || actor.key !== staff.key) return wrongActor()
+      if (!staff || staff.key !== session.staff.key) return wrongActor()
       if (where === 'Subagent' && subagentCapacity(project, staff).freeSubagents === 0) return noChild()
       const next = task.lastAttempt._tag === 'None' ? 1 : task.lastAttempt.number + 1
       if (!Schema.is(AttemptNumber)(next)) return wrongMove()
@@ -49,8 +49,8 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
         if (attempt.session.key !== event.input.session || project.sessions.get(event.input.session)?._tag !== 'Ended') return wrongMove()
         return restartTask(task, before, number)
       }
-      if (actor._tag !== 'Staff' || actor.key !== attempt.session.staff.key) return wrongActor()
-      if (event.input.session !== attempt.session.key || !liveSession(project, attempt.session.key)) return retired()
+      if (actor._tag !== 'Session') return wrongActor()
+      if (session?.key !== attempt.session.key) return retired()
       if (event.input.attempt !== attempt.number) return stale()
       if (event.move === 'raise') return entered({ _tag: 'Raised', reason: event.input.reason, evidence: event.input.evidence })
       return entered({
@@ -73,19 +73,16 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
         const { staffing } = event.input
         if (staffing !== staffingAt(project) || read < staffing) return stale()
         if (before.assignment._tag !== 'Waiting') return wrongMove()
-        const session = liveSession(project, event.input.session.key)
         if (!session || read < session.startedAt) return retired()
         const reviewer = taskReviewStaff(project, task)
-        if (!reviewer || actor._tag !== 'Staff' || actor.key !== reviewer.key || actor.key !== session.staff.key) return wrongActor()
+        if (!reviewer || reviewer.key !== session.staff.key) return wrongActor()
         if (subagentCapacity(project, reviewer).freeSubagents === 0) return noChild()
         return entered({ ...before, assignment: { _tag: 'Assigned', by: session.staff, review: task.lastChange } })
       }
       const { assignment } = before
-      const { session: key, review, facts, limit } = event.input
+      const { review, facts, limit } = event.input
       if (assignment._tag !== 'Assigned' || review !== assignment.review) return retired()
-      const session = liveSession(project, key)
       if (!session || read < session.startedAt || session.staff.key !== assignment.by.key) return retired()
-      if (actor._tag !== 'Staff' || actor.key !== assignment.by.key) return wrongActor()
       return Result.flatMap(reviewTask(task, before, facts, limit), (phase) => {
         if (reviewMove(phase) !== event.move || (event.move === 'raise' && (phase._tag !== 'Raised' || phase.reason !== event.input.reason)))
           return wrongMove()

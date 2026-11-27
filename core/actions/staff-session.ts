@@ -54,8 +54,8 @@ export const observeSession = (
 export const startChild = (
   journal: Journal, project: Project, key: Of<typeof TaskKey>, session: LiveSession, work: 'Work' | 'Review',
 ): Effect.Effect<Committed, Refusal> => {
-  const actor = { _tag: 'Staff', key: session.staff.key } as const
-  const input = { session, staffing: staffingAt(project) }
+  const actor = { _tag: 'Session', key: session.key } as const
+  const input = { staffing: staffingAt(project) }
   return work === 'Review' ? assignTaskReview(journal, project, key, session)
     : recordObserved(journal, actor, project.read, { line: 'Task', key, from: 'Sent', move: 'next', input: { ...input, where: 'Subagent' } })
 }

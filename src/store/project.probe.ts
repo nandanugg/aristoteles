@@ -8,7 +8,7 @@ import { Authority, submit } from '../../core/actions/project.ts'
 import { boundHostSession, staffingAt,
   Human, LiveSession, ReadPosition, Role, Staff, Rationale, refuse,
   type EventNumber, type Pane, type Refusal, type Project, type StaffKey, type StaffSessionKey,
-  type Of, type Projection, type StoredActor,
+  staffByKey, type Of, type Projection, type StoredActor,
 } from '../../core/schema/project.ts'
 import { Env } from '../services/io.ts'
 import type { Committed, Journal } from '../services/project.ts'
@@ -37,7 +37,6 @@ export const staff = Schema.decodeUnknownSync(Staff)({
 export const session = Schema.decodeUnknownSync(LiveSession)({
   _tag: 'Live', key: 'session:' + '1'.repeat(32), staff, startedAt: 1, pane: { address: '%2' },
 })
-export const worker: StoredActor = { _tag: 'Staff', key: staff.key }
 export const ownerInput = (journal: Journal, input: unknown) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Human', actor: human } as const),
@@ -76,7 +75,7 @@ export const startSession = (
     readonly pane: Of<typeof Pane>; readonly staffing: Of<typeof EventNumber>
   },
 ): Effect.Effect<Committed, Refusal> => Effect.gen(function* () {
-  const staff = project.staff.get(session.staff)
+  const staff = staffByKey(project, session.staff)
   if (!staff) return yield* Effect.fail(refuse('WrongActor', Rationale.make('Staffing does not include that staff.')))
   const address = session.key
   const reserved = yield* reserveSession(journal, project, address, staff, session.staffing)

@@ -5,9 +5,9 @@ import { resumeSession, startSession, open, session, staff, staffInput, withJour
 import { begin, commandOutcomes, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { initialStaffing, launchStaff, sharedStaffing } from '../../src/store/staff-session.probe.ts'
 import { staffingAt,
-  SessionCount, StaffSessionKey, SubagentCount, TaskKey, capacity, type Staff, type StaffingPlan,
+  SessionCount, StaffSessionKey, SubagentCount, TaskKey, capacity, staffByKey, type Staff, type StaffingPlan,
 } from '../schema/project.ts'
-import { readPosition } from '../state/project.ts'
+import { applyEvent, readPosition } from '../state/project.ts'
 import { acceptStaffing } from '../../src/store/proposal.probe.ts'
 import { observeSession, readOpenProject, startChild } from './staff-session.ts'
 
@@ -19,11 +19,12 @@ test('shared staff covers both roles and a stale staffing plan or a duplicate li
     const journal = yield* open(path)
     const project = yield* sharedStaffing(journal)
     const plan = initialStaffing()
-    const equalRoles: Staff = { ...plan.staff[1]!, roles: plan.staff[0].roles }
-    const noSubagents = { ...plan.staff[0], subagents: SubagentCount.make(0) }
-    expect(yield* Effect.result(acceptStaffing(journal, project, { ...plan, staff: [noSubagents, plan.staff[1]!] })))
+    const [host, other] = [...plan.staff.values()]
+    const equalRoles: Staff = { ...other!, roles: host!.roles }
+    const noSubagents = { ...host!, subagents: SubagentCount.make(0) }
+    expect(yield* Effect.result(acceptStaffing(journal, project, { ...plan, staff: new Map([[noSubagents.key, noSubagents], [other!.key, other!]]) })))
       .toMatchObject(rejected('StaffingMinimum'))
-    expect(yield* Effect.result(acceptStaffing(journal, project, { ...plan, staff: [plan.staff[0], equalRoles] })))
+    expect(yield* Effect.result(acceptStaffing(journal, project, { ...plan, staff: new Map([[host!.key, host!], [equalRoles.key, equalRoles]]) })))
       .toMatchObject(rejected('InvalidInput'))
     const launched = yield* launchStaff(journal, project, 0, 1)
     const current = yield* readOpenProject(journal)
@@ -36,7 +37,7 @@ test('shared staff covers both roles and a stale staffing plan or a duplicate li
     const changed = yield* readOpenProject(journal)
     expect(yield* Effect.result(launchStaff(journal, changed, 1, 2))).toMatchObject(rejected('NoCapacity'))
     expect(yield* Effect.result(launchStaff(journal, changed, 0, 2))).toMatchObject(rejected('WrongMove'))
-    expect(changed.staff.get(staff.key)?.roles).toHaveLength(2)
+    expect(staffByKey(changed, staff.key)?.roles).toHaveLength(2)
     expect(staffingAt(changed) > readPosition(launched.state)).toBe(true)
     expect((yield* readOpenProject(journal)).read).toBe(changed.read)
   }))),
@@ -62,7 +63,12 @@ test('pause retires authority, releases charges, and resumes the same attempt wi
     expect(resumed.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, session: { key: continued.key } } })
     expect(yield* Effect.result(staffInput(journal, resultInput(resumed.read), session))).toMatchObject(rejected('RetiredSession'))
     expect(yield* Effect.result(staffInput(journal, resultInput(readPosition(working.state)), continued))).toMatchObject(rejected('Stale'))
-    yield* staffInput(journal, resultInput(resumed.read), continued)
+    const reported = yield* staffInput(journal, resultInput(resumed.read), continued)
+    expect(reported.event.actor).toEqual({ _tag: 'Session', key: continued.key })
+    expect(applyEvent(resumed, {
+      ...reported.event, actor: { _tag: 'Session', key: session.key },
+    })).toMatchObject(rejected('RetiredSession'))
+    expect((yield* readOpenProject(journal)).read).toBe(reported.state.read)
   }))),
 ))
 

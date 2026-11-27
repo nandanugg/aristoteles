@@ -105,7 +105,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const journal = yield* open(path)
     const created = yield* create(journal)
     const live = yield* startFixtureSession(journal, created.state)
-    const plan = { staff: [staff], subscriptions: [staff.subscription] } as const
+    const plan = { staff: new Map([[staff.key, staff]]), subscriptions: [staff.subscription] } as const
     const key = ProposalKey.make('proposal:staffing')
     const draft = yield* proposeStaffing(journal, live.state, plan, key)
     const line = { line: 'Proposal', key } as const
@@ -120,7 +120,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const firstAddress = questionAddressText(address(questionKey))
     expect(first.state.questions.size).toBe(0)
     expect(first.state.proposals.get(line.key)?.questions.get(questionKey)?.state._tag).toBe('Open')
-    const send = { ...line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' } } }
+    const send = { ...line, move: 'submit', input: { value: { staff: [staff], subscriptions: plan.subscriptions, _tag: 'Staffing' } } }
     expect(yield* Effect.result(cliProposal(journal, first.state, send))).toMatchObject(failure('Stale'))
     const firstAnswer = yield* cliQuestion(journal, ownerAuthority, 'answer', firstAddress, first.state.read, answerYaml('Keep two slots.'))
     expect(yield* Effect.result(cliProposal(journal, first.state, send))).toMatchObject(failure('Stale'))

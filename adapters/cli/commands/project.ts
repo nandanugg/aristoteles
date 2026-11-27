@@ -4,11 +4,11 @@ import { nextStep, type Selection } from '../../../core/derived/project/next-ste
 import { reportWork, sendTask, taskBrief } from '../../../core/actions/task.ts'
 import { runTaskCommands, taskCommandBlock, type TaskCommands } from '../../../core/effects/project-commands.ts'
 import { projectTaskWords } from '../../words/project.ts'
-import { Authority as ProjectAuthority, submit, type AuthenticatedActor } from '../../../core/actions/project.ts'
+import { Authority as ProjectAuthority, submit, submitChecked, type AuthenticatedActor } from '../../../core/actions/project.ts'
 import { reportTaskReview } from '../../../core/actions/task-review.ts'
 import { decodeQuestionInput } from '../../../core/actions/question.ts'
 import {
-  Answer as ProjectAnswer, ProposalSubmission, ReadPosition, StaffSessionKey, Rationale, StoredActor, TaskDraft, TaskKey, ReviewFacts, taskLine, refuse as projectRefuse,
+  Answer as ProjectAnswer, ProposalSubmission, ReadPosition, StaffSessionKey, Rationale, questionLine, TaskDraft, TaskKey, ReviewFacts, taskLine, refuse as projectRefuse,
   type Of, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
@@ -33,7 +33,7 @@ export const projectQuestionCommand = (
     const answer = yield* decodeQuestionInput(ProjectAnswer, raw)
     return yield* submit(journal, { read, line: 'Question', owner, key, move: 'answer', input: { answer } })
   }
-  const to = yield* decodeQuestionInput(StoredActor, target === 'owner' ? { _tag: 'Human' } : { _tag: 'Staff', key: target })
+  const to = yield* decodeQuestionInput(questionLine.null.moves.open.input.fields.to, target === 'owner' ? { _tag: 'Human' } : { _tag: 'Staff', key: target })
   if (!isRecord(raw) || 'to' in raw) {
     return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Address the recipient in the command.')))
   }
@@ -96,7 +96,7 @@ export const projectOnboard = (
   const checked = Schema.decodeUnknownOption(ProposalSubmission, { onExcessProperty: 'error' })(isRecord(input) ? { ...input, read } : input)
   if (checked._tag === 'None')
     return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Use the checked onboarding submission.')))
-  const committed = yield* submit(journal, checked.value)
+  const committed = yield* submitChecked(journal, checked.value)
   if (review && committed.event.from !== null) yield* Effect.result(review)
   return committed
 })

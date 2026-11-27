@@ -4,7 +4,7 @@ import {
   acknowledgeSession, cancelSession, observeSession, readOpenProject, reserveSession, staffAuthority, startChild,
 } from '../../core/actions/staff-session.ts'
 import {
-  Rationale, refuse, sessionMayStart, latestSession, staffOf, staffingAt, taskRole, subagentCapacity, activeWork,
+  Rationale, refuse, sessionMayStart, latestSession, staffByKey, staffOf, staffingAt, taskRole, subagentCapacity, activeWork,
   type EventNumber, type LiveSession, type Starting, type Of, type Pane, type Project, type Refusal,
   type StaffSessionKey, type Staff, type StaffKey, type TaskKey,
 } from '../../core/schema/project.ts'
@@ -55,7 +55,7 @@ export const staffSessionOperations = (
       if (project.sessions.has(key)) return yield* stale()
       const from = previous && project.sessions.get(previous)
       if (previous && (!from || from._tag !== 'Paused' || from.staff.key !== staff)) return yield* wrongMove()
-      const assigned = project.staff.get(staff)
+      const assigned = staffByKey(project, staff)
       if (!assigned) return yield* wrongMove()
       const activation = project.activation
       if ((activation._tag === 'Activating' || activation._tag === 'RollingBack' ||

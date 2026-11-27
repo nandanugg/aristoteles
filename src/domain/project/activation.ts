@@ -33,7 +33,7 @@ export type Activation = Of<typeof Activation>
 
 export const approvedProposals = (project: Project) => {
   const proposals = [...project.proposals.values()].filter(({ phase }) => phase._tag !== 'Removed')
-  if (!project.staffing || !proposals.some(({ value }) => value._tag === 'Direction') ||
+  if (project.staffing._tag !== 'StaffingAccepted' || !proposals.some(({ value }) => value._tag === 'Direction') ||
       proposals.some(({ phase }) => phase._tag !== 'Accepted')) return null
   const [first, ...rest] = proposals.flatMap(({ phase }) => phase._tag === 'Accepted' ? [phase.version] : [])
   return first ? [first, ...rest] as const : null

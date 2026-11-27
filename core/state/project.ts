@@ -3,8 +3,8 @@ import { applyActivationMove } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import {
-  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, approvedProposals, roleOf, StoredEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffOf, subagentCapacity,
-  type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type StoredActor, type Refusal, type StaffSession,
+  DirectionVersion, Role, Stage, ReadPosition, Rationale, RetryCount, activeWork, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, projectLine, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, subagentCapacity, versionOf,
+  type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal, type StaffSession,
 } from '../schema/project.ts'
 
 export const readPosition = (state: Projection): typeof ReadPosition.Type =>
@@ -33,9 +33,10 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     if (staff.subagents === 0) return Result.fail(refuse('StaffingMinimum', Rationale.make('The onboarding host needs a subagent.')))
     const canonicalStaff = { ...staff, roles: [roles.get(staff.roles[0].key)!, ...staff.roles.slice(1).map((role) => roles.get(role.key)!)] as const }
     return Result.succeed({
-      owner, roles: { host, pipeline, work: new Map(input.roles.map((role) => [role.key, role])) }, staff: new Map([[staff.key, canonicalStaff]]),
+      owner, roles: { host, pipeline, work: new Map(input.roles.map((role) => [role.key, role])) },
       subscriptions: new Map([[staff.subscription.key, staff.subscription]]), openedAt: number,
-      staffing: null, proposals: new Map(), sessions: new Map(), tasks: new Map(), questions: new Map(),
+      staffing: { _tag: 'Staffing', staff: new Map([[staff.key, canonicalStaff]]), subscriptions: [staff.subscription] },
+      proposals: new Map(), sessions: new Map(), tasks: new Map(), questions: new Map(),
       status: { _tag: 'Open' }, activation: { _tag: 'Onboarding' }, lastChange: number,
       read: ReadPosition.make(number),
     })
@@ -48,6 +49,7 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
   return Result.succeed({ ...project, status: { _tag: 'Ended', at: number }, lastChange: number })
 }
 
+const sameApprovedProposals = Schema.toEquivalence(Schema.NonEmptyArray(versionOf(ProposalValue)))
 const sameDirection = Schema.toEquivalence(DirectionVersion)
 const sameRole = Schema.toEquivalence(Role)
 const equalStage = Schema.toEquivalence(Stage)
@@ -57,7 +59,7 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   const activation = activeWork(project)
   if (!activation) return wrongMove()
   if (activation.work.at > read) return stale()
-  if (actor._tag !== 'Staff' || actor.key !== activation.staff.key) return retired()
+  if (actor._tag !== 'Session' || actor.key !== boundHostSession(project)?.key) return retired()
   if (project.tasks.has(key)) return stale()
   const role = roleOf(project, draft.stages[0].role.key)
   const reviewer = roleOf(project, draft.reviewer.key)
@@ -119,7 +121,7 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
     let next = activation
     if (activation._tag === 'Activating' && activation.staff.key === staff.key) {
       const proposals = approvedProposals(project)
-      if (!proposals || JSON.stringify(proposals) !== JSON.stringify(activation.proposals)) return stale()
+      if (!proposals || !sameApprovedProposals(proposals, activation.proposals)) return stale()
       next = { ...activation, _tag: 'Active', work: { _tag: 'NotStarted' } }
     }
     if (activation._tag === 'Active' && activation.staff.key === staff.key && activation.work._tag !== 'NotStarted' &&
@@ -167,25 +169,17 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
   return Result.succeed(move({ _tag: observed, key, staff, startedAt }))
 }
 
-const actorFor = (project: Project, actor: StoredActor): Question['from'] | undefined =>
-  actor._tag === 'Human' ? project.owner : project.staff.get(actor.key)
-
 const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Result<Project, Refusal> => {
   const { owner, key, number, read } = event
-  const actor = actorFor(project, event.actor)
-  if (!actor) return wrongActor()
-  if (actor._tag === 'Staff') {
-    const live = [...project.sessions.values()].find((session) => session._tag === 'Live' && session.staff.key === actor.key)
-    if (!live) return retired()
-    if (read < live.startedAt) return stale()
-  }
+  const actor = event.actor._tag === 'Human' ? project.owner : liveSession(project, event.actor.key)?.staff
+  if (!actor) return retired()
   const move = (questions: Project['questions']) => {
     const existing = questions.get(key)
     const store = (question: Question) => Result.succeed(new Map(questions).set(key, question))
     if (event.from === null) {
       if (existing) return stale()
       const { to: recipient, text, form } = event.input
-      const to = actorFor(project, recipient)
+      const to = recipient._tag === 'Human' ? project.owner : staffByKey(project, recipient.key)
       if (!to) return wrongActor()
       return store({ key, from: actor, to, text, form, state: { _tag: 'Open' }, lastChange: number })
     }
@@ -234,6 +228,11 @@ export const applyEvent = (state: Projection, event: StoredEvent): Result.Result
   }
   if (state?.status._tag === 'Ended') {
     return Result.fail(refuse('ProjectEnded', Rationale.make('This project has ended.')))
+  }
+  if (event.actor._tag === 'Session') {
+    const session = state && liveSession(state, event.actor.key)
+    if (!session) return retired()
+    if (session.startedAt > event.read) return stale()
   }
   const updated = event.line === 'Project' ? applyProjectMove(state, event) : ((): Result.Result<Project, Refusal> => {
     if (!state) return wrongMove()

@@ -5,7 +5,7 @@ import type { Project } from './records.ts'
 import {
   AccountName, DutyText, Introduction, Summary, EventNumber, LaunchText, ModelName, Name, PaneAddress, PlanName, ProviderName, Rationale,
   SessionCount, StaffSessionKey, StaffKey, SubagentCount, SubscriptionKey, WindowMinutes, WindowShare,
-  refuse, type Of, type Refusal, RoleKey,
+  recordsByKey, refuse, type Of, type Refusal, RoleKey,
 } from './values.ts'
 
 export const Human = Schema.TaggedStruct('Human', { name: Name })
@@ -47,14 +47,31 @@ export const StaffSession = Schema.Union([
 ])
 export type StaffSession = Of<typeof StaffSession>
 export const StaffingPlan = Schema.Struct({
-  staff: Schema.NonEmptyArray(Staff), subscriptions: Schema.NonEmptyArray(Subscription),
+  staff: recordsByKey(Staff, StaffKey).check(Schema.makeFilter((staff) => staff.size > 0)),
+  subscriptions: Schema.NonEmptyArray(Subscription),
 })
 export type StaffingPlan = Of<typeof StaffingPlan>
 
 
+const withCurrentRoles = (project: Project, staff: Staff): Staff => {
+  const [first, ...rest] = staff.roles
+  const current = (role: Role) => roleOf(project, role.key) ?? role
+  return { ...staff, roles: [current(first), ...rest.map(current)] }
+}
+
+const staffMap = ({ staffing }: Project) =>
+  (staffing._tag === 'StaffingAccepted' ? staffing.version.value : staffing).staff
+
+export const projectStaff = (project: Project): readonly Staff[] =>
+  [...staffMap(project).values()].map((staff) => withCurrentRoles(project, staff))
+
+export const staffByKey = (project: Project, key: Of<typeof StaffKey>): Staff | undefined => {
+  const staff = staffMap(project).get(key)
+  return staff && withCurrentRoles(project, staff)
+}
 
 export const staffOf = (project: Project, role: Role): Staff | undefined =>
-  [...project.staff.values()].find((staff) => staff.roles.some(({ key }) => key === role.key))
+  projectStaff(project).find((staff) => staff.roles.some(({ key }) => key === role.key))
 
 export const liveSession = (project: Project, key: Of<typeof StaffSessionKey>): LiveSession | undefined => {
   const session = project.sessions.get(key)
@@ -104,14 +121,12 @@ export const capacity = (project: Project, staff: Staff) => ({
 export const validateStaffing = (project: Project, plan: StaffingPlan): Result.Result<StaffingPlan, Refusal> => {
   const subscriptions = new Map(plan.subscriptions.map((subscription) => [subscription.key, subscription]))
   const assigned = new Set<Of<typeof RoleKey>>()
-  const staffKeys = new Set<Of<typeof StaffKey>>()
-  const canonical: Staff[] = []
+  const canonical = new Map<Of<typeof StaffKey>, Staff>()
   const invalid = (why: Of<typeof Rationale>) => Result.fail(refuse('InvalidInput', why))
   if (subscriptions.size !== plan.subscriptions.length) return invalid(Rationale.make('Give each subscription its own identity.'))
-  for (const staff of plan.staff) {
+  for (const staff of plan.staff.values()) {
     const subscription = subscriptions.get(staff.subscription.key)
-    if (!subscription || staffKeys.has(staff.key)) return invalid(Rationale.make('Use the listed subscriptions and distinct staff.'))
-    staffKeys.add(staff.key)
+    if (!subscription || canonical.has(staff.key)) return invalid(Rationale.make('Use the listed subscriptions and distinct staff.'))
     const roles: Role[] = []
     for (const candidate of staff.roles) {
       const role = roleOf(project, candidate.key)
@@ -124,7 +139,7 @@ export const validateStaffing = (project: Project, plan: StaffingPlan): Result.R
     if (staff.subagents === 0 && roles.some(({ key }) => key === project.roles.host.key || key === project.roles.pipeline.key)) {
       return Result.fail(refuse('StaffingMinimum', Rationale.make('Host and pipeline each need access to a subagent.')))
     }
-    const current = project.staff.get(staff.key)
+    const current = staffByKey(project, staff.key)
     const session = current && latestSession(project, current)
     if (session && session._tag !== 'Ended' &&
         (session.staff.subscription.key !== subscription.key ||
@@ -134,11 +149,11 @@ export const validateStaffing = (project: Project, plan: StaffingPlan): Result.R
     if (subagentCapacity(project, staff).usedSubagents > staff.subagents) {
       return Result.fail(refuse('NoCapacity', Rationale.make('The staffing plan would remove a subagent slot still in use.')))
     }
-    canonical.push({ ...staff, roles: [first, ...rest], subscription })
+    canonical.set(staff.key, { ...staff, roles: [first, ...rest], subscription })
   }
-  for (const prior of project.staff.values()) {
+  for (const prior of projectStaff(project)) {
     const session = latestSession(project, prior)
-    if (!staffKeys.has(prior.key) && session && session._tag !== 'Ended')
+    if (!canonical.has(prior.key) && session && session._tag !== 'Ended')
       return invalid(Rationale.make('Retire the staff session before removing its staff.'))
   }
   for (const subscription of plan.subscriptions) {
@@ -147,16 +162,15 @@ export const validateStaffing = (project: Project, plan: StaffingPlan): Result.R
       return Result.fail(refuse('NoCapacity', Rationale.make('The staffing plan would remove a provider slot still in use.')))
     }
   }
-  const [first, ...rest] = canonical
-  if (!first || assigned.size !== rolesOf(project).length) return invalid(Rationale.make('Cover every project role.'))
-  return Result.succeed({ ...plan, staff: [first, ...rest] })
+  if (canonical.size === 0 || assigned.size !== rolesOf(project).length) return invalid(Rationale.make('Cover every project role.'))
+  return Result.succeed({ ...plan, staff: canonical })
 }
 
 export const sessionMayStart = (
   project: Project, key: Of<typeof StaffKey>, staffing: Of<typeof EventNumber>, previous: StaffSession | null,
 ): Result.Result<Staff, Refusal> => {
   if (staffing !== staffingAt(project)) return Result.fail(refuse('Stale', Rationale.make('Staffing changed before launch.')))
-  const staff = project.staff.get(key)
+  const staff = staffByKey(project, key)
   if (!staff) return Result.fail(refuse('WrongActor', Rationale.make('Staffing does not include that staff.')))
   const latest = latestSession(project, staff)
   if (previous ? latest?.key !== previous.key || latest._tag !== 'Paused' : latest && latest._tag !== 'Ended')

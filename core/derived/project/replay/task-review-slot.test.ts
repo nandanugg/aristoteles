@@ -43,7 +43,7 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
     const journal = yield* open(path)
     const created = yield* create(journal, [workRole], hostStaff)
     const staffed = yield* acceptStaffing(journal, created.state, {
-      staff: [hostStaff, ownStaff, queuedStaff], subscriptions: [staff.subscription],
+      staff: new Map([hostStaff, ownStaff, queuedStaff].map((staff) => [staff.key, staff])), subscriptions: [staff.subscription],
     })
     const active = yield* activateTasks(journal, staffed, direction)
     const started = yield* startWork(journal, active)

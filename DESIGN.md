@@ -5,17 +5,22 @@ The `work` CLI and the Project page use checked schemas from
 supply a line, a move, checked input, and a read position. Task, Proposal, and
 Question submissions carry a key directly, and a Question also carries its owner.
 The engine establishes actor authority from the owner terminal, the bound host
-session, or a live staff session and review assignment.
+session, or a live staff session and review assignment. The journal records a
+staff act under the session key and checks that exact lifetime during replay.
 
 ## Journal
 
-A format-19 SQLite journal stores ordered events using the same line fields as
+A format-20 SQLite journal stores ordered events using the same line fields as
 submissions. Each write reads the current projection inside a transaction, checks
 the actor and read position, and appends the event. The phase transitions fold those events into one Project projection.
 CLI and page views derive their next steps from that projection. The page loads a
 snapshot and reads later events by position to stay current through reconnects.
 
 ## Lines
+
+The accepted staffing version owns the staff map. Until acceptance, the project
+uses its bootstrap staff. Current role details come from the project’s roles,
+while sessions keep the staff value they started with.
 
 - A submitted proposal goes to a fresh reviewer who reports facts. The owner
   accepts the reviewed version, sends it back, or removes it. An answered

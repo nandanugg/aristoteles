@@ -28,7 +28,7 @@ export const applyActivationMove = (project: Project, event: ActivationEvent): R
   if (phase._tag === 'RollingBack' && from === 'RollingBack') return commit({ _tag: 'Onboarding' })
   if (phase._tag !== 'Active' || from !== 'Active') return wrong()
   if (event.move === 'use') {
-    return actor._tag === 'Staff' && actor.key === phase.staff.key && event.input.session === boundHostSession(project)?.key &&
+    return actor._tag === 'Session' && actor.key === boundHostSession(project)?.key &&
       phase.work._tag === 'Started' ? commit({ ...phase, work: { _tag: 'Used', at: phase.work.at, usedAt: number } }) : retired()
   }
   if (project.lastChange > read) return stale()

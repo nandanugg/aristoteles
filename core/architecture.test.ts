@@ -166,7 +166,7 @@ test('every Project record key has a map of its own record type', () => {
     }
     ts.forEachChild(node, visit)
   }
-  for (const file of ['records.ts', 'proposal.ts', 'task.ts']) visit(sourceOf(domain + file))
+  for (const file of ['records.ts', 'proposal.ts', 'staff.ts', 'task.ts']) visit(sourceOf(domain + file))
   expect(declared.sort()).toEqual([...new Set(paired)].sort())
 })
 

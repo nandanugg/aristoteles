@@ -3,7 +3,7 @@ import type { StaffingPlan as ProjectStaffing } from '../../../core/schema/proje
 
 function renderStaffing({ plan }: { readonly plan: ProjectStaffing }): ReturnType<typeof html> {
   return html`<section aria-label="Staffing arrangement">
-    <ul>${plan.staff.map((staff) => html`<li key=${staff.key}>
+    <ul>${[...plan.staff.values()].map((staff) => html`<li key=${staff.key}>
       <strong>${staff.name}</strong> · ${staff.model} · ${staff.subagents} subagents
       <ul>${staff.roles.map((role) => html`<li key=${role.key}>${role.name}</li>`)}</ul>
     </li>`)}</ul>

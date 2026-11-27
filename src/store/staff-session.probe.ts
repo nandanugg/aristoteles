@@ -8,13 +8,9 @@ import { startSession, create, role, session, staff } from './project.probe.ts'
 export const maker = role('maker')
 export const initialStaffing = (limit: 1 | 2 = 2): StaffingPlan => {
   const subscription = { ...staff.subscription, sessions: { _tag: 'Limited', max: SessionCount.make(limit) } } as const
-  return {
-    staff: [
-      { ...staff, subscription, subagents: SubagentCount.make(1) },
-      Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:other', roles: [maker], subscription, subagents: 1 }),
-    ],
-    subscriptions: [subscription],
-  }
+  const host = { ...staff, subscription, subagents: SubagentCount.make(1) }
+  const other = Schema.decodeUnknownSync(Staff)({ ...staff, key: 'staff:other', roles: [maker], subscription, subagents: 1 })
+  return { staff: new Map([[host.key, host], [other.key, other]]), subscriptions: [subscription] }
 }
 export const sharedStaffing = (journal: Journal) => Effect.gen(function* () {
   yield* create(journal, [maker])
@@ -24,6 +20,6 @@ export const sharedStaffing = (journal: Journal) => Effect.gen(function* () {
 })
 export const launchStaff = (journal: Journal, project: Project, index: 0 | 1, lifetime: 1 | 2) =>
   startSession(journal, project, {
-    key: StaffSessionKey.make('session:' + lifetime), staff: initialStaffing().staff[index]!.key,
+    key: StaffSessionKey.make('session:' + lifetime), staff: [...initialStaffing().staff.keys()][index]!,
     staffing: staffingAt(project), pane: session.pane,
   })

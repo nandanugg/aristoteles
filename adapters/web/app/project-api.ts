@@ -1,8 +1,10 @@
 import { Result, Schema } from 'effect'
-import { Refusal as ProjectRefusal, Rationale, refuse as refuseProject, type Project, type Submission } from '../../../core/schema/project.ts'
+import { Refusal as ProjectRefusal, Rationale, refuse as refuseProject, type Project, Submission } from '../../../core/schema/project.ts'
 import { receiveProjectPayload, replaceProjectSnapshot, type PageProject } from './project-state.ts'
 
 export type ProposalReply = Result.Result<Project, ProjectRefusal>
+
+const encodeSubmission = Schema.encodeSync(Submission)
 
 export const postProjectSubmission = async (
   endpoint: URL, snapshot: URL, page: PageProject, submission: Submission,
@@ -10,7 +12,7 @@ export const postProjectSubmission = async (
   const failed = () => Result.fail(refuseProject('Unavailable', Rationale.make('Could not read the project’s committed response.')))
   try {
     const response = await fetch(endpoint, {
-      method: 'POST', body: JSON.stringify(submission), headers: { 'content-type': 'application/json' },
+      method: 'POST', body: JSON.stringify(encodeSubmission(submission)), headers: { 'content-type': 'application/json' },
     })
     const body: unknown = await response.json()
     if (!response.ok) {

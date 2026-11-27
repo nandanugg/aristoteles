@@ -30,7 +30,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=18; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=19; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -40,7 +40,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
         cwd: dir, env: { ...process.env, WORK_DIR: dir, ARISTOTELES_DB: db, WORK_NO_OPEN: '1' },
       })
       expect(result.exitCode).toBe(1)
-      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 19 project journal')
+      expect(result.stdout.toString() + result.stderr.toString()).toContain('not a format 20 project journal')
       expect(readFileSync(db).equals(original)).toBe(true)
     }
     expect(existsSync(join(dir, '.work'))).toBe(false)

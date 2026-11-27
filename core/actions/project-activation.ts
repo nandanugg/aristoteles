@@ -12,6 +12,6 @@ export const observeActivation = (
 export const recordHostUse = (
   journal: Journal, project: Project, key: Of<typeof StaffSessionKey>,
 ): Effect.Effect<Committed, Refusal> => recordObserved(
-  journal, project.activation._tag === 'Active' ? { _tag: 'Staff', key: project.activation.staff.key } : { _tag: 'Human' }, project.read,
-  { line: 'Activation', from: 'Active', move: 'use', input: { session: key } },
+  journal, { _tag: 'Session', key }, project.read,
+  { line: 'Activation', from: 'Active', move: 'use', input: {} },
 )

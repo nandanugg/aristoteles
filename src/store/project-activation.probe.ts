@@ -26,7 +26,7 @@ export const readyProject = (path: string, host = staff, projectDirectory?: Jour
   const journal = yield* open(path, 'Create', projectDirectory)
   const project = (yield* create(journal, [], host)).state
   const staffed = yield* acceptStaffing(journal, project, {
-    staff: [host], subscriptions: [host.subscription],
+    staff: new Map([[host.key, host]]), subscriptions: [host.subscription],
   })
   const onboarding = { ...session, key: StaffSessionKey.make('session:onboarding') }
   const live = yield* startFixtureSession(journal, staffed, onboarding)

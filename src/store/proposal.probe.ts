@@ -4,7 +4,7 @@ import { Authority, type AuthenticatedActor } from '../../core/actions/project.t
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import { staffingAt,
-  Direction, ProposalKey, ReviewFacts, StaffSessionKey, type Of, type Project, type StaffingPlan,
+  Direction, ProposalKey, ReviewFacts, StaffSessionKey, type Of, type Project, StaffingPlan,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { startSession, host, owner, session, staff } from './project.probe.ts'
@@ -37,7 +37,7 @@ export const cliProposal = (
 )
 export const proposeStaffing = (
   journal: Journal, project: Project, plan: StaffingPlan, key: Of<typeof ProposalKey>,
-) => cliProposal(journal, project, { line: 'Proposal', key, move: 'open', input: { previous: { _tag: 'None' }, value: { ...plan, _tag: 'Staffing' } } })
+) => cliProposal(journal, project, { line: 'Proposal', key, move: 'open', input: { previous: { _tag: 'None' }, value: { ...Schema.encodeSync(StaffingPlan)(plan), _tag: 'Staffing' } } })
 
 // Earlier capacity fixtures now install staffing through the same reviewed proposal flow.
 export const acceptStaffing = (journal: Journal, project: Project, plan: StaffingPlan) => Effect.gen(function* () {
@@ -50,7 +50,7 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   const live = existing?._tag === 'Live' ? existing : [...started.sessions.values()].find((item) => item._tag === 'Live')
   if (live?._tag !== 'Live') throw new Error('Missing onboarding session')
   const line = { line: 'Proposal', key } as const
-  const staged = yield* cliProposal(journal, started, { ...line, move: 'submit', input: { value: { ...plan, _tag: 'Staffing' } } })
+  const staged = yield* cliProposal(journal, started, { ...line, move: 'submit', input: { value: { ...Schema.encodeSync(StaffingPlan)(plan), _tag: 'Staffing' } } })
   const proposal = staged.state.proposals.get(key)
   if (!proposal) throw new Error('Missing staffing proposal')
   const assigned = yield* assignProposalReview(journal, proposal, live, staged.state.read)

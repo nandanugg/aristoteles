@@ -28,7 +28,7 @@ export const SubscriptionKey = keyWithPrefix('subscription').pipe(Schema.brand('
 
 export const StoredActor = Schema.Union([
   Schema.TaggedStruct('Human', {}),
-  Schema.TaggedStruct('Staff', { key: StaffKey }),
+  Schema.TaggedStruct('Session', { key: StaffSessionKey }),
 ])
 export type StoredActor = Of<typeof StoredActor>
 

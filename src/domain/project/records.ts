@@ -1,10 +1,10 @@
 import { Schema } from 'effect'
 import { Activation } from './activation.ts'
-import { Proposal, StaffingAccepted } from './proposal.ts'
-import { Human, Role, Staff, StaffSession, Subscription } from './staff.ts'
+import { Proposal, StaffingAccepted, staffing } from './proposal.ts'
+import { Human, Role, StaffSession, Subscription } from './staff.ts'
 import {
   EventNumber, recordsByKey,
-  ProposalKey, QuestionKey, ReadPosition, RoleKey, StaffSessionKey, StaffKey,
+  ProposalKey, QuestionKey, ReadPosition, RoleKey, StaffSessionKey,
   SubscriptionKey, TaskKey, type Of,
 } from './values.ts'
 import { Task } from './task.ts'
@@ -18,9 +18,9 @@ export const Project = Schema.Struct({
   owner: Human,
   roles: Schema.Struct({ host: Role, pipeline: Role, work: recordsByKey(Role, RoleKey) }).check(
     Schema.makeFilter(({ host, pipeline, work }) => host.key !== pipeline.key && !work.has(host.key) && !work.has(pipeline.key)),
-  ), staff: recordsByKey(Staff, StaffKey),
+  ),
   subscriptions: recordsByKey(Subscription, SubscriptionKey), openedAt: EventNumber,
-  staffing: Schema.NullOr(StaffingAccepted), proposals: recordsByKey(Proposal, ProposalKey),
+  staffing: Schema.Union([staffing, StaffingAccepted]), proposals: recordsByKey(Proposal, ProposalKey),
   sessions: recordsByKey(StaffSession, StaffSessionKey), tasks: recordsByKey(Task, TaskKey), questions: recordsByKey(Question, QuestionKey), status: ProjectStatus, activation: Activation,
   lastChange: EventNumber, read: ReadPosition,
 })

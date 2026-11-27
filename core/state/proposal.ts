@@ -1,18 +1,15 @@
 import { Result, Schema } from 'effect'
 import {
-  FileContents, Rationale, currentQuestion, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, staffOf, subagentCapacity,
-  validateStaffing, reviewOutcome, roleOf, type Project, type Proposal, type ProposalEvent, type ProposalValue, type Refusal, type StoredActor, type Version,
+  ProposalValue, Rationale, currentQuestion, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, sameActor, staffOf, subagentCapacity,
+  validateStaffing, reviewOutcome, roleOf, type Project, type Proposal, type ProposalEvent, type Refusal, type Version, proposalText, versionOf,
 } from '../schema/project.ts'
 
 const wrongMove = () => Result.fail(refuse('WrongMove', Rationale.make('That move does not apply to the proposal’s phase.')))
 const wrongActor = () => Result.fail(refuse('WrongActor', Rationale.make('Use the current proposer, owner or assigned reviewer.')))
 const stale = () => Result.fail(refuse('Stale', Rationale.make('The proposal or its basis has changed.')))
 
-const actorOf = (project: Project, by: StoredActor): Proposal['proposer'] | undefined =>
-  by._tag === 'Human' ? project.owner : project.staff.get(by.key)
-
 const effectiveVersion = (project: Project, value: ProposalValue): Version<ProposalValue> | undefined => {
-  if (value._tag === 'Staffing') return project.staffing?.version
+  if (value._tag === 'Staffing') return project.staffing._tag === 'StaffingAccepted' ? project.staffing.version : undefined
   if (value._tag !== 'Responsibility') return undefined
   const role = roleOf(project, value.role.key)
   if (!role) return undefined
@@ -20,12 +17,13 @@ const effectiveVersion = (project: Project, value: ProposalValue): Version<Propo
   return { ...responsibility, value: { ...responsibility.value, _tag: 'Responsibility', role } }
 }
 
+const sameVersion = Schema.toEquivalence(versionOf(ProposalValue))
 const latestDirectionVersion = (project: Project, previous: Version<ProposalValue>) => {
   const current = [...project.proposals.values()].some(({ phase, basis }) =>
     phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' &&
     basis._tag === 'Version' && basis.version.acceptedAt === previous.acceptedAt)
   return !current && [...project.proposals.values()].some(({ phase }) =>
-    phase._tag === 'Accepted' && JSON.stringify(phase.version) === JSON.stringify(previous))
+    phase._tag === 'Accepted' && sameVersion(phase.version, previous))
 }
 
 const validateValue = (project: Project, value: ProposalValue): Result.Result<ProposalValue, Refusal> => {
@@ -41,6 +39,8 @@ const validateValue = (project: Project, value: ProposalValue): Result.Result<Pr
 export const applyProposalMove = (project: Project, event: ProposalEvent): Result.Result<Project, Refusal> => {
   const { key, actor, read, number } = event
   const stage = project.proposals.get(key)
+  const session = actor._tag === 'Session' ? liveSession(project, actor.key) : undefined
+  const acting = actor._tag === 'Human' ? project.owner : session?.staff
   const store = (proposal: Proposal, state = project): Result.Result<Project, Refusal> => {
     const proposals = new Map(state.proposals)
     proposals.set(key, proposal)
@@ -48,10 +48,8 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
   }
   if (event.from === null) {
     if (stage) return stale()
-    const proposer = actorOf(project, actor)
+    const proposer = acting
     if (!proposer || (event.input.value._tag === 'Responsibility' && proposer._tag !== 'Human')) return wrongActor()
-    if (actor._tag === 'Staff' && ![...project.sessions.values()].some(({ _tag, staff, startedAt }) =>
-        _tag === 'Live' && staff.key === actor.key && startedAt <= read)) return wrongActor()
     const previous = event.input.previous._tag === 'Version' ? event.input.previous.version : undefined
     if (previous && (event.input.value._tag !== 'Direction' || previous.value._tag !== 'Direction' ||
         previous.acceptedAt > read || !latestDirectionVersion(project, previous))) return stale()
@@ -76,13 +74,10 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       ? store({ ...stage, ...fields, phase, lastChange: number }) : wrongMove()
 
   if (event.from === 'Drafting') {
-    if (actor._tag !== stage.proposer._tag || (actor._tag === 'Staff' &&
-        (stage.proposer._tag !== 'Staff' || actor.key !== stage.proposer.key))) return wrongActor()
+    if (!acting || !sameActor(stage.proposer, acting)) return wrongActor()
     const { value } = event.input
     if (stage.value._tag !== value._tag || (stage.value._tag === 'Responsibility' &&
         (value._tag !== 'Responsibility' || JSON.stringify(stage.value.role) !== JSON.stringify(value.role)))) return wrongMove()
-    if (actor._tag === 'Staff' && ![...project.sessions.values()].some(({ _tag, staff, startedAt }) =>
-        _tag === 'Live' && staff.key === actor.key && startedAt <= read)) return wrongActor()
     for (const question of stage.questions.values()) {
       if (currentQuestion(stage, question) &&
           (question.state._tag !== 'Answered' || question.lastChange > read)) return stale()
@@ -91,10 +86,8 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
   }
   if (event.from === 'Reviewing' && phase._tag === 'Reviewing') {
-    const { session: claimed } = event.input
-    const session = liveSession(project, claimed.key)
     const reviewer = staffOf(project, stage.reviewer)
-    if (!session || !reviewer || actor._tag !== 'Staff' || actor.key !== reviewer.key || actor.key !== session.staff.key)
+    if (!session || !reviewer || reviewer.key !== session.staff.key)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the assigned host’s live session.')))
     if (event.move === 'assign') {
       if (phase.assignment._tag !== 'Waiting') return wrongMove()
@@ -105,7 +98,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     const { review, facts } = event.input
     if (phase.assignment._tag !== 'Assigned' || phase.assignment.by.key !== session.staff.key || phase.assignment.review !== review)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the proposal’s fresh child.')))
-    const draft = FileContents.make(JSON.stringify(stage.value, null, 2))
+    const draft = proposalText(stage.value)
     if (facts.outcomes.length === 0 || facts.outcomes.some((outcome) => 'rule' in outcome) ||
         facts.findings.some(({ evidence }) => evidence._tag !== 'Quote' || evidence.file !== 'proposal.json' ||
           quoteIn(evidence, draft) !== 'Found'))
@@ -132,10 +125,11 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     const version = { number: versionNumber, value: stage.value, acceptedAt: number }
     let state = project
     if (value._tag === 'Staffing' && stage.value._tag === 'Staffing') {
-      state = { ...project, staffing: {
-        _tag: 'StaffingAccepted', version: { ...version, value: stage.value },
-      }, staff: new Map(value.staff.map((staff) => [staff.key, staff])),
-      subscriptions: new Map(value.subscriptions.map((subscription) => [subscription.key, subscription])) }
+      state = {
+        ...project,
+        staffing: { _tag: 'StaffingAccepted', version: { ...version, value: stage.value } },
+        subscriptions: new Map(value.subscriptions.map((subscription) => [subscription.key, subscription])),
+      }
     } else if (value._tag === 'Responsibility') {
       const { summary, introduction, duties } = value
       const role = { ...value.role, responsibility: {
@@ -145,12 +139,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       const updatedRoles = roles.host.key === role.key ? { ...roles, host: role }
         : roles.pipeline.key === role.key ? { ...roles, pipeline: role }
         : { ...roles, work: new Map(roles.work).set(role.key, role) }
-      const staff = new Map([...project.staff].map(([key, staff]) => {
-        const [first, ...rest] = staff.roles
-        const updated = (assigned: typeof first) => assigned.key === role.key ? role : assigned
-        return [key, { ...staff, roles: [updated(first), ...rest.map(updated)] as const }]
-      }))
-      state = { ...project, roles: updatedRoles, staff }
+      state = { ...project, roles: updatedRoles }
     }
     return store({ ...stage, phase: { _tag: 'Accepted', version }, lastChange: number }, state)
   })

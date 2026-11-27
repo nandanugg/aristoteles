@@ -33,19 +33,10 @@ export const edge = <Table extends Edges<Table>>(
   return 'Blocked'
 }
 
-type Submitted<Table extends Edges<Table>, Phase extends keyof Table> = {
-  [Move in keyof Table[Phase]['moves']]: Table[Phase]['moves'][Move] extends { readonly submission: object } ? Move : never
-}[keyof Table[Phase]['moves']]
-
 const entry = { number: EventNumber, actor: StoredActor, read: ReadPosition, at: Timestamp }
 export const protocol = <const Fields extends Schema.Struct.Fields, const Table extends Edges<Table>>(
   fields: Fields, states: Table,
 ) => {
-  const checkedRequest = <Input extends { readonly input: Schema.Top; readonly move: string }>(submission: Input, party: Party) => {
-    const input: Input['input'] = submission.input
-    const name: Input['move'] = submission.move
-    return { schema: Schema.Struct({ read: ReadPosition, ...fields, move: Schema.Literal(name), input }), party }
-  }
   return {
     event<Phase extends keyof Table, Move extends keyof Table[Phase]['moves'] & string>(phase: Phase, move: Move) {
       const from: Table[Phase]['from'] = states[phase].from
@@ -53,11 +44,15 @@ export const protocol = <const Fields extends Schema.Struct.Fields, const Table 
       const input: Table[Phase]['moves'][Move]['input'] = moves[move].input
       return Schema.Struct({ ...entry, ...fields, from, move: Schema.Literal(move), input })
     },
-    request<Phase extends keyof Table, Move extends Submitted<Table, Phase>>(phase: Phase, move: Move) {
-      const moves: Table[Phase]['moves'] = states[phase].moves
-      const submission: Table[Phase]['moves'][Move]['submission'] = moves[move].submission
-      if (!submission) throw new Error('The move has no submission')
-      return checkedRequest(submission, moves[move].owes ?? states[phase].owes)
+    request<Phase extends keyof Table, Input extends { readonly input: Schema.Top; readonly move: string }>(
+      phase: Phase, definition: Table[NoInfer<Phase>]['moves'][keyof Table[NoInfer<Phase>]['moves']] & { readonly submission: Input },
+    ) {
+      const input: Input['input'] = definition.submission.input
+      const name: Input['move'] = definition.submission.move
+      return {
+        schema: Schema.Struct({ read: ReadPosition, ...fields, move: Schema.Literal(name), input }),
+        party: definition.owes ?? states[phase].owes,
+      }
     },
   }
 }

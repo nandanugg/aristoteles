@@ -93,7 +93,7 @@ const moveFor = (
           task.phase.assignment._tag !== 'Assigned' || task.phase.assignment.by.key !== current.staff.key ||
           task.phase.assignment.review !== authenticated.review) return Result.fail(retired())
       const { facts } = request.input
-      const report = { session: current.key, review: authenticated.review, facts, limit }
+      const report = { review: authenticated.review, facts, limit }
       const from = 'Reviewing' as const
       return Result.flatMap(reviewTask(task, task.phase, facts, limit), (phase) => {
         switch (phase._tag) {
@@ -105,11 +105,11 @@ const moveFor = (
     }
     if (task?.phase._tag === 'Working' && task.phase.attempt.session.key !== current.key) return Result.fail(retired())
     if (request.move === 'raise')
-      return moved({ line, key, from: 'Working', move: 'raise', input: { ...request.input, session: current.key } })
+      return moved({ line, key, from: 'Working', move: 'raise', input: request.input })
     const { input } = request
     if (Schema.is(taskLine.Working.moves.next.submission.input)(input))
-      return moved({ line, key, from: 'Working', move: 'next', input: { ...input, session: current.key } })
-    return moved({ line, key, from: 'Sent', move: 'next', input: { session: current, staffing: staffingAt(project), where: 'Session' } })
+      return moved({ line, key, from: 'Working', move: 'next', input })
+    return moved({ line, key, from: 'Sent', move: 'next', input: { staffing: staffingAt(project), where: 'Session' } })
   }
   if (request.line === 'Activation') {
     if (request.move === 'next') return moved({ ...request, from: 'Onboarding' })
@@ -132,7 +132,7 @@ const moveFor = (
           authenticated.line !== line || authenticated.key !== key ||
           phase.assignment._tag !== 'Assigned' || phase.assignment.by.key !== current.staff.key ||
           phase.assignment.review !== authenticated.review) return Result.fail(retired())
-      const input = { session: current, review: authenticated.review, facts }
+      const input = { review: authenticated.review, facts }
       return reviewOutcome(facts) === 'Holds'
         ? moved({ line, key, from: 'Reviewing', move: 'next', input })
         : moved({ line, key, from: 'Reviewing', move: 'sendBack', input })
@@ -140,9 +140,14 @@ const moveFor = (
   }
 }
 export const submit = (journal: Journal, input: unknown): Effect.Effect<Committed, Refusal, Authority> =>
+  Effect.flatMap(
+    Effect.mapError(readSubmission(input), () =>
+      refuse('InvalidInput', Rationale.make('The submission does not match the checked input.'))),
+    (request) => submitChecked(journal, request),
+  )
+
+export const submitChecked = (journal: Journal, request: Submission): Effect.Effect<Committed, Refusal, Authority> =>
   Effect.gen(function* () {
-    const request = yield* Effect.mapError(readSubmission(input), () =>
-      refuse('InvalidInput', Rationale.make('The submission does not match the checked input.')))
     const authority = yield* (yield* Authority).actor
     const party = submissionParty(request)
     // The bound host's pane also serves the work roles assigned to its staff.
@@ -151,7 +156,7 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
     if (!maySubmit(authenticated, party)) return yield* Effect.fail(wrongActor())
     const limit = yield* RetryLimit
     const actor: StoredActor = authenticated._tag === 'Human' ? authenticated.actor
-      : { _tag: 'Staff', key: authenticated.session.staff.key }
+      : { _tag: 'Session', key: authenticated.session.key }
     return yield* commitProjectMove(journal, actor, request.read, (project) => moveFor(project, request, authenticated, limit))
   })
 

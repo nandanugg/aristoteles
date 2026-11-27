@@ -19,7 +19,7 @@ import { activateTasks, begin, commandOutcomes, resultInput, send, taskKey, task
 import {
   answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, textForm,
 } from '../../../../src/store/question.probe.ts'
-import { capacity, staffingAt, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { capacity, staffingAt, projectStaff, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalKey, ReadPosition, StaffSessionKey, TaskKey, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -117,7 +117,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
     const linked = yield* sharedStaffing(journal)
     const { state: activeWork } = yield* startWork(journal, yield* activateTasks(journal, linked))
     const roles = [linked.roles.host, linked.roles.pipeline, maker]
-    const ids = initialStaffing().staff.map(({ key }) => key)
+    const ids = [...initialStaffing().staff.keys()]
     // The model reuses a child tuple after release. A production begin addresses a fresh sent task.
     const drafts = roles.map((role, index) =>
       Array.from({ length: 4 }, (_, copy) => ({ key: TaskKey.make('task:' + index + '-' + copy), role })))
@@ -181,7 +181,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         expect(Result.getOrThrow(receiveProjectPayload(page, await response.json()))).toEqual(current)
         const projected = page.current()
         if (!projected) throw new Error('Expected the page projection')
-        const cards = [...projected.staff.values()].map((staff) => ({ staff, capacity: capacity(projected, staff) }))
+        const cards = projectStaff(projected).map((staff) => ({ staff, capacity: capacity(projected, staff) }))
         const first = cards[0]
         if (!first) throw new Error('Expected the shared staff card')
         const limit = first.capacity.sessionLimit
