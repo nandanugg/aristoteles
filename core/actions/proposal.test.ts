@@ -152,9 +152,11 @@ test('only the owner changes a responsibility, which takes effect after review a
     expect(accepted.state.roles.host.responsibility.value.summary).toBe(value.summary)
     expect(Number(accepted.state.roles.host.responsibility.number)).toBe(2)
     expect(accepted.state.staffing).toEqual(staffed.staffing)
-    expect(staffByKey(accepted.state, staff.key)?.roles).toContainEqual(accepted.state.roles.host)
-    expect(accepted.state.sessions.get(session.key)?.staff.roles).toContainEqual(live.state.roles.host)
-    expect(Schema.encodeSync(Projection)(accepted.state)).not.toHaveProperty('staff')
+    expect(staffByKey(accepted.state, staff.key)?.roles).toContainEqual({ key: accepted.state.roles.host.key })
+    expect(accepted.state.sessions.get(session.key)?.staff.roles).toContainEqual({ key: live.state.roles.host.key })
+    const projected = Schema.encodeSync(Projection)(accepted.state)
+    expect(projected).not.toHaveProperty('staff')
+    expect(projected).not.toHaveProperty('subscriptions')
   }))),
 ))
 

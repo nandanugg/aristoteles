@@ -11,7 +11,7 @@ Use broad roles for actual work. List what each role produces and owns in its re
 
 ## Open and draft
 
-The owner opens the project with `work onboard open --file=project.yaml` and starts the page with `work start --detach`. The opening file has `owner`, `host`, `pipeline`, `roles` (work roles), and `staff` (the initial staff assigned to the host). Use the checked records. For example:
+The owner opens the project with `work onboard open --file=project.yaml` and starts the page with `work start --detach`. The opening file has `owner`, `host`, `pipeline`, `roles` (work roles), `staff` (the initial staff assigned to the host), and `subscription`. Use the checked records. For example:
 
 ```yaml
 owner: { _tag: Human, name: Owner }
@@ -27,7 +27,7 @@ host: &host
       duties: [Send a task drawn from one accepted stage slice.]
 ```
 
-Use the same role shape for the pipeline and work roles. The initial staff has `_tag: Staff`, `key`, `name`, its list of assigned `roles`, `subagents`, `model`, `launch`, `why`, and `subscription`. The subscription has a key, provider, account, plan, usage window, a session limit or Unlimited, and an estimate or NoEstimate. The owner launches the staff session with `work session launch <staff-key>`. The launched staff follows the pane prompt to run `work session ack <session-key>` before using its credential.
+Use the same role shape for the pipeline and work roles. The initial staff has `_tag: Staff`, `key`, `name`, its list of assigned `roles` as `{ key: role:host }` references, `subagents`, `model`, `launch`, `why`, and `subscription`. The staff’s `subscription` is a `{ key: subscription:example }` reference. The opening file’s subscription record has a key, provider, account, plan, usage window, a session limit or Unlimited, and an estimate or NoEstimate. The owner launches the staff session with `work session launch <staff-key>`. The launched staff follows the pane prompt to run `work session ack <session-key>` before using its credential.
 
 Keep authored drafts in a local folder such as `.work/drafts/`. Submit each through `work onboard submit "$ARISTOTELES_TOKEN" --on=<read> --file=<draft.yaml>`. The file gives the line, proposal key, move, and input. Open with `move: open` and `input: { value: ..., previous: { _tag: None } }`. For a new version of an accepted direction, give `previous: { _tag: Version, version: ... }` with the complete accepted version. Then use `move: submit` with the exact reviewed candidate in `input.value`.
 

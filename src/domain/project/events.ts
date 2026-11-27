@@ -8,7 +8,7 @@ import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, Directio
 import { Evidence } from './evidence.ts'
 import { Fact } from './direction.ts'
 import { Answer, Question, QuestionForm } from './question.ts'
-import { Human, Pane, Role, Staff } from './staff.ts'
+import { Human, Pane, Role, Staff, Subscription } from './staff.ts'
 import {
   AttemptNumber, EventNumber, Goal, Name, ProposalKey, QuestionKey, QuestionText, Rationale,
   RetryLimit, StaffSessionKey, TaskKey, type Of,
@@ -20,7 +20,7 @@ const questionOwner = Schema.Union([
   Schema.TaggedStruct('Task', { key: TaskKey }),
 ])
 
-const configuration = Schema.Struct({ owner: Human, host: Role, pipeline: Role, staff: Staff, roles: Schema.Array(Role) })
+const configuration = Schema.Struct({ owner: Human, host: Role, pipeline: Role, staff: Staff, subscription: Subscription, roles: Schema.Array(Role) })
 export const TaskDraft = Schema.Struct({
   name: Name, goal: Goal, reviewer: Role, direction: DirectionVersion,
   stages: TaskStages,

@@ -6,7 +6,7 @@ import { Effect, Schema } from 'effect'
 import { acknowledgeSession, reserveSession } from '../../core/actions/staff-session.ts'
 import { Authority, submit } from '../../core/actions/project.ts'
 import { boundHostSession, staffingAt,
-  Human, LiveSession, ReadPosition, Role, Staff, Rationale, refuse,
+  Human, LiveSession, ReadPosition, Role, Staff, Subscription, Rationale, refuse,
   type EventNumber, type Pane, type Refusal, type Project, type StaffKey, type StaffSessionKey,
   staffByKey, type Of, type Projection, type StoredActor,
 } from '../../core/schema/project.ts'
@@ -26,13 +26,13 @@ export const owner = Schema.decodeUnknownSync(Human)({ _tag: 'Human', name: 'Own
 export const human: StoredActor = { _tag: 'Human' }
 export const host = role('host')
 export const pipeline = role('pipeline')
+export const subscription = Schema.decodeUnknownSync(Subscription)({
+  key: 'subscription:local', provider: 'local', account: 'test', plan: 'fixed', usageWindow: 300,
+  sessions: { _tag: 'Unlimited' }, estimate: { _tag: 'NoEstimate' },
+})
 export const staff = Schema.decodeUnknownSync(Staff)({
-  _tag: 'Staff', key: 'staff:worker', name: 'Worker', roles: [host, pipeline], subagents: 2,
-  model: 'test-model', launch: 'agent', why: 'Read the evidence',
-  subscription: {
-    key: 'subscription:local', provider: 'local', account: 'test', plan: 'fixed', usageWindow: 300,
-    sessions: { _tag: 'Unlimited' }, estimate: { _tag: 'NoEstimate' },
-  },
+  _tag: 'Staff', key: 'staff:worker', name: 'Worker', roles: [{ key: host.key }, { key: pipeline.key }], subagents: 2,
+  model: 'test-model', launch: 'agent', why: 'Read the evidence', subscription: { key: subscription.key },
 })
 export const session = Schema.decodeUnknownSync(LiveSession)({
   _tag: 'Live', key: 'session:' + '1'.repeat(32), staff, startedAt: 1, lastChange: 1, pane: { address: '%2' },
@@ -45,7 +45,7 @@ export const staffInput = (journal: Journal, input: unknown, live = session) =>
   submit(journal, input).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Staff', session: live } as const),
   }))
-export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [], initialStaff = staff) => ownerInput(journal, { read: 0, line: 'Project', move: 'open', input: { owner, host, pipeline, staff: initialStaff, roles } })
+export const create = (journal: Journal, roles: readonly Of<typeof Role>[] = [], initialStaff = staff) => ownerInput(journal, { read: 0, line: 'Project', move: 'open', input: { owner, host, pipeline, staff: Schema.encodeSync(Staff)(initialStaff), subscription, roles } })
 export const startFixtureSession = (journal: Journal, state: Projection, live = session) => {
   if (state?.status._tag !== 'Open') throw new Error('Open the test project first')
   const bound = boundHostSession(state)

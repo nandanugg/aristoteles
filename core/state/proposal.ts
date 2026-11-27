@@ -26,8 +26,10 @@ const latestDirectionVersion = (project: Project, previous: Version<ProposalValu
     phase._tag === 'Accepted' && sameVersion(phase.version, previous))
 }
 
-const validateValue = (project: Project, value: ProposalValue): Result.Result<ProposalValue, Refusal> => {
-  if (value._tag === 'Staffing') return Result.map(validateStaffing(project, value), (plan) => ({ ...plan, _tag: 'Staffing' }))
+const validateValue = (
+  project: Project, value: ProposalValue, move: 'open' | 'submit' | 'accept',
+): Result.Result<ProposalValue, Refusal> => {
+  if (value._tag === 'Staffing') return Result.map(validateStaffing(project, value, move), (plan) => ({ ...plan, _tag: 'Staffing' }))
   if (value._tag === 'Responsibility') {
     const role = roleOf(project, value.role.key)
     return role ? Result.succeed({ ...value, role }) : wrongMove()
@@ -54,7 +56,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
         previous.acceptedAt > read || !latestDirectionVersion(project, previous))) return stale()
     if (event.input.value._tag === 'Responsibility' &&
         JSON.stringify(roleOf(project, event.input.value.role.key)) !== JSON.stringify(event.input.value.role)) return stale()
-    return Result.flatMap(validateValue(project, event.input.value), (value) => {
+    return Result.flatMap(validateValue(project, event.input.value, event.move), (value) => {
       const version = previous ?? effectiveVersion(project, value)
       if (version && version.acceptedAt > read) return stale()
       return store({
@@ -82,7 +84,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       if (currentQuestion(stage, question) &&
           (question.state._tag !== 'Answered' || question.lastChange > read)) return stale()
     }
-    return Result.flatMap(validateValue(project, value), (checked) =>
+    return Result.flatMap(validateValue(project, value, event.move), (checked) =>
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
   }
   if (event.from === 'Reviewing' && phase._tag === 'Reviewing') {
@@ -120,7 +122,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     : effectiveVersion(project, stage.value)?.acceptedAt !== previous?.acceptedAt) return stale()
   const versionNumber = (previous?.number ?? 0) + 1
   if (!Schema.is(VersionNumber)(versionNumber)) return wrongMove()
-  return Result.flatMap(validateValue(project, stage.value), (value) => {
+  return Result.flatMap(validateValue(project, stage.value, event.move), (value) => {
     // Keep the exact reviewed payload in the version. Derived runtime assignments use checked records.
     const version = { number: versionNumber, value: stage.value, acceptedAt: number }
     let state = project
@@ -128,7 +130,6 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       state = {
         ...project,
         staffing: { _tag: 'StaffingAccepted', version: { ...version, value: stage.value } },
-        subscriptions: new Map(value.subscriptions.map((subscription) => [subscription.key, subscription])),
       }
     } else if (value._tag === 'Responsibility') {
       const { summary, introduction, duties } = value

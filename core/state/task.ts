@@ -1,7 +1,7 @@
 import { Result, Schema } from 'effect'
 import { reviewMove, reviewTask } from './task-review.ts'
 import {
-  AttemptNumber, Rationale, edge, liveSession, refuse, staffOf, subagentCapacity, taskLine, taskRules, activeWork, staffingAt, taskRole, taskReviewStaff,
+  AttemptNumber, Rationale, edge, liveSession, refuse, staffByKey, staffOf, subagentCapacity, taskLine, taskRules, activeWork, staffingAt, taskRole, taskReviewStaff,
   type EventNumber, type Of, type Project, type Refusal, type Task, type TaskEvent, type TaskPhase,
 } from '../schema/project.ts'
 
@@ -89,9 +89,10 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
         if (phase._tag === 'Working') {
           const { attempt } = phase
           const working = liveSession(project, attempt.actor.key)
-          if (!working) return retired()
-          if (attempt.where === 'Subagent' && working.staff.key !== session.staff.key &&
-              subagentCapacity(project, working.staff).freeSubagents === 0) return noChild()
+          const staff = working && staffByKey(project, working.staff.key)
+          if (!staff) return retired()
+          if (attempt.where === 'Subagent' && staff.key !== session.staff.key &&
+              subagentCapacity(project, staff).freeSubagents === 0) return noChild()
         }
         return entered(phase)
       })

@@ -2,9 +2,9 @@ import { startWork } from '../../src/store/project-activation.probe.ts'
 import { expect, test } from 'bun:test'
 import { dirname } from 'node:path'
 import { Effect } from 'effect'
-import { acceptStaffing } from '../../src/store/proposal.probe.ts'
+import { acceptStaffing, cliProposal } from '../../src/store/proposal.probe.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
-import { staffingAt, PaneAddress, Rationale, StaffSessionKey, TaskKey, refuse, type Of } from '../../core/schema/project.ts'
+import { staffingAt, PaneAddress, ProposalKey, Rationale, StaffSessionKey, TaskKey, refuse, type Of, type Project } from '../../core/schema/project.ts'
 import { open, staff, withJournal } from '../../src/store/project.probe.ts'
 import { activateTasks, boundHost, send } from '../../src/store/task.probe.ts'
 import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.probe.ts'
@@ -84,11 +84,11 @@ test('a paused assignment can move only after the owner confirms the old process
     const plan = initialStaffing()
     const [host, other] = [...plan.staff.values()]
     if (!host || !other) throw new Error('Expected two staff assignments')
-    const moved: typeof plan = { ...plan, staff: new Map([
+    const expanded: typeof plan = { ...plan, staff: new Map([
       [host.key, { ...host, roles: [host.roles[0], ...host.roles.slice(1), ...other.roles] }],
     ]) }
     const key = StaffSessionKey.make('session:limited')
-    let observation: 'Paused' | 'Ended' = 'Paused'
+    let observation: 'Running' | 'Paused' | 'Ended' = 'Running'
     let stops = 0
     const operations = staffSessionOperations(dirname(path), journal, {
       reconcile: () => Effect.void,
@@ -97,10 +97,20 @@ test('a paused assignment can move only after the owner confirms the old process
       observe: () => Effect.sync(() => observation),
       child: () => Effect.void,
     })
-    yield* operations.launch(other.key, key, staffingAt(project))
+    const live = yield* operations.launch(host.key, key, staffingAt(project))
+    const adopted = yield* acceptStaffing(journal, live.state, expanded)
+    // Review the move while the host can still supply its reviewer.
+    expect(yield* Effect.result(acceptStaffing(journal, adopted, plan)))
+      .toMatchObject({ _tag: 'Failure', failure: { code: 'InvalidInput' } })
+    const draft = ProposalKey.make('proposal:staffing-' + adopted.read)
+    const accept = (state: Project) => cliProposal(journal, state, {
+      line: 'Proposal', key: draft, move: 'accept', input: {},
+    })
+    observation = 'Paused'
     const paused = yield* operations.observe(key)
     if (!paused) throw new Error('Expected a Paused observation')
-    expect(yield* Effect.result(acceptStaffing(journal, paused.state, moved)))
+    expect(paused.state.proposals.get(draft)?.phase._tag).toBe('WaitingForOwner')
+    expect(yield* Effect.result(accept(paused.state)))
       .toMatchObject({ _tag: 'Failure', failure: { code: 'InvalidInput' } })
     expect(yield* Effect.result(operations.end(key)))
       .toMatchObject({ _tag: 'Failure', failure: { code: 'Unavailable' } })
@@ -110,8 +120,8 @@ test('a paused assignment can move only after the owner confirms the old process
     if (!ended) throw new Error('Expected a confirmed stop')
     expect(ended.state.sessions.get(key)?._tag).toBe('Ended')
     expect(stops).toBe(2)
-    const changed = yield* acceptStaffing(journal, ended.state, moved)
-    expect(changed.staffing._tag).toBe('StaffingAccepted')
+    const changed = yield* accept(ended.state)
+    expect(changed.state.staffing._tag).toBe('StaffingAccepted')
   }))),
 ))
 

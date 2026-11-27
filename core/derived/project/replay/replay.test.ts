@@ -183,7 +183,7 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
         if (!projected) throw new Error('Expected the page projection')
         const cards = projectStaff(projected).map((staff) => ({ staff, capacity: capacity(projected, staff) }))
         const first = cards[0]
-        if (!first) throw new Error('Expected the shared staff card')
+        if (!first?.capacity) throw new Error('Expected the shared staff card')
         const limit = first.capacity.sessionLimit
         if (limit._tag !== 'Limited') throw new Error('Expected a provider limit')
         const children = [...current.tasks.values()].flatMap((task) =>

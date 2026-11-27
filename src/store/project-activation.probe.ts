@@ -8,7 +8,7 @@ import {
   ApprovedFiles, PaneAddress, ProposalKey, StaffSessionKey, type LaunchNonce, type Of, type Project,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
-import { create, open, ownerInput, session, staff, startFixtureSession } from './project.probe.ts'
+import { create, open, ownerInput, session, staff, subscription, startFixtureSession } from './project.probe.ts'
 import { acceptStaffing, cliProposal, direction, evidence } from './proposal.probe.ts'
 
 export const approvedText = 'Read the approved project instructions.\n'
@@ -26,7 +26,7 @@ export const readyProject = (path: string, host = staff, projectDirectory?: Jour
   const journal = yield* open(path, 'Create', projectDirectory)
   const project = (yield* create(journal, [], host)).state
   const staffed = yield* acceptStaffing(journal, project, {
-    staff: new Map([[host.key, host]]), subscriptions: [host.subscription],
+    staff: new Map([[host.key, host]]), subscriptions: new Map([[subscription.key, subscription]]),
   })
   const onboarding = { ...session, key: StaffSessionKey.make('session:onboarding') }
   const live = yield* startFixtureSession(journal, staffed, onboarding)

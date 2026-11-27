@@ -19,8 +19,9 @@ snapshot and reads later events by position to stay current through reconnects.
 ## Lines
 
 The accepted staffing version owns the staff map. Until acceptance, the project
-uses its bootstrap staff. Current role details come from the project’s roles,
-while sessions keep the staff value they started with.
+uses its bootstrap staff. Staff reference roles by key and subscriptions by key.
+Role records belong to the project, and subscription records belong to the
+staffing plan. Sessions keep the assignments they started with.
 
 - A submitted proposal goes to a fresh reviewer who reports facts. The owner
   accepts the reviewed version, sends it back, or removes it. An answered

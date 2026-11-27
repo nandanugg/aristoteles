@@ -3,12 +3,13 @@ import { useState } from 'preact/hooks'
 import { ReviewEvidence } from './project-evidence.ts'
 import { ReviewInput } from './review-input.ts'
 import { Result } from 'effect'
-import { Rationale, type Of, type Proposal as ProjectProposal, type ReadPosition, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
+import { Rationale, type Of, type Project, type Proposal as ProjectProposal, type ReadPosition, type Refusal as ProjectRefusal, type Submission } from '../../../core/schema/project.ts'
 import { StaffingView } from './project-staffing.ts'
 import type { ProposalReply } from './project-api.ts'
 
-export function ProposalCard({ proposal, read, submit }: {
+export function ProposalCard({ proposal, project, read, submit }: {
   readonly proposal: ProjectProposal
+  readonly project: Project
   readonly read: Of<typeof ReadPosition>
   readonly submit: (submission: Submission) => Promise<ProposalReply>
 }): ReturnType<typeof html> | null {
@@ -27,7 +28,7 @@ export function ProposalCard({ proposal, read, submit }: {
   }
   return html`<article class="review-stage">
     <h3>${value._tag === 'Staffing' ? 'Staffing' : value._tag === 'Direction' ? value.name : value.role.name}</h3>
-    ${value._tag === 'Staffing' ? html`<${StaffingView} plan=${value} />` :
+    ${value._tag === 'Staffing' ? html`<${StaffingView} plan=${value} project=${project} />` :
       value._tag === 'Direction' ? html`<p>${value.summary}</p><p>${value.text}</p>
         ${value.source._tag === 'Company' ? html`<p>${value.source.repository} · ${value.source.commit}</p>` : null}
         <ol>${value.stages.map((stage, index) => html`<li key=${index}>${stage.name} · ${stage.role.name} · ${stage.work}</li>`)}</ol>

@@ -28,7 +28,7 @@ export const Subscription = Schema.Struct({
 })
 export const Staff = Schema.TaggedStruct('Staff', {
   key: StaffKey, name: Name, model: ModelName, launch: LaunchText, subagents: SubagentCount,
-  roles: Schema.NonEmptyArray(Role), subscription: Subscription, why: Rationale,
+  roles: Schema.NonEmptyArray(Schema.Struct({ key: RoleKey })), subscription: Schema.Struct({ key: SubscriptionKey }), why: Rationale,
 })
 export type Staff = Of<typeof Staff>
 export type Subscription = Of<typeof Subscription>
@@ -46,27 +46,22 @@ export const StaffSession = Schema.Union([
 export type StaffSession = Of<typeof StaffSession>
 export const StaffingPlan = Schema.Struct({
   staff: recordsByKey(Staff, StaffKey).check(Schema.makeFilter((staff) => staff.size > 0)),
-  subscriptions: Schema.NonEmptyArray(Subscription),
+  subscriptions: recordsByKey(Subscription, SubscriptionKey).check(Schema.makeFilter((subscriptions) => subscriptions.size > 0)),
 })
 export type StaffingPlan = Of<typeof StaffingPlan>
 
 
-const withCurrentRoles = (project: Project, staff: Staff): Staff => {
-  const [first, ...rest] = staff.roles
-  const current = (role: Role) => roleOf(project, role.key) ?? role
-  return { ...staff, roles: [current(first), ...rest.map(current)] }
-}
-
-const staffMap = ({ staffing }: Project) =>
-  (staffing._tag === 'StaffingAccepted' ? staffing.version.value : staffing).staff
+const staffingPlan = ({ staffing }: Project) =>
+  staffing._tag === 'StaffingAccepted' ? staffing.version.value : staffing
 
 export const projectStaff = (project: Project): readonly Staff[] =>
-  [...staffMap(project).values()].map((staff) => withCurrentRoles(project, staff))
+  [...staffingPlan(project).staff.values()]
 
-export const staffByKey = (project: Project, key: Of<typeof StaffKey>): Staff | undefined => {
-  const staff = staffMap(project).get(key)
-  return staff && withCurrentRoles(project, staff)
-}
+export const staffByKey = (project: Project, key: Of<typeof StaffKey>): Staff | undefined =>
+  staffingPlan(project).staff.get(key)
+
+export const subscriptionOf = (project: Project, staff: Staff): Subscription | undefined =>
+  staffingPlan(project).subscriptions.get(staff.subscription.key)
 
 export const staffOf = (project: Project, role: Role): Staff | undefined =>
   projectStaff(project).find((staff) => staff.roles.some(({ key }) => key === role.key))
@@ -112,56 +107,53 @@ export const subagentCapacity = (project: Project, staff: Staff) => {
   return { usedSubagents: SubagentCount.make(occupied), freeSubagents: SubagentCount.make(Math.max(0, staff.subagents - occupied)) }
 }
 
-export const capacity = (project: Project, staff: Staff) => ({
-  ...providerCapacity(project, staff.subscription), ...subagentCapacity(project, staff),
-})
+export const capacity = (project: Project, staff: Staff) => {
+  const subscription = subscriptionOf(project, staff)
+  return subscription ? { ...providerCapacity(project, subscription), ...subagentCapacity(project, staff) } : null
+}
 
-export const validateStaffing = (project: Project, plan: StaffingPlan): Result.Result<StaffingPlan, Refusal> => {
-  const subscriptions = new Map(plan.subscriptions.map((subscription) => [subscription.key, subscription]))
+export const validateStaffing = (
+  project: Project, plan: StaffingPlan, move: 'open' | 'submit' | 'accept',
+): Result.Result<StaffingPlan, Refusal> => {
   const assigned = new Set<Of<typeof RoleKey>>()
-  const canonical = new Map<Of<typeof StaffKey>, Staff>()
   const invalid = (why: Of<typeof Rationale>) => Result.fail(refuse('InvalidInput', why))
-  if (subscriptions.size !== plan.subscriptions.length) return invalid(Rationale.make('Give each subscription its own identity.'))
   for (const staff of plan.staff.values()) {
-    const subscription = subscriptions.get(staff.subscription.key)
-    if (!subscription || canonical.has(staff.key)) return invalid(Rationale.make('Use the listed subscriptions and distinct staff.'))
-    const roles: Role[] = []
-    for (const candidate of staff.roles) {
-      const role = roleOf(project, candidate.key)
-      if (!role || assigned.has(role.key)) return invalid(Rationale.make('Assign each project role exactly once.'))
-      assigned.add(role.key)
-      roles.push(role)
+    const subscription = plan.subscriptions.get(staff.subscription.key)
+    if (!subscription) return invalid(Rationale.make('Use the listed subscriptions.'))
+    for (const { key } of staff.roles) {
+      if (!roleOf(project, key) || assigned.has(key)) return invalid(Rationale.make('Assign each project role exactly once.'))
+      assigned.add(key)
     }
-    const [first, ...rest] = roles
-    if (!first) return invalid(Rationale.make('Assign at least one role to each staff.'))
-    if (staff.subagents === 0 && roles.some(({ key }) => key === project.roles.host.key || key === project.roles.pipeline.key)) {
+    if (staff.subagents === 0 && staff.roles.some(({ key }) => key === project.roles.host.key || key === project.roles.pipeline.key)) {
       return Result.fail(refuse('StaffingMinimum', Rationale.make('Host and pipeline each need access to a subagent.')))
     }
+    if (move !== 'accept') continue
     const current = staffByKey(project, staff.key)
     const session = current && latestSession(project, current)
-    if (session && session._tag !== 'Ended' &&
-        (session.staff.subscription.key !== subscription.key ||
-         session.staff.roles.some(({ key }) => !roles.some((role) => role.key === key)))) {
-      return invalid(Rationale.make('Retire the staff session before changing its subscription or assigned roles.'))
+    if (current && session && session._tag !== 'Ended') {
+      const prior = subscriptionOf(project, current)
+      if (prior?.key !== subscription.key || prior.provider !== subscription.provider || prior.account !== subscription.account ||
+          current.roles.some(({ key }) => !staff.roles.some((role) => role.key === key)))
+        return invalid(Rationale.make('Run work session end before changing the staff’s subscription or assigned roles.'))
     }
     if (subagentCapacity(project, staff).usedSubagents > staff.subagents) {
       return Result.fail(refuse('NoCapacity', Rationale.make('The staffing plan would remove a subagent slot still in use.')))
     }
-    canonical.set(staff.key, { ...staff, roles: [first, ...rest], subscription })
   }
+  if (assigned.size !== rolesOf(project).length) return invalid(Rationale.make('Cover every project role.'))
+  if (move !== 'accept') return Result.succeed(plan)
   for (const prior of projectStaff(project)) {
     const session = latestSession(project, prior)
-    if (!canonical.has(prior.key) && session && session._tag !== 'Ended')
-      return invalid(Rationale.make('Retire the staff session before removing its staff.'))
+    if (!plan.staff.has(prior.key) && session && session._tag !== 'Ended')
+      return invalid(Rationale.make('Run work session end before removing its staff.'))
   }
-  for (const subscription of plan.subscriptions) {
+  for (const subscription of plan.subscriptions.values()) {
     const { sessions: limit } = subscription
     if (limit._tag === 'Limited' && occupiedProviderSlots(project, subscription) > limit.max) {
       return Result.fail(refuse('NoCapacity', Rationale.make('The staffing plan would remove a provider slot still in use.')))
     }
   }
-  if (canonical.size === 0 || assigned.size !== rolesOf(project).length) return invalid(Rationale.make('Cover every project role.'))
-  return Result.succeed({ ...plan, staff: canonical })
+  return Result.succeed(plan)
 }
 
 export const sessionMayStart = (
@@ -173,8 +165,10 @@ export const sessionMayStart = (
   const latest = latestSession(project, staff)
   if (latest && latest._tag !== 'Ended')
     return Result.fail(refuse('WrongMove', Rationale.make('End the current staff session before launching another.')))
-  const { sessions: limit } = staff.subscription
-  if (limit._tag === 'Limited' && occupiedProviderSlots(project, staff.subscription) >= limit.max)
+  const subscription = subscriptionOf(project, staff)
+  if (!subscription) return Result.fail(refuse('WrongMove', Rationale.make('The staff needs a subscription from its plan.')))
+  const { sessions: limit } = subscription
+  if (limit._tag === 'Limited' && occupiedProviderSlots(project, subscription) >= limit.max)
     return Result.fail(refuse('NoCapacity', Rationale.make('The subscription has no free provider slot.')))
   return Result.succeed(staff)
 }

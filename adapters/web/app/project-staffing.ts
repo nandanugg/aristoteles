@@ -1,14 +1,14 @@
 import { html } from 'htm/preact'
-import type { StaffingPlan as ProjectStaffing } from '../../../core/schema/project.ts'
+import { roleOf, type Project, type StaffingPlan as ProjectStaffing } from '../../../core/schema/project.ts'
 
-function renderStaffing({ plan }: { readonly plan: ProjectStaffing }): ReturnType<typeof html> {
+function renderStaffing({ plan, project }: { readonly plan: ProjectStaffing; readonly project: Project }): ReturnType<typeof html> {
   return html`<section aria-label="Staffing arrangement">
     <ul>${[...plan.staff.values()].map((staff) => html`<li key=${staff.key}>
       <strong>${staff.name}</strong> · ${staff.model} · ${staff.subagents} subagents
-      <ul>${staff.roles.map((role) => html`<li key=${role.key}>${role.name}</li>`)}</ul>
+      <ul>${staff.roles.map((role) => html`<li key=${role.key}>${roleOf(project, role.key)?.name ?? role.key}</li>`)}</ul>
     </li>`)}</ul>
     <h4>Subscriptions</h4>
-    <ul>${plan.subscriptions.map((sub) => html`<li key=${sub.key}>
+    <ul>${[...plan.subscriptions.values()].map((sub) => html`<li key=${sub.key}>
       ${sub.provider} · ${sub.account} · ${sub.plan}
       ${sub.estimate._tag === 'Estimated' ? html`<p>${sub.estimate.share * 100}% · ${sub.estimate.why}</p>` : ' · No estimate'}
     </li>`)}</ul>

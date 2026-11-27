@@ -6,11 +6,11 @@ import { projectQuestionWords, questionAddressText } from '../../adapters/words/
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
 import { answerFromForm, questionAnswerSubmission } from '../../adapters/web/app/project-question.ts'
 import { projectSnapshot } from '../../adapters/web/project.ts'
-import { startSession, create, open, owner, session, staff, staffInput, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
+import { startSession, create, open, owner, session, staff, staffInput, subscription, startFixtureSession, withJournal } from '../../src/store/project.probe.ts'
 import { answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionKey, readRefusal, staffAuthorityOf, textForm } from '../../src/store/question.probe.ts'
 import { resultInput, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { nextStep, questionsFor } from '../derived/project/next-step.ts'
-import { staffingAt, Answer, QuestionForm, ProposalKey, QuestionKey, ReadPosition, StaffSessionKey, Submission, type Of, type QuestionSubmission, type Project } from '../schema/project.ts'
+import { staffingAt, Answer, QuestionForm, ProposalKey, QuestionKey, ReadPosition, StaffingPlan, StaffSessionKey, Submission, type Of, type QuestionSubmission, type Project } from '../schema/project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
 import { readPosition } from '../state/project.ts'
 
@@ -109,7 +109,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const journal = yield* open(path)
     const created = yield* create(journal)
     const live = yield* startFixtureSession(journal, created.state)
-    const plan = { staff: new Map([[staff.key, staff]]), subscriptions: [staff.subscription] } as const
+    const plan = { staff: new Map([[staff.key, staff]]), subscriptions: new Map([[subscription.key, subscription]]) } as const
     const key = ProposalKey.make('proposal:staffing')
     const draft = yield* proposeStaffing(journal, live.state, plan, key)
     const line = { line: 'Proposal', key } as const
@@ -124,7 +124,7 @@ test('the host consults the owner on a particular staffing draft basis', () => w
     const firstAddress = questionAddressText(address(questionKey))
     expect(first.state.questions.size).toBe(0)
     expect(first.state.proposals.get(line.key)?.questions.get(questionKey)?.state._tag).toBe('Open')
-    const send = { ...line, move: 'submit', input: { value: { staff: [staff], subscriptions: plan.subscriptions, _tag: 'Staffing' } } }
+    const send = { ...line, move: 'submit', input: { value: { ...Schema.encodeSync(StaffingPlan)(plan), _tag: 'Staffing' } } }
     expect(yield* Effect.result(cliProposal(journal, first.state, send))).toMatchObject(failure('Stale'))
     const firstAnswer = yield* cliQuestion(journal, ownerAuthority, 'answer', firstAddress, first.state.read, answerYaml('Keep two slots.'))
     expect(yield* Effect.result(cliProposal(journal, first.state, send))).toMatchObject(failure('Stale'))

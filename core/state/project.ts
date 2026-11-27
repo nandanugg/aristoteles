@@ -22,19 +22,20 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
     if (project) return wrongMove()
     if (read !== 0) return stale()
     const { input } = event
-    const { owner, host, pipeline, staff } = input
+    const { owner, host, pipeline, staff, subscription } = input
     const roles = new Map([host, pipeline, ...input.roles].map((role) => [role.key, role]))
     if (roles.size !== input.roles.length + 2 || !staff.roles.some((role) => role.key === host.key) ||
         new Set(staff.roles.map((role) => role.key)).size !== staff.roles.length ||
         staff.roles.some((role) => !roles.has(role.key))) {
       return Result.fail(refuse('InvalidInput', Rationale.make('The project needs distinct roles and an assigned host.')))
     }
+    if (staff.subscription.key !== subscription.key)
+      return Result.fail(refuse('InvalidInput', Rationale.make('Use the listed subscription for the initial staff.')))
     if (staff.subagents === 0) return Result.fail(refuse('StaffingMinimum', Rationale.make('The onboarding host needs a subagent.')))
-    const canonicalStaff = { ...staff, roles: [roles.get(staff.roles[0].key)!, ...staff.roles.slice(1).map((role) => roles.get(role.key)!)] as const }
     return Result.succeed({
       owner, roles: { host, pipeline, work: new Map(input.roles.map((role) => [role.key, role])) },
-      subscriptions: new Map([[staff.subscription.key, staff.subscription]]), openedAt: number,
-      staffing: { _tag: 'Staffing', staff: new Map([[staff.key, canonicalStaff]]), subscriptions: [staff.subscription] },
+      openedAt: number,
+      staffing: { _tag: 'Staffing', staff: new Map([[staff.key, staff]]), subscriptions: new Map([[subscription.key, subscription]]) },
       proposals: new Map(), sessions: new Map(), tasks: new Map(), questions: new Map(),
       status: { _tag: 'Open' }, activation: { _tag: 'Onboarding' }, lastChange: number,
       read: ReadPosition.make(number),

@@ -29,9 +29,9 @@ test('shared staff covers both roles and a stale staffing plan or a duplicate li
     const launched = yield* launchStaff(journal, project, 0, 1)
     const current = yield* readOpenProject(journal)
     const subscription = {
-      ...plan.subscriptions[0], sessions: { _tag: 'Limited', max: SessionCount.make(1) },
+      ...plan.subscriptions.get(staff.subscription.key)!, sessions: { _tag: 'Limited', max: SessionCount.make(1) },
     } as const
-    const fewer: StaffingPlan = { ...plan, subscriptions: [subscription] }
+    const fewer: StaffingPlan = { ...plan, subscriptions: new Map([[subscription.key, subscription]]) }
     yield* acceptStaffing(journal, current, fewer)
     expect(yield* Effect.result(launchStaff(journal, project, 1, 2))).toMatchObject(rejected('Stale'))
     const changed = yield* readOpenProject(journal)
@@ -55,9 +55,9 @@ test('pause holds the attempt and its slot, and reset requires a fresh read on t
     yield* observeSession(journal, project, address, 'Paused')
     const paused = yield* readOpenProject(journal)
     expect(paused.sessions.get(session.key)?._tag).toBe('Paused')
-    expect(Number(capacity(paused, staff).liveSessions)).toBe(0)
+    expect(Number(capacity(paused, staff)?.liveSessions)).toBe(0)
     expect(yield* Effect.result(waitOnProject(journal, Effect.succeed(session.key)))).toMatchObject(rejected('RetiredSession'))
-    expect(capacity(paused, staff).usedSubagents).toBe(SubagentCount.make(1))
+    expect(capacity(paused, staff)?.usedSubagents).toBe(SubagentCount.make(1))
     expect(paused.tasks.get(second)).toEqual(project.tasks.get(second))
     expect(yield* Effect.result(staffInput(journal, resultInput(paused.read), session))).toMatchObject(rejected('RetiredSession'))
     const { state: resumed } = yield* observeSession(journal, paused, address, 'Live')
@@ -85,7 +85,7 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     const sent = yield* send(journal, (yield* readOpenProject(journal)).read, ongoing)
     yield* startChild(journal, yield* readOpenProject(journal), ongoing, session, 'Work')
     const before = yield* readOpenProject(journal)
-    expect(Number(capacity(before, staff).usedSubagents)).toBe(2)
+    expect(Number(capacity(before, staff)?.usedSubagents)).toBe(2)
     yield* observeSession(journal, before, address, 'Ended')
     const after = yield* readOpenProject(journal)
     expect(after.read).not.toBe(readPosition(sent.state))
@@ -96,7 +96,7 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     const released = after.tasks.get(taskKey)?.phase
     if (previous?._tag !== 'Reviewing') throw new Error('The review must already be assigned')
     expect(released).toEqual({ ...previous, assignment: { _tag: 'Waiting' } })
-    expect(Number(capacity(after, staff).usedSubagents)).toBe(0)
+    expect(Number(capacity(after, staff)?.usedSubagents)).toBe(0)
     const continued = { ...session, key: StaffSessionKey.make('session:2') }
     yield* startSession(journal, after, { key: continued.key, staff: continued.staff.key, pane: continued.pane, staffing: staffingAt(after) })
     const latest = yield* readOpenProject(journal)

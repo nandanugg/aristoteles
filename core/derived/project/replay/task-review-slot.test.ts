@@ -5,7 +5,7 @@ import { staffSessionOperations } from '../../../../adapters/live/staff-session.
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
 import { startWork } from '../../../../src/store/project-activation.probe.ts'
-import { create, host, open, pipeline, role, session, staff, staffInput, startFixtureSession, startSession, withJournal } from '../../../../src/store/project.probe.ts'
+import { create, host, open, pipeline, role, session, staff, staffInput, subscription, startFixtureSession, startSession, withJournal } from '../../../../src/store/project.probe.ts'
 import { acceptStaffing } from '../../../../src/store/proposal.probe.ts'
 import { activateTasks, promptDirection, reportReview, resultInput, reviewAs, send } from '../../../../src/store/task.probe.ts'
 import { observeSession } from '../../../actions/staff-session.ts'
@@ -43,7 +43,7 @@ for (const kind of kinds) test('task review slots — ' + kind, () => withJourna
     const journal = yield* open(path)
     const created = yield* create(journal, [workRole], hostStaff)
     const staffed = yield* acceptStaffing(journal, created.state, {
-      staff: new Map([hostStaff, ownStaff, queuedStaff].map((staff) => [staff.key, staff])), subscriptions: [staff.subscription],
+      staff: new Map([hostStaff, ownStaff, queuedStaff].map((staff) => [staff.key, staff])), subscriptions: new Map([[subscription.key, subscription]]),
     })
     const active = yield* activateTasks(journal, staffed, direction)
     const started = yield* startWork(journal, active)

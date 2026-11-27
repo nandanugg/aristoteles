@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { Rationale, refuse, liveSession, activeWork, boundHostSession, taskRole, taskLine, type CommandOutcome, type LiveSession, type Of, type Refusal, type Task, type TaskKey, type TaskDraft, type ReadPosition } from '../schema/project.ts'
+import { Rationale, refuse, liveSession, activeWork, boundHostSession, staffByKey, taskRole, taskLine, type CommandOutcome, type Of, type Refusal, type Task, type TaskKey, type TaskDraft, type ReadPosition } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { Authority, recordObserved, submit } from './project.ts'
 import { readOpenProject } from './staff-session.ts'
@@ -35,8 +35,8 @@ export const taskBrief = (journal: Journal, key: Of<typeof TaskKey>): Effect.Eff
             phase.assignment.review === actor.review) return task
         return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current fresh review.')))
       }
-      const servesTask = (value: LiveSession) => value.staff.roles.some(({ key }) => key === taskRole(task).key || key === task.reviewer.key)
-      if (servesTask(session)) return task
+      const staff = staffByKey(project, session.staff.key)
+      if (staff?.roles.some(({ key }) => key === taskRole(task).key || key === task.reviewer.key)) return task
     }
     return yield* Effect.fail(refuse('WrongActor', Rationale.make('Read the brief as the owner, host or assigned staff.')))
   })

@@ -18,10 +18,10 @@ function renderOnboarding({ project, submit, markerFiles, commandBlock }: {
   readonly commandBlock?: (key: Of<typeof TaskKey>) => Promise<Refusal['why'] | null>
 }): ReturnType<typeof html> {
   return html`<section aria-label="Onboarding">
-    ${ownerProposals(project).map((proposal) => html`<${ProposalCard} key=${proposal.key} proposal=${proposal}
+    ${ownerProposals(project).map((proposal) => html`<${ProposalCard} key=${proposal.key} proposal=${proposal} project=${project}
       read=${project.read} submit=${submit} />`)}
     ${[...project.proposals.values()].filter(({ phase }) => phase._tag === 'Accepted').map((proposal) =>
-      html`<${ProposalCard} key=${proposal.key} proposal=${proposal} read=${project.read} submit=${submit} />`)}
+      html`<${ProposalCard} key=${proposal.key} proposal=${proposal} project=${project} read=${project.read} submit=${submit} />`)}
     <${RoleCard} project=${project} submit=${submit} />
     ${questionsFor(project, project.owner).map(({ question, owner }) => html`<${QuestionCard} key=${questionAddressText({ owner, key: question.key })}
       question=${question} owner=${owner} read=${project.read} submit=${async (submission: Submission) => {

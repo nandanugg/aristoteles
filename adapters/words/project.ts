@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { acceptedDirections } from '../../core/derived/project/next-step.ts'
-import { DirectionVersion, Introduction, roleOf, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type QuestionText, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
+import { DirectionVersion, Introduction, roleOf, staffByKey, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type QuestionText, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
 
 const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
   ? `${evidence.file}:${evidence.lines.first}–${evidence.lines.last} ${evidence.text}`
@@ -44,8 +44,10 @@ const encodeDirection = Schema.encodeSync(DirectionVersion)
 export const projectIntroductionWords = (
   project: Project, session: LiveSession, read: Of<typeof ReadPosition>,
 ): Of<typeof Introduction> => {
-  const roles = session.staff.roles.flatMap((assigned) => {
-    const role = roleOf(project, assigned.key) ?? assigned
+  const staff = staffByKey(project, session.staff.key) ?? session.staff
+  const roles = staff.roles.flatMap((assigned) => {
+    const role = roleOf(project, assigned.key)
+    if (!role) return []
     const { summary, introduction, duties } = role.responsibility.value
     return [`Role ${role.name}`, summary, introduction, ...duties.map((duty) => `- ${duty}`)]
   })

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { bootstrapSocket } from '../adapters/live/bootstrap.ts'
 import { direction } from '../src/store/proposal.probe.ts'
-import { owner, host, pipeline, staff } from '../src/store/project.probe.ts'
+import { owner, host, pipeline, staff, subscription } from '../src/store/project.probe.ts'
 import { openProjectPage } from './browser/project-first-task.check.js'
 
 const bin = resolve(import.meta.dir, '../bin/work.js')
@@ -113,9 +113,9 @@ exec sleep 90
     git(dir, 'config', 'user.name', owner.name)
     writeFileSync(join(dir, 'AGENTS.md'), 'Review the local output.\n')
     writeFileSync(join(dir, 'aristoteles.yaml'), 'models:\n  local:\n    skills: .claude/skills\n')
-    const local = { ...staff, roles: [host], launch: launch + ' {session}' }
-    const worker = { ...local, key: 'staff:pipeline', name: 'Pipeline staff', roles: [pipeline] }
-    put('project.yaml', { owner, host, pipeline, roles: [], staff: local })
+    const local = { ...staff, roles: [{ key: host.key }], launch: launch + ' {session}' }
+    const worker = { ...local, key: 'staff:pipeline', name: 'Pipeline staff', roles: [{ key: pipeline.key }] }
+    put('project.yaml', { owner, host, pipeline, roles: [], staff: local, subscription })
     await ok(['skill', 'install'])
     expect(existsSync(join(dir, '.claude/skills/aristoteles/SKILL.md'))).toBe(true)
     await ok(['onboard', 'open', '--file=project.yaml'], ownerCall)
@@ -201,7 +201,7 @@ exec sleep 90
       measures.push([key + ' accept', Date.now() - start])
     }
     await proposal('proposal:staffing', { _tag: 'Staffing', staff: [local, worker],
-      subscriptions: [local.subscription] }, 'Staffing')
+      subscriptions: [subscription] }, 'Staffing')
     await proposal('proposal:direction', drafted, drafted.name)
     const question = 'Which wording should the work use?'
     put('question.yaml', { key: 'question:wording', text: question, owner: { _tag: 'Project' },
