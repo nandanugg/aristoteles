@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { acceptedDirections } from '../../core/derived/project/next-step.ts'
-import { DirectionVersion, Introduction, Markdown, pendingFix, roleOf, staffByKey, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type ReadPosition, type Refusal, type ReviewFacts, type StoredEvent, type Task } from '../../core/schema/project.ts'
+import { DirectionVersion, Introduction, Markdown, activeStages, pendingFix, roleOf, staffByKey, taskAdmission, taskMembership, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type ReadPosition, type Refusal, type ReviewFacts, type StoredEvent, type Task } from '../../core/schema/project.ts'
 
 const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
   ? `${evidence.file}:${evidence.lines.first}–${evidence.lines.last} ${evidence.text}`
@@ -17,9 +17,19 @@ export const projectTaskWords = (project: Project, task: Task, blocked: Refusal[
     ...task.responsibility.value.duties,
     `Reviewer ${roleOf(project, task.reviewer)?.name ?? task.reviewer} (responsibility version ${task.reviewerResponsibility.number})`,
     ...task.reviewerResponsibility.value.duties,
-    ...task.stages.map((stage) => `${stage.name}: ${stage.work}`),
+    ...activeStages(task).map((stage) => `${stage.name}: ${stage.work}`),
+    ...task.attachments.filter(({ at }) => !task.omitted.includes(at)).map(({ at, direction, stage }) =>
+      `Stage ${at} also follows ${direction.value.name}: ${direction.value.stages[stage - 1]?.work}`),
     ...taskRules(task).map((rule) => `${rule.name}: ${rule.text}`),
     `Phase: ${phase._tag}`,
+    ...(task.parent._tag === 'Child' ? [`Parent: ${task.parent.parent}`] : []),
+    ...(taskMembership(project, task) === 'Replaced' ? ['This part was replaced.'] : []),
+    ...(phase._tag === 'Sent' && taskAdmission(project, task) === 'Predecessor' ? ['Waiting for the preceding part.'] : []),
+    ...(phase._tag === 'Sent' && taskAdmission(project, task) === 'Parallel' ? ['Waiting for a prepared worktree.'] : []),
+    ...(phase._tag === 'Split' ? [phase.partition.why, phase.partition.review,
+      ...phase.partition.parts.map((part) =>
+        `${part.name} (${part.task}) · stages ${part.range.first}–${part.range.last} · ${part.dependency._tag} · ${part.why}`),
+    ] : []),
     ...(phase._tag === 'Working' ? [`Attempt ${phase.attempt.number}`] : []),
     ...((phase._tag === 'Working' || phase._tag === 'Sent') ? (() => {
       const feedback = phase._tag === 'Working' ? phase.attempt.feedback : phase.feedback
@@ -27,7 +37,7 @@ export const projectTaskWords = (project: Project, task: Task, blocked: Refusal[
         `Review feedback for ${rule.name}: ${taskEvidenceWords(evidence)}`) : []
     })() : []),
     ...(phase._tag === 'Raised' ? [
-      `Reason: ${phase.reason}`, ...phase.evidence.map(taskEvidenceWords),
+      `Reason: ${phase.reason}`, ...(phase.origin._tag === 'Brief' ? [phase.origin.why] : phase.evidence.map(taskEvidenceWords)),
       ...(phase.retained._tag === 'Retained' ? [`Finished result: ${phase.retained.result.summary}`] : []),
       ...(phase.fix._tag !== 'Unassessed' ? [
         `Assessment: ${phase.fix.assessment.missed} · ${phase.fix.assessment.why}`,
@@ -140,12 +150,18 @@ export const sessionUpdateWords = (project: Project, session: LiveSession, event
         return `Proposal ${event.key} assigned for review.`
       }
       case 'Task': {
-        if (event.from === null) return `Task ${event.key} sent · ${event.input.name}\n${event.input.goal}`
+        if (event.move === 'split' || event.move === 'joinParts' || event.move === 'redistribute')
+          return `Task ${event.key} partitioned · ${event.move === 'split' ? event.input.partition.why : event.input.why}`
+        if (event.move === 'dropStage') return `Task ${event.key} dropped stage ${event.input.stage}\n${event.input.evidence.map(taskEvidenceWords).join('\n')}`
+        if (event.from === null) return event.input._tag === 'Child'
+          ? `Task ${event.key} sent as part of ${event.input.parent}.`
+          : `Task ${event.key} sent · ${event.input.name}\n${event.input.goal}`
         if (event.from === 'ReadyToReview') return [`Task ${event.key} ready for review`,
           ...event.input.outcomes.map(({ rule, _tag, evidence }) => `${rule.name} · ${_tag} · ${taskEvidenceWords(evidence)}`),
         ].join('\n')
         if (event.from === 'Raised') {
           switch (event.move) {
+            case 'back': return `Task ${event.key} resent with a corrected brief · ${event.input.why}`
             case 'assess': return `Task ${event.key} assessed · ${event.input.missed} · ${event.input.why}` +
               (event.input.missed === 'MovingTarget' ? '\nFollow the app’s directions for a moving target.' : '')
             case 'tryAgain': return `Task ${event.key} sent for its one automatic retry.`
@@ -160,7 +176,7 @@ export const sessionUpdateWords = (project: Project, session: LiveSession, event
           return [`Task ${event.key} ${changes}`, ...reviewFactsWords(event.input.facts)].join('\n')
         }
         if (event.move === 'raise') return [`Task ${event.key} raised · ${event.input.reason}`,
-          ...event.input.evidence.map(taskEvidenceWords)].join('\n')
+          ...(event.from === 'Sent' ? [event.input.why] : event.input.evidence.map(taskEvidenceWords))].join('\n')
         if (event.move === 'restart') return `Task ${event.key} sent for a fresh attempt.`
         return `Task ${event.key} assigned for review.`
       }

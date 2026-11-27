@@ -54,6 +54,12 @@ staffing plan. Sessions keep the assignments they started with.
   miss can lead to a Staffing proposal. An applicable rule change goes through
   a Direction proposal. The owner can keep a finished result with a reason
   or drop a raised task as its sender.
+- A sender can split before sending or revise a sent or raised brief. The
+  partition covers each active stage in order and opens a journaled task for
+  each new part. An assignee can raise TooBig before or during work. Serial
+  parts wait for their predecessors to finish. Joining parts and moving
+  boundaries preserve active and completed work and leave replaced parts in
+  history.
 
 ## Adapters
 

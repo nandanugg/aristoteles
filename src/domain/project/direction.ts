@@ -1,3 +1,4 @@
+import { versionOf } from './version.ts'
 import { Schema } from 'effect'
 import { Command, Lines, Quote } from './evidence.ts'
 import {
@@ -53,6 +54,7 @@ export const Direction = Schema.TaggedStruct('Direction', {
   scope.stages.stages.every((named) => direction.stages.some((stage) => JSON.stringify(stage) === JSON.stringify(named))),
 )))
 export type Direction = Of<typeof Direction>
+export const DirectionVersion = versionOf(Direction)
 
 // Match the stage's work in its direction. A sent task pins the current responsibility.
 export const sameStage = (left: Of<typeof Stage>, right: Of<typeof Stage>) =>

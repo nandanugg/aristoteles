@@ -56,6 +56,7 @@ const help = [
   'work send <token> --on=<read> --file=task.yaml',
   'work brief <token> <task>',
   'work report|review <token> <task> --on=<read> --file=report.yaml',
+  'work split|join-parts|redistribute|drop-stage|send-back [<token>] <task> --on=<read> --file=plan.yaml',
   'work assess <token> <task> --on=<read> --file=assessment.yaml',
   'work try-again <token> <task> --on=<read>',
   'work take-as-is|drop <task> --on=<read> --why=<reason>',
@@ -154,7 +155,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     return [...commitWords(result), ...(yield* startingWords(journal, result.state, subject))]
   }
 
-  const allowed = ['onboard', 'status', 'project', 'activation', 'session', 'wait', 'send', 'brief', 'report', 'review', 'question', 'answer', 'assess', 'try-again', 'take-as-is', 'drop']
+  const allowed = ['onboard', 'status', 'project', 'activation', 'session', 'wait', 'send', 'brief', 'report', 'review', 'question', 'answer', 'assess', 'try-again', 'take-as-is', 'drop', 'split', 'join-parts', 'redistribute', 'drop-stage', 'send-back']
   if (!allowed.includes(command)) return yield* Effect.fail(invalid())
   const journal = yield* openProjectJournal(directory, 'Write')
   const runs = projectRuns(io.cwd, env.ARISTOTELES_DB, journal)
@@ -256,6 +257,8 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
       return [...updates, ...changed.map((event) => sessionUpdateWords(committed.state, session, event)),
         'Opened a fresh task review.', words(committed.event), continuation(committed.state.read)]
     }
+    if (step.for === 'Split') return [...updates, projectTaskWords(view, task),
+      `work split "$ARISTOTELES_TOKEN" ${task.key} --on=${basis} --file=split.yaml`, follow]
     if (step.for === 'Assess') return [...updates, projectTaskWords(view, task),
       `work assess "$ARISTOTELES_TOKEN" ${task.key} --on=${basis} --file=assessment.yaml`, follow]
     if (step.for === 'TryAgain') return [...updates, projectTaskWords(view, task),
@@ -304,6 +307,14 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     return yield* Effect.fail(invalid())
   }
   if (!known(['on', 'file'])) return yield* Effect.fail(invalid())
+  if (act && !subject && (command === 'split' || command === 'join-parts' || command === 'redistribute' ||
+      command === 'drop-stage' || command === 'send-back')) {
+    const key = yield* decode(TaskKey, act)
+    const input = yield* yaml(yield* file())
+    const move = command === 'join-parts' ? 'joinParts' : command === 'drop-stage' ? 'dropStage'
+      : command === 'send-back' ? 'back' : command
+    return commitWords(yield* submit(journal, { read: basis, line: 'Task', key, move, input }).pipe(asActor))
+  }
   if (command === 'send' && !act && !subject)
     return [words((yield* projectSendCommand(journal, basis, yield* file()).pipe(asActor)).event)]
   if (command === 'report' && act && !subject)

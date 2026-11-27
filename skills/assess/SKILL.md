@@ -69,3 +69,9 @@ knownBreaks: []
 Map instruction documents to directions, broad responsibilities to roles, and each independent validator condition to a rule. Read the validator’s tests and invocation before choosing the rule scope. Include the local command, arguments and expected output for the exact condition. The task runs those commands in ReadyToReview. In the assessment report, name each duplicate check or conflicting retry loop the app harness must hand off, with the file and invocation the owner needs to change. Retain separately owned publishing and other integrations and identify where they run.
 
 Finish with the topics covered and omitted, the proposed roles and staffing reasons, the proposed direction scopes and evidence, and the app-harness changes the owner must make. Use `work onboard status` for the current project and read basis. The page shows the drafts after fresh review and the exact versions after owner acceptance.
+
+When using an accepted direction to split work, use its ordered stages as the
+spine. Attach any additional accepted direction steps at the spine stage they
+govern. The sender uses the assignee’s staff and model to judge what fits in one
+part and states what fits in the parent’s cross-part review. See the work skill
+for the partition input.

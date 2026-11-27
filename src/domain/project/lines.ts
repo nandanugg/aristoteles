@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { EventNumber, ReadPosition, StoredActor, Timestamp } from './values.ts'
 
-export type Party = 'Anyone' | 'Assignee' | 'Pipeline' | 'Reviewer' | 'Owner' | 'Recipient' | 'Proposer' | 'Engine' | 'Host' | 'None'
+export type Party = 'Anyone' | 'Assignee' | 'Pipeline' | 'Reviewer' | 'Owner' | 'Recipient' | 'Proposer' | 'Engine' | 'Host' | 'Sender' | 'None'
 type Edges<Table> = {
   readonly [Phase in keyof Table]: {
     readonly from: Schema.Top

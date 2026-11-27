@@ -4,11 +4,11 @@ import { Result } from 'effect'
 import { ownerProposals } from '../../../core/derived/project/review.ts'
 import { questionAddressText } from '../../words/project.ts'
 import { questionsFor } from '../../../core/derived/project/next-step.ts'
-import { Rationale, type ApprovedFiles, approvedProposals, boundHostSession, type Of, type Project, type Refusal, type Submission, type TaskKey } from '../../../core/schema/project.ts'
+import { Rationale, type ApprovedFiles, approvedProposals, boundHostSession, type Of, type Project, type Refusal, type Submission, type TaskKey, taskMembership } from '../../../core/schema/project.ts'
 import { ProposalCard } from './project-proposal.ts'
 import { RoleCard } from './project-roles.ts'
 import { QuestionCard } from './project-question.ts'
-import { TaskPanel } from './task.ts'
+import { TaskPanel, TaskTree } from './task.ts'
 import type { ProposalReply } from './project-api.ts'
 
 function renderOnboarding({ project, submit, markerFiles, commandBlock }: {
@@ -29,7 +29,14 @@ function renderOnboarding({ project, submit, markerFiles, commandBlock }: {
         return Result.isFailure(result) ? result.failure : null
       }} />`)}
     <${ActivationPanel} project=${project} submit=${submit} markerFiles=${markerFiles} />
-    ${[...project.tasks.values()].map((task) => html`<${TaskPanel} key=${task.key} task=${task} project=${project} submit=${project.phase._tag === 'Active' ? submit : undefined} commandBlock=${commandBlock} />`)}
+    ${[...project.tasks.values()].filter(({ parent }) => parent._tag === 'Root').map((task) =>
+      html`<${TaskTree} key=${task.key} task=${task} project=${project}
+        submit=${project.phase._tag === 'Active' ? submit : null} commandBlock=${commandBlock ?? null} />`)}
+    ${[...project.tasks.values()].some((task) => taskMembership(project, task) === 'Replaced') ? html`<details>
+      <summary>Replaced task parts</summary>
+      ${[...project.tasks.values()].filter((task) => taskMembership(project, task) === 'Replaced')
+        .map((task) => html`<${TaskPanel} key=${task.key} task=${task} project=${project} submit=${null} commandBlock=${null} />`)}
+    </details>` : null}
   </section>`
 }
 

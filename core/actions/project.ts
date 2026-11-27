@@ -21,8 +21,8 @@ export class Authority extends Context.Service<Authority, {
 
 export const CloseRaised = Context.Reference<(
   request: Extract<Submission, { line: 'Task'; move: 'takeAsIs' | 'drop' }>,
-  commit: Effect.Effect<Committed, Refusal>,
-) => Effect.Effect<Committed, Refusal>>('project/CloseRaised', { defaultValue: () => (_request, commit) => commit })
+  actor: StoredActor, commit: Effect.Effect<Committed, Refusal>,
+) => Effect.Effect<Committed, Refusal>>('project/CloseRaised', { defaultValue: () => (_request, _actor, commit) => commit })
 
 type Moves = {
   [Event in StoredEvent as `${Event['line']}:${Event['from']}:${Event['move']}`]:
@@ -51,6 +51,14 @@ const followingMoves = (event: StoredEvent, project: Project, before: Projection
         moves.push({ line: 'Proposal', key, from: 'Reviewing', move: 'release', input: { _tag: 'SessionEnded', ...input } })
     }
     return moves
+  }
+  if (event.line === 'Task' && (event.move === 'split' || event.move === 'joinParts' ||
+      event.move === 'redistribute' || (event.from === 'Split' && event.move === 'dropStage'))) {
+    const phase = project.tasks.get(event.key)?.phase
+    if (phase?._tag !== 'Split') return []
+    return phase.partition.parts.filter(({ task }) => !project.tasks.has(task)).map(({ task }) => ({
+      line: 'Task', key: task, from: null, move: 'open', input: { _tag: 'Child', parent: event.key },
+    }))
   }
   if (event.line === 'Task' && event.from === 'Raised') {
     const prior = before?.tasks.get(event.key)?.phase
@@ -117,6 +125,7 @@ const readSubmission = Schema.decodeUnknownEffect(Submission, { onExcessProperty
 
 const maySubmit = (actor: AuthenticatedActor, party: Party | undefined) => {
   switch (party) {
+    case 'Sender': return actor._tag === 'Human' || actor._tag === 'Staff'
     case 'Owner': return actor._tag === 'Human'
     case 'Host': return actor._tag === 'Host'
     case 'Reviewer': return actor._tag === 'Review'
@@ -149,8 +158,23 @@ const moveFor = (
       if (authenticated._tag !== 'Host' || activation._tag !== 'Active' ||
           authenticated.session.key !== boundHostSession(project)?.key)
         return Result.fail(retired())
-      return moved({ ...request, from: null })
+      return moved({ ...request, from: null, input: { ...request.input, _tag: 'Root' } })
     }
+    if (request.move === 'split') {
+      const input = request.input
+      if (input._tag === 'New') return moved({ ...request, from: null, input })
+      const from = project.tasks.get(request.key)?.phase._tag
+      if (from === 'Sent' || from === 'Raised' || from === 'Split')
+        return moved({ ...request, from, input })
+      return Result.fail(refuse('WrongMove', Rationale.make('Split a new, sent, raised, or already split task.')))
+    }
+    if (request.move === 'joinParts' || request.move === 'redistribute') return moved({ ...request, from: 'Split' })
+    if (request.move === 'dropStage') {
+      const input = request.input
+      return input._tag === 'Split' ? moved({ ...request, input, from: 'Split' }) : moved({ ...request, input, from: 'Working' })
+    }
+    if (request.move === 'tooBig') return moved({ ...request, from: 'Sent', move: 'raise' })
+    if (request.move === 'back') return moved({ ...request, from: 'Raised' })
     if (request.move === 'assess' || request.move === 'tryAgain' || request.move === 'takeAsIs' || request.move === 'drop')
       return moved({ ...request, from: 'Raised' })
     if (!current) return Result.fail(retired())
@@ -216,7 +240,8 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
 export const submitChecked = (journal: Journal, request: Submission): Effect.Effect<Committed, Refusal, Authority> =>
   Effect.gen(function* () {
     const authority = yield* (yield* Authority).actor
-    const party = submissionParty(request)
+    const party = request.line === 'Task' && request.move === 'dropStage' && request.input._tag === 'Split'
+      ? taskLine.Split.owes : submissionParty(request)
     // The bound host's pane also serves the work roles assigned to its staff.
     const authenticated: AuthenticatedActor = authority._tag === 'Host' && party !== 'Host'
       ? { _tag: 'Staff', session: authority.session } : authority
@@ -226,7 +251,7 @@ export const submitChecked = (journal: Journal, request: Submission): Effect.Eff
       : { _tag: 'Session', key: authenticated.session.key }
     const commit = commitProjectMove(journal, actor, request.read, (project) => moveFor(project, request, authenticated, limit))
     if (request.line === 'Task' && (request.move === 'takeAsIs' || request.move === 'drop'))
-      return yield* (yield* CloseRaised)(request, commit)
+      return yield* (yield* CloseRaised)(request, actor, commit)
     return yield* commit
   })
 

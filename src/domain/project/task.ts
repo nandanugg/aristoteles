@@ -1,19 +1,19 @@
 import { hostRole } from './roles.ts'
 import { Schema } from 'effect'
-import { Direction, Fact, Rule, Stage, sameStage } from './direction.ts'
+import { DirectionVersion, Fact, Rule, Stage, sameStage } from './direction.ts'
 import { CommandOutput, Evidence, Lines, outcomeOf } from './evidence.ts'
 import { PromptOutcome, reviewing } from './review.ts'
 import { versionOf } from './version.ts'
+import { Partition, StageAttachment, TaskParent, activeStages } from './task-tree.ts'
 import { Fix } from './fix.ts'
 import { Question } from './question.ts'
 import type { Project } from './records.ts'
 import { Responsibility, staffOf } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  QuestionKey, Rationale, ResultSummary, RetryCount, RoleKey, StoredActor, TaskKey, recordsByKey, type Of,
+  QuestionKey, Rationale, ResultSummary, RetryCount, RoleKey, StagePosition, StoredActor, TaskKey, recordsByKey, type Of,
 } from './values.ts'
 
-export const DirectionVersion = versionOf(Direction)
 export const WholeFile = Schema.Struct({
   path: FilePath,
   image: Schema.Union([
@@ -67,17 +67,19 @@ export const TaskPhase = Schema.Union([
   reviewing({ result: Result, outcomes: CommandOutcomes }),
   Schema.TaggedStruct('Done', { result: Result, outcomes: Schema.Array(RuleOutcome), accepted: Acceptance }),
   Schema.TaggedStruct('Raised', {
-    reason: RaiseReason, evidence: Schema.NonEmptyArray(Evidence), retained: RetainedResult, fix: Fix,
-  }),
+    reason: RaiseReason, evidence: Schema.Array(Evidence), retained: RetainedResult, fix: Fix,
+    origin: Schema.Union([Schema.TaggedStruct('Work', {}), Schema.TaggedStruct('Brief', { why: Rationale })]),
+  }).check(Schema.makeFilter(({ origin, reason, evidence }) =>
+    origin._tag === 'Brief' ? reason === 'TooBig' && evidence.length === 0 : evidence.length > 0)),
+  Schema.TaggedStruct('Split', { partition: Partition }),
   Schema.TaggedStruct('Dropped', { why: Rationale }),
 ])
 export type TaskPhase = Of<typeof TaskPhase>
 export const TaskStages = Schema.NonEmptyArray(Stage)
-  .check(Schema.makeFilter((stages) => stages.every(({ role }) => role === stages[0].role)))
 export const Task = Schema.Struct({
-  key: TaskKey, name: Name, goal: Goal, reviewer: RoleKey,
+  key: TaskKey, name: Name, goal: Goal, role: RoleKey, reviewer: RoleKey, parent: TaskParent,
   responsibility: versionOf(Responsibility), reviewerResponsibility: versionOf(Responsibility), direction: DirectionVersion,
-  stages: TaskStages, facts: Schema.Array(Fact),
+  stages: TaskStages, attachments: Schema.Array(StageAttachment), omitted: Schema.Array(StagePosition), facts: Schema.Array(Fact),
   questions: recordsByKey(Question, QuestionKey),
   retryCount: RetryCount, automaticRetry: Schema.Literals(['Available', 'Used']), phase: TaskPhase, changedIn: EventNumber,
   lastAttempt: Schema.Union([
@@ -94,14 +96,22 @@ export const activeWork = ({ phase }: Project) => {
   return work._tag === 'NotStarted' ? null : { ...phase, work }
 }
 
-export const taskRules = (task: Task): readonly Of<typeof Rule>[] =>
-  task.direction.value.standards.filter(({ scope }) =>
-    scope._tag === 'Everywhere' ||
-    (scope.stages._tag === 'AllStages' || scope.stages.stages.some((named) => task.stages.some((stage) => sameStage(stage, named)))) &&
-    scope.facts.every((required) => task.facts.some((fact) => fact.name === required.name && fact.value === required.value)),
-  ).flatMap(({ rules }) => rules)
+export const taskRules = (task: Task): readonly Of<typeof Rule>[] => {
+  const governed = (direction: Of<typeof DirectionVersion>, stages: readonly Of<typeof Stage>[]) =>
+    direction.value.standards.filter(({ scope }) =>
+      scope._tag === 'Everywhere' ||
+      (scope.stages._tag === 'AllStages' || scope.stages.stages.some((named) => stages.some((stage) => sameStage(stage, named)))) &&
+      scope.facts.every((required) => task.facts.some((fact) => fact.name === required.name && fact.value === required.value)),
+    ).flatMap(({ rules }) => rules)
+  const rules = [
+    ...governed(task.direction, activeStages(task)),
+    ...task.attachments.flatMap((item) => task.omitted.includes(item.at) ? [] :
+      governed(item.direction, [item.direction.value.stages[item.stage - 1]!])),
+  ]
+  return rules
+}
 
-export const taskRole = (task: Task) => task.stages[0].role
+export const taskRole = (task: Task) => task.role
 
 export const taskReviewStaff = (project: Project, task: Task) => {
   const reviewer = staffOf(project, task.reviewer)

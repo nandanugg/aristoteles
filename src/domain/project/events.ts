@@ -1,18 +1,19 @@
 import { Schema } from 'effect'
 import { ApprovedFiles } from './activation.ts'
+import { Partition, StageAttachment, TaskParent } from './task-tree.ts'
 import { Assessment } from './fix.ts'
 import { ProposalSubject, ProposalValue } from './proposal.ts'
 import { versionOf } from './version.ts'
 import { ReviewFacts } from './review.ts'
 import { line, protocol } from './lines.ts'
-import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, DirectionVersion, type TaskPhase } from './task.ts'
+import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, type TaskPhase } from './task.ts'
 import { Evidence } from './evidence.ts'
-import { Fact } from './direction.ts'
+import { DirectionVersion, Fact } from './direction.ts'
 import { Answer, AnswerKind, QuestionRecipient } from './question.ts'
 import { Human, Pane, Roles, Staff, Subscription } from './staff.ts'
 import {
   AttemptNumber, EventNumber, Goal, Name, ProposalKey, QuestionKey, Markdown, Rationale,
-  RetryLimit, RoleKey, StaffSessionKey, TaskKey, type Of,
+  RetryLimit, RoleKey, StaffSessionKey, StagePosition, TaskKey, type Of,
 } from './values.ts'
 
 const questionOwner = Schema.Union([
@@ -27,6 +28,22 @@ export const TaskDraft = Schema.Struct({
   stages: TaskStages,
   facts: Schema.Array(Fact).check(Schema.makeFilter((facts) => new Set(facts.map(({ name }) => name)).size === facts.length)),
 })
+const openTask = Schema.Union([
+  Schema.TaggedStruct('Root', TaskDraft.fields),
+  TaskParent.members[1],
+])
+const wideTask = Schema.Struct({ ...TaskDraft.fields, role: RoleKey, attachments: Schema.Array(StageAttachment) })
+const splitInput = Schema.Union([
+  Schema.TaggedStruct('New', { draft: wideTask, partition: Partition }),
+  Schema.TaggedStruct('Existing', { partition: Partition }),
+])
+const beforeWorkProblem = Schema.Struct({ reason: Schema.Literal('TooBig'), why: Rationale })
+const correction = Schema.Struct({ goal: Goal, why: Rationale })
+const stageDropFields = { stage: StagePosition, evidence: Schema.NonEmptyArray(Evidence) }
+const dropStage = Schema.Union([
+  Schema.TaggedStruct('Working', { ...stageDropFields, attempt: AttemptNumber }),
+  Schema.TaggedStruct('Split', { ...stageDropFields, partition: Partition }),
+])
 const empty = Schema.Record(Schema.String, Schema.Never)
 const staffing = Schema.Struct({ staffedIn: EventNumber })
 const session = Schema.Struct({ session: StaffSessionKey })
@@ -73,14 +90,20 @@ export const projectLine = line({
   Ended: { from: Schema.Literal('Ended'), owes: 'None', moves: {} },
 })
 export const taskLine = line({
-  null: { from: Schema.Null, owes: 'Host', moves: { open: { to: ['Sent'], input: TaskDraft, submission: { move: 'open', input: TaskDraft } } } },
-  Sent: { from: Schema.Literal('Sent'), owes: 'Assignee', moves: { next: {
-    to: ['Working'], input: Schema.Struct({ ...staffing.fields, where: Attempt.fields.where }),
-    submission: { move: 'next', input: empty },
-  } } },
+  null: { from: Schema.Null, owes: 'Host', moves: {
+    open: { to: ['Sent'], input: openTask, submission: { move: 'open', input: TaskDraft } },
+    split: { to: ['Split'], input: splitInput.members[0], owes: 'Sender', submission: { move: 'split', input: splitInput } },
+  } },
+  Sent: { from: Schema.Literal('Sent'), owes: 'Assignee', moves: {
+    next: { to: ['Working'], input: Schema.Struct({ ...staffing.fields, where: Attempt.fields.where }),
+      submission: { move: 'next', input: empty } },
+    split: { to: ['Split'], input: splitInput.members[1], owes: 'Sender' },
+    raise: { to: ['Raised'], input: beforeWorkProblem, submission: { move: 'tooBig', input: beforeWorkProblem } },
+  } },
   Working: { from: Schema.Literal('Working'), owes: 'Assignee', moves: {
     next: { to: ['ReadyToReview'], input: WorkResult, submission: { move: 'next', input: WorkResult } },
     restart: { to: ['Sent'], input: session, owes: 'Engine' },
+    dropStage: { to: ['Working'], input: dropStage.members[0], submission: { move: 'dropStage', input: dropStage } },
     raise: { to: ['Raised'], input: workProblem, submission: { move: 'raise', input: workProblem } },
   } },
   ReadyToReview: { from: Schema.Literal('ReadyToReview'), owes: 'Engine', moves: {
@@ -94,12 +117,20 @@ export const taskLine = line({
     raise: { to: ['Raised'], input: Schema.Struct({ ...taskReviewReport.fields, reason: RaiseReason }) },
   } },
   Done: { from: Schema.Literal('Done'), owes: 'None', moves: {} },
+  Split: { from: Schema.Literal('Split'), owes: 'Sender', moves: {
+    split: { to: ['Split'], input: splitInput.members[1] },
+    joinParts: { to: ['Split'], input: Partition, submission: { move: 'joinParts', input: Partition } },
+    redistribute: { to: ['Split'], input: Partition, submission: { move: 'redistribute', input: Partition } },
+    dropStage: { to: ['Split'], input: dropStage.members[1] },
+  } },
   Raised: { from: Schema.Literal('Raised'), owes: 'None', moves: {
+    split: { to: ['Split'], input: splitInput.members[1], owes: 'Sender' },
+    back: { to: ['Sent'], input: correction, owes: 'Sender', submission: { move: 'back', input: correction } },
     assess: { to: ['Raised'], input: Assessment, owes: 'Pipeline', submission: { move: 'assess', input: Assessment } },
     tryAgain: { to: ['Sent'], input: empty, owes: 'Pipeline', submission: { move: 'tryAgain', input: empty } },
     applyFix: { to: ['Sent'], input: fixProposal, owes: 'Engine' },
     takeAsIs: { to: ['Done'], input: why, owes: 'Owner', submission: { move: 'takeAsIs', input: why } },
-    drop: { to: ['Dropped'], input: why, owes: 'Owner', submission: { move: 'drop', input: why } },
+    drop: { to: ['Dropped'], input: why, owes: 'Sender', submission: { move: 'drop', input: why } },
   } },
   Dropped: { from: Schema.Literal('Dropped'), owes: 'None', moves: {} },
 }) satisfies Readonly<Record<TaskPhase['_tag'], object>>
@@ -179,6 +210,16 @@ const projectRequests = [
 const taskProtocol = protocol({ line: Schema.Literal('Task'), key: TaskKey }, taskLine)
 export const TaskEvent = Schema.Union([
   taskProtocol.event('null', 'open'),
+  taskProtocol.event('null', 'split'),
+  taskProtocol.event('Sent', 'split'),
+  taskProtocol.event('Sent', 'raise'),
+  taskProtocol.event('Working', 'dropStage'),
+  taskProtocol.event('Raised', 'split'),
+  taskProtocol.event('Raised', 'back'),
+  taskProtocol.event('Split', 'split'),
+  taskProtocol.event('Split', 'joinParts'),
+  taskProtocol.event('Split', 'redistribute'),
+  taskProtocol.event('Split', 'dropStage'),
   taskProtocol.event('Sent', 'next'),
   taskProtocol.event('Working', 'next'),
   taskProtocol.event('Working', 'restart'),
@@ -198,6 +239,12 @@ export const TaskEvent = Schema.Union([
 export type TaskEvent = Of<typeof TaskEvent>
 const taskRequests = [
   taskProtocol.request('null', taskLine.null.moves.open),
+  taskProtocol.request('null', taskLine.null.moves.split),
+  taskProtocol.request('Sent', taskLine.Sent.moves.raise),
+  taskProtocol.request('Working', taskLine.Working.moves.dropStage),
+  taskProtocol.request('Raised', taskLine.Raised.moves.back),
+  taskProtocol.request('Split', taskLine.Split.moves.joinParts),
+  taskProtocol.request('Split', taskLine.Split.moves.redistribute),
   taskProtocol.request('Sent', taskLine.Sent.moves.next),
   taskProtocol.request('Working', taskLine.Working.moves.next),
   taskProtocol.request('Working', taskLine.Working.moves.raise),

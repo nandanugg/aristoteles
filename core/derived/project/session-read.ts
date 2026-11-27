@@ -1,5 +1,5 @@
 import {
-  ReadPosition, actorFor, boundHostSession, pipelineStaff, staffByKey, taskReviewStaff, taskRole,
+  ReadPosition, actorFor, boundHostSession, pipelineStaff, senderOf, staffByKey, taskReviewStaff, taskRole,
   type LiveSession, type Of, type Project, type StoredEvent,
 } from '../../schema/project.ts'
 
@@ -64,9 +64,13 @@ export const sessionUpdates = (
         if (event.from === 'Reviewing' && event.move === 'assign')
           return event.actor._tag === 'Session' && event.actor.key === session.key
         const assignee = staff.roles.includes(taskRole(task))
+        const sender = senderOf(project, task)
+        const sentBy = sender?._tag === 'Staff' && sender.key === staff.key
+        if (event.move === 'split' || event.move === 'joinParts' || event.move === 'redistribute' || event.move === 'dropStage')
+          return assignee || sentBy || boundHost
         if (event.from === 'ReadyToReview' || event.move === 'release') return taskReviewStaff(project, task)?.key === staff.key
         if (event.from === 'Raised') return pipeline || assignee || boundHost
-        if (event.move === 'raise') return pipeline || assignee || boundHost
+        if (event.move === 'raise') return pipeline || assignee || sentBy || boundHost
         if (event.from === 'Reviewing') return assignee || boundHost
         return assignee && (event.from === null || event.move === 'restart')
       }

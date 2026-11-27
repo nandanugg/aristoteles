@@ -295,6 +295,20 @@ Nanda accepted the Round 70 names and moves with the removals recorded below. Th
 | `remove`, `release` | Proposal | Record the withdrawal when the task closes or picks another route, or release a confirmed stopped review for a replacement. Release records `SessionEnded` or `ReviewStopped`. |
 | `Assess`, `TryAgain`, `DraftFix` | Work wait | The pipeline’s next action on the raised case. |
 
+### U10 names for Nanda
+
+| Name | Where it appears | Meaning |
+| --- | --- | --- |
+| `TaskParent`, `parent`, `Root`, `Child`, `role`, `Sender` | Task | The parent is a task entry. A child’s sender serves the parent’s role. The owner sends a root. |
+| `StagePosition`, `StageRange`, `range`, `first`, `last` | Part | Inclusive positions in the ordered stages of the parent. |
+| `StageAttachment`, `attachments`, `at`, `direction`, `stage` | Task | Pins an accepted direction and identifies its step at a position on the spine. |
+| `StageDependency`, `dependency`, `Serial`, `Parallel`, `after` | Part | Serial follows prior parts. A planned parallel part names any prior parts it depends on. |
+| `Partition`, `partition`, `Part`, `parts`, `review` | Split | The ordered parts cover the active stages. The sender explains the cut, the fit of each child, and what fits in one cross-part review. |
+| `Split`, `split`, `New`, `Existing` | Task | The sender partitions a new or existing brief and each new part opens on its own line. |
+| `joinParts`, `redistribute` | Task | Join adjacent parts or shift boundaries at the same part count. |
+| `Brief`, `Work`, `origin`, `tooBig`, `back` | Task | Record whether the raise came from reading the brief or working on it. Send a corrected goal for the same slice. |
+| `dropStage`, `omitted` | Task | Record evidence that a stage has no work and leave it out of the active stages. |
+
 ## 2. Core types
 
 This section follows the [settled design and all three reassessment passes](DESIGN-2026-11-26.md). Its declarations are the contract for the next model and implementation passes. Read the TypeScript blocks in order as one module. The transition registries give the signatures their implementations must satisfy.

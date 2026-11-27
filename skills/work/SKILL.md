@@ -61,3 +61,35 @@ For a proposal, give one outcome for each built-in rule printed by wait. Copy th
 The addressed recipient answers using the form and read basis printed by wait. Staff use `work answer <token> <question-address> --on=<read> --file=answer.yaml`. The full address is `project/<question-key>`, `<proposal-key>/<question-key>`, or `<task-key>/<question-key>`. The owner may answer from the page. Use the advertised `_tag` in the answer YAML. `ShortAnswer` takes one line in `text` and `Markdown` takes Markdown in `text`. `OneChoice` takes a zero-based index in `picked`. `ManyChoices` takes one or more zero-based indices in `picked`. `Matrix` takes one zero-based column index per row in `cells`.
 
 When asking, provide Markdown `text` and an `expects` record such as `{ _tag: ShortAnswer }`. For a choice supply `options`. For a matrix supply `rows` and `columns`. Set `owner` in the question YAML to the Project, Proposal, or Task line. For a task use `owner: { _tag: Task, key: task:example }`.
+
+## Splitting a task
+
+The sender judges what fits the assignee’s staff and model. For a root task, the
+owner is the sender. For a part, the staff serving the parent’s role is the sender.
+Use `work split [<token>] <task-key> --on=<read> --file=split.yaml`. To split
+before sending a root, provide `{ _tag: New, draft, partition }`. The draft
+uses the normal brief with a coordination `role` and an `attachments` list.
+Each attachment gives `at` (a position in the spine), `direction` (an accepted
+version), and `stage` (a position in that direction). For a sent, raised,
+or already split task, provide `{ _tag: Existing, partition }`.
+
+A partition has `why`, `review`, and two or more `parts`. Explain why the
+stages belong together and what fits in one cross-part review. Each part
+provides `task`, `name`, `goal`, `role`, inclusive one-based `range:
+{ first, last }`, `dependency: { _tag: Serial }`, and `why` it fits. Assign
+each retained stage once and in order. Use fresh task keys for changed
+parts. Serial work waits for the preceding parts to finish. The worktree
+support for starting a scheduled Parallel part lands in a later unit.
+
+An assignee can report `{ reason: TooBig, why }` on a Sent task before
+beginning. While Working, report TooBig or WrongTask with the attempt and
+evidence. The sender can split the raised brief or send a correction for
+the same stage slice with `work send-back <task-key> --on=<read> --file=brief.yaml`
+and `{ goal, why }`.
+
+`work join-parts` joins adjacent parts. `work redistribute` moves stage
+boundaries while keeping the part count. Both use a full partition file.
+To omit a stage with no work, use `work drop-stage` with `{ _tag: Working,
+stage, attempt, evidence }` while doing the work, or `{ _tag: Split, stage,
+evidence, partition }` as sender of the split task. The revised partition
+covers the remaining stages and leaves active or completed work in place.

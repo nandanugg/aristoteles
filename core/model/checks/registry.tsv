@@ -10,3 +10,4 @@ activationHostBinding	human intervention,crash,out of order,partial execution	12
 staffReplacement	crash,human intervention	120	600
 questionAnswer	human intervention,duplicate,dependency failure	120	600
 fixOwnerChoice	human intervention,out of order,duplicate	120	600
+splitDependency	dependency failure,concurrency,corruption	120	600

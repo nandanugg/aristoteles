@@ -6,7 +6,7 @@ import { recordObserved, type AuthenticatedActor, type CloseRaised } from '../..
 import { acknowledgeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import {
   EventNumber, HostCredential, LaunchNonce, LaunchVerifier, boundHostSession, PaneAddress, ProjectCredential, ProposalKey, Rationale, StaffSessionKey, TaskKey,
-  activeWork, pendingFix, takeAsIsEligibility, refuse, type Of, type Project, type Refusal, type Staff,
+  activeWork, actorFor, pendingFix, sameActor, senderOf, taskMembership, takeAsIsEligibility, refuse, type Of, type Project, type Refusal, type Staff,
 } from '../../core/schema/project.ts'
 import { dbPath, digest, projectLock, removeProjectSession } from '../../core/services/project.ts'
 import type { Journal } from '../../core/services/project.ts'
@@ -142,14 +142,16 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
   return {
     sessions: staffSessionOperations(dir, journal, sessions, launchNextReview(dir, journal, reviews)),
     review: launchNextReview(dir, journal, reviews),
-    closeRaised: ((request, commit) => Effect.scoped(Effect.gen(function* () {
+    closeRaised: ((request, actor, commit) => Effect.scoped(Effect.gen(function* () {
       yield* projectLock(dir)
       const project = yield* readOpenProject(journal)
       const task = project.tasks.get(request.key)
       const phase = task?.phase
-      if (activeWork(project) && task && phase?._tag === 'Raised' &&
+      const sender = task && senderOf(project, task)
+      const acting = actorFor(project, actor)
+      if (activeWork(project) && task && taskMembership(project, task) === 'Current' && phase?._tag === 'Raised' &&
           task.changedIn <= request.read && request.read <= project.read &&
-          (request.move === 'drop' || takeAsIsEligibility(phase) === 'Allowed')) {
+          (request.move === 'drop' ? sender && acting && sameActor(sender, acting) : takeAsIsEligibility(phase) === 'Allowed')) {
         const proposal = pendingFix(project, task.key)
         const review = proposal?.phase
         if (proposal && proposal.changedIn <= request.read && review?._tag === 'Reviewing' && review.assignment._tag === 'Assigned') {

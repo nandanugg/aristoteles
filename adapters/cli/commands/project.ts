@@ -62,8 +62,10 @@ export const projectReportCommand = (
   commands?: TaskCommands,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
   const key = yield* checkedTaskInput(TaskKey, target)
-  const report = yield* checkedTaskInput(Schema.Union([taskLine.Working.moves.next.submission.input, taskLine.Working.moves.raise.submission.input, taskLine.Sent.moves.next.submission.input]),
+  const report = yield* checkedTaskInput(Schema.Union([taskLine.Working.moves.next.submission.input, taskLine.Working.moves.raise.submission.input, taskLine.Sent.moves.raise.submission.input, taskLine.Sent.moves.next.submission.input]),
     yield* loadTaskYaml(yaml))
+  if (Schema.is(taskLine.Sent.moves.raise.submission.input)(report))
+    return yield* submitChecked(journal, { read, line: 'Task', key, move: 'tooBig', input: report })
   const committed = yield* reportWork(journal, key, read, report)
   // A failure to run or append command evidence leaves the accepted report available for recovery.
   if (commands && 'files' in report) yield* Effect.result(runTaskCommands(journal, key, commands))

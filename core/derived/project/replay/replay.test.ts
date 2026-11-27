@@ -89,7 +89,7 @@ for (const kind of kinds) test('task report race append seam — ' + kind, () =>
         const task = state.tasks.get(taskKey)
         if (!task) throw new Error('The replay has no sent task')
         const phase = task.phase
-        if (phase._tag === 'Done' || phase._tag === 'Raised' || phase._tag === 'Dropped') throw new Error('Unexpected terminal phase')
+        if (phase._tag === 'Done' || phase._tag === 'Raised' || phase._tag === 'Dropped' || phase._tag === 'Split') throw new Error('Unexpected terminal phase')
         const attempt = phase._tag === 'Working' ? phase.attempt
           : phase._tag === 'Sent' ? undefined : phase.result.attempt
         const writes = committed.flatMap((event) => {

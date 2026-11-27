@@ -44,7 +44,7 @@ export const reviewTask = (
   const fix = { _tag: 'Unassessed' } as const
   const [finding, ...otherFindings] = facts.findings
   if (finding) return Result.succeed({
-    _tag: 'Raised', reason: 'NoRule', retained, fix, evidence: [finding.evidence, ...otherFindings.map(({ evidence }) => evidence)],
+    _tag: 'Raised', origin: { _tag: 'Work' }, reason: 'NoRule', retained, fix, evidence: [finding.evidence, ...otherFindings.map(({ evidence }) => evidence)],
   })
   if (!first) return Result.succeed({ _tag: 'Done', result, outcomes, accepted: { _tag: 'Reviewed' } })
   const attempt = result.attempt
@@ -52,10 +52,10 @@ export const reviewTask = (
   const [repeated, ...otherRepeated] = [first, ...rest].filter((now) =>
     history.some((was) => JSON.stringify(was.rule) === JSON.stringify(now.rule)))
   if (repeated) return Result.succeed({
-    _tag: 'Raised', reason: 'Misses', retained, fix, evidence: [repeated.evidence, ...otherRepeated.map(({ evidence }) => evidence)],
+    _tag: 'Raised', origin: { _tag: 'Work' }, reason: 'Misses', retained, fix, evidence: [repeated.evidence, ...otherRepeated.map(({ evidence }) => evidence)],
   })
   if (task.retryCount >= limit) return Result.succeed({
-    _tag: 'Raised', reason: 'Tries', retained, fix, evidence: [first.evidence, ...rest.map(({ evidence }) => evidence)],
+    _tag: 'Raised', origin: { _tag: 'Work' }, reason: 'Tries', retained, fix, evidence: [first.evidence, ...rest.map(({ evidence }) => evidence)],
   })
   return Result.succeed({
     _tag: 'Working', attempt: { ...attempt, feedback: { _tag: 'Review', breaks: [first, ...rest, ...history] } },

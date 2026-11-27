@@ -1,6 +1,6 @@
 import {
   actorFor, type ReadPosition, currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
-  fixDuty, pendingFix, pipelineStaff, taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
+  fixDuty, pendingFix, pipelineStaff, senderOf, takeAsIsEligibility, taskAdmission, taskMembership, taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
 import { lastSessionAct } from './session-read.ts'
 import { mayAssignTaskReview } from './review.ts'
@@ -12,7 +12,7 @@ export type Selection =
       readonly _tag: 'Available'
       readonly subject: { readonly _tag: 'Task'; readonly task: Task } | { readonly _tag: 'Question'; readonly question: Question; readonly owner: QuestionEvent['owner'] }
         | { readonly _tag: 'Proposal'; readonly proposal: Proposal }
-      readonly for: 'Report' | 'Answer' | 'Choose' | 'Assign' | 'Assess' | 'TryAgain' | 'DraftFix'
+      readonly for: 'Report' | 'Answer' | 'Choose' | 'Assign' | 'Split' | 'Assess' | 'TryAgain' | 'DraftFix'
       readonly read: Of<typeof ReadPosition>
     }
 
@@ -34,7 +34,8 @@ export const questionsFor = (project: Project, authority: LiveSession | Of<typeo
     ...due({ _tag: 'Project' }, project.questions.values()),
     ...[...project.proposals.values()].flatMap((proposal) => due({ _tag: 'Proposal', key: proposal.key },
       [...proposal.questions.values()].filter((question) => currentQuestion(proposal, question)))),
-    ...[...project.tasks.values()].flatMap((task) => due({ _tag: 'Task', key: task.key }, task.questions.values())),
+    ...[...project.tasks.values()].filter((task) => taskMembership(project, task) === 'Current')
+      .flatMap((task) => due({ _tag: 'Task', key: task.key }, task.questions.values())),
   ].sort((a, b) => a.question.changedIn - b.question.changedIn)
 }
 
@@ -61,7 +62,7 @@ export const nextStep = (
     switch (taskLine[phase._tag].owes) {
       case 'Assignee':
         if (phase._tag === 'Working') return phase.attempt.actor.key === current.key
-        return staffOf(project, taskRole(task))?.key === current.staff.key
+        return taskAdmission(project, task) === 'Allowed' && staffOf(project, taskRole(task))?.key === current.staff.key
       default:
         return false
     }
@@ -69,17 +70,24 @@ export const nextStep = (
   const due: Extract<Selection, { _tag: 'Available' }>[] = []
   if (question) due.push({ _tag: 'Available', subject: { _tag: 'Question', ...question }, for: 'Answer', read: project.read })
   const pipeline = current && activeWork(project) && pipelineStaff(project)?.key === current.staff.key
+  const actor = authority._tag === 'Human' ? { _tag: 'Human' } as const : current && actorFor(project, { _tag: 'Session', key: current.key })
   for (const task of project.tasks.values()) {
+    if (taskMembership(project, task) !== 'Current') continue
+    const sender = senderOf(project, task)
+    const split = actor && sender && sameActor(sender, actor) &&
+      ((task.phase._tag === 'Raised' && (task.phase.reason === 'TooBig' || task.phase.reason === 'WrongTask')) ||
+        (task.phase._tag === 'Sent' && taskAdmission(project, task) === 'NeedsSplit'))
     const subject = { _tag: 'Task', task } as const
     const fix = pipeline && fixDuty(project, task)
-    if (fix) due.push({ _tag: 'Available', subject, for: fix, read: project.read })
-    else if (authority._tag === 'Human' && task.phase._tag === 'Raised' && !pendingFix(project, task.key))
+    if (split) due.push({ _tag: 'Available', subject, for: 'Split', read: project.read })
+    else if (fix) due.push({ _tag: 'Available', subject, for: fix, read: project.read })
+    else if (authority._tag === 'Human' && task.phase._tag === 'Raised' && !pendingFix(project, task.key) &&
+        (sender?._tag === 'Human' || takeAsIsEligibility(task.phase) === 'Allowed'))
       due.push({ _tag: 'Available', subject, for: 'Choose', read: project.read })
     else if (owes(task)) due.push({ _tag: 'Available', subject, for: 'Report', read: project.read })
     else if (current && mayAssignTaskReview(project, events, task, current) === 'Allowed')
       due.push({ _tag: 'Available', subject, for: 'Assign', read: project.read })
   }
-  const actor = authority._tag === 'Human' ? { _tag: 'Human' } as const : current && actorFor(project, { _tag: 'Session', key: current.key })
   for (const proposal of project.proposals.values()) {
     const duty = proposalLine[proposal.phase._tag].owes
     const owner = duty === 'Owner' && actor?._tag === 'Human'

@@ -1,10 +1,11 @@
+import { matchSender } from './task-tree.ts'
 import { Result } from 'effect'
 import {
   Rationale, RetryCount, assessmentEligibility, takeAsIsEligibility, liveSession, pendingFix, pipelineStaff, refuse, staffedIn, taskRole,
   type Project, type ProposalValue, type Refusal, type Task, type TaskEvent, type TaskPhase,
 } from '../schema/project.ts'
 
-type RaisedMove = Extract<TaskEvent, { from: 'Raised' }>
+type RaisedMove = Exclude<Extract<TaskEvent, { from: 'Raised' }>, { move: 'split' | 'back' }>
 
 export const applyRaisedMove = (
   project: Project, task: Task, event: RaisedMove,
@@ -19,7 +20,7 @@ export const applyRaisedMove = (
   const pending = pendingFix(project, task.key)
   if (pending && pending.changedIn > read)
     return Result.fail(refuse('Stale', Rationale.make('Read the current fix proposal before acting on the task.')))
-  if (move === 'drop') return actor._tag === 'Human' ? enter({ _tag: 'Dropped', why: event.input.why }) : wrongActor()
+  if (move === 'drop') return matchSender(project, task, actor) ? enter({ _tag: 'Dropped', why: event.input.why }) : wrongActor()
   if (move === 'takeAsIs') {
     if (actor._tag !== 'Human') return wrongActor()
     if (retained._tag !== 'Retained' || takeAsIsEligibility(raised) !== 'Allowed') return wrong()

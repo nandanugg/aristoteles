@@ -1,10 +1,11 @@
+import { acceptedDirection, childDraft, directionSlice, validatePartition } from './task-tree.ts'
 import { applyTaskMove } from './task.ts'
 import { applyProjectPhase } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import { hostRole,
-  DirectionVersion, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, boundHostSession, liveSession, roleOf, StoredEvent, answerFor, currentQuestion, edge, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf,
-  type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal,
+  ReadPosition, Rationale, RetryCount, activeWork, actorFor, boundHostSession, liveSession, roleOf, taskLine, taskMembership, StoredEvent, answerFor, currentQuestion, edge, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf,
+  type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type Task, type TaskEvent, type TaskPhase, type Projection, type Question, type Refusal,
 } from '../schema/project.ts'
 
 export const readPosition = (state: Projection): typeof ReadPosition.Type =>
@@ -43,41 +44,57 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
   return project ? applyProjectPhase(project, event) : wrongMove()
 }
 
-const sameDirection = Schema.toEquivalence(DirectionVersion)
-const equalStage = Schema.toEquivalence(Stage)
-
 const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): Result.Result<Project, Refusal> => {
-  const { key, actor, number, read, input: draft } = event
+  const { key, actor, number, read } = event
   const activation = activeWork(project)
   if (!activation) return wrongMove()
-  if (activation.work.startedIn > read) return stale()
-  if (actor._tag !== 'Session' || actor.key !== boundHostSession(project)?.key) return retired()
-  if (project.tasks.has(key)) return stale()
-  const role = roleOf(project, draft.stages[0].role)
-  const reviewer = roleOf(project, draft.reviewer)
-  if (!role || !reviewer) return wrongActor()
-  if (role.responsibility.acceptedIn > read || reviewer.responsibility.acceptedIn > read) return stale()
-  const direction = draft.direction
-  const proposals = [...project.proposals.values()]
-  if (direction.acceptedIn > read || !proposals.some(({ phase }) =>
-    phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' &&
-    sameDirection({ ...phase.version, value: phase.version.value }, direction)) ||
-    proposals.some(({ phase, basis }) => phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' &&
-      basis._tag === 'Version' && basis.version.acceptedIn === direction.acceptedIn)) return stale()
-  const source = direction.value.stages
-  const offset = source.findIndex((_, index) => draft.stages.every((stage, delta) =>
-    source[index + delta] !== undefined && equalStage(source[index + delta]!, stage)))
-  const [first, ...rest] = offset < 0 ? [] : source.slice(offset, offset + draft.stages.length)
-  if (!first || [first, ...rest].some((stage) => stage.role !== role.key))
+  if (activation.work.startedIn > read || project.tasks.has(key)) return stale()
+  const save = (
+    draft: Pick<Task, 'name' | 'goal' | 'role' | 'direction' | 'stages' | 'attachments' | 'facts' | 'reviewer'>,
+    parent: Task['parent'], phase: TaskPhase,
+  ): Result.Result<Project, Refusal> => {
+    const role = roleOf(project, draft.role)
+    const reviewer = roleOf(project, draft.reviewer)
+    if (!role || !reviewer) return wrongActor()
+    if (role.responsibility.acceptedIn > read || reviewer.responsibility.acceptedIn > read) return stale()
+    if (edge(taskLine, 'null', event.move, phase._tag) !== 'Allowed') return wrongMove()
+    const task: Task = {
+      ...draft, key, parent, phase, responsibility: role.responsibility, reviewerResponsibility: reviewer.responsibility,
+      omitted: [], questions: new Map(), retryCount: RetryCount.make(0), automaticRetry: 'Available',
+      lastAttempt: { _tag: 'None' }, changedIn: number,
+    }
+    const checked = phase._tag === 'Split'
+      ? validatePartition(project, task, phase.partition, read, 'split')
+      : Result.succeed(undefined)
+    return Result.map(checked, () => ({ ...project, tasks: new Map(project.tasks).set(key, task) }))
+  }
+  const sent = { _tag: 'Sent', feedback: { _tag: 'None' } } as const
+  if (event.move === 'open' && event.input._tag === 'Child') {
+    if (actor._tag !== 'Human') return wrongActor()
+    const parent = project.tasks.get(event.input.parent)
+    if (parent?.phase._tag !== 'Split' || parent.changedIn > read || taskMembership(project, parent) !== 'Current') return wrongMove()
+    const part = parent.phase.partition.parts.find(({ task }) => task === key)
+    const draft = part && childDraft(parent, part)
+    return draft ? save(draft, event.input, sent) : wrongMove()
+  }
+  if (event.move === 'split') {
+    if (actor._tag !== 'Human') return wrongActor()
+    const { draft, partition } = event.input
+    if (!acceptedDirection(project, draft.direction, read) ||
+        draft.attachments.some(({ at, direction, stage }) =>
+          at > draft.stages.length || stage > direction.value.stages.length || !acceptedDirection(project, direction, read))) return stale()
+    const stages = directionSlice(draft.direction, draft.stages)
+    if (!stages) return wrongMove()
+    return save({ ...draft, stages }, { _tag: 'Root' }, { _tag: 'Split', partition })
+  }
+  if (event.input._tag !== 'Root' || actor._tag !== 'Session' || actor.key !== boundHostSession(project)?.key) return retired()
+  const { _tag, ...draft } = event.input
+  if (!acceptedDirection(project, draft.direction, read)) return stale()
+  const stages = directionSlice(draft.direction, draft.stages)
+  const role = stages?.[0].role
+  if (!stages || !role || stages.some((stage) => stage.role !== role))
     return Result.fail(refuse('InvalidInput', Rationale.make('Use a contiguous stage slice assigned to the role.')))
-  const tasks = new Map(project.tasks)
-  tasks.set(key, {
-    key, name: draft.name, goal: draft.goal, reviewer: reviewer.key, direction,
-    responsibility: role.responsibility, reviewerResponsibility: reviewer.responsibility,
-    stages: [first, ...rest], facts: draft.facts, questions: new Map(),
-    retryCount: RetryCount.make(0), automaticRetry: 'Available', phase: { _tag: 'Sent', feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, changedIn: number,
-  })
-  return Result.succeed({ ...project, tasks })
+  return save({ ...draft, stages, role, attachments: [] }, { _tag: 'Root' }, sent)
 }
 
 const applySessionMove = (project: Project, event: SessionEvent): Result.Result<Project, Refusal> => {

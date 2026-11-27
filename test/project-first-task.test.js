@@ -31,7 +31,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=26; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=27; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -167,7 +167,9 @@ exec sleep 90
       return { number, start }
     }
     const rule = direction.standards[0].rules[0]
-    const drafted = { ...direction, source: { _tag: 'Local' }, stages: [{ ...direction.stages[0], role: pipeline.key }],
+    const drafted = { ...direction, source: { _tag: 'Local' },
+      stages: ['Prepare the result', 'Write the result', 'Check the result'].map((name) =>
+        ({ ...direction.stages[0], role: pipeline.key, name })),
       standards: [{ ...direction.standards[0], rules: [
         { ...rule, verification: { _tag: 'Command', text: 'test -f sample.md' } },
         { ...rule, name: 'Clear wording',
@@ -363,6 +365,30 @@ exec sleep 90
     const childKey = fixReviewer.token.split('.')[1]
     expect(Bun.spawnSync([realTmux, '-L', bootstrapSocket(dir), 'has-session', '-t', '=boot-' + childKey]).exitCode).not.toBe(0)
     expect((await call(['wait'], { token: fixReviewer.token })).code).toBe(1)
+
+    const treePart = (key, title, first, last) => ({
+      task: key, name: title, goal: 'Complete the marked stage range.',
+      role: pipeline.key, range: { first, last }, dependency: { _tag: 'Serial' }, why: 'This slice fits one attempt.',
+    })
+    put('split.yaml', { _tag: 'New', draft: {
+      name: 'Stage partition', goal: 'Work through the direction in order.', role: pipeline.key,
+      reviewer: pipeline.key, direction: accepted, stages: accepted.value.stages, facts: [], attachments: [],
+    }, partition: {
+      why: 'Separate preparation from the remaining work.', review: 'Review the handoff in one pass.',
+      parts: [treePart('task:prepare', 'Prepare', 1, 1), treePart('task:write-check', 'Write and check', 2, 3)],
+    } })
+    await apply(['split', 'task:tree', await basis(), '--file=split.yaml'], undefined, 'split before sending')
+    await browser.phase('Stage partition', pipeline.name, 'Split')
+    await browser.phase('Prepare', pipeline.name, 'Sent')
+    const secondPart = browser.page.getByRole('article', { name: 'Write and check', exact: true })
+    await secondPart.getByText('Waiting for the preceding part.').waitFor()
+    await secondPart.getByText('Task brief', { exact: true }).click()
+    await secondPart.getByRole('list', { name: 'Direction stages' }).getByText(/Check the result/).waitFor()
+    put('begin.yaml', {})
+    const early = await call(['report', 'task:write-check', await basis(), '--file=begin.yaml'], live)
+    expect(early.err).toContain('preceding part')
+    const duePart = await ok(['wait'], live)
+    expect(duePart).toContain('task:prepare')
 
     await apply(['session', 'end', live.key], undefined, 'owner ends staff')
     expect((await state()).sessions.find(({ key }) => key === live.key)._tag).toBe('Ended')
