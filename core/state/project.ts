@@ -1,9 +1,9 @@
-import { applyTaskMove, restartTask } from './task.ts'
+import { applyTaskMove } from './task.ts'
 import { applyProjectPhase } from './project-activation.ts'
 import { applyProposalMove } from './proposal.ts'
 import { Result, Schema } from 'effect'
 import { hostRole,
-  DirectionVersion, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, approvedProposals, boundHostSession, liveSession, ProposalValue, roleOf, StoredEvent, answerFor, currentQuestion, edge, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf, versionOf,
+  DirectionVersion, Stage, ReadPosition, Rationale, RetryCount, activeWork, actorFor, boundHostSession, liveSession, roleOf, StoredEvent, answerFor, currentQuestion, edge, questionLine, refuse, sessionLine, sessionMayStart, sameActor, staffByKey, staffOf,
   type LiveSession, type Project, type ProjectEvent, type QuestionEvent, type SessionEvent, type TaskEvent, type Projection, type Question, type Refusal,
 } from '../schema/project.ts'
 
@@ -43,7 +43,6 @@ const applyProjectMove = (project: Projection, event: ProjectEvent): Result.Resu
   return project ? applyProjectPhase(project, event) : wrongMove()
 }
 
-const sameApprovedProposals = Schema.toEquivalence(Schema.NonEmptyArray(versionOf(ProposalValue)))
 const sameDirection = Schema.toEquivalence(DirectionVersion)
 const equalStage = Schema.toEquivalence(Stage)
 
@@ -81,7 +80,6 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   return Result.succeed({ ...project, tasks })
 }
 
-// A session retirement changes each affected task in the same journal event.
 const applySessionMove = (project: Project, event: SessionEvent): Result.Result<Project, Refusal> => {
   const { key, number, read, actor } = event
   if (actor._tag !== 'Human') return wrongActor()
@@ -110,44 +108,17 @@ const applySessionMove = (project: Project, event: SessionEvent): Result.Result<
     if (activation._tag === 'RollingBack' && host?.key === staff.key) return wrongMove()
     const live: LiveSession = { _tag: 'Live', key, staff, startedIn: number, changedIn: number, pane: event.input.pane }
     sessions.set(key, live)
-    let next = activation
-    if (activation._tag === 'Activating' && host?.key === staff.key) {
-      const proposals = approvedProposals(project)
-      if (!proposals || !sameApprovedProposals(proposals, activation.proposals)) return stale()
-      next = { ...activation, _tag: 'Active', work: { _tag: 'NotStarted' } }
-    }
     if (activation._tag === 'Active' && host?.key === staff.key && activation.work._tag !== 'NotStarted' &&
         startedIn < activation.work.startedIn) return wrongMove()
-    return Result.succeed({ ...project, sessions, phase: next,
-      changedIn: next !== activation ? number : project.changedIn })
+    return Result.succeed({ ...project, sessions })
   }
   const { observed } = event.input
   if (edge(sessionLine, previous._tag, event.move, observed) !== 'Allowed' ||
       (previous._tag !== 'Live' && previous._tag !== 'Paused')) return wrongMove()
-  if (observed !== 'Ended') {
-    sessions.set(key, { ...previous, _tag: observed, changedIn: number })
-    return Result.succeed({ ...project, sessions })
-  }
   const { staff, startedIn } = previous
-  sessions.set(key, { _tag: 'Ended', key, staff, startedIn, changedIn: number })
-  const tasks = new Map(project.tasks)
-  const proposals = new Map(project.proposals)
-  for (const [key, task] of tasks) {
-    const phase = task.phase
-    if (phase._tag === 'Working' && phase.attempt.actor.key === previous.key) {
-      const restarted = restartTask(task, phase, number)
-      if (Result.isSuccess(restarted)) tasks.set(key, restarted.success)
-    }
-    if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key) {
-      tasks.set(key, { ...task, phase: { ...phase, assignment: { _tag: 'Waiting' } }, changedIn: number })
-    }
-  }
-  for (const [key, proposal] of proposals) {
-    const phase = proposal.phase
-    if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === previous.key)
-      proposals.set(key, { ...proposal, phase: { _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, changedIn: number })
-  }
-  return Result.succeed({ ...project, sessions, tasks, proposals })
+  sessions.set(key, observed === 'Ended' ? { _tag: 'Ended', key, staff, startedIn, changedIn: number }
+    : { ...previous, _tag: observed, changedIn: number })
+  return Result.succeed({ ...project, sessions })
 }
 
 const applyQuestionMove = (project: Project, event: QuestionEvent): Result.Result<Project, Refusal> => {

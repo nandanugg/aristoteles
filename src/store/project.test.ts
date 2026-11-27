@@ -14,7 +14,7 @@ const query = (path: string, action: (db: Database) => void) => {
   try { action(db) } finally { db.close() }
 }
 
-test('a missing journal stays missing in read mode and fresh creation uses format 23', () => withJournal(async (path) => {
+test('a missing journal stays missing in read mode and fresh creation uses format 24', () => withJournal(async (path) => {
   expect(await Effect.runPromise(Effect.scoped(Effect.result(open(path, 'Read'))))).toMatchObject({
     _tag: 'Failure', failure: { code: 'InvalidInput' },
   })
@@ -45,9 +45,9 @@ test('the project opens with one Host and one Pipeline in the role map', () => w
 
 test.each([
   ['old store', 'CREATE TABLE event (seq); PRAGMA user_version = 10'],
-  ['previous project format', 'PRAGMA user_version = 22'],
+  ['previous project format', 'PRAGMA user_version = 23'],
   ['foreign SQLite database', 'CREATE TABLE unrelated (row)'],
-  ['foreign matching version', 'CREATE TABLE project_event (row); PRAGMA user_version = 23'],
+  ['foreign matching version', 'CREATE TABLE project_event (row); PRAGMA user_version = 24'],
   ['regular file', ''],
 ])('refuses a foreign or old journal before modifying it: %s', (_name, sql) => withJournal(async (path) => {
   if (sql) query(path, (db) => db.exec(sql))

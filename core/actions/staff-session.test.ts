@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { Effect } from 'effect'
+import { Database } from 'bun:sqlite'
+import { Effect, Result } from 'effect'
 import { waitOnProject } from '../../adapters/cli/commands/project.ts'
 import { startSession, open, session, staff, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { begin, commandOutcomes, resultInput, send, taskKey, taskLine, toWorking } from '../../src/store/task.probe.ts'
@@ -86,8 +87,24 @@ test('confirmed crash restarts Working, keeps reviewed output and makes assigned
     yield* startChild(journal, yield* readOpenProject(journal), ongoing, session, 'Work')
     const before = yield* readOpenProject(journal)
     expect(Number(capacity(before, staff)?.usedSubagents)).toBe(2)
-    yield* observeSession(journal, before, address, 'Ended')
+    const db = yield* Effect.acquireRelease(Effect.sync(() => new Database(path)), (db) => Effect.sync(() => db.close()))
+    db.exec(`CREATE TRIGGER fail_retirement BEFORE INSERT ON project_event
+      WHEN json_extract(NEW.event, '$.move') = 'restart'
+      BEGIN SELECT RAISE(ABORT, 'lost task restart'); END`)
+    const retire = observeSession(journal, before, address, 'Ended')
+    expect(yield* Effect.result(retire)).toMatchObject(rejected('Unavailable'))
+    expect(yield* journal.eventsAfter(before.read)).toEqual([])
+    expect(yield* readOpenProject(journal)).toEqual(before)
+    db.exec('DROP TRIGGER fail_retirement')
+    const ended = yield* retire
+    const sessionOnly = Result.getOrThrow(applyEvent(before, ended.event))
+    expect(sessionOnly.tasks).toEqual(before.tasks)
+    expect(ended.following).toMatchObject([
+      { line: 'Task', from: 'Reviewing', move: 'release', key: taskKey, input: { session: address } },
+      { line: 'Task', from: 'Working', move: 'restart', key: ongoing, input: { session: address } },
+    ])
     const after = yield* readOpenProject(journal)
+    expect(after).toEqual(ended.state)
     expect(after.read).not.toBe(readPosition(sent.state))
     expect(after.sessions.get(session.key)?._tag).toBe('Ended')
     expect(after.tasks.get(ongoing)).toMatchObject({ retryCount: 0, phase: { _tag: 'Sent' } })

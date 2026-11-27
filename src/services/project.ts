@@ -6,6 +6,7 @@ import type { EventNumber, Of, ReadPosition, Refusal, OptionIndex } from '../dom
 
 export interface Committed {
   readonly event: StoredEvent
+  readonly following: readonly StoredEvent[]
   readonly state: Project
 }
 

@@ -43,11 +43,8 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
   const stage = project.proposals.get(key)
   const session = actor._tag === 'Session' ? liveSession(project, actor.key) : undefined
   const acting = actorFor(project, actor)
-  const store = (proposal: Proposal, state = project): Result.Result<Project, Refusal> => {
-    const proposals = new Map(state.proposals)
-    proposals.set(key, proposal)
-    return Result.succeed({ ...state, proposals })
-  }
+  const store = (proposal: Proposal): Result.Result<Project, Refusal> =>
+    Result.succeed({ ...project, proposals: new Map(project.proposals).set(key, proposal) })
   if (event.from === null) {
     if (stage) return stale()
     if (!acting || (event.input.value._tag === 'Responsibility' && actor._tag !== 'Human')) return wrongActor()
@@ -86,6 +83,14 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
   }
   if (event.from === 'Reviewing' && phase._tag === 'Reviewing') {
+    if (event.move === 'release') {
+      if (actor._tag !== 'Human') return wrongActor()
+      const ended = project.sessions.get(event.input.session)
+      if (phase.assignment._tag !== 'Assigned' || phase.assignment.actor.key !== event.input.session || ended?._tag !== 'Ended')
+        return wrongMove()
+      if (ended.changedIn > read) return stale()
+      return move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
+    }
     const reviewer = staffOf(project, hostRole(project).key)
     if (!session || actor._tag !== 'Session' || !reviewer || reviewer.key !== session.staff.key)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the assigned host’s live session.')))
@@ -121,24 +126,6 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     : effectiveVersion(project, stage.value)?.acceptedIn !== previous?.acceptedIn) return stale()
   const versionNumber = (previous?.number ?? 0) + 1
   if (!Schema.is(VersionNumber)(versionNumber)) return wrongMove()
-  return Result.flatMap(validateValue(project, stage.value, event.move), (value) => {
-    // Keep the exact reviewed payload in the version. Derived runtime assignments use checked records.
-    const version = { number: versionNumber, value: stage.value, acceptedIn: number }
-    let state = project
-    if (value._tag === 'Staffing' && stage.value._tag === 'Staffing') {
-      state = {
-        ...project,
-        staffing: { _tag: 'StaffingAccepted', version: { ...version, value: stage.value } },
-      }
-    } else if (value._tag === 'Responsibility') {
-      const { summary, introduction, duties } = value
-      const current = roleOf(project, value.role)
-      if (!current) return wrongMove()
-      const role = { ...current, responsibility: {
-        number: versionNumber, value: { summary, introduction, duties }, acceptedIn: number,
-      } }
-      state = { ...project, roles: new Map(project.roles).set(role.key, role) }
-    }
-    return store({ ...stage, phase: { _tag: 'Accepted', version }, changedIn: number }, state)
-  })
+  return Result.flatMap(validateValue(project, stage.value, event.move), () =>
+    move({ _tag: 'Accepted', version: { number: versionNumber, value: stage.value, acceptedIn: number } }))
 }

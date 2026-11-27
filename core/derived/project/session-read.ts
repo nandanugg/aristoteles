@@ -25,8 +25,17 @@ export const sessionUpdates = (
   return events.filter((event) => {
     if (event.number <= after || event.number > project.read) return false
     switch (event.line) {
-      case 'Project':
+      case 'Project': {
+        if (event.move === 'publish') {
+          const proposal = project.proposals.get(event.input.proposal)
+          if (proposal?.phase._tag !== 'Accepted') return false
+          const { value } = proposal.phase.version
+          return value._tag === 'Responsibility' ? staff.roles.includes(value.role)
+            : value._tag === 'Staffing' && (value.staff.has(staff.key) || addressed(actorFor(project, proposal.proposer)))
+        }
+        if (event.from === 'Activating' && event.move === 'next') return event.input.session === session.key
         return event.from === 'Active' && event.move === 'start' && boundHost
+      }
       case 'Session':
         return event.key === session.key && (event.from === 'Starting' && event.move === 'next' || event.from === 'Paused' || event.from === 'Live')
       case 'Question': {
@@ -40,12 +49,8 @@ export const sessionUpdates = (
       case 'Proposal': {
         const proposal = project.proposals.get(event.key)
         if (!proposal) return false
-        if (event.from === 'WaitingForOwner' && event.move === 'accept' && proposal.phase._tag === 'Accepted') {
-          const { value } = proposal.phase.version
-          if (value._tag === 'Direction') return true
-          if (value._tag === 'Responsibility') return staff.roles.includes(value.role)
-          return value.staff.has(staff.key) || addressed(actorFor(project, proposal.proposer))
-        }
+        if (event.from === 'WaitingForOwner' && event.move === 'accept')
+          return proposal.phase._tag === 'Accepted' && proposal.phase.version.value._tag === 'Direction'
         if (event.from === 'Reviewing' && event.move === 'assign')
           return event.actor._tag === 'Session' && event.actor.key === session.key
         return (event.move === 'sendBack' || event.move === 'remove') && addressed(actorFor(project, proposal.proposer))
@@ -56,7 +61,7 @@ export const sessionUpdates = (
         if (event.from === 'Reviewing' && event.move === 'assign')
           return event.actor._tag === 'Session' && event.actor.key === session.key
         const assignee = staff.roles.includes(taskRole(task))
-        if (event.from === 'ReadyToReview') return taskReviewStaff(project, task)?.key === staff.key
+        if (event.from === 'ReadyToReview' || event.move === 'release') return taskReviewStaff(project, task)?.key === staff.key
         if (event.from === 'Reviewing' || event.move === 'raise') return assignee || boundHost
         return assignee && (event.from === null || event.move === 'restart')
       }

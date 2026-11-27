@@ -1,7 +1,7 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
-  ReadPosition, Rationale, RetryLimit as RetryLimitValue, staffedIn, submissionParty, taskLine, StoredEvent, Submission, liveSession, boundHostSession, refuse, reviewOutcome,
-  type EventNumber, type ProposalKey, type TaskKey, type LiveSession, type Of, type Projection, type Refusal, type StoredActor, type Party,
+  EventNumber, ReadPosition, Rationale, hostSession, RetryLimit as RetryLimitValue, staffedIn, submissionParty, taskLine, StoredEvent, Submission, liveSession, boundHostSession, refuse, reviewOutcome,
+  type Project, type ProposalKey, type TaskKey, type LiveSession, type Of, type Projection, type Refusal, type StoredActor, type Party,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
 import { reviewTask } from '../state/task-review.ts'
@@ -26,6 +26,41 @@ type Moves = {
 type MoveInput = Moves[keyof Moves]
 type BuildMove = (state: Projection, events: readonly StoredEvent[]) => Result.Result<MoveInput, Refusal>
 
+// These moves share an append transaction. Each one is folded on its own line.
+const followingMoves = (event: StoredEvent, project: Project): readonly MoveInput[] => {
+  if (event.line === 'Session') {
+    const input = { session: event.key }
+    if (event.from === 'Starting' && event.move === 'next' && project.phase._tag === 'Activating' &&
+        hostSession(project)?.key === event.key)
+      return [{ line: 'Project', from: 'Activating', move: 'next', input }]
+    if ((event.from !== 'Live' && event.from !== 'Paused') || event.input.observed !== 'Ended') return []
+    const moves: MoveInput[] = []
+    for (const { key, phase } of project.tasks.values()) {
+      if (phase._tag === 'Working' && phase.attempt.actor.key === event.key)
+        moves.push({ line: 'Task', key, from: 'Working', move: 'restart', input })
+      if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === event.key)
+        moves.push({ line: 'Task', key, from: 'Reviewing', move: 'release', input })
+    }
+    for (const { key, phase } of project.proposals.values()) {
+      if (phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.actor.key === event.key)
+        moves.push({ line: 'Proposal', key, from: 'Reviewing', move: 'release', input })
+    }
+    return moves
+  }
+  if (event.line !== 'Proposal' || event.move !== 'accept') return []
+  const accepted = project.proposals.get(event.key)?.phase
+  if (accepted?._tag !== 'Accepted' || accepted.version.value._tag === 'Direction') return []
+  const publish = { line: 'Project', move: 'publish', input: { proposal: event.key } } as const
+  const from = project.phase._tag
+  switch (from) {
+    case 'Onboarding': return [{ ...publish, from }]
+    case 'Activating': return [{ ...publish, from }]
+    case 'RollingBack': return [{ ...publish, from }]
+    case 'Active': return [{ ...publish, from }]
+    case 'Ended': return []
+  }
+}
+
 export const commitProjectMove = (
   journal: Journal, actor: StoredActor, read: Of<typeof ReadPosition>, build: BuildMove,
 ): Effect.Effect<Committed, Refusal> => Effect.gen(function* () {
@@ -37,7 +72,21 @@ export const commitProjectMove = (
       if (!Schema.is(StoredEvent)(entry)) {
         return Result.fail(refuse('WrongMove', Rationale.make('The stored input must match the move on its line.')))
       }
-      return Result.map(applyEvent(state, entry), (updated) => ({ event: entry, state: updated }))
+      return Result.flatMap(applyEvent(state, entry), (primary) => {
+        let current = primary
+        const following: StoredEvent[] = []
+        for (const move of followingMoves(entry, primary)) {
+          const next = current.read + 1
+          if (!Schema.is(EventNumber)(next))
+            return Result.fail(refuse('Unavailable', Rationale.make('The project journal has no event numbers left.')))
+          const event: StoredEvent = { ...move, number: next, actor: { _tag: 'Human' }, read: current.read, at }
+          const updated = applyEvent(current, event)
+          if (Result.isFailure(updated)) return Result.fail(updated.failure)
+          following.push(event)
+          current = updated.success
+        }
+        return Result.succeed({ event: entry, following, state: current })
+      })
     })
   })
   return yield* journal.transact(edit)

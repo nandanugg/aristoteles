@@ -14,7 +14,7 @@ import { initialStaffing, sharedStaffing } from '../../src/store/staff-session.p
 import { cliProposal, direction, evidence } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
 import { hostRole, boundHostSession, FileContents, ProposalValue, Rule, proposalReviewDirection, quoteIn, staffByKey, staffedIn, Projection, ProposalKey, ReadPosition, StaffingPlan, StaffSessionKey, SubagentCount, Summary, type Project, type Submission } from '../schema/project.ts'
-import { readPosition } from '../state/project.ts'
+import { applyEvent, readPosition } from '../state/project.ts'
 import { Authority, type AuthenticatedActor } from './project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
 
@@ -135,6 +135,10 @@ test('departure retires the old child and releases the first proposal back into 
     const oldRun = child as Extract<AuthenticatedActor, { _tag: 'Review' }> | null
     if (!old || !oldRun) throw new Error('Missing first review')
     const ended = yield* observeSession(journal, old.state, session.key, 'Ended')
+    expect(Result.getOrThrow(applyEvent(old.state, ended.event)).proposals).toEqual(old.state.proposals)
+    expect(ended.following).toMatchObject([
+      { ...first, from: 'Reviewing', move: 'release', input: { session: session.key } },
+    ])
     expect(ended.state.proposals.get(first.key)?.phase).toMatchObject({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
     const nextKey = StaffSessionKey.make('session:replacement')
     yield* startSession(journal, ended.state, { key: nextKey, staff: staff.key, pane: session.pane, staffedIn: staffedIn(ended.state) })
@@ -174,6 +178,12 @@ test('only the owner changes a responsibility, which takes effect after review a
       { _tag: 'Review', session, ...first, queuedIn: proposal.phase.assignment.queuedIn })
     expect(hostRole(reviewed.state).responsibility).toEqual(previous)
     const accepted = yield* cliProposal(journal, reviewed.state, choose())
+    const proposalOnly = Result.getOrThrow(applyEvent(reviewed.state, accepted.event))
+    expect(hostRole(proposalOnly).responsibility).toEqual(previous)
+    expect(accepted.following).toMatchObject([
+      { line: 'Project', from: 'Onboarding', move: 'publish', input: { proposal: first.key } },
+    ])
+    expect(Result.getOrThrow(applyEvent(proposalOnly, accepted.following[0]!))).toEqual(accepted.state)
     expect(hostRole(accepted.state).responsibility.value.summary).toBe(value.summary)
     expect(Number(hostRole(accepted.state).responsibility.number)).toBe(2)
     expect(accepted.state.staffing).toEqual(staffed.staffing)

@@ -7,7 +7,7 @@ import { readProject } from '../../core/actions/staff-session.ts'
 import {
   EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, liveSession, proposalReviewDirection, proposalReviewRules, proposalText, refuse, staffedIn, type Of, type Project, type Submission,
 } from '../../core/schema/project.ts'
-import { openProjectJournal, withProjectEnv, type Journal } from '../../core/services/project.ts'
+import { openProjectJournal, withProjectEnv, type Committed, type Journal } from '../../core/services/project.ts'
 import {
   activationOwner, liveProjectBootstrap, projectActivationOperations, projectDirectoryAt, resumeProjectActivation,
 } from '../live/activation.ts'
@@ -71,6 +71,7 @@ const load = (file: string) => Effect.try({
 const yaml = (text: string) => Effect.try({ try: (): unknown => Bun.YAML.parse(text), catch: invalid })
 const words = (event: { readonly number: typeof EventNumber.Type }) =>
   'Committed event ' + event.number + '.'
+const commitWords = ({ event, following }: Committed) => [event, ...following].map(words)
 
 const startingWords = (
   journal: Journal, project: Project, key: Of<typeof StaffSessionKey>,
@@ -147,7 +148,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     const journal = yield* openProjectJournal(directory, 'Write')
     const nonce = yield* decode(LaunchNonce, env[NONCE_ENV])
     const result = yield* projectRuns(io.cwd, env.ARISTOTELES_DB, journal).acknowledge(subject, nonce)
-    return [words(result.event), ...(yield* startingWords(journal, result.state, subject))]
+    return [...commitWords(result), ...(yield* startingWords(journal, result.state, subject))]
   }
 
   const allowed = ['onboard', 'status', 'project', 'activation', 'session', 'wait', 'send', 'brief', 'report', 'review', 'question', 'answer']
@@ -183,12 +184,12 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (act === 'end') {
       const key = yield* decode(StaffSessionKey, subject)
       const result = yield* runs.sessions.end(key)
-      return [result ? words(result.event) : 'The session is already ended.']
+      return result ? commitWords(result) : ['The session is already ended.']
     }
     if (act === 'observe') {
       const key = yield* decode(StaffSessionKey, subject)
       const result = yield* runs.sessions.observe(key)
-      return [result ? words(result.event) : 'The session is still live or its status is unknown.']
+      return result ? commitWords(result) : ['The session is still live or its status is unknown.']
     }
     return yield* Effect.fail(invalid())
   }
@@ -263,7 +264,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     return [words((yield* write({ read: basis, line: 'Project', move: act, input: {} })).event)]
   if (command === 'onboard' && act === 'submit' && !subject && known(['on', 'file'])) {
     const result = yield* projectOnboard(journal, basis, yield* file(), runs.review).pipe(asActor)
-    return [words(result.event)]
+    return commitWords(result)
   }
   if (command === 'onboard' && (act === 'accept' || act === 'remove' || act === 'send-back') &&
       known(act === 'send-back' ? ['on', 'why'] : ['on'])) {
@@ -272,7 +273,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     const request: Submission = act === 'send-back'
       ? { ...proposal, move: 'sendBack', input: { why: yield* decode(Rationale, parsed.one('why')) } }
       : { ...proposal, move: act, input: {} }
-    return [words((yield* write(request)).event)]
+    return commitWords(yield* write(request))
   }
   if (!known(['on', 'file'])) return yield* Effect.fail(invalid())
   if (command === 'send' && !act && !subject)

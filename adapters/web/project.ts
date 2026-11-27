@@ -33,14 +33,14 @@ export const projectSubmission = (
     catch: () => refuse('InvalidInput', Rationale.make('Send a checked project submission.')),
   })
   return Effect.matchEffect(Effect.flatMap(input, (body) => submit(journal, body)), {
-    onSuccess: ({ event }) => Effect.gen(function* () {
+    onSuccess: ({ event, following }) => Effect.gen(function* () {
       if (review && event.line === 'Proposal' && event.from !== null)
         yield* Effect.forkDetach(Effect.result(review))
-      if (activate && event.line === 'Project' && event.from === 'Onboarding')
+      if (activate && event.line === 'Project' && event.from === 'Onboarding' && event.move === 'next')
         yield* Effect.forkDetach(Effect.result(activate))
       if (commands && event.line === 'Task' && event.from === 'Working' && event.move === 'next')
         yield* Effect.forkDetach(Effect.result(commands(event.key)))
-      return Response.json(encodeEvents([event]))
+      return Response.json(encodeEvents([event, ...following]))
     }),
     onFailure: (failure) => Effect.succeed(Response.json(Schema.encodeSync(Refusal)(failure), {
       status: failure.code === 'WrongActor' || failure.code === 'RetiredSession' ? 403

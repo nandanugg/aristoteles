@@ -2,7 +2,7 @@ import { Result, Schema } from 'effect'
 import { reviewMove, reviewTask } from './task-review.ts'
 import {
   AttemptNumber, Rationale, RetryCount, edge, liveSession, refuse, staffByKey, staffOf, subagentCapacity, taskLine, taskRules, activeWork, staffedIn, taskRole, taskReviewStaff,
-  type EventNumber, type Of, type Project, type Refusal, type Task, type TaskEvent, type TaskPhase,
+  type Project, type Refusal, type Task, type TaskEvent, type TaskPhase,
 } from '../schema/project.ts'
 
 const wrongMove = () => Result.fail(refuse('WrongMove', Rationale.make('That move does not follow the current task phase.')))
@@ -10,11 +10,6 @@ const wrongActor = () => Result.fail(refuse('WrongActor', Rationale.make('The ac
 const retired = () => Result.fail(refuse('RetiredSession', Rationale.make('Use the current live task session.')))
 const noChild = () => Result.fail(refuse('NoCapacity', Rationale.make('The staff has no free subagent slot.')))
 const stale = () => Result.fail(refuse('Stale', Rationale.make('The task changed after it was read. Run work wait before trying again.')))
-
-export const restartTask = (task: Task, phase: Extract<TaskPhase, { _tag: 'Working' }>, number: Of<typeof EventNumber>): Result.Result<Task, Refusal> =>
-  edge(taskLine, phase._tag, 'restart', 'Sent') === 'Allowed'
-    ? Result.succeed({ ...task, phase: { _tag: 'Sent', feedback: phase.attempt.feedback }, changedIn: number })
-    : wrongMove()
 
 export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskEvent, { from: null }>): Result.Result<Task, Refusal> => {
   const { actor, move, number, read } = event
@@ -46,8 +41,10 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
       const { attempt } = before
       if (event.move === 'restart') {
         if (actor._tag !== 'Human') return wrongActor()
-        if (attempt.actor.key !== event.input.session || project.sessions.get(event.input.session)?._tag !== 'Ended') return wrongMove()
-        return restartTask(task, before, number)
+        const ended = project.sessions.get(event.input.session)
+        if (attempt.actor.key !== event.input.session || ended?._tag !== 'Ended') return wrongMove()
+        if (ended.changedIn > read) return stale()
+        return entered({ _tag: 'Sent', feedback: attempt.feedback })
       }
       if (actor._tag !== 'Session') return wrongActor()
       if (session?.key !== attempt.actor.key) return retired()
@@ -69,6 +66,15 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
     }
     case 'Reviewing': {
       if (before._tag !== event.from) return wrongMove()
+      if (event.move === 'release') {
+        const { assignment } = before
+        if (actor._tag !== 'Human') return wrongActor()
+        const ended = project.sessions.get(event.input.session)
+        if (assignment._tag !== 'Assigned' || assignment.actor.key !== event.input.session || ended?._tag !== 'Ended')
+          return wrongMove()
+        if (ended.changedIn > read) return stale()
+        return entered({ ...before, assignment: { _tag: 'Waiting' } })
+      }
       if (event.move === 'assign') {
         const { staffedIn: basis } = event.input
         if (basis !== staffedIn(project) || read < basis) return stale()

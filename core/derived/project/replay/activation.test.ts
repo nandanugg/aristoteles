@@ -100,10 +100,8 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
     }))
     const projection = (step: (typeof trace.states)[number]) => {
       const state = modelRecord(step.state.record)
-      const active = state.binding !== 0
-      // The journal exposes a committed binding immediately, including after a lost IO note.
       return {
-        ...state, phase: active ? 'Active' as const : state.phase, reserved: active ? 0 : state.reserved,
+        ...state, reserved: state.phase === 'Active' ? 0 : state.reserved,
         binding: state.pending && state.pending !== state.binding ? 0 : state.binding,
         pending: state.pending === state.binding ? 0 : state.pending,
       }
@@ -164,6 +162,7 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
           else yield* operations.rollback(reason)
           break
         case 'probeWork': yield* refusal(credentials.authenticate(old, invalidCredential), 'RetiredSession'); break
+        case 'crashAfterCommit':
         case 'crashBeforeNote':
         case 'crashDuringCleanup':
           journal = yield* open(path)
@@ -174,7 +173,6 @@ for (const check of checks) for (const kind of kinds) test(check + ' — ' + kin
           yield* operations.restore
           guarded = kind === 'mutant' && previous.file === 'Newer' && expected.file === 'Approved'
           break
-        case 'note':
         case 'finishCleanup':
         case 'reconcile': yield* operations.reconcile; break
         case 'startReplacement': yield* operations.reserve(replacement); break

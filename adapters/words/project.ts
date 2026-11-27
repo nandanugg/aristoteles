@@ -85,7 +85,23 @@ export const sessionUpdateWords = (project: Project, session: LiveSession, event
   const prefix = `Event ${event.number}`
   const words = (() => {
     switch (event.line) {
-      case 'Project': return 'Project work started.'
+      case 'Project': {
+        if (event.move === 'publish') {
+          const phase = project.proposals.get(event.input.proposal)?.phase
+          if (phase?._tag === 'Accepted') {
+            const { value, number } = phase.version
+            if (value._tag === 'Responsibility')
+              return `Responsibility for ${roleOf(project, value.role)?.name ?? value.role} (version ${number})\n${value.summary}\n${value.introduction}\n${value.duties.map((duty) => '- ' + duty).join('\n')}`
+            if (value._tag === 'Staffing') {
+              const staff = value.staff.get(session.staff.key)
+              return [`Accepted staffing (version ${number})`, ...(staff
+                ? [`${staff.name} · ${staff.roles.join(', ')} · ${staff.model}`, staff.why] : [])].join('\n')
+            }
+          }
+        }
+        if (event.from === 'Activating' && event.move === 'next') return 'Project is active.'
+        return 'Project work started.'
+      }
       case 'Session': return `Session ${event.key} · ${event.from === 'Paused' || event.from === 'Live' ? event.input.observed : 'Live'}.`
       case 'Question': {
         const address = questionAddressText(event)
@@ -100,15 +116,11 @@ export const sessionUpdateWords = (project: Project, session: LiveSession, event
             const { value, number } = phase.version
             if (value._tag === 'Direction')
               return `Accepted direction ${value.name} (version ${number})\n${JSON.stringify(value, null, 2)}`
-            if (value._tag === 'Responsibility')
-              return `Responsibility for ${roleOf(project, value.role)?.name ?? value.role} (version ${number})\n${value.summary}\n${value.introduction}\n${value.duties.map((duty) => '- ' + duty).join('\n')}`
-            const staff = value.staff.get(session.staff.key)
-            return [`Accepted staffing (version ${number})`, ...(staff
-              ? [`${staff.name} · ${staff.roles.join(', ')} · ${staff.model}`, staff.why] : [])].join('\n')
           }
         }
         if (event.move === 'sendBack')
           return `Proposal ${event.key} returned\n${event.from === 'Reviewing' ? reviewFactsWords(event.input.facts).join('\n') : event.input.why}`
+        if (event.move === 'release') return `Proposal ${event.key} returned to the review queue.`
         if (event.move === 'remove') return `Proposal ${event.key} removed.`
         return `Proposal ${event.key} assigned for review.`
       }
@@ -117,6 +129,7 @@ export const sessionUpdateWords = (project: Project, session: LiveSession, event
         if (event.from === 'ReadyToReview') return [`Task ${event.key} ready for review`,
           ...event.input.outcomes.map(({ rule, _tag, evidence }) => `${rule.name} · ${_tag} · ${taskEvidenceWords(evidence)}`),
         ].join('\n')
+        if (event.move === 'release') return `Task ${event.key} returned to the review queue.`
         if (event.from === 'Reviewing' && event.move !== 'assign') {
           const changes = event.move === 'back' ? 'returned' : event.move === 'raise' ? 'raised · ' + event.input.reason : 'accepted'
           return [`Task ${event.key} ${changes}`, ...reviewFactsWords(event.input.facts)].join('\n')

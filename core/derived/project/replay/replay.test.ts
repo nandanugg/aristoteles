@@ -257,7 +257,13 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
       },
       stop: () => { observation = 'Ended' },
       retire: async () => {
-        await Effect.runPromise(operations.observe(address))
+        const committed = await Effect.runPromise(operations.observe(address))
+        expect(committed?.event).toMatchObject({ line: 'Session', key: address, input: { observed: 'Ended' } })
+        expect(committed?.following).toMatchObject([
+          { ...taskLine, from: 'Working', move: 'restart', input: { session: address } },
+          { ...reviewLine, from: 'Reviewing', move: 'release', input: { session: address } },
+          { ...proposalLine, from: 'Reviewing', move: 'release', input: { session: address } },
+        ])
       },
       replace: async () => {
         await Effect.runPromise(operations.launch(staff.key, replacement, staffedIn(current)))

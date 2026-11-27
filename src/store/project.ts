@@ -56,6 +56,7 @@ const journal = (db: Database, directory: URL, database: URL): Journal => {
   const tail = db.query<{ number: number }, [string]>(
     'SELECT number FROM project_event WHERE project = ? ORDER BY number DESC LIMIT 1',
   )
+  const insert = db.query('INSERT INTO project_event (project, number, event) VALUES (?, ?, ?)')
   const hasPosition = db.query('SELECT 1 FROM project_event WHERE project = ? AND number = ?')
   const eventsAfter = (after: Of<typeof ReadPosition>): readonly StoredEvent[] => {
     if (after > (tail.get(partition)?.number ?? 0)) {
@@ -82,9 +83,13 @@ const journal = (db: Database, directory: URL, database: URL): Journal => {
       if (!Schema.is(EventNumber)(next)) throw damaged()
       const result = edit(events, next)
       if (Result.isFailure(result)) throw new JournalError(result.failure)
-      const { event } = result.success
-      if (event.number !== next || !Schema.is(StoredEvent)(event)) throw damaged()
-      db.query('INSERT INTO project_event (project, number, event) VALUES (?, ?, ?)').run(partition, next, encode(event))
+      const { event, following, state } = result.success
+      const written = [event, ...following]
+      if (state.read !== next + written.length - 1) throw damaged()
+      for (const [index, row] of written.entries()) {
+        if (row.number !== next + index || !Schema.is(StoredEvent)(row)) throw damaged()
+        insert.run(partition, row.number, encode(row))
+      }
       return result.success
     }).immediate()),
   }

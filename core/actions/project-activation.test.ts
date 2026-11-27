@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { dirname, join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { Effect, Schema } from 'effect'
+import { Effect, Result, Schema } from 'effect'
 import { readProjectSessionFile } from '../services/project.ts'
 import { hostSessionCredentials } from '../../adapters/live/host-session.ts'
 import { runProjectCli } from '../../adapters/cli/project.ts'
@@ -10,8 +11,10 @@ import { liveProjectBootstrap, projectActivationFiles, projectActivationOperatio
 import { projectActivationApproval, projectEvents, projectSnapshot } from '../../adapters/web/project.ts'
 import { agree, approvedText, hostKey, newerText, readyActivation, readyProject, startWork } from '../../src/store/project-activation.probe.ts'
 import { create, open, ownerInput, staff, withJournal } from '../../src/store/project.probe.ts'
+import { cliProposal, direction } from '../../src/store/proposal.probe.ts'
 import { ownerAuthority } from '../../src/store/question.probe.ts'
-import { ApprovedFiles, HostCredential, LaunchNonce, LaunchText, Rationale, ReadPosition } from '../schema/project.ts'
+import { ApprovedFiles, HostCredential, LaunchNonce, LaunchText, ProposalKey, Rationale, ReadPosition } from '../schema/project.ts'
+import { applyEvent } from '../state/project.ts'
 import { Authority } from './project.ts'
 import { observeSession, readOpenProject } from './staff-session.ts'
 
@@ -68,12 +71,53 @@ test('current ack, rejected edits and durable binding are checked against actual
     writeFileSync(f.file, newerText)
     expect(yield* Effect.result(f.operations.acknowledge(hostKey(1), f.nonces.get(hostKey(1))!))).toMatchObject(refused('Unavailable'))
     writeFileSync(f.file, marked)
-    const committed = yield* f.operations.acknowledge(hostKey(1), f.nonces.get(hostKey(1))!)
+    const before = yield* readOpenProject(f.journal)
+    const acknowledge = f.operations.acknowledge(hostKey(1), f.nonces.get(hostKey(1))!)
+    const db = yield* Effect.acquireRelease(Effect.sync(() => new Database(path)), (db) => Effect.sync(() => db.close()))
+    db.exec(`CREATE TRIGGER fail_project_next BEFORE INSERT ON project_event
+      WHEN json_extract(NEW.event, '$.line') = 'Project' AND json_extract(NEW.event, '$.from') = 'Activating'
+      BEGIN SELECT RAISE(ABORT, 'lost activation write'); END`)
+    expect(yield* Effect.result(acknowledge)).toMatchObject(refused('Unavailable'))
+    expect(yield* f.journal.eventsAfter(before.read)).toEqual([])
+    expect(yield* readOpenProject(f.journal)).toEqual(before)
+    db.exec('DROP TRIGGER fail_project_next')
+
+    const committed = yield* acknowledge
+    expect(committed.event).toMatchObject({ line: 'Session', key: hostKey(1), from: 'Starting', move: 'next' })
+    expect(committed.following).toMatchObject([{
+      line: 'Project', from: 'Activating', move: 'next', input: { session: hostKey(1) },
+      number: committed.event.number + 1, read: committed.event.number,
+    }])
+    const sessionOnly = Result.getOrThrow(applyEvent(before, committed.event))
+    expect(sessionOnly.phase).toEqual(before.phase)
+    expect(sessionOnly.sessions.get(hostKey(1))?._tag).toBe('Live')
+    expect(Result.getOrThrow(applyEvent(sessionOnly, committed.following[0]!))).toEqual(committed.state)
     const reopened = yield* open(path)
     const recovered = projectActivationOperations(f.directory, reopened, f.provider)
     expect(yield* recovered.reconcile).toBeNull()
     expect(yield* readOpenProject(reopened)).toEqual(committed.state)
     expect(yield* Effect.result(recovered.rollback(reason))).toMatchObject(refused('WrongMove'))
+  }))),
+))
+
+test('changed proposal basis refuses activation and the host stays Starting', () => withJournal((path) =>
+  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const f = yield* readyActivation(path)
+    const key = hostKey(1)
+    yield* agree(f.journal, f.project, f.files)
+    yield* f.operations.reserve(key)
+    yield* f.operations.mark
+    yield* f.operations.spawn
+    const ready = yield* readOpenProject(f.journal)
+    const draft = yield* cliProposal(f.journal, ready, {
+      line: 'Proposal', key: ProposalKey.make('proposal:changed-activation-basis'), move: 'open',
+      input: { previous: { _tag: 'None' }, value: direction },
+    })
+    expect(yield* Effect.result(f.operations.acknowledge(key, f.nonces.get(key)!))).toMatchObject(refused('Stale'))
+    const state = yield* readOpenProject(f.journal)
+    expect(state).toEqual(draft.state)
+    expect(state.phase._tag).toBe('Activating')
+    expect(state.sessions.get(key)?._tag).toBe('Starting')
   }))),
 ))
 
@@ -95,7 +139,7 @@ test('rollback is repeatable, preserves later edits and keeps accepted proposals
   }))),
 ))
 
-test('format 23 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
+test('format 24 opens a real marked tmux host and retires credential delivery on use', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const f = yield* readyProject(path, { ...staff, launch: LaunchText.make('sleep 30 # {session}') }, projectDirectoryAt(dirname(path)))
     const provider = liveProjectBootstrap(f.directory, path, f.journal.directory)
