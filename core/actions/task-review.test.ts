@@ -59,7 +59,7 @@ test('review intake takes only facts from the current fresh child and gives feed
       .toMatchObject(refused('RetiredSession'))
     expect(yield* journal.eventsAfter(second.read)).toEqual([])
     const raised = yield* reportReview(journal, second, 'Breaks')
-    expect(raised.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Raised', reason: 'Misses', evidence: artifactQuote })
+    expect(raised.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Raised', reason: 'Misses', evidence: [artifactQuote] })
     expect(yield* waitOnProject(journal, Effect.succeed(session.key))).toEqual({ _tag: 'Awaiting' })
   })))))
 
@@ -118,7 +118,7 @@ for (const reason of ['Tries', 'NoRule'] as const) test('review may raise ' + re
     }
     const result = yield* projectReviewCommand(journal, taskKey, project.read, Bun.YAML.stringify(facts))
       .pipe(auth(reviewAs(project)), Effect.provideService(RetryLimit, RetryLimitValue.make(0)))
-    expect(result.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Raised', reason, evidence: artifactQuote })
+    expect(result.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Raised', reason, evidence: [artifactQuote] })
   })))))
 
 for (const reason of ['WrongTask', 'TooBig'] as const) test('work raises ' + reason + ' with evidence, then stops', () =>
@@ -127,27 +127,30 @@ for (const reason of ['WrongTask', 'TooBig'] as const) test('work raises ' + rea
     const start = (yield* toWorking(journal)).state
     const send = (input: unknown, actor = staffAuthorityOf()) =>
       projectReportCommand(journal, taskKey, start.read, Bun.YAML.stringify(input)).pipe(auth(actor))
-    expect(yield* Effect.result(send({ attempt: 1, reason }))).toMatchObject(refused('InvalidInput'))
-    expect(yield* Effect.result(send({ attempt: 2, reason, evidence: artifactQuote }))).toMatchObject(refused('Stale'))
-    expect(yield* Effect.result(send({ attempt: 1, reason, evidence: artifactQuote },
+    expect(yield* Effect.result(send({ attempt: 1, reason, evidence: [] }))).toMatchObject(refused('InvalidInput'))
+    expect(yield* Effect.result(send({ attempt: 1, reason, evidence: artifactQuote }))).toMatchObject(refused('InvalidInput'))
+    expect(yield* Effect.result(send({ attempt: 2, reason, evidence: [artifactQuote] }))).toMatchObject(refused('Stale'))
+    expect(yield* Effect.result(send({ attempt: 1, reason, evidence: [artifactQuote] },
       { _tag: 'Staff', session: { ...session, key: StaffSessionKey.make('session:retired') } }))).toMatchObject(refused('RetiredSession'))
-    expect(yield* Effect.result(send({ attempt: 1, reason, evidence: artifactQuote }, ownerAuthority)))
+    expect(yield* Effect.result(send({ attempt: 1, reason, evidence: [artifactQuote] }, ownerAuthority)))
       .toMatchObject(refused('WrongActor'))
     expect(yield* journal.eventsAfter(start.read)).toEqual([])
+    const evidence = [artifactQuote, { ...artifactQuote, file: 'brief.md', text: 'Missing prerequisite' }]
     const snapshot = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const response = yield* projectSubmission(journal, new Request('http://localhost/project/submissions', {
       method: 'POST', body: JSON.stringify({ read: start.read, ...taskLine, move: 'raise',
-        input: { attempt: 1, reason, evidence: artifactQuote } }),
+        input: { attempt: 1, reason, evidence } }),
     })).pipe(auth(staffAuthorityOf()))
     expect(response.status).toBe(200)
     const feed = yield* projectEvents(journal, readPosition(page.current()))
     const project = Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => feed.json())))
-    expect(project?.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Raised', reason, evidence: artifactQuote })
+    expect(project?.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Raised', reason, evidence })
     const words = yield* projectBriefCommand(journal, taskKey).pipe(auth(ownerAuthority))
     expect(words).toContain('Reason: ' + reason)
     expect(words).toContain('artifact:1–1 7')
-    expect(yield* Effect.result(send({ attempt: 1, reason, evidence: artifactQuote }))).toMatchObject(refused('Stale'))
+    expect(words).toContain('brief.md:1–1 Missing prerequisite')
+    expect(yield* Effect.result(send({ attempt: 1, reason, evidence: [artifactQuote] }))).toMatchObject(refused('Stale'))
   })))))
 
 test('two schedulers open only one fresh child and the waiting phase survives a provider failure', () =>

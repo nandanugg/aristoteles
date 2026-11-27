@@ -296,7 +296,7 @@ exec sleep 90
 
     await task('task:raise', 'Wrong cut')
     await report('task:raise', {}, 'begin later task')
-    await report('task:raise', { attempt: 1, reason: 'WrongTask', evidence: excerpt('Local second result') }, 'raise')
+    await report('task:raise', { attempt: 1, reason: 'WrongTask', evidence: [excerpt('Local second result')] }, 'raise')
     await browser.phase('Wrong cut', pipeline.name, 'Raised')
     expect(await ok(['brief', 'task:raise'], ownerCall)).toContain('Reason: WrongTask')
     await apply(['session', 'end', live.key], undefined, 'owner ends staff')

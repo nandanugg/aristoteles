@@ -23,7 +23,7 @@ export const projectTaskWords = (task: Task, blocked: Refusal['why'] | null = nu
       return feedback._tag === 'Review' ? feedback.breaks.map(({ rule, evidence }) =>
         `Review feedback for ${rule.name}: ${taskEvidenceWords(evidence)}`) : []
     })() : []),
-    ...(phase._tag === 'Raised' ? [`Reason: ${phase.reason}`, taskEvidenceWords(phase.evidence)] : []),
+    ...(phase._tag === 'Raised' ? [`Reason: ${phase.reason}`, ...phase.evidence.map(taskEvidenceWords)] : []),
     ...(phase._tag === 'ReadyToReview' ? [blocked ?? 'Waiting for the committed command outcomes.'] : []),
     ...(phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.outcomes.map((outcome) =>
       `${outcome.rule.name}: ${outcome._tag} · ${taskEvidenceWords(outcome.evidence)}`) : []),

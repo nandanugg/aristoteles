@@ -35,7 +35,7 @@ const proposalDraft = Schema.Struct({ value: ProposalValue })
 const reviewFacts = Schema.Struct({ facts: ReviewFacts })
 const reviewReport = Schema.Struct({ ...reviewFacts.fields, queuedIn: EventNumber })
 const workProblem = Schema.Struct({
-  attempt: AttemptNumber, reason: Schema.Literals(['TooBig', 'WrongTask']), evidence: Evidence,
+  attempt: AttemptNumber, reason: Schema.Literals(['TooBig', 'WrongTask']), evidence: Schema.NonEmptyArray(Evidence),
 })
 const taskReviewReport = Schema.Struct({
   ...reviewReport.fields, limit: RetryLimit,

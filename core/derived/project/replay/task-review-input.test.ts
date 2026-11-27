@@ -106,7 +106,7 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
       }
       if (!blockedMutant && actual?._tag === 'Raised') {
         expect<unknown>(actual.reason).toBe(typeof value === 'string' ? value : record(value!).tag)
-        expect<unknown>(actual.evidence).toEqual(artifactQuote)
+        expect<unknown>(actual.evidence).toEqual([artifactQuote])
       }
       const response = yield* projectEvents(journal, readPosition(page.current()))
       expect(Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => response.json())))).toEqual(state)

@@ -37,17 +37,22 @@ export const reviewTask = (
   }
 
   const outcomes = [...phase.outcomes, ...facts.outcomes]
-  const finding = facts.findings[0]
-  if (finding) return Result.succeed({ _tag: 'Raised', reason: 'NoRule', evidence: finding.evidence })
+  const [finding, ...otherFindings] = facts.findings
+  if (finding) return Result.succeed({
+    _tag: 'Raised', reason: 'NoRule', evidence: [finding.evidence, ...otherFindings.map(({ evidence }) => evidence)],
+  })
   const [first, ...rest] = outcomes.filter((outcome): outcome is BreakingOutcome => outcome._tag === 'Breaks' && !knownBreak(outcome, result))
   if (!first) return Result.succeed({ _tag: 'Done', result, outcomes })
   const attempt = result.attempt
   const history = attempt.feedback._tag === 'Review' ? attempt.feedback.breaks : []
-  const repeated = [first, ...rest].find((now) => history.some((was) => JSON.stringify(was.rule) === JSON.stringify(now.rule)))
-  if (repeated) return Result.succeed({ _tag: 'Raised', reason: 'Misses', evidence: repeated.evidence })
-  if (task.retryCount >= limit) {
-    return Result.succeed({ _tag: 'Raised', reason: 'Tries', evidence: first.evidence })
-  }
+  const [repeated, ...otherRepeated] = [first, ...rest].filter((now) =>
+    history.some((was) => JSON.stringify(was.rule) === JSON.stringify(now.rule)))
+  if (repeated) return Result.succeed({
+    _tag: 'Raised', reason: 'Misses', evidence: [repeated.evidence, ...otherRepeated.map(({ evidence }) => evidence)],
+  })
+  if (task.retryCount >= limit) return Result.succeed({
+    _tag: 'Raised', reason: 'Tries', evidence: [first.evidence, ...rest.map(({ evidence }) => evidence)],
+  })
   return Result.succeed({
     _tag: 'Working', attempt: { ...attempt, feedback: { _tag: 'Review', breaks: [first, ...rest, ...history] } },
   })

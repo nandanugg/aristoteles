@@ -26,7 +26,7 @@ files:
 
 ReadyToReview runs the pinned command rules and records their exact output. If a review returns the work, it keeps the attempt and adds feedback. After a confirmed crash without a checkpoint, wait for a fresh session and begin the next numbered attempt. The task keeps its retry count and feedback.
 
-If a task is too big or the cut contradicts the work or omits a prerequisite, report `{ attempt, reason: TooBig | WrongTask, evidence }` on the same command. Give a checked Quote or CommandOutput that shows the problem. Raised preserves that evidence and stops work.
+If a task is too big or the cut contradicts the work or omits a prerequisite, report `{ attempt, reason: TooBig | WrongTask, evidence }` on the same command. Give a nonempty list of checked Quote or CommandOutput evidence. Raised preserves the list and stops work.
 
 ## Fresh review
 

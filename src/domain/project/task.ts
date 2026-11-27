@@ -56,7 +56,7 @@ export const TaskPhase = Schema.Union([
   Schema.TaggedStruct('ReadyToReview', { result: Result }),
   reviewing({ result: Result, outcomes: CommandOutcomes }),
   Schema.TaggedStruct('Done', { result: Result, outcomes: Schema.Array(RuleOutcome) }),
-  Schema.TaggedStruct('Raised', { reason: RaiseReason, evidence: Evidence }),
+  Schema.TaggedStruct('Raised', { reason: RaiseReason, evidence: Schema.NonEmptyArray(Evidence) }),
 ])
 export type TaskPhase = Of<typeof TaskPhase>
 export const TaskStages = Schema.NonEmptyArray(Stage)

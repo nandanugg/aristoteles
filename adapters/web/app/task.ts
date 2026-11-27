@@ -57,6 +57,6 @@ export function TaskPanel({ task, commandBlock }: {
       <h4>Review feedback</h4>
       ${feedback.breaks.map(({ rule, evidence }, index) => html`<div key=${index}><p>${rule.name}</p><${ReviewEvidence} evidence=${evidence} /></div>`)}
     </section>` : null}
-    ${phase._tag === 'Raised' ? html`<p>${phase.reason}</p><${ReviewEvidence} evidence=${phase.evidence} />` : null}
+    ${phase._tag === 'Raised' ? html`<p>${phase.reason}</p>${phase.evidence.map((evidence) => html`<${ReviewEvidence} evidence=${evidence} />`)}` : null}
   </article>`
 }
