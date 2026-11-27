@@ -1,3 +1,4 @@
+import { projectReviewCommand } from '../../../../adapters/cli/commands/acts.ts'
 import { expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -7,7 +8,10 @@ import { openPageProject, receiveProjectPayload } from '../../../../adapters/web
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
 import { open, staffInput, withJournal } from '../../../../src/store/project.probe.ts'
 import { direction } from '../../../../src/store/proposal.probe.ts'
-import { resultInput, taskId, taskLine, toWorking } from '../../../../src/store/task.probe.ts'
+import { artifactQuote, reviewAs, resultInput, taskId, taskLine, toWorking } from '../../../../src/store/task.probe.ts'
+import { Authority } from '../../../actions/project.ts'
+import { startChild } from '../../../actions/staff-session.ts'
+import { session } from '../../../../src/store/project.probe.ts'
 import { runTaskCommands } from '../../../effects/project-commands.ts'
 import { CommandOutput, Direction } from '../../../schema/project.ts'
 import { readPosition } from '../../../state/project.ts'
@@ -36,11 +40,16 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
     const initial = yield* projectSnapshot(journal)
     const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => initial.json()), () => {}))
     let captured = false
+    let blockedMutant = false
+    let committedReviews = 0
+    const rule = (id: number) => {
+      const rules = reviewDirection.standards[0]!.rules
+      return id === 3 ? { ...rules[1], text: 'A different version' } : rules[id - 1]
+    }
     for (const step of trace.states.slice(1)) {
-      // U7 supplies the fresh review and outcomes of its prompt rules.
-      if (step.action === 'assignReview') break
+      const prior = state
       if (step.action === 'result') state = (yield* staffInput(journal, resultInput(state.read))).state
-      if (step.action === 'commands') {
+      else if (step.action === 'commands') {
         const observation = record(picked(step.picks.outcome)!)
         expect(integer(observation.rule)).toBe(1)
         const commands = liveTaskCommands(directory)
@@ -51,18 +60,59 @@ for (const kind of kinds) test('review evidence uses the pinned result and comma
         })
         state = committed.state
         expect(state.tasks.get(taskId)?.phase).toMatchObject({
-          _tag: 'Reviewing', outcomes: [{ _tag: observation.breaks ? 'Breaks' : 'Holds',
-            rule: { id: direction.standards[0]!.rules[0]!.id } }],
+          _tag: 'Reviewing', outcomes: [{ _tag: observation.breaks ? 'Breaks' : 'Holds', rule: { id: rule(1)?.id } }],
         })
         captured = true
+      } else if (step.action === 'assignReview') {
+        state = (yield* startChild(journal, state, taskLine, session, 'Review')).state
+      } else if (step.action === 'report') {
+        const reports = picked(step.picks.reports)
+        if (!Array.isArray(reports)) throw new Error('Expected review outcomes')
+        const facts = {
+          outcomes: reports.map((raw) => {
+            const { rule: id, breaks, evidence } = record(raw)
+            return { rule: rule(integer(id)), _tag: breaks ? 'Breaks' : 'Holds',
+              evidence: evidence ? artifactQuote : { ...artifactQuote, text: 'absent' } }
+          }),
+          findings: picked(step.picks.finding) ? [{ text: 'Uncovered problem', evidence: artifactQuote }] : [],
+        }
+        const outcome = yield* Effect.result(projectReviewCommand(journal, taskId, state.read, Bun.YAML.stringify(facts)).pipe(
+          Effect.provideService(Authority, { actor: Effect.succeed(reviewAs(state)) }),
+        ))
+        if (Result.isSuccess(outcome)) {
+          expect(step.state.lastReportValid).toBe(true)
+          state = outcome.success.state
+          committedReviews++
+        } else {
+          expect(['InvalidInput', 'InvalidEvidence']).toContain(outcome.failure.code)
+          expect(yield* journal.eventsAfter(prior.read)).toEqual([])
+          blockedMutant = kind === 'mutant' && step.state.lastReportValid === false
+        }
+      } else if (step.action !== '') throw new Error('Unexpected work evidence action: ' + step.action)
+
+      const actual = state.tasks.get(taskId)?.phase
+      const { tag, value } = record(step.state.task!)
+      if (!blockedMutant) expect<unknown>(actual?._tag).toBe(tag)
+      if (!blockedMutant && actual?._tag === 'Reviewing') {
+        expect(actual.assignment._tag).toBe(record(value!).review === 'Waiting' ? 'Waiting' : 'Assigned')
       }
-      if (!['', 'result', 'commands'].includes(step.action)) throw new Error('Unexpected work evidence action')
-      const task = record(step.state.task!)
-      if (task.tag !== 'Working' && task.tag !== 'ReadyToReview' && task.tag !== 'Reviewing') throw new Error('Invalid model task phase')
-      expect(state.tasks.get(taskId)?.phase._tag).toBe(task.tag)
+      if (!blockedMutant && actual?._tag === 'Working') {
+        expect(Number(actual.attempt.retryCount)).toBe(integer(record(value!).retries))
+      }
+      if (!blockedMutant && actual?._tag === 'Done') {
+        expect(actual.outcomes.map(({ rule, _tag }) => [rule.id, _tag]))
+          .toEqual(reviewDirection.standards[0]!.rules.map(({ id }) => [id, 'Holds']))
+      }
+      if (!blockedMutant && actual?._tag === 'Raised') {
+        expect<unknown>(actual.reason).toBe(typeof value === 'string' ? value : record(value!).tag)
+        expect<unknown>(actual.evidence).toEqual(artifactQuote)
+      }
       const response = yield* projectEvents(journal, readPosition(page.current()))
       expect(Result.getOrThrow(receiveProjectPayload(page, yield* Effect.promise(() => response.json())))).toEqual(state)
+      if (blockedMutant) { expect(state).toEqual(prior); break }
     }
+    expect(blockedMutant).toBe(kind === 'mutant')
+    if (kind !== 'mutant') expect(committedReviews).toBe(kind === 'fault' ? 2 : 1)
     expect(captured).toBe(true)
   }))),
 ))

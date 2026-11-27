@@ -1,3 +1,4 @@
+import { ReviewEvidence } from './review.ts'
 import { html } from 'htm/preact'
 import { useState } from 'preact/hooks'
 import type { DirectionCard, QuestionView } from '../contract.ts'
@@ -276,9 +277,7 @@ export function ProposalCard({ proposal, read, submit }: {
         </section>`)}`
         : html`<p>${value.summary}</p><p>${value.introduction}</p><ul>${value.duties.map((duty) => html`<li>${duty}</li>`)}</ul>`}
     ${phase._tag === 'WaitingForOwner' ? html`
-      <ul>${phase.facts.outcomes.map((outcome) => html`<li>${outcome.evidence._tag === 'Quote'
-        ? html`<blockquote>${outcome.evidence.text}<footer>${outcome.evidence.file} · ${outcome.evidence.lines.first}–${outcome.evidence.lines.last}</footer></blockquote>`
-        : html`<p>Exit ${outcome.evidence.exit}</p><pre>${outcome.evidence.stdout}${outcome.evidence.stderr}</pre>`}</li>`)}</ul>
+      <ul>${phase.facts.outcomes.map((outcome) => html`<li><${ReviewEvidence} evidence=${outcome.evidence} /></li>`)}</ul>
       <button class="btn primary" disabled=${busy} onClick=${() => void choose({ move: 'accept', input: {} })}>Accept</button>
       <button class="btn" disabled=${busy} onClick=${() => void choose({ move: 'remove', input: {} })}>Remove</button>
       <${ReviewInput} label="What should change?" action="Send back" onSubmit=${(why: string) =>

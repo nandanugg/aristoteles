@@ -37,7 +37,7 @@ export const readyProject = (path: string, host = staff, projectId?: Journal['id
   if (!proposal) throw new Error('Missing activation direction')
   const reviewing = yield* assignProposalReview(journal, proposal, session, submitted.state.read)
   const reviewed = yield* cliProposal(journal, reviewing.state, { line, move: 'review', input: { facts: evidence('Holds') } },
-    { _tag: 'Review', session, review: proposal.lastChange })
+    { _tag: 'Review', session, line, review: proposal.lastChange })
   const accepted = yield* cliProposal(journal, reviewed.state, { line, move: 'accept', input: {} })
   const ready = yield* observeSession(journal, accepted.state, { _tag: 'Session', id: session.id }, 'Ended')
   const files = yield* projectActivationFiles(directory)

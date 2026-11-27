@@ -43,7 +43,7 @@ test('proposal queue launches the host’s fresh child and retains the reviewed 
     const launched: Extract<AuthenticatedActor, { _tag: 'Review' }>[] = []
     const provider: Reviews = {
       reconcile: () => Effect.void,
-      open: (_proposal, session, review) => Effect.sync(() => { launched.push({ _tag: 'Review', session, review }) }),
+      open: (proposal, session, review) => Effect.sync(() => { launched.push({ _tag: 'Review', session, line: { _tag: 'Proposal', id: proposal.id }, review }) }),
     }
     const launch = launchNextReview(dirname(path), journal, provider)
     const assignment = yield* launch
@@ -78,7 +78,7 @@ test('departure retires the old child and releases the first proposal back into 
     const drafted = yield* cliProposal(journal, live.state, ask())
     yield* cliProposal(journal, drafted.state, send())
     let child: Extract<AuthenticatedActor, { _tag: 'Review' }> | null = null
-    const provider: Reviews = { reconcile: () => Effect.void, open: (_proposal, session, review) => Effect.sync(() => { child = { _tag: 'Review', session, review } }) }
+    const provider: Reviews = { reconcile: () => Effect.void, open: (proposal, session, review) => Effect.sync(() => { child = { _tag: 'Review', session, line: { _tag: 'Proposal', id: proposal.id }, review } }) }
     const launch = launchNextReview(dirname(path), journal, provider)
     const old = yield* launch
     const oldRun = child as Extract<AuthenticatedActor, { _tag: 'Review' }> | null
@@ -120,7 +120,7 @@ test('only the owner changes a responsibility, which takes effect after review a
     const proposal = child.state.proposals.get(first.id)
     if (proposal?.phase._tag !== 'Reviewing' || proposal.phase.assignment._tag !== 'Assigned') throw new Error('No assigned child')
     const reviewed = yield* cliProposal(journal, child.state, { line: first, move: 'review', input: { facts: evidence('Holds') } },
-      { _tag: 'Review', session, review: proposal.phase.assignment.review })
+      { _tag: 'Review', session, line: first, review: proposal.phase.assignment.review })
     expect(reviewed.state.roles.host.responsibility).toEqual(previous)
     const accepted = yield* cliProposal(journal, reviewed.state, choose())
     expect(accepted.state.roles.host.responsibility.value.summary).toBe(value.summary)
@@ -181,7 +181,7 @@ test('U4 measures submission to page visibility and review dispatch separately f
     if (!assigned || proposal?.phase._tag !== 'Reviewing' || proposal.phase.assignment._tag !== 'Assigned') throw new Error('Missing assignment')
     const reportStart = performance.now()
     const reviewed = yield* cliProposal(journal, assigned, { line: first, move: 'review', input: { facts: evidence('Holds') } },
-      { _tag: 'Review', session, review: proposal.phase.assignment.review })
+      { _tag: 'Review', session, line: first, review: proposal.phase.assignment.review })
     yield* seen(reportStart)
     const acceptStart = performance.now()
     yield* cliProposal(journal, reviewed.state, choose())
@@ -250,7 +250,7 @@ test('the browser moves from the reviewed direction to work under its bound host
     expect(yield* Effect.promise(() => title.count())).toBe(0)
     const reviewStart = performance.now()
     yield* cliProposal(journal, assigned.state, { line: first, move: 'review', input: { facts: evidence('Holds') } },
-      { _tag: 'Review', session, review: phase.assignment.review })
+      { _tag: 'Review', session, line: first, review: phase.assignment.review })
     yield* Effect.promise(() => title.waitFor())
     const timeToReveal = performance.now() - reviewStart
     expect(yield* Effect.promise(() => page.getByText('All tests pass.', { exact: false }).count())).toBe(1)
@@ -289,7 +289,7 @@ test('staffing stays effective while a replacement is reviewed, sent back, or re
       const phase = assigned?.state.proposals.get(first.id)?.phase
       if (!assigned || phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing review')
       return yield* cliProposal(journal, assigned.state, { line: first, move: 'review', input: { facts: evidence('Holds') } },
-        { _tag: 'Review', session, review: phase.assignment.review })
+        { _tag: 'Review', session, line: first, review: phase.assignment.review })
     })
     const reviewed = yield* review(draft.state)
     expect(reviewed.state.staffing).toEqual(prior)

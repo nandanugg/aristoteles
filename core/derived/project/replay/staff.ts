@@ -97,6 +97,7 @@ type WorkObservation = {
   readonly lifetime: number
   readonly retries: number
   readonly artifact: number | null
+  readonly pointedOut: number
 }
 export interface StaffReplacementPort {
   readonly retire: (checkpoint: boolean) => Promise<void>
@@ -105,19 +106,26 @@ export interface StaffReplacementPort {
   readonly report: (lifetime: number) => Promise<boolean>
   readonly observe: () => Promise<readonly [phase: 'Live' | 'Paused' | 'Ended', lifetime: number]>
   readonly work: () => Promise<WorkObservation>
+  readonly companions: () => Promise<{
+    readonly review: 'Waiting' | 'Assigned'
+    readonly artifact: number
+    readonly commandHolds: boolean
+    readonly proposal: 'Waiting' | 'Assigned'
+    readonly answer: number
+  }>
 }
 
 const replacementWork = (value: Plain): WorkObservation => {
   const { tag, value: raw } = record(value)
   const data = record(raw!)
   if (tag === 'Sent') return {
-    phase: tag, attempt: integer(data.last), retries: integer(data.retries), lifetime: 0, artifact: null,
+    phase: tag, attempt: integer(data.last), retries: integer(data.retries), lifetime: 0, artifact: null, pointedOut: array(data.pointedOut).length,
   }
   if (tag !== 'Working' && tag !== 'ReadyToReview') throw new Error('Unexpected work phase')
   const attempt = tag === 'ReadyToReview' ? record(data.attempt!) : data
   return {
     phase: tag, attempt: integer(attempt.number), lifetime: integer(attempt.session),
-    retries: integer(attempt.retries), artifact: tag === 'ReadyToReview' ? integer(data.artifact) : null,
+    retries: integer(attempt.retries), pointedOut: array(attempt.pointedOut).length, artifact: tag === 'ReadyToReview' ? integer(data.artifact) : null,
   }
 }
 
@@ -127,11 +135,27 @@ export const replayStaffReplacementObservations = async (
   const compareWork = async (expected: WorkObservation) => {
     const actual = await port.work()
     if (actual.phase !== expected.phase || actual.attempt !== expected.attempt || actual.lifetime !== expected.lifetime ||
-        actual.retries !== expected.retries || actual.artifact !== expected.artifact)
+        actual.retries !== expected.retries || actual.artifact !== expected.artifact || actual.pointedOut !== expected.pointedOut)
       throw new Error('Replacement work differs: ' + JSON.stringify({ expected, actual }))
+  }
+  const compareCompanions = async (state: Trace['states'][number]['state']) => {
+    const review = record(record(state.review!).value!)
+    const proposal = record(record(state.proposal!).value!)
+    const answer = record(record(state.question!).value!)
+    const expected = {
+      review: review.review === 'Waiting' ? 'Waiting' : 'Assigned',
+      artifact: integer(record(review.result!).artifact),
+      commandHolds: array(review.commands).every((outcome) => record(outcome).breaks === false),
+      proposal: proposal.review === 'Waiting' ? 'Waiting' : 'Assigned',
+      answer: integer(answer.text),
+    }
+    const actual = await port.companions()
+    if (JSON.stringify(actual) !== JSON.stringify(expected))
+      throw new Error('Replacement companions differ: ' + JSON.stringify({ expected, actual }))
   }
   let previous = replacementWork(trace.states[0]!.state.work!)
   await compareWork(previous)
+  await compareCompanions(trace.states[0]!.state)
   for (const step of trace.states.slice(1)) {
     switch (step.action) {
       case '': break
@@ -150,6 +174,7 @@ export const replayStaffReplacementObservations = async (
         if (committed !== (source === previous.lifetime)) throw new Error('A stale replacement report changed the work')
         if (kind === 'mutant' && step.state.staleApplied === true) {
           await compareWork(previous)
+          await compareCompanions(step.state)
           return
         }
         break
@@ -162,6 +187,7 @@ export const replayStaffReplacementObservations = async (
     if (actualPhase !== session.tag || actualLifetime !== lifetime) throw new Error('Session observation differs')
     const expected = replacementWork(step.state.work!)
     await compareWork(expected)
+    await compareCompanions(step.state)
     previous = expected
   }
   if (kind === 'mutant') throw new Error('The mutant never offered a stale report')

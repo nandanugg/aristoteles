@@ -55,7 +55,7 @@ export const acceptStaffing = (journal: Journal, project: Project, plan: Staffin
   if (!proposal) throw new Error('Missing staffing proposal')
   const assigned = yield* assignProposalReview(journal, proposal, live, staged.state.read)
   const reviewed = yield* cliProposal(journal, assigned.state, { line, move: 'review', input: { facts: evidence('Holds') } }, {
-    _tag: 'Review', session: live, review: proposal.lastChange,
+    _tag: 'Review', session: live, line, review: proposal.lastChange,
   })
   const accepted = yield* cliProposal(journal, reviewed.state, { line, move: 'accept', input: {} })
   if (!existing) yield* observeSession(journal, accepted.state, { _tag: 'Session', id: live.id }, 'Ended')

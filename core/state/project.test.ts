@@ -2,11 +2,10 @@ import { expect, test } from 'bun:test'
 import { Effect, Result, Schema, Stream } from 'effect'
 import { openPageProject, receiveProjectPayload } from '../../adapters/web/app/project-state.ts'
 import { projectEvents, projectEventStream, projectSnapshot } from '../../adapters/web/project.ts'
-import { create, open, projectId, session, staffInput, withJournal, worker } from '../../src/store/project.probe.ts'
-import { commandOutcomes, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
+import { create, open, projectId, session, staffInput, withJournal } from '../../src/store/project.probe.ts'
+import { commandOutcomes, promptDirection, reportReview, resultInput, send, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
 import { startChild } from '../actions/staff-session.ts'
-import { recordObserved } from '../actions/project.ts'
-import { EventNumber, Projection, Rationale, ReadPosition, SessionId, StoredEvent, Submission, TaskId } from '../schema/project.ts'
+import { EventNumber, Projection, ReadPosition, SessionId, StoredEvent, Submission, TaskId } from '../schema/project.ts'
 import { applyEvent, fold, readPosition } from './project.ts'
 
 const initial = ReadPosition.make(0)
@@ -54,7 +53,7 @@ test('both write connections recheck a competing report under the append lock', 
 test('a report refuses wrong authority, an invalid phase and a stale basis after back to the same attempt', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
-    const working = yield* toWorking(journal)
+    const working = yield* toWorking(journal, promptDirection)
     const read = readPosition(working.state)
     const request = resultInput(read)
     expectCode(yield* Effect.result(staffInput(journal, { ...request, move: 'back' })), 'InvalidInput')
@@ -64,9 +63,7 @@ test('a report refuses wrong authority, an invalid phase and a stale basis after
     const result = yield* staffInput(journal, request)
     const review = yield* commandOutcomes(journal, readPosition(result.state))
     const assigned = yield* startChild(journal, review.state, taskLine, session, 'Review')
-    const back = yield* recordObserved(journal, worker, readPosition(assigned.state), {
-      line: taskLine, from: 'Reviewing', move: 'back', input: { why: Rationale.make('Check the output once more') },
-    })
+    const back = yield* reportReview(journal, assigned.state, 'Breaks')
     expect(back.state.tasks.get(taskId)?.phase).toMatchObject({ _tag: 'Working', attempt: { number: 1, retryCount: 1 } })
     expectCode(yield* Effect.result(staffInput(journal, request)), 'Stale')
     expect(yield* journal.eventsAfter(readPosition(back.state))).toEqual([])

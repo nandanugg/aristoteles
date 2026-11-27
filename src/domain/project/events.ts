@@ -3,13 +3,14 @@ import { ApprovedFiles } from './activation.ts'
 import { ProposalValue } from './proposal.ts'
 import { ReviewFacts } from './review.ts'
 import { line, protocol } from './lines.ts'
-import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, type TaskPhase } from './task.ts'
+import { Attempt, CommandOutcomes, RaiseReason, TaskStages, TaskReviewFacts, WorkResult, type TaskPhase } from './task.ts'
+import { Evidence } from './evidence.ts'
 import { Fact } from './direction.ts'
 import { Answer, QuestionForm, questionAbout } from './question.ts'
 import { Human, LiveSession, Pane, Role, Staff } from './staff.ts'
 import {
-  DirectionId, EventNumber, Goal, Name, ProjectId, ProposalId, QuestionId, QuestionText, Rationale,
-  RoleId, SessionId, StaffId, StoredActor, TaskId, type Of,
+  AttemptNumber, DirectionId, EventNumber, Goal, Name, ProjectId, ProposalId, QuestionId, QuestionText, Rationale,
+  RetryLimit, RoleId, SessionId, StaffId, StoredActor, TaskId, type Of,
 } from './values.ts'
 
 export const ProjectAddress = Schema.TaggedStruct('Project', { id: ProjectId })
@@ -29,13 +30,19 @@ export const TaskDraft = Schema.Struct({
 })
 const empty = Schema.Struct({}).check(Schema.makeFilter((input) => Object.keys(input).length === 0))
 const session = Schema.Struct({ session: LiveSession, staffing: EventNumber })
-const reason = Schema.Struct({ reason: RaiseReason })
 const why = Schema.Struct({ why: Rationale })
 const files = Schema.Struct({ files: ApprovedFiles })
 const value = Schema.Struct({ value: ProposalValue })
 const proposalDraft = Schema.Struct({ value: ProposalValue, question: Schema.NullOr(QuestionAddress) })
 const reviewFacts = Schema.Struct({ facts: ReviewFacts })
 const reviewReport = Schema.Struct({ ...reviewFacts.fields, session: LiveSession, review: EventNumber })
+const taskReviewFacts = Schema.Struct({ facts: TaskReviewFacts })
+const workProblem = Schema.Struct({
+  attempt: AttemptNumber, reason: Schema.Literals(['TooBig', 'wrongTask']), evidence: Evidence,
+})
+const taskReviewReport = Schema.Struct({
+  ...taskReviewFacts.fields, session: SessionId, review: EventNumber, limit: RetryLimit,
+})
 
 export const projectLine = line({
   null: { owes: 'Owner', moves: { open: { to: ['Open'], input: configuration, submission: { input: configuration } } } },
@@ -51,15 +58,16 @@ export const taskLine = line({
   Working: { owes: 'Assignee', moves: {
     next: { to: ['ReadyToReview'], input: Schema.Struct({ ...WorkResult.fields, session: SessionId }), submission: { input: WorkResult } },
     restart: { to: ['Sent'], input: Schema.Struct({ session: SessionId }), owes: 'Engine' },
-    raise: { to: ['Raised'], input: reason, owes: 'Engine' },
+    raise: { to: ['Raised'], input: Schema.Struct({ ...workProblem.fields, session: SessionId }), submission: { input: workProblem } },
   } },
   ReadyToReview: { owes: 'Engine', moves: {
     next: { to: ['Reviewing'], input: Schema.Struct({ outcomes: CommandOutcomes }) },
   } },
   Reviewing: { owes: 'Reviewer', moves: {
     assign: { to: ['Reviewing'], input: session, owes: 'Engine' },
-    back: { to: ['Working'], input: why },
-    raise: { to: ['Raised'], input: reason, owes: 'Engine' },
+    next: { to: ['Done'], input: taskReviewReport, submission: { move: 'review', input: taskReviewFacts } },
+    back: { to: ['Working'], input: taskReviewReport },
+    raise: { to: ['Raised'], input: Schema.Struct({ ...taskReviewReport.fields, reason: RaiseReason }) },
   } },
   Done: { owes: 'None', moves: {} },
   Raised: { owes: 'None', moves: {} },
@@ -160,7 +168,7 @@ export type StoredEvent = Of<typeof StoredEvent>
 export const StoredEvents = Schema.Array(StoredEvent)
 
 const ProjectSubmission = project.submission
-const TaskSubmission = task.submission
+export const TaskSubmission = task.submission
 export const ProposalSubmission = proposals.submission
 export const QuestionSubmission = questions.submission
 export const ActivationSubmission = activation.submission

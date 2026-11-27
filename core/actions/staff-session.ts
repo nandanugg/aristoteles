@@ -5,6 +5,7 @@ import {
 } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { fold } from '../state/project.ts'
+import { assignTaskReview } from './task-review.ts'
 import { recordObserved } from './project.ts'
 
 export const readOpenProject = (journal: Journal): Effect.Effect<Project, Refusal> =>
@@ -55,7 +56,6 @@ export const startChild = (
 ): Effect.Effect<Committed, Refusal> => {
   const actor = { _tag: 'Staff', id: session.staff.id } as const
   const input = { session, staffing: staffingAt(project) }
-  return recordObserved(journal, actor, project.read, work === 'Review'
-    ? { line, from: 'Reviewing', move: 'assign', input }
-    : { line, from: 'Sent', move: 'next', input: { ...input, where: 'Subagent' } })
+  return work === 'Review' ? assignTaskReview(journal, project, line, session)
+    : recordObserved(journal, actor, project.read, { line, from: 'Sent', move: 'next', input: { ...input, where: 'Subagent' } })
 }

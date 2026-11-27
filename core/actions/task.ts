@@ -10,9 +10,9 @@ export const sendTask = (
   submit(journal, { read, line, move: 'open', input })
 
 export const reportWork = (
-  journal: Journal, line: Of<typeof TaskAddress>, read: Of<typeof ReadPosition>, input: Of<typeof taskLine.Sent.moves.next.submission.input | typeof taskLine.Working.moves.next.submission.input>,
+  journal: Journal, line: Of<typeof TaskAddress>, read: Of<typeof ReadPosition>, input: Of<typeof taskLine.Sent.moves.next.submission.input | typeof taskLine.Working.moves.next.submission.input | typeof taskLine.Working.moves.raise.submission.input>,
 ): Effect.Effect<Committed, Refusal, Authority> =>
-  submit(journal, { read, line, move: 'next', input })
+  submit(journal, { read, line, move: 'reason' in input ? 'raise' : 'next', input })
 
 export const taskBrief = (journal: Journal, line: Of<typeof TaskAddress>): Effect.Effect<Task, Refusal, Authority> =>
   Effect.gen(function* () {
@@ -28,6 +28,13 @@ export const taskBrief = (journal: Journal, line: Of<typeof TaskAddress>): Effec
       const session = liveSession(project, actor.session.id)
       if (session?.staff.id !== actor.session.staff.id)
         return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current task session.')))
+      if (actor._tag === 'Review') {
+        const phase = task.phase
+        if (actor.line._tag === 'Task' && actor.line.id === line.id && phase._tag === 'Reviewing' &&
+            phase.assignment._tag === 'Assigned' && phase.assignment.by.id === session.staff.id &&
+            phase.assignment.review === actor.review) return task
+        return yield* Effect.fail(refuse('RetiredSession', Rationale.make('Read from the current fresh review.')))
+      }
       const servesTask = (value: LiveSession) => value.staff.roles.some(({ id }) => id === taskRole(task).id || id === task.reviewer.id)
       if (servesTask(session)) return task
     }

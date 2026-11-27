@@ -67,7 +67,7 @@ for (const kind of kinds) test('onboarding review — ' + kind, () => withJourna
       report: async (source, child, holds) => {
         const view = await project()
         const entry = runs.get(child) ?? { session: source === 1 ? session : second, review: EventNumber.make(1) }
-        const outcome = await Effect.runPromise(Effect.result(cliProposal(journal, view, { line, move: 'review', input: { facts: evidence(holds ? 'Holds' : 'Breaks') } }, { _tag: 'Review', ...entry })))
+        const outcome = await Effect.runPromise(Effect.result(cliProposal(journal, view, { line, move: 'review', input: { facts: evidence(holds ? 'Holds' : 'Breaks') } }, { _tag: 'Review', line, ...entry })))
         if (Result.isSuccess(outcome)) return 'Committed'
         expect(outcome.failure.code).toBe('RetiredSession')
         expect((await project()).read).toBe(view.read)

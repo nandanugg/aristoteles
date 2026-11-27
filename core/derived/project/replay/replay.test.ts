@@ -1,24 +1,26 @@
+import { acceptDirection, promptDirection, reportReview } from '../../../../src/store/task.probe.ts'
 import { startWork } from '../../../../src/store/project-activation.probe.ts'
 import { expect, test } from 'bun:test'
 import { readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { Effect, Result } from 'effect'
+import { Effect, Result, Schema } from 'effect'
 import { staffSessionOperations, type Sessions } from '../../../../adapters/live/staff-session.ts'
 import { liveTaskCommands } from '../../../../adapters/live/task-commands.ts'
 import { runTaskCommands } from '../../../effects/project-commands.ts'
-import { recordObserved } from '../../../actions/project.ts'
 import { staffCards } from '../../../../adapters/web/app/staff-session.ts'
-import { acceptStaffing } from '../../../../src/store/proposal.probe.ts'
+import { acceptStaffing, cliProposal, direction } from '../../../../src/store/proposal.probe.ts'
+import { assignProposalReview } from '../../../actions/proposal.ts'
+import { recordTaskCommands } from '../../../actions/task.ts'
 import { observeSession, readOpenProject, startChild, startSession } from '../../../actions/staff-session.ts'
 import { initialStaffing, launchStaff, maker, sharedStaffing } from '../../../../src/store/staff-session.probe.ts'
 import { openPageProject, receiveProjectPayload } from '../../../../adapters/web/app/project-state.ts'
 import { projectEvents, projectSnapshot } from '../../../../adapters/web/project.ts'
-import { create, open, session, staff, staffInput, startFixtureSession, withJournal, worker } from '../../../../src/store/project.probe.ts'
+import { create, open, session, staff, staffInput, startFixtureSession, withJournal } from '../../../../src/store/project.probe.ts'
 import { activateTasks, begin, commandOutcomes, resultInput, send, taskId, taskLine, toWorking } from '../../../../src/store/task.probe.ts'
 import {
   answerYaml, cliQuestion, ownerAuthority, pageQuestion, questionId, readRefusal, staffAuthorityOf, textForm,
 } from '../../../../src/store/question.probe.ts'
-import { staffingAt, taskRole, AnswerText, EventNumber, ReadPosition, Rationale, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
+import { staffingAt, taskRole, AnswerText, CommandOutcome, EventNumber, ProposalId, ReadPosition, SessionId, TaskId, type Of, type Projection, type Submission } from '../../../schema/project.ts'
 import { fold, readPosition } from '../../../state/project.ts'
 import { readTrace, registeredChecks, replayReportRace } from './driver.ts'
 
@@ -195,13 +197,33 @@ for (const kind of kinds) test('staff capacity — ' + kind, () => withJournal((
 for (const kind of kinds) test('staff replacement observations — ' + kind, () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
-    const working = yield* toWorking(journal)
+    const working = yield* toWorking(journal, promptDirection)
     const reported = yield* staffInput(journal, resultInput(working.state.read))
     const commands = yield* commandOutcomes(journal, reported.state.read)
     const assigned = yield* startChild(journal, commands.state, taskLine, session, 'Review')
-    const { state: current } = yield* recordObserved(journal, worker, assigned.state.read, {
-      line: taskLine, from: 'Reviewing', move: 'back', input: { why: Rationale.make('Update the first result.') },
-    })
+    const returned = yield* reportReview(journal, assigned.state, 'Breaks')
+    const reviewLine = { _tag: 'Task', id: TaskId.make('task:retained-review') } as const
+    const rules = yield* acceptDirection(journal, returned.state, direction)
+    const sent = yield* send(journal, rules.read, reviewLine.id)
+    const began = yield* staffInput(journal, { read: sent.state.read, line: reviewLine, move: 'next', input: {} })
+    const result = yield* staffInput(journal, { ...resultInput(began.state.read), line: reviewLine })
+    const rule = direction.standards[0]!.rules[0]!
+    const outcome = Schema.decodeUnknownSync(CommandOutcome)({ _tag: 'Holds', rule,
+      evidence: { _tag: 'CommandOutput', command: rule.verification, exit: 0, stdout: '7', stderr: '' } })
+    const entered = yield* recordTaskCommands(journal, reviewLine, result.state.read, [outcome])
+    const reviewed = yield* startChild(journal, entered.state, reviewLine, session, 'Review')
+    const proposalLine = { _tag: 'Proposal', id: ProposalId.make('proposal:retained-review') } as const
+    const draft = yield* cliProposal(journal, reviewed.state, { line: proposalLine, move: 'open', input: { value: direction } })
+    const submitted = yield* cliProposal(journal, draft.state, { line: proposalLine, move: 'submit', input: { question: null, value: direction } })
+    const proposal = submitted.state.proposals.get(proposalLine.id)!
+    const pending = yield* assignProposalReview(journal, proposal, session, submitted.state.read)
+    const asked = yield* cliQuestion(journal, ownerAuthority, 'question', staff.id, pending.state.read, Bun.YAML.stringify({
+      id: questionId, text: 'What is the answer?', form: textForm, about: { _tag: 'Project' },
+    }))
+    const answered = yield* cliQuestion(journal, staffAuthorityOf(), 'answer', questionId, asked.state.read, answerYaml('9'))
+    const current = answered.state
+    const snapshot = yield* projectSnapshot(journal)
+    const page = Result.getOrThrow(openPageProject(yield* Effect.promise(() => snapshot.json()), () => {}))
     const address = { _tag: 'Session', id: session.id } as const
     const replacement = SessionId.make('session:2')
     let expectedPrior: Of<typeof SessionId> | null = null
@@ -247,16 +269,34 @@ for (const kind of kinds) test('staff replacement observations — ' + kind, () 
         const project = await Effect.runPromise(readOpenProject(journal))
         const task = project.tasks.get(taskId)
         const phase = task?.phase
+        const count = (feedback: Extract<NonNullable<typeof phase>, { _tag: 'Sent' }>['feedback']) =>
+          feedback._tag === 'Review' ? feedback.breaks.length : 0
         if (phase?._tag === 'Sent') return {
           phase: 'Sent', attempt: task?.lastAttempt._tag === 'Attempted' ? task.lastAttempt.number : 0,
-          lifetime: 0, retries: phase.retryCount, artifact: null,
+          lifetime: 0, retries: phase.retryCount, artifact: null, pointedOut: count(phase.feedback),
         }
         if (phase?._tag !== 'Working' && phase?._tag !== 'ReadyToReview') throw new Error('Unexpected production work phase')
         const attempt = phase._tag === 'Working' ? phase.attempt : phase.result.attempt
         const image = phase._tag === 'ReadyToReview' ? phase.result.files[0]?.image : null
         return {
           phase: phase._tag, attempt: attempt.number, lifetime: attempt.session.id === replacement ? 2 : 1,
-          retries: attempt.retryCount, artifact: image?._tag === 'Present' ? Number(image.contents) : null,
+          retries: attempt.retryCount, pointedOut: count(attempt.feedback), artifact: image?._tag === 'Present' ? Number(image.contents) : null,
+        }
+      },
+      companions: async () => {
+        const project = await Effect.runPromise(readOpenProject(journal))
+        const feed = await Effect.runPromise(projectEvents(journal, readPosition(page.current())))
+        expect(Result.getOrThrow(receiveProjectPayload(page, await feed.json()))).toEqual(project)
+        const task = project.tasks.get(reviewLine.id)?.phase
+        const pending = project.proposals.get(proposalLine.id)?.phase
+        const question = project.questions.get(questionId)?.state
+        if (task?._tag !== 'Reviewing' || pending?._tag !== 'Reviewing' ||
+            question?._tag !== 'Answered' || question.answer._tag !== 'Single') throw new Error('A companion record was lost')
+        const image = task.result.files[0]?.image
+        return {
+          review: task.assignment._tag, artifact: image?._tag === 'Present' ? Number(image.contents) : -1,
+          commandHolds: task.outcomes.length === 1 && task.outcomes[0]?._tag === 'Holds',
+          proposal: pending.assignment._tag, answer: Number(question.answer.text),
         }
       },
       observe: async () => {

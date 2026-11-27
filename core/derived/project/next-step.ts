@@ -1,7 +1,8 @@
 import {
   currentQuestion, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
-  taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type ReadPosition, type Of, type Task,
+  taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type ReadPosition, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
+import { mayAssignTaskReview } from './review.ts'
 
 export type Selection =
   | { readonly _tag: 'Awaiting' }
@@ -9,7 +10,7 @@ export type Selection =
       readonly _tag: 'Available'
       readonly subject: { readonly _tag: 'Task'; readonly task: Task } | { readonly _tag: 'Question'; readonly question: Question }
         | { readonly _tag: 'Proposal'; readonly proposal: Proposal }
-      readonly for: 'Report' | 'Answer' | 'Choose'
+      readonly for: 'Report' | 'Answer' | 'Choose' | 'Assign' | 'Review'
       readonly read: Of<typeof ReadPosition>
     }
 
@@ -29,7 +30,7 @@ export const questionsFor = (project: Project, authority: LiveSession | Of<typeo
   ).sort((a, b) => a.lastChange - b.lastChange)
 }
 
-export const nextStep = (project: Project, authority: LiveSession | Of<typeof Human>): Selection => {
+export const nextStep = (project: Project, authority: LiveSession | Of<typeof Human>, events: readonly StoredEvent[] = []): Selection => {
   if (project.status._tag === 'Ended') return { _tag: 'Awaiting' }
   const [question] = questionsFor(project, authority)
   const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
@@ -40,8 +41,6 @@ export const nextStep = (project: Project, authority: LiveSession | Of<typeof Hu
       case 'Assignee':
         if (phase._tag === 'Working') return phase.attempt.session.id === current.id
         return staffOf(project, taskRole(task))?.id === current.staff.id
-      case 'Reviewer':
-        return phase._tag === 'Reviewing' && phase.assignment._tag === 'Assigned' && phase.assignment.by.id === current.staff.id
       default:
         return false
     }
@@ -49,7 +48,10 @@ export const nextStep = (project: Project, authority: LiveSession | Of<typeof Hu
   const due: Extract<Selection, { _tag: 'Available' }>[] = []
   if (question) due.push({ _tag: 'Available', subject: { _tag: 'Question', question }, for: 'Answer', read: project.read })
   for (const task of project.tasks.values()) {
-    if (owes(task)) due.push({ _tag: 'Available', subject: { _tag: 'Task', task }, for: 'Report', read: project.read })
+    const subject = { _tag: 'Task', task } as const
+    if (owes(task)) due.push({ _tag: 'Available', subject, for: 'Report', read: project.read })
+    else if (current && mayAssignTaskReview(project, events, task, current) === 'Allowed')
+      due.push({ _tag: 'Available', subject, for: 'Assign', read: project.read })
   }
   const actor = authority._tag === 'Human' ? authority : current?.staff
   for (const proposal of project.proposals.values()) {

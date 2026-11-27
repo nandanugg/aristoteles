@@ -1,4 +1,5 @@
 import { Effect, Result } from 'effect'
+import { checkTaskReview } from '../../core/actions/task-review.ts'
 import {
   observeSession, readOpenProject, resumeSession, staffAuthority, startChild, startSession,
 } from '../../core/actions/staff-session.ts'
@@ -16,7 +17,8 @@ export interface Sessions {
   readonly reconcile: (project: Project) => Effect.Effect<void, Refusal>
   readonly launch: (staff: Staff, id: Of<typeof SessionId>, previous: Of<typeof SessionId> | null) => Effect.Effect<Of<typeof Pane>, Refusal>
   readonly observe: (session: LiveSession) => Effect.Effect<'Running' | 'Unknown' | 'Paused' | 'Ended', Refusal>
-  readonly child: (session: LiveSession, line: Of<typeof TaskAddress>, work: 'Work' | 'Review') => Effect.Effect<void, Refusal>
+  readonly child: (session: LiveSession, line: Of<typeof TaskAddress>,
+    work: { readonly _tag: 'Work' } | { readonly _tag: 'Review'; readonly review: Of<typeof EventNumber> }) => Effect.Effect<void, Refusal>
 }
 
 export interface StaffSessionOperations {
@@ -72,14 +74,19 @@ export const staffSessionOperations = (
       if (staffing !== staffingAt(project)) return yield* stale()
       const session = yield* staffAuthority(project, id)
       const task = project.tasks.get(line.id)
-      if (!task || (work === 'Work' ? task.phase._tag !== 'Sent' :
-          task.phase._tag !== 'Reviewing' || task.phase.assignment._tag !== 'Waiting')) return yield* wrongMove()
-      const staff = staffOf(project, work === 'Work' ? taskRole(task) : task.reviewer)
+      const open = (child: Parameters<Sessions['child']>[2]) =>
+        changed(Effect.andThen(provider.child(session, line, child), startChild(journal, project, line, session, work)))
+      if (work === 'Review') {
+        const review = yield* checkTaskReview(journal, project, line, session)
+        return yield* open({ _tag: 'Review', review })
+      }
+      if (task?.phase._tag !== 'Sent') return yield* wrongMove()
+      const staff = staffOf(project, taskRole(task))
       if (!staff || staff.id !== session.staff.id)
         return yield* Effect.fail(refuse('WrongActor', Rationale.make('This staff does not serve the assigned role.')))
       if (subagentCapacity(project, staff).freeSubagents === 0)
         return yield* Effect.fail(refuse('NoCapacity', Rationale.make('The staff has no free subagent slot.')))
-      return yield* changed(Effect.andThen(provider.child(session, line, work), startChild(journal, project, line, session, work)))
+      return yield* open({ _tag: 'Work' })
     })),
   }
 }

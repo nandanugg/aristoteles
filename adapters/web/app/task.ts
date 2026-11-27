@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { html } from 'htm/preact'
+import { ReviewEvidence } from './review.ts'
 import { taskRole, taskRules, type Refusal, type Task, type TaskId, type Of, type WholeFile } from '../../../core/schema/project.ts'
 
 function FileResult({ file }: { readonly file: WholeFile }) {
@@ -33,6 +34,7 @@ export function TaskPanel({ task, commandBlock }: {
     return () => { current = false; clearInterval(timer) }
   }, [task.id, task.lastChange, phase._tag, commandBlock])
   const result = phase._tag === 'ReadyToReview' || phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.result : null
+  const feedback = phase._tag === 'Working' ? phase.attempt.feedback : phase._tag === 'Sent' ? phase.feedback : null
   const outcomes = phase._tag === 'Reviewing' || phase._tag === 'Done' ? phase.outcomes : null
   return html`<article aria-label=${task.name}>
     <h3>${task.name}</h3><p>${task.goal}</p>
@@ -48,9 +50,13 @@ export function TaskPanel({ task, commandBlock }: {
       ${result.files.map((file) => html`<${FileResult} key=${file.path} file=${file} />`)}` : null}
     ${phase._tag === 'ReadyToReview' ? html`<p role="status">${blocked ?? 'Waiting for committed command outcomes.'}</p>` : null}
     ${outcomes?.map(({ rule, evidence, _tag }) => html`<details key=${rule.id}>
-      <summary>${rule.name} · ${_tag} · exit ${evidence.exit}</summary>
-      <pre>${evidence.stdout}</pre>${evidence.stderr ? html`<pre>${evidence.stderr}</pre>` : null}
+      <summary>${rule.name} · ${_tag}${evidence._tag === 'CommandOutput' ? ' · exit ' + evidence.exit : ''}</summary>
+      <${ReviewEvidence} evidence=${evidence} />
     </details>`)}
-    ${phase._tag === 'Raised' ? html`<p>${phase.reason}</p>` : null}
+    ${feedback?._tag === 'Review' ? html`<section aria-label="Review feedback">
+      <h4>Review feedback</h4>
+      ${feedback.breaks.map(({ rule, evidence }) => html`<div key=${rule.id}><p>${rule.name}</p><${ReviewEvidence} evidence=${evidence} /></div>`)}
+    </section>` : null}
+    ${phase._tag === 'Raised' ? html`<p>${phase.reason}</p><${ReviewEvidence} evidence=${phase.evidence} />` : null}
   </article>`
 }

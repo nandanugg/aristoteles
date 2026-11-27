@@ -1,3 +1,4 @@
+import type { Evidence, Of } from '../../../core/schema/project.ts'
 // The modal of an escalation: the diff of its changes, and, while it waits for review, the
 // person's Accept and Send back.
 import { html } from 'htm/preact'
@@ -58,4 +59,11 @@ export function Review({ e, onAct, view, onClose }: ReviewProps) {
           onClick=${() => run(reply)}>${labels[reply]}</button>`)}</div>`
       : ''}
   <//>`
+}
+
+export function ReviewEvidence({ evidence }: { readonly evidence: Of<typeof Evidence> }) {
+  return evidence._tag === 'Quote'
+    ? html`<blockquote>${evidence.text}<footer>${evidence.file} · ${evidence.lines.first}–${evidence.lines.last}</footer></blockquote>`
+    : html`<p>${evidence.command.text} · exit ${evidence.exit}</p>
+      <pre>${evidence.stdout}</pre>${evidence.stderr ? html`<pre>${evidence.stderr}</pre>` : null}`
 }

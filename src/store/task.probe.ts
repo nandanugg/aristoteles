@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { observeActivation } from '../../core/actions/project-activation.ts'
-import { Authority } from '../../core/actions/project.ts'
+import { Authority, submit } from '../../core/actions/project.ts'
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject, startSession } from '../../core/actions/staff-session.ts'
 import { recordTaskCommands, sendTask } from '../../core/actions/task.ts'
@@ -34,7 +34,7 @@ export const acceptDirection = (journal: Journal, project: Project, value: Direc
   if (!proposal) throw new Error('Missing direction to approve')
   const reviewing = yield* assignProposalReview(journal, proposal, active, submitted.state.read)
   const reviewed = yield* cliProposal(journal, reviewing.state, { line, move: 'review', input: { facts: evidence('Holds') } },
-    { _tag: 'Review', session: active, review: proposal.lastChange })
+    { _tag: 'Review', session: active, line, review: proposal.lastChange })
   const accepted = yield* cliProposal(journal, reviewed.state, { line, move: 'accept', input: {} })
   return existing ? accepted.state : (yield* observeSession(journal, accepted.state, { _tag: 'Session', id }, 'Ended')).state
 })
@@ -68,9 +68,9 @@ export const draftFor = (project: Project, id = taskId, role = host, reviewer = 
   })
 }
 
-export const send = (journal: Journal, read: Of<typeof ReadPosition>, id = taskId, role = host) => Effect.gen(function* () {
+export const send = (journal: Journal, read: Of<typeof ReadPosition>, id = taskId, role = host, reviewer = pipeline) => Effect.gen(function* () {
   const project = yield* readOpenProject(journal)
-  const { id: task, ...draft } = draftFor(project, id, role)
+  const { id: task, ...draft } = draftFor(project, id, role, reviewer)
   return yield* sendTask(journal, { _tag: 'Task', id: task }, read, draft).pipe(Effect.provideService(Authority, {
     actor: Effect.succeed({ _tag: 'Host', id: boundHost, staff } as const),
   }))
@@ -88,3 +88,25 @@ export const toWorking = (journal: Journal, value?: Direction) => Effect.gen(fun
   const sent = yield* send(journal, live.state.read)
   return yield* begin(journal, sent.state.read)
 })
+
+export const promptDirection = Schema.decodeUnknownSync(Direction)({
+  ...direction, standards: direction.standards.map((standard) => ({ ...standard, rules: [{
+    _tag: 'Rule', id: 'rule:readable', name: 'Readable result', text: 'Use clear wording.',
+    verification: { _tag: 'Prompt', question: 'Is the result clear?',
+      source: { _tag: 'Quote', file: 'artifact', lines: { first: 1, last: 1 }, text: '7' } },
+    examples: [],
+  }] })),
+})
+export const artifactQuote = { _tag: 'Quote', file: 'artifact', lines: { first: 1, last: 1 }, text: '7' } as const
+
+export const reviewAs = (project: Project, line = taskLine, live = session) => {
+  const phase = project.tasks.get(line.id)?.phase
+  if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing task review assignment')
+  return { _tag: 'Review', line, session: live, review: phase.assignment.review } as const
+}
+
+export const reportReview = (
+  journal: Journal, project: Project, holds: 'Holds' | 'Breaks', line = taskLine, actor = reviewAs(project, line),
+) => submit(journal, { read: project.read, line, move: 'review', input: { facts: {
+  outcomes: [{ _tag: holds, rule: promptDirection.standards[0]!.rules[0]!, evidence: artifactQuote }], findings: [],
+} } }).pipe(Effect.provideService(Authority, { actor: Effect.succeed(actor) }))

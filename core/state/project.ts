@@ -76,7 +76,7 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
   tasks.set(line.id, {
     id: line.id, name: draft.name, goal: draft.goal, reviewer, direction,
     stages: [{ ...first, role }, ...rest.map((stage) => ({ ...stage, role }))], facts: draft.facts,
-    phase: { _tag: 'Sent', retryCount: RetryCount.make(0) }, lastAttempt: { _tag: 'None' }, lastChange: number,
+    phase: { _tag: 'Sent', retryCount: RetryCount.make(0), feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, lastChange: number,
   })
   return Result.succeed({ ...project, tasks })
 }

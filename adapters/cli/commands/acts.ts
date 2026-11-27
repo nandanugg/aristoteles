@@ -9,9 +9,10 @@ import { reportWork, sendTask, taskBrief } from '../../../core/actions/task.ts'
 import { runTaskCommands, taskCommandBlock, type TaskCommands } from '../../../core/effects/project-commands.ts'
 import { projectTaskWords } from '../../words/work.ts'
 import { Authority as ProjectAuthority, submit } from '../../../core/actions/project.ts'
+import { reportTaskReview } from '../../../core/actions/task-review.ts'
 import { decodeQuestionInput } from '../../../core/actions/question.ts'
 import {
-  Answer as ProjectAnswer, QuestionId, Rationale, StoredActor, TaskDraft, TaskId, taskLine, refuse as projectRefuse,
+  Answer as ProjectAnswer, QuestionId, Rationale, StoredActor, TaskDraft, TaskId, TaskReviewFacts, taskLine, refuse as projectRefuse,
   type Of, type ReadPosition, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
@@ -827,12 +828,20 @@ export const projectReportCommand = (
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
   const id = yield* checkedTaskInput(TaskId, target)
   const line = { _tag: 'Task', id } as const
-  const report = yield* checkedTaskInput(Schema.Union([taskLine.Working.moves.next.submission.input, taskLine.Sent.moves.next.submission.input]),
+  const report = yield* checkedTaskInput(Schema.Union([taskLine.Working.moves.next.submission.input, taskLine.Working.moves.raise.submission.input, taskLine.Sent.moves.next.submission.input]),
     yield* loadTaskYaml(yaml))
   const committed = yield* reportWork(journal, line, read, report)
   // A failure to run or append command evidence leaves the accepted report available for recovery.
-  if (commands && 'attempt' in report) yield* Effect.result(runTaskCommands(journal, line, commands))
+  if (commands && 'files' in report) yield* Effect.result(runTaskCommands(journal, line, commands))
   return committed
+})
+
+export const projectReviewCommand = (
+  journal: Journal, target: unknown, read: Of<typeof ReadPosition>, yaml: string,
+): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
+  const id = yield* checkedTaskInput(TaskId, target)
+  const facts = yield* checkedTaskInput(TaskReviewFacts, yield* loadTaskYaml(yaml))
+  return yield* reportTaskReview(journal, { _tag: 'Task', id }, read, facts)
 })
 
 export const projectBriefCommand = (journal: Journal, target: unknown, commands?: TaskCommands) => Effect.gen(function* () {

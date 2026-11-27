@@ -1,19 +1,16 @@
 import { Schema } from 'effect'
 import { Direction, Fact, Rule, Stage } from './direction.ts'
-import { CommandOutput, Lines, outcomeOf } from './evidence.ts'
+import { CommandOutput, Evidence, Lines, Quote, outcomeOf } from './evidence.ts'
 import { reviewing } from './review.ts'
 import { versionOf } from './proposal.ts'
 import type { Project } from './records.ts'
-import { LiveSession, Role } from './staff.ts'
+import { LiveSession, Role, staffOf } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  ResultSummary, RetryCount, TaskId, type Of,
+  Rationale, ResultSummary, RetryCount, TaskId, type Of,
 } from './values.ts'
 
 export const DirectionVersion = versionOf(Direction)
-export const Attempt = Schema.Struct({
-  number: AttemptNumber, retryCount: RetryCount, session: LiveSession, where: Schema.Literals(['Session', 'Subagent']),
-})
 export const WholeFile = Schema.Struct({
   path: FilePath,
   image: Schema.Union([
@@ -39,15 +36,34 @@ export const CommandOutcomes = Schema.Array(CommandOutcome).check(
   Schema.makeFilter((values) => new Set(values.map(({ rule }) => rule.id)).size === values.length),
 )
 
+const PromptOutcome = outcomeOf({ rule: Rule, evidence: Quote }).check(Schema.makeFilter(({ rule }) =>
+  rule.verification._tag === 'Prompt'))
+const RuleOutcome = Schema.Union([CommandOutcome, PromptOutcome])
+export type RuleOutcome = Of<typeof RuleOutcome>
+const BreakingOutcome = RuleOutcome.pipe(Schema.refine(
+  (outcome): outcome is Extract<RuleOutcome, { _tag: 'Breaks' }> => outcome._tag === 'Breaks',
+))
+export type BreakingOutcome = Of<typeof BreakingOutcome>
+export const ReviewFeedback = Schema.Union([
+  Schema.TaggedStruct('None', {}),
+  Schema.TaggedStruct('Review', { breaks: Schema.NonEmptyArray(BreakingOutcome) }),
+])
+const Finding = Schema.Struct({ text: Rationale, evidence: Evidence })
+export const TaskReviewFacts = Schema.Struct({ outcomes: Schema.Array(PromptOutcome), findings: Schema.Array(Finding) })
+export type TaskReviewFacts = Of<typeof TaskReviewFacts>
+
+export const Attempt = Schema.Struct({
+  number: AttemptNumber, retryCount: RetryCount, session: LiveSession, where: Schema.Literals(['Session', 'Subagent']), feedback: ReviewFeedback,
+})
 const Result = Schema.Struct({ ...WorkResult.fields, attempt: Attempt, at: EventNumber })
-export const RaiseReason = Schema.Literals(['Tries', 'Misses', 'NoRule', 'TooBig', 'ContractWrong', 'RejectedByHuman'])
+export const RaiseReason = Schema.Literals(['Tries', 'Misses', 'NoRule', 'TooBig', 'wrongTask', 'ContractWrong', 'RejectedByHuman'])
 export const TaskPhase = Schema.Union([
-  Schema.TaggedStruct('Sent', { retryCount: RetryCount }),
+  Schema.TaggedStruct('Sent', { retryCount: RetryCount, feedback: ReviewFeedback }),
   Schema.TaggedStruct('Working', { attempt: Attempt }),
   Schema.TaggedStruct('ReadyToReview', { result: Result }),
   reviewing({ result: Result, outcomes: CommandOutcomes }),
-  Schema.TaggedStruct('Done', { result: Result, outcomes: CommandOutcomes }),
-  Schema.TaggedStruct('Raised', { reason: RaiseReason }),
+  Schema.TaggedStruct('Done', { result: Result, outcomes: Schema.Array(RuleOutcome) }),
+  Schema.TaggedStruct('Raised', { reason: RaiseReason, evidence: Evidence }),
 ])
 export type TaskPhase = Of<typeof TaskPhase>
 export const TaskStages = Schema.NonEmptyArray(Stage)
@@ -78,3 +94,8 @@ export const taskRules = (task: Task): readonly Of<typeof Rule>[] =>
   ).flatMap(({ rules }) => rules)
 
 export const taskRole = (task: Task) => task.stages[0].role
+
+export const taskReviewStaff = (project: Project, task: Task) => {
+  const reviewer = staffOf(project, task.reviewer)
+  return reviewer?.subagents === 0 ? staffOf(project, project.roles.host) : reviewer
+}
