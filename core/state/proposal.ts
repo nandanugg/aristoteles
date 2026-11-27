@@ -34,7 +34,7 @@ const validateValue = (
     const role = roleOf(project, value.role.key)
     return role ? Result.succeed({ ...value, role }) : wrongMove()
   }
-  if (value.owner.name !== project.owner.name || value.stages.some(({ role }) => !roleOf(project, role.key))) return wrongActor()
+  if (value.stages.some(({ role }) => !roleOf(project, role.key))) return wrongActor()
   return Result.succeed(value)
 }
 
@@ -61,7 +61,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       if (version && version.acceptedIn > read) return stale()
       return store({
         key, value, basis: version ? { _tag: 'Version', version } : { _tag: 'None' }, questions: new Map(),
-        proposer: actor, owner: project.owner, retryCount: RetryCount.make(0),
+        proposer: actor, retryCount: RetryCount.make(0),
         phase: { _tag: 'Drafting', feedback: { _tag: 'None' } }, changedIn: number,
       })
     })

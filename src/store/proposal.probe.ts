@@ -7,11 +7,11 @@ import { staffedIn,
   Direction, ProposalKey, ReviewFacts, StaffSessionKey, type Of, type Project, StaffingPlan,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
-import { startSession, host, owner, session, staff } from './project.probe.ts'
+import { startSession, host, session, staff } from './project.probe.ts'
 import { ownerAuthority } from './question.probe.ts'
 
 export const direction = Schema.decodeUnknownSync(Direction)({
-  _tag: 'Direction', owner, name: 'Write a document',
+  _tag: 'Direction', name: 'Write a document',
   summary: 'Show the evidence', text: 'A direction with a scoped rule.',
   source: { _tag: 'Company', repository: 'https://example.test/directions', commit: 'a'.repeat(40), folder: 'docs' },
   stages: [{ name: 'Write', role: host, work: 'Write the document.', where: { _tag: 'Project' } }],

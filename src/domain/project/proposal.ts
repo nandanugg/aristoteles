@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 import { Question } from './question.ts'
 import { Direction } from './direction.ts'
 import { ReviewFacts, reviewing } from './review.ts'
-import { Human, Responsibility, Role, StaffingPlan } from './staff.ts'
+import { Responsibility, Role, StaffingPlan } from './staff.ts'
 import { versionOf } from './version.ts'
 import { EventNumber, FileContents, ProposalKey, QuestionKey, Rationale, recordsByKey, RetryCount, StoredActor, type Of } from './values.ts'
 
@@ -20,7 +20,7 @@ export const proposalText = (value: ProposalValue): Of<typeof FileContents> =>
 
 const proposalOf = <S extends Schema.Top>(value: S) => Schema.Struct({
   key: ProposalKey, value, questions: recordsByKey(Question, QuestionKey), basis: Schema.Union([Schema.TaggedStruct('None', {}), Schema.TaggedStruct('Version', { version: versionOf(ProposalValue) })]),
-  proposer: StoredActor, owner: Human, retryCount: RetryCount,
+  proposer: StoredActor, retryCount: RetryCount,
   phase: Schema.Union([
     Schema.TaggedStruct('Drafting', { feedback: Schema.Union([
       Schema.TaggedStruct('None', {}),

@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { Command, Lines, OutcomeTag, Quote } from './evidence.ts'
-import { Human, Role } from './staff.ts'
+import { Role } from './staff.ts'
 import {
   ContextValue, ExampleText, FilePath, GitCommit, Goal, GuidanceText,
   Name, QuestionText, RepositoryAddress, Summary, type Of,
@@ -43,7 +43,6 @@ const Standard = Schema.TaggedStruct('Standard', {
   name: Name, text: GuidanceText, scope: Scope, rules: Schema.Array(Rule),
 })
 export const Direction = Schema.TaggedStruct('Direction', {
-  owner: Human,
   source: Schema.Union([
     Schema.TaggedStruct('Local', {}),
     Schema.TaggedStruct('Company', { repository: RepositoryAddress, commit: GitCommit, folder: FilePath }),

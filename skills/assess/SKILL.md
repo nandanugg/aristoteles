@@ -43,7 +43,7 @@ A staffing value uses `_tag: Staffing`, the single subscriptions list, and all s
 
 ## Directions and evidence
 
-A direction has its owner, name, summary, text, source, ordered stages, and standards. Use `{ _tag: Local }` for a local source. For company directions record the repository, merged commit and folder in a Company source. Each stage carries its name, role record, work, and location (Project, File, or Passage). A standard has a scope of Everywhere or Where. Where names AllStages or NamedStages and the matching context facts. Place a whole-output check at the stage that owns the whole output.
+A direction has a name, summary, text, source, ordered stages, and standards. Use `{ _tag: Local }` for a local source. For company directions record the repository, merged commit and folder in a Company source. Each stage carries its name, role record, work, and location (Project, File, or Passage). A standard has a scope of Everywhere or Where. Where names AllStages or NamedStages and the matching context facts. Place a whole-output check at the stage that owns the whole output.
 
 A rule expresses one independently failing condition. Use `{ _tag: Command, text: ... }` for a deterministic test, or `{ _tag: Prompt, question: ..., source: <Quote> }` for a judgment check. An example pairs a Quote or MadeUp excerpt with Holds or Breaks. Preserve genuine examples and distinguish known pre-existing breaks from new failures. Include `knownBreaks: []` when there are none.
 
