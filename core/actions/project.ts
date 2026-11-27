@@ -56,7 +56,7 @@ const maySubmit = (actor: AuthenticatedActor, party: Party | undefined) => {
     case 'Host': return actor._tag === 'Host'
     case 'Reviewer': return actor._tag === 'Review'
     case 'Assignee': return actor._tag === 'Staff'
-    case 'Actor':
+    case 'Anyone':
     case 'Recipient':
     case 'Proposer': return actor._tag === 'Human' || actor._tag === 'Staff'
     default: return false

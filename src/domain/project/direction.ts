@@ -15,7 +15,7 @@ export const Stage = Schema.Struct({
   ]),
 })
 export const Fact = Schema.Struct({
-  name: Schema.Literals(['system', 'field', 'language', 'repo', 'audience', 'output']), value: ContextValue,
+  name: Schema.Literals(['System', 'Field', 'Language', 'Repository', 'Audience', 'Output']), value: ContextValue,
 })
 const Scope = Schema.Union([
   Schema.TaggedStruct('Everywhere', {}),

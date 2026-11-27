@@ -18,6 +18,7 @@ Use the name a person or agent can understand on its own. Read a state label wit
 | Model tiers, Tier | removed | Staffing records the model chosen for the work and the reason for that choice. |
 | Agent | keep | An agent is a model run acting for the project. |
 | Actor | keep | An actor is whoever performs an act. |
+| Actor as a Party | rename to Anyone | Any eligible owner or live staff session can take this move. |
 | Owner | keep | The owner accepts a direction’s draft. |
 | Role | keep | A role is a named responsibility for work. |
 | Host | keep | The host works with the person and serves fresh judgment jobs through its staff. |
@@ -33,6 +34,7 @@ Use the name a person or agent can understand on its own. Read a state label wit
 | --- | --- | --- |
 | Top | rename to TopTask | The top task is the root of the work tree. |
 | Item, ItemRec, Guidance | removed | Directions hold their standards and rules, and the harness supplies the fixed principle questions. |
+| Fact names | use System, Field, Language, Repository, Audience, Output | Each literal identifies a checked context field. |
 | Case, example | rename to Example | An example traces guidance to a concrete output that follows it or breaks it. |
 | Ask | rename to Request | The record asks someone to do work, review a result, or answer a question. |
 | Owed, step from work wait | rename to PendingStep | It is the step the actor still needs to take. |

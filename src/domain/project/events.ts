@@ -91,13 +91,13 @@ const question = Schema.Struct({
 })
 const answer = Schema.Struct({ answer: Answer })
 export const questionLine = line({
-  null: { from: Schema.Null, owes: 'Actor', moves: { open: { to: ['Open'], input: question, submission: { move: 'open', input: question } } } },
+  null: { from: Schema.Null, owes: 'Anyone', moves: { open: { to: ['Open'], input: question, submission: { move: 'open', input: question } } } },
   Open: { from: Schema.Literal('Open'), owes: 'Recipient', moves: { answer: { to: ['Answered'], input: answer, submission: { move: 'answer', input: answer } } } },
   Answered: { from: Schema.Literal('Answered'), owes: 'None', moves: {} },
 })
 
 export const proposalLine = line({
-  null: { from: Schema.Null, owes: 'Actor', moves: { open: { to: ['Drafting'], input: value, submission: { move: 'open', input: value } } } },
+  null: { from: Schema.Null, owes: 'Anyone', moves: { open: { to: ['Drafting'], input: value, submission: { move: 'open', input: value } } } },
   Drafting: { from: Schema.Literal('Drafting'), owes: 'Proposer', moves: {
     submit: { to: ['Reviewing'], input: proposalDraft, submission: { move: 'submit', input: proposalDraft } },
   } },
