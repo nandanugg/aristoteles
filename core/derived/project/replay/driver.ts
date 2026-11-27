@@ -34,7 +34,7 @@ export const readTrace = (file: string, check: string, kind: 'success' | 'fault'
   const raw = readTraceJson(JSON.parse(gunzipSync(readFileSync(file)).toString('utf8')))
   const instance = kind === 'mutant' ? check + 'Mutant' : check
   const variable = raw.vars.find((name) => name.startsWith(instance + '::') && name.endsWith('::state'))
-  if (!variable || !/^[a-f0-9]{40}$/.test(raw['#meta'].modelRevision)) throw new Error('Unexpected ITF source: ' + file)
+  if (!variable || !/^[a-f0-9]{64}$/.test(raw['#meta'].modelRevision)) throw new Error('Unexpected ITF source: ' + file)
   const states = raw.states.map((row) => {
     const action = row['mbt::actionTaken']
     if (typeof action !== 'string' || row['mbt::nondetPicks'] === undefined)

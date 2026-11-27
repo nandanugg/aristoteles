@@ -1,4 +1,5 @@
 import { Result, Schema } from 'effect'
+import { applyRaisedMove } from './raised.ts'
 import { reviewMove, reviewTask } from './task-review.ts'
 import {
   AttemptNumber, Rationale, RetryCount, edge, liveSession, refuse, staffByKey, staffOf, subagentCapacity, taskLine, taskRules, activeWork, staffedIn, taskRole, taskReviewStaff,
@@ -17,11 +18,14 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
   if (task.changedIn > read) return stale()
   const before = task.phase
   const session = actor._tag === 'Session' ? liveSession(project, actor.key) : undefined
-  const entered = (phase: TaskPhase, lastAttempt = task.lastAttempt): Result.Result<Task, Refusal> =>
+  const entered = (
+    phase: TaskPhase, fields: Partial<Pick<Task, 'lastAttempt' | 'direction' | 'automaticRetry' | 'retryCount'>> = {},
+  ): Result.Result<Task, Refusal> =>
     edge(taskLine, before._tag, move, phase._tag) === 'Allowed'
-      ? Result.succeed({ ...task, phase, lastAttempt, changedIn: number })
+      ? Result.succeed({ ...task, ...fields, phase, changedIn: number })
       : wrongMove()
   switch (event.from) {
+    case 'Raised': return applyRaisedMove(project, task, event, entered)
     case 'Sent': {
       if (before._tag !== event.from) return wrongMove()
       const { where, staffedIn: basis } = event.input
@@ -34,7 +38,7 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
       const next = task.lastAttempt._tag === 'None' ? 1 : task.lastAttempt.number + 1
       if (!Schema.is(AttemptNumber)(next)) return wrongMove()
       return entered({ _tag: 'Working', attempt: { number: next, actor, where, feedback: before.feedback } },
-        { _tag: 'Attempted', number: next })
+        { lastAttempt: { _tag: 'Attempted', number: next } })
     }
     case 'Working': {
       if (before._tag !== event.from) return wrongMove()
@@ -49,7 +53,9 @@ export const applyTaskMove = (project: Project, task: Task, event: Exclude<TaskE
       if (actor._tag !== 'Session') return wrongActor()
       if (session?.key !== attempt.actor.key) return retired()
       if (event.input.attempt !== attempt.number) return stale()
-      if (event.move === 'raise') return entered({ _tag: 'Raised', reason: event.input.reason, evidence: event.input.evidence })
+      if (event.move === 'raise') return entered({ _tag: 'Raised', reason: event.input.reason, evidence: event.input.evidence,
+        retained: { _tag: 'NoResult' }, fix: { _tag: 'Unassessed' },
+      })
       return entered({
         _tag: 'ReadyToReview', result: { summary: event.input.summary, files: event.input.files, attempt, reportedIn: number },
       })

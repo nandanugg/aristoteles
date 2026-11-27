@@ -3,7 +3,7 @@ import { hostRole, activeWork, liveSession, taskReviewStaff, type Task, latestSe
 export const hostQueue = (project: Project, events: readonly StoredEvent[]): readonly Proposal[] => {
   const entries = new Map<Proposal['key'], StoredEvent['number']>()
   for (const event of events) {
-    if (event.line === 'Proposal' && event.from === 'Drafting' && event.move === 'submit')
+    if (event.line === 'Proposal' && (event.move === 'submit' || event.move === 'submitFix'))
       entries.set(event.key, event.number)
   }
   return [...project.proposals.values()].filter(({ phase }) => phase._tag === 'Reviewing' &&

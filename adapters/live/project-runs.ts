@@ -2,11 +2,11 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Effect, Schema } from 'effect'
-import type { AuthenticatedActor } from '../../core/actions/project.ts'
+import { recordObserved, type AuthenticatedActor, type CloseRaised } from '../../core/actions/project.ts'
 import { acknowledgeSession, readOpenProject } from '../../core/actions/staff-session.ts'
 import {
   EventNumber, HostCredential, LaunchNonce, LaunchVerifier, boundHostSession, PaneAddress, ProjectCredential, ProposalKey, Rationale, StaffSessionKey, TaskKey,
-  refuse, type Of, type Project, type Refusal, type Staff,
+  activeWork, takeAsIsEligibility, refuse, type Of, type Project, type Refusal, type Staff,
 } from '../../core/schema/project.ts'
 import { dbPath, digest, projectLock, removeProjectSession } from '../../core/services/project.ts'
 import type { Journal } from '../../core/services/project.ts'
@@ -81,6 +81,11 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
     if (observeBootstrap(dir, key) !== 'ended') throw new Error('Could not confirm session retirement')
     if (existsSync(file(key))) unlinkSync(file(key))
   }
+  const reviewIsRunning = (proposal: Of<typeof ProposalKey>, queuedIn: Of<typeof EventNumber>) => keys().some((key) => {
+    const run = read(key)
+    return run._tag === 'Review' && run.line._tag === 'Proposal' && run.line.key === proposal &&
+      run.queuedIn === queuedIn && observeBootstrap(dir, key) !== 'ended'
+  })
   const reconcile = (project: Project) => perform(() => {
     for (const key of keys()) {
       const run = read(key)
@@ -96,7 +101,20 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
       'You have a fresh review. Run work wait with the credential in ARISTOTELES_TOKEN and report facts with evidence.')
   })
   const reviews: Reviews = {
-    reconcile,
+    reconcile: (project) => Effect.gen(function* () {
+      yield* reconcile(project)
+      let read = project.read
+      for (const proposal of project.proposals.values()) {
+        const { phase } = proposal
+        if (proposal.subject._tag !== 'Fix' || phase._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') continue
+        const { queuedIn } = phase.assignment
+        if (yield* perform(() => reviewIsRunning(proposal.key, queuedIn))) continue
+        const released = yield* recordObserved(journal, { _tag: 'Human' }, read, {
+          line: 'Proposal', from: 'Reviewing', key: proposal.key, move: 'releaseFixReview', input: { queuedIn },
+        })
+        read = released.state.read
+      }
+    }),
     open: (proposal, session, review) => child(session, { _tag: 'Proposal', key: proposal.key }, review),
   }
   const sessions: Sessions = {
@@ -124,6 +142,29 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
   return {
     sessions: staffSessionOperations(dir, journal, sessions, launchNextReview(dir, journal, reviews)),
     review: launchNextReview(dir, journal, reviews),
+    closeRaised: ((request, commit) => Effect.scoped(Effect.gen(function* () {
+      yield* projectLock(dir)
+      const project = yield* readOpenProject(journal)
+      const task = project.tasks.get(request.key)
+      const phase = task?.phase
+      if (activeWork(project) && task && phase?._tag === 'Raised' && phase.fix._tag === 'Proposed' &&
+          task.changedIn <= request.read && request.read <= project.read &&
+          (request.move === 'drop' || takeAsIsEligibility(phase) === 'Allowed')) {
+        const proposal = project.proposals.get(phase.fix.proposal)
+        const review = proposal?.phase
+        if (proposal && review?._tag === 'Reviewing' && review.assignment._tag === 'Assigned') {
+          const { queuedIn } = review.assignment
+          yield* perform(() => {
+            for (const key of keys()) {
+              const run = read(key)
+              if (run._tag === 'Review' && run.line._tag === 'Proposal' && run.line.key === proposal.key && run.queuedIn === queuedIn)
+                stop(key)
+            }
+          })
+        }
+      }
+      return yield* commit
+    }))) satisfies typeof CloseRaised.Service,
     acknowledge: (key: Of<typeof StaffSessionKey>, nonce: Of<typeof LaunchNonce>) => Effect.scoped(Effect.gen(function* () {
       yield* projectLock(dir)
       const project = yield* readOpenProject(journal)

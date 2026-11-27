@@ -49,8 +49,11 @@ staffing plan. Sessions keep the assignments they started with.
 - The host sends a leaf task with accepted versions pinned. A staff report can
   record a result or raise a problem such as WrongTask. The engine records command
   outcomes, and a fresh reviewer supplies the assigned prompt evidence. Checked
-  outcomes determine completion, retry with feedback, or Raised. The host
-  decides how to re-split work raised as WrongTask.
+  outcomes determine completion, retry with feedback, or Raised. The pipeline
+  assesses a raised result and can retry a staff miss once. A repeat staff
+  miss can lead to a Staffing proposal. An applicable rule change goes through
+  a Direction proposal. The owner can keep a finished result with a reason
+  or drop a raised task as its sender.
 
 ## Adapters
 

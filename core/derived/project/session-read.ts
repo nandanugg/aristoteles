@@ -1,5 +1,5 @@
 import {
-  ReadPosition, actorFor, boundHostSession, staffByKey, taskReviewStaff, taskRole,
+  ReadPosition, actorFor, boundHostSession, pipelineStaff, staffByKey, taskReviewStaff, taskRole,
   type LiveSession, type Of, type Project, type StoredEvent,
 } from '../../schema/project.ts'
 
@@ -21,6 +21,7 @@ export const sessionUpdates = (
 ): readonly StoredEvent[] => {
   const staff = staffByKey(project, session.staff.key) ?? session.staff
   const addressed = (actor: ReturnType<typeof actorFor>) => actor?._tag === 'Staff' && actor.key === staff.key
+  const pipeline = pipelineStaff(project)?.key === staff.key
   const boundHost = boundHostSession(project)?.key === session.key
   return events.filter((event) => {
     if (event.number <= after || event.number > project.read) return false
@@ -49,6 +50,8 @@ export const sessionUpdates = (
       case 'Proposal': {
         const proposal = project.proposals.get(event.key)
         if (!proposal) return false
+        if (proposal.subject._tag === 'Fix' && pipeline && (event.move === 'submitFix' || event.move === 'sendBack' ||
+            event.move === 'withdrawFix' || event.move === 'accept' || event.move === 'releaseFixReview')) return true
         if (event.from === 'WaitingForOwner' && event.move === 'accept')
           return proposal.phase._tag === 'Accepted' && proposal.phase.version.value._tag === 'Direction'
         if (event.from === 'Reviewing' && event.move === 'assign')
@@ -62,7 +65,9 @@ export const sessionUpdates = (
           return event.actor._tag === 'Session' && event.actor.key === session.key
         const assignee = staff.roles.includes(taskRole(task))
         if (event.from === 'ReadyToReview' || event.move === 'release') return taskReviewStaff(project, task)?.key === staff.key
-        if (event.from === 'Reviewing' || event.move === 'raise') return assignee || boundHost
+        if (event.from === 'Raised') return pipeline || assignee || boundHost
+        if (event.move === 'raise') return pipeline || assignee || boundHost
+        if (event.from === 'Reviewing') return assignee || boundHost
         return assignee && (event.from === null || event.move === 'restart')
       }
     }

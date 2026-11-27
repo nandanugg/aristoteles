@@ -17,8 +17,8 @@ export const launchNextReview = (
 ): Effect.Effect<Committed | null, Refusal> => Effect.scoped(Effect.gen(function* () {
   yield* Effect.mapError(projectLock(directory), () =>
     refuse('Unavailable', Rationale.make('Could not acquire the onboarding review lock.')))
+  yield* Effect.flatMap(readOpenProject(journal), provider.reconcile)
   const project = yield* readOpenProject(journal)
-  yield* provider.reconcile(project)
   const events = yield* journal.eventsAfter(ReadPosition.make(0))
   const next = nextProposalReview(project, events)
   if (!next) return null

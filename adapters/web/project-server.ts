@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { Effect, Exit, Schema } from 'effect'
-import { Authority } from '../../core/actions/project.ts'
+import { Authority, CloseRaised } from '../../core/actions/project.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import { runTaskCommands } from '../../core/effects/project-commands.ts'
 import { ReadPosition, Refusal, Rationale, TaskKey, refuse } from '../../core/schema/project.ts'
@@ -98,7 +98,8 @@ export const startProjectServer = async (dir: string, vars: Readonly<Record<stri
             return yield* projectSubmission(journal, request,
               reviews.pipe(provideEnv), launch.pipe(provideEnv),
               (taskKey) => Effect.scoped(Effect.flatMap(openProjectJournal(key, 'Write'), (current) => runTaskCommands(current, taskKey, commands)))
-                .pipe(provideEnv)).pipe(provide)
+                .pipe(provideEnv)).pipe(provide,
+              Effect.provideService(CloseRaised, projectRuns(dir, db, journal).closeRaised))
           default: return new Response(null, { status: 404 })
         }
       }).pipe(Effect.catch((error) => Effect.succeed(failure(error))))

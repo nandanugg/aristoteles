@@ -97,7 +97,7 @@ export const projectOnboard = (
   if (checked._tag === 'None')
     return yield* Effect.fail(projectRefuse('InvalidInput', Rationale.make('Use the checked onboarding submission.')))
   const committed = yield* submitChecked(journal, checked.value)
-  if (review && committed.event.from !== null) yield* Effect.result(review)
+  if (review && (committed.event.from !== null || (committed.event.line === 'Proposal' && committed.event.move === 'submitFix'))) yield* Effect.result(review)
   return committed
 })
 

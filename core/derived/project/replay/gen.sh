@@ -10,7 +10,7 @@ if ! awk -F '\t' -v check="$check" '$1 == check && NF == 4 { found = 1 } END { e
   exit 1
 fi
 file="core/model/checks/$check.qnt"
-revision=$(git log -1 --format=%H -- "$file" core/model/lines.qnt core/model/people.qnt core/model/activation.qnt)
+revision=$(bun "$here/model-revision.ts" "$file")
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 out=${REPLAY_OUT:-$here/traces}

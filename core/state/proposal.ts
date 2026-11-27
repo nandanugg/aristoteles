@@ -1,7 +1,8 @@
 import { Result, Schema } from 'effect'
+import { fixKind, staffForFix } from './raised.ts'
 import { hostRole,
-  ProposalValue, Rationale, actorFor, currentQuestion, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, sameActor, staffOf, subagentCapacity,
-  validateStaffing, reviewOutcome, ruleCoverage, proposalReviewRules, roleOf, type Project, type Proposal, type ProposalEvent, type Refusal, type Version, proposalText, versionOf,
+  Direction, ProposalValue, Rationale, actorFor, currentQuestion, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, sameActor, staffOf, subagentCapacity,
+  validateStaffing, reviewOutcome, ruleCoverage, proposalReviewRules, roleOf, activeWork, latestSession, pipelineStaff, taskRules, type Task, type Project, type Proposal, type ProposalEvent, type Refusal, type Version, proposalText, versionOf,
 } from '../schema/project.ts'
 
 const wrongMove = () => Result.fail(refuse('WrongMove', Rationale.make('That move does not apply to the proposal’s phase.')))
@@ -38,6 +39,60 @@ const validateValue = (
   return Result.succeed(value)
 }
 
+// Follow an accepted lineage so a task can still be fixed after another task revises its direction.
+const directionBasis = (project: Project, task: Task): Version<ProposalValue> => {
+  let version: Version<ProposalValue> = task.direction
+  for (;;) {
+    const next = [...project.proposals.values()].find(({ phase, basis }) =>
+      phase._tag === 'Accepted' && phase.version.value._tag === 'Direction' &&
+      basis._tag === 'Version' && basis.version.acceptedIn === version.acceptedIn)
+    if (next?.phase._tag !== 'Accepted') return version
+    version = next.phase.version
+  }
+}
+
+const sameDirection = Schema.toEquivalence(Direction)
+const oneRule = (task: Task, before: Direction, after: Direction) => {
+  if (sameDirection(before, after)) return false
+  for (const [index, standard] of after.standards.entries()) {
+    const prior = before.standards[index]
+    if (!prior || prior.rules.length > standard.rules.length || standard.rules.length > prior.rules.length + 1) continue
+    for (const [ruleIndex, rule] of standard.rules.entries()) {
+      const rules = [...standard.rules]
+      const unchanged = prior.rules.length === rules.length ? prior.rules.slice(ruleIndex, ruleIndex + 1) : []
+      rules.splice(ruleIndex, 1, ...unchanged)
+      const standards = [...after.standards]
+      standards[index] = { ...standard, rules }
+      if (sameDirection(before, { ...after, standards }) &&
+          taskRules({ ...task, direction: { ...task.direction, value: { ...after, standards: [{ ...standard, rules: [rule] }] } } }).length)
+        return true
+    }
+  }
+  return false
+}
+
+const validFix = (
+  project: Project, task: Task, value: ProposalValue, basis: Version<ProposalValue>, move: 'submit' | 'accept',
+): Result.Result<ProposalValue, Refusal> => {
+  if (task.phase._tag !== 'Raised' || fixKind(task) !== value._tag) return wrongMove()
+  if (value._tag === 'Direction') {
+    if (basis.value._tag !== 'Direction' || !latestDirectionVersion(project, basis)) return stale()
+    if (!oneRule(task, basis.value, value))
+      return Result.fail(refuse('InvalidInput', Rationale.make('Change one rule that applies to this task within the full direction.')))
+  }
+  if (value._tag === 'Staffing') {
+    if (basis.value._tag !== 'Staffing' || effectiveVersion(project, value)?.acceptedIn !== basis.acceptedIn) return stale()
+    const staff = staffForFix(task, value)
+    const prior = staffForFix(task, basis.value)
+    if (!staff || !prior || staff.model === prior.model)
+      return Result.fail(refuse('InvalidInput', Rationale.make('Propose a stronger model for the role that performed the task.')))
+    const session = latestSession(project, staff)
+    if (move === 'accept' && session && session._tag !== 'Ended' && session.staff.model !== staff.model)
+      return Result.fail(refuse('InvalidInput', Rationale.make('End the staff’s previous-model session before accepting the staffing fix.')))
+  }
+  return validateValue(project, value, move)
+}
+
 export const applyProposalMove = (project: Project, event: ProposalEvent): Result.Result<Project, Refusal> => {
   const { key, actor, read, number } = event
   const stage = project.proposals.get(key)
@@ -47,6 +102,20 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     Result.succeed({ ...project, proposals: new Map(project.proposals).set(key, proposal) })
   if (event.from === null) {
     if (stage) return stale()
+    if (event.move === 'submitFix') {
+      if (!session || session.staff.key !== pipelineStaff(project)?.key) return wrongActor()
+      const task = project.tasks.get(event.input.task)
+      if (!activeWork(project) || task?.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Assessed') return wrongMove()
+      if (task.changedIn > read || session.startedIn > read) return stale()
+      const { value } = event.input
+      const version = value._tag === 'Direction' ? directionBasis(project, task) : effectiveVersion(project, value)
+      if (!version || version.acceptedIn > read) return stale()
+      return Result.flatMap(validFix(project, task, value, version, 'submit'), (checked) => store({
+        key, value: checked, basis: { _tag: 'Version', version }, questions: new Map(),
+        subject: { _tag: 'Fix', task: task.key }, proposer: actor, retryCount: RetryCount.make(0),
+        phase: { _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, changedIn: number,
+      }))
+    }
     if (!acting || (event.input.value._tag === 'Responsibility' && actor._tag !== 'Human')) return wrongActor()
     const previous = event.input.previous._tag === 'Version' ? event.input.previous.version : undefined
     if (previous && (event.input.value._tag !== 'Direction' || previous.value._tag !== 'Direction' ||
@@ -56,7 +125,7 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       if (version && version.acceptedIn > read) return stale()
       return store({
         key, value, basis: version ? { _tag: 'Version', version } : { _tag: 'None' }, questions: new Map(),
-        proposer: actor, retryCount: RetryCount.make(0),
+        subject: { _tag: 'Onboarding' }, proposer: actor, retryCount: RetryCount.make(0),
         phase: { _tag: 'Drafting', feedback: { _tag: 'None' } }, changedIn: number,
       })
     })
@@ -65,13 +134,26 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
   if (stage.changedIn > read) return stale()
   const { phase } = stage
   if (phase._tag !== event.from) return wrongMove()
-  const move = (phase: Proposal['phase'], fields: Partial<Pick<Proposal, 'value' | 'retryCount'>> = {}) =>
+  const move = (phase: Proposal['phase'], fields: Partial<Pick<Proposal, 'value' | 'basis' | 'retryCount'>> = {}) =>
     edge(proposalLine, event.from, event.move, phase._tag) === 'Allowed'
       ? store({ ...stage, ...fields, phase, changedIn: number }) : wrongMove()
 
+  const task = stage.subject._tag === 'Fix' ? project.tasks.get(stage.subject.task) : undefined
+  if (event.move === 'withdrawFix') {
+    if (actor._tag !== 'Human' || !task || event.input.task !== task.key || task.changedIn !== Number(read)) return wrongActor()
+    if (task.phase._tag === 'Dropped' || (task.phase._tag === 'Done' && task.phase.accepted._tag === 'Owner') ||
+        (task.phase._tag === 'Raised' && task.phase.fix._tag === 'Assessed' && phase._tag === 'Drafting'))
+      return move({ _tag: 'Removed' })
+    return wrongMove()
+  }
   if (event.from === 'Drafting') {
     const proposer = actorFor(project, stage.proposer)
-    if (!acting || !proposer || !sameActor(proposer, acting)) return wrongActor()
+    if (stage.subject._tag === 'Fix') {
+      if (!session || session.staff.key !== pipelineStaff(project)?.key || session.startedIn > read) return wrongActor()
+      if (task?.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Proposed' || task.phase.fix.proposal !== key) return wrongMove()
+      if (task.changedIn > read || (phase._tag === 'Drafting' && phase.feedback._tag === 'Owner' && task.changedIn <= stage.changedIn))
+        return stale()
+    } else if (!acting || !proposer || !sameActor(proposer, acting)) return wrongActor()
     const { value } = event.input
     if (stage.value._tag !== value._tag || (stage.value._tag === 'Responsibility' &&
         (value._tag !== 'Responsibility' || stage.value.role !== value.role))) return wrongMove()
@@ -79,10 +161,23 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
       if (currentQuestion(stage, question) &&
           (question.state._tag !== 'Answered' || question.changedIn > read)) return stale()
     }
+    if (task) {
+      const version = value._tag === 'Direction' ? directionBasis(project, task) : effectiveVersion(project, value)
+      if (!version || version.acceptedIn > read) return stale()
+      return Result.flatMap(validFix(project, task, value, version, 'submit'), (checked) =>
+        move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, {
+          value: checked, basis: { _tag: 'Version', version },
+        }))
+    }
     return Result.flatMap(validateValue(project, value, event.move), (checked) =>
       move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } }, { value: checked }))
   }
   if (event.from === 'Reviewing' && phase._tag === 'Reviewing') {
+    if (event.move === 'releaseFixReview') {
+      if (actor._tag !== 'Human') return wrongActor()
+      if (!task || phase.assignment._tag !== 'Assigned' || phase.assignment.queuedIn !== event.input.queuedIn) return wrongMove()
+      return move({ _tag: 'Reviewing', assignment: { _tag: 'Waiting' } })
+    }
     if (event.move === 'release') {
       if (actor._tag !== 'Human') return wrongActor()
       const ended = project.sessions.get(event.input.session)
@@ -119,13 +214,18 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     return move({ _tag: 'Drafting', feedback: { _tag: 'Review', facts } }, { retryCount: retries })
   }
   if (event.from !== 'WaitingForOwner' || actor._tag !== 'Human') return wrongActor()
-  if (event.move === 'remove') return move({ _tag: 'Removed' })
+  if (event.move === 'remove') return task ? wrongMove() : move({ _tag: 'Removed' })
   if (event.move === 'sendBack') return move({ _tag: 'Drafting', feedback: { _tag: 'Owner', why: event.input.why } })
   const previous = stage.basis._tag === 'Version' ? stage.basis.version : undefined
   if (stage.value._tag === 'Direction' ? previous && !latestDirectionVersion(project, previous)
     : effectiveVersion(project, stage.value)?.acceptedIn !== previous?.acceptedIn) return stale()
   const versionNumber = (previous?.number ?? 0) + 1
   if (!Schema.is(VersionNumber)(versionNumber)) return wrongMove()
-  return Result.flatMap(validateValue(project, stage.value, event.move), () =>
+  if (task && (task.phase._tag !== 'Raised' || task.phase.fix._tag !== 'Proposed' || task.phase.fix.proposal !== key))
+    return wrongMove()
+  if (task && task.changedIn > read) return stale()
+  const accepted = task && previous ? validFix(project, task, stage.value, previous, 'accept')
+    : validateValue(project, stage.value, event.move)
+  return Result.flatMap(accepted, () =>
     move({ _tag: 'Accepted', version: { number: versionNumber, value: stage.value, acceptedIn: number } }))
 }

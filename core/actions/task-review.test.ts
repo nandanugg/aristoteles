@@ -60,7 +60,8 @@ test('review intake takes only facts from the current fresh child and gives feed
     expect(yield* journal.eventsAfter(second.read)).toEqual([])
     const raised = yield* reportReview(journal, second, 'Breaks')
     expect(raised.state.tasks.get(taskKey)?.phase).toMatchObject({ _tag: 'Raised', reason: 'Misses', evidence: [artifactQuote] })
-    expect((yield* waitOnProject(journal, Effect.succeed(session.key))).step).toEqual({ _tag: 'Awaiting' })
+    expect((yield* waitOnProject(journal, Effect.succeed(session.key))).step)
+      .toMatchObject({ _tag: 'Available', for: 'Assess', subject: { _tag: 'Task', task: { key: taskKey } } })
   })))))
 
 test('a recorded command failure still returns work when every prompt holds', () =>

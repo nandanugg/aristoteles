@@ -1,6 +1,6 @@
 import {
   actorFor, type ReadPosition, currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
-  taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
+  fixDuty, pipelineStaff, taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
 import { lastSessionAct } from './session-read.ts'
 import { mayAssignTaskReview } from './review.ts'
@@ -12,7 +12,7 @@ export type Selection =
       readonly _tag: 'Available'
       readonly subject: { readonly _tag: 'Task'; readonly task: Task } | { readonly _tag: 'Question'; readonly question: Question; readonly owner: QuestionEvent['owner'] }
         | { readonly _tag: 'Proposal'; readonly proposal: Proposal }
-      readonly for: 'Report' | 'Answer' | 'Choose' | 'Assign'
+      readonly for: 'Report' | 'Answer' | 'Choose' | 'Assign' | 'Assess' | 'TryAgain' | 'DraftFix'
       readonly read: Of<typeof ReadPosition>
     }
 
@@ -68,9 +68,12 @@ export const nextStep = (
   }
   const due: Extract<Selection, { _tag: 'Available' }>[] = []
   if (question) due.push({ _tag: 'Available', subject: { _tag: 'Question', ...question }, for: 'Answer', read: project.read })
+  const pipeline = current && activeWork(project) && pipelineStaff(project)?.key === current.staff.key
   for (const task of project.tasks.values()) {
     const subject = { _tag: 'Task', task } as const
-    if (owes(task)) due.push({ _tag: 'Available', subject, for: 'Report', read: project.read })
+    const fix = pipeline && fixDuty(project, task)
+    if (fix) due.push({ _tag: 'Available', subject, for: fix, read: project.read })
+    else if (owes(task)) due.push({ _tag: 'Available', subject, for: 'Report', read: project.read })
     else if (current && mayAssignTaskReview(project, events, task, current) === 'Allowed')
       due.push({ _tag: 'Available', subject, for: 'Assign', read: project.read })
   }
@@ -80,7 +83,7 @@ export const nextStep = (
     const owner = duty === 'Owner' && actor?._tag === 'Human'
     const proposer = actorFor(project, proposal.proposer)
     const proposing = duty === 'Proposer' && actor && proposer && sameActor(proposer, actor)
-    if (owner || proposing) due.push({ _tag: 'Available', subject: { _tag: 'Proposal', proposal },
+    if (owner || (proposing && proposal.subject._tag !== 'Fix')) due.push({ _tag: 'Available', subject: { _tag: 'Proposal', proposal },
       for: actor?._tag === 'Human' ? 'Choose' : 'Report', read: project.read })
   }
   const since = ({ subject }: typeof due[number]) =>

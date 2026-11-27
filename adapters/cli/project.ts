@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Effect, Exit, Schema } from 'effect'
-import { Authority, submit, type AuthenticatedActor } from '../../core/actions/project.ts'
+import { Authority, CloseRaised, submit, type AuthenticatedActor } from '../../core/actions/project.ts'
 import { sessionRead, sessionUpdates } from '../../core/derived/project/session-read.ts'
 import { readProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, liveSession, proposalReviewDirection, proposalReviewRules, proposalText, refuse, staffedIn, type Of, type Project, type Submission,
+  Assessment, EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, TaskKey, liveSession, proposalReviewDirection, proposalReviewRules, proposalText, refuse, staffedIn, type Of, type Project, type Submission,
 } from '../../core/schema/project.ts'
 import { openProjectJournal, withProjectEnv, type Committed, type Journal } from '../../core/services/project.ts'
 import {
@@ -56,6 +56,9 @@ const help = [
   'work send <token> --on=<read> --file=task.yaml',
   'work brief <token> <task>',
   'work report|review <token> <task> --on=<read> --file=report.yaml',
+  'work assess <token> <task> --on=<read> --file=assessment.yaml',
+  'work try-again <token> <task> --on=<read>',
+  'work take-as-is|drop <task> --on=<read> --why=<reason>',
   'work question [<token>] <recipient> --on=<read> --file=question.yaml',
   'work answer [<token>] <question-address> --on=<read> --file=answer.yaml',
   'work skill install',
@@ -151,13 +154,15 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     return [...commitWords(result), ...(yield* startingWords(journal, result.state, subject))]
   }
 
-  const allowed = ['onboard', 'status', 'project', 'activation', 'session', 'wait', 'send', 'brief', 'report', 'review', 'question', 'answer']
+  const allowed = ['onboard', 'status', 'project', 'activation', 'session', 'wait', 'send', 'brief', 'report', 'review', 'question', 'answer', 'assess', 'try-again', 'take-as-is', 'drop']
   if (!allowed.includes(command)) return yield* Effect.fail(invalid())
   const journal = yield* openProjectJournal(directory, 'Write')
   const runs = projectRuns(io.cwd, env.ARISTOTELES_DB, journal)
   const actor: Effect.Effect<AuthenticatedActor, Refusal> = token ? Effect.flatMap(decode(ProjectCredential, token), runs.authenticate)
     : ownerTerminal() ? Effect.flatMap(ownerName(), (name) => activationOwner(journal, name)) : Effect.fail(denied())
-  const asActor = Effect.provideService(Authority, { actor })
+  const asActor = <A, E, R>(effect: Effect.Effect<A, E, R>) => effect.pipe(
+    Effect.provideService(Authority, { actor }), Effect.provideService(CloseRaised, runs.closeRaised),
+  )
   const requireOwner = Effect.flatMap(actor, (by) => by._tag === 'Human' ? Effect.void : Effect.fail(denied()))
   const project = yield* readProject(journal)
   const projectCommands = liveTaskCommands(io.cwd)
@@ -251,6 +256,12 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
       return [...updates, ...changed.map((event) => sessionUpdateWords(committed.state, session, event)),
         'Opened a fresh task review.', words(committed.event), continuation(committed.state.read)]
     }
+    if (step.for === 'Assess') return [...updates, projectTaskWords(view, task),
+      `work assess "$ARISTOTELES_TOKEN" ${task.key} --on=${basis} --file=assessment.yaml`, follow]
+    if (step.for === 'TryAgain') return [...updates, projectTaskWords(view, task),
+      `work try-again "$ARISTOTELES_TOKEN" ${task.key} --on=${basis}`, follow]
+    if (step.for === 'DraftFix') return [...updates, projectTaskWords(view, task),
+      `work onboard "$ARISTOTELES_TOKEN" submit --on=${basis} --file=fix.yaml`, follow]
     return [...updates, projectTaskWords(view, task),
       `work report "$ARISTOTELES_TOKEN" ${task.key} --on=${basis} --file=report.yaml`, follow]
   }
@@ -274,6 +285,23 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
       ? { ...proposal, move: 'sendBack', input: { why: yield* decode(Rationale, parsed.one('why')) } }
       : { ...proposal, move: act, input: {} }
     return commitWords(yield* write(request))
+  }
+  if (act && !subject && (command === 'assess' || command === 'try-again' || command === 'take-as-is' || command === 'drop')) {
+    const key = yield* decode(TaskKey, act)
+    const target = { read: basis, line: 'Task', key } as const
+    if (command === 'assess' && known(['on', 'file'])) {
+      const input = yield* decode(Assessment, yield* yaml(yield* file()))
+      return commitWords(yield* write({ ...target, move: 'assess', input }))
+    }
+    if (command === 'try-again' && known(['on']))
+      return commitWords(yield* write({ ...target, move: 'tryAgain', input: {} }))
+    if ((command === 'take-as-is' || command === 'drop') && known(['on', 'why'])) {
+      const why = yield* decode(Rationale, parsed.one('why'))
+      const committed = yield* write({ ...target, move: command === 'drop' ? 'drop' : 'takeAsIs', input: { why } })
+      yield* Effect.result(runs.review)
+      return commitWords(committed)
+    }
+    return yield* Effect.fail(invalid())
   }
   if (!known(['on', 'file'])) return yield* Effect.fail(invalid())
   if (command === 'send' && !act && !subject)

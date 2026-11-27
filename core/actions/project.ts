@@ -19,6 +19,11 @@ export class Authority extends Context.Service<Authority, {
   readonly actor: Effect.Effect<AuthenticatedActor, Refusal>
 }>()('project/Authority') {}
 
+export const CloseRaised = Context.Reference<(
+  request: Extract<Submission, { line: 'Task'; move: 'takeAsIs' | 'drop' }>,
+  commit: Effect.Effect<Committed, Refusal>,
+) => Effect.Effect<Committed, Refusal>>('project/CloseRaised', { defaultValue: () => (_request, commit) => commit })
+
 type Moves = {
   [Event in StoredEvent as `${Event['line']}:${Event['from']}:${Event['move']}`]:
     Omit<Event, 'number' | 'read' | 'actor' | 'at'>
@@ -27,7 +32,7 @@ type MoveInput = Moves[keyof Moves]
 type BuildMove = (state: Projection, events: readonly StoredEvent[]) => Result.Result<MoveInput, Refusal>
 
 // These moves share an append transaction. Each one is folded on its own line.
-const followingMoves = (event: StoredEvent, project: Project): readonly MoveInput[] => {
+const followingMoves = (event: StoredEvent, project: Project, before: Projection): readonly MoveInput[] => {
   if (event.line === 'Session') {
     const input = { session: event.key }
     if (event.from === 'Starting' && event.move === 'next' && project.phase._tag === 'Activating' &&
@@ -47,18 +52,31 @@ const followingMoves = (event: StoredEvent, project: Project): readonly MoveInpu
     }
     return moves
   }
-  if (event.line !== 'Proposal' || event.move !== 'accept') return []
-  const accepted = project.proposals.get(event.key)?.phase
-  if (accepted?._tag !== 'Accepted' || accepted.version.value._tag === 'Direction') return []
-  const apply = { line: 'Project', move: 'apply', input: { proposal: event.key } } as const
-  const from = project.phase._tag
-  switch (from) {
-    case 'Onboarding': return [{ ...apply, from }]
-    case 'Activating': return [{ ...apply, from }]
-    case 'RollingBack': return [{ ...apply, from }]
-    case 'Active': return [{ ...apply, from }]
-    case 'Ended': return []
+  if (event.line === 'Task' && event.from === 'Raised') {
+    const prior = before?.tasks.get(event.key)?.phase
+    const current = project.tasks.get(event.key)?.phase
+    if (prior?._tag !== 'Raised' || prior.fix._tag !== 'Proposed') return []
+    if (event.move !== 'drop' && event.move !== 'takeAsIs' &&
+        !(event.move === 'assess' && current?._tag === 'Raised' && current.fix._tag === 'Assessed')) return []
+    const proposal = project.proposals.get(prior.fix.proposal)
+    const from = proposal?.phase._tag
+    if (!proposal || (from !== 'Drafting' && from !== 'Reviewing' && from !== 'WaitingForOwner')) return []
+    return [{ line: 'Proposal', key: proposal.key, move: 'withdrawFix', from, input: { task: event.key } }]
   }
+  if (event.line !== 'Proposal') return []
+  if (event.move === 'submitFix') return [{
+    line: 'Task', key: event.input.task, from: 'Raised', move: 'linkFix', input: { proposal: event.key },
+  }]
+  if (event.move !== 'accept') return []
+  const proposal = project.proposals.get(event.key)
+  if (proposal?.phase._tag !== 'Accepted') return []
+  const moves: MoveInput[] = []
+  const from = project.phase._tag
+  if (from !== 'Ended' && proposal.phase.version.value._tag !== 'Direction')
+    moves.push({ line: 'Project', move: 'apply', input: { proposal: event.key }, from })
+  if (proposal.subject._tag === 'Fix')
+    moves.push({ line: 'Task', key: proposal.subject.task, from: 'Raised', move: 'applyFix', input: { proposal: event.key } })
+  return moves
 }
 
 export const commitProjectMove = (
@@ -75,7 +93,7 @@ export const commitProjectMove = (
       return Result.flatMap(applyEvent(state, entry), (primary) => {
         let current = primary
         const following: StoredEvent[] = []
-        for (const move of followingMoves(entry, primary)) {
+        for (const move of followingMoves(entry, primary, state)) {
           const next = current.read + 1
           if (!Schema.is(EventNumber)(next))
             return Result.fail(refuse('Unavailable', Rationale.make('The project journal has no event numbers left.')))
@@ -104,6 +122,7 @@ const maySubmit = (actor: AuthenticatedActor, party: Party | undefined) => {
     case 'Owner': return actor._tag === 'Human'
     case 'Host': return actor._tag === 'Host'
     case 'Reviewer': return actor._tag === 'Review'
+    case 'Pipeline':
     case 'Assignee': return actor._tag === 'Staff'
     case 'Anyone':
     case 'Recipient':
@@ -134,6 +153,8 @@ const moveFor = (
         return Result.fail(retired())
       return moved({ ...request, from: null })
     }
+    if (request.move === 'assess' || request.move === 'tryAgain' || request.move === 'takeAsIs' || request.move === 'drop')
+      return moved({ ...request, from: 'Raised' })
     if (!current) return Result.fail(retired())
     const { line, key } = request
     const task = project.tasks.get(key)
@@ -166,7 +187,8 @@ const moveFor = (
     return moved({ ...request, from: 'Open' })
   }
   switch (request.move) {
-    case 'open': return moved({ ...request, from: null })
+    case 'open':
+    case 'submitFix': return moved({ ...request, from: null })
     case 'submit': return moved({ ...request, from: 'Drafting' })
     case 'accept':
     case 'remove':
@@ -203,7 +225,10 @@ export const submitChecked = (journal: Journal, request: Submission): Effect.Eff
     const limit = yield* RetryLimit
     const actor: StoredActor = authenticated._tag === 'Human' ? authenticated.actor
       : { _tag: 'Session', key: authenticated.session.key }
-    return yield* commitProjectMove(journal, actor, request.read, (project) => moveFor(project, request, authenticated, limit))
+    const commit = commitProjectMove(journal, actor, request.read, (project) => moveFor(project, request, authenticated, limit))
+    if (request.line === 'Task' && (request.move === 'takeAsIs' || request.move === 'drop'))
+      return yield* (yield* CloseRaised)(request, commit)
+    return yield* commit
   })
 
 // The provider and other engine ports record the input of a specific line move.

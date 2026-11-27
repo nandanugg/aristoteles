@@ -4,12 +4,13 @@ import { Direction, Fact, Rule, Stage, sameStage } from './direction.ts'
 import { CommandOutput, Evidence, Lines, outcomeOf } from './evidence.ts'
 import { PromptOutcome, reviewing } from './review.ts'
 import { versionOf } from './version.ts'
+import { Fix } from './fix.ts'
 import { Question } from './question.ts'
 import type { Project } from './records.ts'
 import { Responsibility, staffOf } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  QuestionKey, ResultSummary, RetryCount, RoleKey, StoredActor, TaskKey, recordsByKey, type Of,
+  QuestionKey, Rationale, ResultSummary, RetryCount, RoleKey, StoredActor, TaskKey, recordsByKey, type Of,
 } from './values.ts'
 
 export const DirectionVersion = versionOf(Direction)
@@ -50,14 +51,25 @@ export const Attempt = Schema.Struct({
   number: AttemptNumber, actor: StoredActor.members[1], where: Schema.Literals(['Session', 'Subagent']), feedback: ReviewFeedback,
 })
 const Result = Schema.Struct({ ...WorkResult.fields, attempt: Attempt, reportedIn: EventNumber })
+const RetainedResult = Schema.Union([
+  Schema.TaggedStruct('NoResult', {}),
+  Schema.TaggedStruct('Retained', { result: Result, outcomes: Schema.Array(RuleOutcome), feedback: ReviewFeedback }),
+])
+const Acceptance = Schema.Union([
+  Schema.TaggedStruct('Reviewed', {}),
+  Schema.TaggedStruct('Owner', { why: Rationale }),
+])
 export const RaiseReason = Schema.Literals(['Tries', 'Misses', 'NoRule', 'TooBig', 'WrongTask', 'ContractWrong', 'RejectedByHuman'])
 export const TaskPhase = Schema.Union([
   Schema.TaggedStruct('Sent', { feedback: ReviewFeedback }),
   Schema.TaggedStruct('Working', { attempt: Attempt }),
   Schema.TaggedStruct('ReadyToReview', { result: Result }),
   reviewing({ result: Result, outcomes: CommandOutcomes }),
-  Schema.TaggedStruct('Done', { result: Result, outcomes: Schema.Array(RuleOutcome) }),
-  Schema.TaggedStruct('Raised', { reason: RaiseReason, evidence: Schema.NonEmptyArray(Evidence) }),
+  Schema.TaggedStruct('Done', { result: Result, outcomes: Schema.Array(RuleOutcome), accepted: Acceptance }),
+  Schema.TaggedStruct('Raised', {
+    reason: RaiseReason, evidence: Schema.NonEmptyArray(Evidence), retained: RetainedResult, fix: Fix,
+  }),
+  Schema.TaggedStruct('Dropped', { why: Rationale }),
 ])
 export type TaskPhase = Of<typeof TaskPhase>
 export const TaskStages = Schema.NonEmptyArray(Stage)
@@ -67,7 +79,7 @@ export const Task = Schema.Struct({
   responsibility: versionOf(Responsibility), reviewerResponsibility: versionOf(Responsibility), direction: DirectionVersion,
   stages: TaskStages, facts: Schema.Array(Fact),
   questions: recordsByKey(Question, QuestionKey),
-  retryCount: RetryCount, phase: TaskPhase, changedIn: EventNumber,
+  retryCount: RetryCount, automaticRetry: Schema.Literals(['Available', 'Used']), phase: TaskPhase, changedIn: EventNumber,
   lastAttempt: Schema.Union([
     Schema.TaggedStruct('None', {}),
     Schema.TaggedStruct('Attempted', { number: AttemptNumber }),

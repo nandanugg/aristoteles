@@ -26,7 +26,7 @@ export function ProposalCard({ proposal, project, read, submit }: {
     setFailure(Result.isFailure(result) ? result.failure : null)
     setBusy(false)
   }
-  return html`<article class="review-stage">
+  return html`<article class="review-stage" id=${proposal.key}>
     <h3>${value._tag === 'Staffing' ? 'Staffing' : value._tag === 'Direction' ? value.name : roleOf(project, value.role)?.name ?? value.role}</h3>
     ${value._tag === 'Staffing' ? html`<${StaffingView} plan=${value} project=${project} />` :
       value._tag === 'Direction' ? html`<p>${value.summary}</p><p>${value.text}</p>
@@ -45,7 +45,8 @@ export function ProposalCard({ proposal, project, read, submit }: {
     ${phase._tag === 'WaitingForOwner' ? html`
       <ul>${phase.facts.outcomes.map((outcome) => html`<li><strong>${outcome.rule.name} · ${outcome._tag}</strong><${ReviewEvidence} evidence=${outcome.evidence} /></li>`)}</ul>
       <button class="btn primary" disabled=${busy} onClick=${() => void choose({ move: 'accept', input: {} })}>Accept</button>
-      <button class="btn" disabled=${busy} onClick=${() => void choose({ move: 'remove', input: {} })}>Remove</button>
+      ${proposal.subject._tag === 'Onboarding'
+        ? html`<button class="btn" disabled=${busy} onClick=${() => void choose({ move: 'remove', input: {} })}>Remove</button>` : null}
       <${ReviewInput} label="What should change?" action="Send back" onSubmit=${(why: string) =>
         choose({ move: 'sendBack', input: { why: Rationale.make(why) } })} />
     ` : html`<p>Accepted · version ${phase.version.number}</p>`}

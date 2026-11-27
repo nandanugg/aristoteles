@@ -28,6 +28,18 @@ ReadyToReview runs the pinned command rules and records their exact output. If a
 
 If a task is too big or the cut contradicts the work or omits a prerequisite, report `{ attempt, reason: TooBig | WrongTask, evidence }` on the same command. Give a nonempty list of checked Quote or CommandOutput evidence. Raised preserves the list and stops work.
 
+### When review raises a finished result
+
+The pipeline reads the task’s evidence and records its assessment with `work assess <token> <task-key> --on=<read> --file=assessment.yaml`. Write `{ missed: Staff | Guidance | MovingTarget, why }`. Explain the cause with the recorded breaks and any relevant prior work.
+
+- **Staff** runs `work try-again <token> <task-key> --on=<read>` once per task. The task returns with the breaks and a fresh review retry count. On a second Staff miss, propose staffing with a stronger model for the role that did the work. Give a reason in the staffing draft. End the previous-model session before the owner accepts.
+- **Guidance** submits the full direction with one applicable rule added or revised. Keep the rest of the direction intact.
+- **MovingTarget** follows the app’s directions. The assessment stays with the raised task.
+
+To submit the first fix, write `{ line: Proposal, key: <proposal-key>, move: submitFix, input: { task: <task-key>, value } }` and run `work onboard submit <token> --on=<read> --file=fix.yaml`. The submitted draft goes to fresh review. If the owner sends it back, read the reason with `work onboard show <token> <proposal-key>`, assess the task again, and submit a revised draft with `move: submit` and `input: { value }` on the same proposal. If the assessment changes the cause, the old draft is withdrawn.
+
+The owner can take a finished result as is with `work take-as-is <task-key> --on=<read> --why=<reason>`. As sender of the root task, the owner can also `work drop <task-key> --on=<read> --why=<reason>`. These choices are available from the Project page.
+
 ## Fresh review
 
 Run the command printed by `work wait` for your fresh child. Quote exact passages in the reviewed file images. A task report gives one outcome per pinned prompt rule, with the complete pinned `rule` in each outcome. The journal already has the command outcomes. A finding carries `{ text, evidence }` and names a problem the rules do not cover.

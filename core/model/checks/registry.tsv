@@ -9,3 +9,4 @@ activationRollback	human intervention,config changes,data loss,crash	120	600
 activationHostBinding	human intervention,crash,out of order,partial execution	120	600
 staffReplacement	crash,human intervention	120	600
 questionAnswer	human intervention,duplicate,dependency failure	120	600
+fixOwnerChoice	human intervention,out of order,duplicate	120	600

@@ -75,7 +75,7 @@ const openTask = (project: Project, event: Extract<TaskEvent, { from: null }>): 
     key, name: draft.name, goal: draft.goal, reviewer: reviewer.key, direction,
     responsibility: role.responsibility, reviewerResponsibility: reviewer.responsibility,
     stages: [first, ...rest], facts: draft.facts, questions: new Map(),
-    retryCount: RetryCount.make(0), phase: { _tag: 'Sent', feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, changedIn: number,
+    retryCount: RetryCount.make(0), automaticRetry: 'Available', phase: { _tag: 'Sent', feedback: { _tag: 'None' } }, lastAttempt: { _tag: 'None' }, changedIn: number,
   })
   return Result.succeed({ ...project, tasks })
 }

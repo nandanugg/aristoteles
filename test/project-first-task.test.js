@@ -31,7 +31,7 @@ test('shipped work refuses an older SQLite format before writing', () => {
     git(dir, 'init', '-q')
     git(dir, 'config', 'user.name', owner.name)
     const database = new Database(db)
-    database.exec("PRAGMA user_version=24; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
+    database.exec("PRAGMA user_version=25; CREATE TABLE previous(value TEXT); INSERT INTO previous VALUES ('kept')")
     database.close()
     const original = readFileSync(db)
     const yaml = join(dir, 'project.yaml')
@@ -265,7 +265,8 @@ exec sleep 90
       return apply(['report', key, await basis(), '--file=report.yaml'], live.token, label)
     }
     const beforeCrash = await report(key, {}, 'begin')
-    const finish = async (attempt, result, outcome) => {
+    const finish = async (attempt, result, outcome, work = { key, name, returned: true }) => {
+      const { key, name, returned: expectingReturn = true } = work
       const resultReport = await report(key, { attempt, summary: 'A local sample', files: [{ path: 'sample.md',
         image: { _tag: 'Present', contents: result + '\n' }, changed: [{ first: 1, last: 1 }] }] }, 'result')
       await browser.phase(name, pipeline.name, 'Reviewing')
@@ -275,7 +276,7 @@ exec sleep 90
       expect(await ok(['wait'], { token: child.token })).toContain('Clear wording')
       put('facts.yaml', { outcomes: [{ _tag: outcome, rule: prompt, evidence: excerpt(result) }], findings: [] })
       await apply(['review', key, await basis(), '--file=facts.yaml'], child.token, 'task review')
-      if (outcome === 'Breaks') {
+      if (outcome === 'Breaks' && expectingReturn) {
         const stale = await call(['report', key, '--on=' + resultReport.number, '--file=report.yaml'], live)
         expect(stale.code).toBe(1)
         expect(stale.err).toContain('Stale')
@@ -320,6 +321,49 @@ exec sleep 90
     await report('task:raise', { attempt: 1, reason: 'WrongTask', evidence: [excerpt('Local second result')] }, 'raise')
     await browser.phase('Wrong cut', pipeline.name, 'Raised')
     expect(await ok(['brief', 'task:raise'], ownerCall)).toContain('Reason: WrongTask')
+    const wrongCut = browser.page.getByRole('article', { name: 'Wrong cut', exact: true })
+    expect(await wrongCut.getByRole('button', { name: 'Take as is' }).count()).toBe(0)
+    await wrongCut.getByRole('textbox', { name: 'Why drop this task?' }).fill('The sender will prepare a different brief.')
+    await wrongCut.getByRole('button', { name: 'Drop task' }).click()
+    await browser.phase('Wrong cut', pipeline.name, 'Dropped')
+
+    const raisedKey = 'task:review-fix'
+    const raisedName = 'Reviewed fix'
+    await task(raisedKey, raisedName)
+    await report(raisedKey, {}, 'begin fix fixture')
+    await finish(1, 'Local second result', 'Breaks', { key: raisedKey, name: raisedName })
+    await finish(1, 'Local second result', 'Breaks', { key: raisedKey, name: raisedName, returned: false })
+    await browser.phase(raisedName, pipeline.name, 'Raised')
+    const assessment = await ok(['wait'], live)
+    expect(assessment).toContain('work assess')
+    put('assessment.yaml', { missed: 'Guidance', why: 'The rule needs to distinguish a clear result from a verbose one.' })
+    const wrongRole = await call(['assess', raisedKey, await basis(), '--file=assessment.yaml'], { token: hostToken })
+    expect(wrongRole.code).toBe(1)
+    expect(wrongRole.err).toContain('WrongActor')
+    await apply(['assess', raisedKey, await basis(), '--file=assessment.yaml'], live.token, 'assessment')
+    const fixDraft = {
+      ...drafted, standards: drafted.standards.map((standard) => ({
+        ...standard, rules: standard.rules.map((rule) => rule.name === prompt.name
+          ? { ...rule, text: 'Make the result clear and concise.' } : rule),
+      })),
+    }
+    put('fix.yaml', { line: 'Proposal', key: 'proposal:fix', move: 'submitFix', input: { task: raisedKey, value: fixDraft } })
+    const beforeFixReview = new Set(readdirSync(captures))
+    await apply(['onboard', 'submit', await basis(), '--file=fix.yaml'], live.token, 'submit fix')
+    const fixReviewer = await fresh(beforeFixReview)
+    expect(await ok(['wait'], { token: fixReviewer.token })).toContain('Make the result clear and concise.')
+    const assignedFix = (await state()).proposals.find(({ key }) => key === 'proposal:fix')
+    expect(assignedFix.phase).toMatchObject({ _tag: 'Reviewing', assignment: { _tag: 'Assigned' } })
+    const raisedCard = browser.page.getByRole('article', { name: raisedName, exact: true })
+    await raisedCard.getByRole('textbox', { name: 'Why accept the finished result?' }).fill('The finished example serves the current purpose.')
+    await raisedCard.getByRole('button', { name: 'Take as is' }).click()
+    await browser.phase(raisedName, pipeline.name, 'Done')
+    expect(await raisedCard.getByText('Taken as is · The finished example serves the current purpose.').count()).toBe(1)
+    expect((await state()).proposals.find(({ key }) => key === 'proposal:fix').phase._tag).toBe('Removed')
+    const childKey = fixReviewer.token.split('.')[1]
+    expect(Bun.spawnSync([realTmux, '-L', bootstrapSocket(dir), 'has-session', '-t', '=boot-' + childKey]).exitCode).not.toBe(0)
+    expect((await call(['wait'], { token: fixReviewer.token })).code).toBe(1)
+
     await apply(['session', 'end', live.key], undefined, 'owner ends staff')
     expect((await state()).sessions.find(({ key }) => key === live.key)._tag).toBe('Ended')
     const stopped = Bun.spawnSync([realTmux, '-L', bootstrapSocket(dir), 'has-session', '-t', '=boot-' + live.key.slice(8)])
@@ -339,7 +383,7 @@ exec sleep 90
     const stale = await submit({ read: 1, line: 'Project', move: 'start', input: {} })
     expect(stale.status).toBe(409)
     expect((await stale.json()).code).toBe('Stale')
-    for (const secret of [hostToken, live.token, child]) {
+    for (const secret of [hostToken, live.token, child, fixReviewer.token]) {
       expect(JSON.stringify(committed)).not.toContain(secret)
       await browser.noSecret(secret)
       expect(readFileSync(webRecord + '.log', 'utf8')).not.toContain(secret)

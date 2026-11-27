@@ -37,21 +37,25 @@ export const reviewTask = (
   }
 
   const outcomes = [...phase.outcomes, ...facts.outcomes]
+  const [first, ...rest] = outcomes.filter((outcome): outcome is BreakingOutcome => outcome._tag === 'Breaks' && !knownBreak(outcome, result))
+  const retained: Extract<TaskPhase, { _tag: 'Raised' }>['retained'] = {
+    _tag: 'Retained', result, outcomes, feedback: first ? { _tag: 'Review', breaks: [first, ...rest] } : { _tag: 'None' },
+  }
+  const fix = { _tag: 'Unassessed' } as const
   const [finding, ...otherFindings] = facts.findings
   if (finding) return Result.succeed({
-    _tag: 'Raised', reason: 'NoRule', evidence: [finding.evidence, ...otherFindings.map(({ evidence }) => evidence)],
+    _tag: 'Raised', reason: 'NoRule', retained, fix, evidence: [finding.evidence, ...otherFindings.map(({ evidence }) => evidence)],
   })
-  const [first, ...rest] = outcomes.filter((outcome): outcome is BreakingOutcome => outcome._tag === 'Breaks' && !knownBreak(outcome, result))
-  if (!first) return Result.succeed({ _tag: 'Done', result, outcomes })
+  if (!first) return Result.succeed({ _tag: 'Done', result, outcomes, accepted: { _tag: 'Reviewed' } })
   const attempt = result.attempt
   const history = attempt.feedback._tag === 'Review' ? attempt.feedback.breaks : []
   const [repeated, ...otherRepeated] = [first, ...rest].filter((now) =>
     history.some((was) => JSON.stringify(was.rule) === JSON.stringify(now.rule)))
   if (repeated) return Result.succeed({
-    _tag: 'Raised', reason: 'Misses', evidence: [repeated.evidence, ...otherRepeated.map(({ evidence }) => evidence)],
+    _tag: 'Raised', reason: 'Misses', retained, fix, evidence: [repeated.evidence, ...otherRepeated.map(({ evidence }) => evidence)],
   })
   if (task.retryCount >= limit) return Result.succeed({
-    _tag: 'Raised', reason: 'Tries', evidence: [first.evidence, ...rest.map(({ evidence }) => evidence)],
+    _tag: 'Raised', reason: 'Tries', retained, fix, evidence: [first.evidence, ...rest.map(({ evidence }) => evidence)],
   })
   return Result.succeed({
     _tag: 'Working', attempt: { ...attempt, feedback: { _tag: 'Review', breaks: [first, ...rest, ...history] } },
