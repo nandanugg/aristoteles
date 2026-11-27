@@ -4,7 +4,7 @@ import { Authority, type AuthenticatedActor } from '../../core/actions/project.t
 import { assignProposalReview } from '../../core/actions/proposal.ts'
 import { observeSession, readOpenProject, startSession } from '../../core/actions/staff-session.ts'
 import { staffingAt,
-  Direction, ProposalId, Quote, SessionId, type Of, type Project, type Refusal, type ReviewFacts, type StaffingPlan,
+  Direction, ProposalId, ReviewFacts, SessionId, type Of, type Project, type Refusal, type StaffingPlan,
 } from '../../core/schema/project.ts'
 import type { Journal } from '../../core/services/project.ts'
 import { host, owner, session, staff } from './project.probe.ts'
@@ -24,10 +24,10 @@ export const direction = Schema.decodeUnknownSync(Direction)({
     }],
   }],
 })
-export const evidence = (verdict: 'Holds' | 'Breaks'): ReviewFacts => ({
-  outcomes: [{ _tag: verdict, evidence: Schema.decodeUnknownSync(Quote)({
+export const evidence = (verdict: 'Holds' | 'Breaks'): ReviewFacts => Schema.decodeUnknownSync(ReviewFacts)({
+  outcomes: [{ _tag: verdict, evidence: {
     _tag: 'Quote', file: 'AGENTS.md', lines: { first: 1, last: 1 }, text: 'A fresh review checked the draft.',
-  }) }], findings: [],
+  } }], findings: [],
 })
 export const cliProposal = (
   journal: Journal, project: Project, input: unknown, auth: AuthenticatedActor = ownerAuthority,

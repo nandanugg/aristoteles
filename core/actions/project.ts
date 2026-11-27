@@ -1,6 +1,6 @@
 import { Context, DateTime, Effect, Result, Schema } from 'effect'
 import {
-  ReadPosition, Rationale, RetryLimit, staffingAt, submissionParty, StoredEvent, Submission, liveSession, refuse, reviewOutcome,
+  ReadPosition, Rationale, RetryLimit as RetryLimitValue, staffingAt, submissionParty, StoredEvent, Submission, liveSession, refuse, reviewOutcome,
   type EventNumber, type ProposalAddress, type TaskAddress, type LiveSession, type Of, type Projection, type Refusal, type SessionId, type Staff, type StoredActor, type Party,
 } from '../schema/project.ts'
 import type { Committed, Journal, Write } from '../services/project.ts'
@@ -42,8 +42,8 @@ export const commitProjectMove = (
 })
 
 const wrongActor = () => refuse('WrongActor', Rationale.make('Use the input for your authenticated actor.'))
-export const ReviewLimit = Context.Reference<Of<typeof RetryLimit>>('project/ReviewLimit', {
-  defaultValue: () => RetryLimit.make(1),
+export const RetryLimit = Context.Reference<Of<typeof RetryLimitValue>>('project/RetryLimit', {
+  defaultValue: () => RetryLimitValue.make(1),
 })
 const retired = () => refuse('RetiredSession', Rationale.make('Report from the attempt’s live session.'))
 const readSubmission = Schema.decodeUnknownEffect(Submission, { onExcessProperty: 'error' })
@@ -66,7 +66,7 @@ const maySubmit = (actor: AuthenticatedActor, party: Party | undefined) => {
 }
 
 const moveFor = (
-  project: Projection, request: Submission, authenticated: AuthenticatedActor, limit: Of<typeof RetryLimit>,
+  project: Projection, request: Submission, authenticated: AuthenticatedActor, limit: Of<typeof RetryLimitValue>,
 ): Result.Result<MoveInput, Refusal> => {
   const moved = (input: MoveInput) => Result.succeed(input)
   if (onLine(request, 'Project')) {
@@ -149,7 +149,7 @@ export const submit = (journal: Journal, input: unknown): Effect.Effect<Committe
     if (!maySubmit(authenticated, submissionParty(request))) return yield* Effect.fail(wrongActor())
     if ((request.line._tag === 'Project' || request.line._tag === 'Activation') && request.line.id !== journal.id)
       return yield* Effect.fail(refuse('InvalidInput', Rationale.make('The move addresses a different project.')))
-    const limit = yield* ReviewLimit
+    const limit = yield* RetryLimit
     const actor: StoredActor = authenticated._tag === 'Human' ? authenticated.actor
       : { _tag: 'Staff', id: (authenticated._tag === 'Host' ? authenticated.staff : authenticated.session.staff).id }
     return yield* commitProjectMove(journal, actor, request.read, (project) => moveFor(project, request, authenticated, limit))

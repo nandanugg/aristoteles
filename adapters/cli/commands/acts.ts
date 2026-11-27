@@ -12,7 +12,7 @@ import { Authority as ProjectAuthority, submit } from '../../../core/actions/pro
 import { reportTaskReview } from '../../../core/actions/task-review.ts'
 import { decodeQuestionInput } from '../../../core/actions/question.ts'
 import {
-  Answer as ProjectAnswer, QuestionId, Rationale, StoredActor, TaskDraft, TaskId, TaskReviewFacts, taskLine, refuse as projectRefuse,
+  Answer as ProjectAnswer, QuestionId, Rationale, StoredActor, TaskDraft, TaskId, ReviewFacts, taskLine, refuse as projectRefuse,
   type Of, type ReadPosition, type Refusal as ProjectRefusal,
 } from '../../../core/schema/project.ts'
 import type { Committed, Journal } from '../../../core/services/project.ts'
@@ -840,7 +840,7 @@ export const projectReviewCommand = (
   journal: Journal, target: unknown, read: Of<typeof ReadPosition>, yaml: string,
 ): Effect.Effect<Committed, ProjectRefusal, ProjectAuthority> => Effect.gen(function* () {
   const id = yield* checkedTaskInput(TaskId, target)
-  const facts = yield* checkedTaskInput(TaskReviewFacts, yield* loadTaskYaml(yaml))
+  const facts = yield* checkedTaskInput(ReviewFacts, yield* loadTaskYaml(yaml))
   return yield* reportTaskReview(journal, { _tag: 'Task', id }, read, facts)
 })
 

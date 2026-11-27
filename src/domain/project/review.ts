@@ -1,11 +1,16 @@
 import { Schema } from 'effect'
-import { Outcome } from './evidence.ts'
+import { Rule } from './direction.ts'
+import { Evidence, Outcome, Quote, outcomeOf } from './evidence.ts'
 import { Staff } from './staff.ts'
-import { EventNumber, Rationale, type Of } from './values.ts'
+import { EventNumber, FileContents, Rationale, type Of } from './values.ts'
+
+export const PromptOutcome = outcomeOf({ rule: Rule, evidence: Quote }).check(Schema.makeFilter(({ rule }) =>
+  rule.verification._tag === 'Prompt'))
+const Finding = Schema.Struct({ text: Rationale, evidence: Evidence })
 
 export const ReviewFacts = Schema.Struct({
-  outcomes: Schema.NonEmptyArray(Outcome),
-  findings: Schema.Array(Rationale),
+  outcomes: Schema.Array(Schema.Union([PromptOutcome, Outcome])),
+  findings: Schema.Array(Finding),
 })
 export type ReviewFacts = Of<typeof ReviewFacts>
 export const reviewOutcome = (facts: ReviewFacts): 'Holds' | 'Breaks' =>
@@ -17,3 +22,10 @@ const Assignment = Schema.Union([
 ])
 export const reviewing = <const Fields extends Schema.Struct.Fields>(fields: Fields) =>
   Schema.TaggedStruct('Reviewing', { ...fields, assignment: Assignment })
+
+export const quoteIn = (quote: Of<typeof Quote>, contents: Of<typeof FileContents>): 'Found' | 'Missing' => {
+  const lines = contents.split(/\r?\n/u)
+  if (lines.at(-1) === '') lines.pop()
+  return quote.lines.last <= lines.length &&
+    lines.slice(quote.lines.first - 1, quote.lines.last).join('\n').includes(quote.text) ? 'Found' : 'Missing'
+}

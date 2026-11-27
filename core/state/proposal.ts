@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 import {
-  Rationale, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, staffOf, subagentCapacity,
+  FileContents, Rationale, quoteIn, RetryCount, VersionNumber, edge, liveSession, proposalLine, refuse, staffOf, subagentCapacity,
   validateStaffing, reviewOutcome, roleOf, type Project, type Proposal, type ProposalEvent, type ProposalValue, type Refusal, type StoredActor,
 } from '../schema/project.ts'
 
@@ -85,6 +85,11 @@ export const applyProposalMove = (project: Project, event: ProposalEvent): Resul
     const { review, facts } = event.input
     if (phase.assignment._tag !== 'Assigned' || phase.assignment.by.id !== session.staff.id || phase.assignment.review !== review)
       return Result.fail(refuse('RetiredSession', Rationale.make('Review from the proposal’s fresh child.')))
+    const draft = FileContents.make(JSON.stringify(stage.value, null, 2))
+    if (facts.outcomes.length === 0 || facts.outcomes.some((outcome) => 'rule' in outcome) ||
+        facts.findings.some(({ evidence }) => evidence._tag !== 'Quote' || evidence.file !== 'proposal.json' ||
+          quoteIn(evidence, draft) !== 'Found'))
+      return Result.fail(refuse('InvalidEvidence', Rationale.make('Review the draft and cite any finding in proposal.json.')))
     if (reviewOutcome(facts) === 'Holds') {
       if (event.move !== 'next') return wrongMove()
       return move({ _tag: 'WaitingForOwner', by: phase.assignment.by, review, facts })

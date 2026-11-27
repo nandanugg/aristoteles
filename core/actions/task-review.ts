@@ -1,6 +1,6 @@
 import { Effect, Result } from 'effect'
 import { mayAssignTaskReview } from '../derived/project/review.ts'
-import { Rationale, ReadPosition, refuse, staffingAt, type LiveSession, type Of, type Project, type Refusal, type TaskAddress, type TaskReviewFacts } from '../schema/project.ts'
+import { Rationale, ReadPosition, refuse, staffingAt, type LiveSession, type Of, type Project, type Refusal, type TaskAddress, type ReviewFacts } from '../schema/project.ts'
 import type { Committed, Journal } from '../services/project.ts'
 import { Authority, commitProjectMove, submit } from './project.ts'
 
@@ -28,5 +28,5 @@ export const assignTaskReview = (
 })
 
 export const reportTaskReview = (
-  journal: Journal, line: Of<typeof TaskAddress>, read: Of<typeof ReadPosition>, facts: TaskReviewFacts,
+  journal: Journal, line: Of<typeof TaskAddress>, read: Of<typeof ReadPosition>, facts: ReviewFacts,
 ): Effect.Effect<Committed, Refusal, Authority> => submit(journal, { read, line, move: 'review', input: { facts } })

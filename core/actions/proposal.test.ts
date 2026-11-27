@@ -70,6 +70,36 @@ test('proposal queue launches the host’s fresh child and retains the reviewed 
   }))),
 ))
 
+test('proposal findings have evidence from the pending draft', () => withJournal((path) =>
+  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const journal = yield* open(path)
+    const opened = yield* create(journal)
+    const live = yield* startFixtureSession(journal, opened.state)
+    const drafted = yield* cliProposal(journal, live.state, ask())
+    const submitted = yield* cliProposal(journal, drafted.state, send())
+    const child = yield* launchNextReview(dirname(path), journal, { reconcile: () => Effect.void, open: () => Effect.void })
+    if (!child) throw new Error('Missing assignment')
+    const phase = child.state.proposals.get(first.id)?.phase
+    if (phase?._tag !== 'Reviewing' || phase.assignment._tag !== 'Assigned') throw new Error('Missing fresh child')
+    const actor = { _tag: 'Review', session, line: first, review: phase.assignment.review } as const
+    const report = (evidence: unknown) => cliProposal(journal, child.state, {
+      line: first, move: 'review', input: { facts: {
+        ...evidenceForDraft, findings: [{ text: 'Explain this direction.', evidence }],
+      } },
+    }, actor)
+    const evidenceForDraft = evidence('Holds')
+    expect(yield* Effect.result(report(undefined))).toMatchObject(missing('InvalidInput'))
+    const quote = { _tag: 'Quote', file: 'proposal.json', lines: { first: 2, last: 2 }, text: '"_tag": "Direction"' }
+    expect(yield* Effect.result(report({ ...quote, text: 'missing' }))).toMatchObject(missing('InvalidEvidence'))
+    expect(yield* journal.eventsAfter(child.state.read)).toEqual([])
+    const returned = yield* report(quote)
+    expect(returned.state.proposals.get(first.id)?.phase).toMatchObject({ _tag: 'Drafting', feedback: {
+      _tag: 'Review', facts: { findings: [{ evidence: quote }] },
+    } })
+    expect(submitted.event.move).toBe('submit')
+  }))),
+))
+
 test('departure retires the old child and releases the first proposal back into journal order', () => withJournal((path) =>
   Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)

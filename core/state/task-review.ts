@@ -1,16 +1,13 @@
 import { Result, Schema } from 'effect'
 import {
-  Rationale, RetryCount, refuse, taskRules,
-  type BreakingOutcome, type Evidence, type Of, type Quote, type Refusal, type RetryLimit, type Task, type TaskPhase, type TaskReviewFacts,
+  PromptOutcome, Rationale, RetryCount, quoteIn, refuse, taskRules,
+  type BreakingOutcome, type Evidence, type Of, type Quote, type Refusal, type RetryLimit, type Task, type TaskPhase, type ReviewFacts,
 } from '../schema/project.ts'
 
 const quoted = (quote: Of<typeof Quote>, result: Extract<TaskPhase, { _tag: 'Reviewing' }>['result']) => {
   const file = result.files.find(({ path }) => path === quote.file)
   if (!file) return false
-  const lines = (file.image._tag === 'Present' ? file.image.contents : file.image.previousContents).split(/\r?\n/u)
-  if (lines.at(-1) === '') lines.pop()
-  return quote.lines.last <= lines.length &&
-    lines.slice(quote.lines.first - 1, quote.lines.last).join('\n').includes(quote.text)
+  return quoteIn(quote, file.image._tag === 'Present' ? file.image.contents : file.image.previousContents) === 'Found'
 }
 
 const knownBreak = (outcome: BreakingOutcome, result: Extract<TaskPhase, { _tag: 'Reviewing' }>['result']) => {
@@ -26,12 +23,13 @@ const knownBreak = (outcome: BreakingOutcome, result: Extract<TaskPhase, { _tag:
 type ReviewedPhase = Extract<TaskPhase, { _tag: 'Done' | 'Raised' | 'Working' }>
 
 export const reviewTask = (
-  task: Task, phase: Extract<TaskPhase, { _tag: 'Reviewing' }>, facts: TaskReviewFacts, limit: Of<typeof RetryLimit>,
+  task: Task, phase: Extract<TaskPhase, { _tag: 'Reviewing' }>, facts: ReviewFacts, limit: Of<typeof RetryLimit>,
 ): Result.Result<ReviewedPhase, Refusal> => {
   const { result } = phase
   const prompts = taskRules(task).filter(({ verification }) => verification._tag === 'Prompt')
-  const reports = new Map(facts.outcomes.map((outcome) => [outcome.rule.id, outcome]))
-  if (reports.size !== prompts.length || facts.outcomes.length !== prompts.length || prompts.some((rule) =>
+  const reviewed = facts.outcomes.filter(Schema.is(PromptOutcome))
+  const reports = new Map(reviewed.map((outcome) => [outcome.rule.id, outcome]))
+  if (reviewed.length !== facts.outcomes.length || reports.size !== prompts.length || facts.outcomes.length !== prompts.length || prompts.some((rule) =>
     JSON.stringify(rule) !== JSON.stringify(reports.get(rule.id)?.rule))) {
     return Result.fail(refuse('InvalidEvidence', Rationale.make('Supply one outcome for each pinned prompt rule.')))
   }
@@ -42,7 +40,7 @@ export const reviewTask = (
     return Result.fail(refuse('InvalidEvidence', Rationale.make('Cite a passage in the result or its captured command output.')))
   }
 
-  const outcomes = [...phase.outcomes, ...facts.outcomes]
+  const outcomes = [...phase.outcomes, ...reviewed]
   const finding = facts.findings[0]
   if (finding) return Result.succeed({ _tag: 'Raised', reason: 'NoRule', evidence: finding.evidence })
   const [first, ...rest] = outcomes.filter((outcome): outcome is BreakingOutcome => outcome._tag === 'Breaks' && !knownBreak(outcome, result))

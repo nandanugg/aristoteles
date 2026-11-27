@@ -1,13 +1,13 @@
 import { Schema } from 'effect'
 import { Direction, Fact, Rule, Stage } from './direction.ts'
-import { CommandOutput, Evidence, Lines, Quote, outcomeOf } from './evidence.ts'
-import { reviewing } from './review.ts'
+import { CommandOutput, Evidence, Lines, outcomeOf } from './evidence.ts'
+import { PromptOutcome, reviewing } from './review.ts'
 import { versionOf } from './proposal.ts'
 import type { Project } from './records.ts'
 import { LiveSession, Role, staffOf } from './staff.ts'
 import {
   AttemptNumber, EventNumber, FileContents, FilePath, Goal, Name,
-  Rationale, ResultSummary, RetryCount, TaskId, type Of,
+  ResultSummary, RetryCount, TaskId, type Of,
 } from './values.ts'
 
 export const DirectionVersion = versionOf(Direction)
@@ -36,8 +36,6 @@ export const CommandOutcomes = Schema.Array(CommandOutcome).check(
   Schema.makeFilter((values) => new Set(values.map(({ rule }) => rule.id)).size === values.length),
 )
 
-const PromptOutcome = outcomeOf({ rule: Rule, evidence: Quote }).check(Schema.makeFilter(({ rule }) =>
-  rule.verification._tag === 'Prompt'))
 const RuleOutcome = Schema.Union([CommandOutcome, PromptOutcome])
 export type RuleOutcome = Of<typeof RuleOutcome>
 const BreakingOutcome = RuleOutcome.pipe(Schema.refine(
@@ -48,15 +46,11 @@ export const ReviewFeedback = Schema.Union([
   Schema.TaggedStruct('None', {}),
   Schema.TaggedStruct('Review', { breaks: Schema.NonEmptyArray(BreakingOutcome) }),
 ])
-const Finding = Schema.Struct({ text: Rationale, evidence: Evidence })
-export const TaskReviewFacts = Schema.Struct({ outcomes: Schema.Array(PromptOutcome), findings: Schema.Array(Finding) })
-export type TaskReviewFacts = Of<typeof TaskReviewFacts>
-
 export const Attempt = Schema.Struct({
   number: AttemptNumber, retryCount: RetryCount, session: LiveSession, where: Schema.Literals(['Session', 'Subagent']), feedback: ReviewFeedback,
 })
 const Result = Schema.Struct({ ...WorkResult.fields, attempt: Attempt, at: EventNumber })
-export const RaiseReason = Schema.Literals(['Tries', 'Misses', 'NoRule', 'TooBig', 'wrongTask', 'ContractWrong', 'RejectedByHuman'])
+export const RaiseReason = Schema.Literals(['Tries', 'Misses', 'NoRule', 'TooBig', 'WrongTask', 'ContractWrong', 'RejectedByHuman'])
 export const TaskPhase = Schema.Union([
   Schema.TaggedStruct('Sent', { retryCount: RetryCount, feedback: ReviewFeedback }),
   Schema.TaggedStruct('Working', { attempt: Attempt }),

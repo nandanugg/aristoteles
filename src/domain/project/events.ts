@@ -3,7 +3,7 @@ import { ApprovedFiles } from './activation.ts'
 import { ProposalValue } from './proposal.ts'
 import { ReviewFacts } from './review.ts'
 import { line, protocol } from './lines.ts'
-import { Attempt, CommandOutcomes, RaiseReason, TaskStages, TaskReviewFacts, WorkResult, type TaskPhase } from './task.ts'
+import { Attempt, CommandOutcomes, RaiseReason, TaskStages, WorkResult, type TaskPhase } from './task.ts'
 import { Evidence } from './evidence.ts'
 import { Fact } from './direction.ts'
 import { Answer, QuestionForm, questionAbout } from './question.ts'
@@ -36,12 +36,11 @@ const value = Schema.Struct({ value: ProposalValue })
 const proposalDraft = Schema.Struct({ value: ProposalValue, question: Schema.NullOr(QuestionAddress) })
 const reviewFacts = Schema.Struct({ facts: ReviewFacts })
 const reviewReport = Schema.Struct({ ...reviewFacts.fields, session: LiveSession, review: EventNumber })
-const taskReviewFacts = Schema.Struct({ facts: TaskReviewFacts })
 const workProblem = Schema.Struct({
-  attempt: AttemptNumber, reason: Schema.Literals(['TooBig', 'wrongTask']), evidence: Evidence,
+  attempt: AttemptNumber, reason: Schema.Literals(['TooBig', 'WrongTask']), evidence: Evidence,
 })
 const taskReviewReport = Schema.Struct({
-  ...taskReviewFacts.fields, session: SessionId, review: EventNumber, limit: RetryLimit,
+  ...reviewFacts.fields, session: SessionId, review: EventNumber, limit: RetryLimit,
 })
 
 export const projectLine = line({
@@ -65,7 +64,7 @@ export const taskLine = line({
   } },
   Reviewing: { owes: 'Reviewer', moves: {
     assign: { to: ['Reviewing'], input: session, owes: 'Engine' },
-    next: { to: ['Done'], input: taskReviewReport, submission: { move: 'review', input: taskReviewFacts } },
+    next: { to: ['Done'], input: taskReviewReport, submission: { move: 'review', input: reviewFacts } },
     back: { to: ['Working'], input: taskReviewReport },
     raise: { to: ['Raised'], input: Schema.Struct({ ...taskReviewReport.fields, reason: RaiseReason }) },
   } },

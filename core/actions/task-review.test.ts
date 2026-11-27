@@ -9,9 +9,9 @@ import { projectEvents, projectSnapshot, projectSubmission } from '../../adapter
 import { open, session, staff, staffInput, withJournal } from '../../src/store/project.probe.ts'
 import { ownerAuthority, staffAuthorityOf } from '../../src/store/question.probe.ts'
 import { artifactQuote, commandOutcomes, promptDirection, reportReview, resultInput, reviewAs, taskId, taskLine, toWorking } from '../../src/store/task.probe.ts'
-import { CommandOutcome, Direction, Rationale, RetryLimit, refuse, SessionId, staffingAt } from '../schema/project.ts'
+import { CommandOutcome, Direction, Rationale, RetryLimit as RetryLimitValue, refuse, SessionId, staffingAt } from '../schema/project.ts'
 import { readPosition } from '../state/project.ts'
-import { Authority, ReviewLimit, type AuthenticatedActor } from './project.ts'
+import { Authority, RetryLimit, type AuthenticatedActor } from './project.ts'
 import { readOpenProject, startChild } from './staff-session.ts'
 import { recordTaskCommands } from './task.ts'
 
@@ -116,11 +116,11 @@ for (const reason of ['Tries', 'NoRule'] as const) test('review may raise ' + re
       findings: reason === 'NoRule' ? [{ text: 'The material is missing context.', evidence: artifactQuote }] : [],
     }
     const result = yield* projectReviewCommand(journal, taskId, project.read, Bun.YAML.stringify(facts))
-      .pipe(auth(reviewAs(project)), Effect.provideService(ReviewLimit, RetryLimit.make(0)))
+      .pipe(auth(reviewAs(project)), Effect.provideService(RetryLimit, RetryLimitValue.make(0)))
     expect(result.state.tasks.get(taskId)?.phase).toMatchObject({ _tag: 'Raised', reason, evidence: artifactQuote })
   })))))
 
-for (const reason of ['wrongTask', 'TooBig'] as const) test('work raises ' + reason + ' with evidence, then stops', () =>
+for (const reason of ['WrongTask', 'TooBig'] as const) test('work raises ' + reason + ' with evidence, then stops', () =>
   withJournal((path) => Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const journal = yield* open(path)
     const start = (yield* toWorking(journal)).state
