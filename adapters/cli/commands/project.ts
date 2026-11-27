@@ -103,13 +103,13 @@ export const projectOnboard = (
 
 // The credential adapter resolves a token to its lifetime before using the shared selection.
 export const waitOnProject = (
-  journal: Journal, authenticate: Effect.Effect<Of<typeof StaffSessionKey>, ProjectRefusal>,
+  journal: Journal, authenticate: Effect.Effect<Of<typeof StaffSessionKey>, ProjectRefusal>, on?: Of<typeof ReadPosition>,
 ): Effect.Effect<Selection, ProjectRefusal> => Effect.gen(function* () {
   const key = yield* authenticate
   const project = yield* readOpenProject(journal)
   const session = yield* staffAuthority(project, key)
   const events = yield* journal.eventsAfter(ReadPosition.make(0))
-  return nextStep(project, session, events.filter((event) => event.number <= project.read))
+  return nextStep(project, session, events.filter((event) => event.number <= project.read), on)
 })
 
 export const waitOnTaskReview = (

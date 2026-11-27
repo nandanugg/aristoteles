@@ -41,7 +41,11 @@ test('CLI and page see the same owed question, enforce the recipient, and append
     const question = needed(project)
     expect(question.state._tag).toBe('Open')
     expect(questionsFor(project, owner)).toHaveLength(0)
-    const due = nextStep(project, session)
+    const events = yield* journal.eventsAfter(ReadPosition.make(0))
+    const introduction = nextStep(project, session, events)
+    if (introduction._tag !== 'Introduction') throw new Error('Expected the session introduction first')
+    expect(introduction.read).toBe(ReadPosition.make(project.sessions.get(session.key)!.startedAt))
+    const due = nextStep(project, session, events, introduction.read)
     if (due._tag !== 'Available' || due.subject._tag !== 'Question') throw new Error('Expected a question')
     expect(projectQuestionWords(due.subject, due.read).map(String)).toEqual([
       question.text, `work answer "$ARISTOTELES_TOKEN" project/question:example --on=${project.read} --file=answer.yaml`,

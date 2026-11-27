@@ -54,8 +54,8 @@ export const spawnProjectBootstrap = (
 ): void => {
   const prompt = [
     launchOpening('host'),
-    `Run work activation ack session:${launch} from this pane, then work activation collect session:${launch}.`,
-    'Wait for Start work before submitting work.',
+    `Run work activation ack session:${launch} from this pane to read your introduction, then work activation collect session:${launch}.`,
+    'After Start work, use the collected credential in the printed work wait command.',
   ].join(' ')
   const args = [
     'new-session', '-d', '-s', bootstrapSession(launch), '-c', dir, '-e', `${NONCE_ENV}=${nonce}`,

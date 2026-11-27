@@ -5,7 +5,9 @@ description: Take the next step of an Aristoteles task, answer a Question, or re
 
 # Work in an Aristoteles Project
 
-In a new staff pane, follow its launch prompt to acknowledge the session. Then run `work wait "$ARISTOTELES_TOKEN"` in the staff or review session. Use the read basis and address from that response. Your credential is private to its session or review. A refusal for a retired session or review calls for a new assignment.
+In a new staff pane, follow its launch prompt to become Live and read the role responsibilities and accepted directions. The introduction prints a `work wait <token> --on=<session-start>` command. Use your private credential in that command. Reuse the printed session-start value while waiting for your first act. If you missed the introduction, run `work wait <token>` to derive it again.
+
+After your first act, use `work wait <token>` for what is due. A fresh review child uses `work wait <token>` to get its assigned review. Use the read basis and address from that response. Your credential is private to its session or review. A refusal for a retired session or review calls for a new assignment.
 
 ## Task brief and result
 

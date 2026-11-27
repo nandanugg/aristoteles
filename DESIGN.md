@@ -29,8 +29,11 @@ while sessions keep the staff value they started with.
   addresses the owner and the question’s key within that map.
 - Accepted staffing assigns every role, with session limits per subscription and
   subagent capacity per staff. The journal reserves a Starting session before
-  spawn. Its pane proves authority to become Live. Session loss retires its
-  authority and gives the affected task or review a checked recovery path.
+  spawn. Its pane proves authority to become Live and reads its roles’
+  responsibilities and the current accepted directions. The printed wait
+  command uses the session’s start position to continue when no act has been
+  recorded yet. Session loss retires its authority and gives the affected task
+  or review a checked recovery path.
 - Activation pins the approved instruction inventory and binds one acknowledged
   host. The host binding comes from the live staff session. The owner starts
   work on the activation line. Recovery reconciles launch

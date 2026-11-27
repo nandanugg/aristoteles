@@ -96,7 +96,7 @@ export const projectRuns = (dir: string, db: string | undefined, journal: Journa
       : perform(() => {
         const nonce = LaunchNonce.make(randomBytes(32).toString('hex'))
         launch(suffix(key), { _tag: 'Staff', session: { _tag: 'Session', key }, proof: digest(nonce) }, staff,
-          `Run work session ack ${key} in this pane, then work wait with ARISTOTELES_TOKEN.`, nonce)
+          `Run work session ack ${key} in this pane to read your introduction. Follow its work wait command with ARISTOTELES_TOKEN.`, nonce)
         return null
       }),
     stop: (session) => perform(() => {

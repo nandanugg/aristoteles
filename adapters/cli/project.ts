@@ -2,9 +2,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Effect, Exit, Schema } from 'effect'
 import { Authority, submit, type AuthenticatedActor } from '../../core/actions/project.ts'
+import { nextStep } from '../../core/derived/project/next-step.ts'
 import { readOpenProject } from '../../core/actions/staff-session.ts'
 import {
-  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, proposalText, refuse, staffingAt, type Submission,
+  EventNumber, Human, LaunchNonce, ProjectCredential, Projection, Proposal, ProposalKey, Rationale, ReadPosition, Refusal, ReviewFacts, StaffSessionKey, StaffKey, liveSession, proposalText, refuse, staffingAt, type Of, type Project, type Submission,
 } from '../../core/schema/project.ts'
 import { openProjectJournal, withProjectEnv } from '../../core/services/project.ts'
 import {
@@ -19,7 +20,7 @@ import {
   projectSendCommand, waitOnProject, waitOnTaskReview,
 } from './commands/project.ts'
 import { acknowledgeProjectHost, collectProjectHost } from './commands/project-activation.ts'
-import { projectQuestionWords } from '../words/project.ts'
+import { projectIntroductionWords, projectQuestionWords } from '../words/project.ts'
 
 // Raw argv stays at the CLI boundary. Each command checks its flags before decoding input.
 const parseArgs = (argv: readonly string[]) => {
@@ -50,7 +51,7 @@ const help = [
   'work activation resume|relaunch|rollback',
   'work project start --on=<read>',
   'work session launch <staff> | observe <session>',
-  'work wait <token>',
+  'work wait <token> [--on=<session-start>]',
   'work send <token> --on=<read> --file=task.yaml',
   'work brief <token> <task>',
   'work report|review <token> <task> --on=<read> --file=report.yaml',
@@ -69,6 +70,13 @@ const load = (file: string) => Effect.try({
 const yaml = (text: string) => Effect.try({ try: (): unknown => Bun.YAML.parse(text), catch: invalid })
 const words = (event: { readonly number: typeof EventNumber.Type }) =>
   'Committed event ' + event.number + '.'
+
+const startingWords = (project: Project, key: Of<typeof StaffSessionKey>): readonly string[] => {
+  const session = liveSession(project, key)
+  if (!session) return []
+  const selected = nextStep(project, session, [])
+  return selected._tag === 'Introduction' ? [projectIntroductionWords(selected.subject, session, selected.read)] : []
+}
 
 const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjectCli>[1]) => Effect.gen(function* () {
   const env = io.env
@@ -118,8 +126,8 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     const journal = yield* openProjectJournal(directory, 'Write')
     const operations = projectActivationOperations(io.cwd, journal, liveProjectBootstrap(io.cwd, env.ARISTOTELES_DB, journal.directory))
     if (act === 'collect') return [yield* collectProjectHost(operations, subject, env[NONCE_ENV])]
-    yield* acknowledgeProjectHost(operations, subject, env[NONCE_ENV])
-    return ['Project host acknowledged.']
+    const result = yield* acknowledgeProjectHost(operations, subject, env[NONCE_ENV])
+    return ['Project host acknowledged.', ...startingWords(result.state, subject)]
   }
 
   if (command === 'session' && act === 'ack') {
@@ -130,7 +138,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     const journal = yield* openProjectJournal(directory, 'Write')
     const nonce = yield* decode(LaunchNonce, env[NONCE_ENV])
     const result = yield* projectRuns(io.cwd, env.ARISTOTELES_DB, journal).acknowledge(subject, nonce)
-    return [words(result.event)]
+    return [words(result.event), ...startingWords(result.state, subject)]
   }
 
   const allowed = ['onboard', 'status', 'project', 'activation', 'session', 'wait', 'send', 'brief', 'report', 'review', 'question', 'answer']
@@ -161,7 +169,7 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
       const staff = yield* decode(StaffKey, subject)
       const key = newStaffSession()
       const result = yield* runs.sessions.launch(staff, key, staffingAt(project), null)
-      return ['Staff session ' + key, words(result.event)]
+      return ['Staff session ' + key, words(result.event), ...startingWords(result.state, key)]
     }
     if (act === 'observe') {
       const key = yield* decode(StaffSessionKey, subject)
@@ -176,7 +184,8 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
       projectActivationOperations(io.cwd, journal, liveProjectBootstrap(io.cwd, env.ARISTOTELES_DB, journal.directory)), act)
     return ['Activation updated.']
   }
-  if (command === 'wait' && !act && !subject && known([])) {
+  if (command === 'wait' && !act && !subject && known(['on'])) {
+    const on = parsed.flags.length ? yield* read() : undefined
     const by = yield* actor
     if (by._tag === 'Human') return ['Open the Project page to see what needs your attention.']
     if (by._tag === 'Review' && by.line === 'Proposal') {
@@ -187,12 +196,13 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     }
     const selected = yield* (by._tag === 'Review'
       ? waitOnTaskReview(journal, Effect.succeed(by))
-      : waitOnProject(journal, Effect.succeed(by.session.key)))
+      : waitOnProject(journal, Effect.succeed(by.session.key), on))
+    if (selected._tag === 'Introduction') return [projectIntroductionWords(selected.subject, by.session, selected.read)]
     if (selected._tag !== 'Available') return [by._tag === 'Host'
       ? 'The bound host can send a task. Read ' + project.read + '.' : 'Nothing is due.']
-    const { subject: target, read } = selected
-    if (target._tag === 'Question') return projectQuestionWords(target, read)
-    if (target._tag !== 'Task') return ['Read ' + read + '. Proposal ' + target.proposal.key + ' is due.']
+    const { subject: target, read: basis } = selected
+    if (target._tag === 'Question') return projectQuestionWords(target, basis)
+    if (target._tag !== 'Task') return ['Read ' + basis + '. Proposal ' + target.proposal.key + ' is due.']
     const task = target.task
     if ((by._tag === 'Staff' || by._tag === 'Host') && selected.for === 'Assign') {
       const committed = yield* runs.sessions.child(by.session.key, task.key, 'Review', staffingAt(project))
@@ -201,10 +211,10 @@ const projectCommand = (argv: readonly string[], io: Parameters<typeof runProjec
     if (by._tag === 'Review') return [
       yield* projectBriefCommand(journal, task.key, projectCommands).pipe(asActor),
       JSON.stringify(task.phase, null, 2),
-      `work review "$ARISTOTELES_TOKEN" ${task.key} --on=${read} --file=facts.yaml`,
+      `work review "$ARISTOTELES_TOKEN" ${task.key} --on=${basis} --file=facts.yaml`,
     ]
     return [yield* projectBriefCommand(journal, task.key, projectCommands).pipe(asActor),
-      `work report "$ARISTOTELES_TOKEN" ${task.key} --on=${read} --file=report.yaml`]
+      `work report "$ARISTOTELES_TOKEN" ${task.key} --on=${basis} --file=report.yaml`]
   }
   if (command === 'brief' && act && !subject && known([]))
     return [yield* projectBriefCommand(journal, act, projectCommands).pipe(asActor)]

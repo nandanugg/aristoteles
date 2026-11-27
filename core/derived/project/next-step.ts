@@ -1,11 +1,12 @@
 import {
-  currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
-  taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type ReadPosition, type Of, type Task, type StoredEvent,
+  ReadPosition, currentQuestion, sameActor, liveSession, proposalLine, questionLine, staffOf, taskLine, activeWork,
+  taskRole, type Human, type LiveSession, type Project, type Proposal, type Question, type QuestionEvent, type Of, type Task, type StoredEvent,
 } from '../../schema/project.ts'
 import { mayAssignTaskReview } from './review.ts'
 
 export type Selection =
   | { readonly _tag: 'Awaiting' }
+  | { readonly _tag: 'Introduction'; readonly subject: Project; readonly read: Of<typeof ReadPosition> }
   | {
       readonly _tag: 'Available'
       readonly subject: { readonly _tag: 'Task'; readonly task: Task } | { readonly _tag: 'Question'; readonly question: Question; readonly owner: QuestionEvent['owner'] }
@@ -35,10 +36,25 @@ export const questionsFor = (project: Project, authority: LiveSession | Of<typeo
   ].sort((a, b) => a.question.lastChange - b.question.lastChange)
 }
 
-export const nextStep = (project: Project, authority: LiveSession | Of<typeof Human>, events: readonly StoredEvent[] = []): Selection => {
+export const acceptedDirections = (project: Project) => {
+  const accepted = [...project.proposals.values()].flatMap(({ phase, basis }) =>
+    phase._tag === 'Accepted' && phase.version.value._tag === 'Direction'
+      ? [{ version: { ...phase.version, value: phase.version.value }, basis }] : [],
+  )
+  const superseded = new Set(accepted.flatMap(({ basis }) => basis._tag === 'Version' ? [basis.version.acceptedAt] : []))
+  return accepted.map(({ version }) => version).filter(({ acceptedAt }) => !superseded.has(acceptedAt))
+}
+
+export const nextStep = (
+  project: Project, authority: LiveSession | Of<typeof Human>, events: readonly StoredEvent[], on?: Of<typeof ReadPosition>,
+): Selection => {
   if (project.status._tag === 'Ended') return { _tag: 'Awaiting' }
-  const [question] = questionsFor(project, authority)
   const current = authority._tag === 'Live' ? currentSession(project, authority) : undefined
+  // Starting up and opening a review can produce engine events under the session's key.
+  if (current && on !== Number(current.startedAt) && !events.some(({ actor, move, line }) =>
+    actor._tag === 'Session' && actor.key === current.key && move !== 'assign' && !(line === 'Activation' && move === 'use'),
+  )) return { _tag: 'Introduction', subject: project, read: ReadPosition.make(current.startedAt) }
+  const [question] = questionsFor(project, authority)
   const owes = (task: Task): boolean => {
     if (!current || !activeWork(project)) return false
     const { phase } = task

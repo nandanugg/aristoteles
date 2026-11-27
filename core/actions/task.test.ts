@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { acceptedDirections } from '../derived/project/next-step.ts'
 import { chromium } from 'playwright'
 import { Database } from 'bun:sqlite'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -65,6 +66,9 @@ test('the host sends a checked stage slice only after work starts and its basis 
       stages: [{ ...task.stages[0], work: Goal.make('A changed assignment.') }],
     }, task.direction)
     expect(revised.tasks.get(draft.key)).toEqual(task)
+    const directions = acceptedDirections(revised)
+    expect(directions.map(({ acceptedAt }) => acceptedAt)).not.toContain(task.direction.acceptedAt)
+    expect(directions.flatMap(({ value }) => value.stages.map(({ work }) => work))).toContain(Goal.make('A changed assignment.'))
     expect(yield* Effect.result(sendDraft(journal, revised, { ...draft, key: TaskKey.make('task:new') })))
       .toMatchObject(refused('Stale'))
     const before = yield* readOpenProject(journal)

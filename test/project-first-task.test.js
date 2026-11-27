@@ -75,13 +75,13 @@ exec ${quote(realTmux)} "$@"
   writeFileSync(launch, `#!/bin/sh
 umask 077
 if [ -n "$ARISTOTELES_BOOTSTRAP_PROJECT" ]; then
-  ${quote(process.execPath)} ${quote(bin)} activation ack "$ARISTOTELES_BOOTSTRAP_SESSION" >/dev/null || exit
+  ${quote(process.execPath)} ${quote(bin)} activation ack "$ARISTOTELES_BOOTSTRAP_SESSION" > ${quote(captures)}/host.intro || exit
   ${quote(process.execPath)} ${quote(bin)} activation collect "$ARISTOTELES_BOOTSTRAP_SESSION" > ${quote(captures)}/host || exit
 else
-  if [ -n "$ARISTOTELES_LAUNCH_NONCE" ]; then
-    ${quote(process.execPath)} ${quote(bin)} session ack "$ARISTOTELES_SESSION" >/dev/null || exit
-  fi
   key=$(printf '%s' "$ARISTOTELES_SESSION" | cut -c 9-)
+  if [ -n "$ARISTOTELES_LAUNCH_NONCE" ]; then
+    ${quote(process.execPath)} ${quote(bin)} session ack "$ARISTOTELES_SESSION" > ${quote(captures)}/"$key.intro" || exit
+  fi
   printf '%s' "$ARISTOTELES_TOKEN" > ${quote(captures)}/"$key.token"
   date +%s%3N > ${quote(captures)}/"$key.started"
 fi
@@ -139,9 +139,20 @@ exec sleep 90
       const launched = await ok(['session', 'launch', assigned.key], ownerCall)
       const key = /Staff session (session:[a-f0-9]+)/u.exec(launched)?.[1]
       const file = join(captures, key.slice(8) + '.token')
-      return { key, token: await until(() => existsSync(file) && readFileSync(file, 'utf8'), 'staff start') }
+      const token = await until(() => existsSync(file) && readFileSync(file, 'utf8'), 'staff start')
+      const introduction = readFileSync(join(captures, key.slice(8) + '.intro'), 'utf8').trimEnd()
+      const continuation = /--on=\d+/u.exec(introduction)?.[0]
+      expect(continuation).toMatch(/^--on=\d+$/u)
+      return { key, token, introduction, continuation }
     }
     let live = await launchStaff()
+    expect(live.introduction).toContain('Session introduction for ' + local.name)
+    expect(live.introduction).toContain(host.responsibility.value.introduction)
+    expect(live.introduction).toContain('No accepted directions yet.')
+    const introducedAt = (await state()).read
+    expect((await ok(['wait'], live)).trimEnd()).toBe(live.introduction.split('\n').slice(1).join('\n'))
+    expect((await ok(['wait', live.continuation], live)).trim()).toBe('Nothing is due.')
+    expect((await state()).read).toBe(introducedAt)
     const apply = async (args, token, label) => {
       const start = Date.now()
       const text = await ok(args, token ? { token } : ownerCall)
@@ -215,7 +226,13 @@ exec sleep 90
     await browser.page.getByText('Work is open.', { exact: true }).waitFor()
     measures.push(['start work', Date.now() - started])
     const hostToken = await until(() => existsSync(join(captures, 'host')) && readFileSync(join(captures, 'host'), 'utf8').trim(), 'host credential')
+    expect(readFileSync(join(captures, 'host.intro'), 'utf8')).toContain('Accepted direction ' + drafted.name)
+    expect(await ok(['wait'], { token: hostToken })).toContain('Session introduction for ' + local.name)
     live = await launchStaff(worker)
+    expect(live.introduction).toContain('Role ' + pipeline.name)
+    expect(live.introduction).toContain(pipeline.responsibility.value.summary)
+    expect(live.introduction).toContain(pipeline.responsibility.value.duties[0])
+    expect(live.introduction).toContain('Accepted direction ' + drafted.name)
     const project = await state()
     const accepted = project.proposals.find(({ key }) => key === 'proposal:direction').phase.version
     const prompt = accepted.value.standards[0].rules[1]
@@ -258,10 +275,15 @@ exec sleep 90
     expect((await oldReport.json()).code).toBe('WrongActor')
     for (const route of ['api/onboarding', 'api/activation', 'api/staffing', 'api/act'])
       expect((await submit({}, route)).status).toBe(404)
-    const old = live.token
+    const old = live
     live = await launchStaff(worker)
-    expect((await call(['wait'], { token: old })).code).toBe(1)
+    expect((await call(['wait'], old)).code).toBe(1)
+    expect(await ok(['wait', old.continuation], live)).toContain('Session introduction for ' + worker.name)
+    const due = await ok(['wait', live.continuation], live)
+    expect(due).toContain('work report')
+    expect(due).not.toContain('Session introduction')
     await report(key, {}, 'restart begin')
+    expect(await ok(['wait'], live)).not.toContain('Session introduction')
     writeFileSync(join(dir, 'sample.md'), 'Local second result\n')
     await finish(2, 'Local second result', 'Holds')
     await browser.phase(name, pipeline.name, 'Done')

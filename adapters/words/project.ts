@@ -1,4 +1,6 @@
-import { taskRole, taskRules, TaskBriefText, type Evidence, type Of, type Question, type QuestionEvent, type QuestionText, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
+import { Schema } from 'effect'
+import { acceptedDirections } from '../../core/derived/project/next-step.ts'
+import { DirectionVersion, Introduction, roleOf, taskRole, taskRules, TaskBriefText, type Evidence, type LiveSession, type Of, type Project, type Question, type QuestionEvent, type QuestionText, type ReadPosition, type Refusal, type Task } from '../../core/schema/project.ts'
 
 const taskEvidenceWords = (evidence: Of<typeof Evidence>) => evidence._tag === 'Quote'
   ? `${evidence.file}:${evidence.lines.first}–${evidence.lines.last} ${evidence.text}`
@@ -36,3 +38,25 @@ export const projectQuestionWords = (
   read: Of<typeof ReadPosition>,
 ): readonly [Of<typeof QuestionText>, `work answer "$ARISTOTELES_TOKEN" ${ReturnType<typeof questionAddressText>} --on=${Of<typeof ReadPosition>} --file=answer.yaml`] =>
   [question.text, `work answer "$ARISTOTELES_TOKEN" ${questionAddressText({ owner, key: question.key })} --on=${read} --file=answer.yaml`]
+
+const encodeDirection = Schema.encodeSync(DirectionVersion)
+
+export const projectIntroductionWords = (
+  project: Project, session: LiveSession, read: Of<typeof ReadPosition>,
+): Of<typeof Introduction> => {
+  const roles = session.staff.roles.flatMap((assigned) => {
+    const role = roleOf(project, assigned.key) ?? assigned
+    const { summary, introduction, duties } = role.responsibility.value
+    return [`Role ${role.name}`, summary, introduction, ...duties.map((duty) => `- ${duty}`)]
+  })
+  const directions = acceptedDirections(project)
+  return Introduction.make([
+    `Session introduction for ${session.staff.name}`,
+    ...roles,
+    ...(directions.length ? directions.flatMap((direction) => [
+      `Accepted direction ${direction.value.name} (version ${direction.number})`,
+      JSON.stringify(encodeDirection(direction), null, 2),
+    ]) : ['No accepted directions yet.']),
+    `Continue with work wait <token> --on=${read}`,
+  ].join('\n'))
+}
